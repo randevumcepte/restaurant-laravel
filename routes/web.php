@@ -377,3 +377,12 @@ Route::post('/copilot/sor', function (Request $r) {
     return response()->json(_copilotCevap((string) $r->soru));
 });
 
+// ============================ QR MENU (musteri tarafi, public) ============================
+Route::get('/qr/{masa?}', function ($masaAd = null) {
+    $subeId = DB::table('subeler')->value('id');
+    $sube = DB::table('subeler')->find($subeId);
+    $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
+    $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get()->groupBy('kategori_id');
+    return view('qr.menu', compact('sube', 'kategoriler', 'urunler', 'masaAd'));
+});
+
