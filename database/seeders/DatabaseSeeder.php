@@ -25,6 +25,8 @@ class DatabaseSeeder extends Seeder
     private array $malzeme = [];    // ad => ['id','temel_birim','maliyet','kritik','alis_birim','alis_cevrim']
     private array $urunler = [];    // id => ['id','ad','fiyat','kategori']
     private array $modifierler = []; // id => ['ad','ek_fiyat']
+    private array $musteriIds = [];
+    private array $kuryeIds = [];
 
     public function run(): void
     {
@@ -39,8 +41,12 @@ class DatabaseSeeder extends Seeder
         $this->receteler();
         $this->tedarikciVeFaturalar();
         $this->stokHareketleriBaslangic();
+        $this->musteriler();
+        $this->kuryeler();
         $this->gecmisAdisyonlar();
         $this->acikAdisyonlar();
+        $this->paketSiparisler();
+        $this->cagriLoglari();
         $this->sayim();
 
         $this->command->info('Demo restoran dolduruldu: '
@@ -52,8 +58,10 @@ class DatabaseSeeder extends Seeder
     private function temizle(): void
     {
         $tablolar = [
+            'cagri_loglari',
             'adisyon_masa_loglari', 'iptal_indirim_loglari', 'odemeler',
             'adisyon_kalem_secenekleri', 'adisyon_kalemleri', 'adisyonlar',
+            'kuryeler', 'musteriler',
             'sayim_kalemleri', 'sayimlar', 'stok_hareketleri',
             'recete_kalemleri', 'receteler', 'urun_modifier_gruplari',
             'modifierlar', 'modifier_gruplari', 'urunler', 'menu_kategorileri',
@@ -403,13 +411,16 @@ class DatabaseSeeder extends Seeder
     {
         $sahip = $this->personel[0]['id'];
         foreach ($this->malzeme as $ad => $m) {
+            // Acilis stok: kritigin 3-8 kati
+            $acilis = $m['kritik'] * random_int(3, 8);
             DB::table('stok_hareketleri')->insert([
                 'sube_id' => $this->subeId, 'malzeme_id' => $m['id'], 'tip' => 'alis',
-                'miktar' => $m['kritik'] * random_int(3, 8), 'birim_maliyet' => $m['maliyet'],
+                'miktar' => $acilis, 'birim_maliyet' => $m['maliyet'],
                 'kaynak_tip' => 'sayim', 'kaynak_id' => null, 'aciklama' => 'Acilis stok',
                 'personel_id' => $sahip, 'created_at' => now()->subDays(60),
             ]);
-            $tuketim = $m['kritik'] * (random_int(50, 140) / 100) * random_int(2, 6);
+            // Tuketim acilisin %40-95'i kadar -> stok DAIMA pozitif, bazilari kritik alti kalir
+            $tuketim = round($acilis * random_int(40, 95) / 100, 2);
             DB::table('stok_hareketleri')->insert([
                 'sube_id' => $this->subeId, 'malzeme_id' => $m['id'], 'tip' => 'tuketim',
                 'miktar' => -1 * $tuketim, 'birim_maliyet' => $m['maliyet'],
@@ -537,6 +548,137 @@ class DatabaseSeeder extends Seeder
             }
             DB::table('adisyonlar')->where('id', $adisyonId)->update(['ara_toplam' => $araToplam, 'toplam' => $araToplam]);
             DB::table('masalar')->where('id', $masa)->update(['durum' => 'dolu']);
+        }
+    }
+
+    private function musteriler(): void
+    {
+        $now = now();
+        $adlar = ['Ali Vural', 'Ayse Kaya', 'Mehmet Demir', 'Fatma Sahin', 'Mustafa Yildiz', 'Emine Celik',
+            'Huseyin Aydin', 'Hatice Ozturk', 'Ibrahim Arslan', 'Zeynep Dogan', 'Osman Kilic', 'Elif Yilmaz',
+            'Ahmet Koc', 'Meryem Aksoy', 'Yusuf Erdogan', 'Sultan Polat', 'Kadir Ozdemir', 'Havva Turan',
+            'Ramazan Sen', 'Esra Bulut', 'Omer Kurt', 'Betul Simsek', 'Halil Aslan', 'Merve Cetin'];
+        $sokaklar = ['Bagdat Cad.', 'Bahariye Cad.', 'Moda Cad.', 'Fenerbahce Cad.', 'Cadde-i Kebir', 'Kusdili Cad.'];
+        foreach ($adlar as $ad) {
+            $siparis = random_int(1, 40);
+            $harcama = $siparis * random_int(150, 600);
+            $this->musteriIds[] = DB::table('musteriler')->insertGetId([
+                'sube_id' => $this->subeId, 'ad' => $ad,
+                'telefon' => '0532' . random_int(1000000, 9999999),
+                'adres' => $sokaklar[array_rand($sokaklar)] . ' No:' . random_int(1, 200) . ', Kadikoy',
+                'puan' => (int) ($harcama / 100), 'siparis_sayisi' => $siparis, 'toplam_harcama' => $harcama,
+                'notlar' => null, 'created_at' => now()->subDays(random_int(30, 400)), 'updated_at' => $now,
+            ]);
+        }
+    }
+
+    private function kuryeler(): void
+    {
+        $now = now();
+        // Kadikoy civari koordinatlar
+        $adlar = ['Serkan Yildirim', 'Baris Ozkan', 'Emre Sahin', 'Tolga Demir', 'Gokhan Aydin'];
+        foreach ($adlar as $i => $ad) {
+            $this->kuryeIds[] = DB::table('kuryeler')->insertGetId([
+                'sube_id' => $this->subeId, 'ad' => $ad,
+                'telefon' => '0505' . random_int(1000000, 9999999),
+                'aktif' => 1, 'durum' => $i < 3 ? 'teslimatta' : 'musait',
+                'son_lat' => 40.98 + random_int(-120, 120) / 10000,
+                'son_lng' => 29.03 + random_int(-120, 120) / 10000,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+    }
+
+    private function paketSiparisler(): void
+    {
+        if (!$this->musteriIds) return;
+        $urunIdler = array_keys($this->urunler);
+        $platformlar = ['getir', 'yemeksepeti', 'trendyol', 'migros', 'gofody', 'telefon', 'whatsapp'];
+
+        // Gecmis teslim edilmis paket siparisler (son 40 gun)
+        for ($i = 0; $i < 60; $i++) {
+            $tarih = now()->subDays(random_int(1, 40))->setTime(random_int(11, 22), random_int(0, 59));
+            $musteri = $this->musteriIds[array_rand($this->musteriIds)];
+            $platform = $platformlar[array_rand($platformlar)];
+            $adisyonId = DB::table('adisyonlar')->insertGetId([
+                'sube_id' => $this->subeId, 'masa_id' => null, 'musteri_id' => $musteri, 'kurye_id' => $this->kuryeIds[array_rand($this->kuryeIds)],
+                'kanal' => 'paket', 'platform' => $platform, 'platform_siparis_no' => strtoupper(substr($platform, 0, 3)) . random_int(100000, 999999),
+                'teslimat_adres' => DB::table('musteriler')->where('id', $musteri)->value('adres'),
+                'teslimat_durumu' => 'teslim', 'teslim_zamani' => (clone $tarih)->addMinutes(random_int(25, 55)),
+                'misafir_sayisi' => 1, 'durum' => 'odendi', 'acan_personel_id' => $this->personel[8]['id'] ?? null,
+                'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+                'acilis' => $tarih, 'kapanis' => (clone $tarih)->addMinutes(random_int(25, 55)),
+                'created_at' => $tarih, 'updated_at' => $tarih,
+            ]);
+            $ara = 0;
+            for ($k = 0, $kn = random_int(1, 4); $k < $kn; $k++) {
+                $uid = $urunIdler[array_rand($urunIdler)];
+                $u = $this->urunler[$uid];
+                $adet = random_int(1, 2);
+                $tutar = $u['fiyat'] * $adet;
+                DB::table('adisyon_kalemleri')->insert([
+                    'adisyon_id' => $adisyonId, 'urun_id' => $uid, 'urun_adi' => $u['ad'],
+                    'adet' => $adet, 'birim_fiyat' => $u['fiyat'], 'tutar' => $tutar, 'durum' => 'hazir',
+                    'kur' => null, 'seat' => null, 'not' => null, 'personel_id' => null, 'gonderim_zamani' => $tarih,
+                    'created_at' => $tarih, 'updated_at' => $tarih,
+                ]);
+                $ara += $tutar;
+            }
+            DB::table('adisyonlar')->where('id', $adisyonId)->update(['ara_toplam' => $ara, 'toplam' => $ara]);
+            DB::table('odemeler')->insert([
+                'adisyon_id' => $adisyonId, 'tip' => in_array($platform, ['telefon', 'whatsapp']) ? 'nakit' : 'kredi',
+                'tutar' => $ara, 'bahsis' => 0, 'personel_id' => null, 'created_at' => (clone $tarih)->addMinutes(30),
+            ]);
+        }
+
+        // AKTIF paket siparisler (su an hazirlaniyor/yolda) -> sipariş merkezi + kurye harita canli
+        $durumlar = ['hazirlaniyor', 'hazirlaniyor', 'yolda', 'yolda', 'hazir'];
+        for ($i = 0; $i < 9; $i++) {
+            $acilis = now()->subMinutes(random_int(3, 40));
+            $musteri = $this->musteriIds[array_rand($this->musteriIds)];
+            $platform = $platformlar[array_rand($platformlar)];
+            $durum = $durumlar[array_rand($durumlar)];
+            $kurye = $durum === 'yolda' ? $this->kuryeIds[array_rand($this->kuryeIds)] : null;
+            $adisyonId = DB::table('adisyonlar')->insertGetId([
+                'sube_id' => $this->subeId, 'masa_id' => null, 'musteri_id' => $musteri, 'kurye_id' => $kurye,
+                'kanal' => 'paket', 'platform' => $platform, 'platform_siparis_no' => strtoupper(substr($platform, 0, 3)) . random_int(100000, 999999),
+                'teslimat_adres' => DB::table('musteriler')->where('id', $musteri)->value('adres'),
+                'teslimat_durumu' => $durum, 'teslim_zamani' => null,
+                'misafir_sayisi' => 1, 'durum' => 'acik', 'acan_personel_id' => $this->personel[8]['id'] ?? null,
+                'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+                'acilis' => $acilis, 'kapanis' => null, 'created_at' => $acilis, 'updated_at' => $acilis,
+            ]);
+            $ara = 0;
+            for ($k = 0, $kn = random_int(1, 4); $k < $kn; $k++) {
+                $uid = $urunIdler[array_rand($urunIdler)];
+                $u = $this->urunler[$uid];
+                $adet = random_int(1, 3);
+                $tutar = $u['fiyat'] * $adet;
+                DB::table('adisyon_kalemleri')->insert([
+                    'adisyon_id' => $adisyonId, 'urun_id' => $uid, 'urun_adi' => $u['ad'],
+                    'adet' => $adet, 'birim_fiyat' => $u['fiyat'], 'tutar' => $tutar,
+                    'durum' => $durum === 'hazirlaniyor' ? 'gonderildi' : 'hazir',
+                    'kur' => null, 'seat' => null, 'not' => null, 'personel_id' => null, 'gonderim_zamani' => $acilis,
+                    'created_at' => $acilis, 'updated_at' => $acilis,
+                ]);
+                $ara += $tutar;
+            }
+            DB::table('adisyonlar')->where('id', $adisyonId)->update(['ara_toplam' => $ara, 'toplam' => $ara]);
+        }
+    }
+
+    private function cagriLoglari(): void
+    {
+        if (!$this->musteriIds) return;
+        for ($i = 0; $i < 40; $i++) {
+            $musteri = random_int(0, 3) === 0 ? null : $this->musteriIds[array_rand($this->musteriIds)];
+            $tel = $musteri ? DB::table('musteriler')->where('id', $musteri)->value('telefon') : '0532' . random_int(1000000, 9999999);
+            $sonuc = ['cevaplandi', 'siparis', 'siparis', 'kacan'][random_int(0, 3)];
+            DB::table('cagri_loglari')->insert([
+                'sube_id' => $this->subeId, 'telefon' => $tel, 'musteri_id' => $musteri,
+                'yon' => 'gelen', 'sonuc' => $sonuc, 'adisyon_id' => null,
+                'created_at' => now()->subMinutes(random_int(5, 60 * 24 * 20)),
+            ]);
         }
     }
 
