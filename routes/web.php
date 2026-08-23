@@ -360,11 +360,11 @@ Route::post('/menu/86', function (Request $r) {
 Route::get('/stok', function () {
     $subeId = DB::table('subeler')->value('id');
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
+    // Stok toplamini alt-sorgu ile al (GROUP BY / ONLY_FULL_GROUP_BY sorunu olmasin)
     $malzemeler = DB::table('malzemeler')
-        ->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
         ->leftJoin('malzeme_kategorileri', 'malzemeler.kategori_id', '=', 'malzeme_kategorileri.id')
-        ->select('malzemeler.*', 'malzeme_kategorileri.ad as kategori', DB::raw('COALESCE(SUM(stok_hareketleri.miktar),0) as stok'))
-        ->groupBy('malzemeler.id', 'malzeme_kategorileri.ad')
+        ->select('malzemeler.*', 'malzeme_kategorileri.ad as kategori',
+            DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id) as stok'))
         ->orderBy('malzemeler.ad')->get();
     $receteler = DB::table('receteler')->leftJoin('urunler', 'receteler.urun_id', '=', 'urunler.id')
         ->select('receteler.id', 'receteler.ad', 'receteler.tip', DB::raw('(SELECT COUNT(*) FROM recete_kalemleri WHERE recete_kalemleri.recete_id = receteler.id) as kalem_sayisi'))
@@ -480,5 +480,53 @@ Route::post('/webhook/siparis/{token}', function (Request $r, $token) {
     } catch (\Throwable $e) {
         return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 500);
     }
+});
+
+// ============================ PATRON HIZLI KARSILASTIRMA (Kerzz Boss tarzi) ============================
+Route::get('/patron', function () {
+    $now = now();
+    $t0 = today()->startOfDay();
+    $ciro = fn ($from, $to) => (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+
+    // Bugun (su ana kadar) vs adil karsilastirmalar (dun/gecen hafta AYNI SAATE kadar)
+    $bugun = $ciro($t0, $now);
+    $dun = $ciro((clone $t0)->subDay(), (clone $now)->subDay());
+    $gecenHaftaGun = $ciro((clone $t0)->subDays(7), (clone $now)->subDays(7));
+    $buHafta = $ciro((clone $now)->subDays(7), $now);
+    $oncekiHafta = $ciro((clone $now)->subDays(14), (clone $now)->subDays(7));
+    $buAy = $ciro((clone $now)->subDays(30), $now);
+    $oncekiAy = $ciro((clone $now)->subDays(60), (clone $now)->subDays(30));
+
+    $bugunAdisyon = DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count();
+    $acikMasa = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count();
+    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam');
+
+    $topBugun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->whereBetween('adisyonlar.acilis', [$t0, $now])
+        ->select('urun_adi', DB::raw('SUM(adet) as a'))->groupBy('urun_adi')->orderByDesc('a')->limit(3)->get();
+
+    // Olay-tabanli uyarilar (anomali)
+    $uyarilar = [];
+    if ($dun > 0 && $bugun < $dun * 0.85) {
+        $uyarilar[] = ['ikon' => '📉', 'renk' => 'rose', 'msg' => 'Bugün ciro, dün aynı saate göre %' . round(($dun - $bugun) / $dun * 100) . ' geride.'];
+    } elseif ($dun > 0 && $bugun > $dun * 1.15) {
+        $uyarilar[] = ['ikon' => '🚀', 'renk' => 'emerald', 'msg' => 'Bugün ciro, dün aynı saate göre %' . round(($bugun - $dun) / $dun * 100) . ' önde. Harika gidiyor!'];
+    }
+    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+        ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
+        ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
+    if ($kritik > 0) $uyarilar[] = ['ikon' => '📦', 'renk' => 'amber', 'msg' => $kritik . ' malzeme kritik stok seviyesinde — sipariş ver.'];
+    $kacan = DB::table('cagri_loglari')->where('sonuc', 'kacan')->whereDate('created_at', today())->count();
+    if ($kacan > 0) $uyarilar[] = ['ikon' => '📵', 'renk' => 'rose', 'msg' => 'Bugün ' . $kacan . ' kaçan çağrı — AI Santral bunları kurtarabilir.'];
+    $paketAktif = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')->count();
+    if ($paketAktif > 0) $uyarilar[] = ['ikon' => '🛵', 'renk' => 'indigo', 'msg' => $paketAktif . ' aktif paket sipariş hazırlanıyor.'];
+
+    return view('patron', compact('bugun', 'dun', 'gecenHaftaGun', 'buHafta', 'oncekiHafta', 'buAy', 'oncekiAy',
+        'bugunAdisyon', 'acikMasa', 'acikTutar', 'topBugun', 'uyarilar'));
+});
+
+// ============================ FIYATLANDIRMA / PAKETLER ============================
+Route::get('/fiyatlandirma', function () {
+    return view('fiyatlandirma');
 });
 

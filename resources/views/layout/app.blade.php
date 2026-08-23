@@ -14,6 +14,7 @@
 @php
     $nav = [
         ['/', '📊', 'Dashboard'],
+        ['/patron', '👑', 'Patron Özet'],
         ['/pos', '🍽️', 'POS / Adisyon'],
         ['/paket', '🛵', 'Paket Siparişler'],
         ['/entegrasyon', '🔌', 'Entegrasyonlar'],
@@ -26,6 +27,7 @@
         ['/cagrilar', '📞', 'Çağrı Merkezi'],
         ['/raporlar', '📈', 'Raporlar'],
         ['/copilot', '🤖', 'AI Copilot'],
+        ['/fiyatlandirma', '🏷️', 'Fiyatlandırma'],
     ];
     $path = '/' . trim(request()->path(), '/');
     if ($path === '/') $path = '/';
