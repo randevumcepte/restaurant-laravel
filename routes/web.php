@@ -239,7 +239,8 @@ Route::get('/pos/masa/{masa}', function ($masaId) {
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $masa->sube_id)->orderBy('sira')->get();
     $urunler = DB::table('urunler')->where('sube_id', $masa->sube_id)->where('aktif', 1)->get()->groupBy('kategori_id');
     $bosMasalar = DB::table('masalar')->where('sube_id', $masa->sube_id)->where('durum', 'bos')->where('id', '!=', $masaId)->get();
-    return view('pos.adisyon', compact('masa', 'adisyon', 'kalemler', 'kategoriler', 'urunler', 'bosMasalar'));
+    $musteri = ($adisyon && $adisyon->musteri_id) ? DB::table('musteriler')->find($adisyon->musteri_id) : null;
+    return view('pos.adisyon', compact('masa', 'adisyon', 'kalemler', 'kategoriler', 'urunler', 'bosMasalar', 'musteri'));
 });
 
 Route::post('/pos/adisyon-ac', function (Request $r) {
@@ -281,7 +282,50 @@ Route::post('/pos/ode', function (Request $r) {
     DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $r->tip ?? 'nakit', 'tutar' => $a->toplam, 'bahsis' => 0, 'personel_id' => $a->acan_personel_id, 'created_at' => now()]);
     DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+    // SADAKAT: adisyona musteri bagliysa puan + harcama isle (her 10 TL = 1 puan)
+    if (!empty($a->musteri_id)) {
+        DB::table('musteriler')->where('id', $a->musteri_id)->update([
+            'siparis_sayisi' => DB::raw('siparis_sayisi + 1'),
+            'toplam_harcama' => DB::raw('toplam_harcama + ' . (float) $a->toplam),
+            'puan' => DB::raw('puan + ' . (int) floor($a->toplam / 10)),
+            'updated_at' => now(),
+        ]);
+    }
     return ['ok' => 1];
+});
+
+// --- Musteri: ekle / guncelle / ara / adisyona bagla ---
+Route::post('/musteriler/ekle', function (Request $r) {
+    $subeId = DB::table('subeler')->value('id');
+    $id = DB::table('musteriler')->insertGetId([
+        'sube_id' => $subeId, 'ad' => $r->ad ?: 'Müşteri', 'telefon' => $r->telefon, 'adres' => $r->adres,
+        'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'id' => $id];
+});
+Route::post('/musteriler/guncelle', function (Request $r) {
+    DB::table('musteriler')->where('id', $r->id)->update(['ad' => $r->ad, 'telefon' => $r->telefon, 'adres' => $r->adres, 'updated_at' => now()]);
+    return ['ok' => 1];
+});
+Route::get('/musteriler/ara', function (Request $r) {
+    $q = trim((string) $r->q);
+    return DB::table('musteriler')
+        ->when($q !== '', function ($x) use ($q) {
+            $x->where(function ($w) use ($q) { $w->where('ad', 'like', '%' . $q . '%')->orWhere('telefon', 'like', '%' . $q . '%'); });
+        })
+        ->orderBy('ad')->limit(10)->get(['id', 'ad', 'telefon', 'adres', 'puan']);
+});
+Route::post('/pos/musteri-bagla', function (Request $r) {
+    $a = DB::table('adisyonlar')->find($r->adisyon_id);
+    $musteriId = $r->musteri_id ?: null;
+    if (!$musteriId && ($r->ad || $r->telefon)) {
+        $musteriId = DB::table('musteriler')->insertGetId([
+            'sube_id' => $a->sube_id, 'ad' => $r->ad ?: 'Müşteri', 'telefon' => $r->telefon, 'adres' => $r->adres,
+            'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    DB::table('adisyonlar')->where('id', $r->adisyon_id)->update(['musteri_id' => $musteriId]);
+    return ['ok' => 1, 'musteri_id' => $musteriId];
 });
 
 Route::post('/pos/tasi', function (Request $r) {

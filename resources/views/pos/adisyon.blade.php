@@ -56,6 +56,47 @@
                 <h2 class="font-bold text-slate-800">Adisyon</h2>
                 <span class="text-xs text-slate-400">{{ $adisyon->misafir_sayisi }} kişi · {{ \Illuminate\Support\Carbon::parse($adisyon->acilis)->diffForHumans(null, true) }}</span>
             </div>
+
+            {{-- Musteri baglama (sadakat) --}}
+            <div x-data="{ mmodal: false, ara: '', sonuc: [], mad: '', mtel: '', madres: '',
+                    async searchM() { this.sonuc = await api('/musteriler/ara?q=' + encodeURIComponent(this.ara)); },
+                    async baglaM(id) { await api('/pos/musteri-bagla', { adisyon_id: {{ $adisyon->id }}, musteri_id: id }); location.reload(); },
+                    async yeniM() { await api('/pos/musteri-bagla', { adisyon_id: {{ $adisyon->id }}, ad: this.mad, telefon: this.mtel, adres: this.madres }); location.reload(); } }"
+                 class="mb-3 pb-3 border-b border-slate-100">
+                @if ($musteri)
+                    <div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2">
+                        <div><span class="text-sm font-semibold text-slate-800">👤 {{ $musteri->ad }}</span>
+                            <span class="text-xs text-slate-400 ml-1">{{ $musteri->telefon }} · {{ $musteri->puan }} puan</span></div>
+                        <button @click="mmodal = true" class="text-xs text-indigo-600 font-medium">Değiştir</button>
+                    </div>
+                @else
+                    <button @click="mmodal = true" class="w-full text-sm text-slate-500 hover:text-indigo-600 border border-dashed border-slate-300 rounded-lg py-2">+ Müşteri Bağla <span class="text-xs text-slate-400">(sadakat puanı)</span></button>
+                @endif
+
+                <div x-show="mmodal" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="mmodal = false">
+                    <div class="bg-white rounded-2xl p-5 w-96">
+                        <h3 class="font-bold text-slate-800 mb-3">Müşteri Bağla</h3>
+                        <input x-model="ara" @input.debounce.300ms="searchM()" placeholder="Ara: ad veya telefon" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 text-sm">
+                        <div class="max-h-40 overflow-y-auto mb-3">
+                            <template x-for="m in sonuc" :key="m.id">
+                                <button @click="baglaM(m.id)" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm border-b border-slate-50">
+                                    <span class="font-medium" x-text="m.ad"></span> <span class="text-slate-400 text-xs" x-text="m.telefon"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <div class="border-t border-slate-100 pt-3">
+                            <p class="text-xs text-slate-400 mb-2">Yeni müşteri</p>
+                            <input x-model="mad" placeholder="Ad Soyad" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 text-sm">
+                            <input x-model="mtel" placeholder="Telefon" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 text-sm">
+                            <div class="flex gap-2">
+                                <button @click="mmodal = false" class="flex-1 bg-slate-100 rounded-lg py-2 text-sm">Kapat</button>
+                                <button @click="yeniM()" class="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-semibold">Ekle & Bağla</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex-1 overflow-y-auto space-y-2 mb-3">
                 @forelse ($kalemler as $kalem)
                     <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50">
