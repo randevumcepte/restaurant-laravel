@@ -17,12 +17,13 @@
         <button @click="ac()" class="w-full bg-indigo-600 text-white font-semibold rounded-xl py-3 hover:bg-indigo-700">Adisyon Aç</button>
     </div>
 @else
-    <div x-data="{ kategori: {{ $kategoriler->first()->id ?? 0 }}, odeModal: false, tasiModal: false, bolModal: false, tip: 'nakit', yeniMasa: '', kisi: {{ max(1, $adisyon->misafir_sayisi) }},
+    <div x-data="{ kategori: {{ $kategoriler->first()->id ?? 0 }}, odeModal: false, tasiModal: false, bolModal: false, faturaModal: false, tip: 'nakit', yeniMasa: '', kisi: {{ max(1, $adisyon->misafir_sayisi) }}, fUnvan: '', fVkn: '', fSonuc: '',
         ekle(id) { api('/pos/kalem-ekle', { adisyon_id: {{ $adisyon->id }}, urun_id: id }).then(() => location.reload()); },
         sil(id) { api('/pos/kalem-sil', { kalem_id: id }).then(() => location.reload()); },
         gonder() { api('/pos/gonder', { adisyon_id: {{ $adisyon->id }} }).then(() => location.reload()); },
         ode() { api('/pos/ode', { adisyon_id: {{ $adisyon->id }}, tip: this.tip }).then(() => location.href = '/pos'); },
-        tasi() { if(!this.yeniMasa) return; api('/pos/tasi', { adisyon_id: {{ $adisyon->id }}, yeni_masa_id: this.yeniMasa }).then(() => location.href = '/pos'); } }"
+        tasi() { if(!this.yeniMasa) return; api('/pos/tasi', { adisyon_id: {{ $adisyon->id }}, yeni_masa_id: this.yeniMasa }).then(() => location.href = '/pos'); },
+        faturaKes() { api('/pos/fatura-olustur', { adisyon_id: {{ $adisyon->id }}, alici_unvan: this.fUnvan, alici_vkn: this.fVkn }).then(r => { this.fSonuc = (r.tip === 'e_fatura' ? 'e-Fatura' : 'e-Arşiv') + ' kesildi ✓ ' + r.belge_no; }); } }"
          class="grid lg:grid-cols-3 gap-6">
 
         {{-- Menu --}}
@@ -125,6 +126,7 @@
                     <button @click="tasiModal = true" class="bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-200">↔️ Masa Taşı</button>
                     <button @click="bolModal = true" class="bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-200">🧮 Hesap Böl</button>
                 </div>
+                <button @click="faturaModal = true; fSonuc = ''" class="w-full mt-2 bg-slate-800 text-white text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-900">🧾 Fatura Oluştur (e-Arşiv)</button>
             </div>
 
             {{-- Ode modal --}}
@@ -169,6 +171,22 @@
                         <div class="text-2xl font-bold text-indigo-600" x-text="new Intl.NumberFormat('tr-TR').format(Math.ceil({{ (float) $adisyon->toplam }} / Math.max(1, kisi))) + ' ₺'"></div>
                     </div>
                     <button @click="bolModal=false" class="w-full bg-slate-100 rounded-xl py-2.5 text-sm">Kapat</button>
+                </div>
+            </div>
+
+            {{-- Fatura (e-Arsiv/e-Fatura) modal --}}
+            <div x-show="faturaModal" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="faturaModal=false">
+                <div class="bg-white rounded-2xl p-6 w-96">
+                    <h3 class="font-bold text-slate-800 mb-1">e-Arşiv / e-Fatura Kes</h3>
+                    <p class="text-sm text-slate-500 mb-3">Tutar: <b>{{ number_format((float) $adisyon->toplam, 0, ',', '.') }} ₺</b> <span class="text-xs text-slate-400">(KDV %10 dahil)</span></p>
+                    <p class="text-xs text-slate-400 mb-2">Boş bırakırsan "Son Tüketici" e-Arşiv kesilir. 10 haneli VKN girilirse e-Fatura olur.</p>
+                    <input x-model="fUnvan" placeholder="Alıcı ünvan (opsiyonel)" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 text-sm">
+                    <input x-model="fVkn" placeholder="VKN / TCKN (opsiyonel)" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm">
+                    <div class="text-sm text-emerald-600 font-semibold mb-3 min-h-5" x-text="fSonuc"></div>
+                    <div class="flex gap-2">
+                        <button @click="faturaModal=false" class="flex-1 bg-slate-100 rounded-xl py-2.5 text-sm">Kapat</button>
+                        <button @click="faturaKes()" class="flex-1 bg-slate-800 text-white rounded-xl py-2.5 text-sm font-semibold">Kes</button>
+                    </div>
                 </div>
             </div>
         </div>

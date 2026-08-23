@@ -51,6 +51,7 @@ class DatabaseSeeder extends Seeder
         $this->entegrasyonlar();
         $this->kampanyalar();
         $this->teklifler();
+        $this->edonusumSeed();
         $this->sayim();
 
         $this->command->info('Demo restoran dolduruldu: '
@@ -62,6 +63,7 @@ class DatabaseSeeder extends Seeder
     private function temizle(): void
     {
         $tablolar = [
+            'e_faturalar', 'edonusum_ayarlari',
             'teklifler', 'kampanyalar', 'entegrasyonlar',
             'cagri_loglari',
             'adisyon_masa_loglari', 'iptal_indirim_loglari', 'odemeler',
@@ -751,6 +753,32 @@ class DatabaseSeeder extends Seeder
                     'created_at' => $now, 'updated_at' => $now,
                 ]);
             }
+        }
+    }
+
+    private function edonusumSeed(): void
+    {
+        if (!Schema::hasTable('edonusum_ayarlari')) return;
+        $now = now();
+        DB::table('edonusum_ayarlari')->insert([
+            'sube_id' => $this->subeId, 'entegrator' => 'parasut', 'api_key' => 'DEMO-KEY-XXXX',
+            'api_secret' => null, 'firma_unvan' => 'Lezzet Duragi Gida San. Tic. Ltd. Sti.',
+            'vkn_tckn' => '1234567890', 'vergi_dairesi' => 'Kadikoy', 'adres' => 'Bagdat Cad. No:120, Kadikoy/Istanbul',
+            'mali_muhur_yuklu' => 1, 'aktif' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        // Odenmis adisyonlardan ~14 e-Arsiv fisi uret
+        $adisyonlar = DB::table('adisyonlar')->where('durum', 'odendi')->inRandomOrder()->limit(14)->get();
+        foreach ($adisyonlar as $a) {
+            $tutar = (float) $a->toplam;
+            $matrah = round($tutar / 1.10, 2);
+            DB::table('e_faturalar')->insert([
+                'sube_id' => $this->subeId, 'adisyon_id' => $a->id, 'musteri_id' => $a->musteri_id,
+                'tip' => 'e_arsiv', 'belge_no' => 'EAR' . now()->year . str_pad((string) $a->id, 6, '0', STR_PAD_LEFT),
+                'alici_unvan' => 'Son Tüketici', 'alici_vkn' => null,
+                'matrah' => $matrah, 'kdv' => round($tutar - $matrah, 2), 'toplam' => $tutar,
+                'durum' => 'onaylandi', 'entegrator' => 'parasut', 'hata' => null,
+                'created_at' => $a->kapanis ?? $now,
+            ]);
         }
     }
 
