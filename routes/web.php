@@ -666,6 +666,68 @@ Route::get('/demo-veri-yukle', function () {
         . '<a href="/teklif" style="display:inline-block;margin-top:12px;background:#4f46e5;color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Teklifler\'e git →</a></div>';
 });
 
+// ============================ FLUTTER API (token = personel PIN girisi) ============================
+if (!function_exists('_apiPersonel')) {
+    function _apiPersonel(Request $r)
+    {
+        $token = $r->bearerToken();
+        if (!$token) return null;
+        return DB::table('personeller')->where('api_token', $token)->first();
+    }
+}
+
+Route::post('/api/login', function (Request $r) {
+    // Patron app: sahip/mudur PIN ile giris
+    $p = DB::table('personeller')->where('pin', (string) $r->pin)->whereIn('rol', ['sahip', 'mudur'])->first();
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'PIN hatalı veya yetkiniz yok'], 401);
+    $token = \Illuminate\Support\Str::random(48);
+    DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
+    return [
+        'ok' => 1, 'token' => $token,
+        'personel' => ['id' => $p->id, 'ad' => $p->ad, 'rol' => $p->rol],
+        'sube' => DB::table('subeler')->where('id', $p->sube_id)->value('ad'),
+    ];
+});
+
+Route::get('/api/patron/ozet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $now = now();
+    $t0 = today()->startOfDay();
+    $ciro = fn ($from, $to) => (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+    $bugun = $ciro($t0, $now);
+    $dun = $ciro((clone $t0)->subDay(), (clone $now)->subDay());
+    $gecenHaftaGun = $ciro((clone $t0)->subDays(7), (clone $now)->subDays(7));
+    $buHafta = $ciro((clone $now)->subDays(7), $now);
+    $oncekiHafta = $ciro((clone $now)->subDays(14), (clone $now)->subDays(7));
+    $buAy = $ciro((clone $now)->subDays(30), $now);
+    $oncekiAy = $ciro((clone $now)->subDays(60), (clone $now)->subDays(30));
+
+    $uyarilar = [];
+    if ($dun > 0 && $bugun < $dun * 0.85) $uyarilar[] = 'Bugün ciro düne göre %' . round(($dun - $bugun) / $dun * 100) . ' geride.';
+    elseif ($dun > 0 && $bugun > $dun * 1.15) $uyarilar[] = 'Bugün ciro düne göre %' . round(($bugun - $dun) / $dun * 100) . ' önde. 🚀';
+    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+        ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
+        ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
+    if ($kritik > 0) $uyarilar[] = $kritik . ' malzeme kritik stok seviyesinde.';
+
+    $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->whereBetween('adisyonlar.acilis', [$t0, $now])->select('urun_adi', DB::raw('SUM(adet) as adet'))
+        ->groupBy('urun_adi')->orderByDesc('adet')->limit(5)->get();
+
+    return [
+        'ok' => 1,
+        'bugun' => $bugun, 'dun' => $dun, 'gecenHaftaGun' => $gecenHaftaGun,
+        'buHafta' => $buHafta, 'oncekiHafta' => $oncekiHafta, 'buAy' => $buAy, 'oncekiAy' => $oncekiAy,
+        'acikMasa' => DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count(),
+        'masaSayisi' => DB::table('masalar')->count(),
+        'acikTutar' => (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam'),
+        'bugunAdisyon' => DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count(),
+        'uyarilar' => $uyarilar,
+        'top' => $top,
+    ];
+});
+
 // ============================ KIOSK (self-servis, public) ============================
 Route::get('/kiosk', function () {
     $subeId = DB::table('subeler')->value('id');

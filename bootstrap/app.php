@@ -12,8 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Paket servis middleware (Posentegra vb.) disaridan POST eder -> CSRF muafiyeti
-        $middleware->validateCsrfTokens(except: ['webhook/*']);
+        // Disaridan POST eden yollar (paket webhook + Flutter API) -> CSRF muafiyeti
+        $middleware->validateCsrfTokens(except: ['webhook/*', 'api/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
