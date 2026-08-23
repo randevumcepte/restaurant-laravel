@@ -760,12 +760,18 @@ class DatabaseSeeder extends Seeder
     {
         if (!Schema::hasTable('edonusum_ayarlari')) return;
         $now = now();
-        DB::table('edonusum_ayarlari')->insert([
+        $ayarVeri = [
             'sube_id' => $this->subeId, 'entegrator' => 'parasut', 'api_key' => 'DEMO-KEY-XXXX',
             'api_secret' => null, 'firma_unvan' => 'Lezzet Duragi Gida San. Tic. Ltd. Sti.',
             'vkn_tckn' => '1234567890', 'vergi_dairesi' => 'Kadikoy', 'adres' => 'Bagdat Cad. No:120, Kadikoy/Istanbul',
             'mali_muhur_yuklu' => 1, 'aktif' => 1, 'created_at' => $now, 'updated_at' => $now,
-        ]);
+        ];
+        if (Schema::hasColumn('edonusum_ayarlari', 'fis_modu')) {
+            $ayarVeri['fis_modu'] = 'earsiv';
+            $ayarVeri['okc_marka'] = 'ingenico';
+            $ayarVeri['okc_aktif'] = 0;
+        }
+        DB::table('edonusum_ayarlari')->insert($ayarVeri);
         // Odenmis adisyonlardan ~14 e-Arsiv fisi uret
         $adisyonlar = DB::table('adisyonlar')->where('durum', 'odendi')->inRandomOrder()->limit(14)->get();
         foreach ($adisyonlar as $a) {

@@ -164,6 +164,28 @@ if (!function_exists('_eFaturaKes')) {
     }
 }
 
+if (!function_exists('_okcFisBas')) {
+    /** Yeni Nesil Yazarkasa (OKC) mali fis — cihaza gonderir (stub). Gercekte GMP-3 / uretici SDK. */
+    function _okcFisBas($sube, $adisyon): array
+    {
+        $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $sube->id)->first();
+        $tutar = (float) $adisyon->toplam;
+        $matrah = round($tutar / 1.10, 2);
+        $fisNo = 'Z' . now()->format('ymd') . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+        $gercek = $ayar && !empty($ayar->okc_aktif) && !empty($ayar->okc_ip);
+        // === GERCEK OKC CAGRISI BURAYA (Ingenico/Hugin GMP-3 / uretici SDK) ===
+        // if ($gercek) { OkcDriver::fisBas($ayar->okc_marka, $ayar->okc_ip, $ayar->okc_port, $adisyon); }
+        DB::table('e_faturalar')->insert([
+            'sube_id' => $sube->id, 'adisyon_id' => $adisyon->id ?? null, 'musteri_id' => $adisyon->musteri_id ?? null,
+            'tip' => 'okc_fis', 'belge_no' => $fisNo, 'alici_unvan' => 'Yazarkasa Fişi', 'alici_vkn' => null,
+            'matrah' => $matrah, 'kdv' => round($tutar - $matrah, 2), 'toplam' => $tutar,
+            'durum' => $gercek ? 'basildi' : 'simulasyon', 'entegrator' => $ayar->okc_marka ?? 'ingenico', 'hata' => null,
+            'created_at' => now(),
+        ]);
+        return ['ok' => 1, 'fis_no' => $fisNo, 'durum' => $gercek ? 'basildi' : 'simulasyon'];
+    }
+}
+
 Route::get('/', function () {
     // Migration/seed henuz yoksa kurulum ekrani goster (deploy sirasi patlamasin)
     if (!Schema::hasTable('adisyonlar') || DB::table('subeler')->count() === 0) {
@@ -329,6 +351,17 @@ Route::post('/pos/ode', function (Request $r) {
             'puan' => DB::raw('puan + ' . (int) floor($a->toplam / 10)),
             'updated_at' => now(),
         ]);
+    }
+    // NORMAL FIS: fis moduna gore otomatik belge (adisyona daha once fatura kesilmediyse)
+    $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $a->sube_id)->first();
+    $zatenBelge = DB::table('e_faturalar')->where('adisyon_id', $a->id)->exists();
+    if (!$zatenBelge) {
+        $sube = DB::table('subeler')->find($a->sube_id);
+        if ($ayar && ($ayar->fis_modu ?? 'earsiv') === 'okc') {
+            _okcFisBas($sube, $a);          // Yazarkasa mali fisi
+        } else {
+            _eFaturaKes($sube, $a, []);     // e-Arsiv fisi (Son Tuketici)
+        }
     }
     return ['ok' => 1];
 });
@@ -674,9 +707,22 @@ Route::post('/edonusum/ayar-kaydet', function (Request $r) {
         ['entegrator' => $r->entegrator ?: 'parasut', 'api_key' => $r->api_key, 'api_secret' => $r->api_secret,
             'firma_unvan' => $r->firma_unvan, 'vkn_tckn' => $r->vkn_tckn, 'vergi_dairesi' => $r->vergi_dairesi,
             'adres' => $r->adres, 'mali_muhur_yuklu' => $r->mali_muhur_yuklu ? 1 : 0, 'aktif' => $r->aktif ? 1 : 0,
+            'fis_modu' => $r->fis_modu ?: 'earsiv', 'okc_marka' => $r->okc_marka, 'okc_ip' => $r->okc_ip,
+            'okc_port' => $r->okc_port, 'okc_aktif' => $r->okc_aktif ? 1 : 0,
             'updated_at' => now()]
     );
     return ['ok' => 1];
+});
+
+// Yazdirilabilir hesap fisi (bilgi fisi) — herhangi bir termal yaziciyla
+Route::get('/pos/fis/{adisyon}', function ($id) {
+    $a = DB::table('adisyonlar')->find($id);
+    if (!$a) abort(404);
+    $sube = DB::table('subeler')->find($a->sube_id);
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)->get();
+    $masa = $a->masa_id ? DB::table('masalar')->where('id', $a->masa_id)->value('ad') : null;
+    $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $a->sube_id)->first();
+    return view('pos.fis', compact('a', 'sube', 'kalemler', 'masa', 'ayar'));
 });
 Route::post('/pos/fatura-olustur', function (Request $r) {
     $a = DB::table('adisyonlar')->find($r->adisyon_id);

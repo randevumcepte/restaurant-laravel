@@ -126,7 +126,10 @@
                     <button @click="tasiModal = true" class="bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-200">↔️ Masa Taşı</button>
                     <button @click="bolModal = true" class="bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-200">🧮 Hesap Böl</button>
                 </div>
-                <button @click="faturaModal = true; fSonuc = ''" class="w-full mt-2 bg-slate-800 text-white text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-900">🧾 Fatura Oluştur (e-Arşiv)</button>
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <button @click="faturaModal = true; fSonuc = ''" class="bg-slate-800 text-white text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-900">🧾 Fatura</button>
+                    <a href="/pos/fis/{{ $adisyon->id }}" target="_blank" class="bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl py-2.5 hover:bg-slate-200 text-center">🖨️ Hesap Fişi</a>
+                </div>
             </div>
 
             {{-- Ode modal --}}

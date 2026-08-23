@@ -9,7 +9,9 @@
         entegrator: '{{ $ayar->entegrator ?? 'parasut' }}', api_key: '{{ $ayar->api_key ?? '' }}', api_secret: '',
         firma_unvan: @js($ayar->firma_unvan ?? ''), vkn_tckn: '{{ $ayar->vkn_tckn ?? '' }}',
         vergi_dairesi: '{{ $ayar->vergi_dairesi ?? '' }}', adres: @js($ayar->adres ?? ''),
-        mali_muhur_yuklu: {{ ($ayar->mali_muhur_yuklu ?? false) ? 'true' : 'false' }}, aktif: {{ ($ayar->aktif ?? false) ? 'true' : 'false' }} },
+        mali_muhur_yuklu: {{ ($ayar->mali_muhur_yuklu ?? false) ? 'true' : 'false' }}, aktif: {{ ($ayar->aktif ?? false) ? 'true' : 'false' }},
+        fis_modu: '{{ $ayar->fis_modu ?? 'earsiv' }}', okc_marka: '{{ $ayar->okc_marka ?? 'ingenico' }}',
+        okc_ip: '{{ $ayar->okc_ip ?? '' }}', okc_port: '{{ $ayar->okc_port ?? '' }}', okc_aktif: {{ ($ayar->okc_aktif ?? false) ? 'true' : 'false' }} },
         kaydet() { api('/edonusum/ayar-kaydet', this.f).then(() => location.reload()); } }">
 
     {{-- Baglanti durumu --}}
@@ -21,7 +23,7 @@
                     @else ⚠️ Entegratör bağlı değil — faturalar <b>simülasyon</b> olarak kaydedilir @endif
                 </div>
                 <div class="text-sm text-slate-500">
-                    @if ($ayar) {{ $ayar->firma_unvan }} · VKN: {{ $ayar->vkn_tckn }} · Mali mühür: {{ $ayar->mali_muhur_yuklu ? 'yüklü' : 'yok' }}
+                    @if ($ayar) {{ $ayar->firma_unvan }} · VKN: {{ $ayar->vkn_tckn }} · Mali mühür: {{ $ayar->mali_muhur_yuklu ? 'yüklü' : 'yok' }} · Fiş modu: <b>{{ ($ayar->fis_modu ?? 'earsiv') === 'okc' ? 'Yazarkasa (ÖKC)' : 'e-Arşiv' }}</b>
                     @else Firma bilgisi girilmedi @endif
                 </div>
             </div>
@@ -48,7 +50,11 @@
                 @forelse ($belgeler as $b)
                     <tr>
                         <td class="px-4 py-2 font-mono text-xs text-indigo-700">{{ $b->belge_no }}</td>
-                        <td class="px-4 py-2"><span class="text-xs px-2 py-0.5 rounded {{ $b->tip === 'e_fatura' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700' }}">{{ $b->tip === 'e_fatura' ? 'e-Fatura' : 'e-Arşiv' }}</span></td>
+                        @php
+                            $tipMap = ['e_fatura' => ['e-Fatura', 'bg-violet-100 text-violet-700'], 'e_arsiv' => ['e-Arşiv', 'bg-sky-100 text-sky-700'], 'okc_fis' => ['Yazarkasa', 'bg-amber-100 text-amber-700']];
+                            [$tipEt, $tipRenk] = $tipMap[$b->tip] ?? ['e-Arşiv', 'bg-sky-100 text-sky-700'];
+                        @endphp
+                        <td class="px-4 py-2"><span class="text-xs px-2 py-0.5 rounded {{ $tipRenk }}">{{ $tipEt }}</span></td>
                         <td class="px-4 py-2 text-slate-600">{{ $b->alici_unvan }}</td>
                         <td class="px-4 py-2 text-slate-400 text-xs">{{ \Illuminate\Support\Carbon::parse($b->created_at)->format('d.m.Y H:i') }}</td>
                         <td class="px-4 py-2 text-right text-slate-500">{{ number_format((float) $b->matrah, 0, ',', '.') }} ₺</td>
@@ -87,7 +93,27 @@
             <label class="block text-xs text-slate-500 mb-1">Adres</label>
             <input x-model="f.adres" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm">
             <label class="flex items-center gap-2 text-sm text-slate-600 mb-2"><input type="checkbox" x-model="f.mali_muhur_yuklu"> Mali mühür yüklü</label>
-            <label class="flex items-center gap-2 text-sm text-slate-600 mb-4"><input type="checkbox" x-model="f.aktif"> Entegrasyon aktif (gerçek belge kes)</label>
+            <label class="flex items-center gap-2 text-sm text-slate-600 mb-3"><input type="checkbox" x-model="f.aktif"> Entegrasyon aktif (gerçek belge kes)</label>
+
+            <hr class="my-3 border-slate-100">
+            <label class="block text-xs text-slate-500 mb-1">Normal Fiş Modu (fatura istenmeyen satış)</label>
+            <select x-model="f.fis_modu" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm">
+                <option value="earsiv">e-Arşiv modu — ÖKC'siz, her satış otomatik e-Arşiv</option>
+                <option value="okc">Yazarkasa (ÖKC) modu — cihazdan mali fiş</option>
+            </select>
+            <div x-show="f.fis_modu === 'okc'" x-cloak class="bg-slate-50 rounded-xl p-3 mb-4">
+                <label class="block text-xs text-slate-500 mb-1">Yazarkasa Markası</label>
+                <select x-model="f.okc_marka" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 text-sm">
+                    <option value="ingenico">Ingenico</option><option value="hugin">Hugin</option>
+                    <option value="pavo">Pavo</option><option value="beko">Beko</option><option value="inpos">Inpos</option>
+                </select>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <input x-model="f.okc_ip" placeholder="Cihaz IP (ör. 192.168.1.50)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                    <input x-model="f.okc_port" placeholder="Port" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" x-model="f.okc_aktif"> Yazarkasa bağlı (gerçek fiş bas)</label>
+            </div>
+
             <div class="flex gap-2">
                 <button @click="modal = false" class="flex-1 bg-slate-100 rounded-xl py-2.5 text-sm">İptal</button>
                 <button @click="kaydet()" class="flex-1 bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-semibold">Kaydet</button>
