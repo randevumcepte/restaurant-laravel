@@ -69,6 +69,61 @@ if (!function_exists('_copilotCevap')) {
     }
 }
 
+if (!function_exists('_paketSiparisAl')) {
+    /**
+     * Paket servis siparisini sisteme alir (middleware webhook VEYA test).
+     * $data birlesik format: platform, siparis_no, musteri{ad,telefon,adres}, kalemler[{ad,adet,fiyat,not}], odeme.
+     * Gercek Getir/Yemeksepeti/Trendyol baglaninca, onların JSON'u bu formata maplenir.
+     */
+    function _paketSiparisAl($sube, array $data): array
+    {
+        $platform = $data['platform'] ?? 'getir';
+        $m = $data['musteri'] ?? [];
+        $tel = $m['telefon'] ?? ('0500' . random_int(1000000, 9999999));
+
+        // Musteri bul/olustur
+        $musteri = DB::table('musteriler')->where('sube_id', $sube->id)->where('telefon', $tel)->first();
+        if (!$musteri) {
+            $mid = DB::table('musteriler')->insertGetId([
+                'sube_id' => $sube->id, 'ad' => $m['ad'] ?? 'Paket Müşteri', 'telefon' => $tel,
+                'adres' => $m['adres'] ?? null, 'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } else {
+            $mid = $musteri->id;
+        }
+
+        $adisyonId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $sube->id, 'masa_id' => null, 'musteri_id' => $mid, 'kurye_id' => null,
+            'kanal' => 'paket', 'platform' => $platform,
+            'platform_siparis_no' => $data['siparis_no'] ?? (strtoupper(substr($platform, 0, 3)) . random_int(100000, 999999)),
+            'teslimat_adres' => $m['adres'] ?? ($data['adres'] ?? null),
+            'teslimat_durumu' => 'hazirlaniyor', 'misafir_sayisi' => 1, 'durum' => 'acik',
+            'acan_personel_id' => null, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $ara = 0;
+        foreach (($data['kalemler'] ?? []) as $k) {
+            $ad = $k['ad'] ?? 'Ürün';
+            $adet = (int) ($k['adet'] ?? 1);
+            $urun = DB::table('urunler')->where('sube_id', $sube->id)->where('ad', $ad)->first();
+            $fiyat = $k['fiyat'] ?? ($urun->fiyat ?? 0);
+            $tutar = $fiyat * $adet;
+            DB::table('adisyon_kalemleri')->insert([
+                'adisyon_id' => $adisyonId, 'urun_id' => $urun->id ?? null, 'urun_adi' => $ad,
+                'adet' => $adet, 'birim_fiyat' => $fiyat, 'tutar' => $tutar, 'durum' => 'gonderildi',
+                'not' => $k['not'] ?? null, 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $ara += $tutar;
+        }
+        DB::table('adisyonlar')->where('id', $adisyonId)->update(['ara_toplam' => $ara, 'toplam' => $ara]);
+        DB::table('entegrasyonlar')->where('sube_id', $sube->id)->where('platform', $platform)->update(['son_siparis_at' => now()]);
+
+        return ['ok' => 1, 'adisyon_id' => $adisyonId, 'platform' => $platform, 'toplam' => $ara];
+    }
+}
+
 Route::get('/', function () {
     // Migration/seed henuz yoksa kurulum ekrani goster (deploy sirasi patlamasin)
     if (!Schema::hasTable('adisyonlar') || DB::table('subeler')->count() === 0) {
@@ -240,7 +295,7 @@ Route::post('/pos/tasi', function (Request $r) {
 
 // ============================ PAKET SIPARIS MERKEZI ============================
 Route::get('/paket', function () {
-    $aktif = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')
+    $aktif = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.*', 'musteriler.ad as musteri_ad', 'musteriler.telefon', 'kuryeler.ad as kurye_ad')
@@ -384,5 +439,46 @@ Route::get('/qr/{masa?}', function ($masaAd = null) {
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
     $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get()->groupBy('kategori_id');
     return view('qr.menu', compact('sube', 'kategoriler', 'urunler', 'masaAd'));
+});
+
+// ============================ ENTEGRASYONLAR (paket servis) ============================
+Route::get('/entegrasyon', function () {
+    $sube = DB::table('subeler')->first();
+    $entegrasyonlar = DB::table('entegrasyonlar')->where('sube_id', $sube->id)->get()->keyBy('platform');
+    $webhookUrl = url('/webhook/siparis/' . $sube->webhook_token);
+    return view('entegrasyon.index', compact('sube', 'entegrasyonlar', 'webhookUrl'));
+});
+
+Route::post('/entegrasyon/kaydet', function (Request $r) {
+    $sube = DB::table('subeler')->first();
+    DB::table('entegrasyonlar')->updateOrInsert(
+        ['sube_id' => $sube->id, 'platform' => $r->platform],
+        ['aktif' => $r->aktif ? 1 : 0, 'magaza_id' => $r->magaza_id, 'api_key' => $r->api_key, 'otomatik_onay' => $r->otomatik_onay ? 1 : 0, 'updated_at' => now()]
+    );
+    return ['ok' => 1];
+});
+
+// Test siparisi: gercek webhook akisini simule eder -> Paket Merkezi'ne dusr
+Route::post('/entegrasyon/test', function (Request $r) {
+    $sube = DB::table('subeler')->first();
+    $urunler = DB::table('urunler')->where('sube_id', $sube->id)->inRandomOrder()->limit(random_int(1, 3))->get();
+    $kalemler = $urunler->map(fn ($u) => ['ad' => $u->ad, 'adet' => random_int(1, 2), 'fiyat' => $u->fiyat])->toArray();
+    $adlar = ['Deniz Yilmaz', 'Cem Ozkan', 'Selin Ak', 'Baris Tan', 'Ece Demir'];
+    return _paketSiparisAl($sube, [
+        'platform' => $r->platform ?? 'getir',
+        'musteri' => ['ad' => $adlar[array_rand($adlar)], 'telefon' => '0532' . random_int(1000000, 9999999), 'adres' => 'Moda Cad. No:' . random_int(1, 100) . ', Kadikoy'],
+        'kalemler' => $kalemler,
+    ]);
+});
+
+// PUBLIC WEBHOOK: middleware (Posentegra vb.) siparisleri buraya POST eder
+Route::post('/webhook/siparis/{token}', function (Request $r, $token) {
+    $sube = DB::table('subeler')->where('webhook_token', $token)->first();
+    if (!$sube) return response()->json(['ok' => 0, 'hata' => 'Gecersiz token'], 403);
+    try {
+        return response()->json(_paketSiparisAl($sube, $r->all()));
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 500);
+    }
 });
 

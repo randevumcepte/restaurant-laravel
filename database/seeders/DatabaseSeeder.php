@@ -47,6 +47,7 @@ class DatabaseSeeder extends Seeder
         $this->acikAdisyonlar();
         $this->paketSiparisler();
         $this->cagriLoglari();
+        $this->entegrasyonlar();
         $this->sayim();
 
         $this->command->info('Demo restoran dolduruldu: '
@@ -58,6 +59,7 @@ class DatabaseSeeder extends Seeder
     private function temizle(): void
     {
         $tablolar = [
+            'entegrasyonlar',
             'cagri_loglari',
             'adisyon_masa_loglari', 'iptal_indirim_loglari', 'odemeler',
             'adisyon_kalem_secenekleri', 'adisyon_kalemleri', 'adisyonlar',
@@ -79,11 +81,15 @@ class DatabaseSeeder extends Seeder
     private function subeVePersonel(): void
     {
         $now = now();
-        $this->subeId = DB::table('subeler')->insertGetId([
+        $subeVeri = [
             'ad' => 'Lezzet Duragi', 'adres' => 'Bagdat Cad. No:120, Kadikoy/Istanbul',
             'telefon' => '0216 555 12 34', 'aktif' => 1,
             'created_at' => $now, 'updated_at' => $now,
-        ]);
+        ];
+        if (Schema::hasColumn('subeler', 'webhook_token')) {
+            $subeVeri['webhook_token'] = \Illuminate\Support\Str::random(32);
+        }
+        $this->subeId = DB::table('subeler')->insertGetId($subeVeri);
 
         $kadro = [
             ['Ahmet Yilmaz', 'sahip'], ['Elif Demir', 'mudur'],
@@ -678,6 +684,25 @@ class DatabaseSeeder extends Seeder
                 'sube_id' => $this->subeId, 'telefon' => $tel, 'musteri_id' => $musteri,
                 'yon' => 'gelen', 'sonuc' => $sonuc, 'adisyon_id' => null,
                 'created_at' => now()->subMinutes(random_int(5, 60 * 24 * 20)),
+            ]);
+        }
+    }
+
+    private function entegrasyonlar(): void
+    {
+        if (!Schema::hasTable('entegrasyonlar')) return;
+        $now = now();
+        // getir/ubereats birlesti; demo: yemeksepeti+trendyol aktif, digerleri pasif
+        $liste = [
+            ['yemeksepeti', true], ['trendyol', true], ['getir', false], ['migros', false], ['ubereats', false],
+        ];
+        foreach ($liste as [$p, $aktif]) {
+            DB::table('entegrasyonlar')->insert([
+                'sube_id' => $this->subeId, 'platform' => $p, 'aktif' => $aktif ? 1 : 0,
+                'magaza_id' => $aktif ? strtoupper(substr($p, 0, 3)) . random_int(10000, 99999) : null,
+                'api_key' => null, 'otomatik_onay' => 1,
+                'son_siparis_at' => $aktif ? now()->subMinutes(random_int(5, 120)) : null,
+                'created_at' => $now, 'updated_at' => $now,
             ]);
         }
     }

@@ -16,6 +16,7 @@
         ['/', '📊', 'Dashboard'],
         ['/pos', '🍽️', 'POS / Adisyon'],
         ['/paket', '🛵', 'Paket Siparişler'],
+        ['/entegrasyon', '🔌', 'Entegrasyonlar'],
         ['/kurye', '🗺️', 'Kurye Takip'],
         ['/mutfak', '👨‍🍳', 'Mutfak (KDS)'],
         ['/menu', '📋', 'Menü Yönetimi'],
