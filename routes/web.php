@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -528,6 +529,25 @@ Route::get('/patron', function () {
 // ============================ FIYATLANDIRMA / PAKETLER ============================
 Route::get('/fiyatlandirma', function () {
     return view('fiyatlandirma');
+});
+
+// ============================ DEMO VERI YUKLE (tek tik) ============================
+// Tum tablolari (yeni eklenenler dahil) taze demo veriyle doldurur. Idempotent.
+Route::get('/demo-veri-yukle', function () {
+    @set_time_limit(600);
+    @ini_set('memory_limit', '512M');
+    try {
+        Artisan::call('migrate', ['--force' => true]);
+        Artisan::call('db:seed', ['--force' => true]);
+    } catch (\Throwable $e) {
+        return '<div style="font-family:sans-serif;max-width:600px;margin:80px auto;padding:32px;border:1px solid #fecaca;border-radius:16px;background:#fef2f2">'
+            . '<h2 style="color:#b91c1c">Hata</h2><pre style="white-space:pre-wrap;color:#7f1d1d">' . e($e->getMessage()) . '</pre></div>';
+    }
+    return '<div style="font-family:sans-serif;max-width:520px;margin:80px auto;text-align:center;padding:32px;border:1px solid #e2e8f0;border-radius:16px">'
+        . '<div style="font-size:48px">✅</div>'
+        . '<h2 style="color:#0f172a">Demo veriler yüklendi</h2>'
+        . '<p style="color:#64748b">Tüm modüller dolduruldu (teklifler, kampanyalar, paket, kurye, müşteri dahil).</p>'
+        . '<a href="/teklif" style="display:inline-block;margin-top:12px;background:#4f46e5;color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Teklifler\'e git →</a></div>';
 });
 
 // ============================ KIOSK (self-servis, public) ============================
