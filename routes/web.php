@@ -530,3 +530,64 @@ Route::get('/fiyatlandirma', function () {
     return view('fiyatlandirma');
 });
 
+// ============================ KIOSK (self-servis, public) ============================
+Route::get('/kiosk', function () {
+    $subeId = DB::table('subeler')->value('id');
+    $sube = DB::table('subeler')->find($subeId);
+    $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
+    $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get()->groupBy('kategori_id');
+    return view('kiosk', compact('sube', 'kategoriler', 'urunler'));
+});
+
+// ============================ SADAKAT / KAMPANYA ============================
+Route::get('/sadakat', function () {
+    $kampanyalar = DB::table('kampanyalar')->orderByDesc('aktif')->orderBy('id')->get();
+    $topMusteri = DB::table('musteriler')->orderByDesc('puan')->limit(10)->get();
+    $toplamPuan = (int) DB::table('musteriler')->sum('puan');
+    $aktifKampanya = DB::table('kampanyalar')->where('aktif', 1)->count();
+    $musteriSayisi = DB::table('musteriler')->count();
+    return view('sadakat', compact('kampanyalar', 'topMusteri', 'toplamPuan', 'aktifKampanya', 'musteriSayisi'));
+});
+Route::post('/sadakat/toggle', function (Request $r) {
+    $k = DB::table('kampanyalar')->find($r->id);
+    DB::table('kampanyalar')->where('id', $r->id)->update(['aktif' => $k->aktif ? 0 : 1]);
+    return ['ok' => 1, 'aktif' => $k->aktif ? 0 : 1];
+});
+
+// ============================ E-DONUSUM (e-arsiv/e-fatura) ============================
+Route::get('/edonusum', function () {
+    $belgeler = DB::table('adisyonlar')->where('adisyonlar.durum', 'odendi')->whereNotNull('adisyonlar.kapanis')
+        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'masalar.ad as masa')
+        ->orderByDesc('adisyonlar.kapanis')->limit(30)->get();
+    $bugunAdet = DB::table('adisyonlar')->where('durum', 'odendi')->whereDate('kapanis', today())->count();
+    $bugunTutar = (float) DB::table('odemeler')->whereDate('created_at', today())->sum('tutar');
+    $ayAdet = DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', now()->subDays(30))->count();
+    return view('edonusum', compact('belgeler', 'bugunAdet', 'bugunTutar', 'ayAdet'));
+});
+
+// ============================ ERP / CARI - MUHASEBE ============================
+Route::get('/muhasebe', function () {
+    $son30 = now()->subDays(30);
+    $gelir = (float) DB::table('odemeler')->where('created_at', '>=', $son30)->sum('tutar');
+    $gider = (float) DB::table('alis_faturalari')->where('tarih', '>=', $son30->toDateString())->sum('toplam');
+    $tedarikciCari = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->select('tedarikciler.ad', DB::raw('SUM(alis_faturalari.toplam) as borc'), DB::raw('COUNT(*) as fatura'))
+        ->groupBy('tedarikciler.id', 'tedarikciler.ad')->orderByDesc('borc')->get();
+    $kasa = DB::table('odemeler')->where('created_at', '>=', $son30)
+        ->select('tip', DB::raw('SUM(tutar) as t'), DB::raw('COUNT(*) as adet'))->groupBy('tip')->orderByDesc('t')->get();
+    return view('muhasebe', compact('gelir', 'gider', 'tedarikciCari', 'kasa'));
+});
+
+// ============================ TEKLIF KARSILASTIRMA (satin alma) ============================
+Route::get('/teklif', function () {
+    $teklifler = DB::table('teklifler')
+        ->join('malzemeler', 'teklifler.malzeme_id', '=', 'malzemeler.id')
+        ->join('tedarikciler', 'teklifler.tedarikci_id', '=', 'tedarikciler.id')
+        ->leftJoin('birimler', 'teklifler.birim_id', '=', 'birimler.id')
+        ->select('teklifler.birim_fiyat', 'teklifler.tarih', 'malzemeler.ad as malzeme',
+            'tedarikciler.ad as tedarikci', 'birimler.kisaltma as birim')
+        ->orderBy('malzemeler.ad')->orderBy('teklifler.birim_fiyat')->get()->groupBy('malzeme');
+    return view('teklif', compact('teklifler'));
+});
+

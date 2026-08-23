@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
     private array $modifierler = []; // id => ['ad','ek_fiyat']
     private array $musteriIds = [];
     private array $kuryeIds = [];
+    private array $tedarikciIds = [];
 
     public function run(): void
     {
@@ -48,6 +49,8 @@ class DatabaseSeeder extends Seeder
         $this->paketSiparisler();
         $this->cagriLoglari();
         $this->entegrasyonlar();
+        $this->kampanyalar();
+        $this->teklifler();
         $this->sayim();
 
         $this->command->info('Demo restoran dolduruldu: '
@@ -59,7 +62,7 @@ class DatabaseSeeder extends Seeder
     private function temizle(): void
     {
         $tablolar = [
-            'entegrasyonlar',
+            'teklifler', 'kampanyalar', 'entegrasyonlar',
             'cagri_loglari',
             'adisyon_masa_loglari', 'iptal_indirim_loglari', 'odemeler',
             'adisyon_kalem_secenekleri', 'adisyon_kalemleri', 'adisyonlar',
@@ -368,6 +371,7 @@ class DatabaseSeeder extends Seeder
                 'aciklama' => null, 'created_at' => $now, 'updated_at' => $now,
             ]);
         }
+        $this->tedarikciIds = $tedarikciler;
         $sahip = $this->personel[0]['id'];
         $malzemeAdlari = array_keys($this->malzeme);
 
@@ -704,6 +708,49 @@ class DatabaseSeeder extends Seeder
                 'son_siparis_at' => $aktif ? now()->subMinutes(random_int(5, 120)) : null,
                 'created_at' => $now, 'updated_at' => $now,
             ]);
+        }
+    }
+
+    private function kampanyalar(): void
+    {
+        if (!Schema::hasTable('kampanyalar')) return;
+        $now = now();
+        $liste = [
+            ['Öğlen Menü %15', 'yuzde', 15, 0, 1],
+            ['200₺ üzeri 30₺ indirim', 'tutar', 30, 200, 1],
+            ['2. Pizza Bedava', 'ikinci_bedava', 0, 0, 1],
+            ['Hafta içi tatlı hediye', 'urun_hediye', 0, 150, 1],
+            ['Sadakat 2x Puan', 'puan_carpani', 2, 0, 0],
+        ];
+        foreach ($liste as [$ad, $tip, $deger, $min, $aktif]) {
+            DB::table('kampanyalar')->insert([
+                'sube_id' => $this->subeId, 'ad' => $ad, 'tip' => $tip, 'deger' => $deger,
+                'min_tutar' => $min, 'aktif' => $aktif, 'baslangic' => now()->subDays(20)->toDateString(),
+                'bitis' => now()->addDays(20)->toDateString(), 'kullanim' => random_int(0, 180),
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+    }
+
+    private function teklifler(): void
+    {
+        if (!Schema::hasTable('teklifler') || !$this->tedarikciIds) return;
+        $now = now();
+        $secilen = array_slice(array_keys($this->malzeme), 0, 10);
+        foreach ($secilen as $mad) {
+            $m = $this->malzeme[$mad];
+            $temel = $m['maliyet'] * $m['alis_cevrim']; // alis birimi basina yaklasik
+            // 3 farkli tedarikciden teklif (fiyatlar farkli)
+            $tds = (array) array_rand(array_flip($this->tedarikciIds), min(3, count($this->tedarikciIds)));
+            foreach ($tds as $td) {
+                DB::table('teklifler')->insert([
+                    'sube_id' => $this->subeId, 'malzeme_id' => $m['id'], 'tedarikci_id' => $td,
+                    'birim_fiyat' => round($temel * (1 + random_int(-12, 20) / 100), 4),
+                    'birim_id' => $this->birim[$m['alis_birim']] ?? null,
+                    'durum' => 'bekliyor', 'tarih' => now()->subDays(random_int(0, 10))->toDateString(),
+                    'created_at' => $now, 'updated_at' => $now,
+                ]);
+            }
         }
     }
 

@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
     <title>@yield('title', 'Lezzet Duragi') — RestoOS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -20,12 +22,17 @@
         ['/entegrasyon', '🔌', 'Entegrasyonlar'],
         ['/kurye', '🗺️', 'Kurye Takip'],
         ['/mutfak', '👨‍🍳', 'Mutfak (KDS)'],
+        ['/kiosk', '🖥️', 'Kiosk (Self-Servis)'],
         ['/menu', '📋', 'Menü Yönetimi'],
         ['/stok', '📦', 'Stok & Reçete'],
         ['/satinalma', '🧾', 'Satın Alma'],
+        ['/teklif', '📊', 'Teklifler'],
         ['/musteriler', '👥', 'Müşteriler'],
+        ['/sadakat', '🎁', 'Sadakat'],
         ['/cagrilar', '📞', 'Çağrı Merkezi'],
         ['/raporlar', '📈', 'Raporlar'],
+        ['/muhasebe', '💰', 'Muhasebe / Cari'],
+        ['/edonusum', '🧾', 'E-Dönüşüm'],
         ['/copilot', '🤖', 'AI Copilot'],
         ['/fiyatlandirma', '🏷️', 'Fiyatlandırma'],
     ];
@@ -80,6 +87,10 @@
         return r.json();
     }
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
+    // PWA: offline temeli (service worker)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    }
 </script>
 @stack('scripts')
 </body>
