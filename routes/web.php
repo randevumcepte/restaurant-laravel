@@ -733,6 +733,77 @@ Route::get('/enrich-kayip', function () {
     return 'Kayip radari zenginlestirildi: fire + silinen urun + iptal adisyon + iskonto eklendi. ✅';
 });
 
+// Musteri degerlendirmesi (anket/yorum) seed - tabloyu garantiye alir + doldurur (tek sefer)
+Route::get('/enrich-anket', function () {
+    if (!Schema::hasTable('degerlendirmeler')) {
+        Schema::create('degerlendirmeler', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('adisyon_id')->nullable();
+            $t->unsignedBigInteger('masa_id')->nullable();
+            $t->unsignedBigInteger('musteri_id')->nullable();
+            $t->unsignedTinyInteger('puan')->default(0);
+            $t->unsignedTinyInteger('lezzet')->default(0);
+            $t->unsignedTinyInteger('servis')->default(0);
+            $t->unsignedTinyInteger('hiz')->default(0);
+            $t->text('yorum')->nullable();
+            $t->timestamp('created_at')->useCurrent();
+        });
+    }
+    if (DB::table('degerlendirmeler')->count() > 5) return 'Anketler zaten dolu.';
+
+    $yorumlar = [
+        5 => ['Her şey mükemmeldi, kesinlikle tekrar geleceğiz!', 'Lezzetler harika, personel çok ilgili. Ellerinize sağlık.', 'Bayıldık, sıcacık ve hızlı servis. 10/10', 'Uzun zamandır bu kadar güzel yememiştik.'],
+        4 => ['Genel olarak memnun kaldık, lezzetler güzeldi.', 'Güzeldi ama servis biraz yavaştı, yine de tavsiye ederim.', 'Lezzet iyiydi, ortam keyifliydi.', 'Memnun ayrıldık, teşekkürler.'],
+        3 => ['Fena değildi ama beklediğimden farklıydı.', 'Ortalama bir deneyimdi, ne iyi ne kötü.', 'Yemek iyiydi ama biraz beklettiler.'],
+        2 => ['Yemekler ılık geldi, servis yavaştı.', 'Fiyat/performans pek iyi değil, biraz hayal kırıklığı.', 'Sipariş eksik geldi, düzeltilene kadar bekledik.'],
+        1 => ['Çok kötü bir deneyimdi, bir daha gelmem.', 'Sipariş yanlış geldi ve ilgilenen olmadı.', 'Soğuk yemek, ilgisiz personel. Tavsiye etmem.'],
+    ];
+    $agirlik = [5, 5, 5, 5, 4, 4, 4, 3, 3, 2, 1]; // cogunluk mutlu
+
+    $adisyonlar = DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', now()->subDays(60))
+        ->inRandomOrder()->limit(400)->get(['id', 'sube_id', 'masa_id', 'musteri_id', 'kapanis']);
+    $n = 0;
+    foreach ($adisyonlar as $a) {
+        if (random_int(0, 99) < 35) continue; // ~%65 anket doldurmus
+        $puan = $agirlik[array_rand($agirlik)];
+        $sap = fn () => max(1, min(5, $puan + random_int(-1, 1)));
+        DB::table('degerlendirmeler')->insert([
+            'sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'masa_id' => $a->masa_id, 'musteri_id' => $a->musteri_id,
+            'puan' => $puan, 'lezzet' => $sap(), 'servis' => $sap(), 'hiz' => $sap(),
+            'yorum' => $yorumlar[$puan][array_rand($yorumlar[$puan])],
+            'created_at' => \Carbon\Carbon::parse($a->kapanis)->addMinutes(random_int(5, 120)),
+        ]);
+        $n++;
+    }
+    return "Anketler yüklendi: $n değerlendirme eklendi. ✅";
+});
+
+// Tum urunlere recete seed (recetesi olmayana) -> food-cost gercek receteden hesaplanir + detayda gorunur
+Route::get('/enrich-recete', function () {
+    $malzemeler = DB::table('malzemeler')->get(['id', 'temel_birim_id']);
+    if ($malzemeler->isEmpty()) return 'Malzeme yok.';
+    $birimTip = DB::table('birimler')->pluck('tip', 'id'); // agirlik | hacim | adet
+    $n = 0;
+    foreach (DB::table('urunler')->get(['id', 'ad']) as $u) {
+        if (DB::table('receteler')->where('urun_id', $u->id)->where('tip', 'urun')->exists()) continue;
+        $rid = DB::table('receteler')->insertGetId([
+            'ad' => $u->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $u->id,
+            'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach ($malzemeler->shuffle()->take(random_int(3, 5)) as $m) {
+            $tip = $birimTip[$m->temel_birim_id] ?? 'adet';
+            $miktar = $tip === 'agirlik' ? random_int(30, 300) : ($tip === 'hacim' ? random_int(10, 200) : random_int(1, 3));
+            DB::table('recete_kalemleri')->insert([
+                'recete_id' => $rid, 'malzeme_id' => $m->id, 'miktar' => $miktar,
+                'birim_id' => $m->temel_birim_id, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $n++;
+    }
+    return "Reçeteler yüklendi: $n ürüne reçete eklendi. ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
@@ -1126,13 +1197,54 @@ Route::get('/api/patron/detay', function (Request $r) {
                 $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi) : 0;
                 $adet = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
                 return [
-                    'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                    'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
                     'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
                 ];
             });
         return [
             'ok' => 1, 'baslik' => 'Açık Adisyonlar', 'tip' => 'acik',
             'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(), 'kayitlar' => $kayitlar,
+        ];
+    }
+
+    // ---- TEK ADISYON DETAY (urunler + odemeler + musteri anketi/yorumu) ----
+    if ($tip === 'adisyon') {
+        $id = (int) $r->id;
+        $a = DB::table('adisyonlar')->find($id);
+        if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
+        $masa = $a->masa_id ? DB::table('masalar')->where('id', $a->masa_id)->value('ad') : null;
+        $garson = $a->acan_personel_id ? DB::table('personeller')->where('id', $a->acan_personel_id)->value('ad') : null;
+        $musteri = $a->musteri_id ? DB::table('musteriler')->where('id', $a->musteri_id)->first(['ad', 'telefon']) : null;
+        $kanalAd = ['salon' => 'Masa Servis', 'paket' => 'Paket / Kurye', 'qr' => 'QR / Self'][$a->kanal] ?? ucfirst($a->kanal);
+        $sureDk = ($a->acilis && $a->kapanis) ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(\Carbon\Carbon::parse($a->kapanis))
+            : ($a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0);
+        $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
+            ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'not')->orderBy('id')->get()
+            ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
+                'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'not' => $k->not]);
+        $odemeler = DB::table('odemeler')->where('adisyon_id', $id)->select('tip', 'tutar')->get()
+            ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
+        $deg = null;
+        if (Schema::hasTable('degerlendirmeler')) {
+            $d0 = DB::table('degerlendirmeler')->where('adisyon_id', $id)->orderByDesc('created_at')->first();
+            if ($d0) {
+                $deg = [
+                    'puan' => (int) $d0->puan, 'lezzet' => (int) $d0->lezzet, 'servis' => (int) $d0->servis, 'hiz' => (int) $d0->hiz,
+                    'yorum' => $d0->yorum, 'mutlu' => $d0->puan >= 4,
+                    'zaman' => \Carbon\Carbon::parse($d0->created_at)->format('d.m.Y H:i'),
+                ];
+            }
+        }
+        return [
+            'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon',
+            'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureDk . ' dk'],
+            'durum' => $a->durum, 'kanal' => $kanalAd,
+            'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
+            'kapanis' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : null,
+            'araToplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
+            'kalemler' => $kalemler, 'odemeler' => $odemeler,
+            'musteri' => $musteri ? ['ad' => $musteri->ad, 'telefon' => $musteri->telefon] : null,
+            'degerlendirme' => $deg,
         ];
     }
 
@@ -1145,7 +1257,7 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'masalar.ad as masa', 'personeller.ad as garson')
             ->orderByDesc('adisyonlar.kapanis')->limit(80)->get()
             ->map(fn ($a) => [
-                'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
                 'tutar' => (float) $a->toplam, 'misafir' => $a->misafir_sayisi,
                 'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : '',
             ]);
