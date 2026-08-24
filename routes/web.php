@@ -1098,7 +1098,7 @@ Route::get('/api/patron/detay', function (Request $r) {
                     'stok_hareketleri.aciklama as sebep', 'stok_hareketleri.created_at', DB::raw('NULL as adisyon_id'))
                 ->orderByDesc('stok_hareketleri.created_at')->limit(60)->get();
         }
-        $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi'];
+        $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi', 'odenmez' => 'Ödenmez'];
         $sebepDagilim = $kayitlar->groupBy('sebep')->map(fn ($g) => ['sebep' => $g[0]->sebep ?: '-', 'adet' => $g->count(), 'tutar' => (float) $g->sum('tutar')])
             ->sortByDesc('tutar')->values();
         return [
@@ -1133,6 +1133,62 @@ Route::get('/api/patron/detay', function (Request $r) {
         return [
             'ok' => 1, 'baslik' => 'Açık Adisyonlar', 'tip' => 'acik',
             'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(), 'kayitlar' => $kayitlar,
+        ];
+    }
+
+    // ---- KAPANAN ADISYON DETAY ----
+    if ($tip === 'kapali') {
+        $kayitlar = DB::table('adisyonlar')->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
+                'masalar.ad as masa', 'personeller.ad as garson')
+            ->orderByDesc('adisyonlar.kapanis')->limit(80)->get()
+            ->map(fn ($a) => [
+                'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                'tutar' => (float) $a->toplam, 'misafir' => $a->misafir_sayisi,
+                'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : '',
+            ]);
+        $odemeDagilim = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
+            ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))
+            ->groupBy('tip')->orderByDesc('tutar')->get();
+        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+        return [
+            'ok' => 1, 'baslik' => 'Kapanan Adisyonlar', 'tip' => 'kapali',
+            'toplam' => $ciro,
+            'adet' => DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count(),
+            'odemeDagilim' => $odemeDagilim, 'kayitlar' => $kayitlar,
+        ];
+    }
+
+    // ---- FOOD-COST (TOPLAM MALIYET) DETAY ----
+    if ($tip === 'maliyet') {
+        $maliyetMap = _restoUrunMaliyetMap();
+        $satisSatir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi',
+                DB::raw('SUM(adisyon_kalemleri.adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
+            ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')->get();
+        $toplamMaliyet = 0.0;
+        $toplamSatis = 0.0;
+        $urunler = $satisSatir->map(function ($s) use ($maliyetMap, &$toplamMaliyet, &$toplamSatis) {
+            $birim = $maliyetMap['id'][(int) $s->urun_id] ?? ($maliyetMap['ad'][$s->urun_adi] ?? 0);
+            $mal = (float) $s->adet * (float) $birim;
+            if ($mal <= 0 && $s->satis > 0) $mal = (float) $s->satis * 0.30;
+            $toplamMaliyet += $mal;
+            $toplamSatis += (float) $s->satis;
+            return [
+                'urun_id' => (int) $s->urun_id, 'ad' => $s->urun_adi, 'adet' => (float) $s->adet, 'satis' => (float) $s->satis,
+                'maliyet' => round($mal, 2), 'yuzde' => $s->satis > 0 ? round($mal / $s->satis * 100) : 0,
+            ];
+        })->sortByDesc('maliyet')->take(40)->values();
+        return [
+            'ok' => 1, 'baslik' => 'Food-Cost Detayı', 'tip' => 'maliyet',
+            'toplamSatis' => round($toplamSatis, 2), 'toplamMaliyet' => round($toplamMaliyet, 2),
+            'brutKar' => round($toplamSatis - $toplamMaliyet, 2),
+            'maliyetYuzde' => $toplamSatis > 0 ? round($toplamMaliyet / $toplamSatis * 100) : 0,
+            'urunler' => $urunler,
         ];
     }
 
