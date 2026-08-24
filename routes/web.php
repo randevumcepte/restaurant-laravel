@@ -689,42 +689,234 @@ Route::post('/api/login', function (Request $r) {
     ];
 });
 
+// Urun bazinda birim maliyet haritasi (receteden hesaplanir; food-cost icin).
+// Cok katmanli receteyi (yari mamul/alt_recete) memoize ederek cozer.
+if (!function_exists('_restoUrunMaliyetMap')) {
+    function _restoUrunMaliyetMap()
+    {
+        try {
+            $malz = DB::table('malzemeler')->get(['id', 'temel_birim_id', 'guncel_maliyet'])->keyBy('id');
+            $cevrim = DB::table('birim_cevrimleri')->get()->groupBy('malzeme_id');
+            $receteler = DB::table('receteler')->get()->keyBy('id');
+            $kalemler = DB::table('recete_kalemleri')->get()->groupBy('recete_id');
+
+            $karsilik = function ($malzemeId, $birimId) use ($malz, $cevrim) {
+                $m = $malz[$malzemeId] ?? null;
+                if (!$m) return 0.0;
+                if ((int) $birimId === (int) $m->temel_birim_id) return 1.0;
+                foreach (($cevrim[$malzemeId] ?? []) as $c) {
+                    if ((int) $c->birim_id === (int) $birimId) return (float) $c->temel_birim_karsiligi;
+                }
+                return 1.0;
+            };
+
+            $memo = [];
+            $receteMaliyet = function ($receteId) use (&$receteMaliyet, &$memo, $receteler, $kalemler, $malz, $karsilik) {
+                if (isset($memo[$receteId])) return $memo[$receteId];
+                $memo[$receteId] = 0.0; // dongu koruma
+                $toplam = 0.0;
+                foreach (($kalemler[$receteId] ?? []) as $k) {
+                    if ($k->malzeme_id) {
+                        $m = $malz[$k->malzeme_id] ?? null;
+                        if ($m) $toplam += (float) $k->miktar * $karsilik($k->malzeme_id, $k->birim_id) * (float) $m->guncel_maliyet;
+                    } elseif ($k->alt_recete_id) {
+                        $alt = $receteler[$k->alt_recete_id] ?? null;
+                        $altToplam = $receteMaliyet($k->alt_recete_id);
+                        $verim = $alt && (float) $alt->verim_miktar > 0 ? (float) $alt->verim_miktar : 1.0;
+                        $toplam += (float) $k->miktar * ($altToplam / $verim);
+                    }
+                }
+                return $memo[$receteId] = $toplam;
+            };
+
+            $map = [];       // urun_id => birim maliyet
+            $mapAd = [];     // urun_adi => birim maliyet (fallback)
+            foreach ($receteler as $rec) {
+                if ($rec->tip !== 'urun' || !$rec->urun_id) continue;
+                $mal = $receteMaliyet($rec->id);
+                $map[(int) $rec->urun_id] = $mal;
+                $ad = DB::table('urunler')->where('id', $rec->urun_id)->value('ad');
+                if ($ad) $mapAd[$ad] = $mal;
+            }
+            return ['id' => $map, 'ad' => $mapAd];
+        } catch (\Throwable $e) {
+            return ['id' => [], 'ad' => []];
+        }
+    }
+}
+
+// Secilen periyot icin [baslangic, bitis] ve esit uzunluktaki onceki (karsilastirma) pencere.
+if (!function_exists('_restoPeriyot')) {
+    function _restoPeriyot(string $period)
+    {
+        $now = now();
+        switch ($period) {
+            case 'gunluk':
+                return [today()->startOfDay(), $now, (clone $now)->subDay()->startOfDay(), (clone $now)->subDay()];
+            case 'aylik':
+                return [(clone $now)->subDays(30), $now, (clone $now)->subDays(60), (clone $now)->subDays(30)];
+            case 'yillik':
+                return [(clone $now)->subDays(365), $now, (clone $now)->subDays(730), (clone $now)->subDays(365)];
+            case 'haftalik':
+            default:
+                return [(clone $now)->subDays(7), $now, (clone $now)->subDays(14), (clone $now)->subDays(7)];
+        }
+    }
+}
+
 Route::get('/api/patron/ozet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+
+    $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'gunluk';
+    [$from, $to, $pfrom, $pto] = _restoPeriyot($period);
     $now = now();
     $t0 = today()->startOfDay();
-    $ciro = fn ($from, $to) => (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
-    $bugun = $ciro($t0, $now);
-    $dun = $ciro((clone $t0)->subDay(), (clone $now)->subDay());
-    $gecenHaftaGun = $ciro((clone $t0)->subDays(7), (clone $now)->subDays(7));
-    $buHafta = $ciro((clone $now)->subDays(7), $now);
-    $oncekiHafta = $ciro((clone $now)->subDays(14), (clone $now)->subDays(7));
-    $buAy = $ciro((clone $now)->subDays(30), $now);
-    $oncekiAy = $ciro((clone $now)->subDays(60), (clone $now)->subDays(30));
 
+    // --- Ciro (odeme bazli, Kerzz "Total Amount") ---
+    $ciroArasi = fn ($f, $t) => (float) DB::table('odemeler')->whereBetween('created_at', [$f, $t])->sum('tutar');
+    $ciro = $ciroArasi($from, $to);
+    $compCiro = $ciroArasi($pfrom, $pto);
+
+    // --- Folyo / misafir / ortalamalar (odenmis adisyon = kapali folio) ---
+    $folyoMetrik = function ($f, $t) {
+        $q = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$f, $t]);
+        $adet = (clone $q)->count();
+        $misafir = (int) (clone $q)->sum('misafir_sayisi');
+        $ciro = (float) (clone $q)->sum('toplam');
+        return [
+            'folyo' => $adet,
+            'misafir' => $misafir,
+            'folyo_ort' => $adet > 0 ? $ciro / $adet : 0,
+            'kisi_basi' => $misafir > 0 ? $ciro / $misafir : 0,
+        ];
+    };
+    $info = $folyoMetrik($from, $to);
+    $comp = $folyoMetrik($pfrom, $pto);
+
+    // --- Acik / Kapali folio ---
+    $acikAdet = DB::table('adisyonlar')->where('durum', 'acik')->count();
+    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam');
+    $kapaliAdet = $info['folyo'];
+    $kapaliTutar = $ciro;
+
+    // --- Food-cost: satilan urunlerin recete maliyeti (Sales & Costs) ---
+    $maliyetMap = _restoUrunMaliyetMap();
+    $satisSatir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+        ->where('adisyon_kalemleri.durum', '!=', 'iptal')
+        ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi',
+            DB::raw('SUM(adisyon_kalemleri.adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
+        ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')
+        ->orderByDesc('satis')->get();
+    $toplamMaliyet = 0.0;
+    $urunler = $satisSatir->map(function ($s) use ($maliyetMap, &$toplamMaliyet) {
+        $birim = $maliyetMap['id'][(int) $s->urun_id] ?? ($maliyetMap['ad'][$s->urun_adi] ?? 0);
+        $mal = (float) $s->adet * (float) $birim;
+        $toplamMaliyet += $mal;
+        return [
+            'ad' => $s->urun_adi, 'adet' => (float) $s->adet, 'satis' => (float) $s->satis,
+            'maliyet' => round($mal, 2), 'yuzde' => $s->satis > 0 ? round($mal / $s->satis * 100) : 0,
+        ];
+    })->take(40)->values();
+    $maliyetYuzde = $ciro > 0 ? round($toplamMaliyet / $ciro * 100) : 0;
+
+    // --- KAYIP RADARI ---
+    $odendiPencere = fn () => DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
+    $iskonto = (float) $odendiPencere()->sum('indirim');
+    $ikram = (float) $odendiPencere()->sum('ikram');
+    $silinen = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyon_kalemleri.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])
+        ->sum('adisyon_kalemleri.tutar');
+    $iptalQ = DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to]);
+    $iptalTutar = (float) (clone $iptalQ)->sum('toplam');
+    $iptalAdet = (clone $iptalQ)->count();
+    $fire = 0.0;
+    try {
+        $fire = (float) DB::table('stok_hareketleri')->where('tip', 'fire')
+            ->whereBetween('created_at', [$from, $to])
+            ->select(DB::raw('COALESCE(SUM(ABS(miktar) * birim_maliyet),0) as t'))->value('t');
+    } catch (\Throwable $e) {
+    }
+    // Odenmez: odendi ama odeme kaydi eksik olan folyolarin acigi
+    $odenmez = 0.0;
+    try {
+        $odenmez = (float) DB::table('adisyonlar')->where('adisyonlar.durum', 'odendi')
+            ->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->leftJoin('odemeler', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+            ->select(DB::raw('COALESCE(SUM(adisyonlar.toplam),0) - COALESCE(SUM(odemeler.tutar),0) as a'))
+            ->havingRaw('a > 0')->value('a') ?? 0;
+    } catch (\Throwable $e) {
+    }
+    $yuzdele = fn ($tutar) => ['tutar' => round($tutar, 2), 'yuzde' => $ciro > 0 ? round($tutar / $ciro * 100, 1) : 0];
+    $kayip = [
+        'iskonto' => $yuzdele($iskonto),
+        'ikram' => $yuzdele($ikram),
+        'silinen' => $yuzdele($silinen),
+        'iptal' => array_merge($yuzdele($iptalTutar), ['adet' => $iptalAdet]),
+        'fire' => $yuzdele($fire),
+        'odenmez' => $yuzdele(max(0, $odenmez)),
+    ];
+
+    // --- Odeme tipi dagilimi ---
+    $odemeTipleri = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
+        ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))
+        ->groupBy('tip')->orderByDesc('tutar')->get();
+
+    // --- Servis tipi (kanal) dagilimi ---
+    $servisTipleri = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
+        ->select('kanal', DB::raw('COUNT(*) as adet'), DB::raw('SUM(toplam) as tutar'))
+        ->groupBy('kanal')->orderByDesc('tutar')->get()
+        ->map(fn ($k) => ['ad' => ['salon' => 'Masaya Servis', 'paket' => 'Paket / Kurye', 'qr' => 'QR / Self'][$k->kanal] ?? ucfirst($k->kanal),
+            'adet' => $k->adet, 'tutar' => (float) $k->tutar]);
+
+    // --- Son 10 gun grafik ---
+    $gunluk = [];
+    for ($i = 9; $i >= 0; $i--) {
+        $g0 = (clone $t0)->subDays($i);
+        $g1 = (clone $g0)->endOfDay();
+        $gunluk[] = ['gun' => $g0->format('d/m'), 'ciro' => $ciroArasi($g0, $g1)];
+    }
+
+    // --- Uyarilar (AI oncesi kural motoru) ---
     $uyarilar = [];
-    if ($dun > 0 && $bugun < $dun * 0.85) $uyarilar[] = 'Bugün ciro düne göre %' . round(($dun - $bugun) / $dun * 100) . ' geride.';
-    elseif ($dun > 0 && $bugun > $dun * 1.15) $uyarilar[] = 'Bugün ciro düne göre %' . round(($bugun - $dun) / $dun * 100) . ' önde. 🚀';
-    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
-        ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
-        ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
-    if ($kritik > 0) $uyarilar[] = $kritik . ' malzeme kritik stok seviyesinde.';
+    if ($compCiro > 0 && $ciro < $compCiro * 0.85) $uyarilar[] = 'Ciro önceki döneme göre %' . round(($compCiro - $ciro) / $compCiro * 100) . ' geride.';
+    elseif ($compCiro > 0 && $ciro > $compCiro * 1.15) $uyarilar[] = 'Ciro önceki döneme göre %' . round(($ciro - $compCiro) / $compCiro * 100) . ' önde. 🚀';
+    if ($ciro > 0 && $iskonto > $ciro * 0.05) $uyarilar[] = 'İskonto oranı yüksek: ciro yaklaşık %' . round($iskonto / $ciro * 100) . ' iskontoya gitmiş.';
+    if ($maliyetYuzde >= 40) $uyarilar[] = 'Maliyet oranı %' . $maliyetYuzde . ' — kârlılık baskı altında.';
+    try {
+        $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+            ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
+            ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
+        if ($kritik > 0) $uyarilar[] = $kritik . ' malzeme kritik stok seviyesinde.';
+    } catch (\Throwable $e) {
+    }
 
-    $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-        ->whereBetween('adisyonlar.acilis', [$t0, $now])->select('urun_adi', DB::raw('SUM(adet) as adet'))
-        ->groupBy('urun_adi')->orderByDesc('adet')->limit(5)->get();
+    // --- Legacy (eski app derlemeleri kirilmasin) ---
+    $bugun = $ciroArasi($t0, $now);
+    $dun = $ciroArasi((clone $t0)->subDay(), (clone $now)->subDay());
 
     return [
         'ok' => 1,
-        'bugun' => $bugun, 'dun' => $dun, 'gecenHaftaGun' => $gecenHaftaGun,
-        'buHafta' => $buHafta, 'oncekiHafta' => $oncekiHafta, 'buAy' => $buAy, 'oncekiAy' => $oncekiAy,
+        'period' => $period,
+        'ciro' => $ciro, 'compCiro' => $compCiro,
+        'ciroYuzde' => $compCiro > 0 ? round(($ciro - $compCiro) / $compCiro * 100, 1) : null,
+        'info' => $info, 'comp' => $comp,
+        'acikAdet' => $acikAdet, 'acikTutar' => $acikTutar,
+        'kapaliAdet' => $kapaliAdet, 'kapaliTutar' => $kapaliTutar,
+        'maliyet' => round($toplamMaliyet, 2), 'maliyetYuzde' => $maliyetYuzde,
+        'kayip' => $kayip,
+        'odemeTipleri' => $odemeTipleri,
+        'servisTipleri' => $servisTipleri,
+        'gunluk' => $gunluk,
+        'urunler' => $urunler,
+        'uyarilar' => $uyarilar,
+        // legacy
+        'bugun' => $bugun, 'dun' => $dun,
         'acikMasa' => DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count(),
         'masaSayisi' => DB::table('masalar')->count(),
-        'acikTutar' => (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam'),
         'bugunAdisyon' => DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count(),
-        'uyarilar' => $uyarilar,
-        'top' => $top,
+        'top' => $urunler->take(5),
     ];
 });
 
