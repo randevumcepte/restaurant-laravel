@@ -804,6 +804,33 @@ Route::get('/enrich-recete', function () {
     return "Reçeteler yüklendi: $n ürüne reçete eklendi. ✅";
 });
 
+// Kapali adisyonlarin bir kismina musteri ata + degerlendirme/istatistikleri baglar (musteri karti dolsun)
+Route::get('/enrich-musteri-baglama', function () {
+    $musteriler = DB::table('musteriler')->pluck('id')->all();
+    if (!$musteriler) return 'Müşteri yok.';
+    $n = 0;
+    foreach (DB::table('adisyonlar')->where('durum', 'odendi')->whereNull('musteri_id')->inRandomOrder()->limit(300)->get(['id']) as $a) {
+        if (random_int(0, 99) < 55) continue; // ~%45'ine musteri ata
+        DB::table('adisyonlar')->where('id', $a->id)->update(['musteri_id' => $musteriler[array_rand($musteriler)]]);
+        $n++;
+    }
+    // Degerlendirme musteri_id'yi adisyondan doldur
+    if (Schema::hasTable('degerlendirmeler')) {
+        foreach (DB::table('degerlendirmeler')->whereNotNull('adisyon_id')->get(['id', 'adisyon_id']) as $dd) {
+            $mid = DB::table('adisyonlar')->where('id', $dd->adisyon_id)->value('musteri_id');
+            if ($mid) DB::table('degerlendirmeler')->where('id', $dd->id)->update(['musteri_id' => $mid]);
+        }
+    }
+    // Musteri istatistiklerini guncelle
+    foreach ($musteriler as $mid) {
+        DB::table('musteriler')->where('id', $mid)->update([
+            'siparis_sayisi' => DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count(),
+            'toplam_harcama' => (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam'),
+        ]);
+    }
+    return "Müşteri bağlama: $n kapalı adisyona müşteri atandı + değerlendirme/istatistik güncellendi. ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
