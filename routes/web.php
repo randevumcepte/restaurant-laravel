@@ -666,6 +666,73 @@ Route::get('/demo-veri-yukle', function () {
         . '<a href="/teklif" style="display:inline-block;margin-top:12px;background:#4f46e5;color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Teklifler\'e git →</a></div>';
 });
 
+// Kayip Radari zenginlestirme (SADECE ekler, truncate YOK, ciroyu etkilemez, tek sefer)
+Route::get('/enrich-kayip', function () {
+    if (DB::table('stok_hareketleri')->where('tip', 'fire')->count() > 5) {
+        return 'Zaten zenginlestirilmis (fire hareketi mevcut).';
+    }
+    $sube = DB::table('subeler')->first();
+    $garsonlar = DB::table('personeller')->where('sube_id', $sube->id)->pluck('id')->all();
+    $g = fn () => $garsonlar[array_rand($garsonlar)];
+
+    // 1) FIRE / Zayi
+    foreach (DB::table('malzemeler')->get(['id', 'guncel_maliyet']) as $m) {
+        if (random_int(0, 2) === 0) {
+            DB::table('stok_hareketleri')->insert([
+                'sube_id' => $sube->id, 'malzeme_id' => $m->id, 'tip' => 'fire',
+                'miktar' => -1 * random_int(2, 20), 'birim_maliyet' => $m->guncel_maliyet ?: random_int(20, 200),
+                'kaynak_tip' => 'fire', 'aciklama' => ['SKT gecti', 'Bozulma', 'Dokulme', 'Hazirlik firesi'][random_int(0, 3)],
+                'personel_id' => $g(), 'created_at' => now()->subDays(random_int(0, 14)),
+            ]);
+        }
+    }
+    // 2) SILINEN URUN (void) - mevcut odendi adisyonlara YENI iptal kalem (toplam etkilenmez)
+    $urunler = DB::table('urunler')->inRandomOrder()->limit(50)->get(['id', 'ad', 'fiyat']);
+    $uArr = $urunler->all();
+    foreach (DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', now()->subDays(30))
+        ->inRandomOrder()->limit(45)->get(['id', 'acilis', 'acan_personel_id']) as $a) {
+        $u = $uArr[array_rand($uArr)];
+        $adet = random_int(1, 2);
+        DB::table('adisyon_kalemleri')->insert([
+            'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
+            'adet' => $adet, 'birim_fiyat' => $u->fiyat, 'tutar' => $u->fiyat * $adet,
+            'durum' => 'iptal', 'personel_id' => $a->acan_personel_id,
+            'gonderim_zamani' => $a->acilis, 'created_at' => $a->acilis, 'updated_at' => $a->acilis,
+        ]);
+        DB::table('iptal_indirim_loglari')->insert([
+            'sube_id' => $sube->id, 'adisyon_id' => $a->id, 'tip' => 'void', 'tutar' => $u->fiyat * $adet,
+            'sebep' => ['Musteri vazgecti', 'Yanlis girildi', 'Urun tukendi', 'Musteri begenmedi'][random_int(0, 3)],
+            'personel_id' => $a->acan_personel_id, 'created_at' => $a->acilis,
+        ]);
+    }
+    // 3) IPTAL ADISYON (Canceled Checks) - YENI iptal adisyonlar (ciroyu etkilemez)
+    $masalar = DB::table('masalar')->pluck('id')->all();
+    for ($i = 0; $i < 14; $i++) {
+        $ac = now()->subDays(random_int(0, 29))->setTime(random_int(12, 22), random_int(0, 59));
+        $t = random_int(200, 900);
+        DB::table('adisyonlar')->insert([
+            'sube_id' => $sube->id, 'masa_id' => $masalar[array_rand($masalar)], 'kanal' => 'salon',
+            'misafir_sayisi' => random_int(1, 4), 'durum' => 'iptal', 'acan_personel_id' => $g(),
+            'ara_toplam' => $t, 'indirim' => 0, 'ikram' => 0, 'toplam' => $t,
+            'acilis' => $ac, 'kapanis' => null, 'created_at' => $ac, 'updated_at' => $ac,
+        ]);
+    }
+    // 4) Iskonto/ikram biraz daha belirgin olsun: bazi odendi adisyonlara indirim/ikram ekle (toplam+odeme tutarli dusur)
+    foreach (DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', now()->subDays(30))
+        ->where('indirim', 0)->where('ikram', 0)->inRandomOrder()->limit(60)->get(['id', 'ara_toplam', 'toplam', 'acan_personel_id', 'kapanis']) as $a) {
+        $indirim = round($a->ara_toplam * [0.05, 0.1, 0.15, 0.2][random_int(0, 3)], 2);
+        $yeni = max(0, $a->toplam - $indirim);
+        DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $indirim, 'toplam' => $yeni]);
+        DB::table('odemeler')->where('adisyon_id', $a->id)->update(['tutar' => $yeni]);
+        DB::table('iptal_indirim_loglari')->insert([
+            'sube_id' => $sube->id, 'adisyon_id' => $a->id, 'tip' => 'indirim', 'tutar' => $indirim,
+            'sebep' => ['Musteri memnuniyeti', 'Personel', 'Isletme yakini', 'Telafi'][random_int(0, 3)],
+            'personel_id' => $a->acan_personel_id, 'created_at' => $a->kapanis,
+        ]);
+    }
+    return 'Kayip radari zenginlestirildi: fire + silinen urun + iptal adisyon + iskonto eklendi. ✅';
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
@@ -680,8 +747,9 @@ Route::post('/api/login', function (Request $r) {
     // Patron app: sahip/mudur PIN ile giris
     $p = DB::table('personeller')->where('pin', (string) $r->pin)->whereIn('rol', ['sahip', 'mudur'])->first();
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'PIN hatalı veya yetkiniz yok'], 401);
-    $token = \Illuminate\Support\Str::random(48);
-    DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
+    // Mevcut token'i KORU (yeni login eskisini gecersiz kilmasin -> es zamanli oturumlar/testler bozulmaz)
+    $token = $p->api_token ?: \Illuminate\Support\Str::random(48);
+    if (!$p->api_token) DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
     return [
         'ok' => 1, 'token' => $token,
         'personel' => ['id' => $p->id, 'ad' => $p->ad, 'rol' => $p->rol],
