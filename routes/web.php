@@ -728,6 +728,52 @@ Route::get('/api/patron/ozet', function (Request $r) {
     ];
 });
 
+Route::get('/api/masalar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
+        ->select('masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
+    $masalar = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')
+        ->where('masalar.sube_id', $p->sube_id)
+        ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
+        ->orderBy('bolgeler.sira')->orderBy('masalar.id')->get()
+        ->map(function ($m) use ($acik) {
+            $a = $acik[$m->id] ?? null;
+            return ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
+                'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0];
+        });
+    return ['ok' => 1, 'masalar' => $masalar];
+});
+
+Route::get('/api/paket', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $siparisler = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
+        ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+        ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
+        ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.teslimat_durumu', 'adisyonlar.toplam',
+            'musteriler.ad as musteri', 'kuryeler.ad as kurye')
+        ->orderByDesc('adisyonlar.acilis')->get();
+    return ['ok' => 1, 'siparisler' => $siparisler];
+});
+
+Route::get('/api/raporlar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $son30 = now()->subDays(30);
+    $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', $son30)
+        ->select('urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as ciro'))
+        ->groupBy('urun_adi')->orderByDesc('ciro')->limit(10)->get();
+    $personel = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+        ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', $son30)
+        ->select('personeller.ad', DB::raw('COUNT(*) as adisyon'), DB::raw('SUM(adisyonlar.toplam) as ciro'))
+        ->groupBy('personeller.id', 'personeller.ad')->orderByDesc('ciro')->get();
+    $odeme = DB::table('odemeler')->where('created_at', '>=', $son30)
+        ->select('tip', DB::raw('SUM(tutar) as t'))->groupBy('tip')->orderByDesc('t')->get();
+    return ['ok' => 1, 'top' => $top, 'personel' => $personel, 'odeme' => $odeme];
+});
+
 // ============================ KIOSK (self-servis, public) ============================
 Route::get('/kiosk', function () {
     $subeId = DB::table('subeler')->value('id');
