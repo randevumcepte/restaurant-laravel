@@ -884,7 +884,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
         if ($mal <= 0 && $s->satis > 0) $mal = (float) $s->satis * 0.30; // recete yoksa tahmini food-cost
         $toplamMaliyet += $mal;
         return [
-            'ad' => $s->urun_adi, 'adet' => (float) $s->adet, 'satis' => (float) $s->satis,
+            'urun_id' => (int) $s->urun_id, 'ad' => $s->urun_adi, 'adet' => (float) $s->adet, 'satis' => (float) $s->satis,
             'maliyet' => round($mal, 2), 'yuzde' => $s->satis > 0 ? round($mal / $s->satis * 100) : 0,
         ];
     })->take(40)->values();
@@ -987,6 +987,156 @@ Route::get('/api/patron/ozet', function (Request $r) {
         'bugunAdisyon' => DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count(),
         'top' => $urunler->take(5),
     ];
+});
+
+// Kart tiklama -> drill-down detay (Kerzz BOSS tarzi). tip: urun | kayip | acik | odeme | servis
+Route::get('/api/patron/detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $tip = $r->tip;
+    $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'haftalik';
+    [$from, $to] = _restoPeriyot($period);
+
+    // ---- URUN DETAY: recete maliyeti + donem satis + en cok satan garson + gunluk ----
+    if ($tip === 'urun') {
+        $urunId = (int) $r->id;
+        $urun = DB::table('urunler')->find($urunId);
+        if (!$urun) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+
+        // Recete kalemleri (malzeme bazinda maliyet)
+        $recete = DB::table('receteler')->where('urun_id', $urunId)->where('tip', 'urun')->first();
+        $receteKalem = [];
+        $receteToplam = 0.0;
+        if ($recete) {
+            $cevrimMap = DB::table('birim_cevrimleri')->get()->groupBy('malzeme_id');
+            foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->get() as $rk) {
+                if (!$rk->malzeme_id) continue;
+                $m = DB::table('malzemeler')->find($rk->malzeme_id);
+                if (!$m) continue;
+                $birim = DB::table('birimler')->find($rk->birim_id);
+                $karsilik = 1.0;
+                if ((int) $rk->birim_id !== (int) $m->temel_birim_id) {
+                    foreach (($cevrimMap[$rk->malzeme_id] ?? []) as $c) {
+                        if ((int) $c->birim_id === (int) $rk->birim_id) $karsilik = (float) $c->temel_birim_karsiligi;
+                    }
+                }
+                $satirMaliyet = (float) $rk->miktar * $karsilik * (float) $m->guncel_maliyet;
+                $receteToplam += $satirMaliyet;
+                $receteKalem[] = [
+                    'malzeme' => $m->ad, 'miktar' => (float) $rk->miktar,
+                    'birim' => $birim->kisaltma ?? '', 'maliyet' => round($satirMaliyet, 2),
+                ];
+            }
+        }
+        // Donem satis
+        $st = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyon_kalemleri.urun_id', $urunId)->where('adisyonlar.durum', 'odendi')
+            ->where('adisyon_kalemleri.durum', '!=', 'iptal')->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->selectRaw('COALESCE(SUM(adisyon_kalemleri.adet),0) adet, COALESCE(SUM(adisyon_kalemleri.tutar),0) ciro, COUNT(DISTINCT adisyonlar.id) folyo')
+            ->first();
+        // Bugun
+        $bugunAdet = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyon_kalemleri.urun_id', $urunId)->where('adisyonlar.durum', 'odendi')
+            ->whereDate('adisyonlar.kapanis', today())->sum('adisyon_kalemleri.adet');
+        // En cok satan garson
+        $garsonlar = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+            ->where('adisyon_kalemleri.urun_id', $urunId)->where('adisyonlar.durum', 'odendi')
+            ->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->groupBy('personeller.id', 'personeller.ad')
+            ->selectRaw('personeller.ad, SUM(adisyon_kalemleri.adet) adet, SUM(adisyon_kalemleri.tutar) ciro')
+            ->orderByDesc('adet')->limit(8)->get();
+        // Son 10 gun adet
+        $gunluk = [];
+        for ($i = 9; $i >= 0; $i--) {
+            $g0 = today()->subDays($i)->startOfDay();
+            $g1 = (clone $g0)->endOfDay();
+            $ad = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                ->where('adisyon_kalemleri.urun_id', $urunId)->where('adisyonlar.durum', 'odendi')
+                ->whereBetween('adisyonlar.kapanis', [$g0, $g1])->sum('adisyon_kalemleri.adet');
+            $gunluk[] = ['gun' => $g0->format('d/m'), 'deger' => $ad];
+        }
+        $satisTutar = (float) $st->ciro;
+        $toplamMaliyet = $receteToplam > 0 ? $receteToplam * (float) $st->adet : $satisTutar * 0.30;
+        return [
+            'ok' => 1, 'baslik' => $urun->ad, 'tip' => 'urun',
+            'ozet' => [
+                'Satılan' => rtrim(rtrim(number_format((float) $st->adet, 1, ',', '.'), '0'), ',') . ' adet',
+                'Ciro' => '₺' . number_format($satisTutar, 0, ',', '.'),
+                'Bugün' => rtrim(rtrim(number_format($bugunAdet, 1, ',', '.'), '0'), ',') . ' adet',
+                'Fiyat' => '₺' . number_format((float) $urun->fiyat, 0, ',', '.'),
+            ],
+            'recete' => $receteKalem, 'receteBirimMaliyet' => round($receteToplam, 2),
+            'toplamMaliyet' => round($toplamMaliyet, 2),
+            'maliyetYuzde' => $satisTutar > 0 ? round($toplamMaliyet / $satisTutar * 100) : 0,
+            'garsonlar' => $garsonlar, 'gunluk' => $gunluk,
+        ];
+    }
+
+    // ---- KAYIP DETAY: kayit listesi (garson + sebep + tutar + zaman) ----
+    if ($tip === 'kayip') {
+        $alt = $r->alt; // iskonto | ikram | silinen | iptal | fire
+        $kayitlar = collect();
+        if (in_array($alt, ['iskonto', 'ikram', 'silinen'])) {
+            $logTip = $alt === 'silinen' ? 'void' : ($alt === 'iskonto' ? 'indirim' : 'ikram');
+            $kayitlar = DB::table('iptal_indirim_loglari')->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
+                ->where('iptal_indirim_loglari.tip', $logTip)->whereBetween('iptal_indirim_loglari.created_at', [$from, $to])
+                ->select('personeller.ad as garson', 'iptal_indirim_loglari.tutar', 'iptal_indirim_loglari.sebep',
+                    'iptal_indirim_loglari.created_at', 'iptal_indirim_loglari.adisyon_id')
+                ->orderByDesc('iptal_indirim_loglari.created_at')->limit(60)->get();
+        } elseif ($alt === 'iptal') {
+            $kayitlar = DB::table('adisyonlar')->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+                ->where('adisyonlar.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])
+                ->select('personeller.ad as garson', 'adisyonlar.toplam as tutar',
+                    DB::raw("'Adisyon iptal' as sebep"), 'adisyonlar.acilis as created_at', 'adisyonlar.id as adisyon_id')
+                ->orderByDesc('adisyonlar.acilis')->limit(60)->get();
+        } elseif ($alt === 'fire') {
+            $kayitlar = DB::table('stok_hareketleri')->join('malzemeler', 'stok_hareketleri.malzeme_id', '=', 'malzemeler.id')
+                ->leftJoin('personeller', 'stok_hareketleri.personel_id', '=', 'personeller.id')
+                ->where('stok_hareketleri.tip', 'fire')->whereBetween('stok_hareketleri.created_at', [$from, $to])
+                ->select('malzemeler.ad as garson', DB::raw('ABS(stok_hareketleri.miktar) * stok_hareketleri.birim_maliyet as tutar'),
+                    'stok_hareketleri.aciklama as sebep', 'stok_hareketleri.created_at', DB::raw('NULL as adisyon_id'))
+                ->orderByDesc('stok_hareketleri.created_at')->limit(60)->get();
+        }
+        $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi'];
+        $sebepDagilim = $kayitlar->groupBy('sebep')->map(fn ($g) => ['sebep' => $g[0]->sebep ?: '-', 'adet' => $g->count(), 'tutar' => (float) $g->sum('tutar')])
+            ->sortByDesc('tutar')->values();
+        return [
+            'ok' => 1, 'baslik' => ($basliklar[$alt] ?? 'Kayıp') . ' Detayı', 'tip' => 'kayip',
+            'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(),
+            'sebepler' => $sebepDagilim,
+            'kayitlar' => $kayitlar->map(fn ($k) => [
+                'garson' => $k->garson ?? '-', 'tutar' => (float) $k->tutar, 'sebep' => $k->sebep ?? '-',
+                'zaman' => $k->created_at ? \Carbon\Carbon::parse($k->created_at)->format('d.m H:i') : '',
+                'adisyon_id' => $k->adisyon_id,
+            ]),
+        ];
+    }
+
+    // ---- ACIK ADISYON DETAY ----
+    if ($tip === 'acik') {
+        $simdi = now();
+        $kayitlar = DB::table('adisyonlar')->where('adisyonlar.durum', 'acik')
+            ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
+                'masalar.ad as masa', 'personeller.ad as garson')
+            ->orderByDesc('adisyonlar.toplam')->get()
+            ->map(function ($a) use ($simdi) {
+                $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi) : 0;
+                $adet = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
+                return [
+                    'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                    'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
+                ];
+            });
+        return [
+            'ok' => 1, 'baslik' => 'Açık Adisyonlar', 'tip' => 'acik',
+            'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(), 'kayitlar' => $kayitlar,
+        ];
+    }
+
+    return ['ok' => 0, 'hata' => 'Bilinmeyen tip'];
 });
 
 Route::get('/api/masalar', function (Request $r) {
