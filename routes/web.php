@@ -813,6 +813,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $urunler = $satisSatir->map(function ($s) use ($maliyetMap, &$toplamMaliyet) {
         $birim = $maliyetMap['id'][(int) $s->urun_id] ?? ($maliyetMap['ad'][$s->urun_adi] ?? 0);
         $mal = (float) $s->adet * (float) $birim;
+        if ($mal <= 0 && $s->satis > 0) $mal = (float) $s->satis * 0.30; // recete yoksa tahmini food-cost
         $toplamMaliyet += $mal;
         return [
             'ad' => $s->urun_adi, 'adet' => (float) $s->adet, 'satis' => (float) $s->satis,

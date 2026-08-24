@@ -439,6 +439,17 @@ class DatabaseSeeder extends Seeder
                 'kaynak_tip' => 'adisyon', 'kaynak_id' => null, 'aciklama' => 'Donemsel tuketim',
                 'personel_id' => null, 'created_at' => now()->subDays(random_int(1, 30)),
             ]);
+            // Fire/zayi (Kayip Radari "Fire" karti) - malzemelerin bir kismi son 14 gunde fire olur
+            if (random_int(0, 2) === 0) {
+                $fire = round($acilis * random_int(2, 8) / 100, 2);
+                DB::table('stok_hareketleri')->insert([
+                    'sube_id' => $this->subeId, 'malzeme_id' => $m['id'], 'tip' => 'fire',
+                    'miktar' => -1 * $fire, 'birim_maliyet' => $m['maliyet'],
+                    'kaynak_tip' => 'fire', 'kaynak_id' => null,
+                    'aciklama' => ['Son kullanma gecti', 'Bozulma', 'Dokulme', 'Hazirlik firesi'][random_int(0, 3)],
+                    'personel_id' => $sahip, 'created_at' => now()->subDays(random_int(0, 14)),
+                ]);
+            }
         }
     }
 
@@ -460,13 +471,16 @@ class DatabaseSeeder extends Seeder
                 }
                 if ($kapanis->isFuture()) $kapanis = now();
                 $garson = $this->garsonlar[array_rand($this->garsonlar)];
-                $masa = $this->masalar[array_rand($this->masalar)];
+                $kanalR = random_int(0, 9);
+                $kanal = $kanalR < 7 ? 'salon' : ($kanalR < 9 ? 'paket' : 'qr'); // Servis tipi dagilimi
+                $masa = $kanal === 'salon' ? $this->masalar[array_rand($this->masalar)] : null;
+                $iptalCheck = random_int(0, 24) === 0; // ~%4 komple iptal adisyon (Canceled Checks)
 
                 $adisyonId = DB::table('adisyonlar')->insertGetId([
-                    'sube_id' => $this->subeId, 'masa_id' => $masa, 'kanal' => 'salon',
-                    'misafir_sayisi' => random_int(1, 6), 'durum' => 'odendi', 'acan_personel_id' => $garson,
+                    'sube_id' => $this->subeId, 'masa_id' => $masa, 'kanal' => $kanal,
+                    'misafir_sayisi' => random_int(1, 6), 'durum' => $iptalCheck ? 'iptal' : 'odendi', 'acan_personel_id' => $garson,
                     'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
-                    'acilis' => $acilis, 'kapanis' => $kapanis,
+                    'acilis' => $acilis, 'kapanis' => $iptalCheck ? null : $kapanis,
                     'created_at' => $acilis, 'updated_at' => $kapanis,
                 ]);
 
@@ -493,26 +507,42 @@ class DatabaseSeeder extends Seeder
                         ]);
                     }
                     $tutar = ($u['fiyat'] + $ekFiyat) * $adet;
-                    DB::table('adisyon_kalemleri')->where('id', $kalemId)->update(['tutar' => $tutar]);
-                    $araToplam += $tutar;
+                    $void = !$iptalCheck && random_int(0, 22) === 0; // ~%4 kalem silme (Deleted Products)
+                    DB::table('adisyon_kalemleri')->where('id', $kalemId)
+                        ->update(['tutar' => $tutar, 'durum' => $void ? 'iptal' : 'hazir']);
+                    if ($void) {
+                        DB::table('iptal_indirim_loglari')->insert([
+                            'sube_id' => $this->subeId, 'adisyon_id' => $adisyonId, 'adisyon_kalem_id' => $kalemId,
+                            'tip' => 'void', 'tutar' => $tutar,
+                            'sebep' => ['Musteri vazgecti', 'Yanlis girildi', 'Urun tukendi', 'Musteri begenmedi'][random_int(0, 3)],
+                            'personel_id' => $garson, 'created_at' => $acilis,
+                        ]);
+                    } else {
+                        $araToplam += $tutar;
+                    }
                 }
 
                 $indirim = 0; $ikram = 0;
-                $r = random_int(0, 11);
-                if ($r === 0) {
-                    $indirim = round($araToplam * 0.1, 2);
-                    DB::table('iptal_indirim_loglari')->insert([
-                        'sube_id' => $this->subeId, 'adisyon_id' => $adisyonId, 'adisyon_kalem_id' => null,
-                        'tip' => 'indirim', 'tutar' => $indirim, 'sebep' => 'Musteri memnuniyeti',
-                        'personel_id' => $garson, 'created_at' => $kapanis,
-                    ]);
-                } elseif ($r === 1) {
-                    $ikram = min(75, $araToplam);
-                    DB::table('iptal_indirim_loglari')->insert([
-                        'sube_id' => $this->subeId, 'adisyon_id' => $adisyonId, 'adisyon_kalem_id' => null,
-                        'tip' => 'ikram', 'tutar' => $ikram, 'sebep' => 'Cay ikrami',
-                        'personel_id' => $garson, 'created_at' => $kapanis,
-                    ]);
+                if (!$iptalCheck && $araToplam > 0) {
+                    if (random_int(0, 99) < 18) { // iskonto ~%18 (Discounts)
+                        $oran = [0.05, 0.1, 0.1, 0.15, 0.25][random_int(0, 4)];
+                        $indirim = round($araToplam * $oran, 2);
+                        DB::table('iptal_indirim_loglari')->insert([
+                            'sube_id' => $this->subeId, 'adisyon_id' => $adisyonId, 'adisyon_kalem_id' => null,
+                            'tip' => 'indirim', 'tutar' => $indirim,
+                            'sebep' => ['Musteri memnuniyeti', 'Personel', 'Isletme yakini', 'Telafi'][random_int(0, 3)],
+                            'personel_id' => $garson, 'created_at' => $kapanis,
+                        ]);
+                    }
+                    if (random_int(0, 99) < 12) { // ikram ~%12 (Gifts)
+                        $ikram = min(round($araToplam * 0.15, 2), $araToplam);
+                        DB::table('iptal_indirim_loglari')->insert([
+                            'sube_id' => $this->subeId, 'adisyon_id' => $adisyonId, 'adisyon_kalem_id' => null,
+                            'tip' => 'ikram', 'tutar' => $ikram,
+                            'sebep' => ['Siparis gec gitti', 'Tanidik', 'Daimi musteri', 'Sorunlu misafir'][random_int(0, 3)],
+                            'personel_id' => $garson, 'created_at' => $kapanis,
+                        ]);
+                    }
                 }
 
                 $toplam = max(0, $araToplam - $indirim - $ikram);
@@ -520,12 +550,14 @@ class DatabaseSeeder extends Seeder
                     'ara_toplam' => $araToplam, 'indirim' => $indirim, 'ikram' => $ikram, 'toplam' => $toplam,
                 ]);
 
-                $tip = ['nakit', 'kredi', 'kredi', 'yemek_karti'][random_int(0, 3)];
-                DB::table('odemeler')->insert([
-                    'adisyon_id' => $adisyonId, 'tip' => $tip, 'tutar' => $toplam,
-                    'bahsis' => random_int(0, 4) === 0 ? round($toplam * 0.05, 2) : 0,
-                    'personel_id' => $garson, 'created_at' => $kapanis,
-                ]);
+                if (!$iptalCheck) {
+                    $tip = ['nakit', 'kredi', 'kredi', 'kredi', 'yemek_karti'][random_int(0, 4)];
+                    DB::table('odemeler')->insert([
+                        'adisyon_id' => $adisyonId, 'tip' => $tip, 'tutar' => $toplam,
+                        'bahsis' => random_int(0, 4) === 0 ? round($toplam * 0.05, 2) : 0,
+                        'personel_id' => $garson, 'created_at' => $kapanis,
+                    ]);
+                }
             }
         }
     }
