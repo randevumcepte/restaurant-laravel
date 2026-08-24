@@ -1190,14 +1190,16 @@ Route::get('/api/patron/detay', function (Request $r) {
         $kayitlar = DB::table('adisyonlar')->where('adisyonlar.durum', 'acik')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
             ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+            ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
             ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
-                'masalar.ad as masa', 'personeller.ad as garson')
+                'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.toplam')->get()
             ->map(function ($a) use ($simdi) {
                 $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi) : 0;
                 $adet = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
                 return [
                     'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                    'musteri' => $a->musteri, 'musteri_id' => $a->musteri_id,
                     'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
                 ];
             });
@@ -1243,8 +1245,51 @@ Route::get('/api/patron/detay', function (Request $r) {
             'kapanis' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : null,
             'araToplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
             'kalemler' => $kalemler, 'odemeler' => $odemeler,
-            'musteri' => $musteri ? ['ad' => $musteri->ad, 'telefon' => $musteri->telefon] : null,
+            'musteri' => $musteri ? ['id' => $a->musteri_id, 'ad' => $musteri->ad, 'telefon' => $musteri->telefon] : null,
             'degerlendirme' => $deg,
+        ];
+    }
+
+    // ---- MUSTERI DETAY (gecmis siparisler + odeme aliskanligi + favori urun + yorumlar) ----
+    if ($tip === 'musteri') {
+        $mid = (int) $r->id;
+        $m = DB::table('musteriler')->find($mid);
+        if (!$m) return ['ok' => 0, 'hata' => 'Müşteri bulunamadı'];
+        $siparisler = DB::table('adisyonlar')->where('adisyonlar.musteri_id', $mid)->where('adisyonlar.durum', 'odendi')
+            ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.platform', 'masalar.ad as masa')
+            ->orderByDesc('adisyonlar.kapanis')->limit(40)->get()
+            ->map(fn ($a) => [
+                'id' => $a->id, 'tutar' => (float) $a->toplam, 'kanal' => $a->platform ?: $a->kanal,
+                'masa' => $a->masa ?? ucfirst($a->kanal),
+                'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m.Y') : '',
+            ]);
+        $odeme = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.musteri_id', $mid)
+            ->select('odemeler.tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(odemeler.tutar) as tutar'))
+            ->groupBy('odemeler.tip')->orderByDesc('tutar')->get();
+        $favori = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.musteri_id', $mid)->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->select('adisyon_kalemleri.urun_adi', DB::raw('SUM(adisyon_kalemleri.adet) as adet'))
+            ->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('adet')->limit(8)->get();
+        $yorumlar = collect();
+        if (Schema::hasTable('degerlendirmeler')) {
+            $yorumlar = DB::table('degerlendirmeler')->where('musteri_id', $mid)->orderByDesc('created_at')->limit(20)->get()
+                ->map(fn ($x) => ['puan' => (int) $x->puan, 'yorum' => $x->yorum,
+                    'zaman' => \Carbon\Carbon::parse($x->created_at)->format('d.m.Y')]);
+        }
+        $gAdet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
+        $gHarcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
+        return [
+            'ok' => 1, 'baslik' => $m->ad, 'tip' => 'musteri',
+            'profil' => ['ad' => $m->ad, 'telefon' => $m->telefon, 'adres' => $m->adres, 'notlar' => $m->notlar],
+            'ozet' => [
+                'Sipariş' => (string) $gAdet,
+                'Toplam' => '₺' . number_format($gHarcama, 0, ',', '.'),
+                'Ortalama' => '₺' . number_format($gAdet > 0 ? $gHarcama / $gAdet : 0, 0, ',', '.'),
+                'Puan' => (string) (int) $m->puan,
+            ],
+            'siparisler' => $siparisler, 'odeme' => $odeme, 'favori' => $favori, 'yorumlar' => $yorumlar,
         ];
     }
 
@@ -1253,11 +1298,13 @@ Route::get('/api/patron/detay', function (Request $r) {
         $kayitlar = DB::table('adisyonlar')->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
             ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+            ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
             ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
-                'masalar.ad as masa', 'personeller.ad as garson')
+                'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.kapanis')->limit(80)->get()
             ->map(fn ($a) => [
                 'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
+                'musteri' => $a->musteri, 'musteri_id' => $a->musteri_id,
                 'tutar' => (float) $a->toplam, 'misafir' => $a->misafir_sayisi,
                 'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : '',
             ]);
