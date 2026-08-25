@@ -864,6 +864,108 @@ Route::get('/enrich-recete-fix', function () {
     return "Reçeteler kalibre edildi: $n ürün, food-cost ~%30 hedefiyle. ✅";
 });
 
+// AKILLI recete: urun adina gore gercekci malzeme + gercekci gram (dogal food-cost)
+Route::get('/enrich-recete-akilli', function () {
+    $malz = DB::table('malzemeler')->get()->keyBy('ad');
+    // [min, max, ondalik?] temel birimde gercekci porsiyon miktari
+    $aralik = [
+        'Dana Kiyma' => [120, 160], 'Dana Antrikot' => [150, 220], 'Tavuk Gogus' => [130, 180], 'Kuzu Pirzola' => [180, 250], 'Sucuk' => [30, 60],
+        'Domates' => [30, 80], 'Salatalik' => [20, 50], 'Sogan' => [20, 50], 'Patates' => [100, 180], 'Biber' => [20, 50], 'Mantar' => [30, 80],
+        'Marul' => [3, 5, 1], 'Maydanoz' => [1, 3, 1],
+        'Beyaz Peynir' => [40, 90], 'Kasar Peyniri' => [60, 120], 'Mozzarella' => [80, 140], 'Tereyagi' => [10, 30], 'Yogurt' => [120, 200], 'Sut' => [120, 220], 'Yumurta' => [1, 2],
+        'Makarna' => [100, 160], 'Pirinc' => [80, 150], 'Bulgur' => [60, 120], 'Mercimek' => [60, 100],
+        'Kola' => [1, 1], 'Ayran' => [1, 1], 'Su' => [1, 1], 'Cay' => [3, 5], 'Turk Kahvesi' => [12, 18],
+        'Zeytinyagi' => [10, 25], 'Aycicek Yagi' => [15, 40], 'Tuz' => [3, 8], 'Karabiber' => [1, 3], 'Domates Salcasi' => [20, 50],
+        'Un' => [200, 280], 'Ekmek' => [3, 10, 1], 'Hamburger Ekmegi' => [1, 1], 'Patates (Donuk)' => [120, 200], 'Dondurma' => [80, 150],
+    ];
+    $miktarUret = function ($ad) use ($aralik) {
+        $a = $aralik[$ad] ?? [20, 80];
+        $dec = $a[2] ?? 0;
+        if ($dec) return random_int((int) round($a[0] * 10), (int) round($a[1] * 10)) / 10 / ($dec == 1 ? 1 : 1);
+        return random_int((int) $a[0], (int) $a[1]);
+    };
+    // keyword (kucuk harf) => malzeme adlari — spesifik once
+    $kurallar = [
+        ['cheese', ['Dana Kiyma', 'Hamburger Ekmegi', 'Kasar Peyniri', 'Domates', 'Marul']],
+        ['burger', ['Dana Kiyma', 'Hamburger Ekmegi', 'Kasar Peyniri', 'Domates', 'Marul', 'Sogan']],
+        ['adana', ['Dana Kiyma', 'Biber', 'Sogan', 'Karabiber', 'Tuz', 'Maydanoz']],
+        ['kofte', ['Dana Kiyma', 'Ekmek', 'Sogan', 'Maydanoz', 'Tuz', 'Karabiber']],
+        ['köfte', ['Dana Kiyma', 'Ekmek', 'Sogan', 'Maydanoz', 'Tuz', 'Karabiber']],
+        ['lahmacun', ['Un', 'Dana Kiyma', 'Sogan', 'Biber', 'Domates Salcasi']],
+        ['pirzola', ['Kuzu Pirzola', 'Tuz', 'Karabiber', 'Zeytinyagi', 'Patates']],
+        ['antrikot', ['Dana Antrikot', 'Tuz', 'Karabiber', 'Tereyagi']],
+        ['sote', ['Dana Antrikot', 'Biber', 'Sogan', 'Domates', 'Mantar', 'Zeytinyagi']],
+        ['söte', ['Dana Antrikot', 'Biber', 'Sogan', 'Domates', 'Mantar', 'Zeytinyagi']],
+        ['guvec', ['Tavuk Gogus', 'Patates', 'Biber', 'Domates', 'Sogan', 'Kasar Peyniri']],
+        ['güveç', ['Tavuk Gogus', 'Patates', 'Biber', 'Domates', 'Sogan', 'Kasar Peyniri']],
+        ['izgara', ['Tavuk Gogus', 'Dana Antrikot', 'Tuz', 'Karabiber', 'Zeytinyagi', 'Biber']],
+        ['kebap', ['Dana Kiyma', 'Biber', 'Sogan', 'Domates', 'Tuz']],
+        ['margarita', ['Un', 'Mozzarella', 'Domates Salcasi', 'Zeytinyagi']],
+        ['pizza', ['Un', 'Mozzarella', 'Domates Salcasi', 'Kasar Peyniri', 'Sucuk', 'Mantar']],
+        ['makarna', ['Makarna', 'Domates Salcasi', 'Kasar Peyniri', 'Tereyagi', 'Mantar']],
+        ['spagetti', ['Makarna', 'Domates Salcasi', 'Kasar Peyniri', 'Tereyagi']],
+        ['penne', ['Makarna', 'Domates Salcasi', 'Kasar Peyniri', 'Mantar']],
+        ['salata', ['Marul', 'Domates', 'Salatalik', 'Biber', 'Zeytinyagi', 'Beyaz Peynir']],
+        ['corba', ['Mercimek', 'Sogan', 'Un', 'Tereyagi', 'Tuz']],
+        ['çorba', ['Mercimek', 'Sogan', 'Un', 'Tereyagi', 'Tuz']],
+        ['mercimek', ['Mercimek', 'Sogan', 'Un', 'Tereyagi', 'Tuz']],
+        ['pilav', ['Pirinc', 'Tereyagi', 'Tuz']],
+        ['baklava', ['Un', 'Tereyagi', 'Yumurta']],
+        ['sutlac', ['Sut', 'Pirinc', 'Un']],
+        ['sütlaç', ['Sut', 'Pirinc', 'Un']],
+        ['dondurma', ['Dondurma', 'Sut']],
+        ['tatli', ['Un', 'Sut', 'Tereyagi', 'Yumurta']],
+        ['tatlı', ['Un', 'Sut', 'Tereyagi', 'Yumurta']],
+        ['patates', ['Patates (Donuk)', 'Aycicek Yagi', 'Tuz']],
+        ['tavuk', ['Tavuk Gogus', 'Tuz', 'Karabiber', 'Zeytinyagi', 'Biber']],
+        ['salep', ['Sut', 'Tuz']],
+        ['latte', ['Turk Kahvesi', 'Sut']],
+        ['cappuccino', ['Turk Kahvesi', 'Sut']],
+        ['mocha', ['Turk Kahvesi', 'Sut']],
+        ['macchiato', ['Turk Kahvesi', 'Sut']],
+        ['americano', ['Turk Kahvesi', 'Su']],
+        ['espresso', ['Turk Kahvesi']],
+        ['filter', ['Turk Kahvesi', 'Su']],
+        ['flat white', ['Turk Kahvesi', 'Sut']],
+        ['white', ['Turk Kahvesi', 'Sut']],
+        ['chocolate', ['Sut', 'Dondurma']],
+        ['çikolata', ['Sut', 'Dondurma']],
+        ['coffee', ['Turk Kahvesi', 'Sut']],
+        ['kahve', ['Turk Kahvesi', 'Su']],
+        ['çay', ['Cay', 'Su']],
+        ['cay', ['Cay', 'Su']],
+        ['ayran', ['Yogurt', 'Su', 'Tuz']],
+        ['kola', ['Kola']],
+        ['soda', ['Su']],
+        ['su', ['Su']],
+        ['et', ['Dana Antrikot', 'Tuz', 'Karabiber', 'Tereyagi']],
+    ];
+    $fallback = ['Sogan', 'Domates', 'Zeytinyagi', 'Tuz', 'Tereyagi'];
+    $n = 0;
+    foreach (DB::table('urunler')->where('fiyat', '>', 0)->get(['id', 'ad', 'fiyat']) as $u) {
+        $ad = mb_strtolower($u->ad, 'UTF-8');
+        $secilen = null;
+        foreach ($kurallar as [$kw, $ings]) {
+            if (mb_strpos($ad, $kw) !== false) { $secilen = $ings; break; }
+        }
+        if (!$secilen) $secilen = $fallback;
+        $rid = DB::table('receteler')->where('urun_id', $u->id)->where('tip', 'urun')->value('id');
+        if (!$rid) {
+            $rid = DB::table('receteler')->insertGetId(['ad' => $u->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $u->id,
+                'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('recete_kalemleri')->where('recete_id', $rid)->delete();
+        foreach ($secilen as $mad) {
+            $m = $malz[$mad] ?? null;
+            if (!$m) continue;
+            DB::table('recete_kalemleri')->insert(['recete_id' => $rid, 'malzeme_id' => $m->id, 'miktar' => $miktarUret($mad),
+                'birim_id' => $m->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $n++;
+    }
+    return "Akıllı reçeteler yüklendi: $n ürün (ada göre gerçekçi malzeme). ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
@@ -1474,6 +1576,89 @@ Route::get('/api/patron/detay', function (Request $r) {
     }
 
     return ['ok' => 0, 'hata' => 'Bilinmeyen tip'];
+});
+
+// Derin AI Analizi (Haiku) — kural motoru USTUNE, on-demand, ANONIM baglam, ogrenen onbellek
+Route::get('/api/patron/ai-analiz', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $kapsam = in_array($r->kapsam, ['ozet', 'musteri']) ? $r->kapsam : 'ozet';
+    $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'haftalik';
+    [$from, $to, $pfrom, $pto] = _restoPeriyot($period);
+
+    // 1) Baglam (PII GONDERILMEZ - anonim)
+    if ($kapsam === 'musteri') {
+        $mid = (int) $r->id;
+        $m = DB::table('musteriler')->find($mid);
+        if (!$m) return ['ok' => 0, 'hata' => 'Müşteri yok'];
+        $adet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
+        $harcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
+        $sonSiparis = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->max('kapanis');
+        $gunOnce = $sonSiparis ? \Carbon\Carbon::parse($sonSiparis)->diffInDays(now()) : null;
+        $yorumlar = Schema::hasTable('degerlendirmeler')
+            ? DB::table('degerlendirmeler')->where('musteri_id', $mid)->orderByDesc('created_at')->limit(5)->get(['puan', 'yorum']) : collect();
+        $favori = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.musteri_id', $mid)->groupBy('urun_adi')->orderByRaw('SUM(adet) desc')->limit(3)->pluck('urun_adi')->all();
+        $baglam = [
+            'tip' => 'sadik_musteri_analizi', 'siparis_sayisi' => $adet, 'toplam_harcama' => round($harcama),
+            'son_siparis_gun_once' => $gunOnce, 'favori_urunler' => $favori,
+            'son_yorumlar' => $yorumlar->map(fn ($y) => ['puan' => (int) $y->puan, 'yorum' => $y->yorum])->all(),
+        ];
+    } else {
+        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+        $compCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$pfrom, $pto])->sum('tutar');
+        $iskonto = (float) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('indirim');
+        $ikram = (float) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('ikram');
+        $iptalAdet = DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->count();
+        $topUrun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->groupBy('urun_adi')->orderByRaw('SUM(adisyon_kalemleri.tutar) desc')->limit(5)->pluck('urun_adi')->all();
+        $baglam = [
+            'tip' => 'isletme_ozeti', 'donem' => $period, 'ciro' => round($ciro), 'onceki_donem_ciro' => round($compCiro),
+            'iskonto' => round($iskonto), 'ikram' => round($ikram), 'iptal_adisyon_adet' => $iptalAdet, 'cok_satan_urunler' => $topUrun,
+        ];
+    }
+
+    // 2) Ogrenen onbellek (ayni baglam tekrar faturalanmasin)
+    if (!Schema::hasTable('ai_onbellek')) {
+        Schema::create('ai_onbellek', function ($t) {
+            $t->id();
+            $t->string('anahtar', 64)->unique();
+            $t->text('cevap');
+            $t->timestamp('created_at')->useCurrent();
+        });
+    }
+    $anahtar = hash('sha256', json_encode($baglam));
+    $cache = DB::table('ai_onbellek')->where('anahtar', $anahtar)->first();
+    if ($cache) return ['ok' => 1, 'kaynak' => 'onbellek', 'yorumlar' => json_decode($cache->cevap, true)];
+
+    // 3) Anahtar yoksa nazik mesaj (kurallı AI zaten aktif)
+    $apiKey = env('ANTHROPIC_API_KEY');
+    if (!$apiKey) {
+        return ['ok' => 1, 'kaynak' => 'yapilandirilmamis',
+            'yorumlar' => ['Derin AI analizi için sunucuda ANTHROPIC_API_KEY + bakiye gerekli. Kurallı AI yorumları zaten aktif; anahtar eklenince bu buton gerçek LLM analizini getirir.']];
+    }
+
+    // 4) Haiku
+    try {
+        $sys = 'Sen bir restoran patronuna kısa, net, EYLEME DÖNÜK öneriler veren deneyimli bir işletme danışmanısın. Sadece verilen JSON verisine dayan. En fazla 4 madde, her biri TEK cümle, Türkçe, patron diliyle. Rakamları yorumla ve somut aksiyon öner. Giriş/kapanış cümlesi yazma, sadece maddeler.';
+        $resp = \Illuminate\Support\Facades\Http::withHeaders([
+            'x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json',
+        ])->timeout(25)->post('https://api.anthropic.com/v1/messages', [
+            'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 400, 'system' => $sys,
+            'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . ' — Bu verilere göre patrona önerilerini madde madde ver.']],
+        ]);
+        if (!$resp->successful()) {
+            return ['ok' => 1, 'kaynak' => 'hata', 'yorumlar' => ['AI servisi yanıt vermedi (kod ' . $resp->status() . '). Anahtar/bakiye kontrol edilmeli.']];
+        }
+        $metin = $resp->json('content.0.text') ?? '';
+        $maddeler = collect(preg_split('/\n+/', $metin))->map(fn ($l) => trim(preg_replace('/^[\-\*\d\.\)\s]+/u', '', $l)))->filter()->values()->all();
+        if (empty($maddeler)) $maddeler = [$metin];
+        DB::table('ai_onbellek')->insert(['anahtar' => $anahtar, 'cevap' => json_encode($maddeler, JSON_UNESCAPED_UNICODE), 'created_at' => now()]);
+        return ['ok' => 1, 'kaynak' => 'haiku', 'yorumlar' => $maddeler];
+    } catch (\Throwable $e) {
+        return ['ok' => 1, 'kaynak' => 'hata', 'yorumlar' => ['AI analizine ulaşılamadı: ' . $e->getMessage()]];
+    }
 });
 
 Route::get('/api/masalar', function (Request $r) {
