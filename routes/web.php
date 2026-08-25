@@ -2418,6 +2418,160 @@ Route::post('/api/mutfak/hazir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ---- SEBEPLER (silme/iskonto/ikram/iptal) - duzenlenebilir liste ----
+if (!function_exists('_restoSebeplerEnsure')) {
+    function _restoSebeplerEnsure($subeId)
+    {
+        if (!Schema::hasTable('sebepler')) {
+            Schema::create('sebepler', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id');
+                $t->string('tur', 20);
+                $t->string('metin');
+                $t->unsignedInteger('sira')->default(0);
+                $t->boolean('aktif')->default(true);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'tur']);
+            });
+        }
+        if (DB::table('sebepler')->where('sube_id', $subeId)->count() > 0) return;
+        $def = [
+            'void' => ['Müşteri beğenmedi', 'Yanlış/fazla girildi', 'Müşteri vazgeçti', 'Ürün tükendi', 'Fire / zayi', 'Sipariş geç gitti', 'Ürün döküldü'],
+            'indirim' => ['Müşteri memnuniyeti', 'Personel', 'İşletme yakını', 'Telafi', 'Sadık müşteri'],
+            'ikram' => ['Sipariş geç gitti', 'Tanıdık', 'Daimi müşteri', 'Sorunlu misafir', 'İşletme jesti'],
+            'iptal' => ['Müşteri gelmedi', 'Yanlış açıldı', 'Çift açıldı', 'Müşteri vazgeçti'],
+        ];
+        $i = 0;
+        $rows = [];
+        foreach ($def as $tur => $list) {
+            foreach ($list as $s) $rows[] = ['sube_id' => $subeId, 'tur' => $tur, 'metin' => $s, 'sira' => $i++, 'aktif' => 1, 'created_at' => now()];
+        }
+        DB::table('sebepler')->insert($rows);
+    }
+}
+
+Route::get('/api/patron/sebepler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _restoSebeplerEnsure($p->sube_id);
+    $q = DB::table('sebepler')->where('sube_id', $p->sube_id)->where('aktif', 1);
+    if (in_array($r->tur, ['void', 'indirim', 'ikram', 'iptal'])) $q->where('tur', $r->tur);
+    $liste = $q->orderBy('tur')->orderBy('sira')->orderBy('id')->get(['id', 'tur', 'metin']);
+    return ['ok' => 1, 'duzenleyebilir' => in_array($p->rol, ['sahip', 'mudur']), 'sebepler' => $liste];
+});
+
+Route::post('/api/patron/sebep-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoSebeplerEnsure($p->sube_id);
+    $tur = in_array($r->tur, ['void', 'indirim', 'ikram', 'iptal']) ? $r->tur : 'void';
+    $metin = trim((string) $r->metin);
+    if ($metin === '') return ['ok' => 0, 'hata' => 'Sebep metni boş'];
+    DB::table('sebepler')->insert(['sube_id' => $p->sube_id, 'tur' => $tur, 'metin' => $metin, 'sira' => 99, 'aktif' => 1, 'created_at' => now()]);
+    return ['ok' => 1];
+});
+
+Route::post('/api/patron/sebep-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    DB::table('sebepler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update(['aktif' => 0]);
+    return ['ok' => 1];
+});
+
+// ---- MASA TASI ----
+Route::post('/api/patron/masa-tasi', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa taşıma yetkiniz yok.'];
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a || $a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyon bulunamadı'];
+    $yeni = DB::table('masalar')->where('id', (int) $r->yeni_masa_id)->where('sube_id', $p->sube_id)->first();
+    if (!$yeni) return ['ok' => 0, 'hata' => 'Hedef masa bulunamadı'];
+    if (DB::table('adisyonlar')->where('masa_id', $yeni->id)->where('durum', 'acik')->exists()) {
+        return ['ok' => 0, 'hata' => $yeni->ad . ' dolu. Boş masa seçin (dolu için Birleştir kullanın).'];
+    }
+    $eski = $a->masa_id;
+    DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $yeni->id, 'updated_at' => now()]);
+    if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
+    DB::table('masalar')->where('id', $yeni->id)->update(['durum' => 'dolu']);
+    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $p->id, 'created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => $yeni->ad . ' masasına taşındı.'];
+});
+
+// ---- MASA BIRLESTIR ----
+Route::post('/api/patron/masa-birlestir', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_birlestir')) return ['ok' => 0, 'hata' => 'Masa birleştirme yetkiniz yok.'];
+    $hedef = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    $kaynak = DB::table('adisyonlar')->find((int) $r->kaynak_adisyon_id);
+    if (!$hedef || !$kaynak || $hedef->durum !== 'acik' || $kaynak->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyonlar bulunamadı'];
+    if ($hedef->id === $kaynak->id) return ['ok' => 0, 'hata' => 'Aynı adisyon seçilemez'];
+    DB::table('adisyon_kalemleri')->where('adisyon_id', $kaynak->id)->update(['adisyon_id' => $hedef->id, 'updated_at' => now()]);
+    DB::table('adisyonlar')->where('id', $kaynak->id)->update(['durum' => 'iptal', 'kapanis' => now(), 'updated_at' => now()]);
+    if ($kaynak->masa_id) DB::table('masalar')->where('id', $kaynak->masa_id)->update(['durum' => 'bos']);
+    $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedef->id)->where('durum', '!=', 'iptal')->sum('tutar');
+    $top = max(0, $ara - (float) $hedef->indirim - (float) $hedef->ikram);
+    DB::table('adisyonlar')->where('id', $hedef->id)->update(['ara_toplam' => $ara, 'toplam' => $top,
+        'misafir_sayisi' => (int) $hedef->misafir_sayisi + (int) $kaynak->misafir_sayisi, 'updated_at' => now()]);
+    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $hedef->id, 'islem' => 'birlestirme', 'eski_masa_id' => $kaynak->masa_id, 'yeni_masa_id' => $hedef->masa_id, 'personel_id' => $p->id, 'created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => 'Masalar birleştirildi.', 'toplam' => $top];
+});
+
+// ---- ADISYON BOL ----
+Route::post('/api/patron/adisyon-bol', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_bol')) return ['ok' => 0, 'hata' => 'Adisyon bölme yetkiniz yok.'];
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a || $a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyon bulunamadı'];
+    $ids = array_filter(array_map('intval', explode(',', (string) $r->kalem_idler)));
+    if (empty($ids)) return ['ok' => 0, 'hata' => 'Bölünecek ürün seçin'];
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $ids)->where('durum', '!=', 'iptal')->get();
+    if ($kalemler->isEmpty()) return ['ok' => 0, 'hata' => 'Geçerli ürün yok'];
+    $toplamKalem = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
+    if ($kalemler->count() >= $toplamKalem) return ['ok' => 0, 'hata' => 'En az bir ürün asıl adisyonda kalmalı.'];
+    $yeniId = DB::table('adisyonlar')->insertGetId([
+        'sube_id' => $a->sube_id, 'masa_id' => $a->masa_id, 'kanal' => $a->kanal, 'misafir_sayisi' => 1, 'durum' => 'acik',
+        'acan_personel_id' => $p->id, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+        'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('adisyon_kalemleri')->whereIn('id', $kalemler->pluck('id'))->update(['adisyon_id' => $yeniId, 'updated_at' => now()]);
+    foreach ([$a->id, $yeniId] as $aid) {
+        $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $aid)->where('durum', '!=', 'iptal')->sum('tutar');
+        $adis = DB::table('adisyonlar')->find($aid);
+        $top = max(0, $ara - (float) $adis->indirim - (float) $adis->ikram);
+        DB::table('adisyonlar')->where('id', $aid)->update(['ara_toplam' => $ara, 'toplam' => $top, 'updated_at' => now()]);
+    }
+    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'bolme', 'eski_masa_id' => $a->masa_id, 'yeni_masa_id' => $a->masa_id, 'personel_id' => $p->id, 'created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => $kalemler->count() . ' ürün yeni adisyona bölündü.', 'yeni_adisyon_id' => $yeniId];
+});
+
+// ---- FIS: yazdirma icin adisyon fisi verisi ----
+Route::get('/api/patron/fis', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
+    $sube = DB::table('subeler')->find($a->sube_id);
+    $masa = $a->masa_id ? DB::table('masalar')->where('id', $a->masa_id)->value('ad') : null;
+    $garson = $a->acan_personel_id ? DB::table('personeller')->where('id', $a->acan_personel_id)->value('ad') : null;
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')
+        ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar')->orderBy('id')->get()
+        ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar]);
+    $odemeler = DB::table('odemeler')->where('adisyon_id', $a->id)->select('tip', 'tutar')->get()
+        ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
+    return [
+        'ok' => 1,
+        'isletme' => $sube->ad ?? 'RestoOS', 'adres' => $sube->adres ?? '', 'telefon' => $sube->telefon ?? '',
+        'masa' => $masa ?? ucfirst($a->kanal), 'garson' => $garson ?? '-',
+        'tarih' => now()->format('d.m.Y H:i'), 'adisyon_no' => $a->id,
+        'kalemler' => $kalemler,
+        'ara_toplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
+        'odemeler' => $odemeler,
+    ];
+});
+
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
 // Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
 Route::get('/cari-kur', function () {
