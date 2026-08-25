@@ -1632,8 +1632,8 @@ Route::get('/api/patron/detay', function (Request $r) {
             : ($sureDk < 1440 ? (intdiv($sureDk, 60) . ' sa ' . ($sureDk % 60) . ' dk')
                 : (intdiv($sureDk, 1440) . ' gün ' . intdiv($sureDk % 1440, 60) . ' sa'));
         $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
-            ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'not')->orderBy('id')->get()
-            ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
+            ->select('id', 'urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'not')->orderBy('id')->get()
+            ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
                 'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'not' => $k->not]);
         $odemeler = DB::table('odemeler')->where('adisyon_id', $id)->select('tip', 'tutar')->get()
             ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
@@ -2045,14 +2045,23 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
 
     if ($islem === 'ikram') {
         if (!$yetki('ikram')) return ['ok' => 0, 'hata' => 'İkram yetkiniz yok.'];
-        $tutar = max(0, (float) $r->tutar);
-        if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir ikram tutarı girin.'];
+        // Ikram URUN bazlidir: adisyondaki secili kalemler ikram edilir
+        $ids = array_filter(array_map('intval', explode(',', (string) $r->kalem_idler)));
+        $adlar = '';
+        if (!empty($ids)) {
+            $secili = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $ids)->where('durum', '!=', 'iptal')->get(['urun_adi', 'tutar']);
+            $tutar = (float) $secili->sum('tutar');
+            $adlar = $secili->pluck('urun_adi')->implode(', ');
+        } else {
+            $tutar = max(0, (float) $r->tutar); // eski/serbest tutar (geriye uyum)
+        }
+        if ($tutar <= 0) return ['ok' => 0, 'hata' => 'İkram için ürün seçin.'];
         if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
         $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
-            'tutar' => $tutar, 'sebep' => $r->sebep ?: 'İkram', 'personel_id' => $p->id, 'created_at' => now()]);
-        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram uygulandı.'];
+            'tutar' => $tutar, 'sebep' => $adlar ? ('İkram: ' . $adlar) : ($r->sebep ?: 'İkram'), 'personel_id' => $p->id, 'created_at' => now()]);
+        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı.'];
     }
 
     if ($islem === 'iptal') {
