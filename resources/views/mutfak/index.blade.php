@@ -15,7 +15,7 @@
 @else
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         @foreach ($kalemler as $k)
-            @php $gecen = \Illuminate\Support\Carbon::parse($k->gonderim_zamani); $dk = $gecen->diffInMinutes(now()); @endphp
+            @php $gecen = \Illuminate\Support\Carbon::parse($k->gonderim_zamani); $dk = (int) round($gecen->diffInMinutes(now())); @endphp
             <div x-data="{ hazir() { api('/mutfak/hazir', { kalem_id: {{ $k->id }} }).then(() => location.reload()); } }"
                  class="bg-white rounded-2xl border-2 {{ $dk >= 15 ? 'border-rose-300' : ($dk >= 8 ? 'border-amber-300' : 'border-slate-200') }} p-4">
                 <div class="flex items-center justify-between mb-2">

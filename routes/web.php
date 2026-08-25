@@ -1475,12 +1475,13 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.toplam')->get()
             ->map(function ($a) use ($simdi, $tamGor) {
-                $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi) : 0;
+                $dk = $a->acilis ? (int) round(\Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi)) : 0;
                 $adet = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
+                $sure = $dk < 60 ? ($dk . ' dk') : ($dk < 1440 ? (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk') : (intdiv($dk, 1440) . ' gün ' . intdiv($dk % 1440, 60) . ' sa'));
                 return [
                     'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
                     'musteri' => _kvkkAd($a->musteri, $tamGor), 'musteri_id' => $a->musteri_id,
-                    'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
+                    'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'sure' => $sure, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
                 ];
             });
         return [
@@ -1498,8 +1499,12 @@ Route::get('/api/patron/detay', function (Request $r) {
         $garson = $a->acan_personel_id ? DB::table('personeller')->where('id', $a->acan_personel_id)->value('ad') : null;
         $musteri = $a->musteri_id ? DB::table('musteriler')->where('id', $a->musteri_id)->first(['ad', 'telefon']) : null;
         $kanalAd = ['salon' => 'Masa Servis', 'paket' => 'Paket / Kurye', 'qr' => 'QR / Self'][$a->kanal] ?? ucfirst($a->kanal);
-        $sureDk = ($a->acilis && $a->kapanis) ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(\Carbon\Carbon::parse($a->kapanis))
-            : ($a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0);
+        $sureDk = ($a->acilis && $a->kapanis) ? (int) round(\Carbon\Carbon::parse($a->acilis)->diffInMinutes(\Carbon\Carbon::parse($a->kapanis)))
+            : ($a->acilis ? (int) round(\Carbon\Carbon::parse($a->acilis)->diffInMinutes(now())) : 0);
+        // Okunur sure: dk / sa dk / gun sa
+        $sureStr = $sureDk < 60 ? ($sureDk . ' dk')
+            : ($sureDk < 1440 ? (intdiv($sureDk, 60) . ' sa ' . ($sureDk % 60) . ' dk')
+                : (intdiv($sureDk, 1440) . ' gün ' . intdiv($sureDk % 1440, 60) . ' sa'));
         $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
             ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'not')->orderBy('id')->get()
             ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
@@ -1522,7 +1527,7 @@ Route::get('/api/patron/detay', function (Request $r) {
         if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ₺' . number_format($a->indirim, 0, ',', '.') . ' (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
         return [
             'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon', 'ai' => $ai,
-            'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureDk . ' dk'],
+            'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureStr],
             'durum' => $a->durum, 'kanal' => $kanalAd,
             'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
             'kapanis' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : null,
@@ -1674,7 +1679,7 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
         $adet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
         $harcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
         $sonSiparis = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->max('kapanis');
-        $gunOnce = $sonSiparis ? \Carbon\Carbon::parse($sonSiparis)->diffInDays(now()) : null;
+        $gunOnce = $sonSiparis ? (int) round(\Carbon\Carbon::parse($sonSiparis)->diffInDays(now())) : null;
         $yorumlar = Schema::hasTable('degerlendirmeler')
             ? DB::table('degerlendirmeler')->where('musteri_id', $mid)->orderByDesc('created_at')->limit(5)->get(['puan', 'yorum']) : collect();
         $favori = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
@@ -1841,7 +1846,7 @@ Route::get('/api/paket', function (Request $r) {
             'musteriler.ad as musteri', 'musteriler.telefon', 'kuryeler.ad as kurye')
         ->orderByDesc('adisyonlar.acilis')->get()
         ->map(function ($s) use ($simdi) {
-            $dk = $s->acilis ? \Carbon\Carbon::parse($s->acilis)->diffInMinutes($simdi) : 0;
+            $dk = $s->acilis ? (int) round(\Carbon\Carbon::parse($s->acilis)->diffInMinutes($simdi)) : 0;
             $s->gecen_dk = $dk;
             $s->gecen_metin = $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk');
             $s->urun_adet = (int) DB::table('adisyon_kalemleri')->where('adisyon_id', $s->id)->sum('adet');
@@ -1860,7 +1865,7 @@ Route::get('/api/paket/{id}', function (Request $r, $id) {
             'kuryeler.ad as kurye', 'kuryeler.telefon as kurye_tel')
         ->first();
     if (!$a) return response()->json(['ok' => 0, 'mesaj' => 'Sipariş bulunamadı'], 404);
-    $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0;
+    $dk = $a->acilis ? (int) round(\Carbon\Carbon::parse($a->acilis)->diffInMinutes(now())) : 0;
     $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
         ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'not')->orderBy('id')->get();
     return ['ok' => 1, 'siparis' => [
