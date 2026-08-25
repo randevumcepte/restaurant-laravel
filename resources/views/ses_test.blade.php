@@ -95,8 +95,7 @@ async function dinle(ses, btn){
 async function sec(ses, btn){
   durum.textContent='Kaydediliyor…';
   try{
-    const r = await fetch('/ses-sec', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({ses})});
+    const r = await fetch('/ses-sec?ses='+encodeURIComponent(ses), {method:'GET'});
     const j = await r.json();
     if(j.ok){ window.SECILI_YENI = ses; document.querySelectorAll('.kart').forEach(k=>{
         const s = k.getAttribute('data-ses')===ses;
