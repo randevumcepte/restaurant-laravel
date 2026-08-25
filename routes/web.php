@@ -1038,6 +1038,60 @@ Route::get('/fix-turkce', function () {
     return 'Türkçe karakterler düzeltildi (' . count($map) . ' isim). ✅';
 });
 
+// ============================ ASISTAN KALIP (soru-cevap) YONETIMI ============================
+// Tablo kur + baslangic kaliplari (bir kez).
+Route::get('/kalip-kur', function () {
+    if (!Schema::hasTable('asistan_kalip')) {
+        Schema::create('asistan_kalip', function ($t) {
+            $t->increments('id');
+            $t->text('tetikleyiciler');
+            $t->text('cevap');
+            $t->string('kategori', 40)->nullable();
+            $t->boolean('aktif')->default(1);
+            $t->unsignedInteger('kullanim_sayisi')->default(0);
+            $t->timestamps();
+        });
+    }
+    $starter = [
+        ['sen kimsin, kimsin, adin ne, nesin, ne asistanisin, kim oldugun', 'Ben restoranınızın asistanıyım. Ciro, satış, personel, masa, food-cost ve kayıp gibi konularda size yardımcı olurum.', 'kimlik'],
+        ['ne yapabilirsin, neler yapabilirsin, ne ise yararsin, gorevin ne, ne yaparsin', 'Ciro ve kasa durumu, en çok satan ürün, personel performansı, açık masalar, paket siparişler, food-cost ve kayıp radarını sorabilirsiniz.', 'kimlik'],
+        ['selam, merhaba, gunaydin, iyi gunler, iyi aksamlar, alo', 'Merhaba! Size nasıl yardımcı olabilirim?', 'sohbet'],
+        ['nasilsin, naber, ne haber, iyi misin, keyifler', 'Teşekkür ederim, gayet iyiyim. Sizin için ne öğrenmek istersiniz?', 'sohbet'],
+        ['seni kim yapti, kim gelistirdi, uretici, kim yazdi', 'Beni restoranınızın yazılım ekibi hazırladı. Hadi işletmenize bakalım mı?', 'kimlik'],
+    ];
+    $n = 0;
+    foreach ($starter as [$tet, $cev, $kat]) {
+        if (!DB::table('asistan_kalip')->where('tetikleyiciler', $tet)->exists()) {
+            DB::table('asistan_kalip')->insert(['tetikleyiciler' => $tet, 'cevap' => $cev, 'kategori' => $kat, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $n++;
+        }
+    }
+    \Cache::forget('resto_kalip_liste_v1');
+    return "Kalıp sistemi kuruldu. $n başlangıç kalıbı eklendi. Toplam: " . DB::table('asistan_kalip')->count();
+});
+
+// Kalip ekle: ?tetik=... &cevap=... (&kategori=...)  (GET veya POST)
+Route::match(['get', 'post'], '/kalip-ekle', function (Request $r) {
+    $tet = trim((string) $r->tetik);
+    $cev = trim((string) $r->cevap);
+    if ($tet === '' || $cev === '') return response('tetik ve cevap gerekli', 400);
+    if (!Schema::hasTable('asistan_kalip')) return response('Önce /kalip-kur çalıştırın', 400);
+    $id = DB::table('asistan_kalip')->insertGetId(['tetikleyiciler' => $tet, 'cevap' => $cev, 'kategori' => $r->kategori ?: 'genel', 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    \Cache::forget('resto_kalip_liste_v1');
+    return "Kalıp eklendi (id=$id). Toplam: " . DB::table('asistan_kalip')->count();
+});
+
+Route::get('/kalip-liste', function () {
+    if (!Schema::hasTable('asistan_kalip')) return 'Tablo yok, /kalip-kur çalıştırın.';
+    return DB::table('asistan_kalip')->orderBy('id')->get(['id', 'tetikleyiciler', 'cevap', 'kategori', 'aktif', 'kullanim_sayisi']);
+});
+
+Route::get('/kalip-sil', function (Request $r) {
+    DB::table('asistan_kalip')->where('id', (int) $r->id)->delete();
+    \Cache::forget('resto_kalip_liste_v1');
+    return 'Silindi (id=' . (int) $r->id . ').';
+});
+
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
     $n = 0;
@@ -1925,6 +1979,12 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     $niyet = $a->ogrenilenNiyet($soru) ?: $a->niyetCoz($soru);
     $sonuc = ($niyet['intent'] ?? 'bilinmiyor') !== 'bilinmiyor' ? $a->cevapla($niyet) : null;
     $kaynak = 'kural';
+
+    // 2b) KALIP kutuphanesi (bedava soru-cevap; AI'dan ONCE)
+    if (!$sonuc) {
+        $kalip = $a->kalipCevabi($soru);
+        if ($kalip) { $sonuc = $kalip; $kaynak = 'kalip'; }
+    }
 
     if (!$sonuc) {
         // 3) Haiku ile niyet coz

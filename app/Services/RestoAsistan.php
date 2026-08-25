@@ -261,6 +261,52 @@ class RestoAsistan
         return $this->cvp('ozet', $cevap, $niyet, ['tip' => 'ozet', 'baslik' => 'Özet · ' . ucfirst($d), 'ciro' => $ciro, 'folyo' => $folyo, 'acik' => $acik]);
     }
 
+    // -------------------- KALIP KUTUPHANESI (bedava soru-cevap) --------------------
+    protected function _kaliplar()
+    {
+        try {
+            return Cache::remember('resto_kalip_liste_v1', now()->addMinutes(5), function () {
+                if (!Schema::hasTable('asistan_kalip')) return [];
+                return DB::table('asistan_kalip')->where('aktif', 1)->select('id', 'tetikleyiciler', 'cevap')->get()->all();
+            });
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Kalip kutuphanesinden BEDAVA cevap; yoksa null. AI'dan ONCE cagirilir.
+     *  TURKCE EK TOLERANSLI: "cay" tetigi "cayim/caydan/caylar"i da yakalar. En UZUN eslesme kazanir. */
+    public function kalipCevabi($metin)
+    {
+        $liste = $this->_kaliplar();
+        if (empty($liste)) return null;
+        $n = ' ' . $this->normalize($metin) . ' ';
+        $enIyi = null;
+        $enSkor = 0;
+        foreach ($liste as $k) {
+            foreach (preg_split('/[\r\n,;]+/', (string) $k->tetikleyiciler) as $t) {
+                $t = trim($this->normalize($t));
+                if (mb_strlen($t) < 2) continue;
+                if (preg_match('/(?:^| )' . preg_quote($t, '/') . '[a-z]*(?= |$)/u', $n)) {
+                    $skor = mb_strlen($t);
+                    if ($skor > $enSkor) { $enSkor = $skor; $enIyi = $k; }
+                }
+            }
+        }
+        if (!$enIyi) return null;
+        try { DB::table('asistan_kalip')->where('id', $enIyi->id)->increment('kullanim_sayisi'); } catch (\Throwable $e) {}
+        return ['basarili' => true, 'intent' => 'kalip', 'seslendir' => true, 'cevap' => $this->_cevapSec($enIyi->cevap), 'kart' => null];
+    }
+
+    /** Cevap havuzu ("---" ile ayrilmis) -> rastgele biri (cesitlilik). */
+    protected function _cevapSec($cevap)
+    {
+        $c = (string) $cevap;
+        if (strpos($c, '---') === false) return trim($c);
+        $parcalar = array_values(array_filter(array_map('trim', preg_split('/^\s*-{3,}\s*$/m', $c)), fn ($p) => $p !== ''));
+        return empty($parcalar) ? trim($c) : $parcalar[array_rand($parcalar)];
+    }
+
     // -------------------- OGRENEN ONBELLEK + GECMIS --------------------
     public function ogrenilenNiyet($metin)
     {
