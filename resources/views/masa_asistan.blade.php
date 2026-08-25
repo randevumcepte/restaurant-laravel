@@ -103,17 +103,17 @@ function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,''
 async function konus(t){
   const temiz = temizle(t);
   if(!temiz) return;
-  // 1) BEDAVA: cihaz Turkce sesi (uygulamadaki motorla ayni) — dogal ayar (pitch 1.0)
-  seciSes();
-  if(synth && trVoice){
-    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return; }catch(e){}
-  }
-  // 2) Cihazda Turkce ses YOKSA: sunucu Google TTS (kaliteli erkek)
+  // 1) Sunucu Google TTS (patronun sectigi kaliteli ERKEK ses; her cihazda birebir ayni)
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz})});
     const j = await r.json();
     if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return; }
   }catch(e){}
+  // 2) Cloud yoksa/anahtar yoksa: bedava cihaz Turkce sesi (dogal ayar)
+  seciSes();
+  if(synth && trVoice){
+    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return; }catch(e){}
+  }
   // 3) Son care: sessiz gec (metin ekranda zaten var)
 }
 

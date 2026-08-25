@@ -49,10 +49,13 @@ class SeslendirmeServisi
         $key = (string) config('services.google_tts.key', '');
         if ($key === '') return null;
         $url = 'https://texttospeech.googleapis.com/v1/text:synthesize?key=' . urlencode($key);
+        $audioConfig = ['audioEncoding' => 'MP3', 'speakingRate' => 1.0];
+        // Chirp3-HD sesleri pitch desteklemez -> gonderme (aksi halde hata)
+        if (strpos($ses, 'Chirp') === false) $audioConfig['pitch'] = 0.0;
         $govde = json_encode([
             'input' => ['text' => $metin],
             'voice' => ['languageCode' => 'tr-TR', 'name' => $ses],
-            'audioConfig' => ['audioEncoding' => 'MP3', 'speakingRate' => 1.0, 'pitch' => 0.0],
+            'audioConfig' => $audioConfig,
         ], JSON_UNESCAPED_UNICODE);
         $ch = curl_init($url);
         curl_setopt_array($ch, [

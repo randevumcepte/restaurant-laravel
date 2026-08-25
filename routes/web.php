@@ -1134,7 +1134,9 @@ Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     if ($metin === '') return response()->json(['basarili' => false], 422);
     if (mb_strlen($metin) > 2000) $metin = mb_substr($metin, 0, 2000);
     $servis = new \App\Services\SeslendirmeServisi();
-    $ad = $servis->uret($metin, $r->input('ses'));
+    $ses = $r->input('ses');
+    if (!$ses) $ses = resto_ayar_al('tts_ses', null); // patronun sectigi kalici ses (yoksa config varsayilani)
+    $ad = $servis->uret($metin, $ses);
     if (!$ad) return response()->json(['basarili' => false, 'anahtar_var' => (string) config('services.google_tts.key', '') !== ''], 200);
     return response()->json(['basarili' => true, 'url' => url('/api/ses/' . $ad)]);
 });
@@ -1144,6 +1146,62 @@ Route::get('/api/ses/{ad}', function ($ad) {
     if (!$yol) abort(404);
     return response()->file($yol, ['Content-Type' => 'audio/mpeg', 'Cache-Control' => 'public, max-age=31536000']);
 })->where('ad', '[a-f0-9]{32}\.mp3');
+
+// ---- Ayarlar (anahtar-deger) yardimcilari: secilen TTS sesi burada saklanir ----
+if (!function_exists('resto_ayar_al')) {
+    function resto_ayar_tablo()
+    {
+        if (!Schema::hasTable('ayarlar')) {
+            Schema::create('ayarlar', function ($t) {
+                $t->string('anahtar', 60)->primary();
+                $t->text('deger')->nullable();
+            });
+        }
+    }
+    function resto_ayar_al($anahtar, $vars = null)
+    {
+        resto_ayar_tablo();
+        $v = DB::table('ayarlar')->where('anahtar', $anahtar)->value('deger');
+        return ($v === null || $v === '') ? $vars : $v;
+    }
+    function resto_ayar_yaz($anahtar, $deger)
+    {
+        resto_ayar_tablo();
+        DB::table('ayarlar')->updateOrInsert(['anahtar' => $anahtar], ['deger' => $deger]);
+    }
+}
+
+// Secilebilir ERKEK Turkce sesler (dinle + sec)
+if (!function_exists('resto_erkek_sesler')) {
+    function resto_erkek_sesler()
+    {
+        return [
+            ['ses' => 'tr-TR-Wavenet-D',        'ad' => 'Erkek 1 · WaveNet-D',     'not' => 'Dolgun, net (şu anki)'],
+            ['ses' => 'tr-TR-Wavenet-B',        'ad' => 'Erkek 2 · WaveNet-B',     'not' => 'Biraz daha genç ton'],
+            ['ses' => 'tr-TR-Chirp3-HD-Charon', 'ad' => 'Erkek 3 · Chirp3-HD Charon', 'not' => 'EN DOĞAL / yeni nesil'],
+            ['ses' => 'tr-TR-Chirp3-HD-Fenrir', 'ad' => 'Erkek 4 · Chirp3-HD Fenrir', 'not' => 'Doğal, canlı'],
+            ['ses' => 'tr-TR-Chirp3-HD-Puck',   'ad' => 'Erkek 5 · Chirp3-HD Puck',   'not' => 'Doğal, enerjik'],
+            ['ses' => 'tr-TR-Standard-D',       'ad' => 'Erkek 6 · Standard-D',    'not' => 'Basit ama 4× bedava kota'],
+            ['ses' => 'tr-TR-Standard-B',       'ad' => 'Erkek 7 · Standard-B',    'not' => 'Basit, 4× bedava kota'],
+        ];
+    }
+}
+
+// Ses test sayfasi: her erkek sesi dinle, begendigini sec
+Route::get('/ses-test', function () {
+    $secili = resto_ayar_al('tts_ses', (string) config('services.google_tts.voice', 'tr-TR-Wavenet-D'));
+    $anahtarVar = (string) config('services.google_tts.key', '') !== '';
+    return view('ses_test', ['sesler' => resto_erkek_sesler(), 'secili' => $secili, 'anahtarVar' => $anahtarVar]);
+});
+
+// Sesi sec (kalici) -> musteri asistani bundan sonra bu sesi kullanir
+Route::match(['get', 'post'], '/ses-sec', function (Request $r) {
+    $ses = (string) $r->input('ses', '');
+    $gecerli = array_column(resto_erkek_sesler(), 'ses');
+    if (!in_array($ses, $gecerli, true)) return response()->json(['ok' => 0, 'mesaj' => 'Geçersiz ses'], 422);
+    resto_ayar_yaz('tts_ses', $ses);
+    return response()->json(['ok' => 1, 'ses' => $ses]);
+});
 
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
