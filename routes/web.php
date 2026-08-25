@@ -1180,8 +1180,13 @@ Route::get('/api/patron/detay', function (Request $r) {
         }
         $satisTutar = (float) $st->ciro;
         $toplamMaliyet = $receteToplam > 0 ? $receteToplam * (float) $st->adet : $satisTutar * 0.30;
+        $my = $satisTutar > 0 ? round($toplamMaliyet / $satisTutar * 100) : 0;
+        $ai = [];
+        if ($my >= 35) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Maliyet oranı %' . $my . ' — hedefin (%30) üstünde. Fiyat veya reçete gözden geçirilmeli.'];
+        elseif ($my > 0 && $my <= 20) $ai[] = ['seviye' => 'iyi', 'mesaj' => 'Yüksek kâr marjı (maliyet %' . $my . '). Menüde öne çıkarmaya değer.'];
+        if ((float) $st->adet >= 20) $ai[] = ['seviye' => 'iyi', 'mesaj' => round($st->adet) . ' adet satış — dönemin çok satanlarından.'];
         return [
-            'ok' => 1, 'baslik' => $urun->ad, 'tip' => 'urun',
+            'ok' => 1, 'baslik' => $urun->ad, 'tip' => 'urun', 'ai' => $ai,
             'ozet' => [
                 'Satılan' => rtrim(rtrim(number_format((float) $st->adet, 1, ',', '.'), '0'), ',') . ' adet',
                 'Ciro' => '₺' . number_format($satisTutar, 0, ',', '.'),
@@ -1223,8 +1228,17 @@ Route::get('/api/patron/detay', function (Request $r) {
         $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi', 'odenmez' => 'Ödenmez'];
         $sebepDagilim = $kayitlar->groupBy('sebep')->map(fn ($g) => ['sebep' => $g[0]->sebep ?: '-', 'adet' => $g->count(), 'tutar' => (float) $g->sum('tutar')])
             ->sortByDesc('tutar')->values();
+        $ai = [];
+        $toplamK = (float) $kayitlar->sum('tutar');
+        if ($alt !== 'fire' && $toplamK > 0) {
+            $tg = $kayitlar->groupBy('garson')->map(fn ($g) => (object) ['garson' => $g[0]->garson, 'tutar' => (float) $g->sum('tutar')])->sortByDesc('tutar')->first();
+            if ($tg && $tg->garson) {
+                $oran = round($tg->tutar / $toplamK * 100);
+                if ($oran >= 40) $ai[] = ['seviye' => 'riskli', 'mesaj' => ($basliklar[$alt] ?? 'Kayıp') . ' işlemlerinin %' . $oran . '\'ı ' . $tg->garson . '\'da yoğunlaşmış — kontrol edilmesi önerilir.'];
+            }
+        }
         return [
-            'ok' => 1, 'baslik' => ($basliklar[$alt] ?? 'Kayıp') . ' Detayı', 'tip' => 'kayip',
+            'ok' => 1, 'baslik' => ($basliklar[$alt] ?? 'Kayıp') . ' Detayı', 'tip' => 'kayip', 'ai' => $ai,
             'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(),
             'sebepler' => $sebepDagilim,
             'kayitlar' => $kayitlar->map(fn ($k) => [
@@ -1288,8 +1302,11 @@ Route::get('/api/patron/detay', function (Request $r) {
                 ];
             }
         }
+        $ai = [];
+        if ($deg && empty($deg['mutlu'])) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Müşteri memnun kalmamış (⭐' . $deg['puan'] . '). Telafi araması/jesti önerilir.'];
+        if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ₺' . number_format($a->indirim, 0, ',', '.') . ' (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
         return [
-            'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon',
+            'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon', 'ai' => $ai,
             'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureDk . ' dk'],
             'durum' => $a->durum, 'kanal' => $kanalAd,
             'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
@@ -1331,8 +1348,22 @@ Route::get('/api/patron/detay', function (Request $r) {
         }
         $gAdet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
         $gHarcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
+        // AI yorumlar (kural motoru)
+        $ai = [];
+        if ($yorumlar->count() >= 1) {
+            $ortSon = round($yorumlar->take(2)->avg('puan'), 1);
+            if ($ortSon <= 2.5 && $gHarcama >= 3000) {
+                $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Son ziyaretlerde memnuniyetsiz (⭐' . $ortSon . '). ₺' . number_format($gHarcama, 0, ',', '.') . ' harcayan değerli müşteri — kaybetmemek için aranması önerilir.'];
+            }
+        }
+        if ($gHarcama >= 10000) {
+            $ai[] = ['seviye' => 'iyi', 'mesaj' => 'VIP müşteri: toplam ₺' . number_format($gHarcama, 0, ',', '.') . ' / ' . $gAdet . ' sipariş. Özel ilgi gösterin.'];
+        }
+        if ($favori->count()) {
+            $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'En sevdiği: ' . $favori[0]->urun_adi . '. Kampanya/öneride kullanılabilir.'];
+        }
         return [
-            'ok' => 1, 'baslik' => _kvkkAd($m->ad, $tamGor), 'tip' => 'musteri', 'kvkk' => !$tamGor,
+            'ok' => 1, 'baslik' => _kvkkAd($m->ad, $tamGor), 'tip' => 'musteri', 'kvkk' => !$tamGor, 'ai' => $ai,
             'profil' => ['ad' => _kvkkAd($m->ad, $tamGor), 'telefon' => _kvkkTel($m->telefon, $tamGor),
                 'adres' => $tamGor ? $m->adres : null, 'notlar' => $tamGor ? $m->notlar : null],
             'ozet' => [
@@ -1394,11 +1425,17 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'maliyet' => round($mal, 2), 'yuzde' => $s->satis > 0 ? round($mal / $s->satis * 100) : 0,
             ];
         })->sortByDesc('maliyet')->take(40)->values();
+        $my = $toplamSatis > 0 ? round($toplamMaliyet / $toplamSatis * 100) : 0;
+        $ai = [];
+        if ($my >= 32) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Genel food-cost %' . $my . ' — hedefin üstünde. Aşağıdaki en yüksek maliyetli ürünleri inceleyin.'];
+        elseif ($my > 0 && $my < 25) $ai[] = ['seviye' => 'iyi', 'mesaj' => 'Food-cost %' . $my . ' — sağlıklı seviyede.'];
+        $ep = $urunler->first();
+        if ($ep && $ep['yuzde'] >= 35) $ai[] = ['seviye' => 'riskli', 'mesaj' => $ep['ad'] . ' maliyeti %' . $ep['yuzde'] . ' — en riskli kalem, önceliklendirin.'];
         return [
-            'ok' => 1, 'baslik' => 'Food-Cost Detayı', 'tip' => 'maliyet',
+            'ok' => 1, 'baslik' => 'Food-Cost Detayı', 'tip' => 'maliyet', 'ai' => $ai,
             'toplamSatis' => round($toplamSatis, 2), 'toplamMaliyet' => round($toplamMaliyet, 2),
             'brutKar' => round($toplamSatis - $toplamMaliyet, 2),
-            'maliyetYuzde' => $toplamSatis > 0 ? round($toplamMaliyet / $toplamSatis * 100) : 0,
+            'maliyetYuzde' => $my,
             'urunler' => $urunler,
         ];
     }
