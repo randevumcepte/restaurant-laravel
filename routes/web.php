@@ -1065,6 +1065,71 @@ if (!function_exists('_restoPeriyot')) {
     }
 }
 
+// Derin analiz icin ZENGIN KURAL MOTORU yorumlari (anahtar yoksa bile detay verir; Haiku fallback'i).
+if (!function_exists('_restoKuralYorum')) {
+    function _restoKuralYorum(array $b)
+    {
+        $tl = fn ($x) => '₺' . number_format((float) $x, 0, ',', '.');
+        $out = [];
+        $tip = $b['tip'] ?? '';
+        if ($tip === 'urun_karlilik_analizi') {
+            $ad = $b['urun'];
+            $my = (int) $b['food_cost_yuzde'];
+            $fiyat = (float) $b['satis_fiyati'];
+            $bmal = (float) $b['porsiyon_malzeme_maliyeti'];
+            $bkar = (float) $b['porsiyon_brut_kar'];
+            $adet = (float) $b['donem_satis_adet'];
+            $dom = null;
+            $domT = 0;
+            foreach (($b['recete_malzemeler'] ?? []) as $k) {
+                if (($k['maliyet'] ?? 0) > $domT) { $domT = $k['maliyet']; $dom = $k; }
+            }
+            $domPay = $bmal > 0 ? round($domT / $bmal * 100) : 0;
+            $domAd = $dom['malzeme'] ?? null;
+            if ($adet <= 0) return [$ad . ' bu dönem hiç satmamış; kâr/maliyet değerlendirmesi için satış gerekiyor. Menüdeki yerini ve fiyatını gözden geçirin.'];
+            if ($my >= 38) {
+                $out[] = $ad . ' food-cost %' . $my . ' ile yüksek: bir porsiyon ' . $tl($bmal) . ' malzeme, ' . $tl($fiyat) . ' satış, sadece ' . $tl($bkar) . ' brüt kâr bırakıyor.';
+                $out[] = $domAd ? ('Maliyetin %' . $domPay . 'ı ' . $domAd . 'ten geliyor — porsiyonunu kısmak en hızlı çözüm; alternatif olarak fiyatı ' . $tl(round($fiyat * 1.15)) . ' seviyesine çekin.') : 'Fiyatı artırmak ya da reçeteyi sadeleştirmek gerekir.';
+            } elseif ($my >= 30) {
+                $out[] = $ad . ' normal bandda (food-cost %' . $my . '), porsiyon başına ' . $tl($bkar) . ' brüt kâr bırakıyor.';
+                if ($domAd) $out[] = 'Maliyetin %' . $domPay . 'ı ' . $domAd . 'ten geliyor; oradan küçük bir kısıntı food-cost\'u %28 altına indirir.';
+            } else {
+                $out[] = $ad . ' çok kârlı (food-cost %' . $my . '), porsiyon başına ' . $tl($bkar) . ' kâr bırakıyor.';
+                $out[] = 'Menüde öne çıkarın, garsonlara öncelikli önertin — yıldız ürün adayı.';
+            }
+            if ($adet >= 20) $out[] = 'Dönemde ' . round($adet) . ' adet satmış, talep güçlü' . ($my >= 35 ? '; yüksek maliyet nedeniyle buradaki her iyileştirme toplam kâra büyük yansır.' : '; iyi marjla birleşince gerçek bir kâr motoru.');
+            elseif ($adet < 5) $out[] = 'Bu dönem yalnızca ' . round($adet) . ' adet satmış — talep zayıf; menüdeki yeri, fiyatı veya sunumu gözden geçirilebilir.';
+            return $out;
+        }
+        if ($tip === 'isletme_ozeti') {
+            $ciro = (float) ($b['ciro'] ?? 0);
+            $comp = (float) ($b['onceki_donem_ciro'] ?? 0);
+            $out[] = $comp > 0
+                ? ('Ciro ' . $tl($ciro) . ', önceki döneme göre ' . ($ciro >= $comp ? '%' . round(($ciro - $comp) / $comp * 100) . ' önde' : '%' . round(($comp - $ciro) / $comp * 100) . ' geride') . '.')
+                : ('Dönem cirosu ' . $tl($ciro) . '.');
+            $isk = (float) ($b['iskonto'] ?? 0);
+            if ($ciro > 0 && $isk > $ciro * 0.05) $out[] = 'İskonto ' . $tl($isk) . ' ile ciroya oranla yüksek — indirim yetkilerini ve nedenlerini gözden geçirin.';
+            if (!empty($b['iptal_adisyon_adet'])) $out[] = $b['iptal_adisyon_adet'] . ' adisyon iptal edilmiş; tekrar eden iptaller varsa nedenini araştırın.';
+            if (!empty($b['cok_satan_urunler'])) $out[] = 'En çok satanlar: ' . implode(', ', array_slice($b['cok_satan_urunler'], 0, 3)) . '. Bu ürünlerin food-cost oranını kontrol edin; küçük bir iyileştirme büyük kazanç.';
+            return $out;
+        }
+        if ($tip === 'sadik_musteri_analizi') {
+            $out[] = 'Bu müşteri ' . (int) ($b['siparis_sayisi'] ?? 0) . ' siparişte ' . $tl($b['toplam_harcama'] ?? 0) . ' harcamış.';
+            $yorumlar = $b['son_yorumlar'] ?? [];
+            if (!empty($yorumlar)) {
+                $ort = array_sum(array_map(fn ($y) => (int) $y['puan'], $yorumlar)) / max(1, count($yorumlar));
+                $out[] = $ort <= 2.5
+                    ? ('Son yorumları düşük (⭐' . round($ort, 1) . ') — değerli müşteri kaçabilir, aramanız/telafi önerilir.')
+                    : ('Memnuniyeti iyi (⭐' . round($ort, 1) . ') — sadık müşteri, özel ilgi işe yarar.');
+            }
+            if (($b['son_siparis_gun_once'] ?? null) !== null && $b['son_siparis_gun_once'] >= 14) $out[] = $b['son_siparis_gun_once'] . ' gündür gelmemiş — geri kazanım kampanyası düşünün.';
+            if (!empty($b['favori_urunler'])) $out[] = 'Favorisi: ' . implode(', ', $b['favori_urunler']) . ' — öneri/kampanyada kullanın.';
+            return $out;
+        }
+        return $out;
+    }
+}
+
 Route::get('/api/patron/ozet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
@@ -1316,10 +1381,17 @@ Route::get('/api/patron/detay', function (Request $r) {
         $satisTutar = (float) $st->ciro;
         $toplamMaliyet = $receteToplam > 0 ? $receteToplam * (float) $st->adet : $satisTutar * 0.30;
         $my = $satisTutar > 0 ? round($toplamMaliyet / $satisTutar * 100) : 0;
+        // KISA standart yorum (varsayilan). Detayli/gerekceli yorum -> "Derin AI Analizi" butonu (ai-analiz).
         $ai = [];
-        if ($my >= 35) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Maliyet oranı %' . $my . ' — hedefin (%30) üstünde. Fiyat veya reçete gözden geçirilmeli.'];
-        elseif ($my > 0 && $my <= 20) $ai[] = ['seviye' => 'iyi', 'mesaj' => 'Yüksek kâr marjı (maliyet %' . $my . '). Menüde öne çıkarmaya değer.'];
-        if ((float) $st->adet >= 20) $ai[] = ['seviye' => 'iyi', 'mesaj' => round($st->adet) . ' adet satış — dönemin çok satanlarından.'];
+        if ($satisTutar <= 0) {
+            $ai[] = ['seviye' => 'bilgi', 'mesaj' => $urun->ad . ' bu dönem hiç satmamış.'];
+        } elseif ($my >= 38) {
+            $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Food-cost %' . $my . ' — maliyet yüksek, kâr dar. Detaylı yorum için AI analizine dokunun.'];
+        } elseif ($my >= 30) {
+            $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Food-cost %' . $my . ' — normal seviyede. Detaylı yorum için AI analizine dokunun.'];
+        } else {
+            $ai[] = ['seviye' => 'iyi', 'mesaj' => 'Food-cost %' . $my . ' — kârlı ürün. Detaylı yorum için AI analizine dokunun.'];
+        }
         return [
             'ok' => 1, 'baslik' => $urun->ad, 'tip' => 'urun', 'ai' => $ai,
             'ozet' => [
@@ -1582,7 +1654,7 @@ Route::get('/api/patron/detay', function (Request $r) {
 Route::get('/api/patron/ai-analiz', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    $kapsam = in_array($r->kapsam, ['ozet', 'musteri']) ? $r->kapsam : 'ozet';
+    $kapsam = in_array($r->kapsam, ['ozet', 'musteri', 'urun']) ? $r->kapsam : 'ozet';
     $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'haftalik';
     [$from, $to, $pfrom, $pto] = _restoPeriyot($period);
 
@@ -1603,6 +1675,35 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
             'tip' => 'sadik_musteri_analizi', 'siparis_sayisi' => $adet, 'toplam_harcama' => round($harcama),
             'son_siparis_gun_once' => $gunOnce, 'favori_urunler' => $favori,
             'son_yorumlar' => $yorumlar->map(fn ($y) => ['puan' => (int) $y->puan, 'yorum' => $y->yorum])->all(),
+        ];
+    } elseif ($kapsam === 'urun') {
+        $uid = (int) $r->id;
+        $u = DB::table('urunler')->find($uid);
+        if (!$u) return ['ok' => 0, 'hata' => 'Ürün yok'];
+        $map = function_exists('_restoUrunMaliyetMap') ? _restoUrunMaliyetMap() : ['id' => [], 'ad' => []];
+        $birim = (float) ($map['id'][$uid] ?? ($map['ad'][$u->ad] ?? 0));
+        $st = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyon_kalemleri.urun_id', $uid)->where('adisyonlar.durum', 'odendi')->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->whereBetween('adisyonlar.kapanis', [$from, $to])
+            ->selectRaw('COALESCE(SUM(adet),0) adet, COALESCE(SUM(adisyon_kalemleri.tutar),0) ciro')->first();
+        $kalemler = [];
+        $rec = DB::table('receteler')->where('urun_id', $uid)->where('tip', 'urun')->value('id');
+        if ($rec) {
+            foreach (DB::table('recete_kalemleri')->where('recete_id', $rec)->get() as $rk) {
+                if (!$rk->malzeme_id) continue;
+                $mm = DB::table('malzemeler')->find($rk->malzeme_id);
+                if ($mm) $kalemler[] = ['malzeme' => $mm->ad, 'miktar' => (float) $rk->miktar, 'maliyet' => round((float) $rk->miktar * (float) $mm->guncel_maliyet, 2)];
+            }
+        }
+        $fiyat = (float) $u->fiyat;
+        $adet = (float) $st->adet;
+        $satis = (float) $st->ciro;
+        $toplamMal = $birim > 0 ? $birim * $adet : $satis * 0.30;
+        $baglam = [
+            'tip' => 'urun_karlilik_analizi', 'urun' => $u->ad, 'satis_fiyati' => round($fiyat),
+            'porsiyon_malzeme_maliyeti' => round($birim, 2), 'porsiyon_brut_kar' => round(max(0, $fiyat - $birim)),
+            'food_cost_yuzde' => $satis > 0 ? round($toplamMal / $satis * 100) : 0, 'donem_satis_adet' => round($adet),
+            'recete_malzemeler' => $kalemler,
         ];
     } else {
         $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
@@ -1632,11 +1733,13 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
     $cache = DB::table('ai_onbellek')->where('anahtar', $anahtar)->first();
     if ($cache) return ['ok' => 1, 'kaynak' => 'onbellek', 'yorumlar' => json_decode($cache->cevap, true)];
 
-    // 3) Anahtar yoksa nazik mesaj (kurallı AI zaten aktif). Randevumcepte ile ayni anahtar kullanilabilir.
+    // 3) Zengin KURAL yorumu (anahtar yoksa / LLM basarisizsa DETAY yine gelir)
+    $kuralYorum = _restoKuralYorum($baglam);
+    if (empty($kuralYorum)) $kuralYorum = ['Bu dönem için analiz üretecek yeterli veri yok; biraz satış sonrası zenginleşir.'];
+
     $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
     if (!$apiKey) {
-        return ['ok' => 1, 'kaynak' => 'yapilandirilmamis',
-            'yorumlar' => ['Derin AI analizi için sunucuda ANTHROPIC_API_KEY + bakiye gerekli. Kurallı AI yorumları zaten aktif; anahtar eklenince bu buton gerçek LLM analizini getirir.']];
+        return ['ok' => 1, 'kaynak' => 'kural', 'yorumlar' => $kuralYorum];
     }
 
     // 4) Haiku
@@ -1649,7 +1752,7 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
             'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . ' — Bu verilere göre patrona önerilerini madde madde ver.']],
         ]);
         if (!$resp->successful()) {
-            return ['ok' => 1, 'kaynak' => 'hata', 'yorumlar' => ['AI servisi yanıt vermedi (kod ' . $resp->status() . '). Anahtar/bakiye kontrol edilmeli.']];
+            return ['ok' => 1, 'kaynak' => 'kural', 'yorumlar' => $kuralYorum]; // LLM hata -> zengin kural yorumu
         }
         $metin = $resp->json('content.0.text') ?? '';
         $maddeler = collect(preg_split('/\n+/', $metin))->map(fn ($l) => trim(preg_replace('/^[\-\*\d\.\)\s]+/u', '', $l)))->filter()->values()->all();
@@ -1657,7 +1760,7 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
         DB::table('ai_onbellek')->insert(['anahtar' => $anahtar, 'cevap' => json_encode($maddeler, JSON_UNESCAPED_UNICODE), 'created_at' => now()]);
         return ['ok' => 1, 'kaynak' => 'haiku', 'yorumlar' => $maddeler];
     } catch (\Throwable $e) {
-        return ['ok' => 1, 'kaynak' => 'hata', 'yorumlar' => ['AI analizine ulaşılamadı: ' . $e->getMessage()]];
+        return ['ok' => 1, 'kaynak' => 'kural', 'yorumlar' => $kuralYorum]; // hata -> zengin kural yorumu
     }
 });
 
