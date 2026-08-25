@@ -1194,6 +1194,22 @@ Route::get('/ses-test', function () {
     return view('ses_test', ['sesler' => resto_erkek_sesler(), 'secili' => $secili, 'anahtarVar' => $anahtarVar]);
 });
 
+// Bu ayki Cloud TTS kullanimi (sert limit ne kadar doldu) — fatura kontrolu
+Route::get('/tts-kullanim', function () {
+    $servis = new \App\Services\SeslendirmeServisi();
+    $kul = $servis->ayKullanim();
+    $limit = (int) config('services.google_tts.aylik_limit', 900000);
+    $yuzde = $limit > 0 ? round($kul / $limit * 100, 1) : 0;
+    return response()->json([
+        'ay' => date('Y-m'),
+        'kullanilan_karakter' => $kul,
+        'aylik_sert_limit' => $limit,
+        'doluluk_yuzde' => $yuzde,
+        'kalan_karakter' => max(0, $limit - $kul),
+        'not' => $kul >= $limit ? 'LIMIT DOLDU -> Cloud durdu, herkes bedava cihaz sesinde. Fatura yok.' : 'Limit altinda; kota bitince otomatik bedavaya duser, fatura olusmaz.',
+    ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+});
+
 // Sesi sec (kalici) -> musteri asistani bundan sonra bu sesi kullanir
 Route::match(['get', 'post'], '/ses-sec', function (Request $r) {
     $ses = (string) $r->input('ses', '');

@@ -28,12 +28,55 @@ class SeslendirmeServisi
 
         $ad = md5($ses . '|' . $okunacak) . '.mp3';
         $yol = $this->klasor . '/' . $ad;
+        // ONBELLEK: daha once uretilmisse diskten don (karakter YAKMAZ, limite saymaz)
         if (is_file($yol) && filesize($yol) > 0) return $ad;
+
+        // SERT AYLIK LIMIT: kota dolduysa Cloud'a gitme -> cagiran taraf bedava cihaz sesine duser
+        if (!$this->kotaVar($okunacak)) { $this->sonHata = ['kota' => 'asildi']; return null; }
 
         $mp3 = $this->googleUret($okunacak, $ses);
         if ($mp3 === null || $mp3 === '') return null;
         @file_put_contents($yol, $mp3);
-        return (is_file($yol) && filesize($yol) > 0) ? $ad : null;
+        if (is_file($yol) && filesize($yol) > 0) {
+            $this->kotaEkle(mb_strlen($okunacak)); // sadece GERCEK uretimi say
+            return $ad;
+        }
+        return null;
+    }
+
+    /** Bu ayin anahtari: tts_kota_YYYYMM */
+    protected function ayAnahtar() { return 'tts_kota_' . date('Ym'); }
+
+    /** Bu ay kullanilan karakter sayisi (onbellekten gelenler sayilmaz). */
+    public function ayKullanim()
+    {
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('ayarlar')) return 0;
+            return (int) \Illuminate\Support\Facades\DB::table('ayarlar')->where('anahtar', $this->ayAnahtar())->value('deger');
+        } catch (\Throwable $e) { return 0; }
+    }
+
+    /** Aylik limit asilmadi mi? (limit<=0 ise sinirsiz). Hata olursa engelleme (ses kesilmesin). */
+    protected function kotaVar($okunacak)
+    {
+        $limit = (int) config('services.google_tts.aylik_limit', 900000);
+        if ($limit <= 0) return true;
+        return ($this->ayKullanim() + mb_strlen($okunacak)) <= $limit;
+    }
+
+    /** Bu ayin sayacini artir. */
+    protected function kotaEkle($n)
+    {
+        try {
+            $Schema = \Illuminate\Support\Facades\Schema::class;
+            if (!$Schema::hasTable('ayarlar')) {
+                $Schema::create('ayarlar', function ($t) { $t->string('anahtar', 60)->primary(); $t->text('deger')->nullable(); });
+            }
+            $k = $this->ayAnahtar();
+            $DB = \Illuminate\Support\Facades\DB::class;
+            $mevcut = (int) $DB::table('ayarlar')->where('anahtar', $k)->value('deger');
+            $DB::table('ayarlar')->updateOrInsert(['anahtar' => $k], ['deger' => (string) ($mevcut + (int) $n)]);
+        } catch (\Throwable $e) { /* sayac tutulamazsa sesi engelleme */ }
     }
 
     public function dosyaYolu($ad)

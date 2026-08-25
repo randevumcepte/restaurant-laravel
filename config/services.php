@@ -46,6 +46,9 @@ return [
     'google_tts' => [
         'key' => env('GOOGLE_TTS_API_KEY'),
         'voice' => env('GOOGLE_TTS_VOICE', 'tr-TR-Wavenet-D'),
+        // SERT AYLIK KARAKTER LIMITI: asilinca Cloud durur, bedava cihaz sesine duser (fatura koruma).
+        // 900000 = WaveNet ucretsiz kotasinin (1M) altinda guvenli tampon. Standard sesde 3800000 yapabilirsin.
+        'aylik_limit' => (int) env('GOOGLE_TTS_AYLIK_LIMIT', 900000),
     ],
 
 ];
