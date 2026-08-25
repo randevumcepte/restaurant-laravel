@@ -76,20 +76,22 @@ class MusteriAsistan
     {
         $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->pluck('ad')->all();
         if (empty($kats)) return $this->cvp('Menü şu an hazırlanıyor, birazdan hazır olacak.');
-        return $this->cvp('Menümüzde şu kategoriler var: ' . implode(', ', $kats) . '. Hangisini tanıtayım? Örneğin "tatlılar" ya da "günün yemeği" diyebilirsiniz.',
-            ['tip' => 'kategoriler', 'liste' => $kats]);
+        $kartlar = array_map(fn ($k) => ['ad' => $k, 'emoji' => $this->katEmoji($k)], $kats);
+        return $this->cvp('Menümüzde şu bölümler var. Hangisine bakmak istersiniz? İsterseniz üzerine dokunun, isterseniz "günün yemeği ne" diye sorun. 😊',
+            ['tip' => 'kategoriler', 'kategoriler' => $kartlar]);
     }
 
     protected function kategori(array $normAdlar, $baslik, $emoji = '')
     {
         $urunler = DB::table('urunler')->join('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
             ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
-            ->select('urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat')
+            ->select('urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat')
             ->get()->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
         if ($urunler->isEmpty()) return $this->cvp($baslik . ' şu an listede görünmüyor.');
-        $isimler = $urunler->take(6)->map(fn ($u) => $u->ad . ' (' . $this->tl($u->fiyat) . ')')->implode(', ');
-        return $this->cvp("$emoji $baslik: $isimler. Detay ya da öneri isterseniz sorabilirsiniz.",
-            ['tip' => 'urunler', 'baslik' => $baslik, 'liste' => $urunler->map(fn ($u) => ['ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'aciklama' => $u->aciklama])->all()]);
+        $kartlar = $urunler->take(10)->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, null, [], $u->id))->all();
+        $ornek = $urunler->take(3)->map(fn ($u) => $u->ad)->implode(', ');
+        return $this->cvp("$emoji $baslik hazır. $ornek gibi lezzetlerimiz var; resimlere göz atıp beğendiğinizi sorabilir ya da hemen isteyebilirsiniz.",
+            ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
     }
 
     protected function vejetaryen()
@@ -97,34 +99,48 @@ class MusteriAsistan
         // Et/tavuk/kofte/sucuk/kebap gecmeyen urunler
         $etli = ['et', 'tavuk', 'kofte', 'sucuk', 'kebap', 'pirzola', 'burger', 'sote', 'antrikot', 'bolonez', 'ton'];
         $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->where('tukendi', 0)
-            ->select('ad', 'fiyat')->get()->filter(function ($u) use ($etli) {
+            ->select('id', 'ad', 'fiyat', 'aciklama')->get()->filter(function ($u) use ($etli) {
                 $n = $this->norm($u->ad);
                 foreach ($etli as $e) { if (strpos($n, $e) !== false) return false; }
                 return true;
             })->values();
         if ($urunler->isEmpty()) return $this->cvp('Vejetaryen seçeneklerimiz için garsonumuza sorabilirim, çağırayım mı?');
-        $isim = $urunler->take(6)->map(fn ($u) => $u->ad)->implode(', ');
-        return $this->cvp("🥗 Etsiz seçeneklerimizden bazıları: $isim. Detay ister misiniz?",
-            ['tip' => 'urunler', 'baslik' => 'Vejetaryen', 'liste' => $urunler->map(fn ($u) => ['ad' => $u->ad, 'fiyat' => (float) $u->fiyat])->all()]);
+        $kartlar = $urunler->take(8)->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, null, 'Etsiz', [], $u->id))->all();
+        return $this->cvp('🥗 Etsiz sevenler için birkaç güzel seçeneğimiz var. Resimlere göz atabilir, detay isteyebilirsiniz.',
+            ['tip' => 'urunler', 'baslik' => 'Vejetaryen', 'kartlar' => $kartlar]);
     }
 
     protected function oneri()
     {
-        // En cok satan urunler (son 30 gun)
+        // Misafirlerin en cok tercih ettikleri (son 30 gun) — sicak dil
         $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', now()->subDays(30))->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->select('urun_adi', DB::raw('SUM(adet) as adet'))->groupBy('urun_adi')->orderByDesc('adet')->limit(4)->pluck('urun_adi')->all();
         if (empty($top)) {
             $top = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->inRandomOrder()->limit(3)->pluck('ad')->all();
         }
+        // Isimlerden tam urun detayi (fiyat/aciklama/kategori) cek
+        $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+            ->where('urunler.sube_id', $this->subeId)->whereIn('urunler.ad', $top)->where('urunler.aktif', 1)
+            ->select('urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat')
+            ->get()->keyBy('ad');
+        $etiketler = ['Misafir favorisi', 'Çok seviliyor', 'Şefin önerisi', 'Günün favorisi'];
+        $kartlar = [];
+        $i = 0;
+        foreach ($top as $ad) {
+            $u = $rows[$ad] ?? null;
+            if (!$u) continue;
+            $kartlar[] = $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, $etiketler[$i] ?? 'Öneri', [], $u->id);
+            $i++;
+        }
         $bas = $top[0] ?? 'Köfte';
-        return $this->cvp("Misafirlerimizin en çok tercih ettikleri: " . implode(', ', $top) . ". Özellikle $bas çok seviliyor, gönül rahatlığıyla önerebilirim. 😊",
-            ['tip' => 'oneri', 'liste' => $top]);
+        return $this->cvp("Size birkaç favorimizi önereyim. Özellikle $bas, misafirlerimizin en beğendiği lezzetlerden; gönül rahatlığıyla tavsiye ederim. Aşağıdaki önerilere göz atabilirsiniz. 😊",
+            ['tip' => 'oneri', 'kartlar' => $kartlar]);
     }
 
     protected function urunBul($c)
     {
-        $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->select('id', 'ad', 'fiyat', 'aciklama', 'tukendi')->get();
+        $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->select('id', 'ad', 'fiyat', 'aciklama', 'tukendi', 'kategori_id')->get();
         $enIyi = null;
         $enSkor = 0;
         foreach ($urunler as $u) {
@@ -147,11 +163,12 @@ class MusteriAsistan
             $icindekiler = DB::table('recete_kalemleri')->join('malzemeler', 'recete_kalemleri.malzeme_id', '=', 'malzemeler.id')
                 ->where('recete_kalemleri.recete_id', $malz)->orderByDesc('recete_kalemleri.miktar')->limit(4)->pluck('malzemeler.ad')->all();
         }
+        $kat = DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad');
         $cevap = $u->ad . ', ' . $this->tl($u->fiyat) . '.';
         if (!empty($u->aciklama)) $cevap .= ' ' . $u->aciklama;
         if (!empty($icindekiler)) $cevap .= ' İçinde ' . implode(', ', $icindekiler) . ' var.';
-        $cevap .= ' Sipariş vermek isterseniz garsonu çağırabilirim.';
-        return $this->cvp($cevap, ['tip' => 'urun', 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'icindekiler' => $icindekiler]);
+        $cevap .= ' Beğendiyseniz "İstiyorum" deyin, garsonumuzu hemen çağırayım. 😊';
+        return $this->cvp($cevap, ['tip' => 'urun', 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
     }
 
     // -------- KALIP (kimlik/sohbet disi; wifi/saat/adres...) --------
@@ -185,6 +202,54 @@ class MusteriAsistan
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    // -------- KART / GORSEL --------
+    /** Tek bir urun kartinin veri yapisi (resim = emoji tile; gercek foto eklenince gorsel dolar). */
+    protected function kart($ad, $fiyat, $aciklama = null, $kat = null, $etiket = null, $icindekiler = [], $urunId = null)
+    {
+        return [
+            'ad' => (string) $ad,
+            'fiyat' => (float) $fiyat,
+            'fiyat_yazi' => $this->tl($fiyat),
+            'aciklama' => $aciklama ? (string) $aciklama : '',
+            'emoji' => $this->katEmoji($kat, $ad),
+            'gorsel' => $this->gorselUrl($urunId),  // simdilik null -> on yuzde emoji tile
+            'etiket' => $etiket,
+            'icindekiler' => array_values((array) $icindekiler),
+            'urun_id' => $urunId ? (int) $urunId : null,
+        ];
+    }
+
+    /** Gercek foto: urunler.gorsel dolu ise onu don, degilse null (on yuz emoji tile gosterir). */
+    protected static $gorselKolonVar = null;
+    protected function gorselUrl($urunId)
+    {
+        if (!$urunId) return null;
+        try {
+            if (self::$gorselKolonVar === null) self::$gorselKolonVar = Schema::hasColumn('urunler', 'gorsel');
+            if (!self::$gorselKolonVar) return null;
+            $g = DB::table('urunler')->where('id', $urunId)->value('gorsel');
+            if (!$g) return null;
+            return preg_match('#^https?://#', $g) ? $g : asset($g);
+        } catch (\Throwable $e) { return null; }
+    }
+
+    /** Kategori/urun adina gore uygun emoji (foto yoksa kartin gorseli). */
+    protected function katEmoji($kat, $ad = '')
+    {
+        $t = $this->norm($kat . ' ' . $ad);
+        $harita = [
+            'baklava' => '🍮', 'kunefe' => '🍮', 'sutlac' => '🍮', 'brownie' => '🍫', 'dondurma' => '🍨', 'tatli' => '🍰',
+            'kahve' => '☕', 'latte' => '☕', 'cay' => '🍵', 'ayran' => '🥛', 'kola' => '🥤', 'meyve suyu' => '🧃', 'limonata' => '🍋',
+            'sicak icecek' => '☕', 'soguk icecek' => '🥤', 'icecek' => '🥤',
+            'salata' => '🥗', 'corba' => '🍲', 'baslangic' => '🍲', 'meze' => '🫒',
+            'pizza' => '🍕', 'burger' => '🍔', 'hamburger' => '🍔', 'makarna' => '🍝', 'pasta' => '🍝', 'bolonez' => '🍝',
+            'kofte' => '🍖', 'kebap' => '🍢', 'tavuk' => '🍗', 'pirzola' => '🍖', 'antrikot' => '🥩', 'balik' => '🐟',
+            'izgara' => '🍖', 'ana yemek' => '🍽️', 'kahvalti' => '🍳',
+        ];
+        foreach ($harita as $k => $e) { if (strpos($t, $k) !== false) return $e; }
+        return '🍽️';
     }
 
     // -------- YARDIMCILAR --------

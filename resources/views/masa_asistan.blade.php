@@ -36,6 +36,24 @@
   #mic{ background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 4px 14px rgba(124,58,237,.4); }
   #mic.dinliyor{ background:linear-gradient(135deg,#F43F5E,#EF4444); }
   #gonder{ background:var(--card); color:#C4B5FD; }
+  /* ---- Gorsel kartlar ---- */
+  .kartsira{ display:flex; gap:10px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:6px; -webkit-overflow-scrolling:touch; }
+  .mkart{ flex:0 0 158px; background:var(--card); border:1px solid #2D3752; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+  .mkart .gor{ position:relative; height:104px; display:flex; align-items:center; justify-content:center; }
+  .mkart .gor img{ width:100%; height:100%; object-fit:cover; }
+  .mkart .tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+  .mkart .tile span{ font-size:44px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+  .mkart .et{ position:absolute; top:8px; left:8px; background:rgba(15,23,42,.82); color:#FDE68A; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; }
+  .mkart .mad{ font-weight:800; font-size:13.5px; padding:9px 11px 2px; line-height:1.25; }
+  .mkart .mfi{ color:#4ADE80; font-weight:800; font-size:13.5px; padding:0 11px 4px; }
+  .mkart .ac{ color:#94A3B8; font-size:11.5px; padding:0 11px 4px; line-height:1.3; max-height:44px; overflow:hidden; }
+  .mkart .ic{ color:#7C8AA5; font-size:10.5px; padding:0 11px 8px; }
+  .mkart .mbtn{ margin:auto 9px 10px; border:none; border-radius:10px; padding:9px; font-weight:700; font-size:12.5px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); }
+  .katsira{ display:flex; gap:8px; flex-wrap:wrap; padding:2px 2px 12px; margin-bottom:6px; }
+  .kkart{ display:flex; align-items:center; gap:7px; background:var(--card); border:1px solid #2D3752; color:#E2E8F0;
+    font-weight:700; font-size:13px; padding:10px 13px; border-radius:14px; }
+  .kkart .ke{ font-size:19px; }
 </style>
 </head>
 <body>
@@ -79,6 +97,52 @@ function ekle(kim, metin){
   d.textContent = metin;
   sohbet.appendChild(d);
   sohbet.scrollTop = sohbet.scrollHeight;
+}
+
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+// Ada gore sabit renkli gradient (foto yoksa emoji tile arka plani)
+function gradientFor(str){ let h=0; for(let i=0;i<String(str).length;i++) h=(h*31+str.charCodeAt(i))%360; return `linear-gradient(135deg,hsl(${h},62%,52%),hsl(${(h+42)%360},68%,42%))`; }
+
+// Urun kartlari (resim + ad + fiyat + aciklama + "Istiyorum")
+function kartlariEkle(kartlar){
+  const sar = document.createElement('div'); sar.className='kartsira';
+  kartlar.forEach(k=>{
+    const c = document.createElement('div'); c.className='mkart';
+    const gorsel = k.gorsel
+      ? `<img src="${esc(k.gorsel)}" alt="${esc(k.ad)}" onerror="this.parentNode.innerHTML='<div class=\\'tile\\' style=\\'background:${gradientFor(k.ad)}\\'><span>${k.emoji||'🍽️'}</span></div>'">`
+      : `<div class="tile" style="background:${gradientFor(k.ad)}"><span>${k.emoji||'🍽️'}</span></div>`;
+    const et = k.etiket ? `<div class="et">${esc(k.etiket)}</div>` : '';
+    const ac = k.aciklama ? `<div class="ac">${esc(k.aciklama)}</div>` : '';
+    const ic = (k.icindekiler && k.icindekiler.length) ? `<div class="ic">${esc(k.icindekiler.join(' · '))}</div>` : '';
+    c.innerHTML = `<div class="gor">${gorsel}${et}</div>`
+      + `<div class="mad">${esc(k.ad)}</div>`
+      + `<div class="mfi">${esc(k.fiyat_yazi||'')}</div>${ac}${ic}`
+      + `<button class="mbtn">🙋 İstiyorum</button>`;
+    c.querySelector('.mbtn').addEventListener('click', e=>{ e.stopPropagation(); istiyorum(k.ad); });
+    c.addEventListener('click', ()=> sor(k.ad));
+    sar.appendChild(c);
+  });
+  sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
+}
+
+// Kategori kartlari (dokun -> o kategoriyi ac)
+function kategorilerEkle(kats){
+  const sar = document.createElement('div'); sar.className='katsira';
+  kats.forEach(k=>{
+    const c = document.createElement('div'); c.className='kkart';
+    c.innerHTML = `<span class="ke">${k.emoji||'🍽️'}</span><span>${esc(k.ad)}</span>`;
+    c.addEventListener('click', ()=> sor(k.ad + ' neler var'));
+    sar.appendChild(c);
+  });
+  sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
+}
+
+// "Istiyorum" -> garson cagir (Faz 1: siparisi garson alir)
+function istiyorum(ad){
+  ekle('ben', ad + ' istiyorum');
+  garsonCagir('garson');
+  const m = 'Harika seçim! ' + ad + ' için garsonumuzu çağırdım, birazdan siparişinizi alacak. 😊';
+  ekle('ai', m); konus(m);
 }
 
 /* ---- Seslendirme: ONCE bedava cihaz (tarayici) sesi; yoksa sunucu Google TTS ---- */
@@ -165,6 +229,8 @@ async function sor(soru){
     const j = await r.json();
     const cevap = j.cevap || 'Bir sorun oldu, tekrar dener misiniz?';
     ekle('ai', cevap);
+    if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);
+    if(Array.isArray(j.kartlar) && j.kartlar.length) kartlariEkle(j.kartlar);
     if(j.seslendir!==false) konus(cevap);
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); }
