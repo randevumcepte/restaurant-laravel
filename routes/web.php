@@ -1003,6 +1003,41 @@ Route::get('/set-patron-adi', function (Request $r) {
     return "Sahip adi guncellendi: $ad ($n kayit). Uygulamada cikis yapip tekrar girin.";
 });
 
+// Turkce karakter duzeltme: ASCII isimleri (Kofte->Köfte, Cay->Çay...) gercek Turkce'ye cevirir.
+// urunler + adisyon_kalemleri(snapshot) + malzemeler + personeller + subeler + kategoriler.
+Route::get('/fix-turkce', function () {
+    $map = [
+        // urunler
+        'Mercimek Corbasi' => 'Mercimek Çorbası', 'Ezogelin Corbasi' => 'Ezogelin Çorbası', 'Sigara Boregi' => 'Sigara Böreği',
+        'Coban Salata' => 'Çoban Salata', 'Ton Balikli Salata' => 'Ton Balıklı Salata', 'Tavuk Sis' => 'Tavuk Şiş',
+        'Karisik Izgara' => 'Karışık Izgara', 'Kofte' => 'Köfte', 'Izgara Kofte' => 'Izgara Köfte', 'Guvec' => 'Güveç',
+        'Manti' => 'Mantı', 'Karisik Pizza' => 'Karışık Pizza', 'Sutlac' => 'Sütlaç', 'Kunefe' => 'Künefe',
+        'Cay' => 'Çay', 'Turk Kahvesi' => 'Türk Kahvesi',
+        // malzemeler
+        'Dana Kiyma' => 'Dana Kıyma', 'Tavuk Gogus' => 'Tavuk Göğüs', 'Salatalik' => 'Salatalık', 'Sogan' => 'Soğan',
+        'Kasar Peyniri' => 'Kaşar Peyniri', 'Tereyagi' => 'Tereyağı', 'Yogurt' => 'Yoğurt', 'Sut' => 'Süt',
+        'Pirinc' => 'Pirinç', 'Zeytinyagi' => 'Zeytinyağı', 'Aycicek Yagi' => 'Ayçiçek Yağı',
+        'Domates Salcasi' => 'Domates Salçası', 'Hamburger Ekmegi' => 'Hamburger Ekmeği',
+        // kategoriler
+        'Baslangiclar' => 'Başlangıçlar', 'Tatlilar' => 'Tatlılar', 'Soguk Icecekler' => 'Soğuk İçecekler', 'Sicak Icecekler' => 'Sıcak İçecekler',
+        // personel
+        'Zeynep Sahin' => 'Zeynep Şahin', 'Can Ozturk' => 'Can Öztürk', 'Hasan Celik' => 'Hasan Çelik',
+        'Ayse Yildiz' => 'Ayşe Yıldız', 'Burak Aydin' => 'Burak Aydın',
+        // sube
+        'Lezzet Duragi' => 'Lezzet Durağı',
+    ];
+    $n = 0;
+    foreach ($map as $eski => $yeni) {
+        $n += DB::table('urunler')->where('ad', $eski)->update(['ad' => $yeni]);
+        DB::table('adisyon_kalemleri')->where('urun_adi', $eski)->update(['urun_adi' => $yeni]);
+        DB::table('malzemeler')->where('ad', $eski)->update(['ad' => $yeni]);
+        DB::table('personeller')->where('ad', $eski)->update(['ad' => $yeni]);
+        DB::table('subeler')->where('ad', $eski)->update(['ad' => $yeni]);
+        DB::table('menu_kategorileri')->where('ad', $eski)->update(['ad' => $yeni]);
+    }
+    return 'Türkçe karakterler düzeltildi (' . count($map) . ' isim). ✅';
+});
+
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
     $n = 0;

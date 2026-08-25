@@ -87,7 +87,7 @@ class DatabaseSeeder extends Seeder
     {
         $now = now();
         $subeVeri = [
-            'ad' => 'Lezzet Duragi', 'adres' => 'Bagdat Cad. No:120, Kadikoy/Istanbul',
+            'ad' => 'Lezzet Durağı', 'adres' => 'Bağdat Cad. No:120, Kadıköy/İstanbul',
             'telefon' => '0216 555 12 34', 'aktif' => 1,
             'created_at' => $now, 'updated_at' => $now,
         ];
@@ -98,10 +98,10 @@ class DatabaseSeeder extends Seeder
 
         $kadro = [
             ['Özcan', 'sahip'], ['Elif Demir', 'mudur'],
-            ['Mehmet Kaya', 'garson'], ['Zeynep Sahin', 'garson'],
-            ['Can Ozturk', 'garson'], ['Deniz Arslan', 'garson'],
-            ['Hasan Celik', 'mutfak'], ['Ayse Yildiz', 'mutfak'],
-            ['Burak Aydin', 'kasa'],
+            ['Mehmet Kaya', 'garson'], ['Zeynep Şahin', 'garson'],
+            ['Can Öztürk', 'garson'], ['Deniz Arslan', 'garson'],
+            ['Hasan Çelik', 'mutfak'], ['Ayşe Yıldız', 'mutfak'],
+            ['Burak Aydın', 'kasa'],
         ];
         $pin = 1000;
         foreach ($kadro as [$ad, $rol]) {
@@ -237,16 +237,16 @@ class DatabaseSeeder extends Seeder
     {
         $now = now();
         $menu = [
-            'Baslangiclar' => [['Mercimek Corbasi', 65], ['Ezogelin Corbasi', 65], ['Sigara Boregi', 85], ['Humus', 95], ['Haydari', 75]],
-            'Salatalar' => [['Coban Salata', 90], ['Sezar Salata', 145], ['Mevsim Salata', 85], ['Ton Balikli Salata', 165]],
-            'Izgaralar' => [['Adana Kebap', 285], ['Urfa Kebap', 285], ['Kuzu Pirzola', 420], ['Tavuk Sis', 235], ['Karisik Izgara', 480], ['Kofte', 245]],
-            'Ana Yemekler' => [['Izgara Kofte', 245], ['Tavuk Sote', 225], ['Et Sote', 320], ['Guvec', 295], ['Manti', 185]],
+            'Başlangıçlar' => [['Mercimek Çorbası', 65], ['Ezogelin Çorbası', 65], ['Sigara Böreği', 85], ['Humus', 95], ['Haydari', 75]],
+            'Salatalar' => [['Çoban Salata', 90], ['Sezar Salata', 145], ['Mevsim Salata', 85], ['Ton Balıklı Salata', 165]],
+            'Izgaralar' => [['Adana Kebap', 285], ['Urfa Kebap', 285], ['Kuzu Pirzola', 420], ['Tavuk Şiş', 235], ['Karışık Izgara', 480], ['Köfte', 245]],
+            'Ana Yemekler' => [['Izgara Köfte', 245], ['Tavuk Sote', 225], ['Et Sote', 320], ['Güveç', 295], ['Mantı', 185]],
             'Burgerler' => [['Klasik Burger', 245], ['Cheeseburger', 275], ['Double Burger', 345], ['Tavuk Burger', 225]],
-            'Pizzalar' => [['Margarita', 215], ['Sucuklu Pizza', 245], ['Karisik Pizza', 285], ['Vejetaryen Pizza', 235]],
+            'Pizzalar' => [['Margarita', 215], ['Sucuklu Pizza', 245], ['Karışık Pizza', 285], ['Vejetaryen Pizza', 235]],
             'Makarnalar' => [['Bolonez', 195], ['Alfredo', 205], ['Pesto', 195], ['Napoliten', 175]],
-            'Tatlilar' => [['Sutlac', 95], ['Kunefe', 145], ['Baklava', 135], ['Dondurma', 75], ['Brownie', 115]],
-            'Soguk Icecekler' => [['Kola', 45], ['Ayran', 30], ['Su', 15], ['Meyve Suyu', 55], ['Limonata', 60]],
-            'Sicak Icecekler' => [['Cay', 20], ['Turk Kahvesi', 55], ['Filtre Kahve', 65], ['Latte', 75], ['Espresso', 55]],
+            'Tatlılar' => [['Sütlaç', 95], ['Künefe', 145], ['Baklava', 135], ['Dondurma', 75], ['Brownie', 115]],
+            'Soğuk İçecekler' => [['Kola', 45], ['Ayran', 30], ['Su', 15], ['Meyve Suyu', 55], ['Limonata', 60]],
+            'Sıcak İçecekler' => [['Çay', 20], ['Türk Kahvesi', 55], ['Filtre Kahve', 65], ['Latte', 75], ['Espresso', 55]],
         ];
         $sira = 0;
         foreach ($menu as $kat => $urunler) {
