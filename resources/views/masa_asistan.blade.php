@@ -100,8 +100,8 @@ if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
 let sesCalar = new Audio();
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
-// iPhone/iPad? (Apple Turkce erkek sesi kotu -> orada Cloud kullan)
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1);
+// SADECE Android bedava cihaz sesi kullanir; diger herkes (iPhone/masaustu) Cloud (Puck).
+const isAndroid = /android/i.test(navigator.userAgent);
 // Bedava cihaz (tarayici) sesi ile konus. Basarili ise true.
 function cihazKonus(temiz){
   seciSes();
@@ -122,14 +122,14 @@ async function cloudKonus(temiz){
 async function konus(t){
   const temiz = temizle(t);
   if(!temiz) return;
-  if(isIOS){
-    // iPhone: Apple TR erkek sesi kotu -> ONCE Cloud, olmazsa cihaz
-    if(await cloudKonus(temiz)) return;
-    cihazKonus(temiz); return;
+  if(isAndroid){
+    // Android: ONCE bedava cihaz sesi (para gitmez); TR ses yoksa Cloud'a dus
+    if(cihazKonus(temiz)) return;
+    await cloudKonus(temiz); return;
   }
-  // Android/masaustu: ONCE bedava cihaz sesi; TR ses yoksa Cloud'a dus
-  if(cihazKonus(temiz)) return;
-  await cloudKonus(temiz);
+  // Diger herkes (iPhone/masaustu): Puck (Cloud); olmazsa cihaz sesi
+  if(await cloudKonus(temiz)) return;
+  cihazKonus(temiz);
 }
 
 /* ---- Konusma tanima (tarayici STT) ---- */
