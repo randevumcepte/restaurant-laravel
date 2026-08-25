@@ -871,17 +871,17 @@ Route::get('/enrich-recete-akilli', function () {
     $aralik = [
         'Dana Kiyma' => [120, 160], 'Dana Antrikot' => [150, 220], 'Tavuk Gogus' => [130, 180], 'Kuzu Pirzola' => [180, 250], 'Sucuk' => [30, 60],
         'Domates' => [30, 80], 'Salatalik' => [20, 50], 'Sogan' => [20, 50], 'Patates' => [100, 180], 'Biber' => [20, 50], 'Mantar' => [30, 80],
-        'Marul' => [3, 5, 1], 'Maydanoz' => [1, 3, 1],
+        'Marul' => [0.2, 0.4, 1], 'Maydanoz' => [0.1, 0.3, 1],
         'Beyaz Peynir' => [40, 90], 'Kasar Peyniri' => [60, 120], 'Mozzarella' => [80, 140], 'Tereyagi' => [10, 30], 'Yogurt' => [120, 200], 'Sut' => [120, 220], 'Yumurta' => [1, 2],
         'Makarna' => [100, 160], 'Pirinc' => [80, 150], 'Bulgur' => [60, 120], 'Mercimek' => [60, 100],
         'Kola' => [1, 1], 'Ayran' => [1, 1], 'Su' => [1, 1], 'Cay' => [3, 5], 'Turk Kahvesi' => [12, 18],
         'Zeytinyagi' => [10, 25], 'Aycicek Yagi' => [15, 40], 'Tuz' => [3, 8], 'Karabiber' => [1, 3], 'Domates Salcasi' => [20, 50],
-        'Un' => [200, 280], 'Ekmek' => [3, 10, 1], 'Hamburger Ekmegi' => [1, 1], 'Patates (Donuk)' => [120, 200], 'Dondurma' => [80, 150],
+        'Un' => [200, 280], 'Ekmek' => [0.2, 0.6, 1], 'Hamburger Ekmegi' => [1, 1], 'Patates (Donuk)' => [120, 200], 'Dondurma' => [80, 150],
     ];
     $miktarUret = function ($ad) use ($aralik) {
         $a = $aralik[$ad] ?? [20, 80];
         $dec = $a[2] ?? 0;
-        if ($dec) return random_int((int) round($a[0] * 10), (int) round($a[1] * 10)) / 10 / ($dec == 1 ? 1 : 1);
+        if ($dec) return random_int((int) round($a[0] * 10), (int) round($a[1] * 10)) / 10;
         return random_int((int) $a[0], (int) $a[1]);
     };
     // keyword (kucuk harf) => malzeme adlari — spesifik once
