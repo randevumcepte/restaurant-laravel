@@ -2237,6 +2237,109 @@ Route::post('/api/patron/masa-ac', function (Request $r) {
     return ['ok' => 1, 'adisyon_id' => $id, 'mesaj' => $masa->ad . ' açıldı (' . $misafir . ' kişi).'];
 });
 
+// ============================ CARI / ACIK HESAP ("bana yazin") ============================
+// Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
+Route::get('/cari-kur', function () {
+    if (!Schema::hasTable('cari_hesaplar')) {
+        Schema::create('cari_hesaplar', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->string('ad');
+            $t->string('tip')->default('musteri'); // patron | musteri | firma | personel
+            $t->string('telefon')->nullable();
+            $t->boolean('aktif')->default(true);
+            $t->timestamp('created_at')->useCurrent();
+        });
+    }
+    if (!Schema::hasTable('cari_hareketler')) {
+        Schema::create('cari_hareketler', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('cari_id');
+            $t->string('tip'); // borc (satis) | tahsilat (odeme)
+            $t->decimal('tutar', 14, 2);
+            $t->unsignedBigInteger('adisyon_id')->nullable();
+            $t->string('odeme_sekli')->nullable(); // tahsilat: nakit|havale|kredi
+            $t->string('aciklama')->nullable();
+            $t->unsignedBigInteger('personel_id')->nullable();
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'cari_id']);
+        });
+    }
+    $sube = DB::table('subeler')->first();
+    if (DB::table('cari_hesaplar')->where('sube_id', $sube->id)->count() > 0) return 'Cari zaten kurulu.';
+    $sahip = DB::table('personeller')->where('rol', 'sahip')->value('id');
+    $ids = [DB::table('cari_hesaplar')->insertGetId(['sube_id' => $sube->id, 'ad' => 'Patron (İşletme Sahibi)', 'tip' => 'patron', 'aktif' => 1, 'created_at' => now()])];
+    foreach ([['Ahmet Yılmaz', 'musteri', '05321112233'], ['Berk İnşaat', 'firma', '02165554433'], ['Elif Kaya', 'musteri', '05339998877'], ['Deniz Ltd. Şti.', 'firma', '02123334455']] as [$ad, $tip, $tel]) {
+        $ids[] = DB::table('cari_hesaplar')->insertGetId(['sube_id' => $sube->id, 'ad' => $ad, 'tip' => $tip, 'telefon' => $tel, 'aktif' => 1, 'created_at' => now()]);
+    }
+    foreach ($ids as $cid) {
+        for ($i = 0, $n = random_int(2, 6); $i < $n; $i++) {
+            DB::table('cari_hareketler')->insert(['sube_id' => $sube->id, 'cari_id' => $cid, 'tip' => 'borc', 'tutar' => random_int(150, 1200),
+                'aciklama' => 'Açık hesap satış', 'personel_id' => $sahip, 'created_at' => now()->subDays(random_int(1, 40))]);
+        }
+        if (random_int(0, 1)) DB::table('cari_hareketler')->insert(['sube_id' => $sube->id, 'cari_id' => $cid, 'tip' => 'tahsilat', 'tutar' => random_int(200, 800),
+            'odeme_sekli' => 'havale', 'aciklama' => 'Tahsilat', 'personel_id' => $sahip, 'created_at' => now()->subDays(random_int(1, 20))]);
+    }
+    return 'Cari hesaplar kuruldu: ' . count($ids) . ' hesap (Patron + demo müşteri/firma) + hareketler. ✅';
+});
+
+if (!function_exists('_cariBakiye')) {
+    function _cariBakiye($cariId)
+    {
+        $borc = (float) DB::table('cari_hareketler')->where('cari_id', $cariId)->where('tip', 'borc')->sum('tutar');
+        $tah = (float) DB::table('cari_hareketler')->where('cari_id', $cariId)->where('tip', 'tahsilat')->sum('tutar');
+        return round($borc - $tah, 2);
+    }
+}
+
+Route::get('/api/patron/cariler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasTable('cari_hesaplar')) return ['ok' => 1, 'cariler' => [], 'toplam_alacak' => 0];
+    $cariler = DB::table('cari_hesaplar')->where('sube_id', $p->sube_id)->where('aktif', 1)
+        ->orderByRaw("FIELD(tip,'patron','firma','musteri','personel')")->orderBy('ad')->get()
+        ->map(fn ($c) => ['id' => (int) $c->id, 'ad' => $c->ad, 'tip' => $c->tip, 'telefon' => $c->telefon, 'bakiye' => _cariBakiye($c->id)]);
+    return ['ok' => 1, 'toplam_alacak' => round($cariler->sum('bakiye'), 2), 'cariler' => $cariler];
+});
+
+Route::get('/api/patron/cari-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $c = DB::table('cari_hesaplar')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$c) return ['ok' => 0, 'hata' => 'Cari bulunamadı'];
+    $borc = (float) DB::table('cari_hareketler')->where('cari_id', $c->id)->where('tip', 'borc')->sum('tutar');
+    $tah = (float) DB::table('cari_hareketler')->where('cari_id', $c->id)->where('tip', 'tahsilat')->sum('tutar');
+    $hareketler = DB::table('cari_hareketler')->where('cari_id', $c->id)->orderByDesc('created_at')->limit(80)->get()
+        ->map(fn ($h) => ['tip' => $h->tip, 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama, 'odeme_sekli' => $h->odeme_sekli,
+            'zaman' => \Carbon\Carbon::parse($h->created_at)->format('d.m.Y H:i')]);
+    return ['ok' => 1, 'ad' => $c->ad, 'tip' => $c->tip, 'telefon' => $c->telefon, 'bakiye' => round($borc - $tah, 2),
+        'toplam_borc' => round($borc, 2), 'toplam_tahsilat' => round($tah, 2), 'hareketler' => $hareketler];
+});
+
+Route::post('/api/patron/cari-tahsilat', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $c = DB::table('cari_hesaplar')->where('id', (int) $r->cari_id)->where('sube_id', $p->sube_id)->first();
+    if (!$c) return ['ok' => 0, 'hata' => 'Cari bulunamadı'];
+    $tutar = max(0, (float) $r->tutar);
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir tutar girin.'];
+    $sekil = in_array($r->odeme_sekli, ['nakit', 'havale', 'kredi']) ? $r->odeme_sekli : 'nakit';
+    DB::table('cari_hareketler')->insert(['sube_id' => $p->sube_id, 'cari_id' => $c->id, 'tip' => 'tahsilat', 'tutar' => $tutar,
+        'odeme_sekli' => $sekil, 'aciklama' => 'Tahsilat', 'personel_id' => $p->id, 'created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' tahsil edildi (' . $sekil . '). Yeni bakiye ₺' . number_format(_cariBakiye($c->id), 0, ',', '.') . '.'];
+});
+
+Route::post('/api/patron/cari-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'İsim girin'];
+    $tip = in_array($r->tip, ['musteri', 'firma', 'personel', 'patron']) ? $r->tip : 'musteri';
+    $id = DB::table('cari_hesaplar')->insertGetId(['sube_id' => $p->sube_id, 'ad' => $ad, 'tip' => $tip, 'telefon' => $r->telefon, 'aktif' => 1, 'created_at' => now()]);
+    return ['ok' => 1, 'id' => (int) $id, 'ad' => $ad, 'tip' => $tip];
+});
+
 Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
