@@ -1960,6 +1960,81 @@ Route::post('/api/patron/yetki-kaydet', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ADISYON OPERASYONLARI (yetki kontrollu): kapat | iskonto | ikram | iptal
+// Limit asimi/garson kisiti -> onay_pin (mudur/sahip PIN'i) ile onaylanir.
+Route::post('/api/patron/adisyon-islem', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $islem = $r->islem;
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
+    if ($a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Bu adisyon zaten kapanmış veya iptal edilmiş.'];
+
+    // Onaylayan (mudur/sahip PIN'i) — limit asimi/iptal onayinda kullanilir
+    $onaylayan = null;
+    if ($r->onay_pin) {
+        $onaylayan = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first();
+        if (!$onaylayan) return ['ok' => 0, 'hata' => 'Onay PIN hatalı.'];
+    }
+    $yetki = fn ($k) => _restoYetkiVar($p, $k);
+
+    if ($islem === 'kapat') {
+        if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma / masa kapatma yetkiniz yok.'];
+        $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti']) ? $r->odeme_tip : 'nakit';
+        $kalan = (float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar');
+        if ($kalan > 0) {
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
+        }
+        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
+        if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        return ['ok' => 1, 'mesaj' => 'Ödeme alındı (' . ['nakit' => 'Nakit', 'kredi' => 'Kredi', 'yemek_karti' => 'Yemek Kartı'][$tip] . '), masa kapatıldı.'];
+    }
+
+    if ($islem === 'iskonto') {
+        if (!$yetki('iskonto')) return ['ok' => 0, 'hata' => 'İskonto uygulama yetkiniz yok.'];
+        $oran = max(0, min(100, (float) $r->oran));
+        if ($oran <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir iskonto oranı girin.'];
+        $limit = $p->rol === 'sahip' ? 100 : (float) ($p->iskonto_limit ?? 0);
+        if ($oran > $limit) {
+            if (!$onaylayan) return ['ok' => 0, 'onay_gerek' => true, 'hata' => '%' . round($oran) . ' iskonto, limitinizi (%' . round($limit) . ') aşıyor. Yetkili PIN onayı gerekli.'];
+            $onayLimit = $onaylayan->rol === 'sahip' ? 100 : (float) ($onaylayan->iskonto_limit ?? 0);
+            if (!_restoYetkiVar($onaylayan, 'iskonto') || $onayLimit < $oran) return ['ok' => 0, 'hata' => 'Onaylayan kişinin iskonto yetkisi/limiti de yetersiz.'];
+        }
+        $indirim = round((float) $a->ara_toplam * $oran / 100, 2);
+        $yeni = max(0, (float) $a->ara_toplam - $indirim - (float) $a->ikram);
+        DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $indirim, 'toplam' => $yeni]);
+        DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'indirim',
+            'tutar' => $indirim, 'sebep' => $r->sebep ?: ('%' . round($oran) . ' iskonto'), 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+        return ['ok' => 1, 'mesaj' => '%' . round($oran) . ' iskonto uygulandı (₺' . number_format($indirim, 0, ',', '.') . ')' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
+    }
+
+    if ($islem === 'ikram') {
+        if (!$yetki('ikram')) return ['ok' => 0, 'hata' => 'İkram yetkiniz yok.'];
+        $tutar = max(0, (float) $r->tutar);
+        if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir ikram tutarı girin.'];
+        if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
+        $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
+        DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+        DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
+            'tutar' => $tutar, 'sebep' => $r->sebep ?: 'İkram', 'personel_id' => $p->id, 'created_at' => now()]);
+        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram uygulandı.'];
+    }
+
+    if ($islem === 'iptal') {
+        if (!$yetki('adisyon_iptal')) return ['ok' => 0, 'hata' => 'Adisyon iptal yetkiniz yok.'];
+        if (!in_array($p->rol, ['sahip', 'mudur'])) {
+            if (!$onaylayan || !in_array($onaylayan->rol, ['sahip', 'mudur'])) return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Adisyon iptali için müdür/sahip PIN onayı gerekli.'];
+        }
+        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'iptal']);
+        if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'void',
+            'tutar' => (float) $a->toplam, 'sebep' => $r->sebep ?: 'Adisyon iptal', 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+        return ['ok' => 1, 'mesaj' => 'Adisyon iptal edildi, masa boşaltıldı.'];
+    }
+
+    return ['ok' => 0, 'hata' => 'Bilinmeyen işlem'];
+});
+
 Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
