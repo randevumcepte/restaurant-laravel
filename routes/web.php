@@ -973,6 +973,16 @@ Route::get('/set-patron-adi', function (Request $r) {
     return "Sahip adi guncellendi: $ad ($n kayit). Uygulamada cikis yapip tekrar girin.";
 });
 
+// Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
+Route::get('/enrich-acik-tazele', function () {
+    $n = 0;
+    foreach (DB::table('adisyonlar')->where('durum', 'acik')->get(['id']) as $a) {
+        DB::table('adisyonlar')->where('id', $a->id)->update(['acilis' => now()->subMinutes(random_int(5, 180))]);
+        $n++;
+    }
+    return "Açık adisyonların açılış saati tazelendi: $n masa (5-180 dk önce). ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
