@@ -1013,6 +1013,57 @@ Route::get('/enrich-acik-tazele', function () {
     return "Açık adisyonların açılış saati tazelendi: $n masa (5-180 dk önce). ✅";
 });
 
+// ============================ PERSONEL YETKILERI (Kerzz tarzi granular) ============================
+if (!function_exists('_restoYetkiKeys')) {
+    function _restoYetkiKeys()
+    {
+        return ['adisyon_ac', 'adisyon_kapat', 'adisyon_iptal', 'adisyon_bol', 'adisyon_birlestir',
+            'iskonto', 'ikram', 'urun_sil', 'fatura_kes', 'geri_islem', 'maliyet_gor', 'rapor_gor'];
+    }
+}
+if (!function_exists('_restoYetkiVarsayilan')) {
+    function _restoYetkiVarsayilan($rol)
+    {
+        $y = array_fill_keys(_restoYetkiKeys(), false);
+        $limit = 0;
+        $ac = function (&$y, $liste) { foreach ($liste as $k) $y[$k] = true; };
+        switch ($rol) {
+            case 'sahip': foreach ($y as $k => $v) $y[$k] = true; $limit = 100; break;
+            case 'mudur': foreach ($y as $k => $v) $y[$k] = true; $limit = 50; break;
+            case 'kasa': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'fatura_kes', 'maliyet_gor']); $limit = 10; break;
+            case 'garson': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'adisyon_bol']); $limit = 0; break;
+        }
+        return ['yetkiler' => $y, 'iskonto_limit' => $limit];
+    }
+}
+if (!function_exists('_restoYetkiVar')) {
+    function _restoYetkiVar($personel, $yetki)
+    {
+        if (!$personel) return false;
+        if (($personel->rol ?? '') === 'sahip') return true;
+        $y = isset($personel->yetkiler) && $personel->yetkiler ? json_decode($personel->yetkiler, true) : _restoYetkiVarsayilan($personel->rol ?? '')['yetkiler'];
+        return !empty($y[$yetki]);
+    }
+}
+
+// Yetki kolonlarini kur + varsayilanlari doldur (tek sefer, migrate beklemeden)
+Route::get('/yetki-kur', function () {
+    if (!Schema::hasColumn('personeller', 'yetkiler')) {
+        Schema::table('personeller', fn ($t) => $t->text('yetkiler')->nullable());
+    }
+    if (!Schema::hasColumn('personeller', 'iskonto_limit')) {
+        Schema::table('personeller', fn ($t) => $t->decimal('iskonto_limit', 5, 2)->default(0));
+    }
+    $n = 0;
+    foreach (DB::table('personeller')->get(['id', 'rol', 'yetkiler']) as $p) {
+        if ($p->yetkiler) continue;
+        $d = _restoYetkiVarsayilan($p->rol);
+        DB::table('personeller')->where('id', $p->id)->update(['yetkiler' => json_encode($d['yetkiler']), 'iskonto_limit' => $d['iskonto_limit']]);
+        $n++;
+    }
+    return "Yetkiler kuruldu: $n personel varsayılan yetkilerle donatıldı. ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
@@ -1872,6 +1923,41 @@ Route::get('/api/masalar', function (Request $r) {
                 'adisyon_id' => $a ? $a->id : null];
         });
     return ['ok' => 1, 'masalar' => $masalar];
+});
+
+// Personel yetkileri: listele (sahip/mudur gorur) + kaydet (SADECE sahip)
+Route::get('/api/patron/personeller', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $liste = DB::table('personeller')->where('sube_id', $p->sube_id)
+        ->orderByRaw("FIELD(rol,'sahip','mudur','kasa','garson','mutfak')")->orderBy('ad')
+        ->get(['id', 'ad', 'rol', 'yetkiler', 'iskonto_limit'])
+        ->map(function ($x) {
+            $y = $x->yetkiler ? json_decode($x->yetkiler, true) : _restoYetkiVarsayilan($x->rol)['yetkiler'];
+            // Eksik anahtarlari tamamla (yeni yetki eklenirse)
+            $y = array_merge(array_fill_keys(_restoYetkiKeys(), false), is_array($y) ? $y : []);
+            return ['id' => (int) $x->id, 'ad' => $x->ad, 'rol' => $x->rol, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit];
+        });
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'anahtarlar' => _restoYetkiKeys(), 'personeller' => $liste];
+});
+
+Route::post('/api/patron/yetki-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetki düzenlemeyi sadece işletme sahibi yapabilir.'], 403);
+    $pid = (int) $r->personel_id;
+    $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $p->sube_id)->first();
+    if (!$hedef) return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+    $gelen = json_decode((string) $r->yetkiler, true);
+    if (!is_array($gelen)) return ['ok' => 0, 'hata' => 'Geçersiz yetki verisi'];
+    // Sadece bilinen anahtarlar, bool
+    $temiz = [];
+    foreach (_restoYetkiKeys() as $k) $temiz[$k] = !empty($gelen[$k]);
+    DB::table('personeller')->where('id', $pid)->update([
+        'yetkiler' => json_encode($temiz),
+        'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)),
+    ]);
+    return ['ok' => 1];
 });
 
 Route::get('/api/paket', function (Request $r) {
