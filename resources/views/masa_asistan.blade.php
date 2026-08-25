@@ -100,21 +100,36 @@ if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
 let sesCalar = new Audio();
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
-async function konus(t){
-  const temiz = temizle(t);
-  if(!temiz) return;
-  // 1) Sunucu Google TTS (patronun sectigi kaliteli ERKEK ses; her cihazda birebir ayni)
+// iPhone/iPad? (Apple Turkce erkek sesi kotu -> orada Cloud kullan)
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1);
+// Bedava cihaz (tarayici) sesi ile konus. Basarili ise true.
+function cihazKonus(temiz){
+  seciSes();
+  if(synth && trVoice){
+    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return true; }catch(e){}
+  }
+  return false;
+}
+// Sunucu Google TTS ile konus. Basarili ise true.
+async function cloudKonus(temiz){
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz})});
     const j = await r.json();
-    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return; }
+    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return true; }
   }catch(e){}
-  // 2) Cloud yoksa/anahtar yoksa: bedava cihaz Turkce sesi (dogal ayar)
-  seciSes();
-  if(synth && trVoice){
-    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return; }catch(e){}
+  return false;
+}
+async function konus(t){
+  const temiz = temizle(t);
+  if(!temiz) return;
+  if(isIOS){
+    // iPhone: Apple TR erkek sesi kotu -> ONCE Cloud, olmazsa cihaz
+    if(await cloudKonus(temiz)) return;
+    cihazKonus(temiz); return;
   }
-  // 3) Son care: sessiz gec (metin ekranda zaten var)
+  // Android/masaustu: ONCE bedava cihaz sesi; TR ses yoksa Cloud'a dus
+  if(cihazKonus(temiz)) return;
+  await cloudKonus(temiz);
 }
 
 /* ---- Konusma tanima (tarayici STT) ---- */
