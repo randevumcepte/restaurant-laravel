@@ -2237,6 +2237,51 @@ Route::post('/api/patron/masa-ac', function (Request $r) {
     return ['ok' => 1, 'adisyon_id' => $id, 'mesaj' => $masa->ad . ' açıldı (' . $misafir . ' kişi).'];
 });
 
+// MENU: siparis girisi icin kategori + urun listesi
+Route::get('/api/menu', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')->get(['id', 'ad'])
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad]);
+    $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')
+        ->get(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi'])
+        ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat,
+            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi]);
+    return ['ok' => 1, 'kategoriler' => $kategoriler, 'urunler' => $urunler];
+});
+
+// ADISYONA URUN EKLE (siparis al). kalemler = JSON [{urun_id,adet}]. Yetki: adisyon_ac.
+Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Sipariş ekleme yetkiniz yok.'];
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
+    if ($a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Bu adisyon açık değil.'];
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Ürün seçilmedi'];
+    $eklenen = 0;
+    foreach ($kalemler as $k) {
+        $uid = (int) ($k['urun_id'] ?? 0);
+        $adet = max(1, (int) ($k['adet'] ?? 1));
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $p->sube_id)->first();
+        if (!$u) continue;
+        DB::table('adisyon_kalemleri')->insert([
+            'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
+            'adet' => $adet, 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
+            'durum' => 'gonderildi', 'personel_id' => $p->id, 'gonderim_zamani' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $eklenen++;
+    }
+    if ($eklenen === 0) return ['ok' => 0, 'hata' => 'Geçerli ürün eklenemedi'];
+    $araToplam = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->sum('tutar');
+    $toplam = max(0, $araToplam - (float) $a->indirim - (float) $a->ikram);
+    DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => $araToplam, 'toplam' => $toplam, 'updated_at' => now()]);
+    if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
+    return ['ok' => 1, 'mesaj' => $eklenen . ' kalem eklendi.', 'ara_toplam' => $araToplam, 'toplam' => $toplam];
+});
+
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
 // Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
 Route::get('/cari-kur', function () {
