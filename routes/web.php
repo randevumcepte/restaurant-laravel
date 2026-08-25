@@ -666,6 +666,36 @@ Route::get('/demo-veri-yukle', function () {
         . '<a href="/teklif" style="display:inline-block;margin-top:12px;background:#4f46e5;color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Teklifler\'e git →</a></div>';
 });
 
+// Acik paket siparislerin sürelerini tazele -> rozetler yesil/turuncu/kirmizi karisik gorunsun.
+// Full seed'i CALISTIRMAZ (takilmaz); sadece acik paket adisyonlarin acilis saatini yeniden dagitir.
+Route::get('/paket-tazele', function () {
+    $acik = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')
+        ->orderBy('id')->pluck('id');
+    if ($acik->isEmpty()) {
+        return '<div style="font-family:sans-serif;max-width:520px;margin:80px auto;text-align:center;padding:32px;border:1px solid #e2e8f0;border-radius:16px">'
+            . '<div style="font-size:48px">📦</div><h2 style="color:#0f172a">Açık paket sipariş yok</h2>'
+            . '<p style="color:#64748b">Önce /demo-veri-yukle ile veri yükleyin.</p></div>';
+    }
+    // Kova basina araliklar: yesil (<25dk), turuncu (25-45dk), kirmizi (>=45dk)
+    $kovalar = [[5, 20], [28, 42], [52, 95]];
+    $sayac = ['yesil' => 0, 'turuncu' => 0, 'kirmizi' => 0];
+    foreach ($acik as $i => $id) {
+        $kova = $kovalar[$i % 3];
+        $acilis = now()->subMinutes(random_int($kova[0], $kova[1]));
+        DB::table('adisyonlar')->where('id', $id)->update([
+            'acilis' => $acilis, 'created_at' => $acilis, 'updated_at' => $acilis,
+        ]);
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
+            ->update(['gonderim_zamani' => $acilis]);
+        $sayac[$i % 3 === 0 ? 'yesil' : ($i % 3 === 1 ? 'turuncu' : 'kirmizi')]++;
+    }
+    return '<div style="font-family:sans-serif;max-width:520px;margin:80px auto;text-align:center;padding:32px;border:1px solid #e2e8f0;border-radius:16px">'
+        . '<div style="font-size:48px">✅</div><h2 style="color:#0f172a">Paket süreleri tazelendi</h2>'
+        . '<p style="color:#64748b">' . $acik->count() . ' sipariş güncellendi — '
+        . '🟢 ' . $sayac['yesil'] . ' &nbsp; 🟠 ' . $sayac['turuncu'] . ' &nbsp; 🔴 ' . $sayac['kirmizi'] . '</p>'
+        . '<p style="color:#94a3b8;font-size:13px">Uygulamada Paket sekmesini aşağı çekip yenileyin.</p></div>';
+});
+
 // Kayip Radari zenginlestirme (SADECE ekler, truncate YOK, ciroyu etkilemez, tek sefer)
 Route::get('/enrich-kayip', function () {
     if (DB::table('stok_hareketleri')->where('tip', 'fire')->count() > 5) {
