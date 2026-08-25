@@ -97,7 +97,7 @@ class DatabaseSeeder extends Seeder
         $this->subeId = DB::table('subeler')->insertGetId($subeVeri);
 
         $kadro = [
-            ['Ahmet Yilmaz', 'sahip'], ['Elif Demir', 'mudur'],
+            ['Özcan', 'sahip'], ['Elif Demir', 'mudur'],
             ['Mehmet Kaya', 'garson'], ['Zeynep Sahin', 'garson'],
             ['Can Ozturk', 'garson'], ['Deniz Arslan', 'garson'],
             ['Hasan Celik', 'mutfak'], ['Ayse Yildiz', 'mutfak'],

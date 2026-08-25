@@ -966,6 +966,13 @@ Route::get('/enrich-recete-akilli', function () {
     return "Akıllı reçeteler yüklendi: $n ürün (ada göre gerçekçi malzeme). ✅";
 });
 
+// Patron (sahip) adini degistir (canli, reseed'siz). ?ad=Özcan
+Route::get('/set-patron-adi', function (Request $r) {
+    $ad = trim((string) ($r->ad ?: 'Özcan'));
+    $n = DB::table('personeller')->where('rol', 'sahip')->update(['ad' => $ad]);
+    return "Sahip adi guncellendi: $ad ($n kayit). Uygulamada cikis yapip tekrar girin.";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
