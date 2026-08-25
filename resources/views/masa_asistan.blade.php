@@ -113,7 +113,7 @@ function cihazKonus(temiz){
 // Sunucu Google TTS ile konus. Basarili ise true.
 async function cloudKonus(temiz){
   try{
-    const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz})});
+    const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA})});
     const j = await r.json();
     if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return true; }
   }catch(e){}

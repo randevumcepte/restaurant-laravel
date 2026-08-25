@@ -1133,7 +1133,11 @@ Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     $metin = trim((string) $r->input('metin', ''));
     if ($metin === '') return response()->json(['basarili' => false], 422);
     if (mb_strlen($metin) > 2000) $metin = mb_substr($metin, 0, 2000);
-    $servis = new \App\Services\SeslendirmeServisi();
+    // Hangi restoran/sube? -> her sube kendi aylik limitine sayilir (multi-tenant)
+    $subeId = null;
+    if ($r->filled('masa')) { $m = DB::table('masalar')->find((int) $r->input('masa')); $subeId = $m ? $m->sube_id : null; }
+    elseif ($r->filled('sube')) { $subeId = (int) $r->input('sube'); }
+    $servis = new \App\Services\SeslendirmeServisi($subeId);
     $ses = $r->input('ses');
     if (!$ses) $ses = resto_ayar_al('tts_ses', null); // patronun sectigi kalici ses (yoksa config varsayilani)
     $ad = $servis->uret($metin, $ses);
@@ -1194,19 +1198,39 @@ Route::get('/ses-test', function () {
     return view('ses_test', ['sesler' => resto_erkek_sesler(), 'secili' => $secili, 'anahtarVar' => $anahtarVar]);
 });
 
-// Bu ayki Cloud TTS kullanimi (sert limit ne kadar doldu) — fatura kontrolu
-Route::get('/tts-kullanim', function () {
-    $servis = new \App\Services\SeslendirmeServisi();
-    $kul = $servis->ayKullanim();
+// Bu ayki Cloud TTS kullanimi — HER RESTORAN (sube) AYRI. Fatura kontrolu.
+Route::get('/tts-kullanim', function (Request $r) {
     $limit = (int) config('services.google_tts.aylik_limit', 900000);
-    $yuzde = $limit > 0 ? round($kul / $limit * 100, 1) : 0;
+    $ay = date('Ym');
+    if (!Schema::hasTable('ayarlar')) return response()->json(['ay' => date('Y-m'), 'restoranlar' => [], 'not' => 'Henuz kullanim yok.'], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    $satirlar = DB::table('ayarlar')->where('anahtar', 'like', 'tts_kota_%_' . $ay)->get();
+    $subeAd = DB::table('subeler')->pluck('ad', 'id');
+    $liste = [];
+    $toplam = 0;
+    foreach ($satirlar as $s) {
+        // anahtar: tts_kota_{subeId}_{YYYYMM}
+        if (!preg_match('/^tts_kota_(\d+)_' . $ay . '$/', $s->anahtar, $m)) continue;
+        $sid = (int) $m[1];
+        $kul = (int) $s->deger;
+        $toplam += $kul;
+        $liste[] = [
+            'sube_id' => $sid,
+            'restoran' => $sid === 0 ? '(test/genel)' : ($subeAd[$sid] ?? ('Sube ' . $sid)),
+            'kullanilan_karakter' => $kul,
+            'aylik_sert_limit' => $limit,
+            'doluluk_yuzde' => $limit > 0 ? round($kul / $limit * 100, 1) : 0,
+            'kalan_karakter' => max(0, $limit - $kul),
+            'durum' => $kul >= $limit ? 'DOLDU (Cloud durdu, bedava sese dustu)' : 'normal',
+        ];
+    }
+    usort($liste, fn ($a, $b) => $b['kullanilan_karakter'] <=> $a['kullanilan_karakter']);
     return response()->json([
         'ay' => date('Y-m'),
-        'kullanilan_karakter' => $kul,
-        'aylik_sert_limit' => $limit,
-        'doluluk_yuzde' => $yuzde,
-        'kalan_karakter' => max(0, $limit - $kul),
-        'not' => $kul >= $limit ? 'LIMIT DOLDU -> Cloud durdu, herkes bedava cihaz sesinde. Fatura yok.' : 'Limit altinda; kota bitince otomatik bedavaya duser, fatura olusmaz.',
+        'her_restoran_aylik_limit' => $limit,
+        'toplam_kullanilan' => $toplam,
+        'restoran_sayisi' => count($liste),
+        'restoranlar' => $liste,
+        'not' => 'Her restoran KENDI limitine sayilir; biri dolsa digerleri etkilenmez. Limit dolan Cloud durur, bedava cihaz sesine duser -> fatura yok.',
     ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 });
 

@@ -10,10 +10,12 @@ namespace App\Services;
 class SeslendirmeServisi
 {
     protected $klasor;
+    protected $subeId;   // HER restoran/sube kendi aylik limitine sahip (multi-tenant)
     public $sonHata = null;
 
-    public function __construct()
+    public function __construct($subeId = null)
     {
+        $this->subeId = (int) $subeId; // null/0 = genel havuz (test vb.)
         $this->klasor = storage_path('app/tts');
         if (!is_dir($this->klasor)) @mkdir($this->klasor, 0775, true);
     }
@@ -44,8 +46,8 @@ class SeslendirmeServisi
         return null;
     }
 
-    /** Bu ayin anahtari: tts_kota_YYYYMM */
-    protected function ayAnahtar() { return 'tts_kota_' . date('Ym'); }
+    /** Bu ay + BU SUBE'nin anahtari: tts_kota_{subeId}_{YYYYMM} (her restoran ayri sayilir) */
+    protected function ayAnahtar() { return 'tts_kota_' . ((int) $this->subeId) . '_' . date('Ym'); }
 
     /** Bu ay kullanilan karakter sayisi (onbellekten gelenler sayilmaz). */
     public function ayKullanim()
