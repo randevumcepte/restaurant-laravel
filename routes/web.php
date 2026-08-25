@@ -1814,7 +1814,7 @@ Route::get('/api/masalar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
-        ->select('masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
+        ->select('id', 'masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
     $masalar = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')
         ->where('masalar.sube_id', $p->sube_id)
         ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
@@ -1822,7 +1822,8 @@ Route::get('/api/masalar', function (Request $r) {
         ->map(function ($m) use ($acik) {
             $a = $acik[$m->id] ?? null;
             return ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
-                'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0];
+                'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0,
+                'adisyon_id' => $a ? $a->id : null];
         });
     return ['ok' => 1, 'masalar' => $masalar];
 });
@@ -1830,13 +1831,56 @@ Route::get('/api/masalar', function (Request $r) {
 Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
+    $simdi = now();
     $siparisler = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
-        ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.teslimat_durumu', 'adisyonlar.toplam',
-            'musteriler.ad as musteri', 'kuryeler.ad as kurye')
-        ->orderByDesc('adisyonlar.acilis')->get();
+        ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.platform_siparis_no', 'adisyonlar.teslimat_durumu',
+            'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.teslimat_adres',
+            'musteriler.ad as musteri', 'musteriler.telefon', 'kuryeler.ad as kurye')
+        ->orderByDesc('adisyonlar.acilis')->get()
+        ->map(function ($s) use ($simdi) {
+            $dk = $s->acilis ? \Carbon\Carbon::parse($s->acilis)->diffInMinutes($simdi) : 0;
+            $s->gecen_dk = $dk;
+            $s->gecen_metin = $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk');
+            $s->urun_adet = (int) DB::table('adisyon_kalemleri')->where('adisyon_id', $s->id)->sum('adet');
+            return $s;
+        });
     return ['ok' => 1, 'siparisler' => $siparisler];
+});
+
+Route::get('/api/paket/{id}', function (Request $r, $id) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $a = DB::table('adisyonlar')->where('adisyonlar.id', $id)->where('adisyonlar.kanal', 'paket')
+        ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+        ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
+        ->select('adisyonlar.*', 'musteriler.ad as musteri', 'musteriler.telefon', 'musteriler.adres as musteri_adres',
+            'kuryeler.ad as kurye', 'kuryeler.telefon as kurye_tel')
+        ->first();
+    if (!$a) return response()->json(['ok' => 0, 'mesaj' => 'Sipariş bulunamadı'], 404);
+    $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0;
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
+        ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'not')->orderBy('id')->get();
+    return ['ok' => 1, 'siparis' => [
+        'id' => $a->id,
+        'platform' => $a->platform,
+        'platform_siparis_no' => $a->platform_siparis_no,
+        'teslimat_durumu' => $a->teslimat_durumu,
+        'musteri' => $a->musteri ?? 'Müşteri',
+        'telefon' => $a->telefon,
+        'teslimat_adres' => $a->teslimat_adres ?: $a->musteri_adres,
+        'kurye' => $a->kurye,
+        'kurye_tel' => $a->kurye_tel,
+        'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m.Y H:i') : '-',
+        'gecen_dk' => $dk,
+        'gecen_metin' => $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk'),
+        'ara_toplam' => (float) $a->ara_toplam,
+        'indirim' => (float) $a->indirim,
+        'ikram' => (float) $a->ikram,
+        'toplam' => (float) $a->toplam,
+        'kalemler' => $kalemler,
+    ]];
 });
 
 Route::get('/api/raporlar', function (Request $r) {
