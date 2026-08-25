@@ -1092,6 +1092,42 @@ Route::get('/kalip-sil', function (Request $r) {
     return 'Silindi (id=' . (int) $r->id . ').';
 });
 
+// ============================ MUSTERI QR ASISTANI (public, girissiz) ============================
+// Masadaki QR -> tarayicida AI asistan sayfasi acilir.
+Route::get('/masa/{id}', function ($id) {
+    $masa = DB::table('masalar')->find((int) $id);
+    if (!$masa) abort(404);
+    $sube = DB::table('subeler')->find($masa->sube_id);
+    return view('masa_asistan', ['masa' => $masa, 'sube' => $sube]);
+});
+
+// Musteri sorusu -> MusteriAsistan (menu/oneri/kalip/garson)
+Route::post('/api/qr/asistan', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    $a = new \App\Services\MusteriAsistan($subeId);
+    return $a->cevapla((string) $r->soru);
+});
+
+// Garson/hesap cagrisi -> masa_cagrilari (KDS/patron tarafinda gorunebilir)
+Route::post('/api/qr/garson-cagir', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return ['ok' => 0];
+    if (!Schema::hasTable('masa_cagrilari')) {
+        Schema::create('masa_cagrilari', function ($t) {
+            $t->increments('id');
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('masa_id');
+            $t->string('tip', 20)->default('garson');
+            $t->string('durum', 20)->default('bekliyor');
+            $t->timestamp('created_at')->useCurrent();
+        });
+    }
+    DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
+        'tip' => in_array($r->tip, ['garson', 'hesap']) ? $r->tip : 'garson', 'durum' => 'bekliyor', 'created_at' => now()]);
+    return ['ok' => 1];
+});
+
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
     $n = 0;
@@ -2096,14 +2132,27 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
 
     if ($islem === 'kapat') {
         if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma / masa kapatma yetkiniz yok.'];
-        $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti']) ? $r->odeme_tip : 'nakit';
+        $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti', 'acik_hesap']) ? $r->odeme_tip : 'nakit';
         $kalan = (float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar');
-        if ($kalan > 0) {
-            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
+        if ($tip === 'acik_hesap') {
+            // "Bana yazin" -> secili cari hesaba borc yazilir (nakit girmez ama ciroya sayilir)
+            $cari = DB::table('cari_hesaplar')->where('id', (int) $r->cari_id)->where('sube_id', $p->sube_id)->first();
+            if (!$cari) return ['ok' => 0, 'hata' => 'Açık hesap için bir cari seçmelisiniz.'];
+            if ($kalan > 0) {
+                DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'acik_hesap', 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
+                DB::table('cari_hareketler')->insert(['sube_id' => $p->sube_id, 'cari_id' => $cari->id, 'tip' => 'borc', 'tutar' => $kalan,
+                    'adisyon_id' => $a->id, 'aciklama' => ($a->masa_id ? 'Masa açık hesap' : 'Adisyon açık hesap'), 'personel_id' => $p->id, 'created_at' => now()]);
+            }
+            $mesaj = $cari->ad . ' hesabına yazıldı (₺' . number_format($kalan, 0, ',', '.') . ').';
+        } else {
+            if ($kalan > 0) {
+                DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
+            }
+            $mesaj = 'Ödeme alındı (' . ['nakit' => 'Nakit', 'kredi' => 'Kredi', 'yemek_karti' => 'Yemek Kartı'][$tip] . '), masa kapatıldı.';
         }
         DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
         if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
-        return ['ok' => 1, 'mesaj' => 'Ödeme alındı (' . ['nakit' => 'Nakit', 'kredi' => 'Kredi', 'yemek_karti' => 'Yemek Kartı'][$tip] . '), masa kapatıldı.'];
+        return ['ok' => 1, 'mesaj' => $mesaj];
     }
 
     if ($islem === 'iskonto') {
