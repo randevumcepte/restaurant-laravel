@@ -2167,6 +2167,27 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
     return ['ok' => 0, 'hata' => 'Bilinmeyen işlem'];
 });
 
+// MASA AC: bos masaya yeni (bos) adisyon acar. Yetki: adisyon_ac (sahip hep).
+Route::post('/api/patron/masa-ac', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa / adisyon açma yetkiniz yok.'];
+    $masa = DB::table('masalar')->where('id', (int) $r->masa_id)->where('sube_id', $p->sube_id)->first();
+    if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    // Zaten acik adisyon varsa onu don (cift acilma olmasin)
+    $mevcut = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
+    if ($mevcut) return ['ok' => 1, 'adisyon_id' => $mevcut, 'mesaj' => $masa->ad . ' zaten açık.'];
+    $misafir = max(1, (int) $r->misafir);
+    $id = DB::table('adisyonlar')->insertGetId([
+        'sube_id' => $p->sube_id, 'masa_id' => $masa->id, 'kanal' => 'salon',
+        'misafir_sayisi' => $misafir, 'durum' => 'acik', 'acan_personel_id' => $p->id,
+        'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+        'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('masalar')->where('id', $masa->id)->update(['durum' => 'dolu']);
+    return ['ok' => 1, 'adisyon_id' => $id, 'mesaj' => $masa->ad . ' açıldı (' . $misafir . ' kişi).'];
+});
+
 Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
