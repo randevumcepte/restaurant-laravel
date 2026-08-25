@@ -31,7 +31,8 @@ class SeslendirmeServisi
         $ad = md5($ses . '|' . $okunacak) . '.mp3';
         $yol = $this->klasor . '/' . $ad;
         // ONBELLEK: daha once uretilmisse diskten don (karakter YAKMAZ, limite saymaz)
-        if (is_file($yol) && filesize($yol) > 0) return $ad;
+        // @touch: kullanilan dosyayi "taze" tut -> otomatik temizlik onu silmesin (sik kullanilanlar kalir)
+        if (is_file($yol) && filesize($yol) > 0) { @touch($yol); return $ad; }
 
         // SERT AYLIK LIMIT: kota dolduysa Cloud'a gitme -> cagiran taraf bedava cihaz sesine duser
         if (!$this->kotaVar($okunacak)) { $this->sonHata = ['kota' => 'asildi']; return null; }
@@ -86,7 +87,27 @@ class SeslendirmeServisi
         $ad = basename((string) $ad);
         if (!preg_match('/^[a-f0-9]{32}\.mp3$/', $ad)) return null;
         $yol = $this->klasor . '/' . $ad;
-        return is_file($yol) ? $yol : null;
+        if (is_file($yol)) { @touch($yol); return $yol; } // calindi -> taze tut (silinmesin)
+        return null;
+    }
+
+    /**
+     * Uzun suredir KULLANILMAYAN MP3'leri sil (disk sabit kalir).
+     * Sik kullanilanlar (menu/karsilama) her calindiginda @touch ile tazelendigi icin silinmez;
+     * sadece tek-seferlik (AI serbest) cumleler duser. Gerekirse tekrar uretilir.
+     */
+    public function eskileriTemizle($gun = 45)
+    {
+        $gun = max(1, (int) $gun);
+        $sinir = time() - ($gun * 86400);
+        $silinen = 0; $bayt = 0; $kalan = 0;
+        foreach (glob($this->klasor . '/*.mp3') ?: [] as $f) {
+            if (@filemtime($f) < $sinir) {
+                $b = (int) @filesize($f);
+                if (@unlink($f)) { $silinen++; $bayt += $b; }
+            } else { $kalan++; }
+        }
+        return ['silinen_dosya' => $silinen, 'bosalan_mb' => round($bayt / 1048576, 2), 'kalan_dosya' => $kalan];
     }
 
     protected function googleUret($metin, $ses)

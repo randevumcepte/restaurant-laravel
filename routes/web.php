@@ -1191,6 +1191,15 @@ if (!function_exists('resto_erkek_sesler')) {
     }
 }
 
+// MP3 onbellek temizligi: uzun suredir kullanilmayan sesleri sil (disk sabit kalsin).
+// Gunluk cron ile calistir: curl -s https://restaurant.webfirmam.com.tr/tts-temizle?gun=45
+Route::get('/tts-temizle', function (Request $r) {
+    $gun = (int) $r->input('gun', 45);
+    $s = new \App\Services\SeslendirmeServisi();
+    $sonuc = $s->eskileriTemizle($gun);
+    return response()->json(['ok' => 1, 'gun' => max(1, $gun)] + $sonuc, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+});
+
 // Ses test sayfasi: her erkek sesi dinle, begendigini sec
 Route::get('/ses-test', function () {
     $secili = resto_ayar_al('tts_ses', (string) config('services.google_tts.voice', 'tr-TR-Wavenet-D'));
