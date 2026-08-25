@@ -81,31 +81,40 @@ function ekle(kim, metin){
   sohbet.scrollTop = sohbet.scrollHeight;
 }
 
-/* ---- Seslendirme: ONCE sunucu TTS (Google WaveNet erkek), olmazsa tarayici ---- */
+/* ---- Seslendirme: ONCE bedava cihaz (tarayici) sesi; yoksa sunucu Google TTS ---- */
 const synth = window.speechSynthesis;
 let trVoice = null;
 function seciSes(){
   try{
-    const vs = synth.getVoices();
-    trVoice = vs.find(v=>/^tr/i.test(v.lang) && /(erkek|male|tmc|tmb)/i.test(v.name))
-           || vs.find(v=>/^tr/i.test(v.lang)) || null;
+    const vs = synth.getVoices() || [];
+    const tr = vs.filter(v=>/^tr/i.test(v.lang));
+    // Once ERKEK adayi (varsa), sonra cihaz-yerel (localService=bedava/kaliteli), sonra herhangi tr
+    trVoice = tr.find(v=>/(erkek|male|-tmc|-tmb|#male)/i.test(v.name))
+           || tr.find(v=>v.localService && /google/i.test(v.name))
+           || tr.find(v=>v.localService)
+           || tr.find(v=>/google/i.test(v.name))
+           || tr[0] || null;
   }catch(e){}
 }
 if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
 let sesCalar = new Audio();
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
+function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
 async function konus(t){
-  const temiz = (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim();
+  const temiz = temizle(t);
   if(!temiz) return;
-  // 1) Sunucu TTS (kaliteli erkek ses)
+  // 1) BEDAVA: cihaz Turkce sesi (uygulamadaki motorla ayni) — dogal ayar (pitch 1.0)
+  seciSes();
+  if(synth && trVoice){
+    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return; }catch(e){}
+  }
+  // 2) Cihazda Turkce ses YOKSA: sunucu Google TTS (kaliteli erkek)
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz})});
     const j = await r.json();
     if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return; }
   }catch(e){}
-  // 2) Fallback: tarayici sesi
-  if(!synth) return;
-  try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; if(trVoice)u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); }catch(e){}
+  // 3) Son care: sessiz gec (metin ekranda zaten var)
 }
 
 /* ---- Konusma tanima (tarayici STT) ---- */
