@@ -2621,6 +2621,101 @@ Route::get('/api/patron/fis', function (Request $r) {
     ];
 });
 
+// ---- GUN SONU / Z RAPORU ----
+Route::get('/api/patron/z-raporu', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $tarih = $r->tarih ? \Carbon\Carbon::parse($r->tarih) : today();
+    $from = (clone $tarih)->startOfDay();
+    $to = (clone $tarih)->endOfDay();
+    $sube = DB::table('subeler')->find($p->sube_id);
+
+    $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+    $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
+        ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->orderByDesc('tutar')->get();
+    $kapananQ = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
+    $kapanan = (clone $kapananQ)->count();
+    $misafir = (int) (clone $kapananQ)->sum('misafir_sayisi');
+    $iskonto = (float) (clone $kapananQ)->sum('indirim');
+    $ikram = (float) (clone $kapananQ)->sum('ikram');
+    $iptalAdet = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->count();
+    $iptalTutar = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->sum('toplam');
+    $void = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyon_kalemleri.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])->sum('adisyon_kalemleri.tutar');
+    $fire = 0.0;
+    try {
+        $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('tip', 'fire')->whereBetween('created_at', [$from, $to])
+            ->select(DB::raw('COALESCE(SUM(ABS(miktar)*birim_maliyet),0) as t'))->value('t');
+    } catch (\Throwable $e) {
+    }
+    // food-cost
+    $maliyet = 0.0;
+    if (function_exists('_restoUrunMaliyetMap')) {
+        $map = _restoUrunMaliyetMap();
+        $satir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
+            ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')->get();
+        foreach ($satir as $s) {
+            $b = $map['id'][(int) $s->urun_id] ?? ($map['ad'][$s->urun_adi] ?? 0);
+            $m = (float) $s->adet * (float) $b;
+            if ($m <= 0 && $s->satis > 0) $m = (float) $s->satis * 0.30;
+            $maliyet += $m;
+        }
+    }
+    $servis = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
+        ->select('kanal', DB::raw('COUNT(*) as adet'), DB::raw('SUM(toplam) as tutar'))->groupBy('kanal')->get()
+        ->map(fn ($k) => ['ad' => ['salon' => 'Masa', 'paket' => 'Paket', 'qr' => 'QR'][$k->kanal] ?? ucfirst($k->kanal), 'adet' => $k->adet, 'tutar' => (float) $k->tutar]);
+    $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+        ->select('urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as ciro'))->groupBy('urun_adi')->orderByDesc('adet')->limit(5)->get();
+    $acikKalan = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->count();
+
+    return [
+        'ok' => 1, 'isletme' => $sube->ad ?? 'RestoOS', 'tarih' => $tarih->format('d.m.Y'),
+        'ciro' => $ciro, 'kapanan' => $kapanan, 'misafir' => $misafir,
+        'ortalama' => $kapanan > 0 ? round($ciro / $kapanan) : 0, 'kisi_basi' => $misafir > 0 ? round($ciro / $misafir) : 0,
+        'odeme' => $odeme, 'servis' => $servis, 'top' => $top,
+        'iskonto' => $iskonto, 'ikram' => $ikram, 'iptal_adet' => $iptalAdet, 'iptal_tutar' => $iptalTutar, 'void' => $void, 'fire' => $fire,
+        'maliyet' => round($maliyet), 'maliyet_yuzde' => $ciro > 0 ? round($maliyet / $ciro * 100) : 0, 'brut_kar' => round($ciro - $maliyet),
+        'acik_kalan' => $acikKalan,
+    ];
+});
+
+// ---- HAREKETLER / AKTIVITE LOG (masa tasi/birlestir/bol + void/iskonto/ikram) ----
+Route::get('/api/patron/hareketler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $out = [];
+    // Masa loglari
+    $masaLog = DB::table('adisyon_masa_loglari')->join('adisyonlar', 'adisyon_masa_loglari.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)
+        ->leftJoin('personeller', 'adisyon_masa_loglari.personel_id', '=', 'personeller.id')
+        ->select('adisyon_masa_loglari.islem', 'adisyon_masa_loglari.created_at', 'personeller.ad as personel',
+            'adisyon_masa_loglari.adisyon_id')
+        ->orderByDesc('adisyon_masa_loglari.created_at')->limit(60)->get();
+    foreach ($masaLog as $m) {
+        $etiket = ['tasima' => 'Masa Taşındı', 'birlestirme' => 'Masa Birleştirildi', 'bolme' => 'Adisyon Bölündü', 'garson_devri' => 'Garson Devri'][$m->islem] ?? $m->islem;
+        $out[] = ['tip' => $m->islem, 'baslik' => $etiket, 'personel' => $m->personel ?? '-', 'tutar' => null,
+            'zaman' => \Carbon\Carbon::parse($m->created_at)->format('d.m H:i'), 'ts' => $m->created_at, 'adisyon_id' => $m->adisyon_id];
+    }
+    // Void/iskonto/ikram loglari
+    $iLog = DB::table('iptal_indirim_loglari')->where('sube_id', $p->sube_id)
+        ->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
+        ->select('iptal_indirim_loglari.tip', 'iptal_indirim_loglari.tutar', 'iptal_indirim_loglari.sebep',
+            'iptal_indirim_loglari.created_at', 'personeller.ad as personel', 'iptal_indirim_loglari.adisyon_id')
+        ->orderByDesc('iptal_indirim_loglari.created_at')->limit(60)->get();
+    foreach ($iLog as $m) {
+        $etiket = ['void' => 'Ürün Silindi', 'indirim' => 'İskonto', 'ikram' => 'İkram'][$m->tip] ?? $m->tip;
+        $out[] = ['tip' => $m->tip, 'baslik' => $etiket . ($m->sebep ? ' · ' . $m->sebep : ''), 'personel' => $m->personel ?? '-',
+            'tutar' => (float) $m->tutar, 'zaman' => \Carbon\Carbon::parse($m->created_at)->format('d.m H:i'), 'ts' => $m->created_at, 'adisyon_id' => $m->adisyon_id];
+    }
+    usort($out, fn ($a, $b) => strcmp($b['ts'], $a['ts']));
+    $out = array_slice($out, 0, 80);
+    foreach ($out as &$o) unset($o['ts']);
+    return ['ok' => 1, 'hareketler' => $out];
+});
+
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
 // Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
 Route::get('/cari-kur', function () {
