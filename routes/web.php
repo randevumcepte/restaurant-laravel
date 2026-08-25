@@ -1626,8 +1626,19 @@ Route::get('/api/patron/detay', function (Request $r) {
                 ->select('malzemeler.ad as garson', DB::raw('ABS(stok_hareketleri.miktar) * stok_hareketleri.birim_maliyet as tutar'),
                     'stok_hareketleri.aciklama as sebep', 'stok_hareketleri.created_at', DB::raw('NULL as adisyon_id'))
                 ->orderByDesc('stok_hareketleri.created_at')->limit(60)->get();
+        } elseif ($alt === 'odenmez') {
+            // Kapanmis ("odendi") ama girilen odemeler toplami hesaptan az kalan adisyonlar -> tahsilat acigi
+            $kayitlar = DB::table('adisyonlar')->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+                ->leftJoin('odemeler', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+                ->groupBy('adisyonlar.id', 'personeller.ad', 'adisyonlar.toplam', 'adisyonlar.kapanis')
+                ->havingRaw('COALESCE(adisyonlar.toplam,0) - COALESCE(SUM(odemeler.tutar),0) > 0')
+                ->select('personeller.ad as garson',
+                    DB::raw('COALESCE(adisyonlar.toplam,0) - COALESCE(SUM(odemeler.tutar),0) as tutar'),
+                    DB::raw("'Tahsilat eksik' as sebep"), 'adisyonlar.kapanis as created_at', 'adisyonlar.id as adisyon_id')
+                ->orderByDesc('adisyonlar.kapanis')->limit(60)->get();
         }
-        $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi', 'odenmez' => 'Ödenmez'];
+        $basliklar = ['iskonto' => 'İskonto', 'ikram' => 'İkram', 'silinen' => 'Silinen Ürün', 'iptal' => 'İptal Adisyon', 'fire' => 'Fire / Zayi', 'odenmez' => 'Tahsil Edilemeyen'];
         $sebepDagilim = $kayitlar->groupBy('sebep')->map(fn ($g) => ['sebep' => $g[0]->sebep ?: '-', 'adet' => $g->count(), 'tutar' => (float) $g->sum('tutar')])
             ->sortByDesc('tutar')->values();
         $ai = [];
