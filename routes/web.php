@@ -1087,10 +1087,34 @@ Route::get('/api/patron/ozet', function (Request $r) {
     ];
 });
 
+// KVKK: musteri adi/telefonu SADECE sahip (patron) tam gorur; mudur maskeli gorur.
+if (!function_exists('_kvkkAd')) {
+    function _kvkkAd($ad, $tamGor)
+    {
+        if ($tamGor || !$ad) return $ad;
+        return collect(explode(' ', trim($ad)))->map(function ($w) {
+            $len = mb_strlen($w);
+            if ($len <= 1) return $w;
+            if ($len === 2) return mb_substr($w, 0, 1) . '*';
+            return mb_substr($w, 0, 2) . str_repeat('*', $len - 2);
+        })->implode(' ');
+    }
+}
+if (!function_exists('_kvkkTel')) {
+    function _kvkkTel($tel, $tamGor)
+    {
+        if ($tamGor || !$tel) return $tel;
+        $d = preg_replace('/\D/', '', $tel);
+        if (mb_strlen($d) < 4) return '***';
+        return mb_substr($d, 0, 4) . ' *** ** ' . mb_substr($d, -2);
+    }
+}
+
 // Kart tiklama -> drill-down detay (Kerzz BOSS tarzi). tip: urun | kayip | acik | odeme | servis
 Route::get('/api/patron/detay', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $tamGor = ($p->rol === 'sahip'); // KVKK: sadece patron musteri PII'sini tam gorur
     $tip = $r->tip;
     $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'haftalik';
     [$from, $to] = _restoPeriyot($period);
@@ -1221,12 +1245,12 @@ Route::get('/api/patron/detay', function (Request $r) {
             ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
                 'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.toplam')->get()
-            ->map(function ($a) use ($simdi) {
+            ->map(function ($a) use ($simdi, $tamGor) {
                 $dk = $a->acilis ? \Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi) : 0;
                 $adet = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->count();
                 return [
                     'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
-                    'musteri' => $a->musteri, 'musteri_id' => $a->musteri_id,
+                    'musteri' => _kvkkAd($a->musteri, $tamGor), 'musteri_id' => $a->musteri_id,
                     'tutar' => (float) $a->toplam, 'sure_dk' => (int) $dk, 'kalem' => $adet, 'misafir' => $a->misafir_sayisi,
                 ];
             });
@@ -1272,7 +1296,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             'kapanis' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : null,
             'araToplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
             'kalemler' => $kalemler, 'odemeler' => $odemeler,
-            'musteri' => $musteri ? ['id' => $a->musteri_id, 'ad' => $musteri->ad, 'telefon' => $musteri->telefon] : null,
+            'musteri' => $musteri ? ['id' => $a->musteri_id, 'ad' => _kvkkAd($musteri->ad, $tamGor), 'telefon' => _kvkkTel($musteri->telefon, $tamGor)] : null,
             'degerlendirme' => $deg,
         ];
     }
@@ -1308,8 +1332,9 @@ Route::get('/api/patron/detay', function (Request $r) {
         $gAdet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
         $gHarcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
         return [
-            'ok' => 1, 'baslik' => $m->ad, 'tip' => 'musteri',
-            'profil' => ['ad' => $m->ad, 'telefon' => $m->telefon, 'adres' => $m->adres, 'notlar' => $m->notlar],
+            'ok' => 1, 'baslik' => _kvkkAd($m->ad, $tamGor), 'tip' => 'musteri', 'kvkk' => !$tamGor,
+            'profil' => ['ad' => _kvkkAd($m->ad, $tamGor), 'telefon' => _kvkkTel($m->telefon, $tamGor),
+                'adres' => $tamGor ? $m->adres : null, 'notlar' => $tamGor ? $m->notlar : null],
             'ozet' => [
                 'Sipariş' => (string) $gAdet,
                 'Toplam' => '₺' . number_format($gHarcama, 0, ',', '.'),
@@ -1331,7 +1356,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             ->orderByDesc('adisyonlar.kapanis')->limit(80)->get()
             ->map(fn ($a) => [
                 'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
-                'musteri' => $a->musteri, 'musteri_id' => $a->musteri_id,
+                'musteri' => _kvkkAd($a->musteri, $tamGor), 'musteri_id' => $a->musteri_id,
                 'tutar' => (float) $a->toplam, 'misafir' => $a->misafir_sayisi,
                 'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : '',
             ]);
