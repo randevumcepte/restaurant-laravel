@@ -1632,8 +1632,8 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
     $cache = DB::table('ai_onbellek')->where('anahtar', $anahtar)->first();
     if ($cache) return ['ok' => 1, 'kaynak' => 'onbellek', 'yorumlar' => json_decode($cache->cevap, true)];
 
-    // 3) Anahtar yoksa nazik mesaj (kurallı AI zaten aktif)
-    $apiKey = env('ANTHROPIC_API_KEY');
+    // 3) Anahtar yoksa nazik mesaj (kurallı AI zaten aktif). Randevumcepte ile ayni anahtar kullanilabilir.
+    $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
     if (!$apiKey) {
         return ['ok' => 1, 'kaynak' => 'yapilandirilmamis',
             'yorumlar' => ['Derin AI analizi için sunucuda ANTHROPIC_API_KEY + bakiye gerekli. Kurallı AI yorumları zaten aktif; anahtar eklenince bu buton gerçek LLM analizini getirir.']];
@@ -1659,6 +1659,45 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
     } catch (\Throwable $e) {
         return ['ok' => 1, 'kaynak' => 'hata', 'yorumlar' => ['AI analizine ulaşılamadı: ' . $e->getMessage()]];
     }
+});
+
+// PATRON SESLI/YAZILI ASISTAN — kural motoru -> Haiku niyet -> sohbet (ogrenen onbellek + gecmis)
+Route::post('/api/patron/asistan-sor', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $soru = trim((string) $r->soru);
+    if ($soru === '') return ['ok' => 1, 'cevap' => 'Dinliyorum, bir şey sorabilirsiniz.', 'seslendir' => false, 'kart' => null, 'intent' => 'bos', 'kaynak' => 'bos'];
+
+    $a = new \App\Services\RestoAsistan();
+    $userId = (int) $p->id;
+    $gecmis = $a->gecmisGetir($userId);
+
+    // 1) Ogrenilen niyet (bedava tekrar) -> 2) kural motoru
+    $niyet = $a->ogrenilenNiyet($soru) ?: $a->niyetCoz($soru);
+    $sonuc = ($niyet['intent'] ?? 'bilinmiyor') !== 'bilinmiyor' ? $a->cevapla($niyet) : null;
+    $kaynak = 'kural';
+
+    if (!$sonuc) {
+        // 3) Haiku ile niyet coz
+        $aiNiyet = $a->niyetCozAI($soru, $gecmis);
+        if ($aiNiyet && !in_array($aiNiyet['intent'], ['sohbet', 'bilinmiyor'], true)) {
+            $sonuc = $a->cevapla($aiNiyet);
+            if ($sonuc) { $a->ogren($soru, $aiNiyet); $kaynak = 'ai_niyet'; }
+        }
+        // 4) Sohbet/kimlik -> Haiku dogal cevap
+        if (!$sonuc) {
+            $sohbet = $a->sohbetAI($soru, $gecmis);
+            if ($sohbet) { $sonuc = ['cevap' => $sohbet, 'seslendir' => true, 'kart' => null, 'intent' => 'sohbet']; $kaynak = 'ai_sohbet'; }
+        }
+        // 5) Anahtar yok / hata -> yardim
+        if (!$sonuc) { $sonuc = $a->yardimCevabi($niyet); $kaynak = ($a->aiTeshis === 'anahtar_yok') ? 'yardim_anahtarsiz' : 'yardim'; }
+    }
+
+    $a->gecmisEkle($userId, $soru, $sonuc['cevap'] ?? '');
+    return [
+        'ok' => 1, 'cevap' => $sonuc['cevap'] ?? '', 'seslendir' => $sonuc['seslendir'] ?? true,
+        'kart' => $sonuc['kart'] ?? null, 'intent' => $sonuc['intent'] ?? 'bilinmiyor', 'kaynak' => $kaynak,
+    ];
 });
 
 Route::get('/api/masalar', function (Request $r) {

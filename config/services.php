@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Derin AI Analizi (Haiku). Randevumcepte ile AYNI Anthropic anahtari/bakiyesi kullanilabilir.
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+    ],
+
 ];
