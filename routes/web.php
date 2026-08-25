@@ -1225,8 +1225,9 @@ if (!function_exists('_apiPersonel')) {
 
 Route::post('/api/login', function (Request $r) {
     // Patron app: sahip/mudur PIN ile giris
-    $p = DB::table('personeller')->where('pin', (string) $r->pin)->whereIn('rol', ['sahip', 'mudur'])->first();
-    if (!$p) return response()->json(['ok' => 0, 'hata' => 'PIN hatalı veya yetkiniz yok'], 401);
+    // Tum AKTIF personel giris yapabilir (garson terminali dahil); UI role gore acilir.
+    $p = DB::table('personeller')->where('pin', (string) $r->pin)->where('aktif', 1)->first();
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
     // Mevcut token'i KORU (yeni login eskisini gecersiz kilmasin -> es zamanli oturumlar/testler bozulmaz)
     $token = $p->api_token ?: \Illuminate\Support\Str::random(48);
     if (!$p->api_token) DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
@@ -2297,6 +2298,66 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => $araToplam, 'toplam' => $toplam, 'updated_at' => now()]);
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
     return ['ok' => 1, 'mesaj' => $eklenen . ' kalem eklendi.', 'ara_toplam' => $araToplam, 'toplam' => $toplam];
+});
+
+// KALEM VOID (urun sil): yetki urun_sil; yoksa mudur/sahip onay_pin. Loglar + toplam gunceller.
+Route::post('/api/patron/kalem-void', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
+    if ($a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Bu adisyon açık değil.'];
+    $kalem = DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('adisyon_id', $a->id)->first();
+    if (!$kalem || $kalem->durum === 'iptal') return ['ok' => 0, 'hata' => 'Kalem bulunamadı'];
+    $onaylayan = null;
+    if (!_restoYetkiVar($p, 'urun_sil')) {
+        if ($r->onay_pin) $onaylayan = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first();
+        if (!$onaylayan || !_restoYetkiVar($onaylayan, 'urun_sil')) {
+            return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Ürün silme yetkiniz yok. Yetkili (müdür/sahip) PIN onayı gerekli.'];
+        }
+    }
+    DB::table('adisyon_kalemleri')->where('id', $kalem->id)->update(['durum' => 'iptal', 'updated_at' => now()]);
+    DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'adisyon_kalem_id' => $kalem->id,
+        'tip' => 'void', 'tutar' => (float) $kalem->tutar, 'sebep' => $r->sebep ?: 'Ürün silindi', 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+    $araToplam = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->sum('tutar');
+    $toplam = max(0, $araToplam - (float) $a->indirim - (float) $a->ikram);
+    DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => $araToplam, 'toplam' => $toplam, 'updated_at' => now()]);
+    return ['ok' => 1, 'mesaj' => $kalem->urun_adi . ' silindi.' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : ''), 'toplam' => $toplam];
+});
+
+// MUTFAK (KDS): bekleyen siparis kalemleri (durum=gonderildi) adisyona gruplu
+Route::get('/api/mutfak', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $simdi = now();
+    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'gonderildi')
+        ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal')
+        ->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
+    $gruplu = [];
+    foreach ($rows as $k) {
+        $aid = $k->adisyon_id;
+        if (!isset($gruplu[$aid])) {
+            $dk = $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'dk' => (int) $dk, 'kalemler' => []];
+        }
+        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $k->not];
+    }
+    return ['ok' => 1, 'siparisler' => array_values($gruplu)];
+});
+
+// Mutfak: kalem/adisyon hazir isaretle
+Route::post('/api/mutfak/hazir', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if ($r->adisyon_id) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update(['durum' => 'hazir', 'updated_at' => now()]);
+    } else {
+        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update(['durum' => 'hazir', 'updated_at' => now()]);
+    }
+    return ['ok' => 1];
 });
 
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
