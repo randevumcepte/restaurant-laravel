@@ -1060,15 +1060,16 @@ if (!function_exists('_restoYetkiVarsayilan')) {
     function _restoYetkiVarsayilan($rol)
     {
         $y = array_fill_keys(_restoYetkiKeys(), false);
-        $limit = 0;
+        $limit = 0;      // iskonto % limiti
+        $ikramLimit = 0; // ikram TL limiti
         $ac = function (&$y, $liste) { foreach ($liste as $k) $y[$k] = true; };
         switch ($rol) {
-            case 'sahip': foreach ($y as $k => $v) $y[$k] = true; $limit = 100; break;
-            case 'mudur': foreach ($y as $k => $v) $y[$k] = true; $limit = 50; break;
-            case 'kasa': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'fatura_kes', 'maliyet_gor']); $limit = 10; break;
-            case 'garson': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'adisyon_bol']); $limit = 0; break;
+            case 'sahip': foreach ($y as $k => $v) $y[$k] = true; $limit = 100; $ikramLimit = 100000; break;
+            case 'mudur': foreach ($y as $k => $v) $y[$k] = true; $limit = 50; $ikramLimit = 1000; break;
+            case 'kasa': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'fatura_kes', 'maliyet_gor']); $limit = 10; $ikramLimit = 0; break;
+            case 'garson': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'adisyon_bol']); $limit = 0; $ikramLimit = 50; break;
         }
-        return ['yetkiler' => $y, 'iskonto_limit' => $limit];
+        return ['yetkiler' => $y, 'iskonto_limit' => $limit, 'ikram_limit' => $ikramLimit];
     }
 }
 if (!function_exists('_restoYetkiVar')) {
@@ -1089,14 +1090,20 @@ Route::get('/yetki-kur', function () {
     if (!Schema::hasColumn('personeller', 'iskonto_limit')) {
         Schema::table('personeller', fn ($t) => $t->decimal('iskonto_limit', 5, 2)->default(0));
     }
-    $n = 0;
-    foreach (DB::table('personeller')->get(['id', 'rol', 'yetkiler']) as $p) {
-        if ($p->yetkiler) continue;
-        $d = _restoYetkiVarsayilan($p->rol);
-        DB::table('personeller')->where('id', $p->id)->update(['yetkiler' => json_encode($d['yetkiler']), 'iskonto_limit' => $d['iskonto_limit']]);
-        $n++;
+    if (!Schema::hasColumn('personeller', 'ikram_limit')) {
+        Schema::table('personeller', fn ($t) => $t->decimal('ikram_limit', 12, 2)->nullable());
     }
-    return "Yetkiler kuruldu: $n personel varsayılan yetkilerle donatıldı. ✅";
+    $n = 0;
+    foreach (DB::table('personeller')->get(['id', 'rol', 'yetkiler', 'ikram_limit']) as $p) {
+        $d = _restoYetkiVarsayilan($p->rol);
+        if (!$p->yetkiler) {
+            DB::table('personeller')->where('id', $p->id)->update(['yetkiler' => json_encode($d['yetkiler']), 'iskonto_limit' => $d['iskonto_limit'], 'ikram_limit' => $d['ikram_limit']]);
+            $n++;
+        } elseif ($p->ikram_limit === null) {
+            DB::table('personeller')->where('id', $p->id)->update(['ikram_limit' => $d['ikram_limit']]);
+        }
+    }
+    return "Yetkiler kuruldu: $n yeni + ikram limitleri güncellendi. ✅";
 });
 
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
@@ -1966,12 +1973,14 @@ Route::get('/api/patron/personeller', function (Request $r) {
     if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $liste = DB::table('personeller')->where('sube_id', $p->sube_id)
         ->orderByRaw("FIELD(rol,'sahip','mudur','kasa','garson','mutfak')")->orderBy('ad')
-        ->get(['id', 'ad', 'rol', 'yetkiler', 'iskonto_limit'])
+        ->get(['id', 'ad', 'rol', 'yetkiler', 'iskonto_limit', 'ikram_limit'])
         ->map(function ($x) {
             $y = $x->yetkiler ? json_decode($x->yetkiler, true) : _restoYetkiVarsayilan($x->rol)['yetkiler'];
             // Eksik anahtarlari tamamla (yeni yetki eklenirse)
             $y = array_merge(array_fill_keys(_restoYetkiKeys(), false), is_array($y) ? $y : []);
-            return ['id' => (int) $x->id, 'ad' => $x->ad, 'rol' => $x->rol, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit];
+            return ['id' => (int) $x->id, 'ad' => $x->ad, 'rol' => $x->rol, 'yetkiler' => $y,
+                'iskonto_limit' => (float) $x->iskonto_limit,
+                'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit];
         });
     return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'anahtarlar' => _restoYetkiKeys(), 'personeller' => $liste];
 });
@@ -1991,6 +2000,7 @@ Route::post('/api/patron/yetki-kaydet', function (Request $r) {
     DB::table('personeller')->where('id', $pid)->update([
         'yetkiler' => json_encode($temiz),
         'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)),
+        'ikram_limit' => max(0, (float) $r->ikram_limit),
     ]);
     return ['ok' => 1];
 });
@@ -2057,11 +2067,18 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         }
         if ($tutar <= 0) return ['ok' => 0, 'hata' => 'İkram için ürün seçin.'];
         if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
+        // Ikram LIMITI (TL): asarsa yetkili PIN onayi
+        $iLimit = $p->rol === 'sahip' ? 1e12 : (float) ($p->ikram_limit ?? 0);
+        if ($tutar > $iLimit) {
+            if (!$onaylayan) return ['ok' => 0, 'onay_gerek' => true, 'hata' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram, limitinizi (₺' . number_format($iLimit, 0, ',', '.') . ') aşıyor. Yetkili PIN onayı gerekli.'];
+            $onayLimit = $onaylayan->rol === 'sahip' ? 1e12 : (float) ($onaylayan->ikram_limit ?? 0);
+            if (!_restoYetkiVar($onaylayan, 'ikram') || $onayLimit < $tutar) return ['ok' => 0, 'hata' => 'Onaylayan kişinin ikram yetkisi/limiti de yetersiz.'];
+        }
         $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
-            'tutar' => $tutar, 'sebep' => $adlar ? ('İkram: ' . $adlar) : ($r->sebep ?: 'İkram'), 'personel_id' => $p->id, 'created_at' => now()]);
-        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı.'];
+            'tutar' => $tutar, 'sebep' => $adlar ? ('İkram: ' . $adlar) : ($r->sebep ?: 'İkram'), 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
     }
 
     if ($islem === 'iptal') {
