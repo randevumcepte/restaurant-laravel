@@ -831,6 +831,39 @@ Route::get('/enrich-musteri-baglama', function () {
     return "Müşteri bağlama: $n kapalı adisyona müşteri atandı + değerlendirme/istatistik güncellendi. ✅";
 });
 
+// Receteleri KALIBRE et: her urunun malzeme maliyeti ~fiyatin %26-34'u olacak sekilde miktarlar hesaplanir
+// (ucuz malzeme cok gram, pahali az gram = gercekci). Food-cost saglikli, gram gorunur.
+Route::get('/enrich-recete-fix', function () {
+    $malzemeler = DB::table('malzemeler')->where('guncel_maliyet', '>', 0)->get(['id', 'temel_birim_id', 'guncel_maliyet']);
+    if ($malzemeler->count() < 3) return 'Yeterli maliyetli malzeme yok.';
+    $birimTip = DB::table('birimler')->pluck('tip', 'id');
+    $n = 0;
+    foreach (DB::table('urunler')->where('fiyat', '>', 0)->get(['id', 'ad', 'fiyat']) as $u) {
+        $rid = DB::table('receteler')->where('urun_id', $u->id)->where('tip', 'urun')->value('id');
+        if (!$rid) {
+            $rid = DB::table('receteler')->insertGetId(['ad' => $u->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $u->id,
+                'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('recete_kalemleri')->where('recete_id', $rid)->delete();
+        $target = (float) $u->fiyat * random_int(26, 34) / 100;   // hedef malzeme maliyeti
+        $sec = $malzemeler->shuffle()->take(random_int(3, 5));
+        $weights = [];
+        $tot = 0;
+        foreach ($sec as $m) { $w = random_int(10, 100); $weights[$m->id] = $w; $tot += $w; }
+        foreach ($sec as $m) {
+            $costShare = $target * ($weights[$m->id] / $tot);       // bu malzemeye dusen maliyet
+            $amount = $costShare / (float) $m->guncel_maliyet;      // temel birimde miktar
+            $tip = $birimTip[$m->temel_birim_id] ?? 'adet';
+            if ($tip === 'adet') $amount = max(1, round($amount));
+            else $amount = $amount < 10 ? max(0.5, round($amount, 1)) : round($amount);
+            DB::table('recete_kalemleri')->insert(['recete_id' => $rid, 'malzeme_id' => $m->id, 'miktar' => $amount,
+                'birim_id' => $m->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $n++;
+    }
+    return "Reçeteler kalibre edildi: $n ürün, food-cost ~%30 hedefiyle. ✅";
+});
+
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
