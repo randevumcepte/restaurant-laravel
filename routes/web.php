@@ -1128,6 +1128,23 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
+Route::match(['get', 'post'], '/api/tts', function (Request $r) {
+    $metin = trim((string) $r->input('metin', ''));
+    if ($metin === '') return response()->json(['basarili' => false], 422);
+    if (mb_strlen($metin) > 2000) $metin = mb_substr($metin, 0, 2000);
+    $servis = new \App\Services\SeslendirmeServisi();
+    $ad = $servis->uret($metin, $r->input('ses'));
+    if (!$ad) return response()->json(['basarili' => false, 'anahtar_var' => (string) config('services.google_tts.key', '') !== ''], 200);
+    return response()->json(['basarili' => true, 'url' => url('/api/ses/' . $ad)]);
+});
+Route::get('/api/ses/{ad}', function ($ad) {
+    $servis = new \App\Services\SeslendirmeServisi();
+    $yol = $servis->dosyaYolu($ad);
+    if (!$yol) abort(404);
+    return response()->file($yol, ['Content-Type' => 'audio/mpeg', 'Cache-Control' => 'public, max-age=31536000']);
+})->where('ad', '[a-f0-9]{32}\.mp3');
+
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
     $n = 0;

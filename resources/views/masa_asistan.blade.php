@@ -81,7 +81,7 @@ function ekle(kim, metin){
   sohbet.scrollTop = sohbet.scrollHeight;
 }
 
-/* ---- Seslendirme (tarayici TTS, erkek TR varsa) ---- */
+/* ---- Seslendirme: ONCE sunucu TTS (Google WaveNet erkek), olmazsa tarayici ---- */
 const synth = window.speechSynthesis;
 let trVoice = null;
 function seciSes(){
@@ -92,9 +92,20 @@ function seciSes(){
   }catch(e){}
 }
 if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
-function konus(t){
+let sesCalar = new Audio();
+function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
+async function konus(t){
+  const temiz = (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim();
+  if(!temiz) return;
+  // 1) Sunucu TTS (kaliteli erkek ses)
+  try{
+    const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz})});
+    const j = await r.json();
+    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return; }
+  }catch(e){}
+  // 2) Fallback: tarayici sesi
   if(!synth) return;
-  try{ synth.cancel(); const u = new SpeechSynthesisUtterance(t.replace(/[😊🍽️📋⭐👍🍰📶🙋🥤🥗🍲🍕🍔🍝🍖]/g,'')); u.lang='tr-TR'; if(trVoice)u.voice=trVoice; u.rate=0.98; u.pitch=0.9; synth.speak(u); }catch(e){}
+  try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; if(trVoice)u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); }catch(e){}
 }
 
 /* ---- Konusma tanima (tarayici STT) ---- */
@@ -116,7 +127,7 @@ function bitir(){ dinliyorMu=false; orb.classList.remove('dinliyor'); micBtn.cla
 function dinle(){
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, yazabilirsiniz.'; return; }
   if(dinliyorMu){ try{rec.stop()}catch(_){}; return; }
-  try{ synth && synth.cancel(); rec.start(); }catch(e){}
+  try{ sesDurdur(); rec.start(); }catch(e){}
 }
 
 /* ---- Gonderim ---- */

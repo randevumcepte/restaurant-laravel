@@ -41,4 +41,11 @@ return [
         'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
     ],
 
+    // Google Cloud TTS (musteri QR asistani icin kaliteli ERKEK ses). Randevumcepte ile AYNI anahtar.
+    // Erkek Turkce WaveNet: tr-TR-Wavenet-D (varsayilan). Anahtar yoksa taray. sesine duser.
+    'google_tts' => [
+        'key' => env('GOOGLE_TTS_API_KEY'),
+        'voice' => env('GOOGLE_TTS_VOICE', 'tr-TR-Wavenet-D'),
+    ],
+
 ];
