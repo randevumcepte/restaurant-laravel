@@ -1272,6 +1272,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
 
     return [
         'ok' => 1,
+        'patronAd' => $p->ad,
         'period' => $period,
         'ciro' => $ciro, 'compCiro' => $compCiro,
         'ciroYuzde' => $compCiro > 0 ? round(($ciro - $compCiro) / $compCiro * 100, 1) : null,
