@@ -671,7 +671,7 @@ class RestoAsistan
                 $deg = (int) round(($bu - $on) / $on * 100);
                 if ($deg <= -10) {
                     $t[] = ['seviye' => 'risk', 'baslik' => 'Ciro düşüşte',
-                        'mesaj' => 'Patron, bu hafta ciro geçen haftaya göre %' . abs($deg) . ' düşmüş (' . $this->tl($on) . ' → ' . $this->tl($bu) . '). Bunu sana kimse söylemez; menüde, serviste ya da yoğun saatlerde ne değiştiğine birlikte bakalım.',
+                        'mesaj' => 'Patron, bu hafta ciro geçen haftaya göre yüzde ' . abs($deg) . ' düşmüş. Geçen hafta ' . $this->tl($on) . ' iken bu hafta ' . $this->tl($bu) . ' olmuş. Bunu sana kimse söylemez; menüde, serviste ya da yoğun saatlerde ne değiştiğine birlikte bakalım.',
                         'kv' => [['k' => 'Geçen hafta', 'v' => $this->tl($on)], ['k' => 'Bu hafta', 'v' => $this->tl($bu)]]];
                 } elseif ($deg >= 12) {
                     $t[] = ['seviye' => 'iyi', 'baslik' => 'Ciro artışta',
