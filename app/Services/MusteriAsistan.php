@@ -226,7 +226,7 @@ class MusteriAsistan
                     : $ad . ' için içerik detayını garsonumuz netleştirsin; ister misiniz?';
                 break;
             case 'acili_mi':
-                $cevap = !empty($bul(['aci', 'pul biber', 'isot', 'jalapeno', 'chili', 'aci sos', 'arnavut']))
+                $cevap = !empty($bul(['aci', 'pul biber', 'isot', 'jalapeno', 'chili', 'aci sos', 'arnavut', 'adana', 'acili', 'mexican', 'baharatli']))
                     ? $ad . ' baharatlı, acımsı bir lezzettir. Acı sevmiyorsanız garsonumuza söyleyin, acısı azaltılarak hazırlanabilir.'
                     : $ad . ' belirgin acı içermez. Dilerseniz garsonumuza acılı olarak da hazırlatabiliriz.';
                 break;
