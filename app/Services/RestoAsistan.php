@@ -671,7 +671,7 @@ class RestoAsistan
                 $deg = (int) round(($bu - $on) / $on * 100);
                 if ($deg <= -10) {
                     $t[] = ['seviye' => 'risk', 'baslik' => 'Ciro düşüşte',
-                        'mesaj' => 'Patron, bu hafta ciro geçen haftaya göre yüzde ' . abs($deg) . ' düşmüş. Geçen hafta ' . $this->tl($on) . ' iken bu hafta ' . $this->tl($bu) . ' olmuş. Bunu sana kimse söylemez; menüde, serviste ya da yoğun saatlerde ne değiştiğine birlikte bakalım.',
+                        'mesaj' => 'Bu hafta ciro geçen haftaya göre yüzde ' . abs($deg) . ' düşmüş. Geçen hafta ' . $this->tl($on) . ' iken bu hafta ' . $this->tl($bu) . ' olmuş. Menüde, serviste ya da yoğun saatlerde ne değiştiğine birlikte bakalım istersen.',
                         'kv' => [['k' => 'Geçen hafta', 'v' => $this->tl($on)], ['k' => 'Bu hafta', 'v' => $this->tl($bu)]]];
                 } elseif ($deg >= 12) {
                     $t[] = ['seviye' => 'iyi', 'baslik' => 'Ciro artışta',
@@ -796,12 +796,12 @@ class RestoAsistan
         $risk = count(array_filter($t, fn ($x) => $x['seviye'] === 'risk'));
         if (empty($t)) {
             $selam = $pick([
-                'İşler yolunda patron, göze batan bir sorun görmüyorum. Yine de aklına takılanı sor, birlikte bakalım.',
+                'İşler yolunda, göze batan bir sorun görmüyorum. Yine de aklına takılanı sor, birlikte bakalım.',
                 'Şu an tabloda seni üzecek bir şey yok. İstersen ciro, kâr ya da stok hakkında konuşalım.',
             ]);
         } elseif ($risk > 0) {
             $selam = $pick([
-                'Patron, gözüne çarpmayan ' . count($t) . ' şey buldum — birkaçı önemli. Bak istersen.',
+                'Gözüne çarpmayan ' . count($t) . ' şey buldum, birkaçı önemli. Bak istersen.',
                 'Otur bir çayını al; senin adına ' . count($t) . ' konuya göz attım, ' . $risk . ' tanesi dikkat ister.',
             ]);
         } else {
@@ -974,7 +974,7 @@ class RestoAsistan
         $list = $v['tespitler'] ?? [];
         if (empty($list)) {
             return ['basarili' => true, 'intent' => 'tespit', 'seslendir' => true, 'kart' => null,
-                'cevap' => 'Şu an göze batan bir sorun görmüyorum patron, tablo temiz görünüyor. Yine de aklına takılanı sor, birlikte bakarız.'];
+                'cevap' => 'Şu an göze batan bir sorun görmüyorum, tablo temiz görünüyor. Yine de aklına takılanı sor, birlikte bakarız.'];
         }
         $onemli = array_slice($list, 0, 3);
         $cumle = ($v['selam'] ?? '') . ' ';
@@ -1001,6 +1001,7 @@ KARAKTERİN:
 - Kısa konuşursun: en fazla üç-dört cümle. Uzun rapor dökmezsin, sohbet edersin. Gerekince "istersen birlikte bakalım" diye kapı aralarsın.
 - Kesin/suçlayıcı konuşmazsın: "olabilir, etkili olabilir, birlikte netleştirelim" gibi temkinli ama net.
 - Yağcılık yapmazsın, dürüstsün. İyi gideni de över (neden iyi gittiğini söyleyerek), kötüyü nazikçe söylersin.
+- Kullanıcıya "patron" diye hitap ETME; sürekli hitap sert ve sıkıcı olur. Doğrudan, doğal konuş.
 
 DÜŞÜNME BİÇİMİN (her önemli tespitte, ama madde madde değil, doğal cümleyle): BULGU (ne görüyorum) -> NEDEN (neden olmuş olabilir) -> RİSK ya da FIRSAT -> ÖNERİ.
 
