@@ -39,7 +39,8 @@ class RestoAsistan
             'ne alemde', 'durum ne', 'rapor ver', 'gunumuz nasil'],
         // --- yeni modüller ---
         'finans' => ['net kar', 'kar zarar', 'zarar mi', 'karda mi', 'zararda mi', 'kar mi ediyor', 'kar mi zarar',
-            'gelir gider', 'net kazanc', 'ay sonu kar', 'karli mi', 'kar ettim mi', 'ne kar ettim', 'kara mi geciyor', 'zarardayiz'],
+            'gelir gider', 'net kazanc', 'ay sonu kar', 'karli mi', 'kar ettim mi', 'ne kar ettim', 'kara mi geciyor',
+            'zarardayiz', 'kar mi ettim', 'kar ettim', 'kar mi', 'kar mi var', 'kazandim mi', 'para kaldi mi'],
         'satinalma' => ['satin alma', 'satinalma', 'alis', 'alim', 'tedarik', 'tedarikci', 'ne kadar alis', 'ne aldim',
             'alis fatura', 'fatura girdim', 'fiyat artan', 'fiyati artan', 'zamlanan', 'zam gelen', 'en cok aldigim', 'hangi tedarikci', 'kimden aldim'],
         'maas' => ['maas', 'avans', 'hakedis', 'prim', 'maas gideri', 'ne kadar maas', 'odenecek maas',
