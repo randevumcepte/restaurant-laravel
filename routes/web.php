@@ -455,8 +455,54 @@ Route::get('/mutfak', function () {
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
-    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->update(['durum' => 'hazir']);
+    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->update(['durum' => 'hazir', 'hazir_zamani' => now()]);
     return ['ok' => 1];
+});
+
+// Urun adindan istasyon tahmini (izgara/firin/tatli/bar/soguk/mutfak). Oncelik sirali (ilk eslesen kazanir).
+if (!function_exists('_mutfakIstasyonTahmin')) {
+    function _mutfakIstasyonTahmin(string $ad): string
+    {
+        $a = mb_strtolower($ad, 'UTF-8');
+        $harita = [
+            'bar'    => ['kola', 'ayran', ' su', 'soda', 'çay', 'kahve', 'meşrubat', 'içecek', 'bira', 'şarap', 'kokteyl', 'limonata', 'meyve suyu', 'americano', 'latte', 'espresso', 'cappuccino', 'mocha', 'smoothie', 'milkshake', 'şalgam', 'nar suyu', 'türk kahve', 'sahlep'],
+            'tatli'  => ['tatlı', 'sütlaç', 'künefe', 'baklava', 'dondurma', 'kek', 'brownie', 'profiterol', 'magnolia', 'tiramisu', 'waffle', 'cheesecake', 'sufle', 'kazandibi', 'trileçe', 'ekler', 'mozaik', 'muhallebi'],
+            'firin'  => ['pizza', 'pide', 'lahmacun', 'börek', 'ekmek', 'fırın', 'makarna', 'lazanya', 'gratin', 'kumpir', 'tost', 'kaşarlı', 'poğaça'],
+            'izgara' => ['köfte', 'ızgara', 'izgara', 'kebap', 'kebab', 'şiş', 'tavuk', 'biftek', 'kanat', 'pirzola', 'adana', 'urfa', 'döner', 'mangal', 'burger', 'steak', 'bonfile', 'antrikot', 'çöp şiş', 'kokoreç', 'balık', 'levrek', 'çipura', 'somon'],
+            'soguk'  => ['salata', 'meze', 'çiğ köfte', 'humus', 'cacık', 'söğüş', 'antipasto', 'tabule', 'közlenmiş', 'haydari', 'atom', 'ezme'],
+        ];
+        foreach ($harita as $ist => $kelimeler) {
+            foreach ($kelimeler as $kw) {
+                if (mb_strpos($a, $kw) !== false) return $ist;
+            }
+        }
+        return 'mutfak'; // corba, pilav, garnitur, kizartma vb.
+    }
+}
+
+// MUTFAK KURULUM: istasyon + hazir_zamani kolonlari (defansif) + urunlere istasyon ata (tahminle).
+Route::get('/mutfak-kur', function () {
+    $eklenen = [];
+    if (!Schema::hasColumn('urunler', 'istasyon')) {
+        Schema::table('urunler', fn ($t) => $t->string('istasyon', 20)->default('mutfak')->after('tukendi'));
+        $eklenen[] = 'urunler.istasyon';
+    }
+    if (!Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) {
+        Schema::table('adisyon_kalemleri', fn ($t) => $t->timestamp('hazir_zamani')->nullable()->after('gonderim_zamani'));
+        $eklenen[] = 'adisyon_kalemleri.hazir_zamani';
+    }
+    // Istasyonu bos/mutfak olan tum urunlere ada gore istasyon ata
+    $urunler = DB::table('urunler')->get(['id', 'ad', 'istasyon']);
+    $guncel = 0;
+    foreach ($urunler as $u) {
+        $ist = _mutfakIstasyonTahmin($u->ad);
+        if (($u->istasyon ?? 'mutfak') !== $ist) {
+            DB::table('urunler')->where('id', $u->id)->update(['istasyon' => $ist]);
+            $guncel++;
+        }
+    }
+    $dagilim = DB::table('urunler')->select('istasyon', DB::raw('COUNT(*) as adet'))->groupBy('istasyon')->pluck('adet', 'istasyon');
+    return ['ok' => 1, 'eklenen_kolonlar' => $eklenen, 'istasyon_atanan_urun' => $guncel, 'istasyon_dagilimi' => $dagilim];
 });
 
 // ============================ MENU YONETIMI ============================
@@ -2949,11 +2995,13 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     $kalemler = json_decode((string) $r->kalemler, true);
     if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Ürün seçilmedi'];
     $eklenen = 0;
+    $tukendiAtlanan = [];
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, (int) ($k['adet'] ?? 1));
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $p->sube_id)->first();
         if (!$u) continue;
+        if ($u->tukendi) { $tukendiAtlanan[] = $u->ad; continue; } // 86: tukenen urun siparise eklenmez
         DB::table('adisyon_kalemleri')->insert([
             'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
             'adet' => $adet, 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
@@ -2962,12 +3010,17 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
         ]);
         $eklenen++;
     }
-    if ($eklenen === 0) return ['ok' => 0, 'hata' => 'Geçerli ürün eklenemedi'];
+    if ($eklenen === 0) {
+        $msg = $tukendiAtlanan ? ('Tükendi (86): ' . implode(', ', $tukendiAtlanan) . ' — eklenemedi.') : 'Geçerli ürün eklenemedi';
+        return ['ok' => 0, 'hata' => $msg];
+    }
     $araToplam = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->sum('tutar');
     $toplam = max(0, $araToplam - (float) $a->indirim - (float) $a->ikram);
     DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => $araToplam, 'toplam' => $toplam, 'updated_at' => now()]);
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
-    return ['ok' => 1, 'mesaj' => $eklenen . ' kalem eklendi.', 'ara_toplam' => $araToplam, 'toplam' => $toplam];
+    $mesaj = $eklenen . ' kalem eklendi.';
+    if ($tukendiAtlanan) $mesaj .= ' (Tükendi, atlandı: ' . implode(', ', $tukendiAtlanan) . ')';
+    return ['ok' => 1, 'mesaj' => $mesaj, 'ara_toplam' => $araToplam, 'toplam' => $toplam, 'tukendi_atlanan' => $tukendiAtlanan];
 });
 
 // KALEM VOID (urun sil): yetki urun_sil; yoksa mudur/sahip onay_pin. Loglar + toplam gunceller.
@@ -2995,39 +3048,233 @@ Route::post('/api/patron/kalem-void', function (Request $r) {
     return ['ok' => 1, 'mesaj' => $kalem->urun_adi . ' silindi.' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : ''), 'toplam' => $toplam];
 });
 
-// MUTFAK (KDS): bekleyen siparis kalemleri (durum=gonderildi) adisyona gruplu
+// Istasyon kod->etiket. Filtre parametresi bu kodlarla gelir.
+if (!function_exists('_mutfakIstasyonlar')) {
+    function _mutfakIstasyonlar(): array
+    {
+        return ['izgara' => '🔥 Izgara', 'firin' => '🍕 Fırın', 'mutfak' => '🍳 Sıcak', 'soguk' => '🥗 Soğuk', 'tatli' => '🍰 Tatlı', 'bar' => '🍹 Bar'];
+    }
+}
+
+// MUTFAK (KDS): bekleyen siparis kalemleri (durum=gonderildi) adisyona gruplu.
+// + istasyon (urunden), + kur, + all-day toplu uretim, + istasyon dagilimi. ?istasyon=izgara ile filtre.
 Route::get('/api/mutfak', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     $simdi = now();
+    $istasyonVar = Schema::hasColumn('urunler', 'istasyon');
+    $filtre = $r->query('istasyon');
+    $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'gonderildi');
+    $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+        'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
+    $sel[] = $istasyonVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon");
+    $rows = $q->select($sel)->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
+
+    $etiket = _mutfakIstasyonlar();
+    $gruplu = [];
+    $istSay = [];                 // istasyon -> bekleyen kalem (adet)
+    $toplu = [];                  // all-day: urun+istasyon -> toplam adet + en eski dk
+    foreach ($rows as $k) {
+        $ist = $k->istasyon ?: 'mutfak';
+        $dkK = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
+        $adet = (float) $k->adet;
+        // All-day her zaman TUM istasyonlardan toplanir (mutfak sefi butun uretimi gorsun)
+        $tkey = $ist . '|' . $k->urun_adi;
+        if (!isset($toplu[$tkey])) $toplu[$tkey] = ['ad' => $k->urun_adi, 'istasyon' => $ist, 'adet' => 0.0, 'dk' => $dkK];
+        $toplu[$tkey]['adet'] += $adet;
+        $toplu[$tkey]['dk'] = max($toplu[$tkey]['dk'], $dkK);
+        $istSay[$ist] = ($istSay[$ist] ?? 0) + $adet;
+        // Istasyon filtresi (siparis kartlari icin)
+        if ($filtre && $filtre !== 'hepsi' && $ist !== $filtre) continue;
+        $aid = $k->adisyon_id;
+        if (!isset($gruplu[$aid])) {
+            $dk = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal, 'dk' => $dk, 'kalemler' => []];
+        }
+        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist];
+    }
+    // Istasyon ozeti (bekleyeni olmayan da gorunsun ki sekmeler sabit dursun degil -> sadece dolu olanlar + hepsi)
+    $istasyonlar = [];
+    foreach ($etiket as $kod => $ad) {
+        if (($istSay[$kod] ?? 0) > 0) $istasyonlar[] = ['kod' => $kod, 'ad' => $ad, 'bekleyen' => (int) round($istSay[$kod])];
+    }
+    // All-day: en cok bekleyen ustte
+    $topluArr = array_values($toplu);
+    usort($topluArr, fn ($a, $b) => $b['dk'] <=> $a['dk']);
+    foreach ($topluArr as &$t) { $t['adet'] = $t['adet']; $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
+    unset($t);
+
+    return ['ok' => 1, 'siparisler' => array_values($gruplu), 'istasyonlar' => $istasyonlar,
+        'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
+});
+
+// Mutfak: kalem/adisyon hazir isaretle (+ hazir_zamani damgasi = hazirlik suresi analitigi)
+Route::post('/api/mutfak/hazir', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $upd = ['durum' => 'hazir', 'updated_at' => now()];
+    if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
+    if ($r->adisyon_id) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+    } else {
+        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
+    }
+    return ['ok' => 1];
+});
+
+// SERVISE HAZIR: durum=hazir kalemler (mutfak bitirdi, garson alsin) adisyona gruplu.
+Route::get('/api/mutfak/servise-hazir', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $simdi = now();
+    $bekVar = Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani');
+    $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+        'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
+    $sel[] = $bekVar ? 'adisyon_kalemleri.hazir_zamani' : DB::raw('NULL as hazir_zamani');
     $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'gonderildi')
-        ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
-            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal')
-        ->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
+        ->select($sel)->orderBy('adisyon_kalemleri.hazir_zamani')->get();
     $gruplu = [];
     foreach ($rows as $k) {
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
-            $dk = $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'dk' => (int) $dk, 'kalemler' => []];
+            $dk = $k->hazir_zamani ? (int) \Carbon\Carbon::parse($k->hazir_zamani)->diffInMinutes($simdi) : 0;
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'dk' => $dk, 'kalemler' => []];
         }
         $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $k->not];
     }
     return ['ok' => 1, 'siparisler' => array_values($gruplu)];
 });
 
-// Mutfak: kalem/adisyon hazir isaretle
-Route::post('/api/mutfak/hazir', function (Request $r) {
+// SERVIS EDILDI: hazir kalemleri servise ver (garson aldi) -> durum=servis.
+Route::post('/api/mutfak/servis', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     if ($r->adisyon_id) {
-        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update(['durum' => 'hazir', 'updated_at' => now()]);
+        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     } else {
-        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update(['durum' => 'hazir', 'updated_at' => now()]);
+        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     }
     return ['ok' => 1];
+});
+
+// 86 / TUKENDI: mutfak urun listesi (istasyon + tukendi durumu ile).
+Route::get('/api/mutfak/urunler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $istVar = Schema::hasColumn('urunler', 'istasyon');
+    $sel = ['urunler.id', 'urunler.ad', 'urunler.tukendi', 'menu_kategorileri.ad as kategori'];
+    $sel[] = $istVar ? 'urunler.istasyon' : DB::raw("'mutfak' as istasyon");
+    $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+        ->where('urunler.sube_id', $p->sube_id)->where('urunler.aktif', 1)
+        ->orderByDesc('urunler.tukendi')->orderBy('urunler.ad')->select($sel)->get()
+        ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'tukendi' => (bool) $u->tukendi,
+            'istasyon' => $u->istasyon ?: 'mutfak', 'kategori' => $u->kategori ?: '—']);
+    return ['ok' => 1, 'urunler' => $rows, 'tukenen' => $rows->where('tukendi', true)->count()];
+});
+
+// 86 TOGGLE: urunu tukendi/geldi yap. Yetki: adisyon_ac olan herkes (mutfak/garson dahil).
+Route::post('/api/mutfak/86', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', $p->sube_id)->first();
+    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $yeni = $u->tukendi ? 0 : 1;
+    DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
+    return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
+});
+
+// MUTFAK ANALIZ: hazirlik suresi, en yavas urunler, istasyon yuku, saatlik yogunluk + kurallı prep onerisi.
+Route::get('/api/mutfak/analiz', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $bekVar = Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani');
+    $istVar = Schema::hasColumn('urunler', 'istasyon');
+    $bugun = now()->startOfDay();
+    $simdi = now();
+
+    // 1) Ortalama hazirlik suresi (bugun, gonderim->hazir olan kalemler)
+    $ortDk = null; $olcum = 0;
+    $enYavas = [];
+    if ($bekVar) {
+        $done = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $p->sube_id)->whereNotNull('adisyon_kalemleri.hazir_zamani')
+            ->whereNotNull('adisyon_kalemleri.gonderim_zamani')->where('adisyon_kalemleri.hazir_zamani', '>=', $bugun)
+            ->select('adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.hazir_zamani')->get();
+        $topla = 0; $urunSure = [];
+        foreach ($done as $d) {
+            $dk = (int) \Carbon\Carbon::parse($d->gonderim_zamani)->diffInMinutes(\Carbon\Carbon::parse($d->hazir_zamani));
+            $topla += $dk; $olcum++;
+            $urunSure[$d->urun_adi][] = $dk;
+        }
+        if ($olcum > 0) $ortDk = round($topla / $olcum, 1);
+        foreach ($urunSure as $ad => $arr) $enYavas[] = ['ad' => $ad, 'dk' => round(array_sum($arr) / count($arr), 1), 'adet' => count($arr)];
+        usort($enYavas, fn ($a, $b) => $b['dk'] <=> $a['dk']);
+        $enYavas = array_slice($enYavas, 0, 6);
+    }
+
+    // 2) Su an bekleyen kalemler -> istasyon yuku + geciken sayisi
+    $bekleyen = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'gonderildi')
+        ->select('adisyon_kalemleri.adet', 'adisyon_kalemleri.gonderim_zamani',
+            $istVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon"))->get();
+    $etiket = _mutfakIstasyonlar();
+    $istYuk = []; $geciken = 0; $enEskiDk = 0;
+    foreach ($bekleyen as $b) {
+        $ist = $b->istasyon ?: 'mutfak';
+        $istYuk[$ist] = ($istYuk[$ist] ?? 0) + (float) $b->adet;
+        $dk = $b->gonderim_zamani ? (int) \Carbon\Carbon::parse($b->gonderim_zamani)->diffInMinutes($simdi) : 0;
+        if ($dk >= 15) $geciken++;
+        $enEskiDk = max($enEskiDk, $dk);
+    }
+    $istasyonYuku = [];
+    foreach ($istYuk as $kod => $adet) $istasyonYuku[] = ['kod' => $kod, 'ad' => $etiket[$kod] ?? $kod, 'adet' => (int) round($adet)];
+    usort($istasyonYuku, fn ($a, $b) => $b['adet'] <=> $a['adet']);
+
+    // 3) Saatlik yogunluk (bugun mutfaga gonderilen kalem adedi, saat bazinda)
+    $saatlik = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyon_kalemleri.gonderim_zamani', '>=', $bugun)
+        ->select(DB::raw('HOUR(adisyon_kalemleri.gonderim_zamani) as saat'), DB::raw('COUNT(*) as adet'))
+        ->groupBy(DB::raw('HOUR(adisyon_kalemleri.gonderim_zamani)'))->pluck('adet', 'saat');
+    $saatDizi = [];
+    foreach ($saatlik as $s => $a) $saatDizi[] = ['saat' => (int) $s, 'adet' => (int) $a];
+    usort($saatDizi, fn ($a, $b) => $a['saat'] <=> $b['saat']);
+
+    // 4) Kural motoru prep onerileri (bedava, rakam uydurmaz)
+    $oneriler = [];
+    if ($geciken > 0) {
+        $enYogun = $istasyonYuku[0] ?? null;
+        $oneriler[] = ['tip' => 'darbogaz', 'ikon' => '⚠️',
+            'metin' => "$geciken sipariş 15 dk+ bekliyor" . ($enYogun ? " · en yoğun istasyon: {$enYogun['ad']} ({$enYogun['adet']} ürün). Buraya destek verin." : '.')];
+    }
+    if ($ortDk !== null && $ortDk > 18) {
+        $oneriler[] = ['tip' => 'sure', 'ikon' => '🐢', 'metin' => "Bugün ortalama hazırlık {$ortDk} dk — hedefin (12-15 dk) üstünde. En yavaş: " . (($enYavas[0]['ad'] ?? '') ?: '—') . '.'];
+    }
+    // Bugun en cok satan urunler -> "hazirlikta bulundur" (mise en place)
+    $cokSatan = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyon_kalemleri.gonderim_zamani', '>=', $bugun)
+        ->where('adisyon_kalemleri.durum', '!=', 'iptal')
+        ->select('adisyon_kalemleri.urun_adi', DB::raw('SUM(adisyon_kalemleri.adet) as adet'))
+        ->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('adet')->limit(3)->get();
+    if ($cokSatan->count() > 0) {
+        $liste = $cokSatan->map(fn ($c) => $c->urun_adi . ' (' . (int) $c->adet . ')')->implode(', ');
+        $oneriler[] = ['tip' => 'prep', 'ikon' => '📋', 'metin' => "Bugünün çok satanları: $liste. Malzemelerini hazırda tut (mise en place)."];
+    }
+    // Tukenen urun uyarisi
+    $tukenen = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->where('tukendi', 1)->pluck('ad');
+    if ($tukenen->count() > 0) {
+        $oneriler[] = ['tip' => 'tukendi', 'ikon' => '🔴', 'metin' => 'Şu an 86 (tükendi): ' . $tukenen->implode(', ') . '.'];
+    }
+    if (empty($oneriler)) $oneriler[] = ['tip' => 'ok', 'ikon' => '✅', 'metin' => 'Mutfak akışı sağlıklı görünüyor. Bekleyen gecikmiş sipariş yok.'];
+
+    return ['ok' => 1,
+        'ozet' => ['ort_dk' => $ortDk, 'olcum' => $olcum, 'bekleyen' => (int) round(array_sum($istYuk)), 'geciken' => $geciken, 'en_eski_dk' => $enEskiDk],
+        'en_yavas' => $enYavas, 'istasyon_yuku' => $istasyonYuku, 'saatlik' => $saatDizi, 'oneriler' => $oneriler];
 });
 
 // ---- SEBEPLER (silme/iskonto/ikram/iptal) - duzenlenebilir liste ----
