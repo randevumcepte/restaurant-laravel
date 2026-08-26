@@ -214,7 +214,7 @@ class MusteriAsistan
             'fiyat_yazi' => $this->tl($fiyat),
             'aciklama' => $aciklama ? (string) $aciklama : '',
             'emoji' => $this->katEmoji($kat, $ad),
-            'gorsel' => $this->gorselUrl($urunId),  // simdilik null -> on yuzde emoji tile
+            'gorsel' => $this->gorselUrl($urunId) ?: $this->stokGorsel($kat, $ad),  // yuklenen foto > stok yemek fotosu
             'etiket' => $etiket,
             'icindekiler' => array_values((array) $icindekiler),
             'urun_id' => $urunId ? (int) $urunId : null,
@@ -235,7 +235,29 @@ class MusteriAsistan
         } catch (\Throwable $e) { return null; }
     }
 
-    /** Kategori/urun adina gore uygun emoji (foto yoksa kartin gorseli). */
+    /** Gercek yemek fotografi (loremflickr, anahtar kelimeye gore; sabit lock -> ayni urun ayni foto). */
+    protected function stokGorsel($kat, $ad)
+    {
+        $t = $this->norm($kat . ' ' . $ad);
+        $harita = [
+            'izgara kofte' => 'meatballs,grill', 'kofte' => 'meatballs', 'kebap' => 'kebab', 'pirzola' => 'lamb,chops',
+            'antrikot' => 'steak', 'biftek' => 'steak', 'tavuk' => 'grilled,chicken', 'balik' => 'fish,dish', 'izgara' => 'grill,meat',
+            'ezogelin' => 'soup', 'mercimek' => 'lentil,soup', 'corba' => 'soup',
+            'pizza' => 'pizza', 'burger' => 'burger', 'makarna' => 'pasta', 'bolonez' => 'pasta,bolognese', 'spagetti' => 'spaghetti',
+            'sezar' => 'caesar,salad', 'salata' => 'salad',
+            'baklava' => 'baklava', 'kunefe' => 'kunefe', 'sutlac' => 'rice,pudding', 'brownie' => 'brownie,chocolate',
+            'dondurma' => 'ice,cream', 'kazandibi' => 'dessert', 'tatli' => 'dessert',
+            'latte' => 'latte', 'espresso' => 'espresso', 'cappuccino' => 'cappuccino', 'kahve' => 'coffee', 'cay' => 'tea',
+            'ayran' => 'ayran,drink', 'limonata' => 'lemonade', 'meyve suyu' => 'juice', 'kola' => 'soda,cola', 'soda' => 'soda',
+            'baslangic' => 'appetizer', 'meze' => 'meze', 'ana yemek' => 'turkish,food', 'kahvalti' => 'breakfast',
+        ];
+        $kw = 'food,plate';
+        foreach ($harita as $k => $v) { if (strpos($t, $k) !== false) { $kw = $v; break; } }
+        $seed = abs(crc32((string) $ad)) % 997;
+        return 'https://loremflickr.com/500/380/' . $kw . '?lock=' . $seed;
+    }
+
+    /** Kategori/urun adina gore uygun emoji (foto yuklenemezse kartin gorseli). */
     protected function katEmoji($kat, $ad = '')
     {
         $t = $this->norm($kat . ' ' . $ad);

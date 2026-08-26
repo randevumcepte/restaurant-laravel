@@ -36,24 +36,42 @@
   #mic{ background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 4px 14px rgba(124,58,237,.4); }
   #mic.dinliyor{ background:linear-gradient(135deg,#F43F5E,#EF4444); }
   #gonder{ background:var(--card); color:#C4B5FD; }
-  /* ---- Gorsel kartlar ---- */
-  .kartsira{ display:flex; gap:10px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:6px; -webkit-overflow-scrolling:touch; }
-  .mkart{ flex:0 0 158px; background:var(--card); border:1px solid #2D3752; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
-  .mkart .gor{ position:relative; height:104px; display:flex; align-items:center; justify-content:center; }
-  .mkart .gor img{ width:100%; height:100%; object-fit:cover; }
-  .mkart .tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-  .mkart .tile span{ font-size:44px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
-  .mkart .et{ position:absolute; top:8px; left:8px; background:rgba(15,23,42,.82); color:#FDE68A; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:10px; }
-  .mkart .mad{ font-weight:800; font-size:13.5px; padding:9px 11px 2px; line-height:1.25; }
-  .mkart .mfi{ color:#4ADE80; font-weight:800; font-size:13.5px; padding:0 11px 4px; }
-  .mkart .ac{ color:#94A3B8; font-size:11.5px; padding:0 11px 4px; line-height:1.3; max-height:44px; overflow:hidden; }
-  .mkart .ic{ color:#7C8AA5; font-size:10.5px; padding:0 11px 8px; }
-  .mkart .mbtn{ margin:auto 9px 10px; border:none; border-radius:10px; padding:9px; font-weight:700; font-size:12.5px; color:#fff;
-    background:linear-gradient(135deg,var(--mor),var(--mavi)); }
-  .katsira{ display:flex; gap:8px; flex-wrap:wrap; padding:2px 2px 12px; margin-bottom:6px; }
-  .kkart{ display:flex; align-items:center; gap:7px; background:var(--card); border:1px solid #2D3752; color:#E2E8F0;
-    font-weight:700; font-size:13px; padding:10px 13px; border-radius:14px; }
-  .kkart .ke{ font-size:19px; }
+  /* ---- Gorsel kartlar (PREMIUM) ---- */
+  .kartsira{ display:flex; gap:14px; overflow-x:auto; padding:6px 2px 18px; margin-bottom:4px;
+    -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
+  .kartsira::-webkit-scrollbar{ height:0; }
+  .mkart{ flex:0 0 236px; scroll-snap-align:start; position:relative; height:312px; border-radius:24px; overflow:hidden;
+    background:#0e1428; border:1px solid rgba(255,255,255,.07); box-shadow:0 14px 34px rgba(0,0,0,.5);
+    opacity:0; transform:translateY(18px) scale(.97); animation:kartGir .55s cubic-bezier(.2,.75,.2,1) forwards; }
+  @keyframes kartGir{ to{ opacity:1; transform:none; } }
+  .mkart .gor{ position:absolute; inset:0; background:#0e1428; }
+  .mkart .gor img{ width:100%; height:100%; object-fit:cover; transform:scale(1.03); transition:transform .7s ease; }
+  .mkart:active .gor img{ transform:scale(1.1); }
+  .mkart .tile{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .mkart .tile span{ font-size:86px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)); }
+  .mkart .shade{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(6,10,20,.05) 28%,rgba(6,10,20,.5) 56%,rgba(6,10,20,.94) 100%); }
+  .mkart .et{ position:absolute; top:13px; left:13px; z-index:2; background:linear-gradient(135deg,#F6CE63,#E0A431);
+    color:#3a2600; font-size:11px; font-weight:800; letter-spacing:.3px; padding:5px 12px; border-radius:30px;
+    box-shadow:0 5px 14px rgba(224,164,49,.5); }
+  .mkart .body{ position:absolute; left:0; right:0; bottom:0; z-index:2; padding:15px 16px 16px; }
+  .mkart .mad{ font-weight:800; font-size:19px; line-height:1.15; letter-spacing:.2px; text-shadow:0 2px 10px rgba(0,0,0,.7); }
+  .mkart .mfi{ display:inline-block; margin-top:7px; background:rgba(255,255,255,.13); backdrop-filter:blur(8px);
+    color:#FDE9B5; font-weight:800; font-size:14px; padding:3px 12px; border-radius:22px; border:1px solid rgba(246,206,99,.45); }
+  .mkart .ac{ color:#D7DEEA; font-size:11.8px; line-height:1.38; margin-top:9px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .mkart .mbtn{ margin-top:12px; width:100%; border:none; border-radius:14px; padding:12px; font-weight:800; font-size:13.5px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 7px 18px rgba(124,58,237,.5); }
+  .mkart .mbtn:active{ transform:translateY(1px); }
+  /* Kategori kartlari */
+  .katsira{ display:flex; gap:11px; overflow-x:auto; padding:6px 2px 16px; margin-bottom:4px; -webkit-overflow-scrolling:touch; }
+  .katsira::-webkit-scrollbar{ height:0; }
+  .kkart{ flex:0 0 auto; min-width:100px; display:flex; flex-direction:column; align-items:center; gap:7px;
+    padding:17px 15px; border-radius:20px; border:1px solid rgba(255,255,255,.08);
+    background:linear-gradient(160deg,#1c2542,#141a30); box-shadow:0 8px 20px rgba(0,0,0,.4);
+    opacity:0; transform:translateY(14px); animation:kartGir .5s cubic-bezier(.2,.75,.2,1) forwards; }
+  .kkart:active{ border-color:rgba(124,58,237,.6); }
+  .kkart .ke{ font-size:32px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.4)); }
+  .kkart .kad{ font-weight:700; font-size:12.5px; color:#E7ECF5; text-align:center; }
 </style>
 </head>
 <body>
@@ -103,21 +121,22 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, m=>({'&':'&am
 // Ada gore sabit renkli gradient (foto yoksa emoji tile arka plani)
 function gradientFor(str){ let h=0; for(let i=0;i<String(str).length;i++) h=(h*31+str.charCodeAt(i))%360; return `linear-gradient(135deg,hsl(${h},62%,52%),hsl(${(h+42)%360},68%,42%))`; }
 
-// Urun kartlari (resim + ad + fiyat + aciklama + "Istiyorum")
+// Urun kartlari (tam boy foto hero + altin etiket + cam fiyat rozeti + "Istiyorum")
 function kartlariEkle(kartlar){
   const sar = document.createElement('div'); sar.className='kartsira';
-  kartlar.forEach(k=>{
+  kartlar.forEach((k, idx)=>{
     const c = document.createElement('div'); c.className='mkart';
+    c.style.animationDelay = (idx*75)+'ms';
+    const tile = `<div class="tile" style="background:${gradientFor(k.ad)}"><span>${k.emoji||'🍽️'}</span></div>`;
     const gorsel = k.gorsel
-      ? `<img src="${esc(k.gorsel)}" alt="${esc(k.ad)}" onerror="this.parentNode.innerHTML='<div class=\\'tile\\' style=\\'background:${gradientFor(k.ad)}\\'><span>${k.emoji||'🍽️'}</span></div>'">`
-      : `<div class="tile" style="background:${gradientFor(k.ad)}"><span>${k.emoji||'🍽️'}</span></div>`;
-    const et = k.etiket ? `<div class="et">${esc(k.etiket)}</div>` : '';
+      ? `<img src="${esc(k.gorsel)}" alt="${esc(k.ad)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML=${JSON.stringify(tile)}">`
+      : tile;
+    const et = k.etiket ? `<div class="et">★ ${esc(k.etiket)}</div>` : '';
     const ac = k.aciklama ? `<div class="ac">${esc(k.aciklama)}</div>` : '';
-    const ic = (k.icindekiler && k.icindekiler.length) ? `<div class="ic">${esc(k.icindekiler.join(' · '))}</div>` : '';
-    c.innerHTML = `<div class="gor">${gorsel}${et}</div>`
-      + `<div class="mad">${esc(k.ad)}</div>`
-      + `<div class="mfi">${esc(k.fiyat_yazi||'')}</div>${ac}${ic}`
-      + `<button class="mbtn">🙋 İstiyorum</button>`;
+    c.innerHTML = `<div class="gor">${gorsel}</div><div class="shade"></div>${et}`
+      + `<div class="body"><div class="mad">${esc(k.ad)}</div>`
+      + `<div class="mfi">${esc(k.fiyat_yazi||'')}</div>${ac}`
+      + `<button class="mbtn">🙋 İstiyorum</button></div>`;
     c.querySelector('.mbtn').addEventListener('click', e=>{ e.stopPropagation(); istiyorum(k.ad); });
     c.addEventListener('click', ()=> sor(k.ad));
     sar.appendChild(c);
@@ -128,9 +147,10 @@ function kartlariEkle(kartlar){
 // Kategori kartlari (dokun -> o kategoriyi ac)
 function kategorilerEkle(kats){
   const sar = document.createElement('div'); sar.className='katsira';
-  kats.forEach(k=>{
+  kats.forEach((k, idx)=>{
     const c = document.createElement('div'); c.className='kkart';
-    c.innerHTML = `<span class="ke">${k.emoji||'🍽️'}</span><span>${esc(k.ad)}</span>`;
+    c.style.animationDelay = (idx*55)+'ms';
+    c.innerHTML = `<span class="ke">${k.emoji||'🍽️'}</span><span class="kad">${esc(k.ad)}</span>`;
     c.addEventListener('click', ()=> sor(k.ad + ' neler var'));
     sar.appendChild(c);
   });
