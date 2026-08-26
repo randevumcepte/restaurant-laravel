@@ -429,9 +429,11 @@ class RestoAsistan
     protected function _kaliplar()
     {
         try {
-            return Cache::remember('resto_kalip_liste_v1', now()->addMinutes(5), function () {
+            // Cache'e DUZ DIZI koy (stdClass cache'te "incomplete object"e donusup patlayabiliyor)
+            return Cache::remember('resto_kalip_liste_v2', now()->addMinutes(5), function () {
                 if (!Schema::hasTable('asistan_kalip')) return [];
-                return DB::table('asistan_kalip')->where('aktif', 1)->select('id', 'tetikleyiciler', 'cevap')->get()->all();
+                return DB::table('asistan_kalip')->where('aktif', 1)->select('id', 'tetikleyiciler', 'cevap')->get()
+                    ->map(fn ($x) => ['id' => (int) $x->id, 'tetikleyiciler' => (string) $x->tetikleyiciler, 'cevap' => (string) $x->cevap])->all();
             });
         } catch (\Throwable $e) {
             return [];
@@ -448,7 +450,9 @@ class RestoAsistan
         $enIyi = null;
         $enSkor = 0;
         foreach ($liste as $k) {
-            foreach (preg_split('/[\r\n,;]+/', (string) $k->tetikleyiciler) as $t) {
+            // Hem dizi (yeni cache) hem stdClass (eski) ile calis
+            $tetik = is_array($k) ? ($k['tetikleyiciler'] ?? '') : ($k->tetikleyiciler ?? '');
+            foreach (preg_split('/[\r\n,;]+/', (string) $tetik) as $t) {
                 $t = trim($this->normalize($t));
                 if (mb_strlen($t) < 2) continue;
                 if (preg_match('/(?:^| )' . preg_quote($t, '/') . '[a-z]*(?= |$)/u', $n)) {
@@ -458,8 +462,10 @@ class RestoAsistan
             }
         }
         if (!$enIyi) return null;
-        try { DB::table('asistan_kalip')->where('id', $enIyi->id)->increment('kullanim_sayisi'); } catch (\Throwable $e) {}
-        return ['basarili' => true, 'intent' => 'kalip', 'seslendir' => true, 'cevap' => $this->_cevapSec($enIyi->cevap), 'kart' => null];
+        $eId = is_array($enIyi) ? ($enIyi['id'] ?? 0) : ($enIyi->id ?? 0);
+        $eCevap = is_array($enIyi) ? ($enIyi['cevap'] ?? '') : ($enIyi->cevap ?? '');
+        try { DB::table('asistan_kalip')->where('id', $eId)->increment('kullanim_sayisi'); } catch (\Throwable $e) {}
+        return ['basarili' => true, 'intent' => 'kalip', 'seslendir' => true, 'cevap' => $this->_cevapSec($eCevap), 'kart' => null];
     }
 
     /** Cevap havuzu ("---" ile ayrilmis) -> rastgele biri (cesitlilik). */
