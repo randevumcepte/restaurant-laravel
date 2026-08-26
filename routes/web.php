@@ -1176,6 +1176,47 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// QR SIPARIS -> acik adisyon bul/olustur + kalem ekle (mutfaga gonderildi) + garson bildirimi
+Route::post('/api/qr/siparis-gonder', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Sepet boş'];
+    // Acik adisyon bul, yoksa olustur (kanal=qr)
+    $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
+    if (!$adId) {
+        $adId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'kanal' => 'qr', 'misafir_sayisi' => 1, 'durum' => 'acik',
+            'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0, 'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    $eklenen = 0;
+    $tukendi = [];
+    foreach ($kalemler as $k) {
+        $uid = (int) ($k['urun_id'] ?? 0);
+        $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $masa->sube_id)->first();
+        if (!$u) continue;
+        if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
+        DB::table('adisyon_kalemleri')->insert([
+            'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
+            'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
+            'durum' => 'gonderildi', 'not' => 'QR sipariş', 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $eklenen++;
+    }
+    if ($eklenen === 0) return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Geçerli ürün eklenemedi'];
+    $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')->sum('tutar');
+    $ad = DB::table('adisyonlar')->find($adId);
+    $toplam = max(0, $ara - (float) $ad->indirim - (float) $ad->ikram);
+    DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $ara, 'toplam' => $toplam, 'updated_at' => now()]);
+    DB::table('masalar')->where('id', $masa->id)->update(['durum' => 'dolu']);
+    if (Schema::hasTable('masa_cagrilari')) {
+        DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
+    }
+    return ['ok' => 1, 'mesaj' => 'Siparişiniz mutfağa iletildi', 'eklenen' => $eklenen, 'toplam' => $toplam, 'tukendi' => $tukendi];
+});
+
 // Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
 Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     $metin = trim((string) $r->input('metin', ''));

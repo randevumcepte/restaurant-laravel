@@ -72,6 +72,23 @@
   .kkart:active{ border-color:rgba(124,58,237,.6); }
   .kkart .ke{ font-size:32px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.4)); }
   .kkart .kad{ font-weight:700; font-size:12.5px; color:#E7ECF5; text-align:center; }
+  /* ---- Sepet (sipariş onayı) ---- */
+  .sepet{ background:linear-gradient(160deg,#1b2340,#141a2e); border:1px solid #2D3752; border-radius:18px; padding:14px 15px; margin-bottom:10px;
+    box-shadow:0 10px 26px rgba(0,0,0,.4); }
+  .sepet h4{ margin:0 0 10px; font-size:15px; color:#fff; }
+  .sepet .satir{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #232B42; }
+  .sepet .satir:last-of-type{ border-bottom:none; }
+  .sepet .sad{ flex:1; font-size:13.5px; color:#E2E8F0; font-weight:600; }
+  .sepet .sfi{ color:#FDE9B5; font-weight:800; font-size:13px; min-width:78px; text-align:right; }
+  .sepet .adet{ display:flex; align-items:center; gap:9px; }
+  .sepet .adet button{ width:28px; height:28px; border-radius:9px; border:none; background:#25304A; color:#fff; font-size:17px; font-weight:800; line-height:1; }
+  .sepet .adet span{ min-width:18px; text-align:center; color:#fff; font-weight:800; }
+  .sepet .top{ display:flex; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #2D3752; font-weight:800; color:#fff; font-size:15px; }
+  .sepet .btns{ display:flex; gap:9px; margin-top:13px; }
+  .sepet .onayla{ flex:1; background:linear-gradient(135deg,#16A34A,#22C55E); color:#fff; border:none; border-radius:13px; padding:13px; font-weight:800; font-size:14.5px;
+    box-shadow:0 7px 18px rgba(34,197,94,.4); }
+  .sepet .onayla:disabled{ opacity:.6; }
+  .sepet .vazgec{ background:#2a2030; color:#FCA5A5; border:none; border-radius:13px; padding:13px 16px; font-weight:700; }
   .mkart .gor{ cursor:pointer; }
   /* ---- Foto galeri (lightbox) ---- */
   #lightbox{ position:fixed; inset:0; z-index:60; background:rgba(4,7,15,.95); backdrop-filter:blur(8px);
@@ -206,12 +223,43 @@ function kategorilerEkle(kats){
   sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
 }
 
-// "Istiyorum" -> garson cagir (Faz 1: siparisi garson alir)
+// "Istiyorum" -> tek urunu sepete al (onayli siparis)
 function istiyorum(ad){
   ekle('ben', ad + ' istiyorum');
-  garsonCagir('garson');
-  const m = 'Harika seçim! ' + ad + ' için garsonumuzu çağırdım, birazdan siparişinizi alacak. 😊';
-  ekle('ai', m); konus(m);
+  sor(ad + ' istiyorum');
+}
+
+/* ---- Sepet (Faz 2: siparis onayi) ---- */
+function sepetGoster(kalemler){
+  const sepet = kalemler.map(k=>({urun_id:k.urun_id, ad:k.ad, adet:k.adet, fiyat:k.fiyat}));
+  const wrap = document.createElement('div'); wrap.className='sepet';
+  function tl(v){ return v.toLocaleString('tr') + ' TL'; }
+  function render(){
+    const toplam = sepet.reduce((s,k)=>s + k.fiyat*k.adet, 0);
+    wrap.innerHTML = '<h4>🧾 Siparişiniz</h4>' +
+      sepet.map((k,idx)=>`<div class="satir"><span class="sad">${esc(k.ad)}</span>`
+        + `<span class="adet"><button data-i="${idx}" data-d="-1">−</button><span>${k.adet}</span><button data-i="${idx}" data-d="1">+</button></span>`
+        + `<span class="sfi">${tl(k.fiyat*k.adet)}</span></div>`).join('')
+      + `<div class="top"><span>Toplam</span><span>${tl(toplam)}</span></div>`
+      + `<div class="btns"><button class="onayla">✅ Onayla ve Gönder</button><button class="vazgec">Vazgeç</button></div>`;
+    wrap.querySelectorAll('.adet button').forEach(b=> b.addEventListener('click', ()=>{
+      const i=+b.dataset.i, d=+b.dataset.d; sepet[i].adet = Math.max(1, sepet[i].adet + d); render();
+    }));
+    wrap.querySelector('.vazgec').addEventListener('click', ()=>{ wrap.remove(); const m='Tamam, siparişi iptal ettim. 😊'; ekle('ai', m); });
+    wrap.querySelector('.onayla').addEventListener('click', ()=> sepetGonder(sepet, wrap));
+  }
+  render();
+  sohbet.appendChild(wrap); sohbet.scrollTop = sohbet.scrollHeight;
+}
+async function sepetGonder(sepet, wrap){
+  const btn = wrap.querySelector('.onayla'); btn.disabled=true; btn.textContent='Gönderiliyor…';
+  try{
+    const r = await fetch('/api/qr/siparis-gonder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({masa:MASA, kalemler: JSON.stringify(sepet.map(k=>({urun_id:k.urun_id, adet:k.adet})))})});
+    const j = await r.json();
+    if(j.ok){ wrap.remove(); const m='Siparişiniz mutfağa iletildi, birazdan hazırlanıyor. Afiyet olsun! 🎉'; ekle('ai', m); konus(m); }
+    else { btn.disabled=false; btn.textContent='✅ Onayla ve Gönder'; ekle('ai', j.hata || 'Sipariş gönderilemedi, tekrar dener misiniz?'); }
+  }catch(e){ btn.disabled=false; btn.textContent='✅ Onayla ve Gönder'; ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); }
 }
 
 /* ---- Seslendirme: ONCE bedava cihaz (tarayici) sesi; yoksa sunucu Google TTS ---- */
@@ -310,6 +358,7 @@ async function sor(soru){
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);
     if(Array.isArray(j.kartlar) && j.kartlar.length) kartlariEkle(j.kartlar);
+    if(j.aksiyon==='sepet' && Array.isArray(j.sepet) && j.sepet.length) sepetGoster(j.sepet);
     if(j.seslendir!==false) konus(cevap);
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); }

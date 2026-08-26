@@ -53,6 +53,15 @@ class MusteriAsistan
             }
         }
 
+        // 2.6) SIPARIS NIYETI (Faz 2): "iki adana bir ayran istiyorum" -> sepet
+        $sip = $this->siparisCoz($soru);
+        if (!empty($sip['lines'])) {
+            $verb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'soyle', 'soyleyin', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim']);
+            if ($verb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
+                return $this->sepetCevap($sip['lines']);
+            }
+        }
+
         // 3) Gunun yemegi / sef onerisi
         if ($this->has($c, ['gunun yemegi', 'gunun spesiyali', 'sef onerisi', 'spesiyal', 'bugun ne var', 'ne onerirsin', 'ne tavsiye', 'oneri', 'populer', 'en cok', 'en sevilen', 'favori', 'ne yesem', 'ne yiyeyim'])) {
             return $this->oneri();
@@ -181,6 +190,93 @@ class MusteriAsistan
         if (!empty($icindekiler)) $cevap .= ' İçinde ' . $this->dogalListe($icindekiler) . ' bulunuyor.';
         $cevap .= ' Beğendiyseniz "İstiyorum" demeniz yeterli, garsonumuzu hemen çağırayım. 😊';
         return $this->cvp($cevap, ['tip' => 'urun', 'urun_baglam' => $u->ad, 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
+    }
+
+    // ==================== SIPARIS ZEKASI (Faz 2) ====================
+    /** Serbest metni ürün+adet satirlarina cevirir. "iki adana bir ayran" -> [{u,adet:2},{u,adet:1}]. */
+    protected function siparisCoz($metin)
+    {
+        $tokens = array_values(array_filter(explode(' ', $this->norm($metin)), fn ($x) => $x !== ''));
+        if (empty($tokens)) return ['lines' => [], 'explicitQty' => false];
+        $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->get(['id', 'ad', 'fiyat', 'tukendi']);
+        $keys = [];
+        $ilk = [];
+        foreach ($urunler as $u) { $w = explode(' ', $this->norm($u->ad)); $keys[] = ['w' => $w, 'u' => $u]; $ilk[$w[0]] = ($ilk[$w[0]] ?? 0) + 1; }
+        // Tek-kelime takma ad: cok-kelimeli urunun benzersiz ilk kelimesi (adana -> Adana Kebap)
+        foreach ($urunler as $u) { $w = explode(' ', $this->norm($u->ad)); if (count($w) > 1 && mb_strlen($w[0]) >= 4 && ($ilk[$w[0]] ?? 0) == 1) $keys[] = ['w' => [$w[0]], 'u' => $u]; }
+        usort($keys, fn ($a, $b) => count($b['w']) <=> count($a['w'])); // uzun eslesme once
+        $say = ['bir' => 1, 'iki' => 2, 'uc' => 3, 'dort' => 4, 'bes' => 5, 'alti' => 6, 'yedi' => 7, 'sekiz' => 8, 'dokuz' => 9, 'on' => 10, 'birer' => 1, 'ikiser' => 2, 'yarim' => 1];
+        $lines = [];
+        $pending = null;
+        $explicit = false;
+        $n = count($tokens);
+        $used = array_fill(0, $n, false);
+        for ($i = 0; $i < $n; $i++) {
+            if ($used[$i]) continue;
+            $t = $tokens[$i];
+            if (preg_match('/^\d+$/', $t)) { $pending = min(50, (int) $t); $explicit = true; continue; }
+            if (isset($say[$t])) { $pending = $say[$t]; $explicit = true; continue; }
+            if (in_array($t, ['tane', 'adet', 'porsiyon', 'porsiyonluk', 'bardak', 'sise', 'kadeh'])) continue;
+            $match = null;
+            foreach ($keys as $k) {
+                $w = $k['w'];
+                $len = count($w);
+                if ($i + $len > $n) continue;
+                $ok = true;
+                for ($j = 0; $j < $len; $j++) { if (!$this->kelimeUyar($tokens[$i + $j], $w[$j])) { $ok = false; break; } }
+                if ($ok) { $match = $k; break; }
+            }
+            if ($match) {
+                $len = count($match['w']);
+                $lines[] = ['u' => $match['u'], 'adet' => $pending ?? 1];
+                for ($j = 0; $j < $len; $j++) $used[$i + $j] = true;
+                $i += $len - 1;
+                $pending = null;
+            }
+        }
+        return ['lines' => $lines, 'explicitQty' => $explicit];
+    }
+
+    /** Token, kelimenin (kok) ekli halimi? Kisa kelimede asiri uzamayi engelle (su != sucuk). */
+    protected function kelimeUyar($token, $kelime)
+    {
+        $lk = mb_strlen($kelime);
+        $lt = mb_strlen($token);
+        if ($lk === 0) return false;
+        if ($token === $kelime) return true;
+        $pref = $lk <= 4 ? $kelime : mb_substr($kelime, 0, max(4, $lk - 2));
+        if (mb_strpos($token, $pref) !== 0) return false;
+        $maxEk = $lk <= 4 ? 2 : 3;
+        return $lt <= $lk + $maxEk;
+    }
+
+    /** Cozulen satirlardan sepet cevabi (onay icin). */
+    protected function sepetCevap($lines)
+    {
+        $map = [];
+        foreach ($lines as $l) {
+            $id = $l['u']->id;
+            if (isset($map[$id])) $map[$id]['adet'] += $l['adet'];
+            else $map[$id] = ['u' => $l['u'], 'adet' => $l['adet']];
+        }
+        $kalemler = [];
+        $toplam = 0;
+        $tukendi = [];
+        $ozet = [];
+        foreach ($map as $m) {
+            $u = $m['u'];
+            $adet = (int) $m['adet'];
+            if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
+            $kalemler[] = ['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat];
+            $toplam += $u->fiyat * $adet;
+            $ozet[] = $adet . ' ' . $u->ad;
+        }
+        if (empty($kalemler)) {
+            return $this->cvp('Maalesef ' . $this->dogalListe($tukendi) . ' şu an tükendi. Başka bir şey ister misiniz?');
+        }
+        $metin = 'Siparişinizi aldım: ' . $this->dogalListe($ozet) . '. Toplam ' . $this->tl($toplam) . '. Onaylıyor musunuz? Aşağıdan adetleri düzenleyip "Onayla"ya dokunun. 😊';
+        if (!empty($tukendi)) $metin .= ' (Not: ' . $this->dogalListe($tukendi) . ' tükendi, eklenemedi.)';
+        return $this->cvp($metin, ['aksiyon' => 'sepet', 'sepet' => $kalemler, 'toplam' => $toplam]);
     }
 
     // ==================== URUN OZELLIK ZEKASI (Modul 1) ====================
