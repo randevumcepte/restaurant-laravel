@@ -2763,7 +2763,7 @@ Route::get('/api/patron/hareketler', function (Request $r) {
             'zaman' => \Carbon\Carbon::parse($m->created_at)->format('d.m H:i'), 'ts' => $m->created_at, 'adisyon_id' => $m->adisyon_id];
     }
     // Void/iskonto/ikram loglari
-    $iLog = DB::table('iptal_indirim_loglari')->where('sube_id', $p->sube_id)
+    $iLog = DB::table('iptal_indirim_loglari')->where('iptal_indirim_loglari.sube_id', $p->sube_id)
         ->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
         ->select('iptal_indirim_loglari.tip', 'iptal_indirim_loglari.tutar', 'iptal_indirim_loglari.sebep',
             'iptal_indirim_loglari.created_at', 'personeller.ad as personel', 'iptal_indirim_loglari.adisyon_id')
