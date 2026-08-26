@@ -19,7 +19,7 @@ class MusteriAsistan
         $this->subeId = (int) $subeId;
     }
 
-    public function cevapla($soru)
+    public function cevapla($soru, $baglam = null)
     {
         $c = $this->norm($soru);
         if ($c === '') return $this->cvp('Sizi dinliyorum. Menümüzü sorabilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
@@ -40,6 +40,17 @@ class MusteriAsistan
             $hesap = $this->has($c, ['hesap', 'odeme', 'odeyecegim', 'hesabi getir']);
             return $this->cvp($hesap ? 'Garsonumuza hesabınızı iletmesini söyledim, birazdan yanınızda olacak. 🙋'
                 : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
+        }
+
+        // 2.5) URUN OZELLIK SORUSU (tip + urun): "acili mi", "glutensiz mi", "yaninda ne gelir"...
+        $tip = $this->urunSoruTipi($c);
+        if ($tip) {
+            $urun = $this->urunBul($c) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+            if ($urun) return $this->urunOzellik($urun, $tip);
+            // Urun belirsizse: net urun gerektiren tipler icin sor; caprazsatis/vejetaryen genel handler'a duser
+            if (in_array($tip, ['icindekiler', 'acili_mi', 'alerjen', 'et_turu', 'nasil_pisiyor', 'yaninda_ne_gelir', 'porsiyon'])) {
+                return $this->cvp('Hangi ürünü merak ediyorsunuz? Ürün adını yazarsanız hemen anlatayım. 😊');
+            }
         }
 
         // 3) Gunun yemegi / sef onerisi
@@ -169,7 +180,158 @@ class MusteriAsistan
         if (!empty($u->aciklama)) $cevap .= ' ' . rtrim(trim($u->aciklama), '.') . '.';
         if (!empty($icindekiler)) $cevap .= ' İçinde ' . $this->dogalListe($icindekiler) . ' bulunuyor.';
         $cevap .= ' Beğendiyseniz "İstiyorum" demeniz yeterli, garsonumuzu hemen çağırayım. 😊';
-        return $this->cvp($cevap, ['tip' => 'urun', 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
+        return $this->cvp($cevap, ['tip' => 'urun', 'urun_baglam' => $u->ad, 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
+    }
+
+    // ==================== URUN OZELLIK ZEKASI (Modul 1) ====================
+    /** Sorunun ürün özellik tipini bul (trigger'lı). Yoksa null. */
+    protected function urunSoruTipi($c)
+    {
+        $n = ' ' . $c . ' ';
+        $tipler = [
+            'caprazsatis' => ['yaninda ne onerirsin', 'yanina ne onerirsin', 'yaninda ne alayim', 'yanina ne alayim', 'ne iyi gider', 'ne yakisir', 'bununla ne alinir', 'yaninda ne guzel', 'yanina ne onerir'],
+            'icindekiler' => ['icinde ne var', 'icindekiler', 'malzeme', 'neyden yapiliyor', 'neyle yapiliyor', 'icerigi ne', 'iceriginde ne', 'hangi malzeme', 'icine ne', 'neyden olusuyor', 'icerik bilgisi'],
+            'acili_mi' => ['aci mi', 'acili mi', 'aci olur mu', 'baharatli mi', 'baharat var', 'aci seviyesi', 'ne kadar aci', 'cok aci mi', 'aci iceriyor', 'aci biber', 'baharat seviyesi'],
+            'vejetaryen_vegan_mi' => ['vejetaryen mi', 'vegan mi', 'vejeteryan mi', 'etsiz mi', 'et var mi', 'et iceriyor', 'hayvansal mi', 'vejetaryene uygun', 'vegana uygun', 'bitkisel mi'],
+            'alerjen' => ['glutensiz mi', 'gluten var', 'gluten iceriyor', 'laktozsuz mu', 'laktoz var', 'sut iceriyor', 'alerjen var', 'hangi alerjen', 'glutensiz', 'laktozsuz', 'colyak', 'sut alerjisi'],
+            'et_turu' => ['et turu', 'hangi et', 'ne eti', 'dana mi', 'tavuk mu', 'kuzu mu', 'hangi etten', 'et cesidi', 'kirmizi et mi', 'beyaz et mi', 'hangi hayvan'],
+            'nasil_pisiyor' => ['nasil pisiyor', 'nasil pisiriliyor', 'pisirme yontemi', 'pisirme sekli', 'izgara mi', 'firinda mi', 'mangal mi', 'tavada mi', 'kizartma mi', 'nasil hazirlaniyor'],
+            'yaninda_ne_gelir' => ['yaninda ne gelir', 'yaninda ne var', 'yaninda ne geliyor', 'ne ile servis', 'neyle servis', 'garnitur', 'yaninda salata', 'yaninda pilav', 'yaninda patates', 'eslik eden', 'servisinde ne'],
+            'porsiyon' => ['kac kisilik', 'kac kisi yer', 'kac kisiye yeter', 'porsiyon kac', 'tek kisilik mi', 'iki kisilik mi', 'paylasilir mi', 'ortaya yeter', 'doyurucu mu', 'paylasmaya uygun', 'gramaj'],
+        ];
+        foreach ($tipler as $tip => $trigs) {
+            foreach ($trigs as $t) {
+                if ($this->tetikUyar($n, $this->norm($t))) return $tip;
+            }
+        }
+        return null;
+    }
+
+    /** Ürün + tip -> veriden (reçete/ad/kategori) üretilen cevap. */
+    protected function urunOzellik($u, $tip)
+    {
+        $malz = $this->receteMalz($u->id);
+        $havuz = $this->norm($u->ad . ' ' . ($u->aciklama ?? '') . ' ' . implode(' ', $malz['orij']));
+        $ad = $u->ad;
+        $bul = function ($grup) use ($havuz) {
+            $r = [];
+            foreach ($grup as $g) { if (strpos($havuz, $this->norm($g)) !== false) $r[] = $g; }
+            return $r;
+        };
+        $cevap = '';
+        switch ($tip) {
+            case 'icindekiler':
+                $cevap = !empty($malz['orij'])
+                    ? $ad . ' içinde ' . $this->dogalListe(array_slice($malz['orij'], 0, 6)) . ' bulunuyor. Özel bir hassasiyetiniz varsa söyleyin, birlikte bakalım. 😊'
+                    : $ad . ' için içerik detayını garsonumuz netleştirsin; ister misiniz?';
+                break;
+            case 'acili_mi':
+                $cevap = !empty($bul(['aci', 'pul biber', 'isot', 'jalapeno', 'chili', 'aci sos', 'arnavut']))
+                    ? $ad . ' baharatlı, acımsı bir lezzettir. Acı sevmiyorsanız garsonumuza söyleyin, acısı azaltılarak hazırlanabilir.'
+                    : $ad . ' belirgin acı içermez. Dilerseniz garsonumuza acılı olarak da hazırlatabiliriz.';
+                break;
+            case 'vejetaryen_vegan_mi':
+                if (!empty($bul(['dana', 'kiyma', 'tavuk', 'kuzu', 'balik', 'hindi', 'sucuk', 'pastirma', 'jambon', 'bonfile', 'antrikot', 'kofte', 'sosis', 'ciger', 'et suyu']))) {
+                    $cevap = $ad . ', et/hayvansal içerik barındırıyor, vejetaryen değildir. Etsiz seçenekler için "vejetaryen" diyebilirsiniz, hemen listeleyeyim.';
+                } elseif (!empty($bul(['sut', 'peynir', 'tereyag', 'yogurt', 'yumurta', 'kaymak', 'krema']))) {
+                    $cevap = $ad . ', et içermiyor (vejetaryenler tercih edebilir) ama süt/yumurta gibi hayvansal içerik olabilir; vegan iseniz garsonumuz teyit etsin.';
+                } else {
+                    $cevap = $ad . ', et içermiyor; vejetaryen/vegan dostu görünüyor. Yine de kesin bilgi için garsonumuz teyit edebilir.';
+                }
+                break;
+            case 'alerjen':
+                $bulgu = [];
+                if (!empty($bul(['un', 'ekmek', 'bulgur', 'makarna', 'bugday', 'galeta', 'hamur', 'yufka', 'eriste']))) $bulgu[] = 'gluten';
+                if (!empty($bul(['sut', 'peynir', 'tereyag', 'yogurt', 'krema', 'kaymak', 'kasar', 'mozzarella']))) $bulgu[] = 'süt ürünleri';
+                if (!empty($bul(['yumurta']))) $bulgu[] = 'yumurta';
+                if (!empty($bul(['fistik', 'ceviz', 'findik', 'badem', 'antep']))) $bulgu[] = 'kuruyemiş';
+                $cevap = !empty($bulgu)
+                    ? $ad . ' içinde ' . $this->dogalListe($bulgu) . ' bulunabilir. Çölyak veya alerjiniz varsa çapraz bulaşma açısından garsonumuz ve mutfağımız kesin bilgi versin.'
+                    : $ad . ' için belirgin alerjen kaydı görünmüyor; yine de alerjiniz varsa lütfen garsonumuza danışın.';
+                break;
+            case 'et_turu':
+                $harita = ['kiyma' => 'dana (kıyma)', 'dana' => 'dana', 'tavuk' => 'tavuk', 'kuzu' => 'kuzu', 'balik' => 'balık', 'hindi' => 'hindi'];
+                $et = null;
+                foreach ($harita as $k => $v) { if (strpos($havuz, $k) !== false) { $et = $v; break; } }
+                $cevap = $et
+                    ? $ad . ', ' . $et . ' etinden hazırlanır. Farklı bir tercihiniz varsa uygun seçenekleri önerebilirim.'
+                    : $ad . ' için et türünü garsonumuz netleştirsin; ister misiniz?';
+                break;
+            case 'nasil_pisiyor':
+                $harita = ['izgara' => 'ızgarada', 'mangal' => 'mangalda', 'tandir' => 'tandırda', 'firin' => 'fırında', 'koz' => 'közde', 'tava' => 'tavada', 'kizart' => 'kızartılarak', 'haslama' => 'haşlanarak', 'sote' => 'sotelenerek', 'wok' => 'wokta'];
+                $p = null;
+                foreach ($harita as $k => $v) { if (strpos($havuz, $k) !== false) { $p = $v; break; } }
+                $cevap = $p
+                    ? $ad . ', ' . $p . ' hazırlanır. Pişirme derecesiyle ilgili özel isteğinizi garsonumuza iletebiliriz.'
+                    : $ad . ' için pişirme detayını garsonumuz netleştirsin; ister misiniz?';
+                break;
+            case 'yaninda_ne_gelir':
+                $g = $bul(['pilav', 'patates', 'salata', 'sebze', 'cacik', 'ekmek', 'sogan', 'turp', 'közlenmis', 'közleme', 'bulgur']);
+                $cevap = !empty($g)
+                    ? $ad . ' yanında ' . $this->dogalListe(array_slice($g, 0, 4)) . ' servis edilir. Farklı bir yan tercih isterseniz garsonumuz yardımcı olsun.'
+                    : $ad . ' için servis içeriğini garsonumuz netleştirsin; ister misiniz?';
+                break;
+            case 'porsiyon':
+                $cevap = $ad . ' tek porsiyon olarak servis edilir. Kaç kişi paylaşacağınızı söylerseniz uygun sipariş için garsonumuz yardımcı olur.';
+                break;
+            case 'caprazsatis':
+                $oneri = $this->eslesmeOner($u);
+                $cevap = !empty($oneri)
+                    ? $ad . ' yanında ' . $this->dogalListe($oneri) . ' çok yakışır. Daha hafif ya da daha doyurucu bir eşleştirme isterseniz söyleyin. 😊'
+                    : $ad . ' yanına güzel bir eşleştirme için garsonumuz önerebilir; ister misiniz?';
+                break;
+            default:
+                return $this->urunTanit($u, '');
+        }
+        return $this->cvp($cevap, [
+            'tip' => 'urun_ozellik', 'urun_baglam' => $ad,
+            'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama ?? '', null, null, array_slice($malz['orij'], 0, 4), $u->id)],
+        ]);
+    }
+
+    /** Ürünün reçete malzemeleri (orijinal + normalize). */
+    protected function receteMalz($urunId)
+    {
+        $rid = DB::table('receteler')->where('urun_id', $urunId)->where('tip', 'urun')->value('id');
+        if (!$rid) return ['orij' => [], 'norm' => []];
+        $rows = DB::table('recete_kalemleri')->join('malzemeler', 'recete_kalemleri.malzeme_id', '=', 'malzemeler.id')
+            ->where('recete_kalemleri.recete_id', $rid)->orderByDesc('recete_kalemleri.miktar')->pluck('malzemeler.ad')->all();
+        return ['orij' => $rows, 'norm' => array_map(fn ($x) => $this->norm($x), $rows)];
+    }
+
+    /** Ürünü ADIYLA bul (bağlam için). */
+    protected function urunAdBul($ad)
+    {
+        $na = $this->norm($ad);
+        if ($na === '') return null;
+        return DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)
+            ->select('id', 'ad', 'fiyat', 'aciklama', 'tukendi', 'kategori_id')->get()
+            ->first(fn ($u) => $this->norm($u->ad) === $na);
+    }
+
+    /** Çapraz satış: kategoriye göre menüden uygun eşleştirme (salata/içecek/tatlı). */
+    protected function eslesmeOner($u)
+    {
+        $kat = $this->norm(DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad'));
+        $oner = [];
+        if (strpos($kat, 'tatli') !== false) {
+            $ic = $this->menuUrun(['sicak icecekler', 'soguk icecekler']);
+            if ($ic) $oner[] = $ic;
+        } else {
+            $s = $this->menuUrun(['salatalar']); if ($s) $oner[] = $s;
+            $ic = $this->menuUrun(['soguk icecekler', 'sicak icecekler']); if ($ic) $oner[] = $ic;
+            if (count($oner) < 2) { $t = $this->menuUrun(['tatlilar']); if ($t) $oner[] = $t; }
+        }
+        return array_slice(array_values(array_filter($oner)), 0, 2);
+    }
+
+    protected function menuUrun(array $normKats)
+    {
+        $r = DB::table('urunler')->join('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+            ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
+            ->select('urunler.ad', 'menu_kategorileri.ad as kat')->get()
+            ->first(fn ($x) => in_array($this->norm($x->kat), $normKats));
+        return $r ? $r->ad : null;
     }
 
     // -------- KALIP (kimlik/sohbet disi; wifi/saat/adres...) --------
@@ -187,7 +349,7 @@ class MusteriAsistan
                 foreach (preg_split('/[\r\n,;]+/', (string) $k->tetikleyiciler) as $t) {
                     $t = trim($this->norm($t));
                     if (mb_strlen($t) < 2) continue;
-                    if (preg_match('/(?:^| )' . preg_quote($t, '/') . '[a-z]*(?= |$)/u', $n)) {
+                    if ($this->tetikUyar($n, $t)) {
                         if (mb_strlen($t) > $enSkor) { $enSkor = mb_strlen($t); $enIyi = $k; }
                     }
                 }
@@ -292,6 +454,22 @@ class MusteriAsistan
         ];
         foreach ($harita as $k => $e) { if (strpos($t, $k) !== false) return $e; }
         return '🍽️';
+    }
+
+    /**
+     * Tetikleyici eslesmesi: cok-kelimeli tetikte HER kelime, soruda (sira fark etmeden)
+     * ON-EK TOLERANSLI bulunmali. "cocuk sandalyesi" -> "cocuk sandalyeNIZ" de yakalanir.
+     * Kisa kelimeler tam, uzun kelimeler son ~2 harf esnetilerek (kok) aranir.
+     */
+    protected function tetikUyar($n, $t)
+    {
+        foreach (preg_split('/\s+/', trim($t)) as $kel) {
+            if ($kel === '') continue;
+            $len = mb_strlen($kel);
+            $pref = $len <= 4 ? $kel : mb_substr($kel, 0, max(4, $len - 2)); // kaba kok
+            if (!preg_match('/(?:^| )' . preg_quote($pref, '/') . '/u', $n)) return false;
+        }
+        return true;
     }
 
     // -------- YARDIMCILAR --------

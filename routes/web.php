@@ -1152,7 +1152,7 @@ Route::post('/api/qr/asistan', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
     $a = new \App\Services\MusteriAsistan($subeId);
-    return $a->cevapla((string) $r->soru);
+    return $a->cevapla((string) $r->soru, (string) $r->input('baglam', ''));
 });
 
 // Garson/hesap cagrisi -> masa_cagrilari (KDS/patron tarafinda gorunebilir)

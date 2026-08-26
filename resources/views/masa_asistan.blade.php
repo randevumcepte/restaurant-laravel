@@ -303,8 +303,9 @@ async function sor(soru){
   ekle('ben', soru); bekliyor=true; durumEl.textContent='Düşünüyorum…';
   try{
     const r = await fetch('/api/qr/asistan', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
-      body:new URLSearchParams({masa:MASA, soru})});
+      body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || ''})});
     const j = await r.json();
+    if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan urunu hatirla (acili mi / yaninda ne...)
     const cevap = j.cevap || 'Bir sorun oldu, tekrar dener misiniz?';
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);
