@@ -1918,10 +1918,12 @@ Route::get('/api/patron/detay', function (Request $r) {
         $urun = DB::table('urunler')->find($urunId);
         if (!$urun) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
 
-        // Recete kalemleri (malzeme bazinda maliyet)
+        // Recete kalemleri (malzeme bazinda maliyet) + KALAN STOKLA YAPILABILIR PORSIYON
         $recete = DB::table('receteler')->where('urun_id', $urunId)->where('tip', 'urun')->first();
         $receteKalem = [];
         $receteToplam = 0.0;
+        $yapilabilir = null;      // kalan stokla kac porsiyon daha cikar (darbogaz malzemeye gore)
+        $darbogaz = null;         // en once biten (siniri belirleyen) malzeme
         if ($recete) {
             $cevrimMap = DB::table('birim_cevrimleri')->get()->groupBy('malzeme_id');
             foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->get() as $rk) {
@@ -1935,11 +1937,19 @@ Route::get('/api/patron/detay', function (Request $r) {
                         if ((int) $c->birim_id === (int) $rk->birim_id) $karsilik = (float) $c->temel_birim_karsiligi;
                     }
                 }
-                $satirMaliyet = (float) $rk->miktar * $karsilik * (float) $m->guncel_maliyet;
+                $temelMiktar = (float) $rk->miktar * $karsilik;              // 1 porsiyon icin temel birimde miktar
+                $satirMaliyet = $temelMiktar * (float) $m->guncel_maliyet;
                 $receteToplam += $satirMaliyet;
+                // Bu malzemenin mevcut stogu (temel birimde net) + bundan kac porsiyon cikar
+                $stok = (float) DB::table('stok_hareketleri')->where('sube_id', $urun->sube_id)->where('malzeme_id', $rk->malzeme_id)->sum('miktar');
+                $por = $temelMiktar > 0 ? (int) floor(max(0, $stok) / $temelMiktar) : null;
+                if ($por !== null) {
+                    if ($yapilabilir === null || $por < $yapilabilir) { $yapilabilir = $por; $darbogaz = $m->ad; }
+                }
                 $receteKalem[] = [
                     'malzeme' => $m->ad, 'miktar' => (float) $rk->miktar,
                     'birim' => $birim->kisaltma ?? '', 'maliyet' => round($satirMaliyet, 2),
+                    'stok' => round($stok, 2), 'porsiyon' => $por,
                 ];
             }
         }
@@ -1992,10 +2002,12 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'Ciro' => number_format($satisTutar, 0, ',', '.') . 'TL',
                 'Bugün' => rtrim(rtrim(number_format($bugunAdet, 1, ',', '.'), '0'), ',') . ' adet',
                 'Fiyat' => number_format((float) $urun->fiyat, 0, ',', '.') . 'TL',
+                'Kalan stok' => $yapilabilir !== null ? ($yapilabilir . ' porsiyon') : '—',
             ],
             'recete' => $receteKalem, 'receteBirimMaliyet' => round($receteToplam, 2),
             'toplamMaliyet' => round($toplamMaliyet, 2),
             'maliyetYuzde' => $satisTutar > 0 ? round($toplamMaliyet / $satisTutar * 100) : 0,
+            'yapilabilirPorsiyon' => $yapilabilir, 'darbogazMalzeme' => $darbogaz,
             'garsonlar' => $garsonlar, 'gunluk' => $gunluk,
         ];
     }
