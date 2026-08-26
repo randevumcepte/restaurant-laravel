@@ -1191,6 +1191,69 @@ if (!function_exists('resto_erkek_sesler')) {
     }
 }
 
+// Urunlere istah acici FAKE aciklama doldur (bos olanlara). Kart sunumlari zengin gorunsun.
+Route::get('/enrich-urun-aciklama', function () {
+    $harita = [
+        'izgara kofte' => 'Mangalda pişen, sulu ve baharatlı dana köfte; közlenmiş biber ve pilav eşliğinde.',
+        'kofte' => 'Özenle yoğrulmuş dana kıymadan, mangal ateşinde pişen sulu köfteler.',
+        'ezogelin' => 'Kırmızı mercimek, bulgur ve nane ile hazırlanan sıcacık geleneksel çorba.',
+        'mercimek' => 'Kadifemsi kıvamda, tereyağı ve pul biberle servis edilen mercimek çorbası.',
+        'corba' => 'Günün taze çorbası; sıcacık ve doyurucu.',
+        'latte' => 'Espresso üzerine buğulanmış ipeksi süt; yumuşak ve dengeli bir kahve keyfi.',
+        'espresso' => 'Yoğun aromalı, taze çekilmiş espresso.',
+        'cay' => 'Demli, tavşan kanı Türk çayı; ince belli bardakta.',
+        'ayran' => 'Ev tipi, bol köpüklü, buz gibi ayran.',
+        'meyve suyu' => 'Taze sıkılmış mevsim meyvelerinden, buz gibi serinletici.',
+        'limonata' => 'Taze limon ve nane ile ferahlatan ev yapımı limonata.',
+        'kola' => 'Buz gibi, serinletici gazlı içecek.',
+        'pizza' => 'İnce hamur, bol malzeme ve tel tel eriyen mozzarella.',
+        'margarita' => 'Domates sos, mozzarella ve taze fesleğenli klasik lezzet.',
+        'burger' => '180 gr dana köftesi, eriyen cheddar ve ev yapımı özel sos; çıtır patates ile.',
+        'salata' => 'Mevsim yeşillikleri, zeytinyağı ve limon ile taptaze.',
+        'sezar' => 'Marul, kıtır kruton, parmesan ve özel sezar sos.',
+        'makarna' => 'Al dente makarna, özel hazırlanan sosuyla.',
+        'bolonez' => 'Dana kıymalı zengin domates sos ile İtalyan usulü makarna.',
+        'tavuk' => 'Marine edilip ızgarada pişen, sulu ve lezzetli tavuk.',
+        'pirzola' => 'Közde pişen, mühürlenmiş kuzu pirzola.',
+        'antrikot' => 'Dinlendirilmiş, ızgarada mühürlenen sulu antrikot.',
+        'baklava' => 'Kat kat yufka, bol Antep fıstığı ve hafif şerbet.',
+        'kunefe' => 'Tel kadayıf arasında eriyen peynir, sıcacık servis; üzeri fıstıklı.',
+        'sutlac' => 'Fırında kızarmış, tarçınlı geleneksel sütlaç.',
+        'brownie' => 'Yoğun çikolatalı, içi akışkan sıcak brownie; yanında top dondurma.',
+        'dondurma' => 'Geleneksel yöntemle hazırlanan, yoğun kıvamlı dondurma.',
+    ];
+    $katFallback = [
+        'baslangiclar' => 'Yemeğe iştah açıcı bir başlangıç.',
+        'salatalar' => 'Taze ve hafif; her yemeğin yanına yakışır.',
+        'izgaralar' => 'Mangal ateşinde pişen, sulu ızgara lezzeti.',
+        'ana yemekler' => 'Şefimizin özenle hazırladığı doyurucu ana yemek.',
+        'burgerler' => 'Sulu köfte, taze malzeme ve çıtır ekmek.',
+        'pizzalar' => 'İnce hamur ve bol malzemeyle fırından sıcak.',
+        'makarnalar' => 'Özel sosuyla al dente makarna.',
+        'tatlilar' => 'Tatlı krizine birebir; sıcacık ya da buz gibi.',
+        'soguk icecekler' => 'Buz gibi, serinletici içecek.',
+        'sicak icecekler' => 'Sıcacık, keyifli bir mola.',
+    ];
+    $norm = function ($s) {
+        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        $s = strtr($s, ['ç'=>'c','ğ'=>'g','ı'=>'i','İ'=>'i','ö'=>'o','ş'=>'s','ü'=>'u','â'=>'a','î'=>'i','û'=>'u']);
+        return preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9\s]/', ' ', $s));
+    };
+    $urunler = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+        ->select('urunler.id', 'urunler.ad', 'urunler.aciklama', 'menu_kategorileri.ad as kat')->get();
+    $n = 0;
+    foreach ($urunler as $u) {
+        if (!empty(trim((string) $u->aciklama))) continue; // dolu olani ellemme
+        $adn = $norm($u->ad);
+        $ac = null;
+        foreach ($harita as $k => $v) { if (strpos($adn, $norm($k)) !== false) { $ac = $v; break; } }
+        if (!$ac) $ac = $katFallback[$norm($u->kat)] ?? 'Şefimizin özenle hazırladığı lezzetlerden.';
+        DB::table('urunler')->where('id', $u->id)->update(['aciklama' => $ac]);
+        $n++;
+    }
+    return "Ürün açıklamaları dolduruldu: $n ürün. ✅";
+});
+
 // MP3 onbellek temizligi: uzun suredir kullanilmayan sesleri sil (disk sabit kalsin).
 // Gunluk cron ile calistir: curl -s https://restaurant.webfirmam.com.tr/tts-temizle?gun=45
 Route::get('/tts-temizle', function (Request $r) {
