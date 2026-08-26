@@ -2406,32 +2406,30 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     $a = new \App\Services\RestoAsistan();
     $userId = (int) $p->id;
     $gecmis = $a->gecmisGetir($userId);
+    $brief = $a->patronBrief($p->sube_id); // karakterin akil yurutecegi gercek veri
 
-    // 1) Ogrenilen niyet (bedava tekrar) -> 2) kural motoru
+    // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet HARIC; "nasil gidiyor" karaktere gider)
     $niyet = $a->ogrenilenNiyet($soru) ?: $a->niyetCoz($soru);
-    $sonuc = ($niyet['intent'] ?? 'bilinmiyor') !== 'bilinmiyor' ? $a->cevapla($niyet) : null;
+    $intent = $niyet['intent'] ?? 'bilinmiyor';
+    $sonuc = ($intent !== 'bilinmiyor' && $intent !== 'ozet') ? $a->cevapla($niyet) : null;
     $kaynak = 'kural';
 
-    // 2b) KALIP kutuphanesi (bedava soru-cevap; AI'dan ONCE)
+    // 2) KALIP kutuphanesi (bedava ogrenilmis soru-cevap)
     if (!$sonuc) {
         $kalip = $a->kalipCevabi($soru);
         if ($kalip) { $sonuc = $kalip; $kaynak = 'kalip'; }
     }
 
+    // 3) KARAKTER (isletme ortagi) — asil sohbet/analiz beyni; gercek veriyle konusur
     if (!$sonuc) {
-        // 3) Haiku ile niyet coz
-        $aiNiyet = $a->niyetCozAI($soru, $gecmis);
-        if ($aiNiyet && !in_array($aiNiyet['intent'], ['sohbet', 'bilinmiyor'], true)) {
-            $sonuc = $a->cevapla($aiNiyet);
-            if ($sonuc) { $a->ogren($soru, $aiNiyet); $kaynak = 'ai_niyet'; }
-        }
-        // 4) Sohbet/kimlik -> Haiku dogal cevap
-        if (!$sonuc) {
-            $sohbet = $a->sohbetAI($soru, $gecmis);
-            if ($sohbet) { $sonuc = ['cevap' => $sohbet, 'seslendir' => true, 'kart' => null, 'intent' => 'sohbet']; $kaynak = 'ai_sohbet'; }
-        }
-        // 5) Anahtar yok / hata -> yardim
-        if (!$sonuc) { $sonuc = $a->yardimCevabi($niyet); $kaynak = ($a->aiTeshis === 'anahtar_yok') ? 'yardim_anahtarsiz' : 'yardim'; }
+        $c = $a->patronSohbet($soru, $gecmis, $brief);
+        if ($c) { $sonuc = ['cevap' => $c, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai'; }
+    }
+
+    // 4) Anahtar yok / hata -> ozet ise en azindan kart, degilse yardim
+    if (!$sonuc) {
+        if ($intent === 'ozet') { $sonuc = $a->cevapla($niyet); $kaynak = 'kural'; }
+        else { $sonuc = $a->yardimCevabi($niyet); $kaynak = ($a->aiTeshis === 'anahtar_yok') ? 'yardim_anahtarsiz' : 'yardim'; }
     }
 
     $a->gecmisEkle($userId, $soru, $sonuc['cevap'] ?? '');

@@ -813,4 +813,192 @@ class RestoAsistan
         $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
         return preg_replace('/\s+/', ' ', trim($s));
     }
+
+    // ==================== PATRON AI KARAKTER (işletme ortağı) ====================
+    /**
+     * Karakterin üzerinde AKIL YÜRÜTECEĞİ gerçek veri brifingi. Rakam BURADA
+     * hesaplanır (LLM uydurmaz, sadece bunu yorumlar). 60 sn önbellek.
+     */
+    public function patronBrief($subeId)
+    {
+        try {
+            return Cache::remember('resto_patron_brief:' . (int) $subeId, now()->addSeconds(60), function () use ($subeId) {
+                $now = now();
+                $g0 = today()->startOfDay();
+                $h0 = (clone $now)->subDays(7);
+                $h1 = (clone $now)->subDays(14);
+                $b = ['tarih' => $now->format('d.m.Y H:i')];
+
+                // Ciro: bugün / bu hafta / geçen hafta
+                $ciroBu = (float) DB::table('odemeler')->whereBetween('created_at', [$h0, $now])->sum('tutar');
+                $ciroOn = (float) DB::table('odemeler')->whereBetween('created_at', [$h1, $h0])->sum('tutar');
+                $b['ciro_bugun'] = round((float) DB::table('odemeler')->where('created_at', '>=', $g0)->sum('tutar'));
+                $b['ciro_bu_hafta'] = round($ciroBu);
+                $b['ciro_gecen_hafta'] = round($ciroOn);
+                if ($ciroOn > 0) $b['ciro_degisim_yuzde'] = (int) round(($ciroBu - $ciroOn) / $ciroOn * 100);
+
+                // Misafir + kişi başı harcama (bu hafta vs geçen)
+                $mBu = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->whereBetween('kapanis', [$h0, $now])->sum('misafir_sayisi');
+                $mOn = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->whereBetween('kapanis', [$h1, $h0])->sum('misafir_sayisi');
+                $b['misafir_bu_hafta'] = $mBu;
+                $b['misafir_gecen_hafta'] = $mOn;
+                $b['kisi_basi_bu_hafta'] = $mBu > 0 ? round($ciroBu / $mBu) : 0;
+                $b['kisi_basi_gecen_hafta'] = $mOn > 0 ? round($ciroOn / $mOn) : 0;
+
+                // Vardiya kırılımı (öğle <17:00, akşam >=17:00) bu hafta
+                try {
+                    $ogle = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->whereBetween('kapanis', [$h0, $now])->whereRaw('HOUR(kapanis) < 17')->sum('toplam');
+                    $aksam = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->whereBetween('kapanis', [$h0, $now])->whereRaw('HOUR(kapanis) >= 17')->sum('toplam');
+                    $b['vardiya_bu_hafta'] = ['ogle' => round($ogle), 'aksam' => round($aksam)];
+                } catch (\Throwable $e) {
+                }
+
+                // Ek ürün (içecek/tatlı/bar/kahve) payı — kaçan fırsat sinyali
+                $ekUrun = [];
+                try {
+                    $ekKat = DB::table('kategoriler')->where(function ($q) {
+                        foreach (['icecek', 'içecek', 'tatli', 'tatlı', 'bar', 'kahve', 'kokteyl', 'meşrubat', 'mesrubat'] as $k) $q->orWhereRaw('LOWER(ad) LIKE ?', ['%' . mb_strtolower($k) . '%']);
+                    })->pluck('id')->toArray();
+                    if ($ekKat) {
+                        $ekUrun = DB::table('urunler')->whereIn('kategori_id', $ekKat)->pluck('id')->toArray();
+                        if ($ekUrun) {
+                            $ek = fn ($f, $t) => (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$f, $t])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                                ->whereIn('adisyon_kalemleri.urun_id', $ekUrun)->sum('adisyon_kalemleri.tutar');
+                            $ekBu = $ek($h0, $now); $ekOn = $ek($h1, $h0);
+                            $b['ek_urun_pay_bu_hafta'] = $ciroBu > 0 ? round($ekBu / $ciroBu * 100) : 0;
+                            $b['ek_urun_pay_gecen_hafta'] = $ciroOn > 0 ? round($ekOn / $ciroOn * 100) : 0;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                }
+
+                // Personel kırılımı (bu hafta): ciro, adisyon, kişi başı, ek ürün payı
+                try {
+                    $rows = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+                        ->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])
+                        ->groupBy('personeller.id', 'personeller.ad')
+                        ->select('personeller.id', 'personeller.ad', DB::raw('COUNT(*) adisyon'), DB::raw('SUM(adisyonlar.toplam) ciro'), DB::raw('SUM(adisyonlar.misafir_sayisi) misafir'))
+                        ->orderByDesc('ciro')->limit(12)->get();
+                    $per = [];
+                    foreach ($rows as $r) {
+                        $sat = ['ad' => $r->ad, 'ciro' => round((float) $r->ciro), 'adisyon' => (int) $r->adisyon, 'kisi_basi' => $r->misafir > 0 ? round((float) $r->ciro / $r->misafir) : 0];
+                        if ($ekUrun) {
+                            $pe = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                                ->where('adisyonlar.acan_personel_id', $r->id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])
+                                ->where('adisyon_kalemleri.durum', '!=', 'iptal')->whereIn('adisyon_kalemleri.urun_id', $ekUrun)->sum('adisyon_kalemleri.tutar');
+                            $sat['ek_urun_pay'] = (float) $r->ciro > 0 ? round($pe / (float) $r->ciro * 100) : 0;
+                        }
+                        $per[] = $sat;
+                    }
+                    $b['personel_bu_hafta'] = $per;
+                } catch (\Throwable $e) {
+                }
+
+                // Kayıp özet (bu hafta) + en çok yapan personel
+                try {
+                    $q = fn () => DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->whereBetween('kapanis', [$h0, $now]);
+                    $b['kayip_bu_hafta'] = ['iskonto' => round((float) $q()->sum('indirim')), 'ikram' => round((float) $q()->sum('ikram'))];
+                    $suz = DB::table('iptal_indirim_loglari')->join('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
+                        ->where('iptal_indirim_loglari.sube_id', $subeId)->whereBetween('iptal_indirim_loglari.created_at', [$h0, $now])
+                        ->groupBy('personeller.id', 'personeller.ad')->select('personeller.ad', DB::raw('SUM(iptal_indirim_loglari.tutar) t'))->orderByDesc('t')->limit(3)->get();
+                    if ($suz->isNotEmpty()) $b['kayip_personel'] = $suz->map(fn ($x) => ['ad' => $x->ad, 'tutar' => round((float) $x->t)])->all();
+                } catch (\Throwable $e) {
+                }
+
+                // Ürün: en çok satan 5 + kârlılık uçları
+                try {
+                    $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                        ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                        ->groupBy('adisyon_kalemleri.urun_adi')->select('adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) adet'))->orderByDesc('adet')->limit(5)->get();
+                    $b['en_cok_satan'] = $top->map(fn ($x) => ['urun' => $x->urun_adi, 'adet' => (int) $x->adet])->all();
+                } catch (\Throwable $e) {
+                }
+
+                // Stok kritik
+                try {
+                    $mevcut = DB::table('stok_hareketleri')->where('sube_id', $subeId)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+                    $krit = [];
+                    foreach (DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
+                        if (!$m->stok_takipli || (float) $m->kritik_stok <= 0) continue;
+                        if ((float) ($mevcut[$m->id] ?? 0) <= (float) $m->kritik_stok) $krit[] = $m->ad;
+                    }
+                    if ($krit) $b['kritik_stok'] = array_slice($krit, 0, 8);
+                } catch (\Throwable $e) {
+                }
+
+                // Finans (bu ay net)
+                try {
+                    $ayBas = (clone $now)->startOfMonth();
+                    $gelir = (float) DB::table('odemeler')->whereBetween('created_at', [$ayBas, $now])->sum('tutar');
+                    $gider = Schema::hasTable('giderler') ? (float) DB::table('giderler')->where('sube_id', $subeId)->where('tarih', '>=', $ayBas->toDateString())->sum('tutar') : 0;
+                    $b['finans_bu_ay'] = ['gelir' => round($gelir), 'gider' => round($gider), 'net' => round($gelir - $gider)];
+                } catch (\Throwable $e) {
+                }
+
+                // Açık masa
+                try {
+                    $b['acik_masa'] = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->count();
+                } catch (\Throwable $e) {
+                }
+
+                // Proaktif tespitler (başlık + mesaj)
+                try {
+                    $t = $this->tespitler($subeId);
+                    $b['tespitler'] = array_map(fn ($x) => ['seviye' => $x['seviye'], 'baslik' => $x['baslik'], 'mesaj' => $x['mesaj']], $t['tespitler']);
+                } catch (\Throwable $e) {
+                }
+
+                return $b;
+            });
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** PATRON AI karakteri: gerçek veri brifingiyle beslenmiş işletme ortağı sohbeti. */
+    public function patronSohbet($metin, $gecmis, $brief)
+    {
+        $apiKey = $this->apiKey();
+        if (!$apiKey) { $this->aiTeshis = 'anahtar_yok'; return null; }
+        $ham = trim((string) $metin);
+        if ($ham === '') return null;
+
+        $karakter = <<<'PROMPT'
+Sen bir restoran patronunun İŞLETME ORTAĞI ve en güvendiği yol arkadaşısın. Adın yok; kendini "restoranınızın asistanı" diye tanıt. Bir rapor ekranı DEĞİLSİN; patronun göremediğini fark eden, onunla dürüstçe sohbet eden, riskleri ve fırsatları sezen bir ortak gibisin. Patron sana "bu programı aldığımdan beri restoranı benden iyi takip ediyor" diyebilmeli.
+
+KARAKTERİN:
+- Sıcak, samimi, sakin ve güven veren. Patronu korur kollarsın ama ASLA panikletmezsin.
+- Kısa konuşursun: en fazla üç-dört cümle. Uzun rapor dökmezsin, sohbet edersin. Gerekince "istersen birlikte bakalım" diye kapı aralarsın.
+- Kesin/suçlayıcı konuşmazsın: "olabilir, etkili olabilir, birlikte netleştirelim" gibi temkinli ama net.
+- Yağcılık yapmazsın, dürüstsün. İyi gideni de över (neden iyi gittiğini söyleyerek), kötüyü nazikçe söylersin.
+
+DÜŞÜNME BİÇİMİN (her önemli tespitte, ama madde madde değil, doğal cümleyle): BULGU (ne görüyorum) -> NEDEN (neden olmuş olabilir) -> RİSK ya da FIRSAT -> ÖNERİ.
+
+NASIL DAVRANIRSIN:
+- "Nasıl gidiyor?" gibi açık sorularda sadece ciro söyleme; dikkatini çeken bir şeyi öne çıkar (kişi başı harcama, vardiya farkı, bir personel, kaçan içecek/tatlı satışı gibi) ve "istersen bakalım" de.
+- Patron "bak bakalım / kim / neden" derse veriyle derinleş; ama tek veriyle suçlama, "baktığı masa tipi ya da vardiya da etkili olabilir" gibi adil ol.
+- Önceki konuşmayı sürdür. Patron kısa "evet, bak, kim" dese bile bağlamı hatırla.
+- İyi gideni de fark et.
+
+MUTLAK KURALLAR:
+- Sana verilen GERÇEK VERİ dışında RAKAM ya da İSİM UYDURMA. Bir veri yoksa "elimde şu an o veri yok, şöyle sorabilirsin" de. Emin değilsen kesin konuşma.
+- Sesli okunacaksın: DÜZ metin yaz. Emoji, yıldız, madde işareti, tırnak, başlık KULLANMA. Sadece Türkçe konuş.
+PROMPT;
+
+        $veriBlok = "\n\n--- RESTORANIN GÜNCEL GERÇEK VERİSİ (yalnızca bunu kullan) ---\n" . json_encode($brief, JSON_UNESCAPED_UNICODE);
+        $sistem = $karakter . $veriBlok;
+
+        $mesajlar = $this->gecmisMesajlari($gecmis);
+        $mesajlar[] = ['role' => 'user', 'content' => $ham];
+        $govde = ['model' => $this->model(), 'max_tokens' => 450, 'system' => $sistem, 'messages' => $mesajlar];
+        $data = $this->cagir($govde);
+        if (!$data || empty($data['content'])) return null;
+        $t = '';
+        foreach ($data['content'] as $bl) if (($bl['type'] ?? '') === 'text') $t .= $bl['text'] ?? '';
+        $t = trim($t);
+        if ($t === '') { $this->aiTeshis = 'metin_bos'; return null; }
+        $this->aiTeshis = 'ok_patron';
+        return $t;
+    }
 }
