@@ -72,6 +72,25 @@
   .kkart:active{ border-color:rgba(124,58,237,.6); }
   .kkart .ke{ font-size:32px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.4)); }
   .kkart .kad{ font-weight:700; font-size:12.5px; color:#E7ECF5; text-align:center; }
+  .mkart .gor{ cursor:pointer; }
+  /* ---- Foto galeri (lightbox) ---- */
+  #lightbox{ position:fixed; inset:0; z-index:60; background:rgba(4,7,15,.95); backdrop-filter:blur(8px);
+    display:none; flex-direction:column; animation:lbGir .25s ease; }
+  @keyframes lbGir{ from{ opacity:0; } to{ opacity:1; } }
+  .lb-bar{ display:flex; align-items:center; gap:10px; padding:16px 18px; }
+  .lb-bar #lb-ad{ font-weight:800; font-size:19px; }
+  .lb-bar #lb-kapat{ margin-left:auto; width:40px; height:40px; border-radius:50%; border:none;
+    background:rgba(255,255,255,.13); color:#fff; font-size:18px; }
+  .lb-imgs{ flex:1; display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+  .lb-imgs::-webkit-scrollbar{ height:0; }
+  .lb-imgs img{ flex:0 0 100%; width:100%; height:100%; object-fit:cover; scroll-snap-align:center; }
+  .lb-alt{ padding:15px 18px calc(18px + env(safe-area-inset-bottom)); background:linear-gradient(0deg,rgba(6,10,20,.96),rgba(6,10,20,0)); }
+  .lb-alt #lb-fi{ display:inline-block; background:linear-gradient(135deg,#F6CE63,#E0A431); color:#3a2600;
+    font-weight:800; font-size:15px; padding:4px 14px; border-radius:22px; }
+  .lb-alt #lb-ac{ display:block; color:#D7DEEA; font-size:13.5px; line-height:1.45; margin:11px 0 14px; }
+  .lb-alt #lb-iste{ width:100%; border:none; border-radius:14px; padding:14px; font-weight:800; font-size:14.5px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 20px rgba(124,58,237,.5); }
+  .lb-ipucu{ text-align:center; color:#64748B; font-size:11.5px; padding:6px 0 2px; }
 </style>
 </head>
 <body>
@@ -99,6 +118,13 @@
     <input id="metin" placeholder="Sorunuzu yazın…" onkeydown="if(event.key==='Enter')gonderMetin()">
     <button class="yuvarlak" id="gonder" onclick="gonderMetin()">➤</button>
   </footer>
+</div>
+
+<div id="lightbox">
+  <div class="lb-bar"><span id="lb-ad"></span><button id="lb-kapat">✕</button></div>
+  <div class="lb-imgs" id="lb-imgs"></div>
+  <div class="lb-ipucu">← kaydırarak diğer fotoğraflara bakın →</div>
+  <div class="lb-alt"><span id="lb-fi"></span><span id="lb-ac"></span><button id="lb-iste">🙋 İstiyorum</button></div>
 </div>
 
 <script>
@@ -138,11 +164,34 @@ function kartlariEkle(kartlar){
       + `<div class="mfi">${esc(k.fiyat_yazi||'')}</div>${ac}`
       + `<button class="mbtn">🙋 İstiyorum</button></div>`;
     c.querySelector('.mbtn').addEventListener('click', e=>{ e.stopPropagation(); istiyorum(k.ad); });
+    c.querySelector('.gor').addEventListener('click', e=>{ e.stopPropagation(); acGaleri(k); });
     c.addEventListener('click', ()=> sor(k.ad));
     sar.appendChild(c);
   });
   sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
 }
+
+/* ---- Foto galeri: karttaki resme dokununca ayni yemegin birkac fotografi ---- */
+const lb = document.getElementById('lightbox');
+function acGaleri(k){
+  document.getElementById('lb-ad').textContent = k.ad || '';
+  document.getElementById('lb-fi').textContent = k.fiyat_yazi || '';
+  document.getElementById('lb-ac').textContent = k.aciklama || '';
+  const wrap = document.getElementById('lb-imgs'); wrap.innerHTML = '';
+  const liste = (k.gorseller && k.gorseller.length ? k.gorseller : [k.gorsel]).filter(Boolean);
+  if(!liste.length){ const d=document.createElement('div'); d.className='tile'; d.style.cssText='flex:0 0 100%;background:'+gradientFor(k.ad); d.innerHTML='<span style="font-size:120px">'+(k.emoji||'🍽️')+'</span>'; wrap.appendChild(d); }
+  liste.forEach(src=>{
+    const im = document.createElement('img'); im.src = src; im.alt = k.ad; im.loading='lazy';
+    im.addEventListener('error', function(){ this.style.background = gradientFor(k.ad); this.removeAttribute('src'); });
+    wrap.appendChild(im);
+  });
+  document.getElementById('lb-iste').onclick = ()=>{ kapatGaleri(); istiyorum(k.ad); };
+  lb.querySelector('.lb-ipucu').style.display = liste.length > 1 ? 'block' : 'none';
+  lb.style.display = 'flex';
+}
+function kapatGaleri(){ lb.style.display = 'none'; }
+document.getElementById('lb-kapat').addEventListener('click', kapatGaleri);
+lb.addEventListener('click', e=>{ if(e.target === lb) kapatGaleri(); });
 
 // Kategori kartlari (dokun -> o kategoriyi ac)
 function kategorilerEkle(kats){
@@ -203,8 +252,12 @@ async function cloudKonus(temiz){
   }catch(e){}
   return false;
 }
+function seseHazirla(t){
+  // "₺75" / "75₺" / "75 TL" -> "75 lira" (hem cihaz hem cloud dogru okusun)
+  return temizle(t).replace(/₺\s*(\d[\d.]*)/g,'$1 lira').replace(/(\d[\d.]*)\s*₺/g,'$1 lira').replace(/₺/g,' lira');
+}
 async function konus(t){
-  const temiz = temizle(t);
+  const temiz = seseHazirla(t);
   if(!temiz) return;
   if(isAndroid){
     // Android: ONCE bedava cihaz sesi (para gitmez); TR ses yoksa Cloud'a dus

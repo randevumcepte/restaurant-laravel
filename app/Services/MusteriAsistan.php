@@ -164,10 +164,11 @@ class MusteriAsistan
                 ->where('recete_kalemleri.recete_id', $malz)->orderByDesc('recete_kalemleri.miktar')->limit(4)->pluck('malzemeler.ad')->all();
         }
         $kat = DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad');
+        // Akici, garson agzindan tek akista cumle
         $cevap = $u->ad . ', ' . $this->tl($u->fiyat) . '.';
-        if (!empty($u->aciklama)) $cevap .= ' ' . $u->aciklama;
-        if (!empty($icindekiler)) $cevap .= ' İçinde ' . implode(', ', $icindekiler) . ' var.';
-        $cevap .= ' Beğendiyseniz "İstiyorum" deyin, garsonumuzu hemen çağırayım. 😊';
+        if (!empty($u->aciklama)) $cevap .= ' ' . rtrim(trim($u->aciklama), '.') . '.';
+        if (!empty($icindekiler)) $cevap .= ' İçinde ' . $this->dogalListe($icindekiler) . ' bulunuyor.';
+        $cevap .= ' Beğendiyseniz "İstiyorum" demeniz yeterli, garsonumuzu hemen çağırayım. 😊';
         return $this->cvp($cevap, ['tip' => 'urun', 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
     }
 
@@ -208,13 +209,16 @@ class MusteriAsistan
     /** Tek bir urun kartinin veri yapisi (resim = emoji tile; gercek foto eklenince gorsel dolar). */
     protected function kart($ad, $fiyat, $aciklama = null, $kat = null, $etiket = null, $icindekiler = [], $urunId = null)
     {
+        $yuklenen = $this->gorselUrl($urunId);
+        $gorseller = $yuklenen ? [$yuklenen] : $this->stokGorseller($kat, $ad, 4); // yuklenen foto > stok yemek fotosu
         return [
             'ad' => (string) $ad,
             'fiyat' => (float) $fiyat,
             'fiyat_yazi' => $this->tl($fiyat),
             'aciklama' => $aciklama ? (string) $aciklama : '',
             'emoji' => $this->katEmoji($kat, $ad),
-            'gorsel' => $this->gorselUrl($urunId) ?: $this->stokGorsel($kat, $ad),  // yuklenen foto > stok yemek fotosu
+            'gorsel' => $gorseller[0] ?? null,
+            'gorseller' => $gorseller,           // galeri: ayni yemegin birkac fotografi
             'etiket' => $etiket,
             'icindekiler' => array_values((array) $icindekiler),
             'urun_id' => $urunId ? (int) $urunId : null,
@@ -235,26 +239,36 @@ class MusteriAsistan
         } catch (\Throwable $e) { return null; }
     }
 
-    /** Gercek yemek fotografi (loremflickr, anahtar kelimeye gore; sabit lock -> ayni urun ayni foto). */
-    protected function stokGorsel($kat, $ad)
+    /** Urun/kategoriye gore ingilizce foto anahtar kelimesi. */
+    protected function katKelime($kat, $ad)
     {
         $t = $this->norm($kat . ' ' . $ad);
         $harita = [
-            'izgara kofte' => 'meatballs,grill', 'kofte' => 'meatballs', 'kebap' => 'kebab', 'pirzola' => 'lamb,chops',
-            'antrikot' => 'steak', 'biftek' => 'steak', 'tavuk' => 'grilled,chicken', 'balik' => 'fish,dish', 'izgara' => 'grill,meat',
+            'izgara kofte' => 'meatballs,grill', 'kofte' => 'meatballs', 'kebap' => 'kebab', 'adana' => 'kebab', 'urfa' => 'kebab',
+            'pirzola' => 'lamb,chops', 'antrikot' => 'steak', 'biftek' => 'steak', 'tavuk' => 'grilled,chicken', 'balik' => 'fish,dish',
+            'izgara' => 'grill,meat', 'sote' => 'meat,stew', 'guvec' => 'casserole',
+            'haydari' => 'meze,yogurt', 'humus' => 'hummus', 'sigara boregi' => 'fried,pastry', 'meze' => 'meze', 'baslangic' => 'appetizer',
             'ezogelin' => 'soup', 'mercimek' => 'lentil,soup', 'corba' => 'soup',
-            'pizza' => 'pizza', 'burger' => 'burger', 'makarna' => 'pasta', 'bolonez' => 'pasta,bolognese', 'spagetti' => 'spaghetti',
+            'pizza' => 'pizza', 'burger' => 'burger,food', 'makarna' => 'pasta', 'bolonez' => 'pasta,bolognese', 'spagetti' => 'spaghetti',
             'sezar' => 'caesar,salad', 'salata' => 'salad',
             'baklava' => 'baklava', 'kunefe' => 'kunefe', 'sutlac' => 'rice,pudding', 'brownie' => 'brownie,chocolate',
             'dondurma' => 'ice,cream', 'kazandibi' => 'dessert', 'tatli' => 'dessert',
             'latte' => 'latte', 'espresso' => 'espresso', 'cappuccino' => 'cappuccino', 'kahve' => 'coffee', 'cay' => 'tea',
             'ayran' => 'ayran,drink', 'limonata' => 'lemonade', 'meyve suyu' => 'juice', 'kola' => 'soda,cola', 'soda' => 'soda',
-            'baslangic' => 'appetizer', 'meze' => 'meze', 'ana yemek' => 'turkish,food', 'kahvalti' => 'breakfast',
+            'ana yemek' => 'turkish,food', 'kahvalti' => 'breakfast',
         ];
-        $kw = 'food,plate';
-        foreach ($harita as $k => $v) { if (strpos($t, $k) !== false) { $kw = $v; break; } }
+        foreach ($harita as $k => $v) { if (strpos($t, $k) !== false) return $v; }
+        return 'food,plate';
+    }
+
+    /** Ayni yemegin birkac farkli gercek fotografi (galeri icin). Sabit lock -> hep ayni set. */
+    protected function stokGorseller($kat, $ad, $n = 4)
+    {
+        $kw = $this->katKelime($kat, $ad);
         $seed = abs(crc32((string) $ad)) % 997;
-        return 'https://loremflickr.com/500/380/' . $kw . '?lock=' . $seed;
+        $out = [];
+        for ($i = 0; $i < $n; $i++) $out[] = 'https://loremflickr.com/500/380/' . $kw . '?lock=' . ($seed + $i * 7 + 1);
+        return $out;
     }
 
     /** Kategori/urun adina gore uygun emoji (foto yuklenemezse kartin gorseli). */
@@ -283,6 +297,16 @@ class MusteriAsistan
     protected function tl($v)
     {
         return '₺' . number_format((float) $v, 0, ',', '.');
+    }
+
+    /** ["a","b","c"] -> "a, b ve c" (akici Turkce liste). */
+    protected function dogalListe(array $arr)
+    {
+        $arr = array_values(array_filter(array_map('trim', $arr), fn ($x) => $x !== ''));
+        $n = count($arr);
+        if ($n === 0) return '';
+        if ($n === 1) return $arr[0];
+        return implode(', ', array_slice($arr, 0, $n - 1)) . ' ve ' . $arr[$n - 1];
     }
 
     protected function has($c, array $ks)
