@@ -261,6 +261,12 @@ class MusteriAsistan
         return 'food,plate';
     }
 
+    /** Panel onizlemesi icin: yuklenmis foto varsa onu, yoksa stok fotoyu don. */
+    public function onizlemeGorsel($kat, $ad, $urunId = null)
+    {
+        return $this->gorselUrl($urunId) ?: $this->stokGorseller($kat, $ad, 1)[0];
+    }
+
     /** Ayni yemegin birkac farkli gercek fotografi (galeri icin). Sabit lock -> hep ayni set. */
     protected function stokGorseller($kat, $ad, $n = 4)
     {

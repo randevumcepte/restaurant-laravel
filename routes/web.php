@@ -1254,6 +1254,78 @@ Route::get('/enrich-urun-aciklama', function () {
     return "Ürün açıklamaları dolduruldu: $n ürün. ✅";
 });
 
+// ---- URUN FOTOGRAFLARI (isletme panelinden yukleme) ----
+if (!function_exists('resto_gorsel_kolon')) {
+    function resto_gorsel_kolon()
+    {
+        if (!Schema::hasColumn('urunler', 'gorsel')) {
+            Schema::table('urunler', function ($t) { $t->string('gorsel', 255)->nullable(); });
+        }
+    }
+}
+
+// Foto yonetim sayfasi: her urune kendi fotografini yukle
+Route::get('/urun-fotolar', function (Request $r) {
+    resto_gorsel_kolon();
+    $subeId = (int) ($r->input('sube') ?: DB::table('subeler')->min('id'));
+    $asistan = new \App\Services\MusteriAsistan($subeId);
+    $urunler = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+        ->where('urunler.sube_id', $subeId)->where('urunler.aktif', 1)
+        ->orderBy('menu_kategorileri.sira')->orderBy('urunler.ad')
+        ->select('urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.gorsel', 'menu_kategorileri.ad as kat')->get();
+    $liste = $urunler->map(function ($u) use ($asistan) {
+        return [
+            'id' => $u->id, 'ad' => $u->ad, 'kat' => $u->kat ?: '-',
+            'fiyat' => number_format((float) $u->fiyat, 0, ',', '') . ' TL',
+            'yuklendi' => !empty($u->gorsel),
+            'onizleme' => $asistan->onizlemeGorsel($u->kat, $u->ad, $u->id),
+        ];
+    })->all();
+    $subeler = DB::table('subeler')->select('id', 'ad')->get();
+    return view('urun_fotolar', ['liste' => $liste, 'subeId' => $subeId, 'subeler' => $subeler]);
+});
+
+// Foto yukle (multipart) -> storage/app/urun_foto/{id}.{ext}, urunler.gorsel = /urun-foto/{id}
+Route::post('/urun-foto-yukle', function (Request $r) {
+    $id = (int) $r->input('urun_id');
+    $u = DB::table('urunler')->find($id);
+    if (!$u) return response()->json(['ok' => 0, 'mesaj' => 'Ürün bulunamadı'], 404);
+    if (!$r->hasFile('foto') || !$r->file('foto')->isValid()) return response()->json(['ok' => 0, 'mesaj' => 'Geçerli dosya yok'], 422);
+    $f = $r->file('foto');
+    $ext = strtolower($f->getClientOriginalExtension() ?: 'jpg');
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) return response()->json(['ok' => 0, 'mesaj' => 'Sadece JPG, PNG veya WEBP'], 422);
+    if ($f->getSize() > 6 * 1024 * 1024) return response()->json(['ok' => 0, 'mesaj' => 'En fazla 6 MB'], 422);
+    $dir = storage_path('app/urun_foto');
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    foreach (glob($dir . '/' . $id . '.*') ?: [] as $old) @unlink($old); // eski fotoyu sil
+    $f->move($dir, $id . '.' . $ext);
+    resto_gorsel_kolon();
+    $url = url('/urun-foto/' . $id);
+    DB::table('urunler')->where('id', $id)->update(['gorsel' => $url]);
+    return response()->json(['ok' => 1, 'url' => $url . '?v=' . time()]);
+});
+
+// Yuklenen fotoyu kaldir -> tekrar otomatik (stok) fotoya doner
+Route::match(['get', 'post'], '/urun-foto-sil', function (Request $r) {
+    $id = (int) $r->input('urun_id');
+    $dir = storage_path('app/urun_foto');
+    foreach (glob($dir . '/' . $id . '.*') ?: [] as $old) @unlink($old);
+    resto_gorsel_kolon();
+    DB::table('urunler')->where('id', $id)->update(['gorsel' => null]);
+    return response()->json(['ok' => 1]);
+});
+
+// Yuklenen urun fotografini servis et
+Route::get('/urun-foto/{id}', function ($id) {
+    $dir = storage_path('app/urun_foto');
+    $files = glob($dir . '/' . ((int) $id) . '.*');
+    if (empty($files)) abort(404);
+    $yol = $files[0];
+    $ext = strtolower(pathinfo($yol, PATHINFO_EXTENSION));
+    $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'][$ext] ?? 'image/jpeg';
+    return response()->file($yol, ['Content-Type' => $mime, 'Cache-Control' => 'public, max-age=600']);
+})->where('id', '\d+');
+
 // MP3 onbellek temizligi: uzun suredir kullanilmayan sesleri sil (disk sabit kalsin).
 // Gunluk cron ile calistir: curl -s https://restaurant.webfirmam.com.tr/tts-temizle?gun=45
 Route::get('/tts-temizle', function (Request $r) {
