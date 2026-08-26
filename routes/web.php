@@ -2549,6 +2549,127 @@ Route::get('/api/menu', function (Request $r) {
     return ['ok' => 1, 'kategoriler' => $kategoriler, 'urunler' => $urunler];
 });
 
+// ============================ MENU YONETIMI (sahip/mudur) ============================
+if (!function_exists('_restoMenuYetki')) {
+    function _restoMenuYetki($p) { return $p && in_array(($p->rol ?? ''), ['sahip', 'mudur']); }
+}
+
+// Duzenleme icin TUM kategori + urunler (tum alanlar)
+Route::get('/api/patron/menu-yonetim', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $kats = DB::table('menu_kategorileri')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')
+        ->get(['id', 'ad', 'sira', 'aktif'])
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad, 'sira' => (int) $k->sira, 'aktif' => (bool) $k->aktif]);
+    $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->orderBy('ad')
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at'])
+        ->map(fn ($u) => [
+            'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
+            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
+            'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null,
+        ]);
+    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler];
+});
+
+// Urun ekle/guncelle (id bos -> yeni)
+Route::post('/api/patron/urun-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Menü düzenleme yetkiniz yok'], $p ? 403 : 401);
+    $ad = trim((string) $r->input('ad'));
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Ürün adı gerekli'];
+    $katId = (int) $r->input('kategori_id');
+    if ($katId && !DB::table('menu_kategorileri')->where('id', $katId)->where('sube_id', $p->sube_id)->exists()) $katId = 0;
+    $data = [
+        'ad' => $ad,
+        'aciklama' => trim((string) $r->input('aciklama')) ?: null,
+        'fiyat' => (float) str_replace(',', '.', (string) $r->input('fiyat', 0)),
+        'kategori_id' => $katId ?: null,
+        'tukendi' => $r->boolean('tukendi') ? 1 : 0,
+        'aktif' => $r->input('aktif') !== null ? ($r->boolean('aktif') ? 1 : 0) : 1,
+        'updated_at' => now(),
+    ];
+    $id = (int) $r->input('id');
+    if ($id) {
+        if (!DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+        DB::table('urunler')->where('id', $id)->update($data);
+    } else {
+        $data['sube_id'] = $p->sube_id;
+        $data['stok_takipli'] = 0;
+        $data['created_at'] = now();
+        $id = DB::table('urunler')->insertGetId($data);
+    }
+    $u = DB::table('urunler')->find($id);
+    return ['ok' => 1, 'urun' => [
+        'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
+        'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
+        'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . time()) : null,
+    ]];
+});
+
+// Urun sil (FK varsa gizle=aktif 0)
+Route::post('/api/patron/urun-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    $id = (int) $r->input('id');
+    if (!DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bulunamadı'];
+    foreach (glob(storage_path('app/urun_foto') . '/' . $id . '.*') ?: [] as $f) @unlink($f);
+    try {
+        DB::table('urunler')->where('id', $id)->delete();
+    } catch (\Throwable $e) {
+        DB::table('urunler')->where('id', $id)->update(['aktif' => 0, 'updated_at' => now()]); // gecmis referansi varsa gizle
+    }
+    return ['ok' => 1];
+});
+
+// Kategori ekle/guncelle
+Route::post('/api/patron/kategori-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    $ad = trim((string) $r->input('ad'));
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Kategori adı gerekli'];
+    $sira = (int) $r->input('sira', 0);
+    $id = (int) $r->input('id');
+    if ($id) {
+        if (!DB::table('menu_kategorileri')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bulunamadı'];
+        DB::table('menu_kategorileri')->where('id', $id)->update(['ad' => $ad, 'sira' => $sira, 'updated_at' => now()]);
+    } else {
+        $id = DB::table('menu_kategorileri')->insertGetId(['sube_id' => $p->sube_id, 'ad' => $ad, 'sira' => $sira, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    }
+    return ['ok' => 1, 'kategori' => ['id' => (int) $id, 'ad' => $ad, 'sira' => $sira, 'aktif' => true]];
+});
+
+// Kategori sil (icinde urun varsa engelle)
+Route::post('/api/patron/kategori-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    $id = (int) $r->input('id');
+    if (!DB::table('menu_kategorileri')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bulunamadı'];
+    $say = DB::table('urunler')->where('kategori_id', $id)->count();
+    if ($say > 0) return ['ok' => 0, 'hata' => "Bu kategoride $say ürün var. Önce taşıyın ya da silin."];
+    DB::table('menu_kategorileri')->where('id', $id)->delete();
+    return ['ok' => 1];
+});
+
+// Urun fotografi yukle (uygulamadan)
+Route::post('/api/patron/urun-foto', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    $id = (int) $r->input('urun_id');
+    if (!DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return response()->json(['ok' => 0, 'hata' => 'Ürün bulunamadı'], 404);
+    if (!$r->hasFile('foto') || !$r->file('foto')->isValid()) return response()->json(['ok' => 0, 'hata' => 'Geçerli dosya yok'], 422);
+    $f = $r->file('foto');
+    $ext = strtolower($f->getClientOriginalExtension() ?: 'jpg');
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) return response()->json(['ok' => 0, 'hata' => 'JPG, PNG veya WEBP'], 422);
+    if ($f->getSize() > 8 * 1024 * 1024) return response()->json(['ok' => 0, 'hata' => 'En fazla 8 MB'], 422);
+    $dir = storage_path('app/urun_foto');
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    foreach (glob($dir . '/' . $id . '.*') ?: [] as $old) @unlink($old);
+    $f->move($dir, $id . '.' . $ext);
+    $url = url('/urun-foto/' . $id);
+    DB::table('urunler')->where('id', $id)->update(['gorsel' => $url, 'updated_at' => now()]);
+    return ['ok' => 1, 'url' => $url . '?v=' . time()];
+});
+
 // ADISYONA URUN EKLE (siparis al). kalemler = JSON [{urun_id,adet}]. Yetki: adisyon_ac.
 Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     $p = _apiPersonel($r);
