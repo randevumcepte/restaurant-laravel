@@ -2467,6 +2467,20 @@ Route::get('/api/patron/asistan-tespitler', function (Request $r) {
     return ['ok' => 1, 'selam' => $veri['selam'], 'tespitler' => $veri['tespitler']];
 });
 
+// Tek seferlik: DB'deki ASCII-Turkce isimleri duzelt (asistan dogru seslendirsin)
+Route::get('/api/patron/duzelt-turkce', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $duzelt = ['Yari Mamul' => 'Yarı Mamul'];
+    $say = 0;
+    foreach (['malzemeler', 'urunler'] as $tablo) {
+        foreach ($duzelt as $eski => $yeni) {
+            $say += DB::table($tablo)->where('ad', 'like', '%' . $eski . '%')->update(['ad' => DB::raw("REPLACE(ad, '" . $eski . "', '" . $yeni . "')")]);
+        }
+    }
+    return ['ok' => 1, 'duzeltilen' => $say];
+});
+
 Route::get('/api/masalar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);

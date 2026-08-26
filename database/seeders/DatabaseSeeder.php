@@ -306,7 +306,7 @@ class DatabaseSeeder extends Seeder
         // YARI MAMUL: Domates Sos (uretilir -> stoga girer -> pizza/makarnada kullanilir)
         $sosMalzemeId = DB::table('malzemeler')->insertGetId([
             'kategori_id' => DB::table('malzeme_kategorileri')->where('ad', 'Baharat & Sos')->value('id'),
-            'temel_birim_id' => $this->birim['ml'], 'ad' => 'Domates Sos (Yari Mamul)',
+            'temel_birim_id' => $this->birim['ml'], 'ad' => 'Domates Sos (Yarı Mamul)',
             'stok_takipli' => 1, 'kritik_stok' => 2000, 'guncel_maliyet' => 0.04,
             'created_at' => $now, 'updated_at' => $now,
         ]);
