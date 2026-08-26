@@ -83,6 +83,9 @@ class MusteriAsistan
         if ($this->has($c, ['izgara', 'kebap', 'et', 'et yemek'])) return $this->kategori(['izgaralar', 'ana yemekler'], 'Izgara ve Ana Yemekler', '🍖');
         if ($this->has($c, ['vejetaryen', 'etsiz', 'vegan'])) return $this->vejetaryen();
         if ($this->has($c, ['menu', 'ne var', 'neler var', 'yemek listesi', 'kategoriler', 'neler yapiyorsunuz'])) return $this->menu();
+        // 4b) DINAMIK kategori: menudeki herhangi bir kategori adi ("ana yemekler", "makarnalara bakalim", "tatlilara")
+        $kat = $this->kategoriEslesme($c);
+        if ($kat) return $this->kategori([$this->norm($kat->ad)], $kat->ad, $this->katEmoji($kat->ad));
 
         // 5) Belirli urun (fiyat / nasil / icinde ne)
         $urun = $this->urunBul($c);
@@ -117,6 +120,22 @@ class MusteriAsistan
         $ornek = $urunler->take(3)->map(fn ($u) => $u->ad)->implode(', ');
         return $this->cvp("$emoji $baslik hazır. $ornek gibi lezzetlerimiz var; resimlere göz atıp beğendiğinizi sorabilir ya da hemen isteyebilirsiniz.",
             ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
+    }
+
+    /** Menüdeki kategori adlarından soruya eşleşeni bul (çoğul/çekim toleranslı). */
+    protected function kategoriEslesme($c)
+    {
+        $n = ' ' . $c . ' ';
+        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->get(['id', 'ad']);
+        $enIyi = null;
+        $enSkor = 0;
+        foreach ($kats as $k) {
+            $kn = $this->norm($k->ad);
+            $core = trim(preg_replace('/(lar|ler)(?= |$)/u', '', $kn)); // "ana yemekler" -> "ana yemek", "salatalar" -> "salata"
+            if ($core === '') continue;
+            if ($this->tetikUyar($n, $core) && mb_strlen($core) > $enSkor) { $enSkor = mb_strlen($core); $enIyi = $k; }
+        }
+        return $enIyi;
     }
 
     protected function vejetaryen()
