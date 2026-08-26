@@ -1435,12 +1435,25 @@ Route::match(['get', 'post'], '/ses-sec', function (Request $r) {
 
 // Acik masalarin acilis saatini "az once"ye tazele (demo verisi eski tarihli kaliyordu -> sure gercekci gorunsun)
 Route::get('/enrich-acik-tazele', function () {
-    $n = 0;
+    $n = 0; $kalem = 0;
+    $hazirVar = Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani');
     foreach (DB::table('adisyonlar')->where('durum', 'acik')->get(['id']) as $a) {
         DB::table('adisyonlar')->where('id', $a->id)->update(['acilis' => now()->subMinutes(random_int(5, 180))]);
+        // Mutfak KDS gercekci gorunsun: bekleyen (gonderildi) kalemleri son 1-25 dk'ya cek
+        foreach (DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', 'gonderildi')->get(['id']) as $k) {
+            DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['gonderim_zamani' => now()->subMinutes(random_int(1, 25))]);
+            $kalem++;
+        }
+        // Servise hazir (hazir) kalemleri son 1-8 dk'ya cek
+        if ($hazirVar) {
+            foreach (DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', 'hazir')->get(['id']) as $k) {
+                DB::table('adisyon_kalemleri')->where('id', $k->id)->update([
+                    'gonderim_zamani' => now()->subMinutes(random_int(10, 30)), 'hazir_zamani' => now()->subMinutes(random_int(1, 8))]);
+            }
+        }
         $n++;
     }
-    return "Açık adisyonların açılış saati tazelendi: $n masa (5-180 dk önce). ✅";
+    return "Açık adisyonlar tazelendi: $n masa (5-180 dk), $kalem mutfak kalemi (1-25 dk). ✅";
 });
 
 // ============================ PERSONEL YETKILERI (Kerzz tarzi granular) ============================
