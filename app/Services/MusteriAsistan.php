@@ -164,8 +164,8 @@ class MusteriAsistan
                 ->where('recete_kalemleri.recete_id', $malz)->orderByDesc('recete_kalemleri.miktar')->limit(4)->pluck('malzemeler.ad')->all();
         }
         $kat = DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad');
-        // Akici, garson agzindan tek akista cumle
-        $cevap = $u->ad . ', ' . $this->tl($u->fiyat) . '.';
+        // Akici, garson agzindan; FIYAT YOK (kart uzerinde zaten yaziyor)
+        $cevap = rtrim(trim($u->ad), '.') . '.';
         if (!empty($u->aciklama)) $cevap .= ' ' . rtrim(trim($u->aciklama), '.') . '.';
         if (!empty($icindekiler)) $cevap .= ' İçinde ' . $this->dogalListe($icindekiler) . ' bulunuyor.';
         $cevap .= ' Beğendiyseniz "İstiyorum" demeniz yeterli, garsonumuzu hemen çağırayım. 😊';
