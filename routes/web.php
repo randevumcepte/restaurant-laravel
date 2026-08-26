@@ -3133,6 +3133,53 @@ Route::post('/api/patron/masa-birlestir', function (Request $r) {
     return ['ok' => 1, 'mesaj' => 'Masalar birleştirildi.', 'toplam' => $top];
 });
 
+// ---- MASA GRUPLA: bos masalari da birlestir (buyuk grup once oturur, sonra siparis) ----
+// hedef bos ise adisyon acar (misafir), kaynak dolu ise fatura tasir; kaynak bos ise sadece baglar.
+Route::post('/api/patron/masa-grupla', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_birlestir') && !_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa birleştirme yetkiniz yok.'];
+    $hedefMasa = DB::table('masalar')->where('id', (int) $r->hedef_masa_id)->where('sube_id', $p->sube_id)->first();
+    $kaynakMasa = DB::table('masalar')->where('id', (int) $r->kaynak_masa_id)->where('sube_id', $p->sube_id)->first();
+    if (!$hedefMasa || !$kaynakMasa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    if ($hedefMasa->id === $kaynakMasa->id) return ['ok' => 0, 'hata' => 'Aynı masa seçilemez'];
+    $misafir = max(1, (int) ($r->misafir ?? 1));
+
+    // Hedef adisyonu: yoksa YENI ac (birlesik masa acilis)
+    $yeniAcildi = false;
+    $hedef = DB::table('adisyonlar')->where('masa_id', $hedefMasa->id)->where('durum', 'acik')->first();
+    if (!$hedef) {
+        $hedefId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $p->sube_id, 'masa_id' => $hedefMasa->id, 'kanal' => 'salon',
+            'misafir_sayisi' => $misafir, 'durum' => 'acik', 'acan_personel_id' => $p->id,
+            'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('masalar')->where('id', $hedefMasa->id)->update(['durum' => 'dolu']);
+        $hedef = DB::table('adisyonlar')->find($hedefId);
+        $yeniAcildi = true;
+    }
+
+    // Kaynak adisyonu varsa fatura birlestir; yoksa sadece bagla
+    $kaynak = DB::table('adisyonlar')->where('masa_id', $kaynakMasa->id)->where('durum', 'acik')->first();
+    $ekMisafir = 0;
+    if ($kaynak) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $kaynak->id)->update(['adisyon_id' => $hedef->id, 'updated_at' => now()]);
+        DB::table('adisyon_masa_loglari')->where('adisyon_id', $kaynak->id)->where('islem', 'birlestirme')->update(['adisyon_id' => $hedef->id]);
+        DB::table('adisyonlar')->where('id', $kaynak->id)->update(['durum' => 'iptal', 'kapanis' => now(), 'updated_at' => now()]);
+        $ekMisafir = (int) $kaynak->misafir_sayisi;
+    }
+    DB::table('masalar')->where('id', $kaynakMasa->id)->update(['durum' => 'bos']);
+
+    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $hedef->id, 'islem' => 'birlestirme', 'eski_masa_id' => $kaynakMasa->id, 'yeni_masa_id' => $hedefMasa->id, 'personel_id' => $p->id, 'created_at' => now()]);
+    $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedef->id)->where('durum', '!=', 'iptal')->sum('tutar');
+    $top = max(0, $ara - (float) $hedef->indirim - (float) $hedef->ikram);
+    // Yeni acildiysa misafir zaten dogru; degilse kaynaktan gelen misafiri ekle
+    $yeniMisafir = $yeniAcildi ? (int) $hedef->misafir_sayisi : ((int) $hedef->misafir_sayisi + $ekMisafir);
+    DB::table('adisyonlar')->where('id', $hedef->id)->update(['ara_toplam' => $ara, 'toplam' => $top, 'misafir_sayisi' => $yeniMisafir, 'updated_at' => now()]);
+    return ['ok' => 1, 'mesaj' => 'Masalar birleştirildi.', 'adisyon_id' => $hedef->id, 'yeni_acildi' => $yeniAcildi, 'toplam' => $top];
+});
+
 // ---- ADISYON BOL ----
 Route::post('/api/patron/adisyon-bol', function (Request $r) {
     $p = _apiPersonel($r);
