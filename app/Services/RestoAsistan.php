@@ -997,7 +997,7 @@ PROMPT;
 
         $mesajlar = $this->gecmisMesajlari($gecmis);
         $mesajlar[] = ['role' => 'user', 'content' => $ham];
-        $govde = ['model' => $this->model(), 'max_tokens' => 450, 'system' => $sistem, 'messages' => $mesajlar];
+        $govde = ['model' => $this->model(), 'max_tokens' => 350, 'system' => $sistem, 'messages' => $mesajlar];
         $data = $this->cagir($govde);
         if (!$data || empty($data['content'])) return null;
         $t = '';

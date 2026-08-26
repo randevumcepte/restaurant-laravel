@@ -2420,10 +2420,24 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
         if ($kalip) { $sonuc = $kalip; $kaynak = 'kalip'; }
     }
 
-    // 3) KARAKTER (isletme ortagi) — asil sohbet/analiz beyni; gercek veriyle konusur
-    if (!$sonuc) {
-        $c = $a->patronSohbet($soru, $gecmis, $brief);
-        if ($c) { $sonuc = ['cevap' => $c, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai'; }
+    // 3) KARAKTER (isletme ortagi) — LLM; GUNLUK LIMIT + ONBELLEK ile MALIYET KONTROLLU
+    if (!$sonuc && config('services.anthropic.sohbet_acik')) {
+        $gunKey = 'resto_patron_ai_gun:' . (int) $p->sube_id . ':' . date('Y-m-d');
+        $onbKey = 'resto_patron_ai_cev:' . (int) $p->sube_id . ':' . md5(mb_strtolower(trim($soru)));
+        $limit = (int) config('services.anthropic.sohbet_gunluk_limit', 80);
+        $onbek = cache()->get($onbKey);
+        if ($onbek) {
+            // Ayni soru kisa surede tekrar -> onbellekten (BEDAVA)
+            $sonuc = ['cevap' => $onbek, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai_onbellek';
+        } elseif ((int) cache()->get($gunKey, 0) < $limit) {
+            $c = $a->patronSohbet($soru, $gecmis, $brief);
+            if ($c) {
+                cache()->put($onbKey, $c, now()->addMinutes(10));
+                cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->addHours(26));
+                $sonuc = ['cevap' => $c, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai';
+            }
+        }
+        // limit dolduysa: asagidaki fallback bedava ozet karti/yardim verir
     }
 
     // 4) Anahtar yok / hata -> ozet ise en azindan kart, degilse yardim

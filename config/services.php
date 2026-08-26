@@ -39,6 +39,9 @@ return [
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
         'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+        // MALIYET KONTROLU (Patron AI sohbet karakteri):
+        'sohbet_acik' => (bool) env('PATRON_AI_SOHBET', true),        // 0 -> sohbet kapali, sadece bedava kural+tespit
+        'sohbet_gunluk_limit' => (int) env('PATRON_AI_GUNLUK_LIMIT', 80), // gunluk LLM soru tavani (sube basi)
     ],
 
     // Google Cloud TTS (musteri QR asistani icin kaliteli ERKEK ses). Randevumcepte ile AYNI anahtar.
