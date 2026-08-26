@@ -2249,15 +2249,43 @@ Route::get('/api/masalar', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0], 401);
     $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
         ->select('id', 'masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
+
+    // Aktif birlesmeler: HALA acik hedef adisyona birlesmis kaynak masalar (log tabanli, kendi kendini temizler)
+    $masaAdlari = DB::table('masalar')->where('sube_id', $p->sube_id)->pluck('ad', 'id');
+    $birlesmeGrup = [];   // hedef_masa_id => [kaynak masa adlari]
+    $birlesmeKaynak = []; // kaynak_masa_id => ['hedef_ad'=>, 'hedef_adisyon_id'=>]
+    $logs = DB::table('adisyon_masa_loglari as l')->join('adisyonlar as a', 'l.adisyon_id', '=', 'a.id')
+        ->where('l.islem', 'birlestirme')->where('a.durum', 'acik')->whereNotNull('a.masa_id')
+        ->select('l.eski_masa_id', 'a.masa_id as hedef_masa_id', 'a.id as hedef_adisyon_id')->get();
+    foreach ($logs as $lg) {
+        if (!$lg->eski_masa_id) continue;
+        $birlesmeGrup[$lg->hedef_masa_id][] = $masaAdlari[$lg->eski_masa_id] ?? ('Masa ' . $lg->eski_masa_id);
+        $birlesmeKaynak[$lg->eski_masa_id] = [
+            'hedef_ad' => $masaAdlari[$lg->hedef_masa_id] ?? '',
+            'hedef_adisyon_id' => $lg->hedef_adisyon_id,
+        ];
+    }
+
     $masalar = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')
         ->where('masalar.sube_id', $p->sube_id)
         ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
         ->orderBy('bolgeler.sira')->orderBy('masalar.id')->get()
-        ->map(function ($m) use ($acik) {
+        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak) {
             $a = $acik[$m->id] ?? null;
-            return ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
+            $row = ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
                 'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0,
                 'adisyon_id' => $a ? $a->id : null];
+            // Hedef masa: hangi masalar birlesmis (kendisi + kaynaklar)
+            if ($a && isset($birlesmeGrup[$m->id])) {
+                $row['birlesik_masalar'] = array_values(array_unique(array_merge([$m->ad], $birlesmeGrup[$m->id])));
+            }
+            // Kaynak masa: artik bos ama acik hedefe bagli -> 'birlesik' sanal durumu
+            if (!$a && isset($birlesmeKaynak[$m->id])) {
+                $row['durum'] = 'birlesik';
+                $row['birlesik_hedef_ad'] = $birlesmeKaynak[$m->id]['hedef_ad'];
+                $row['birlesik_hedef_adisyon_id'] = $birlesmeKaynak[$m->id]['hedef_adisyon_id'];
+            }
+            return $row;
         });
     return ['ok' => 1, 'masalar' => $masalar];
 });
@@ -2620,6 +2648,8 @@ Route::post('/api/patron/masa-birlestir', function (Request $r) {
     if (!$hedef || !$kaynak || $hedef->durum !== 'acik' || $kaynak->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyonlar bulunamadı'];
     if ($hedef->id === $kaynak->id) return ['ok' => 0, 'hata' => 'Aynı adisyon seçilemez'];
     DB::table('adisyon_kalemleri')->where('adisyon_id', $kaynak->id)->update(['adisyon_id' => $hedef->id, 'updated_at' => now()]);
+    // Zincir: kaynaga daha once birlesmis masalarin loglari da hedefe tasinsin (Masa1->Masa2->Masa3)
+    DB::table('adisyon_masa_loglari')->where('adisyon_id', $kaynak->id)->where('islem', 'birlestirme')->update(['adisyon_id' => $hedef->id]);
     DB::table('adisyonlar')->where('id', $kaynak->id)->update(['durum' => 'iptal', 'kapanis' => now(), 'updated_at' => now()]);
     if ($kaynak->masa_id) DB::table('masalar')->where('id', $kaynak->masa_id)->update(['durum' => 'bos']);
     $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedef->id)->where('durum', '!=', 'iptal')->sum('tutar');
