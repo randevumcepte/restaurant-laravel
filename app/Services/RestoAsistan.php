@@ -38,6 +38,10 @@ class RestoAsistan
         'ozet' => ['ozet', 'genel durum', 'gun sonu', 'nasil gidiyor', 'nasil gecti', 'isler nasil', 'bugun nasil',
             'ne alemde', 'durum ne', 'rapor ver', 'gunumuz nasil'],
         // --- yeni modüller ---
+        'tespit' => ['terslik', 'goremedigim', 'gormedigim', 'goremedigim ne', 'nerede para', 'para kaciyor', 'para kaciriyoruz',
+            'kacan para', 'dikkat etmem', 'endiselendirecek', 'sorun var mi', 'ters giden', 'beni uzecek', 'ne yapmaliyim',
+            'anormallik', 'gizli firsat', 'firsat var mi', 'kacak var mi', 'beni koru', 'neyi kacir', 'gozden kacan',
+            'dikkatimi ceken', 'onemli bir sey', 'nasil gidiyor sence', 'sence nasil', 'durum raporu', 'ne var ne yok'],
         'finans' => ['net kar', 'kar zarar', 'zarar mi', 'karda mi', 'zararda mi', 'kar mi ediyor', 'kar mi zarar',
             'gelir gider', 'net kazanc', 'ay sonu kar', 'karli mi', 'kar ettim mi', 'ne kar ettim', 'kara mi geciyor',
             'zarardayiz', 'kar mi ettim', 'kar ettim', 'kar mi', 'kar mi var', 'kazandim mi', 'para kaldi mi'],
@@ -63,7 +67,7 @@ class RestoAsistan
                 if (strpos($norm, $this->normalize($k)) !== false) $skor[$niyet]++;
             }
         }
-        $oncelik = ['finans', 'satinalma', 'maas', 'iptal', 'kayip', 'maliyet', 'stok', 'gider', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
+        $oncelik = ['tespit', 'finans', 'satinalma', 'maas', 'iptal', 'kayip', 'maliyet', 'stok', 'gider', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
         $enIyi = 'bilinmiyor';
         $enYuksek = 0;
         foreach ($oncelik as $n) {
@@ -960,6 +964,25 @@ class RestoAsistan
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /** BEDAVA tespit cevabı (LLM'siz): "benim göremediğim ne var / nerede para kaçıyor" gibi
+     *  meta sorulara proaktif tespitleri doğal cümleyle özetler + kart döner. */
+    public function tespitCevap($subeId)
+    {
+        $v = $this->tespitler($subeId);
+        $list = $v['tespitler'] ?? [];
+        if (empty($list)) {
+            return ['basarili' => true, 'intent' => 'tespit', 'seslendir' => true, 'kart' => null,
+                'cevap' => 'Şu an göze batan bir sorun görmüyorum patron, tablo temiz görünüyor. Yine de aklına takılanı sor, birlikte bakarız.'];
+        }
+        $onemli = array_slice($list, 0, 3);
+        $cumle = ($v['selam'] ?? '') . ' ';
+        foreach ($onemli as $t) $cumle .= ' ' . $t['mesaj'];
+        $etiket = ['risk' => 'önemli', 'firsat' => 'fırsat', 'uyari' => 'dikkat', 'iyi' => 'iyi', 'bilgi' => 'not'];
+        $kv = array_map(fn ($t) => ['k' => $t['baslik'], 'v' => $etiket[$t['seviye']] ?? ''], $list);
+        return ['basarili' => true, 'intent' => 'tespit', 'seslendir' => true,
+            'cevap' => trim($cumle), 'kart' => ['tip' => 'tespit', 'baslik' => 'Senin İçin Baktım', 'kv' => $kv]];
     }
 
     /** PATRON AI karakteri: gerçek veri brifingiyle beslenmiş işletme ortağı sohbeti. */

@@ -2408,11 +2408,16 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     $gecmis = $a->gecmisGetir($userId);
     $brief = $a->patronBrief($p->sube_id); // karakterin akil yurutecegi gercek veri
 
-    // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet HARIC; "nasil gidiyor" karaktere gider)
     $niyet = $a->ogrenilenNiyet($soru) ?: $a->niyetCoz($soru);
     $intent = $niyet['intent'] ?? 'bilinmiyor';
-    $sonuc = ($intent !== 'bilinmiyor' && $intent !== 'ozet') ? $a->cevapla($niyet) : null;
+    $sonuc = null;
     $kaynak = 'kural';
+
+    // 0) TESPIT (BEDAVA): "benim goremedigim ne var / nerede para kaciyor" -> proaktif tespitler
+    if ($intent === 'tespit') { $sonuc = $a->tespitCevap($p->sube_id); $kaynak = 'tespit'; }
+
+    // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet HARIC; "nasil gidiyor" karaktere/tespite gider)
+    if (!$sonuc && $intent !== 'bilinmiyor' && $intent !== 'ozet') $sonuc = $a->cevapla($niyet);
 
     // 2) KALIP kutuphanesi (bedava ogrenilmis soru-cevap)
     if (!$sonuc) {
