@@ -23,7 +23,7 @@ if (!function_exists('_copilotCevap')) {
     {
         $s = mb_strtolower($soru, 'UTF-8');
         $son30 = now()->subDays(30);
-        $fmt = fn ($v) => number_format((float) $v, 0, ',', '.') . ' ₺';
+        $fmt = fn ($v) => number_format((float) $v, 0, ',', '.') . 'TL';
         $has = fn (array $ks) => (bool) array_filter($ks, fn ($k) => str_contains($s, $k));
 
         if ($has(['bugün', 'bugun'])) {
@@ -1618,7 +1618,7 @@ if (!function_exists('_restoPeriyot')) {
 if (!function_exists('_restoKuralYorum')) {
     function _restoKuralYorum(array $b)
     {
-        $tl = fn ($x) => '₺' . number_format((float) $x, 0, ',', '.');
+        $tl = fn ($x) => number_format((float) $x, 0, ',', '.') . 'TL';
         $out = [];
         $tip = $b['tip'] ?? '';
         if ($tip === 'urun_karlilik_analizi') {
@@ -1946,9 +1946,9 @@ Route::get('/api/patron/detay', function (Request $r) {
             'ok' => 1, 'baslik' => $urun->ad, 'tip' => 'urun', 'ai' => $ai,
             'ozet' => [
                 'Satılan' => rtrim(rtrim(number_format((float) $st->adet, 1, ',', '.'), '0'), ',') . ' adet',
-                'Ciro' => '₺' . number_format($satisTutar, 0, ',', '.'),
+                'Ciro' => number_format($satisTutar, 0, ',', '.') . 'TL',
                 'Bugün' => rtrim(rtrim(number_format($bugunAdet, 1, ',', '.'), '0'), ',') . ' adet',
-                'Fiyat' => '₺' . number_format((float) $urun->fiyat, 0, ',', '.'),
+                'Fiyat' => number_format((float) $urun->fiyat, 0, ',', '.') . 'TL',
             ],
             'recete' => $receteKalem, 'receteBirimMaliyet' => round($receteToplam, 2),
             'toplamMaliyet' => round($toplamMaliyet, 2),
@@ -2077,7 +2077,7 @@ Route::get('/api/patron/detay', function (Request $r) {
         }
         $ai = [];
         if ($deg && empty($deg['mutlu'])) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Müşteri memnun kalmamış (⭐' . $deg['puan'] . '). Telafi araması/jesti önerilir.'];
-        if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ₺' . number_format($a->indirim, 0, ',', '.') . ' (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
+        if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ' . number_format($a->indirim, 0, ',', '.') . 'TL (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
         // Bu adisyona birlesmis masalar (bu adisyon hedefse) -> kendisi + kaynak masalar
         $birlesik = [];
         if ($masa) {
@@ -2137,11 +2137,11 @@ Route::get('/api/patron/detay', function (Request $r) {
         if ($yorumlar->count() >= 1) {
             $ortSon = round($yorumlar->take(2)->avg('puan'), 1);
             if ($ortSon <= 2.5 && $gHarcama >= 3000) {
-                $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Son ziyaretlerde memnuniyetsiz (⭐' . $ortSon . '). ₺' . number_format($gHarcama, 0, ',', '.') . ' harcayan değerli müşteri — kaybetmemek için aranması önerilir.'];
+                $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Son ziyaretlerde memnuniyetsiz (⭐' . $ortSon . '). ' . number_format($gHarcama, 0, ',', '.') . 'TL harcayan değerli müşteri — kaybetmemek için aranması önerilir.'];
             }
         }
         if ($gHarcama >= 10000) {
-            $ai[] = ['seviye' => 'iyi', 'mesaj' => 'VIP müşteri: toplam ₺' . number_format($gHarcama, 0, ',', '.') . ' / ' . $gAdet . ' sipariş. Özel ilgi gösterin.'];
+            $ai[] = ['seviye' => 'iyi', 'mesaj' => 'VIP müşteri: toplam ' . number_format($gHarcama, 0, ',', '.') . 'TL / ' . $gAdet . ' sipariş. Özel ilgi gösterin.'];
         }
         if ($favori->count()) {
             $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'En sevdiği: ' . $favori[0]->urun_adi . '. Kampanya/öneride kullanılabilir.'];
@@ -2152,8 +2152,8 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'adres' => $tamGor ? $m->adres : null, 'notlar' => $tamGor ? $m->notlar : null],
             'ozet' => [
                 'Sipariş' => (string) $gAdet,
-                'Toplam' => '₺' . number_format($gHarcama, 0, ',', '.'),
-                'Ortalama' => '₺' . number_format($gAdet > 0 ? $gHarcama / $gAdet : 0, 0, ',', '.'),
+                'Toplam' => number_format($gHarcama, 0, ',', '.') . 'TL',
+                'Ortalama' => number_format($gAdet > 0 ? $gHarcama / $gAdet : 0, 0, ',', '.') . 'TL',
                 'Puan' => (string) (int) $m->puan,
             ],
             'siparisler' => $siparisler, 'odeme' => $odeme, 'favori' => $favori, 'yorumlar' => $yorumlar,
@@ -2769,7 +2769,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
                 DB::table('cari_hareketler')->insert(['sube_id' => $p->sube_id, 'cari_id' => $cari->id, 'tip' => 'borc', 'tutar' => $kalan,
                     'adisyon_id' => $a->id, 'aciklama' => ($a->masa_id ? 'Masa açık hesap' : 'Adisyon açık hesap'), 'personel_id' => $p->id, 'created_at' => now()]);
             }
-            $mesaj = $cari->ad . ' hesabına yazıldı (₺' . number_format($kalan, 0, ',', '.') . ').';
+            $mesaj = $cari->ad . ' hesabına yazıldı (' . number_format($kalan, 0, ',', '.') . 'TL).';
         } else {
             if ($kalan > 0) {
                 DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
@@ -2796,7 +2796,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $indirim, 'toplam' => $yeni]);
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'indirim',
             'tutar' => $indirim, 'sebep' => $r->sebep ?: ('%' . round($oran) . ' iskonto'), 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
-        return ['ok' => 1, 'mesaj' => '%' . round($oran) . ' iskonto uygulandı (₺' . number_format($indirim, 0, ',', '.') . ')' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
+        return ['ok' => 1, 'mesaj' => '%' . round($oran) . ' iskonto uygulandı (' . number_format($indirim, 0, ',', '.') . 'TL)' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
     }
 
     if ($islem === 'ikram') {
@@ -2816,7 +2816,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         // Ikram LIMITI (TL): asarsa yetkili PIN onayi
         $iLimit = $p->rol === 'sahip' ? 1e12 : (float) ($p->ikram_limit ?? 0);
         if ($tutar > $iLimit) {
-            if (!$onaylayan) return ['ok' => 0, 'onay_gerek' => true, 'hata' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram, limitinizi (₺' . number_format($iLimit, 0, ',', '.') . ') aşıyor. Yetkili PIN onayı gerekli.'];
+            if (!$onaylayan) return ['ok' => 0, 'onay_gerek' => true, 'hata' => number_format($tutar, 0, ',', '.') . 'TL ikram, limitinizi (' . number_format($iLimit, 0, ',', '.') . 'TL) aşıyor. Yetkili PIN onayı gerekli.'];
             $onayLimit = $onaylayan->rol === 'sahip' ? 1e12 : (float) ($onaylayan->ikram_limit ?? 0);
             if (!_restoYetkiVar($onaylayan, 'ikram') || $onayLimit < $tutar) return ['ok' => 0, 'hata' => 'Onaylayan kişinin ikram yetkisi/limiti de yetersiz.'];
         }
@@ -2824,7 +2824,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
             'tutar' => $tutar, 'sebep' => $adlar ? ('İkram: ' . $adlar) : ($r->sebep ?: 'İkram'), 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
-        return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
+        return ['ok' => 1, 'mesaj' => number_format($tutar, 0, ',', '.') . 'TL ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
     }
 
     if ($islem === 'iptal') {
@@ -3679,7 +3679,7 @@ Route::post('/api/patron/cari-tahsilat', function (Request $r) {
     $sekil = in_array($r->odeme_sekli, ['nakit', 'havale', 'kredi']) ? $r->odeme_sekli : 'nakit';
     DB::table('cari_hareketler')->insert(['sube_id' => $p->sube_id, 'cari_id' => $c->id, 'tip' => 'tahsilat', 'tutar' => $tutar,
         'odeme_sekli' => $sekil, 'aciklama' => 'Tahsilat', 'personel_id' => $p->id, 'created_at' => now()]);
-    return ['ok' => 1, 'mesaj' => '₺' . number_format($tutar, 0, ',', '.') . ' tahsil edildi (' . $sekil . '). Yeni bakiye ₺' . number_format(_cariBakiye($c->id), 0, ',', '.') . '.'];
+    return ['ok' => 1, 'mesaj' => number_format($tutar, 0, ',', '.') . 'TL tahsil edildi (' . $sekil . '). Yeni bakiye ' . number_format(_cariBakiye($c->id), 0, ',', '.') . 'TL.'];
 });
 
 Route::post('/api/patron/cari-ekle', function (Request $r) {

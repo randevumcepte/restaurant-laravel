@@ -475,7 +475,7 @@ class RestoAsistan
 
     protected function tl($v)
     {
-        return '₺' . number_format((float) $v, 0, ',', '.');
+        return number_format((float) $v, 0, ',', '.') . 'TL';
     }
 
     protected function normalize($s)
