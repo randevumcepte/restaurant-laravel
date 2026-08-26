@@ -2709,14 +2709,14 @@ Route::get('/api/patron/giderler', function (Request $r) {
     $kat = DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [$b, $e])
         ->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->pluck('t', 'kategori');
     $toplam = (float) DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [$b, $e])->sum('tutar');
-    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => $p->rol === 'sahip', 'toplam' => round($toplam, 2), 'kategoriler' => $kat, 'giderler' => $liste];
+    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => in_array($p->rol, ['sahip', 'mudur']), 'toplam' => round($toplam, 2), 'kategoriler' => $kat, 'giderler' => $liste];
 });
 
-// GIDER EKLE — SADECE sahip
+// GIDER EKLE — patron (sahip + mudur); menu de patrona acik oldugundan tutarli
 Route::post('/api/patron/gider-ekle', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Gider eklemeyi sadece işletme sahibi yapabilir.'], 403);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Gider eklemeyi sadece patron (sahip/müdür) yapabilir.'], 403);
     _restoGiderEnsure();
     $tutar = round((float) $r->tutar, 2);
     if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Tutar 0’dan büyük olmalı'];
@@ -2729,11 +2729,11 @@ Route::post('/api/patron/gider-ekle', function (Request $r) {
     return ['ok' => 1, 'id' => $id];
 });
 
-// GIDER SIL — SADECE sahip
+// GIDER SIL — patron (sahip + mudur)
 Route::post('/api/patron/gider-sil', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     DB::table('giderler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
     return ['ok' => 1];
 });
