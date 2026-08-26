@@ -37,6 +37,17 @@ class RestoAsistan
         'musteri' => ['musteri', 'kac kisi', 'kac musteri', 'yeni musteri', 'sadik musteri', 'misafir sayisi', 'kac misafir'],
         'ozet' => ['ozet', 'genel durum', 'gun sonu', 'nasil gidiyor', 'nasil gecti', 'isler nasil', 'bugun nasil',
             'ne alemde', 'durum ne', 'rapor ver', 'gunumuz nasil'],
+        // --- yeni modüller ---
+        'finans' => ['net kar', 'kar zarar', 'zarar mi', 'karda mi', 'zararda mi', 'kar mi ediyor', 'kar mi zarar',
+            'gelir gider', 'net kazanc', 'ay sonu kar', 'karli mi', 'kar ettim mi', 'ne kar ettim', 'kara mi geciyor', 'zarardayiz'],
+        'satinalma' => ['satin alma', 'satinalma', 'alis', 'alim', 'tedarik', 'tedarikci', 'ne kadar alis', 'ne aldim',
+            'alis fatura', 'fatura girdim', 'fiyat artan', 'fiyati artan', 'zamlanan', 'zam gelen', 'en cok aldigim', 'hangi tedarikci', 'kimden aldim'],
+        'maas' => ['maas', 'avans', 'hakedis', 'prim', 'maas gideri', 'ne kadar maas', 'odenecek maas',
+            'personel odeme', 'personele odeme', 'personel maas', 'kime avans', 'net odenecek', 'maas verdim'],
+        'stok' => ['stok', 'malzeme', 'depo', 'envanter', 'kritik stok', 'stok durum', 'stok degeri',
+            'ne kadar malzeme', 'malzeme bitti', 'stok azaldi', 'biten malzeme', 'eksilen malzeme', 'kalan malzeme', 'siparis vermem'],
+        'gider' => ['gider', 'masraf', 'kira', 'harcama', 'sabit gider', 'ne kadar gider', 'gider ne',
+            'giderim', 'giderler', 'elektrik', 'su faturasi', 'dogalgaz', 'ne kadar masraf'],
     ];
 
     // -------------------- NIYET --------------------
@@ -51,7 +62,7 @@ class RestoAsistan
                 if (strpos($norm, $this->normalize($k)) !== false) $skor[$niyet]++;
             }
         }
-        $oncelik = ['iptal', 'kayip', 'maliyet', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
+        $oncelik = ['finans', 'satinalma', 'maas', 'iptal', 'kayip', 'maliyet', 'stok', 'gider', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
         $enIyi = 'bilinmiyor';
         $enYuksek = 0;
         foreach ($oncelik as $n) {
@@ -100,7 +111,159 @@ class RestoAsistan
             case 'iptal':   return $this->cvIptal($from, $to, $d, $niyet);
             case 'musteri': return $this->cvMusteri($from, $to, $d, $niyet);
             case 'ozet':    return $this->cvOzet($from, $to, $d, $niyet);
+            case 'finans':  return $this->cvFinans($niyet);
+            case 'satinalma': return $this->cvSatinAlma($niyet);
+            case 'maas':    return $this->cvMaas($niyet);
+            case 'stok':    return $this->cvStok($niyet);
+            case 'gider':   return $this->cvGider($niyet);
             default:        return null;
+        }
+    }
+
+    /** Bu ay [başlangıç, şimdi]. Finans/gider/maaş/alış aylık kavramlar. */
+    protected function ayAralik()
+    {
+        return [now()->startOfMonth(), now()];
+    }
+
+    protected function cvFinans($niyet)
+    {
+        try {
+            [$bas, $to] = $this->ayAralik();
+            $gelir = (float) DB::table('odemeler')->whereBetween('created_at', [$bas, $to])->sum('tutar');
+            $gider = 0.0;
+            if (Schema::hasTable('giderler')) $gider = (float) DB::table('giderler')->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])->sum('tutar');
+            $net = $gelir - $gider;
+            if ($gelir <= 0 && $gider <= 0) return $this->paket_('finans', 'Bu ay için henüz gelir veya gider hareketi görünmüyor.', $niyet);
+            $durum = $net >= 0 ? 'net kâr' : 'net zarar';
+            $cevap = 'Bu ay geliriniz ' . $this->tl($gelir) . ', gideriniz ' . $this->tl($gider) . '. Yani ' . $durum . ' ' . $this->tl(abs($net)) . '.';
+            if ($net < 0) $cevap .= ' Giderler geliri aşmış, kalemleri gözden geçirmekte fayda var.';
+            elseif ($gelir > 0 && $net < $gelir * 0.1) $cevap .= ' Kâr marjı ince, maliyet tarafına dikkat.';
+            return $this->cvp('finans', $cevap, $niyet, ['tip' => 'finans', 'baslik' => 'Kasa · Bu Ay', 'kv' => [
+                ['k' => 'Gelir', 'v' => $this->tl($gelir)], ['k' => 'Gider', 'v' => $this->tl($gider)], ['k' => $durum === 'net kâr' ? 'Net Kâr' : 'Net Zarar', 'v' => $this->tl(abs($net))],
+            ]]);
+        } catch (\Throwable $e) {
+            return $this->paket_('finans', 'Finansal veriye şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
+    }
+
+    protected function cvSatinAlma($niyet)
+    {
+        try {
+            if (!Schema::hasTable('alis_faturalari')) return $this->paket_('satinalma', 'Henüz alış faturası kaydı yok.', $niyet);
+            [$bas, $to] = $this->ayAralik();
+            $b = $bas->toDateString(); $e = $to->toDateString();
+            $toplam = (float) DB::table('alis_faturalari')->whereBetween('tarih', [$b, $e])->sum('toplam');
+            if ($toplam <= 0) return $this->paket_('satinalma', 'Bu ay henüz alış faturası girilmemiş.', $niyet);
+            $topTed = DB::table('alis_faturalari')->join('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+                ->whereBetween('alis_faturalari.tarih', [$b, $e])->select('tedarikciler.ad', DB::raw('SUM(alis_faturalari.toplam) as t'))
+                ->groupBy('tedarikciler.id', 'tedarikciler.ad')->orderByDesc('t')->first();
+            $zamlar = DB::table('alis_fatura_kalemleri')->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+                ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
+                ->whereBetween('alis_faturalari.tarih', [$b, $e])->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
+                ->select('malzemeler.ad', 'alis_fatura_kalemleri.fiyat_farki_yuzde')->orderByDesc('alis_fatura_kalemleri.fiyat_farki_yuzde')->limit(3)->get();
+            $cevap = 'Bu ay toplam ' . $this->tl($toplam) . ' alış yapmışsınız';
+            if ($topTed) $cevap .= '. En çok ' . $topTed->ad . ' tedarikçisinden (' . $this->tl((float) $topTed->t) . ')';
+            $cevap .= '.';
+            $kv = [['k' => 'Toplam Alış', 'v' => $this->tl($toplam)]];
+            if ($topTed) $kv[] = ['k' => 'En çok', 'v' => $topTed->ad];
+            if ($zamlar->isNotEmpty()) {
+                $isim = [];
+                foreach ($zamlar as $z) { $isim[] = $z->ad . ' %' . round((float) $z->fiyat_farki_yuzde); $kv[] = ['k' => $z->ad, 'v' => '%' . round((float) $z->fiyat_farki_yuzde) . ' zam']; }
+                $cevap .= ' Dikkat, fiyatı artan malzemeler: ' . implode(', ', $isim) . '.';
+            }
+            return $this->cvp('satinalma', $cevap, $niyet, ['tip' => 'satinalma', 'baslik' => 'Satın Alma · Bu Ay', 'kv' => $kv]);
+        } catch (\Throwable $e) {
+            return $this->paket_('satinalma', 'Alış verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
+    }
+
+    protected function cvMaas($niyet)
+    {
+        try {
+            if (!Schema::hasTable('personel_hareketleri')) return $this->paket_('maas', 'Henüz personel maaş/ödeme kaydı yok. Personel sayfasından maaş tanımlayabilirsiniz.', $niyet);
+            [$bas, $to] = $this->ayAralik();
+            $b = $bas->toDateString(); $e = $to->toDateString();
+            $norm = $this->normalize($niyet['ham']);
+            // İsim geçiyor mu? (kişiye özel cevap)
+            $kisi = null;
+            foreach (DB::table('personeller')->where('aktif', 1)->get(['id', 'ad', 'maas']) as $p) {
+                $ad = $this->normalize($p->ad);
+                if ($ad && strpos($norm, $ad) !== false) { $kisi = $p; break; }
+                $ilk = explode(' ', $ad)[0] ?? '';
+                if (mb_strlen($ilk) >= 3 && strpos($norm, $ilk) !== false) { $kisi = $p; break; }
+            }
+            if ($kisi) {
+                $avans = (float) DB::table('personel_hareketleri')->where('personel_id', $kisi->id)->where('tur', 'avans')->whereBetween('tarih', [$b, $e])->sum('tutar');
+                $odenen = (float) DB::table('personel_hareketleri')->where('personel_id', $kisi->id)->where('tur', 'odeme')->whereBetween('tarih', [$b, $e])->sum('tutar');
+                $cevap = $kisi->ad . ' için bu ay maaş ' . $this->tl((float) $kisi->maas) . '. Şu ana kadar ' . $this->tl($odenen) . ' ödenmiş, ' . $this->tl($avans) . ' avans verilmiş.';
+                return $this->cvp('maas', $cevap, $niyet, ['tip' => 'maas', 'baslik' => $kisi->ad . ' · Maaş', 'kv' => [
+                    ['k' => 'Maaş', 'v' => $this->tl((float) $kisi->maas)], ['k' => 'Ödenen', 'v' => $this->tl($odenen)], ['k' => 'Avans', 'v' => $this->tl($avans)],
+                ]]);
+            }
+            $maasToplam = (float) DB::table('personeller')->where('aktif', 1)->sum('maas');
+            $avans = (float) DB::table('personel_hareketleri')->where('tur', 'avans')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $odenen = (float) DB::table('personel_hareketleri')->where('tur', 'odeme')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $prim = (float) DB::table('personel_hareketleri')->where('tur', 'prim')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $cevap = 'Bu ay toplam maaş tahakkuku ' . $this->tl($maasToplam) . '. Şu ana kadar ' . $this->tl($odenen) . ' ödenmiş, ' . $this->tl($avans) . ' avans verilmiş';
+            if ($prim > 0) $cevap .= ', ' . $this->tl($prim) . ' de prim';
+            $cevap .= '.';
+            return $this->cvp('maas', $cevap, $niyet, ['tip' => 'maas', 'baslik' => 'Personel · Bu Ay', 'kv' => [
+                ['k' => 'Maaş tahakkuk', 'v' => $this->tl($maasToplam)], ['k' => 'Ödenen', 'v' => $this->tl($odenen)], ['k' => 'Avans', 'v' => $this->tl($avans)],
+            ]]);
+        } catch (\Throwable $e) {
+            return $this->paket_('maas', 'Personel maaş verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
+    }
+
+    protected function cvStok($niyet)
+    {
+        try {
+            if (!Schema::hasTable('malzemeler')) return $this->paket_('stok', 'Henüz stok/malzeme kaydı yok.', $niyet);
+            $mevcut = DB::table('stok_hareketleri')->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+            $malz = DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'guncel_maliyet', 'stok_takipli']);
+            if ($malz->isEmpty()) return $this->paket_('stok', 'Henüz tanımlı malzeme yok. Stok ekranından ekleyebilirsiniz.', $niyet);
+            $toplamDeger = 0.0; $kritikler = [];
+            foreach ($malz as $m) {
+                $stok = (float) ($mevcut[$m->id] ?? 0);
+                $toplamDeger += $stok * (float) $m->guncel_maliyet;
+                if ($m->stok_takipli && (float) $m->kritik_stok > 0 && $stok <= (float) $m->kritik_stok) $kritikler[] = $m->ad;
+            }
+            $cevap = 'Toplam stok değeriniz yaklaşık ' . $this->tl($toplamDeger) . '.';
+            $kv = [['k' => 'Stok değeri', 'v' => $this->tl($toplamDeger)], ['k' => 'Malzeme çeşidi', 'v' => (string) $malz->count()]];
+            if (count($kritikler) > 0) {
+                $ilk = array_slice($kritikler, 0, 5);
+                $cevap .= ' ' . count($kritikler) . ' malzeme kritik seviyede: ' . implode(', ', $ilk) . (count($kritikler) > 5 ? ' ve diğerleri' : '') . '. Sipariş vermeniz gerekebilir.';
+                $kv[] = ['k' => 'Kritik malzeme', 'v' => (string) count($kritikler)];
+            } else {
+                $cevap .= ' Kritik seviyede malzeme yok, stok rahat görünüyor.';
+            }
+            return $this->cvp('stok', $cevap, $niyet, ['tip' => 'stok', 'baslik' => 'Stok Durumu', 'kv' => $kv]);
+        } catch (\Throwable $e) {
+            return $this->paket_('stok', 'Stok verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
+    }
+
+    protected function cvGider($niyet)
+    {
+        try {
+            if (!Schema::hasTable('giderler')) return $this->paket_('gider', 'Bu ay henüz gider kaydı yok.', $niyet);
+            [$bas, $to] = $this->ayAralik();
+            $rows = DB::table('giderler')->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])
+                ->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->orderByDesc('t')->get();
+            if ($rows->isEmpty()) return $this->paket_('gider', 'Bu ay henüz gider kaydı görünmüyor.', $niyet);
+            $adlar = ['kira' => 'kira', 'fatura' => 'fatura', 'malzeme' => 'malzeme/alış', 'maas' => 'maaş', 'vergi' => 'vergi', 'diger' => 'diğer'];
+            $toplam = 0.0; $parca = []; $kv = [];
+            foreach ($rows as $r) {
+                $toplam += (float) $r->t;
+                $ad = $adlar[$r->kategori] ?? $r->kategori;
+                $parca[] = $ad . ' ' . $this->tl((float) $r->t);
+                $kv[] = ['k' => ucfirst($ad), 'v' => $this->tl((float) $r->t)];
+            }
+            $cevap = 'Bu ay toplam gideriniz ' . $this->tl($toplam) . '. Dağılım: ' . implode(', ', array_slice($parca, 0, 5)) . '.';
+            return $this->cvp('gider', $cevap, $niyet, ['tip' => 'gider', 'baslik' => 'Giderler · Bu Ay', 'kv' => $kv]);
+        } catch (\Throwable $e) {
+            return $this->paket_('gider', 'Gider verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
         }
     }
 
@@ -369,8 +532,8 @@ class RestoAsistan
         $tools = [[
             'name' => 'rapor_sec', 'description' => 'Patronun sorusuna gore hangi restoran raporunu hangi donem icin getirecegini secer.',
             'input_schema' => ['type' => 'object', 'properties' => [
-                'intent' => ['type' => 'string', 'enum' => ['ciro', 'garson', 'urun', 'masa', 'paket', 'maliyet', 'kayip', 'iptal', 'musteri', 'ozet', 'sohbet', 'bilinmiyor'],
-                    'description' => 'ciro=kasa/hasilat, garson=kim ne satti, urun=en cok satan yemek, masa=acik/dolu masa, paket=paket/kurye siparis, maliyet=food-cost/kar, kayip=iskonto/ikram/fire/silinen sizinti, iptal=iptal adisyon, musteri=misafir sayisi, ozet=genel gun sonu, sohbet=selam/kimlik/genel, bilinmiyor=anlasilamadi'],
+                'intent' => ['type' => 'string', 'enum' => ['ciro', 'garson', 'urun', 'masa', 'paket', 'maliyet', 'kayip', 'iptal', 'musteri', 'ozet', 'finans', 'satinalma', 'maas', 'stok', 'gider', 'sohbet', 'bilinmiyor'],
+                    'description' => 'ciro=kasa/hasilat/tahsilat, garson=kim ne satti, urun=en cok satan yemek, masa=acik/dolu masa, paket=paket/kurye siparis, maliyet=food-cost/brut kar, kayip=iskonto/ikram/fire/silinen sizinti, iptal=iptal adisyon, musteri=misafir sayisi, ozet=genel gun sonu, finans=net kar/zarar veya gelir-gider dengesi, satinalma=alis faturasi/tedarikci/malzeme fiyat artisi, maas=personel maas/avans/prim/hakedis, stok=malzeme stok durumu/kritik stok/stok degeri, gider=isletme gideri kira/fatura/masraf, sohbet=selam/kimlik/genel, bilinmiyor=anlasilamadi'],
                 'donem' => ['type' => 'string', 'enum' => ['gunluk', 'haftalik', 'aylik', 'yillik'], 'description' => 'gunluk=bugun, haftalik=bu hafta, aylik=bu ay, yillik=bu yil'],
             ], 'required' => ['intent', 'donem']],
         ]];
@@ -402,7 +565,8 @@ class RestoAsistan
         $sistem = 'Sen bir RESTORAN patronu icin calisan sesli asistansin. Adin yok, kendini "restoranınızın asistanı" diye tanit. '
             . 'Kisa (en fazla iki cumle), sicak ve NET konus. TTS ile seslendirilecegin icin DUZ yaz: emoji, madde, yildiz, tirnak KULLANMA. '
             . 'Yapabildiklerin: ciro/kasa, en cok satan urun, personel performansi, acik masalar, paket siparisler, food-cost/kar, kayip radari (iskonto/ikram/fire), '
-            . 'iptaller, misafir sayisi ve gunluk ozet. RAKAM veya VERI UYDURMA; patron rakam isterse "bugun ciro ne kadar diye sorabilirsiniz" de. '
+            . 'iptaller, misafir sayisi, gunluk ozet, net kar-zarar (finans), stok durumu ve kritik malzeme, personel maas/avans/prim, isletme giderleri ve satin alma/tedarikci/malzeme fiyat artisi. '
+            . 'RAKAM veya VERI UYDURMA; patron rakam isterse "bugun ciro ne kadar diye sorabilirsiniz" de. '
             . 'Restoranla ilgisiz konularda nazikce restoranıyla yardimci olabilecegini soyle. "Buyurun" kelimesini KULLANMA. Sadece Turkce yanit ver.';
         $mesajlar = $this->gecmisMesajlari($gecmis);
         $mesajlar[] = ['role' => 'user', 'content' => $ham];
@@ -469,7 +633,8 @@ class RestoAsistan
     public function yardimCevabi($niyet = [])
     {
         $c = 'Restoranınızın asistanıyım. Ciro, en çok satan ürün, personel performansı, açık masalar, paket siparişler, '
-            . 'food-cost, kayıp radarı ve günlük özet için sorabilirsiniz. Örneğin: bugün ciro ne kadar, en çok kim sattı, food-cost ne durumda.';
+            . 'food-cost, kayıp radarı, net kâr-zarar, stok durumu, personel maaş ve avansları, giderler ve satın alma için sorabilirsiniz. '
+            . 'Örneğin: bu ay kâr mı ettim, stokta kritik malzeme var mı, bu ay giderim ne kadar, en çok hangi tedarikçiden aldım.';
         return ['basarili' => true, 'intent' => 'yardim', 'cevap' => $c, 'seslendir' => true, 'kart' => null, 'niyet' => $niyet];
     }
 
