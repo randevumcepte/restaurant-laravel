@@ -2019,8 +2019,19 @@ Route::get('/api/patron/detay', function (Request $r) {
         $ai = [];
         if ($deg && empty($deg['mutlu'])) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'Müşteri memnun kalmamış (⭐' . $deg['puan'] . '). Telafi araması/jesti önerilir.'];
         if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ₺' . number_format($a->indirim, 0, ',', '.') . ' (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
+        // Bu adisyona birlesmis masalar (bu adisyon hedefse) -> kendisi + kaynak masalar
+        $birlesik = [];
+        if ($masa) {
+            $kaynakMasaIdler = DB::table('adisyon_masa_loglari')->where('adisyon_id', $id)->where('islem', 'birlestirme')
+                ->pluck('eski_masa_id')->filter()->all();
+            if ($kaynakMasaIdler) {
+                $adlar = DB::table('masalar')->whereIn('id', $kaynakMasaIdler)->pluck('ad')->all();
+                $birlesik = array_values(array_unique(array_merge([$masa], $adlar)));
+            }
+        }
         return [
             'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon', 'ai' => $ai,
+            'masa' => $masa, 'birlesik_masalar' => $birlesik,
             'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureStr],
             'durum' => $a->durum, 'kanal' => $kanalAd,
             'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
