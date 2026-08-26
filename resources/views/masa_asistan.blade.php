@@ -253,8 +253,13 @@ async function cloudKonus(temiz){
   return false;
 }
 function seseHazirla(t){
-  // "₺75" / "75₺" / "75 TL" -> "75 lira" (hem cihaz hem cloud dogru okusun)
-  return temizle(t).replace(/₺\s*(\d[\d.]*)/g,'$1 lira').replace(/(\d[\d.]*)\s*₺/g,'$1 lira').replace(/₺/g,' lira');
+  // Binlik noktayi kaldir (1.250->1250), "₺75"/"75 TL" -> "75 lira" (hem cihaz hem cloud akici okusun)
+  return temizle(t)
+    .replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2')
+    .replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2')
+    .replace(/₺\s*(\d+)/g,'$1 lira')
+    .replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira')
+    .replace(/₺/g,' lira');
 }
 async function konus(t){
   const temiz = seseHazirla(t);

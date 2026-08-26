@@ -296,7 +296,8 @@ class MusteriAsistan
 
     protected function tl($v)
     {
-        return '₺' . number_format((float) $v, 0, ',', '.');
+        // "85 TL" / "1250 TL" — binlik ayiraci YOK (sesli okumada nokta vurguyu bozuyordu), ₺ yerine TL
+        return number_format((float) $v, 0, ',', '') . ' TL';
     }
 
     /** ["a","b","c"] -> "a, b ve c" (akici Turkce liste). */

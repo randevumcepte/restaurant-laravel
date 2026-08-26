@@ -147,9 +147,12 @@ class SeslendirmeServisi
         $metin = (string) $metin;
         if (!mb_check_encoding($metin, 'UTF-8')) $metin = @mb_convert_encoding($metin, 'UTF-8', 'UTF-8');
         $m = ' ' . trim($metin) . ' ';
+        // Binlik ayiraci noktasini kaldir: "1.250" -> "1250" (sesli vurguyu bozmasin)
+        $m = preg_replace('/(\d)\.(\d{3})(?=\D|$)/u', '$1$2', $m);
+        $m = preg_replace('/(\d)\.(\d{3})(?=\D|$)/u', '$1$2', $m); // "1.250.000" gibi ikili
         // Para birimi: "₺75" / "75₺" / "75 TL" -> "75 lira" (rakam sonra yaziya cevrilir)
-        $m = preg_replace('/₺\s*(\d[\d.]*)/u', '$1 lira', $m);
-        $m = preg_replace('/(\d[\d.]*)\s*(?:₺|tl)\b/iu', '$1 lira', $m);
+        $m = preg_replace('/₺\s*(\d+)/u', '$1 lira', $m);
+        $m = preg_replace('/(\d+)\s*(?:₺|tl)\b/iu', '$1 lira', $m);
         $m = str_replace('₺', ' lira', $m);
         $t = preg_replace_callback('/\b([01]?\d|2[0-3]):([0-5]\d)\b/u', function ($x) {
             $s = $this->sayiYazi((int) $x[1]);
