@@ -340,7 +340,9 @@ Route::post('/pos/gonder', function (Request $r) {
 
 Route::post('/pos/ode', function (Request $r) {
     $a = DB::table('adisyonlar')->find($r->adisyon_id);
-    DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $r->tip ?? 'nakit', 'tutar' => $a->toplam, 'bahsis' => 0, 'personel_id' => $a->acan_personel_id, 'created_at' => now()]);
+    $odemeTip = $r->tip ?? 'nakit';
+    DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $odemeTip, 'tutar' => $a->toplam, 'bahsis' => 0, 'personel_id' => $a->acan_personel_id, 'created_at' => now()]);
+    if ($odemeTip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $a->toplam, 'Nakit satış · adisyon #' . $a->id, 'adisyon', $a->id, $a->acan_personel_id);
     DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
     // SADAKAT: adisyona musteri bagliysa puan + harcama isle (her 10 TL = 1 puan)
@@ -2675,13 +2677,14 @@ Route::post('/api/patron/personel-hareket', function (Request $r) {
         'sube_id' => $p->sube_id, 'personel_id' => $hedef->id, 'tur' => $tur, 'tutar' => $tutar,
         'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'tarih' => $tarih, 'created_by' => $p->id,
     ]);
-    // Avans ve odeme = kasadan cikan para -> otomatik GIDER (maas kategorisi)
+    // Avans ve odeme = kasadan cikan para -> otomatik GIDER (maas kategorisi) + kasadan cikis
     if (in_array($tur, ['avans', 'odeme'])) {
         DB::table('giderler')->insert([
             'sube_id' => $p->sube_id, 'kategori' => 'maas',
             'aciklama' => $hedef->ad . ' — ' . ($tur === 'avans' ? 'Avans' : 'Maaş/ödeme'),
             'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => $p->id,
         ]);
+        _kasaYaz($p->sube_id, 'personel', 'cikis', $tutar, $hedef->ad . ' — ' . ($tur === 'avans' ? 'Avans' : 'Maaş/ödeme'), 'personel', $hedef->id, $p->id);
     }
     return ['ok' => 1, 'id' => $id];
 });
@@ -2726,6 +2729,9 @@ Route::post('/api/patron/gider-ekle', function (Request $r) {
         'sube_id' => $p->sube_id, 'kategori' => $kategori, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null,
         'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => $p->id,
     ]);
+    // Nakit gider ise (varsayilan) kasadan cikis (acik vardiya varsa). nakit=0 gelirse kasaya dokunma.
+    $nakit = !isset($r->nakit) || in_array((string) $r->nakit, ['1', 'true', 'nakit', 'on'], true);
+    if ($nakit) _kasaYaz($p->sube_id, 'gider', 'cikis', $tutar, ($kategori === 'maas' ? 'Maaş' : ucfirst($kategori)) . ' gideri' . ($r->aciklama ? ' — ' . $r->aciklama : ''), 'gider', $id, $p->id);
     return ['ok' => 1, 'id' => $id];
 });
 
@@ -2736,6 +2742,174 @@ Route::post('/api/patron/gider-sil', function (Request $r) {
     if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     DB::table('giderler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
     return ['ok' => 1];
+});
+
+// ============================ KASA (vardiya bazli nakit cekmece) ============================
+// Tek "nakit gercegi": tum nakit hareketler kasa_hareketleri'ne yazilir. Vardiya acilir (devir),
+// gun sonu sayilir -> beklenen vs sayilan = fark (acik/fazla). Nakit satis/gider/tahsilat/avans OTOMATIK baglanir.
+function _restoKasaEnsure()
+{
+    if (!Schema::hasTable('kasa_oturumlari')) {
+        Schema::create('kasa_oturumlari', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('acan_personel_id')->nullable();
+            $t->decimal('acilis_devir', 12, 2)->default(0);
+            $t->timestamp('acilis_zamani')->nullable();
+            $t->timestamp('kapanis_zamani')->nullable();
+            $t->decimal('beklenen_nakit', 12, 2)->nullable();
+            $t->decimal('sayilan_nakit', 12, 2)->nullable();
+            $t->decimal('fark', 12, 2)->nullable();
+            $t->unsignedBigInteger('kapatan_personel_id')->nullable();
+            $t->string('durum', 10)->default('acik');
+            $t->string('not', 255)->nullable();
+            $t->timestamps();
+            $t->index(['sube_id', 'durum']);
+        });
+    }
+    if (!Schema::hasTable('kasa_hareketleri')) {
+        Schema::create('kasa_hareketleri', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('oturum_id');
+            $t->string('tip', 20);   // devir | satis | tahsilat | gider | personel | al | koy
+            $t->string('yon', 6);    // giris | cikis
+            $t->decimal('tutar', 12, 2)->default(0);
+            $t->string('aciklama', 255)->nullable();
+            $t->string('kaynak_tip', 20)->nullable();
+            $t->unsignedBigInteger('kaynak_id')->nullable();
+            $t->unsignedBigInteger('personel_id')->nullable();
+            $t->timestamp('created_at')->nullable();
+            $t->index(['oturum_id']);
+            $t->index(['sube_id', 'created_at']);
+        });
+    }
+}
+if (!function_exists('_kasaAcikOturum')) {
+    function _kasaAcikOturum($subeId)
+    {
+        _restoKasaEnsure();
+        return DB::table('kasa_oturumlari')->where('sube_id', $subeId)->where('durum', 'acik')->orderByDesc('id')->first();
+    }
+}
+// Nakit hareketi kasaya yaz — SADECE acik oturum varsa (yoksa sessiz gecer, akisi bozmaz)
+if (!function_exists('_kasaYaz')) {
+    function _kasaYaz($subeId, $tip, $yon, $tutar, $aciklama, $kaynakTip = 'manuel', $kaynakId = null, $personelId = null)
+    {
+        try {
+            $tutar = round((float) $tutar, 2);
+            if ($tutar <= 0) return;
+            $o = _kasaAcikOturum($subeId);
+            if (!$o) return;
+            DB::table('kasa_hareketleri')->insert([
+                'sube_id' => $subeId, 'oturum_id' => $o->id, 'tip' => $tip, 'yon' => $yon, 'tutar' => $tutar,
+                'aciklama' => $aciklama, 'kaynak_tip' => $kaynakTip, 'kaynak_id' => $kaynakId,
+                'personel_id' => $personelId, 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+        }
+    }
+}
+
+// KASA DURUMU
+Route::get('/api/patron/kasa', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $o = _kasaAcikOturum($p->sube_id);
+    if (!$o) {
+        $son = DB::table('kasa_oturumlari')->where('sube_id', $p->sube_id)->where('durum', 'kapali')->orderByDesc('id')->first();
+        return ['ok' => 1, 'acik' => false, 'son_devir' => $son ? (float) $son->sayilan_nakit : 0];
+    }
+    $har = DB::table('kasa_hareketleri as h')->leftJoin('personeller as pe', 'h.personel_id', '=', 'pe.id')
+        ->where('h.oturum_id', $o->id)->orderByDesc('h.id')
+        ->select('h.tip', 'h.yon', 'h.tutar', 'h.aciklama', 'h.created_at', 'pe.ad as personel')->get()
+        ->map(fn ($h) => ['tip' => $h->tip, 'yon' => $h->yon, 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama,
+            'personel' => $h->personel, 'zaman' => \Carbon\Carbon::parse($h->created_at)->format('H:i')]);
+    $giris = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'giris')->sum('tutar');
+    $cikis = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'cikis')->sum('tutar');
+    $kirilim = DB::table('kasa_hareketleri')->where('oturum_id', $o->id)
+        ->select('tip', 'yon', DB::raw('SUM(tutar) as t'))->groupBy('tip', 'yon')->get()
+        ->map(fn ($k) => ['tip' => $k->tip, 'yon' => $k->yon, 'tutar' => (float) $k->t]);
+    return ['ok' => 1, 'acik' => true, 'oturum_id' => $o->id,
+        'devir' => (float) $o->acilis_devir, 'acan' => DB::table('personeller')->where('id', $o->acan_personel_id)->value('ad'),
+        'acilis' => \Carbon\Carbon::parse($o->acilis_zamani)->format('d.m H:i'),
+        'sure_dk' => (int) round(\Carbon\Carbon::parse($o->acilis_zamani)->diffInMinutes(now())),
+        'giris' => $giris, 'cikis' => $cikis, 'beklenen' => round($giris - $cikis, 2),
+        'kirilim' => $kirilim, 'hareketler' => $har];
+});
+
+// KASA AC (vardiya) — devir gir
+Route::post('/api/patron/kasa-ac', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur', 'kasa'])) return ['ok' => 0, 'hata' => 'Kasa açma yetkiniz yok.'];
+    if (_kasaAcikOturum($p->sube_id)) return ['ok' => 0, 'hata' => 'Zaten açık bir kasa var. Önce onu kapatın.'];
+    $devir = max(0, round((float) $r->devir, 2));
+    $oid = DB::table('kasa_oturumlari')->insertGetId([
+        'sube_id' => $p->sube_id, 'acan_personel_id' => $p->id, 'acilis_devir' => $devir,
+        'acilis_zamani' => now(), 'durum' => 'acik', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    if ($devir > 0) {
+        DB::table('kasa_hareketleri')->insert(['sube_id' => $p->sube_id, 'oturum_id' => $oid, 'tip' => 'devir', 'yon' => 'giris',
+            'tutar' => $devir, 'aciklama' => 'Açılış devir', 'kaynak_tip' => 'manuel', 'personel_id' => $p->id, 'created_at' => now()]);
+    }
+    return ['ok' => 1, 'mesaj' => 'Kasa açıldı.', 'oturum_id' => $oid];
+});
+
+// KASA HAREKET (elle al/koy) — satis disi nakit
+Route::post('/api/patron/kasa-hareket', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $o = _kasaAcikOturum($p->sube_id);
+    if (!$o) return ['ok' => 0, 'hata' => 'Açık kasa yok. Önce kasa açın.'];
+    $yon = in_array($r->yon, ['giris', 'cikis']) ? $r->yon : 'cikis';
+    $tutar = round((float) $r->tutar, 2);
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli tutar girin.'];
+    DB::table('kasa_hareketleri')->insert([
+        'sube_id' => $p->sube_id, 'oturum_id' => $o->id, 'tip' => $yon === 'giris' ? 'koy' : 'al', 'yon' => $yon,
+        'tutar' => $tutar, 'aciklama' => $r->aciklama ? (string) $r->aciklama : ($yon === 'giris' ? 'Kasaya para konuldu' : 'Kasadan para alındı'),
+        'kaynak_tip' => 'manuel', 'personel_id' => $p->id, 'created_at' => now(),
+    ]);
+    return ['ok' => 1, 'mesaj' => $yon === 'giris' ? 'Kasaya eklendi.' : 'Kasadan düşüldü.'];
+});
+
+// KASA KAPAT (say) — beklenen vs sayilan = fark
+Route::post('/api/patron/kasa-kapat', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur', 'kasa'])) return ['ok' => 0, 'hata' => 'Kasa kapatma yetkiniz yok.'];
+    $o = _kasaAcikOturum($p->sube_id);
+    if (!$o) return ['ok' => 0, 'hata' => 'Açık kasa yok.'];
+    $giris = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'giris')->sum('tutar');
+    $cikis = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'cikis')->sum('tutar');
+    $beklenen = round($giris - $cikis, 2);
+    $sayilan = round((float) $r->sayilan, 2);
+    $fark = round($sayilan - $beklenen, 2);
+    DB::table('kasa_oturumlari')->where('id', $o->id)->update([
+        'kapanis_zamani' => now(), 'beklenen_nakit' => $beklenen, 'sayilan_nakit' => $sayilan, 'fark' => $fark,
+        'kapatan_personel_id' => $p->id, 'durum' => 'kapali', 'not' => $r->not ? (string) $r->not : null, 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'mesaj' => 'Kasa kapatıldı. ' . ($fark == 0 ? 'Kasa tuttu ✓' : ($fark > 0 ? 'Fazla' : 'Açık')),
+        'beklenen' => $beklenen, 'sayilan' => $sayilan, 'fark' => $fark];
+});
+
+// KASA GECMIS (kapali vardiyalar)
+Route::get('/api/patron/kasa-gecmis', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _restoKasaEnsure();
+    $liste = DB::table('kasa_oturumlari as o')->leftJoin('personeller as a', 'o.acan_personel_id', '=', 'a.id')
+        ->leftJoin('personeller as k', 'o.kapatan_personel_id', '=', 'k.id')
+        ->where('o.sube_id', $p->sube_id)->where('o.durum', 'kapali')->orderByDesc('o.id')->limit(30)
+        ->select('o.id', 'o.acilis_devir', 'o.beklenen_nakit', 'o.sayilan_nakit', 'o.fark', 'o.acilis_zamani', 'o.kapanis_zamani',
+            'a.ad as acan', 'k.ad as kapatan')->get()
+        ->map(fn ($o) => [
+            'id' => $o->id, 'devir' => (float) $o->acilis_devir, 'beklenen' => (float) $o->beklenen_nakit,
+            'sayilan' => (float) $o->sayilan_nakit, 'fark' => (float) $o->fark, 'acan' => $o->acan, 'kapatan' => $o->kapatan,
+            'acilis' => $o->acilis_zamani ? \Carbon\Carbon::parse($o->acilis_zamani)->format('d.m H:i') : '-',
+            'kapanis' => $o->kapanis_zamani ? \Carbon\Carbon::parse($o->kapanis_zamani)->format('d.m H:i') : '-',
+        ]);
+    return ['ok' => 1, 'oturumlar' => $liste];
 });
 
 // ============================================================================
@@ -3232,6 +3406,8 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         } else {
             if ($kalan > 0) {
                 DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $kalan, 'personel_id' => $p->id, 'created_at' => now()]);
+                // Nakit ise kasaya (acik vardiya varsa) otomatik giris
+                if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $kalan, 'Nakit satış · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
             }
             $mesaj = 'Ödeme alındı (' . ['nakit' => 'Nakit', 'kredi' => 'Kredi', 'yemek_karti' => 'Yemek Kartı'][$tip] . '), masa kapatıldı.';
         }
@@ -4139,6 +4315,8 @@ Route::post('/api/patron/cari-tahsilat', function (Request $r) {
     $sekil = in_array($r->odeme_sekli, ['nakit', 'havale', 'kredi']) ? $r->odeme_sekli : 'nakit';
     DB::table('cari_hareketler')->insert(['sube_id' => $p->sube_id, 'cari_id' => $c->id, 'tip' => 'tahsilat', 'tutar' => $tutar,
         'odeme_sekli' => $sekil, 'aciklama' => 'Tahsilat', 'personel_id' => $p->id, 'created_at' => now()]);
+    // Nakit tahsilat -> kasaya giris (acik vardiya varsa)
+    if ($sekil === 'nakit') _kasaYaz($p->sube_id, 'tahsilat', 'giris', $tutar, $c->ad . ' cari tahsilat', 'cari', $c->id, $p->id);
     return ['ok' => 1, 'mesaj' => number_format($tutar, 0, ',', '.') . 'TL tahsil edildi (' . $sekil . '). Yeni bakiye ' . number_format(_cariBakiye($c->id), 0, ',', '.') . 'TL.'];
 });
 
