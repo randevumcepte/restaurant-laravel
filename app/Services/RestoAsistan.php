@@ -562,8 +562,9 @@ class RestoAsistan
         if (!$apiKey) { $this->aiTeshis = 'anahtar_yok'; return null; }
         $ham = trim((string) $metin);
         if ($ham === '') return null;
-        $sistem = 'Sen bir RESTORAN patronu icin calisan sesli asistansin. Adin yok, kendini "restoranınızın asistanı" diye tanit. '
-            . 'Kisa (en fazla iki cumle), sicak ve NET konus. TTS ile seslendirilecegin icin DUZ yaz: emoji, madde, yildiz, tirnak KULLANMA. '
+        $sistem = 'Sen bir RESTORAN patronunun EN YAKIN IS ARKADASISIN; onu koruyup kollayan, samimi ve guvenilir bir dost gibisin. '
+            . 'Adin yok, kendini "restoranınızın asistanı" diye tanit. Patronla isleri hakkinda ARKADAS gibi sohbet edebilirsin; moral ver, yol goster. '
+            . 'Kisa (en fazla iki-uc cumle), sicak ve NET konus; mumkunse kucuk bir yorum ya da oneri kat ama ABARTMA. TTS ile seslendirilecegin icin DUZ yaz: emoji, madde, yildiz, tirnak KULLANMA. '
             . 'Yapabildiklerin: ciro/kasa, en cok satan urun, personel performansi, acik masalar, paket siparisler, food-cost/kar, kayip radari (iskonto/ikram/fire), '
             . 'iptaller, misafir sayisi, gunluk ozet, net kar-zarar (finans), stok durumu ve kritik malzeme, personel maas/avans/prim, isletme giderleri ve satin alma/tedarikci/malzeme fiyat artisi. '
             . 'RAKAM veya VERI UYDURMA; patron rakam isterse "bugun ciro ne kadar diye sorabilirsiniz" de. '
@@ -636,6 +637,166 @@ class RestoAsistan
             . 'food-cost, kayıp radarı, net kâr-zarar, stok durumu, personel maaş ve avansları, giderler ve satın alma için sorabilirsiniz. '
             . 'Örneğin: bu ay kâr mı ettim, stokta kritik malzeme var mı, bu ay giderim ne kadar, en çok hangi tedarikçiden aldım.';
         return ['basarili' => true, 'intent' => 'yardim', 'cevap' => $c, 'seslendir' => true, 'kart' => null, 'niyet' => $niyet];
+    }
+
+    /**
+     * PROAKTIF TESPITLER — patronun GÖREMEDIGI yerleri tarar (kaçak/risk/fırsat).
+     * Asistan açılışta sormadan sunar: "en yakın iş arkadaşı" mantığı; her tespit
+     * samimi yorum + somut öneri içerir. Hepsi gerçek veriden, rakam uydurmaz.
+     */
+    public function tespitler($subeId)
+    {
+        $t = [];
+        $now = now();
+        $buBas = (clone $now)->subDays(7);
+        $onBas = (clone $now)->subDays(14);
+        $pick = fn ($a) => $a[array_rand($a)];
+
+        // 1) Ciro trendi (bu hafta vs geçen hafta)
+        try {
+            $bu = (float) DB::table('odemeler')->whereBetween('created_at', [$buBas, $now])->sum('tutar');
+            $on = (float) DB::table('odemeler')->whereBetween('created_at', [$onBas, $buBas])->sum('tutar');
+            if ($on > 0) {
+                $deg = (int) round(($bu - $on) / $on * 100);
+                if ($deg <= -10) {
+                    $t[] = ['seviye' => 'risk', 'baslik' => 'Ciro düşüşte',
+                        'mesaj' => 'Patron, bu hafta ciro geçen haftaya göre %' . abs($deg) . ' düşmüş (' . $this->tl($on) . ' → ' . $this->tl($bu) . '). Bunu sana kimse söylemez; menüde, serviste ya da yoğun saatlerde ne değiştiğine birlikte bakalım.',
+                        'kv' => [['k' => 'Geçen hafta', 'v' => $this->tl($on)], ['k' => 'Bu hafta', 'v' => $this->tl($bu)]]];
+                } elseif ($deg >= 12) {
+                    $t[] = ['seviye' => 'iyi', 'baslik' => 'Ciro artışta',
+                        'mesaj' => 'Güzel haber; bu hafta ciro geçen haftaya göre %' . $deg . ' artmış. Neyi doğru yaptıysan aynen devam, eline sağlık.',
+                        'kv' => [['k' => 'Geçen hafta', 'v' => $this->tl($on)], ['k' => 'Bu hafta', 'v' => $this->tl($bu)]]];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 2) Personel suistimal radar (yüksek ikram/iskonto/iptal)
+        try {
+            $rows = DB::table('iptal_indirim_loglari')->join('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
+                ->where('iptal_indirim_loglari.sube_id', $subeId)->whereBetween('iptal_indirim_loglari.created_at', [$buBas, $now])
+                ->groupBy('personeller.id', 'personeller.ad')->select('personeller.ad', DB::raw('SUM(iptal_indirim_loglari.tutar) t'))
+                ->orderByDesc('t')->get();
+            if ($rows->count() >= 2) {
+                $top = $rows->first();
+                $ort = (float) $rows->avg('t');
+                if ((float) $top->t > 300 && (float) $top->t > $ort * 1.8) {
+                    $t[] = ['seviye' => 'risk', 'baslik' => 'Personelde göze batan hareket',
+                        'mesaj' => $top->ad . ' bu hafta ' . $this->tl((float) $top->t) . ' iskonto/ikram/iptal yapmış — ekibin ortalamasının belirgin üstünde. Kötü niyet demiyorum ama seni korumak benim işim; bir sohbet etmekte fayda var.',
+                        'kv' => [['k' => $top->ad, 'v' => $this->tl((float) $top->t)], ['k' => 'Ekip ort.', 'v' => $this->tl($ort)]]];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 3) Maliyeti yiyen zamlar (kırmızı uyarılı alış kalemleri, bu ay)
+        try {
+            $zam = DB::table('alis_fatura_kalemleri')->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+                ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
+                ->where('alis_faturalari.sube_id', $subeId)->where('alis_faturalari.tarih', '>=', (clone $now)->subDays(30)->toDateString())
+                ->where('alis_fatura_kalemleri.uyari', 'kirmizi')
+                ->select('malzemeler.ad', 'alis_fatura_kalemleri.fiyat_farki_yuzde')->orderByDesc('alis_fatura_kalemleri.fiyat_farki_yuzde')->limit(3)->get();
+            if ($zam->isNotEmpty()) {
+                $isim = []; $kv = [];
+                foreach ($zam as $z) { $isim[] = $z->ad . ' %' . round((float) $z->fiyat_farki_yuzde); $kv[] = ['k' => $z->ad, 'v' => '%' . round((float) $z->fiyat_farki_yuzde) . ' zam']; }
+                $t[] = ['seviye' => 'risk', 'baslik' => 'Maliyetini yiyen zamlar',
+                    'mesaj' => 'Bu ay şu malzemelere ciddi zam gelmiş: ' . implode(', ', $isim) . '. Sen farkında olmadan kârın eriyor; ya tedarikçiyle konuş ya da menü fiyatını güncelle.',
+                    'kv' => $kv];
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 4) Kritik stok
+        try {
+            $mevcut = DB::table('stok_hareketleri')->where('sube_id', $subeId)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+            $krit = [];
+            foreach (DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
+                if (!$m->stok_takipli || (float) $m->kritik_stok <= 0) continue;
+                if ((float) ($mevcut[$m->id] ?? 0) <= (float) $m->kritik_stok) $krit[] = $m->ad;
+            }
+            if (count($krit) > 0) {
+                $t[] = ['seviye' => 'uyari', 'baslik' => 'Bitmek üzere olan stok',
+                    'mesaj' => count($krit) . ' malzeme kritik seviyede: ' . implode(', ', array_slice($krit, 0, 5)) . '. Servisin ortasında bitmesin, bugün sipariş vermene bakalım.',
+                    'kv' => [['k' => 'Kritik malzeme', 'v' => (string) count($krit)]]];
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 5/6) Ürün kârlılığı: "çok satıyor ama kârsız" + "az satan gizli kârlı"
+        try {
+            if (function_exists('_restoUrunMaliyetMap')) {
+                $map = _restoUrunMaliyetMap();
+                $sat = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                    ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$buBas, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                    ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')
+                    ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) adet'), DB::raw('SUM(adisyon_kalemleri.tutar) ciro'))->get();
+                if ($sat->count() > 0) {
+                    $ortAdet = (float) $sat->avg('adet');
+                    $dusuk = null; $firsat = null;
+                    foreach ($sat as $s) {
+                        $mal = $map['id'][(int) $s->urun_id] ?? ($map['ad'][$s->urun_adi] ?? 0);
+                        $fiyat = $s->adet > 0 ? (float) $s->ciro / (float) $s->adet : 0;
+                        if ($mal <= 0 || $fiyat <= 0) continue;
+                        $fc = (int) round($mal / $fiyat * 100);
+                        if ($fc >= 42 && (float) $s->adet >= $ortAdet && (!$dusuk || (float) $s->ciro > $dusuk['ciro'])) $dusuk = ['ad' => $s->urun_adi, 'fc' => $fc, 'ciro' => (float) $s->ciro];
+                        if ($fc > 0 && $fc <= 24 && (float) $s->adet <= $ortAdet * 0.6 && (!$firsat || $fc < $firsat['fc'])) $firsat = ['ad' => $s->urun_adi, 'fc' => $fc, 'adet' => (int) $s->adet];
+                    }
+                    if ($dusuk) $t[] = ['seviye' => 'risk', 'baslik' => 'Çok satıyor ama kâr yok',
+                        'mesaj' => $dusuk['ad'] . ' bu hafta çok satmış ama food-cost’u %' . $dusuk['fc'] . ' — neredeyse kârsız çalışıyorsun. Porsiyonu ya da fiyatı ayarlamazsan sattıkça yoruluyorsun, para kalmıyor.',
+                        'kv' => [['k' => $dusuk['ad'], 'v' => 'food-cost %' . $dusuk['fc']]]];
+                    if ($firsat) $t[] = ['seviye' => 'firsat', 'baslik' => 'Gizli para: az itilen kârlı ürün',
+                        'mesaj' => $firsat['ad'] . ' çok kârlı (food-cost sadece %' . $firsat['fc'] . ') ama az satıyor (' . $firsat['adet'] . ' adet). Garsonlara bunu önerdir, masaya ilk bunu taşısınlar — direkt cebine kâr.',
+                        'kv' => [['k' => $firsat['ad'], 'v' => 'food-cost %' . $firsat['fc']]]];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 7) Uzun süredir açık masa
+        try {
+            $eski = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->where('acilis', '<', (clone $now)->subHours(4))->count();
+            if ($eski > 0) $t[] = ['seviye' => 'uyari', 'baslik' => 'Saatlerdir açık masa',
+                'mesaj' => $eski . ' masa 4 saatten uzundur açık. Ya hesap alınmadı ya unutuldu; kaçan ciro olmasın, bir kontrol ettir.',
+                'kv' => [['k' => 'Açık masa', 'v' => (string) $eski]]];
+        } catch (\Throwable $e) {
+        }
+
+        // 8) Avans yükü
+        try {
+            if (Schema::hasTable('personel_hareketleri')) {
+                $ayBas = (clone $now)->startOfMonth()->toDateString();
+                $agir = [];
+                foreach (DB::table('personeller')->where('sube_id', $subeId)->where('aktif', 1)->where('maas', '>', 0)->get(['id', 'ad', 'maas']) as $p) {
+                    $av = (float) DB::table('personel_hareketleri')->where('personel_id', $p->id)->where('tur', 'avans')->where('tarih', '>=', $ayBas)->sum('tutar');
+                    if ($av > (float) $p->maas * 0.4) $agir[] = $p->ad . ' (' . $this->tl($av) . ')';
+                }
+                if (count($agir) > 0) $t[] = ['seviye' => 'uyari', 'baslik' => 'Avans yükü birikmiş',
+                    'mesaj' => 'Şu kişiler maaşının önemli kısmını avans almış: ' . implode(', ', array_slice($agir, 0, 4)) . '. Maaş gününde nakit sıkışmayasın diye şimdiden hatırlatıyorum.',
+                    'kv' => null];
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // Sırala: risk > firsat > uyari > iyi
+        $agirlik = ['risk' => 0, 'firsat' => 1, 'uyari' => 2, 'iyi' => 3, 'bilgi' => 4];
+        usort($t, fn ($a, $b) => ($agirlik[$a['seviye']] ?? 9) <=> ($agirlik[$b['seviye']] ?? 9));
+        $t = array_slice($t, 0, 6);
+
+        $risk = count(array_filter($t, fn ($x) => $x['seviye'] === 'risk'));
+        if (empty($t)) {
+            $selam = $pick([
+                'İşler yolunda patron, göze batan bir sorun görmüyorum. Yine de aklına takılanı sor, birlikte bakalım.',
+                'Şu an tabloda seni üzecek bir şey yok. İstersen ciro, kâr ya da stok hakkında konuşalım.',
+            ]);
+        } elseif ($risk > 0) {
+            $selam = $pick([
+                'Patron, gözüne çarpmayan ' . count($t) . ' şey buldum — birkaçı önemli. Bak istersen.',
+                'Otur bir çayını al; senin adına ' . count($t) . ' konuya göz attım, ' . $risk . ' tanesi dikkat ister.',
+            ]);
+        } else {
+            $selam = 'Genel tablo iyi ama ' . count($t) . ' küçük not var, göz gezdir istersen.';
+        }
+        return ['selam' => $selam, 'tespitler' => array_values($t)];
     }
 
     protected function tl($v)

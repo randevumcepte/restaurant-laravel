@@ -2441,6 +2441,15 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     ];
 });
 
+// PROAKTIF TESPITLER — asistan acilista patronun goremedigi kacak/risk/firsatlari sunar
+Route::get('/api/patron/asistan-tespitler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $a = new \App\Services\RestoAsistan();
+    $veri = $a->tespitler($p->sube_id);
+    return ['ok' => 1, 'selam' => $veri['selam'], 'tespitler' => $veri['tespitler']];
+});
+
 Route::get('/api/masalar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
