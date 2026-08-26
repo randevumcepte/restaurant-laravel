@@ -119,8 +119,8 @@
     <span class="masa">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
   <div id="orb-wrap">
-    <div id="orb" onclick="toggleElsiz()"></div>
-    <div id="durum">Konuşmak için mikrofona bir kez dokunun 🎤</div>
+    <div id="orb" onclick="basla()"></div>
+    <div id="durum">Konuşmak için mikrofona ya da daireye dokunun 🎤</div>
   </div>
   <div id="sohbet"></div>
   <div class="cips">
@@ -132,7 +132,7 @@
     <div class="cip" onclick="sor('Garsonu çağır')">🙋 Garson</div>
   </div>
   <footer>
-    <button class="yuvarlak" id="mic" onclick="toggleElsiz()">🎤</button>
+    <button class="yuvarlak" id="mic" onclick="basla()">🎤</button>
     <input id="metin" placeholder="Sorunuzu yazın…" onkeydown="if(event.key==='Enter')gonderMetin()">
     <button class="yuvarlak" id="gonder" onclick="gonderMetin()">➤</button>
   </footer>
@@ -276,7 +276,7 @@ async function finalizeSiparis(){
     if(j.ok){
       sepet=[]; siparisModu=false; sepetGuncelle();
       const m = 'Harika, teşekkür ederim! 🎉 Siparişinizi mutfağımıza ilettim; yaklaşık '+lo+'-'+hi+' dakika içinde özenle hazırlanıp masanıza gelecek. Afiyet olsun!';
-      ekle('ai', m); konus(m);
+      ekle('ai', m); await konus(m);
     } else { ekle('ai', j.hata || 'Siparişi gönderemedim, tekrar dener misiniz?'); sepetGuncelle(); }
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); sepetGuncelle(); }
 }
@@ -301,29 +301,27 @@ let sesCalar = new Audio();
 let konusuyor = false;
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
-// Seslendirme bitince: ellersiz moddaysak tekrar dinlemeye gec
-function konusBitti(){ konusuyor=false; if(elsiz && !bekliyor) setTimeout(dinleBasla, 350); }
 // SADECE Android bedava cihaz sesi kullanir; diger herkes (iPhone/masaustu) Cloud (Puck).
 const isAndroid = /android/i.test(navigator.userAgent);
-// Bedava cihaz (tarayici) sesi ile konus. Basarili ise true.
-function cihazKonus(temiz){
+// Cihaz (tarayici) sesi; bitince done() cagirir. Basarili ise true.
+function cihazKonus(temiz, done){
   seciSes();
   if(synth && trVoice){
     try{
       synth.cancel();
       const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0;
-      u.onend = konusBitti; u.onerror = konusBitti;
+      u.onend = done; u.onerror = done;
       synth.speak(u); return true;
     }catch(e){}
   }
   return false;
 }
-// Sunucu Google TTS ile konus. Basarili ise true.
-async function cloudKonus(temiz){
+// Sunucu Google TTS; bitince done() cagirir. Basarili ise true.
+async function cloudKonus(temiz, done){
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA})});
     const j = await r.json();
-    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.onended = konusBitti; sesCalar.onerror = konusBitti; sesCalar.play().catch(()=>{}); return true; }
+    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.onended = done; sesCalar.onerror = done; sesCalar.play().catch(()=>{}); return true; }
   }catch(e){}
   return false;
 }
@@ -336,71 +334,102 @@ function seseHazirla(t){
     .replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira')
     .replace(/₺/g,' lira');
 }
-async function konus(t){
-  const temiz = seseHazirla(t);
-  if(!temiz){ konusBitti(); return; }
-  konusuyor = true;
-  let ok = false;
-  if(isAndroid){ ok = cihazKonus(temiz); if(!ok) ok = await cloudKonus(temiz); }
-  else { ok = await cloudKonus(temiz); if(!ok) ok = cihazKonus(temiz); }
-  if(!ok) konusBitti(); // hic ses cikmadiysa yine de dinlemeye don
+// KONUS: mic KAPALI iken konusur; SES BITINCE cozulur (await'lenebilir). Boylece tarayici sesi bloklanmaz.
+function konus(t){
+  return new Promise(async (resolve)=>{
+    const temiz = seseHazirla(t);
+    if(!temiz){ resolve(); return; }
+    try{ rec && rec.stop(); }catch(_){}   // konusurken dinleme OLMASIN
+    konusuyor = true;
+    let bitti = false;
+    const emniyet = setTimeout(()=>bit(), Math.min(20000, 2600 + temiz.length*95)); // ses hic bitmezse takilma
+    function bit(){ if(bitti) return; bitti=true; clearTimeout(emniyet); konusuyor=false; resolve(); }
+    let ok = false;
+    if(isAndroid){ ok = cihazKonus(temiz, bit); if(!ok) ok = await cloudKonus(temiz, bit); }
+    else { ok = await cloudKonus(temiz, bit); if(!ok) ok = cihazKonus(temiz, bit); }
+    if(!ok) bit();
+  });
 }
 
-/* ---- Konusma tanima (tarayici STT) + ELLERSIZ surekli dinleme ---- */
+/* ---- Konusma tanima (tarayici STT) — SIRALI DONGU (patron AI akisi) ---- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, dinliyorMu = false, elsiz = false;
-if(SR){
-  rec = new SR(); rec.lang='tr-TR'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
-  rec.onstart = ()=>{ dinliyorMu=true; orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…'; };
-  rec.onerror = ()=>{ dinliyorMu=false; };
-  rec.onend = ()=>{ dinliyorMu=false; orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
-    // Ellersiz moddaysak ve mesgul/konusmuyorsak tekrar dinlemeye baslat
-    if(elsiz && !bekliyor && !konusuyor){ durumEl.textContent='Sizi dinliyorum…'; setTimeout(dinleBasla, 300); }
-    else if(!bekliyor && !konusuyor) durumEl.textContent = elsiz ? 'Sizi dinliyorum…' : 'Dokunup konuşun ya da yazın';
-  };
-  rec.onresult = (e)=>{
-    let t=''; for(let i=0;i<e.results.length;i++) t += e.results[i][0].transcript;
-    durumEl.textContent = t || 'Sizi dinliyorum…';
-    if(e.results[e.results.length-1].isFinal && t.trim()){ dinliyorMu=false; try{rec.stop()}catch(_){}; sor(t.trim()); }
-  };
+let rec = null, dinliyorMu = false, sohbetAktif = false;
+if(SR){ rec = new SR(); rec.lang='tr-TR'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1; }
+// TEK cumle dinle; sessizlik/bitis olunca duyulan metni doner (mic sonra KAPALI).
+function dinle(){
+  return new Promise((resolve)=>{
+    if(!rec){ resolve(''); return; }
+    let son=''; let bitti=false; let sess=null; let watch=null;
+    function bit(){
+      if(bitti) return; bitti=true; clearTimeout(sess); clearTimeout(watch);
+      rec.onresult=null; rec.onend=null; rec.onerror=null; rec.onstart=null;
+      dinliyorMu=false; orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
+      resolve(son.trim());
+    }
+    rec.onstart=()=>{ dinliyorMu=true; orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…'; };
+    rec.onerror=()=> bit();
+    rec.onend=()=> bit();
+    rec.onresult=(e)=>{
+      let t=''; for(let i=0;i<e.results.length;i++) t += e.results[i][0].transcript;
+      son=t; durumEl.textContent = t || '…';
+      clearTimeout(sess); sess=setTimeout(()=>{ try{rec.stop()}catch(_){} }, 1600); // konustuktan sonra 1.6sn sessizlik -> bitir
+      if(e.results[e.results.length-1].isFinal){ try{rec.stop()}catch(_){} }
+    };
+    watch = setTimeout(()=>{ try{rec.stop()}catch(_){} }, 12000); // en fazla ~12sn
+    // TTS bittikten hemen sonra mic serbest kalsin diye ufak gecikme
+    setTimeout(()=>{ if(bitti) return; try{ rec.start(); }catch(e){ setTimeout(()=>{ try{rec.start()}catch(_){ bit(); } }, 250); } }, 180);
+  });
 }
-function dinleBasla(){
-  if(!rec || dinliyorMu || bekliyor || konusuyor) return;
-  try{ rec.start(); }catch(e){}
+function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|iptal|sus|görüşürüz|gorusuruz|hoşça kal|hosca kal|kapatabilir)( )/.test(n); }
+// SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
+async function basla(){
+  if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
+  if(sohbetAktif){ sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Dokunup konuşun ya da yazın'; return; }
+  sohbetAktif=true; micBtn.classList.add('acik');
+  await konus('Buyurun, sizi dinliyorum.');
+  let bos=0;
+  while(sohbetAktif){
+    const c = await dinle();
+    if(!sohbetAktif) break;
+    if(!c){ if(++bos>=2){ await konus('Başka bir arzunuz yoksa dinlemeyi kapatıyorum. İstediğinizde mikrofona tekrar dokunun.'); break; } await konus('Sizi tam anlayamadım, tekrar eder misiniz?'); continue; }
+    bos=0;
+    ekle('ben', c);
+    if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
+    if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    const cevap = await sunucudanCevap(c);
+    if(cevap) await konus(cevap);
+  }
+  sohbetAktif=false; micBtn.classList.remove('acik');
+  if(!konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
 }
-// Mor buton / orb: ellersiz sohbeti AC/KAPAT
-function toggleElsiz(){
-  if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, yazabilirsiniz.'; return; }
-  elsiz = !elsiz;
-  if(elsiz){ sesDurdur(); konusuyor=false; micBtn.classList.add('acik'); durumEl.textContent='Sizi dinliyorum, buyurun…'; dinleBasla(); }
-  else { try{ rec.stop(); }catch(_){}; micBtn.classList.remove('acik'); durumEl.textContent='Dokunup konuşun ya da yazın'; }
-}
-function dinle(){ toggleElsiz(); } // geriye donuk uyum
 
-/* ---- Gonderim ---- */
-function gonderMetin(){ const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
-async function sor(soru){
-  if(bekliyor) return;
-  ekle('ben', soru);
-  // Siparis akisinda "hayir / bu kadar" -> siparisi bitir (sunucuya gitmeden)
-  if(siparisModu && sepet.length && bitirMi(soru)){ finalizeSiparis(); return; }
-  bekliyor=true; durumEl.textContent='Düşünüyorum…';
+/* ---- Sunucuya sor + ekrani guncelle; seslendirilecek metni doner ('' = sessiz) ---- */
+async function sunucudanCevap(soru){
+  durumEl.textContent='Düşünüyorum…';
   try{
     const r = await fetch('/api/qr/asistan', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
       body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || ''})});
     const j = await r.json();
-    if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan urunu hatirla (acili mi / yaninda ne...)
+    if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan urunu hatirla
     const cevap = j.cevap || 'Bir sorun oldu, tekrar dener misiniz?';
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);
     if(Array.isArray(j.kartlar) && j.kartlar.length) kartlariEkle(j.kartlar);
     if(j.aksiyon==='siparis_basla') siparisModu=true;
     if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ siparisModu=true; sepetMerge(j.eklenen); sepetGuncelle(); }
-    bekliyor=false;
-    if(j.seslendir!==false) konus(cevap); else konusBitti();
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
-  }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); bekliyor=false; konusBitti(); }
-  durumEl.textContent = elsiz ? 'Sizi dinliyorum…' : 'Dokunup konuşun ya da yazın';
+    return (j.seslendir===false) ? '' : cevap;
+  }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); return ''; }
+}
+
+/* ---- Yazili / cip gonderimi (mikrofonsuz tek seferlik) ---- */
+function gonderMetin(){ const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
+async function sor(soru){
+  ekle('ben', soru);
+  if(siparisModu && sepet.length && bitirMi(soru)){ await finalizeSiparis(); return; }
+  const cevap = await sunucudanCevap(soru);
+  if(cevap) konus(cevap);
+  if(!sohbetAktif && !konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
 }
 async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
