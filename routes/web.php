@@ -2738,6 +2738,465 @@ Route::post('/api/patron/gider-sil', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ============================================================================
+// STOK / REÇETE / SATIN ALMA / FİNANS modülü. Tablolar zaten var (malzemeler,
+// birimler, receteler, stok_hareketleri, tedarikciler, alis_faturalari...).
+// Burada YÖNETİM UÇLARI: malzeme/tedarikçi/reçete girişi, alış faturası (stok
+// girişi + fiyat uyarısı + maliyet güncelleme + otomatik gider) ve finans özeti.
+// ============================================================================
+
+// Birimler/kategoriler boşsa yaygın olanları ekle (formlar boş kalmasın).
+function _restoStokSeedEnsure()
+{
+    if (DB::table('birimler')->count() === 0) {
+        DB::table('birimler')->insert([
+            ['ad' => 'Gram', 'kisaltma' => 'g', 'tip' => 'agirlik'],
+            ['ad' => 'Kilogram', 'kisaltma' => 'kg', 'tip' => 'agirlik'],
+            ['ad' => 'Mililitre', 'kisaltma' => 'ml', 'tip' => 'hacim'],
+            ['ad' => 'Litre', 'kisaltma' => 'lt', 'tip' => 'hacim'],
+            ['ad' => 'Adet', 'kisaltma' => 'ad', 'tip' => 'adet'],
+            ['ad' => 'Paket', 'kisaltma' => 'pk', 'tip' => 'adet'],
+            ['ad' => 'Koli', 'kisaltma' => 'koli', 'tip' => 'adet'],
+            ['ad' => 'Demet', 'kisaltma' => 'demet', 'tip' => 'adet'],
+        ]);
+    }
+    if (DB::table('malzeme_kategorileri')->count() === 0) {
+        foreach (['Et & Tavuk', 'Sebze & Meyve', 'Süt Ürünleri', 'Bakliyat & Kuru Gıda', 'İçecek', 'Baharat & Sos', 'Temizlik', 'Diğer'] as $ad) {
+            DB::table('malzeme_kategorileri')->insert(['ad' => $ad]);
+        }
+    }
+}
+
+// Bir malzemenin verilen birimi kaç TEMEL birim eder (çevrim faktörü).
+function _restoBirimKarsilik($malzemeId, $birimId, $temelBirimId = null)
+{
+    if ($temelBirimId === null) $temelBirimId = DB::table('malzemeler')->where('id', $malzemeId)->value('temel_birim_id');
+    if ((int) $birimId === (int) $temelBirimId) return 1.0;
+    $c = DB::table('birim_cevrimleri')->where('malzeme_id', $malzemeId)->where('birim_id', $birimId)->value('temel_birim_karsiligi');
+    if ($c) return (float) $c;
+    // Bilinen genel çevrimler (kg->g, lt->ml) — malzeme çevrimi tanımlı değilse
+    $b = DB::table('birimler')->where('id', $birimId)->value('kisaltma');
+    $t = DB::table('birimler')->where('id', $temelBirimId)->value('kisaltma');
+    $genel = ['kg' => ['g' => 1000], 'lt' => ['ml' => 1000], 'g' => ['kg' => 0.001], 'ml' => ['lt' => 0.001]];
+    if (isset($genel[$b][$t])) return (float) $genel[$b][$t];
+    return 1.0;
+}
+
+// Şubedeki her malzemenin mevcut stok miktarı (temel birim) — imzalı SUM.
+function _restoStokMevcut($subeId)
+{
+    return DB::table('stok_hareketleri')->where('sube_id', $subeId)
+        ->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+}
+
+// Adisyon kapanınca reçeteden otomatik stok düşümü (tuketim). GÜVENLİ: hata olsa
+// bile satışı bozmaz (try/catch), reçetesi/malzemesi olmayan ürünü sessiz atlar,
+// sadece stok_takipli malzemeyi düşer, aynı adisyonu iki kez düşmez (idempotent).
+function _restoStokTuket($adisyonId, $subeId, $personelId)
+{
+    try {
+        // Zaten düşülmüş mü? (idempotent koruma)
+        if (DB::table('stok_hareketleri')->where('kaynak_tip', 'adisyon')->where('kaynak_id', $adisyonId)->exists()) return;
+        // İptal olmayan kalemler: urun_id -> toplam adet
+        $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adisyonId)
+            ->where('durum', '!=', 'iptal')->whereNotNull('urun_id')
+            ->selectRaw('urun_id, SUM(adet) adet')->groupBy('urun_id')->get();
+        if ($kalemler->isEmpty()) return;
+        foreach ($kalemler as $kal) {
+            $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $kal->urun_id)->first();
+            if (!$recete) continue;
+            foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->whereNotNull('malzeme_id')->get() as $rk) {
+                $m = DB::table('malzemeler')->where('id', $rk->malzeme_id)->first(['id', 'temel_birim_id', 'guncel_maliyet', 'stok_takipli']);
+                if (!$m || !$m->stok_takipli) continue;
+                $kars = _restoBirimKarsilik($m->id, $rk->birim_id, $m->temel_birim_id);
+                $temelMiktar = (float) $rk->miktar * $kars * (float) $kal->adet; // toplam tüketilen (temel birim)
+                if ($temelMiktar <= 0) continue;
+                DB::table('stok_hareketleri')->insert([
+                    'sube_id' => $subeId, 'malzeme_id' => $m->id, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
+                    'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'adisyon', 'kaynak_id' => $adisyonId,
+                    'aciklama' => 'Satış tüketimi', 'personel_id' => $personelId,
+                ]);
+            }
+        }
+    } catch (\Throwable $e) {
+        // sessiz geç — satış akışını asla bozma
+    }
+}
+
+// ---- META (form açılır listeleri) ----
+Route::get('/api/patron/stok-meta', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoStokSeedEnsure();
+    return ['ok' => 1,
+        'birimler' => DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma', 'tip']),
+        'kategoriler' => DB::table('malzeme_kategorileri')->orderBy('ad')->get(['id', 'ad']),
+        'tedarikciler' => DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']),
+    ];
+});
+
+// ---- MALZEMELER / STOK ----
+Route::get('/api/patron/malzemeler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoStokSeedEnsure();
+    $mevcut = _restoStokMevcut($p->sube_id);
+    $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
+    $katlar = DB::table('malzeme_kategorileri')->pluck('ad', 'id');
+    $liste = DB::table('malzemeler')->orderBy('ad')->get();
+    $toplamDeger = 0.0; $kritikSayi = 0;
+    $rows = $liste->map(function ($m) use ($mevcut, $birimler, $katlar, &$toplamDeger, &$kritikSayi) {
+        $stok = (float) ($mevcut[$m->id] ?? 0);
+        $deger = $stok * (float) $m->guncel_maliyet;
+        $toplamDeger += $deger;
+        $kritik = (float) $m->kritik_stok > 0 && $stok <= (float) $m->kritik_stok;
+        if ($kritik) $kritikSayi++;
+        return ['id' => (int) $m->id, 'ad' => $m->ad, 'kategori' => $katlar[$m->kategori_id] ?? '—',
+            'kategori_id' => (int) $m->kategori_id, 'temel_birim_id' => (int) $m->temel_birim_id,
+            'birim' => $birimler[$m->temel_birim_id] ?? '', 'guncel_maliyet' => (float) $m->guncel_maliyet,
+            'kritik_stok' => (float) $m->kritik_stok, 'stok_takipli' => (int) $m->stok_takipli,
+            'mevcut' => round($stok, 3), 'deger' => round($deger, 2), 'kritik' => $kritik];
+    });
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'toplam_deger' => round($toplamDeger, 2), 'kritik_sayi' => $kritikSayi, 'malzemeler' => $rows];
+});
+
+Route::get('/api/patron/malzeme-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $m = DB::table('malzemeler')->where('id', (int) $r->id)->first();
+    if (!$m) return ['ok' => 0, 'hata' => 'Malzeme bulunamadı'];
+    $birim = DB::table('birimler')->where('id', $m->temel_birim_id)->value('kisaltma');
+    $mevcut = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id)->sum('miktar');
+    $hareketler = DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id)
+        ->orderByDesc('id')->limit(40)->get(['id', 'tip', 'miktar', 'birim_maliyet', 'aciklama', 'created_at'])
+        ->map(fn ($x) => ['id' => (int) $x->id, 'tip' => $x->tip, 'miktar' => (float) $x->miktar, 'birim_maliyet' => (float) $x->birim_maliyet, 'aciklama' => $x->aciklama, 'tarih' => substr((string) $x->created_at, 0, 16)]);
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'ad' => $m->ad, 'birim' => $birim,
+        'guncel_maliyet' => (float) $m->guncel_maliyet, 'mevcut' => round($mevcut, 3), 'deger' => round($mevcut * (float) $m->guncel_maliyet, 2), 'hareketler' => $hareketler];
+});
+
+Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Bunu sadece işletme sahibi yapabilir.'], 403);
+    _restoStokSeedEnsure();
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Malzeme adı boş olamaz'];
+    $temel = (int) $r->temel_birim_id ?: DB::table('birimler')->min('id');
+    $veri = ['ad' => $ad, 'kategori_id' => (int) $r->kategori_id ?: null, 'temel_birim_id' => $temel,
+        'kritik_stok' => max(0, (float) $r->kritik_stok), 'stok_takipli' => $r->stok_takipli === '0' ? 0 : 1, 'updated_at' => now()];
+    $id = (int) $r->id;
+    if ($id > 0) {
+        DB::table('malzemeler')->where('id', $id)->update($veri);
+        return ['ok' => 1, 'id' => $id];
+    }
+    // Yeni malzemede başlangıç maliyeti (opsiyonel)
+    $veri['guncel_maliyet'] = max(0, (float) $r->guncel_maliyet);
+    $veri['created_at'] = now();
+    $yeni = DB::table('malzemeler')->insertGetId($veri);
+    return ['ok' => 1, 'id' => $yeni];
+});
+
+Route::post('/api/patron/malzeme-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $id = (int) $r->id;
+    if (DB::table('recete_kalemleri')->where('malzeme_id', $id)->exists()) return ['ok' => 0, 'hata' => 'Bu malzeme bir reçetede kullanılıyor, önce reçeteden çıkarın.'];
+    DB::table('stok_hareketleri')->where('malzeme_id', $id)->where('sube_id', $p->sube_id)->delete();
+    DB::table('malzemeler')->where('id', $id)->delete();
+    return ['ok' => 1];
+});
+
+Route::post('/api/patron/malzeme-kategori-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Boş olamaz'];
+    $id = DB::table('malzeme_kategorileri')->insertGetId(['ad' => $ad]);
+    return ['ok' => 1, 'id' => $id];
+});
+
+// Manuel stok hareketi: giris | fire | duzeltme
+Route::post('/api/patron/stok-hareket', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $m = DB::table('malzemeler')->where('id', (int) $r->malzeme_id)->first();
+    if (!$m) return ['ok' => 0, 'hata' => 'Malzeme bulunamadı'];
+    $tip = in_array($r->tip, ['giris', 'fire', 'duzeltme']) ? $r->tip : null;
+    if (!$tip) return ['ok' => 0, 'hata' => 'Geçersiz hareket türü'];
+    $miktar = (float) $r->miktar; // temel birimde
+    if ($miktar == 0) return ['ok' => 0, 'hata' => 'Miktar 0 olamaz'];
+    $imzali = $tip === 'fire' ? -abs($miktar) : ($tip === 'giris' ? abs($miktar) : $miktar);
+    DB::table('stok_hareketleri')->insert([
+        'sube_id' => $p->sube_id, 'malzeme_id' => $m->id, 'tip' => $tip === 'giris' ? 'iade' : ($tip === 'fire' ? 'fire' : 'sayim'),
+        'miktar' => $imzali, 'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'manuel',
+        'aciklama' => $r->aciklama ? (string) $r->aciklama : ($tip === 'fire' ? 'Fire' : ($tip === 'giris' ? 'Manuel giriş' : 'Sayım düzeltme')),
+        'personel_id' => $p->id,
+    ]);
+    return ['ok' => 1];
+});
+
+// ---- TEDARİKÇİLER ----
+Route::get('/api/patron/tedarikciler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $alis = DB::table('alis_faturalari')->where('sube_id', $p->sube_id)
+        ->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c, MAX(tarih) son')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
+    $liste = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'aciklama'])->map(function ($x) use ($alis) {
+        $a = $alis[$x->id] ?? null;
+        return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'aciklama' => $x->aciklama,
+            'toplam_alis' => $a ? (float) $a->t : 0.0, 'fatura_sayisi' => $a ? (int) $a->c : 0, 'son_alis' => $a ? $a->son : null];
+    });
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'tedarikciler' => $liste];
+});
+
+Route::post('/api/patron/tedarikci-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Ad boş olamaz'];
+    $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'updated_at' => now()];
+    $id = (int) $r->id;
+    if ($id > 0) { DB::table('tedarikciler')->where('id', $id)->update($veri); return ['ok' => 1, 'id' => $id]; }
+    $veri['created_at'] = now();
+    return ['ok' => 1, 'id' => DB::table('tedarikciler')->insertGetId($veri)];
+});
+
+Route::post('/api/patron/tedarikci-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $id = (int) $r->id;
+    if (DB::table('alis_faturalari')->where('tedarikci_id', $id)->exists()) return ['ok' => 0, 'hata' => 'Bu tedarikçinin faturaları var, silinemez.'];
+    DB::table('tedarikciler')->where('id', $id)->delete();
+    return ['ok' => 1];
+});
+
+// ---- ALIŞ FATURALARI (stok girişi + fiyat uyarısı + maliyet güncelleme + gider) ----
+Route::get('/api/patron/alis-faturalari', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoGiderEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik($r->ay);
+    $ted = DB::table('tedarikciler')->pluck('ad', 'id');
+    $liste = DB::table('alis_faturalari')->where('sube_id', $p->sube_id)
+        ->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->orderByDesc('tarih')->orderByDesc('id')->get();
+    $toplam = 0.0;
+    $rows = $liste->map(function ($f) use ($ted, &$toplam) {
+        $toplam += (float) $f->toplam;
+        $enUyari = DB::table('alis_fatura_kalemleri')->where('fatura_id', $f->id)
+            ->orderByRaw("FIELD(uyari,'kirmizi','sari','yesil') ")->value('uyari');
+        return ['id' => (int) $f->id, 'tedarikci' => $ted[$f->tedarikci_id] ?? 'Bilinmiyor', 'fatura_no' => $f->fatura_no,
+            'tarih' => $f->tarih, 'toplam' => (float) $f->toplam, 'durum' => $f->durum, 'uyari' => $enUyari ?: 'yesil'];
+    });
+    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => $p->rol === 'sahip', 'toplam' => round($toplam, 2), 'faturalar' => $rows];
+});
+
+Route::get('/api/patron/alis-fatura-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $f = DB::table('alis_faturalari')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$f) return ['ok' => 0, 'hata' => 'Fatura bulunamadı'];
+    $ted = DB::table('tedarikciler')->where('id', $f->tedarikci_id)->value('ad');
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $malz = DB::table('malzemeler')->pluck('ad', 'id');
+    $kalemler = DB::table('alis_fatura_kalemleri')->where('fatura_id', $f->id)->get()->map(fn ($k) => [
+        'malzeme' => $malz[$k->malzeme_id] ?? '—', 'birim' => $birim[$k->alis_birim_id] ?? '', 'miktar' => (float) $k->miktar,
+        'birim_fiyat' => (float) $k->birim_fiyat, 'satir_toplam' => (float) $k->satir_toplam,
+        'onceki_fiyat' => (float) $k->onceki_fiyat, 'fiyat_farki_yuzde' => (float) $k->fiyat_farki_yuzde, 'uyari' => $k->uyari]);
+    return ['ok' => 1, 'tedarikci' => $ted, 'fatura_no' => $f->fatura_no, 'tarih' => $f->tarih, 'toplam' => (float) $f->toplam, 'durum' => $f->durum, 'kalemler' => $kalemler];
+});
+
+Route::post('/api/patron/alis-fatura-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Fatura girişini sadece işletme sahibi yapabilir.'], 403);
+    _restoGiderEnsure();
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler) || count($kalemler) === 0) return ['ok' => 0, 'hata' => 'En az bir kalem girmelisiniz'];
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->tarih) ? $r->tarih : date('Y-m-d');
+    $tedId = (int) $r->tedarikci_id ?: null;
+
+    return DB::transaction(function () use ($r, $p, $kalemler, $tarih, $tedId) {
+        // Önce toplamı ve uyarıları hesapla
+        $hazir = [];
+        $toplam = 0.0;
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0);
+            $m = DB::table('malzemeler')->where('id', $mid)->first();
+            if (!$m) continue;
+            $birimId = (int) ($k['birim_id'] ?? $m->temel_birim_id);
+            $miktar = (float) ($k['miktar'] ?? 0);
+            $birimFiyat = (float) ($k['birim_fiyat'] ?? 0);
+            if ($miktar <= 0 || $birimFiyat < 0) continue;
+            $satir = round($miktar * $birimFiyat, 2);
+            $toplam += $satir;
+            // Önceki alış fiyatı (aynı malzeme, aynı birim) -> fiyat farkı + uyarı
+            $onceki = (float) DB::table('alis_fatura_kalemleri')->where('malzeme_id', $mid)->where('alis_birim_id', $birimId)
+                ->orderByDesc('id')->value('birim_fiyat');
+            $farkYuzde = $onceki > 0 ? round(($birimFiyat - $onceki) / $onceki * 100, 2) : 0.0;
+            $uyari = 'yesil';
+            if ($onceki > 0) { $a = abs($farkYuzde); $uyari = $a >= 15 ? 'kirmizi' : ($a >= 5 ? 'sari' : 'yesil'); }
+            $hazir[] = compact('m', 'birimId', 'miktar', 'birimFiyat', 'satir', 'onceki', 'farkYuzde', 'uyari');
+        }
+        if (count($hazir) === 0) return ['ok' => 0, 'hata' => 'Geçerli kalem yok'];
+
+        $faturaId = DB::table('alis_faturalari')->insertGetId([
+            'sube_id' => $p->sube_id, 'tedarikci_id' => $tedId, 'fatura_no' => $r->fatura_no ? (string) $r->fatura_no : null,
+            'tarih' => $tarih, 'toplam' => round($toplam, 2), 'durum' => 'onaylandi',
+            'giren_personel_id' => $p->id, 'onaylayan_personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        foreach ($hazir as $h) {
+            $m = $h['m'];
+            DB::table('alis_fatura_kalemleri')->insert([
+                'fatura_id' => $faturaId, 'malzeme_id' => $m->id, 'alis_birim_id' => $h['birimId'], 'miktar' => $h['miktar'],
+                'birim_fiyat' => $h['birimFiyat'], 'satir_toplam' => $h['satir'], 'onceki_fiyat' => $h['onceki'],
+                'fiyat_farki_yuzde' => $h['farkYuzde'], 'fiyat_farki_tutar' => round(($h['birimFiyat'] - $h['onceki']) * $h['miktar'], 2),
+                'uyari' => $h['uyari'], 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            // Stok girişi: temel birime çevir
+            $kars = _restoBirimKarsilik($m->id, $h['birimId'], $m->temel_birim_id);
+            $temelMiktar = $h['miktar'] * $kars;
+            $temelMaliyet = $kars > 0 ? $h['birimFiyat'] / $kars : $h['birimFiyat']; // temel birim başına maliyet
+            DB::table('stok_hareketleri')->insert([
+                'sube_id' => $p->sube_id, 'malzeme_id' => $m->id, 'tip' => 'alis', 'miktar' => $temelMiktar,
+                'birim_maliyet' => $temelMaliyet, 'kaynak_tip' => 'fatura', 'kaynak_id' => $faturaId,
+                'aciklama' => 'Alış faturası', 'personel_id' => $p->id,
+            ]);
+            // Hareketli ağırlıklı ortalama maliyet güncelle
+            $eskiStok = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id)->where('kaynak_id', '!=', $faturaId)->sum('miktar');
+            $eskiMaliyet = (float) $m->guncel_maliyet;
+            if ($eskiStok > 0 && $eskiMaliyet > 0) {
+                $yeni = ($eskiStok * $eskiMaliyet + $temelMiktar * $temelMaliyet) / ($eskiStok + $temelMiktar);
+            } else {
+                $yeni = $temelMaliyet;
+            }
+            DB::table('malzemeler')->where('id', $m->id)->update(['guncel_maliyet' => round($yeni, 4), 'updated_at' => now()]);
+        }
+
+        // Otomatik gider (kategori malzeme)
+        $tedAd = $tedId ? DB::table('tedarikciler')->where('id', $tedId)->value('ad') : 'Tedarikçi';
+        DB::table('giderler')->insert(['sube_id' => $p->sube_id, 'kategori' => 'malzeme',
+            'aciklama' => $tedAd . ($r->fatura_no ? ' · ' . $r->fatura_no : '') . ' (alış faturası)', 'tutar' => round($toplam, 2),
+            'tarih' => $tarih, 'created_by' => $p->id]);
+
+        return ['ok' => 1, 'id' => $faturaId, 'toplam' => round($toplam, 2)];
+    });
+});
+
+Route::post('/api/patron/alis-fatura-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $id = (int) $r->id;
+    $f = DB::table('alis_faturalari')->where('id', $id)->where('sube_id', $p->sube_id)->first();
+    if (!$f) return ['ok' => 0, 'hata' => 'Fatura bulunamadı'];
+    DB::transaction(function () use ($id, $f, $p) {
+        DB::table('stok_hareketleri')->where('kaynak_tip', 'fatura')->where('kaynak_id', $id)->delete();
+        DB::table('alis_fatura_kalemleri')->where('fatura_id', $id)->delete();
+        DB::table('alis_faturalari')->where('id', $id)->delete();
+        // Bağlı otomatik gideri de kaldır (tutar+tarih eşleşmesiyle en yakın)
+        $g = DB::table('giderler')->where('sube_id', $p->sube_id)->where('kategori', 'malzeme')->where('tutar', (float) $f->toplam)->where('tarih', $f->tarih)->orderByDesc('id')->first();
+        if ($g) DB::table('giderler')->where('id', $g->id)->delete();
+    });
+    return ['ok' => 1];
+});
+
+// ---- REÇETE EDİTÖRÜ ----
+Route::get('/api/patron/urun-recete', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $urunId = (int) $r->urun_id;
+    $urun = DB::table('urunler')->where('id', $urunId)->first(['id', 'ad', 'fiyat']);
+    if (!$urun) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $urunId)->first();
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $malz = DB::table('malzemeler')->get()->keyBy('id');
+    $kalemler = [];
+    $maliyet = 0.0;
+    if ($recete) {
+        foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->whereNotNull('malzeme_id')->get() as $k) {
+            $m = $malz[$k->malzeme_id] ?? null;
+            $kars = _restoBirimKarsilik($k->malzeme_id, $k->birim_id, $m->temel_birim_id ?? null);
+            $satirMal = $m ? (float) $k->miktar * $kars * (float) $m->guncel_maliyet : 0.0;
+            $maliyet += $satirMal;
+            $kalemler[] = ['malzeme_id' => (int) $k->malzeme_id, 'malzeme' => $m->ad ?? '—', 'miktar' => (float) $k->miktar,
+                'birim_id' => (int) $k->birim_id, 'birim' => $birim[$k->birim_id] ?? '', 'satir_maliyet' => round($satirMal, 2)];
+        }
+    }
+    $fc = (float) $urun->fiyat > 0 ? round($maliyet / (float) $urun->fiyat * 100, 1) : 0.0;
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'urun_ad' => $urun->ad, 'fiyat' => (float) $urun->fiyat,
+        'maliyet' => round($maliyet, 2), 'food_cost' => $fc, 'kalemler' => $kalemler];
+});
+
+Route::post('/api/patron/recete-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Reçeteyi sadece işletme sahibi düzenleyebilir.'], 403);
+    $urunId = (int) $r->urun_id;
+    $urun = DB::table('urunler')->where('id', $urunId)->first();
+    if (!$urun) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
+    return DB::transaction(function () use ($urun, $urunId, $kalemler) {
+        $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $urunId)->first();
+        if ($recete) {
+            $receteId = $recete->id;
+            DB::table('recete_kalemleri')->where('recete_id', $receteId)->delete();
+        } else {
+            $receteId = DB::table('receteler')->insertGetId(['ad' => $urun->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $urunId, 'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0);
+            $miktar = (float) ($k['miktar'] ?? 0);
+            $birimId = (int) ($k['birim_id'] ?? 0);
+            if ($mid <= 0 || $miktar <= 0 || $birimId <= 0) continue;
+            DB::table('recete_kalemleri')->insert(['recete_id' => $receteId, 'malzeme_id' => $mid, 'miktar' => $miktar, 'birim_id' => $birimId, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        return ['ok' => 1];
+    });
+});
+
+// Reçetesi olmayan/olan ürünleri listele (reçete yönetimi ekranı için)
+Route::get('/api/patron/recete-urunler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $mMap = _restoUrunMaliyetMap();
+    $receteli = DB::table('receteler')->where('tip', 'urun')->whereNotNull('urun_id')
+        ->join('recete_kalemleri', 'receteler.id', '=', 'recete_kalemleri.recete_id')
+        ->distinct()->pluck('receteler.urun_id')->toArray();
+    $receteliSet = array_flip($receteli);
+    $urunler = DB::table('urunler')->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat'])->map(function ($u) use ($mMap, $receteliSet) {
+        $mal = $mMap['id'][$u->id] ?? 0;
+        $fc = (float) $u->fiyat > 0 && $mal > 0 ? round($mal / (float) $u->fiyat * 100, 1) : 0.0;
+        return ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'maliyet' => round($mal, 2),
+            'food_cost' => $fc, 'receteli' => isset($receteliSet[$u->id])];
+    });
+    return ['ok' => 1, 'urunler' => $urunler];
+});
+
+// ---- FİNANSAL ÖZET (aylık gelir/gider/net + tedarikçi alış) ----
+Route::get('/api/patron/finans', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoGiderEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik($r->ay);
+    // Gelir: odemeler (adisyon join ile sube filtre)
+    $gelirRows = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$bas, $bit])
+        ->selectRaw('odemeler.tip, SUM(odemeler.tutar) t, SUM(odemeler.bahsis) b')->groupBy('odemeler.tip')->get();
+    $gelir = 0.0; $bahsis = 0.0; $gelirTip = [];
+    foreach ($gelirRows as $g) { $gelir += (float) $g->t; $bahsis += (float) $g->b; $gelirTip[] = ['tip' => $g->tip, 'tutar' => (float) $g->t]; }
+    // Gider: giderler kategori kırılımı
+    $giderRows = DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])
+        ->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->get();
+    $gider = 0.0; $giderKat = [];
+    foreach ($giderRows as $g) { $gider += (float) $g->t; $giderKat[] = ['kategori' => $g->kategori, 'tutar' => (float) $g->t]; }
+    usort($giderKat, fn ($a, $b) => $b['tutar'] <=> $a['tutar']);
+    // Tedarikçi alış (bilgi)
+    $alis = (float) DB::table('alis_faturalari')->where('sube_id', $p->sube_id)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->sum('toplam');
+    return ['ok' => 1, 'ay' => $ay, 'gelir' => round($gelir, 2), 'bahsis' => round($bahsis, 2), 'gider' => round($gider, 2),
+        'net' => round($gelir - $gider, 2), 'gelir_tip' => $gelirTip, 'gider_kategori' => $giderKat, 'alis_toplam' => round($alis, 2)];
+});
+
 // ADISYON OPERASYONLARI (yetki kontrollu): kapat | iskonto | ikram | iptal
 // Limit asimi/garson kisiti -> onay_pin (mudur/sahip PIN'i) ile onaylanir.
 Route::post('/api/patron/adisyon-islem', function (Request $r) {
@@ -2778,6 +3237,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         }
         DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
         if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        _restoStokTuket($a->id, $p->sube_id, $p->id); // reçeteden otomatik stok düşümü (güvenli, bozmaz)
         return ['ok' => 1, 'mesaj' => $mesaj];
     }
 
