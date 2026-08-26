@@ -53,12 +53,17 @@ class MusteriAsistan
             }
         }
 
-        // 2.6) SIPARIS NIYETI (Faz 2): "iki adana bir ayran istiyorum" -> sepet
+        // 2.6) SIPARIS NIYETI (Faz 2): konusarak siparis akisi
         $sip = $this->siparisCoz($soru);
-        if (!empty($sip['lines'])) {
-            $verb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'soyle', 'soyleyin', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim']);
+        if (empty($sip['lines'])) {
+            // Urun yok ama "siparis vermek istiyorum" -> dinlemeye gec
+            if ($this->has($c, ['siparis vermek', 'siparis verecegim', 'siparis alabilir', 'siparis verebilir', 'siparis vereyim', 'siparisim var', 'siparis verelim', 'siparis alir misin', 'siparis gecelim']) || trim($c) === 'siparis') {
+                return $this->cvp('Tabii efendim, sizi dinliyorum. Ne almak istersiniz? Dilerseniz tek tek de söyleyebilirsiniz. 😊', ['aksiyon' => 'siparis_basla']);
+            }
+        } else {
+            $verb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'soyle', 'soyleyin', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim', 'ekler misin']);
             if ($verb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
-                return $this->sepetCevap($sip['lines']);
+                return $this->sepetEkleCevap($sip['lines']);
             }
         }
 
@@ -250,8 +255,8 @@ class MusteriAsistan
         return $lt <= $lk + $maxEk;
     }
 
-    /** Cozulen satirlardan sepet cevabi (onay icin). */
-    protected function sepetCevap($lines)
+    /** Cozulen satirlar -> sepete EKLE cevabi (birikimli akis; "baska arzunuz?" diye sorar). */
+    protected function sepetEkleCevap($lines)
     {
         $map = [];
         foreach ($lines as $l) {
@@ -259,24 +264,22 @@ class MusteriAsistan
             if (isset($map[$id])) $map[$id]['adet'] += $l['adet'];
             else $map[$id] = ['u' => $l['u'], 'adet' => $l['adet']];
         }
-        $kalemler = [];
-        $toplam = 0;
+        $eklenen = [];
         $tukendi = [];
         $ozet = [];
         foreach ($map as $m) {
             $u = $m['u'];
             $adet = (int) $m['adet'];
             if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
-            $kalemler[] = ['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat];
-            $toplam += $u->fiyat * $adet;
+            $eklenen[] = ['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat];
             $ozet[] = $adet . ' ' . $u->ad;
         }
-        if (empty($kalemler)) {
-            return $this->cvp('Maalesef ' . $this->dogalListe($tukendi) . ' şu an tükendi. Başka bir şey ister misiniz?');
+        if (empty($eklenen)) {
+            return $this->cvp('Maalesef ' . $this->dogalListe($tukendi) . ' şu an tükendi. Başka bir şey rica eder misiniz?');
         }
-        $metin = 'Siparişinizi aldım: ' . $this->dogalListe($ozet) . '. Toplam ' . $this->tl($toplam) . '. Onaylıyor musunuz? Aşağıdan adetleri düzenleyip "Onayla"ya dokunun. 😊';
-        if (!empty($tukendi)) $metin .= ' (Not: ' . $this->dogalListe($tukendi) . ' tükendi, eklenemedi.)';
-        return $this->cvp($metin, ['aksiyon' => 'sepet', 'sepet' => $kalemler, 'toplam' => $toplam]);
+        $metin = 'Harika seçim, ' . $this->dogalListe($ozet) . ' ekledim. Başka bir arzunuz var mı? 😊';
+        if (!empty($tukendi)) $metin = $this->dogalListe($ozet) . ' ekledim (' . $this->dogalListe($tukendi) . ' maalesef tükendi). Başka bir arzunuz var mı?';
+        return $this->cvp($metin, ['aksiyon' => 'sepet_ekle', 'eklenen' => $eklenen]);
     }
 
     // ==================== URUN OZELLIK ZEKASI (Modul 1) ====================

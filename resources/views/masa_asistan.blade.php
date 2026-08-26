@@ -34,6 +34,7 @@
   #metin{ flex:1; background:var(--card); border:none; color:#fff; font-size:14.5px; padding:13px 16px; border-radius:24px; outline:none; }
   .yuvarlak{ width:48px; height:48px; border-radius:50%; border:none; display:flex; align-items:center; justify-content:center; color:#fff; font-size:20px; }
   #mic{ background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 4px 14px rgba(124,58,237,.4); }
+  #mic.acik{ background:linear-gradient(135deg,#16A34A,#22C55E); box-shadow:0 0 0 4px rgba(34,197,94,.25),0 4px 14px rgba(34,197,94,.5); }
   #mic.dinliyor{ background:linear-gradient(135deg,#F43F5E,#EF4444); }
   #gonder{ background:var(--card); color:#C4B5FD; }
   /* ---- Gorsel kartlar (PREMIUM) ---- */
@@ -118,8 +119,8 @@
     <span class="masa">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
   <div id="orb-wrap">
-    <div id="orb" onclick="dinle()"></div>
-    <div id="durum">Dokunup konuşun ya da yazın</div>
+    <div id="orb" onclick="toggleElsiz()"></div>
+    <div id="durum">Konuşmak için mikrofona bir kez dokunun 🎤</div>
   </div>
   <div id="sohbet"></div>
   <div class="cips">
@@ -131,7 +132,7 @@
     <div class="cip" onclick="sor('Garsonu çağır')">🙋 Garson</div>
   </div>
   <footer>
-    <button class="yuvarlak" id="mic" onclick="dinle()">🎤</button>
+    <button class="yuvarlak" id="mic" onclick="toggleElsiz()">🎤</button>
     <input id="metin" placeholder="Sorunuzu yazın…" onkeydown="if(event.key==='Enter')gonderMetin()">
     <button class="yuvarlak" id="gonder" onclick="gonderMetin()">➤</button>
   </footer>
@@ -223,43 +224,61 @@ function kategorilerEkle(kats){
   sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
 }
 
-// "Istiyorum" -> tek urunu sepete al (onayli siparis)
-function istiyorum(ad){
-  ekle('ben', ad + ' istiyorum');
-  sor(ad + ' istiyorum');
-}
+// "Istiyorum" -> urunu sepete ekle (birikimli akis)
+function istiyorum(ad){ sor(ad + ' istiyorum'); }
 
-/* ---- Sepet (Faz 2: siparis onayi) ---- */
-function sepetGoster(kalemler){
-  const sepet = kalemler.map(k=>({urun_id:k.urun_id, ad:k.ad, adet:k.adet, fiyat:k.fiyat}));
-  const wrap = document.createElement('div'); wrap.className='sepet';
-  function tl(v){ return v.toLocaleString('tr') + ' TL'; }
-  function render(){
-    const toplam = sepet.reduce((s,k)=>s + k.fiyat*k.adet, 0);
-    wrap.innerHTML = '<h4>🧾 Siparişiniz</h4>' +
-      sepet.map((k,idx)=>`<div class="satir"><span class="sad">${esc(k.ad)}</span>`
-        + `<span class="adet"><button data-i="${idx}" data-d="-1">−</button><span>${k.adet}</span><button data-i="${idx}" data-d="1">+</button></span>`
-        + `<span class="sfi">${tl(k.fiyat*k.adet)}</span></div>`).join('')
-      + `<div class="top"><span>Toplam</span><span>${tl(toplam)}</span></div>`
-      + `<div class="btns"><button class="onayla">✅ Onayla ve Gönder</button><button class="vazgec">Vazgeç</button></div>`;
-    wrap.querySelectorAll('.adet button').forEach(b=> b.addEventListener('click', ()=>{
-      const i=+b.dataset.i, d=+b.dataset.d; sepet[i].adet = Math.max(1, sepet[i].adet + d); render();
-    }));
-    wrap.querySelector('.vazgec').addEventListener('click', ()=>{ wrap.remove(); const m='Tamam, siparişi iptal ettim. 😊'; ekle('ai', m); });
-    wrap.querySelector('.onayla').addEventListener('click', ()=> sepetGonder(sepet, wrap));
-  }
-  render();
-  sohbet.appendChild(wrap); sohbet.scrollTop = sohbet.scrollHeight;
+/* ---- Sepet (Faz 2: konusarak biriken siparis) ---- */
+let sepet = [];            // birikimli sepet (mesajlar arasi korunur)
+let siparisModu = false;   // siparis akisinda miyiz
+let sepetEl = null;
+function sepetMerge(items){
+  (items||[]).forEach(it=>{
+    const ex = sepet.find(x=>x.urun_id===it.urun_id);
+    if(ex) ex.adet += it.adet; else sepet.push({urun_id:it.urun_id, ad:it.ad, adet:it.adet, fiyat:it.fiyat});
+  });
 }
-async function sepetGonder(sepet, wrap){
-  const btn = wrap.querySelector('.onayla'); btn.disabled=true; btn.textContent='Gönderiliyor…';
+function sepetGuncelle(){
+  if(sepetEl){ sepetEl.remove(); sepetEl=null; }
+  if(!sepet.length) return;
+  const tl = v => v.toLocaleString('tr') + ' TL';
+  const wrap = document.createElement('div'); wrap.className='sepet';
+  const toplam = sepet.reduce((s,k)=>s + k.fiyat*k.adet, 0);
+  wrap.innerHTML = '<h4>🧾 Siparişiniz</h4>' +
+    sepet.map((k,idx)=>`<div class="satir"><span class="sad">${esc(k.ad)}</span>`
+      + `<span class="adet"><button data-i="${idx}" data-d="-1">−</button><span>${k.adet}</span><button data-i="${idx}" data-d="1">+</button></span>`
+      + `<span class="sfi">${tl(k.fiyat*k.adet)}</span></div>`).join('')
+    + `<div class="top"><span>Toplam</span><span>${tl(toplam)}</span></div>`
+    + `<div class="btns"><button class="onayla">✅ Onayla ve Gönder</button><button class="vazgec">Vazgeç</button></div>`;
+  wrap.querySelectorAll('.adet button').forEach(b=> b.addEventListener('click', ()=>{
+    const i=+b.dataset.i, d=+b.dataset.d;
+    sepet[i].adet = Math.max(1, sepet[i].adet + d);
+    if(sepet[i].adet===0) sepet.splice(i,1);
+    sepetGuncelle();
+  }));
+  wrap.querySelector('.vazgec').addEventListener('click', ()=>{ sepet=[]; siparisModu=false; sepetGuncelle(); const m='Tamam, siparişinizi iptal ettim. 😊'; ekle('ai', m); konus(m); });
+  wrap.querySelector('.onayla').addEventListener('click', finalizeSiparis);
+  sohbet.appendChild(wrap); sepetEl = wrap; sohbet.scrollTop = sohbet.scrollHeight;
+}
+// "hayir / bu kadar / yeterli" -> siparisi bitir
+function bitirMi(t){
+  const n = (t||'').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü ]/g,' ');
+  return /(^| )(hayir|hayır|yok|bu kadar|bukadar|yeterli|tamamdir|tamamdır|bitir|baska yok|başka yok|olmaz|bitti|tamam)( |$)/.test(' '+n+' ');
+}
+async function finalizeSiparis(){
+  if(!sepet.length) return;
+  if(sepetEl){ const b=sepetEl.querySelector('.onayla'); if(b){ b.disabled=true; b.textContent='Gönderiliyor…'; } }
+  const adet = sepet.reduce((s,k)=>s+k.adet,0);
+  let lo = Math.max(15, Math.min(35, Math.round((14 + adet*2)/5)*5)); const hi = lo + 10;
   try{
     const r = await fetch('/api/qr/siparis-gonder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({masa:MASA, kalemler: JSON.stringify(sepet.map(k=>({urun_id:k.urun_id, adet:k.adet})))})});
     const j = await r.json();
-    if(j.ok){ wrap.remove(); const m='Siparişiniz mutfağa iletildi, birazdan hazırlanıyor. Afiyet olsun! 🎉'; ekle('ai', m); konus(m); }
-    else { btn.disabled=false; btn.textContent='✅ Onayla ve Gönder'; ekle('ai', j.hata || 'Sipariş gönderilemedi, tekrar dener misiniz?'); }
-  }catch(e){ btn.disabled=false; btn.textContent='✅ Onayla ve Gönder'; ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); }
+    if(j.ok){
+      sepet=[]; siparisModu=false; sepetGuncelle();
+      const m = 'Harika, teşekkür ederim! 🎉 Siparişinizi mutfağımıza ilettim; yaklaşık '+lo+'-'+hi+' dakika içinde özenle hazırlanıp masanıza gelecek. Afiyet olsun!';
+      ekle('ai', m); konus(m);
+    } else { ekle('ai', j.hata || 'Siparişi gönderemedim, tekrar dener misiniz?'); sepetGuncelle(); }
+  }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); sepetGuncelle(); }
 }
 
 /* ---- Seslendirme: ONCE bedava cihaz (tarayici) sesi; yoksa sunucu Google TTS ---- */
@@ -279,15 +298,23 @@ function seciSes(){
 }
 if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
 let sesCalar = new Audio();
+let konusuyor = false;
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
+// Seslendirme bitince: ellersiz moddaysak tekrar dinlemeye gec
+function konusBitti(){ konusuyor=false; if(elsiz && !bekliyor) setTimeout(dinleBasla, 350); }
 // SADECE Android bedava cihaz sesi kullanir; diger herkes (iPhone/masaustu) Cloud (Puck).
 const isAndroid = /android/i.test(navigator.userAgent);
 // Bedava cihaz (tarayici) sesi ile konus. Basarili ise true.
 function cihazKonus(temiz){
   seciSes();
   if(synth && trVoice){
-    try{ synth.cancel(); const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0; synth.speak(u); return true; }catch(e){}
+    try{
+      synth.cancel();
+      const u=new SpeechSynthesisUtterance(temiz); u.lang='tr-TR'; u.voice=trVoice; u.rate=1.0; u.pitch=1.0;
+      u.onend = konusBitti; u.onerror = konusBitti;
+      synth.speak(u); return true;
+    }catch(e){}
   }
   return false;
 }
@@ -296,7 +323,7 @@ async function cloudKonus(temiz){
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA})});
     const j = await r.json();
-    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.play().catch(()=>{}); return true; }
+    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.onended = konusBitti; sesCalar.onerror = konusBitti; sesCalar.play().catch(()=>{}); return true; }
   }catch(e){}
   return false;
 }
@@ -311,44 +338,53 @@ function seseHazirla(t){
 }
 async function konus(t){
   const temiz = seseHazirla(t);
-  if(!temiz) return;
-  if(isAndroid){
-    // Android: ONCE bedava cihaz sesi (para gitmez); TR ses yoksa Cloud'a dus
-    if(cihazKonus(temiz)) return;
-    await cloudKonus(temiz); return;
-  }
-  // Diger herkes (iPhone/masaustu): Puck (Cloud); olmazsa cihaz sesi
-  if(await cloudKonus(temiz)) return;
-  cihazKonus(temiz);
+  if(!temiz){ konusBitti(); return; }
+  konusuyor = true;
+  let ok = false;
+  if(isAndroid){ ok = cihazKonus(temiz); if(!ok) ok = await cloudKonus(temiz); }
+  else { ok = await cloudKonus(temiz); if(!ok) ok = cihazKonus(temiz); }
+  if(!ok) konusBitti(); // hic ses cikmadiysa yine de dinlemeye don
 }
 
-/* ---- Konusma tanima (tarayici STT) ---- */
+/* ---- Konusma tanima (tarayici STT) + ELLERSIZ surekli dinleme ---- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, dinliyorMu = false;
+let rec = null, dinliyorMu = false, elsiz = false;
 if(SR){
   rec = new SR(); rec.lang='tr-TR'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
-  rec.onstart = ()=>{ dinliyorMu=true; orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Dinliyorum…'; };
-  rec.onerror = ()=>{ bitir(); };
-  rec.onend = ()=>{ bitir(); };
+  rec.onstart = ()=>{ dinliyorMu=true; orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…'; };
+  rec.onerror = ()=>{ dinliyorMu=false; };
+  rec.onend = ()=>{ dinliyorMu=false; orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
+    // Ellersiz moddaysak ve mesgul/konusmuyorsak tekrar dinlemeye baslat
+    if(elsiz && !bekliyor && !konusuyor){ durumEl.textContent='Sizi dinliyorum…'; setTimeout(dinleBasla, 300); }
+    else if(!bekliyor && !konusuyor) durumEl.textContent = elsiz ? 'Sizi dinliyorum…' : 'Dokunup konuşun ya da yazın';
+  };
   rec.onresult = (e)=>{
     let t=''; for(let i=0;i<e.results.length;i++) t += e.results[i][0].transcript;
-    durumEl.textContent = t || 'Dinliyorum…';
-    if(e.results[e.results.length-1].isFinal && t.trim()){ dinliyorMu=false; try{rec.stop()}catch(_){}
-      sor(t.trim()); }
+    durumEl.textContent = t || 'Sizi dinliyorum…';
+    if(e.results[e.results.length-1].isFinal && t.trim()){ dinliyorMu=false; try{rec.stop()}catch(_){}; sor(t.trim()); }
   };
 }
-function bitir(){ dinliyorMu=false; orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor'); if(!bekliyor) durumEl.textContent='Dokunup konuşun ya da yazın'; }
-function dinle(){
-  if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, yazabilirsiniz.'; return; }
-  if(dinliyorMu){ try{rec.stop()}catch(_){}; return; }
-  try{ sesDurdur(); rec.start(); }catch(e){}
+function dinleBasla(){
+  if(!rec || dinliyorMu || bekliyor || konusuyor) return;
+  try{ rec.start(); }catch(e){}
 }
+// Mor buton / orb: ellersiz sohbeti AC/KAPAT
+function toggleElsiz(){
+  if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, yazabilirsiniz.'; return; }
+  elsiz = !elsiz;
+  if(elsiz){ sesDurdur(); konusuyor=false; micBtn.classList.add('acik'); durumEl.textContent='Sizi dinliyorum, buyurun…'; dinleBasla(); }
+  else { try{ rec.stop(); }catch(_){}; micBtn.classList.remove('acik'); durumEl.textContent='Dokunup konuşun ya da yazın'; }
+}
+function dinle(){ toggleElsiz(); } // geriye donuk uyum
 
 /* ---- Gonderim ---- */
 function gonderMetin(){ const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
 async function sor(soru){
   if(bekliyor) return;
-  ekle('ben', soru); bekliyor=true; durumEl.textContent='Düşünüyorum…';
+  ekle('ben', soru);
+  // Siparis akisinda "hayir / bu kadar" -> siparisi bitir (sunucuya gitmeden)
+  if(siparisModu && sepet.length && bitirMi(soru)){ finalizeSiparis(); return; }
+  bekliyor=true; durumEl.textContent='Düşünüyorum…';
   try{
     const r = await fetch('/api/qr/asistan', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
       body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || ''})});
@@ -358,11 +394,13 @@ async function sor(soru){
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);
     if(Array.isArray(j.kartlar) && j.kartlar.length) kartlariEkle(j.kartlar);
-    if(j.aksiyon==='sepet' && Array.isArray(j.sepet) && j.sepet.length) sepetGoster(j.sepet);
-    if(j.seslendir!==false) konus(cevap);
+    if(j.aksiyon==='siparis_basla') siparisModu=true;
+    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ siparisModu=true; sepetMerge(j.eklenen); sepetGuncelle(); }
+    bekliyor=false;
+    if(j.seslendir!==false) konus(cevap); else konusBitti();
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
-  }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); }
-  bekliyor=false; durumEl.textContent='Dokunup konuşun ya da yazın';
+  }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); bekliyor=false; konusBitti(); }
+  durumEl.textContent = elsiz ? 'Sizi dinliyorum…' : 'Dokunup konuşun ya da yazın';
 }
 async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
@@ -370,7 +408,7 @@ async function garsonCagir(tip){
 
 /* ---- Acilis karsilama ---- */
 window.addEventListener('load', ()=>{
-  const selam = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masanızın asistanıyım. Menüyü tanıtabilir, öneride bulunabilir ya da garson çağırabilirim. Ne yapmak istersiniz?';
+  const selam = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masanızın asistanıyım. Menüyü tanıtabilir, öneride bulunabilir ya da siparişinizi alabilirim. Benimle konuşmak için aşağıdaki mikrofona bir kez dokunmanız yeterli; sonrasında elinizi değmeden serbestçe konuşabilirsiniz.';
   ekle('ai', selam);
   // Tarayicilar otomatik sesi kullanici etkilesimi olmadan engelleyebilir; deneriz.
   setTimeout(()=>konus(selam), 400);
