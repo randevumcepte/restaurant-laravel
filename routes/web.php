@@ -2411,6 +2411,274 @@ Route::post('/api/patron/yetki-kaydet', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ============================================================================
+// PERSONEL YONETIMI: kart (ekle/duzenle) + maas/prim konfigu + hareket defteri
+// (avans/odeme/prim/kesinti) + OTOMATIK prim (ciro yuzdesi) + gider entegrasyonu.
+// Tum para hesabi TEK sorgu setiyle (hizli). Sadece sahip/mudur; para = sahip.
+// ============================================================================
+
+// personeller tablosuna maas/prim kolonlarini (yoksa) ekler — lazy, idempotent.
+function _restoPersonelKolonEnsure()
+{
+    $ekle = [
+        'maas' => "ALTER TABLE personeller ADD COLUMN maas DECIMAL(12,2) NOT NULL DEFAULT 0",
+        'maas_tipi' => "ALTER TABLE personeller ADD COLUMN maas_tipi VARCHAR(16) NOT NULL DEFAULT 'aylik'", // aylik|gunluk|saatlik
+        'prim_tipi' => "ALTER TABLE personeller ADD COLUMN prim_tipi VARCHAR(16) NOT NULL DEFAULT 'yok'",    // yok|ciro
+        'prim_oran' => "ALTER TABLE personeller ADD COLUMN prim_oran DECIMAL(6,2) NOT NULL DEFAULT 0",       // %
+        'ise_baslama' => "ALTER TABLE personeller ADD COLUMN ise_baslama DATE NULL",
+        'iban' => "ALTER TABLE personeller ADD COLUMN iban VARCHAR(40) NULL",
+    ];
+    foreach ($ekle as $kol => $sql) {
+        if (!Schema::hasColumn('personeller', $kol)) DB::statement($sql);
+    }
+}
+
+// Personel hareket defteri (para giris/cikis): avans|odeme|prim|kesinti|ek_odeme
+function _restoPersonelHareketEnsure()
+{
+    if (Schema::hasTable('personel_hareketleri')) return;
+    Schema::create('personel_hareketleri', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('sube_id');
+        $t->unsignedBigInteger('personel_id');
+        $t->string('tur', 16);                    // avans|odeme|prim|kesinti|ek_odeme
+        $t->decimal('tutar', 12, 2)->default(0);
+        $t->string('aciklama')->nullable();
+        $t->date('tarih');
+        $t->unsignedBigInteger('created_by')->nullable();
+        $t->timestamp('created_at')->useCurrent();
+        $t->index(['sube_id', 'personel_id', 'tarih']);
+    });
+}
+
+// Genel gider defteri (kira/fatura/malzeme + otomatik personel odemeleri raporlanir)
+function _restoGiderEnsure()
+{
+    if (Schema::hasTable('giderler')) return;
+    Schema::create('giderler', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('sube_id');
+        $t->string('kategori', 32)->default('diger'); // kira|fatura|malzeme|maas|vergi|diger
+        $t->string('aciklama')->nullable();
+        $t->decimal('tutar', 12, 2)->default(0);
+        $t->date('tarih');
+        $t->unsignedBigInteger('created_by')->nullable();
+        $t->timestamp('created_at')->useCurrent();
+        $t->index(['sube_id', 'tarih']);
+    });
+}
+
+// Bir ayin baslangic/bitis damgasini verir. $ay = 'YYYY-MM' (bos ise bu ay).
+function _restoAyAralik($ay)
+{
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string) $ay) ? $ay : date('Y-m');
+    $bas = $ay . '-01 00:00:00';
+    $bit = date('Y-m-t', strtotime($ay . '-01')) . ' 23:59:59';
+    return [$ay, $bas, $bit];
+}
+
+// Bir personelin bir aylik para ozetini hesaplar (maas + prim + hareketler).
+function _restoPersonelHesap($subeId, $per, $bas, $bit)
+{
+    $pid = (int) $per->id;
+    // Hesaplanan prim: ciro yuzdesi (acan garsonun kapanmis adisyon cirosu)
+    $ciro = 0.0;
+    $primHesap = 0.0;
+    if (($per->prim_tipi ?? 'yok') === 'ciro' && (float) ($per->prim_oran ?? 0) > 0) {
+        $ciro = (float) DB::table('adisyonlar')->where('sube_id', $subeId)
+            ->where('acan_personel_id', $pid)->where('durum', 'odendi')
+            ->whereBetween('kapanis', [$bas, $bit])->sum('toplam');
+        $primHesap = round($ciro * (float) $per->prim_oran / 100, 2);
+    }
+    // Hareketler (tur bazinda toplam)
+    $har = DB::table('personel_hareketleri')->where('sube_id', $subeId)->where('personel_id', $pid)
+        ->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])
+        ->selectRaw('tur, SUM(tutar) t')->groupBy('tur')->pluck('t', 'tur');
+    $avans = (float) ($har['avans'] ?? 0);
+    $odenen = (float) ($har['odeme'] ?? 0);
+    $primManuel = (float) ($har['prim'] ?? 0);
+    $kesinti = (float) ($har['kesinti'] ?? 0);
+    $ekOdeme = (float) ($har['ek_odeme'] ?? 0);
+    $maas = (float) ($per->maas ?? 0);
+    // Hakedis = maas + hesaplanan prim + manuel prim + ek odeme - kesinti
+    $hakedis = round($maas + $primHesap + $primManuel + $ekOdeme - $kesinti, 2);
+    // Net odenecek = hakedis - (avans + odenen)
+    $net = round($hakedis - $avans - $odenen, 2);
+    return [
+        'id' => $pid, 'ad' => $per->ad, 'rol' => $per->rol, 'aktif' => (int) $per->aktif,
+        'maas' => $maas, 'maas_tipi' => $per->maas_tipi ?? 'aylik',
+        'prim_tipi' => $per->prim_tipi ?? 'yok', 'prim_oran' => (float) ($per->prim_oran ?? 0),
+        'ciro' => round($ciro, 2), 'prim_hesap' => $primHesap, 'prim_manuel' => $primManuel,
+        'avans' => $avans, 'kesinti' => $kesinti, 'ek_odeme' => $ekOdeme, 'odenen' => $odenen,
+        'hakedis' => $hakedis, 'net' => $net,
+    ];
+}
+
+// LISTE + aylik ozet — sahip/mudur. ?ay=YYYY-MM
+Route::get('/api/patron/personel-list', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoPersonelKolonEnsure();
+    _restoPersonelHareketEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik($r->ay);
+    $liste = DB::table('personeller')->where('sube_id', $p->sube_id)
+        ->orderByRaw("FIELD(rol,'sahip','mudur','kasa','garson','mutfak')")->orderBy('ad')->get();
+    $rows = [];
+    $toplamMaas = 0; $toplamPrim = 0; $toplamNet = 0; $toplamOdenen = 0;
+    foreach ($liste as $per) {
+        $h = _restoPersonelHesap($p->sube_id, $per, $bas, $bit);
+        $rows[] = $h;
+        if ($h['aktif']) { $toplamMaas += $h['maas']; $toplamPrim += $h['prim_hesap'] + $h['prim_manuel']; $toplamNet += $h['net']; $toplamOdenen += $h['odenen']; }
+    }
+    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => $p->rol === 'sahip',
+        'ozet' => ['maas' => round($toplamMaas, 2), 'prim' => round($toplamPrim, 2), 'net_kalan' => round($toplamNet, 2), 'odenen' => round($toplamOdenen, 2), 'gider_toplam' => round($toplamMaas + $toplamPrim, 2)],
+        'personeller' => $rows];
+});
+
+// DETAY: bir personelin ozeti + hareket defteri + prim kaynagi
+Route::get('/api/patron/personel-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoPersonelKolonEnsure();
+    _restoPersonelHareketEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik($r->ay);
+    $per = DB::table('personeller')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$per) return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+    $ozet = _restoPersonelHesap($p->sube_id, $per, $bas, $bit);
+    $ozet['telefon'] = $per->telefon; $ozet['pin'] = $per->pin; $ozet['iban'] = $per->iban ?? null;
+    $ozet['ise_baslama'] = $per->ise_baslama ?? null;
+    $hareketler = DB::table('personel_hareketleri')->where('sube_id', $p->sube_id)->where('personel_id', $per->id)
+        ->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])
+        ->orderByDesc('tarih')->orderByDesc('id')
+        ->get(['id', 'tur', 'tutar', 'aciklama', 'tarih'])
+        ->map(fn ($x) => ['id' => (int) $x->id, 'tur' => $x->tur, 'tutar' => (float) $x->tutar, 'aciklama' => $x->aciklama, 'tarih' => $x->tarih]);
+    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => $p->rol === 'sahip', 'ozet' => $ozet, 'hareketler' => $hareketler];
+});
+
+// KAYDET: personel ekle/duzenle (+maas/prim konfigu) — SADECE sahip
+Route::post('/api/patron/personel-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Personel/maaş düzenlemeyi sadece işletme sahibi yapabilir.'], 403);
+    _restoPersonelKolonEnsure();
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'İsim boş olamaz'];
+    $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak']) ? $r->rol : 'garson';
+    $pin = preg_replace('/\D/', '', (string) $r->pin);
+    $veri = [
+        'ad' => $ad,
+        'telefon' => $r->telefon ? (string) $r->telefon : null,
+        'rol' => $rol,
+        'aktif' => $r->aktif === '0' ? 0 : 1,
+        'maas' => max(0, (float) $r->maas),
+        'maas_tipi' => in_array($r->maas_tipi, ['aylik', 'gunluk', 'saatlik']) ? $r->maas_tipi : 'aylik',
+        'prim_tipi' => in_array($r->prim_tipi, ['yok', 'ciro']) ? $r->prim_tipi : 'yok',
+        'prim_oran' => max(0, min(100, (float) $r->prim_oran)),
+        'iban' => $r->iban ? (string) $r->iban : null,
+        'ise_baslama' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->ise_baslama) ? $r->ise_baslama : null,
+    ];
+    $pid = (int) $r->id;
+    if ($pin !== '') {
+        // PIN benzersiz olmali (ayni sube)
+        $cak = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', $pin)->where('id', '!=', $pid)->exists();
+        if ($cak) return ['ok' => 0, 'hata' => 'Bu PIN başka personelde kullanılıyor.'];
+        $veri['pin'] = $pin;
+    }
+    if ($pid > 0) {
+        $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $p->sube_id)->first();
+        if (!$hedef) return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+        DB::table('personeller')->where('id', $pid)->update($veri);
+        return ['ok' => 1, 'id' => $pid];
+    }
+    if ($pin === '') return ['ok' => 0, 'hata' => 'Yeni personel için PIN zorunlu.'];
+    $veri['sube_id'] = $p->sube_id;
+    $veri['created_at'] = now();
+    $veri['updated_at'] = now();
+    $yeni = DB::table('personeller')->insertGetId($veri);
+    return ['ok' => 1, 'id' => $yeni];
+});
+
+// HAREKET EKLE: avans/odeme/prim/kesinti/ek_odeme — SADECE sahip
+Route::post('/api/patron/personel-hareket', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Bu işlemi sadece işletme sahibi yapabilir.'], 403);
+    _restoPersonelHareketEnsure();
+    _restoGiderEnsure();
+    $tur = in_array($r->tur, ['avans', 'odeme', 'prim', 'kesinti', 'ek_odeme']) ? $r->tur : null;
+    if (!$tur) return ['ok' => 0, 'hata' => 'Geçersiz işlem türü'];
+    $tutar = round((float) $r->tutar, 2);
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Tutar 0’dan büyük olmalı'];
+    $hedef = DB::table('personeller')->where('id', (int) $r->personel_id)->where('sube_id', $p->sube_id)->first();
+    if (!$hedef) return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->tarih) ? $r->tarih : date('Y-m-d');
+    $id = DB::table('personel_hareketleri')->insertGetId([
+        'sube_id' => $p->sube_id, 'personel_id' => $hedef->id, 'tur' => $tur, 'tutar' => $tutar,
+        'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'tarih' => $tarih, 'created_by' => $p->id,
+    ]);
+    // Avans ve odeme = kasadan cikan para -> otomatik GIDER (maas kategorisi)
+    if (in_array($tur, ['avans', 'odeme'])) {
+        DB::table('giderler')->insert([
+            'sube_id' => $p->sube_id, 'kategori' => 'maas',
+            'aciklama' => $hedef->ad . ' — ' . ($tur === 'avans' ? 'Avans' : 'Maaş/ödeme'),
+            'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => $p->id,
+        ]);
+    }
+    return ['ok' => 1, 'id' => $id];
+});
+
+// HAREKET SIL — SADECE sahip
+Route::post('/api/patron/personel-hareket-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    DB::table('personel_hareketleri')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
+    return ['ok' => 1];
+});
+
+// GIDERLER: aylik liste + ozet (kategori kirilimli). Personel odemeleri otomatik dahil.
+Route::get('/api/patron/giderler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoGiderEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik($r->ay);
+    $b = substr($bas, 0, 10); $e = substr($bit, 0, 10);
+    $liste = DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [$b, $e])
+        ->orderByDesc('tarih')->orderByDesc('id')
+        ->get(['id', 'kategori', 'aciklama', 'tutar', 'tarih'])
+        ->map(fn ($x) => ['id' => (int) $x->id, 'kategori' => $x->kategori, 'aciklama' => $x->aciklama, 'tutar' => (float) $x->tutar, 'tarih' => $x->tarih]);
+    $kat = DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [$b, $e])
+        ->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->pluck('t', 'kategori');
+    $toplam = (float) DB::table('giderler')->where('sube_id', $p->sube_id)->whereBetween('tarih', [$b, $e])->sum('tutar');
+    return ['ok' => 1, 'ay' => $ay, 'duzenleyebilir' => $p->rol === 'sahip', 'toplam' => round($toplam, 2), 'kategoriler' => $kat, 'giderler' => $liste];
+});
+
+// GIDER EKLE — SADECE sahip
+Route::post('/api/patron/gider-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Gider eklemeyi sadece işletme sahibi yapabilir.'], 403);
+    _restoGiderEnsure();
+    $tutar = round((float) $r->tutar, 2);
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Tutar 0’dan büyük olmalı'];
+    $kategori = in_array($r->kategori, ['kira', 'fatura', 'malzeme', 'maas', 'vergi', 'diger']) ? $r->kategori : 'diger';
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->tarih) ? $r->tarih : date('Y-m-d');
+    $id = DB::table('giderler')->insertGetId([
+        'sube_id' => $p->sube_id, 'kategori' => $kategori, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null,
+        'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => $p->id,
+    ]);
+    return ['ok' => 1, 'id' => $id];
+});
+
+// GIDER SIL — SADECE sahip
+Route::post('/api/patron/gider-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    DB::table('giderler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
+    return ['ok' => 1];
+});
+
 // ADISYON OPERASYONLARI (yetki kontrollu): kapat | iskonto | ikram | iptal
 // Limit asimi/garson kisiti -> onay_pin (mudur/sahip PIN'i) ile onaylanir.
 Route::post('/api/patron/adisyon-islem', function (Request $r) {
@@ -2846,7 +3114,8 @@ Route::post('/api/patron/masa-tasi', function (Request $r) {
 Route::post('/api/patron/masa-birlestir', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if (!_restoYetkiVar($p, 'adisyon_birlestir')) return ['ok' => 0, 'hata' => 'Masa birleştirme yetkiniz yok.'];
+    // Birlestirme rutin bir masa operasyonu -> tasima ile ayni erisim (adisyon_birlestir VEYA adisyon_ac yeterli)
+    if (!_restoYetkiVar($p, 'adisyon_birlestir') && !_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa birleştirme yetkiniz yok.'];
     $hedef = DB::table('adisyonlar')->find((int) $r->adisyon_id);
     $kaynak = DB::table('adisyonlar')->find((int) $r->kaynak_adisyon_id);
     if (!$hedef || !$kaynak || $hedef->durum !== 'acik' || $kaynak->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyonlar bulunamadı'];
