@@ -518,13 +518,43 @@ class RestoAsistan
         }
     }
 
+    // Konuşma geçmişi tablosu (kalıcı) — lazy ensure.
+    protected function _gecmisTabloEnsure()
+    {
+        if (Schema::hasTable('asistan_konusma')) return;
+        Schema::create('asistan_konusma', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id')->nullable();
+            $t->unsignedBigInteger('personel_id')->nullable();
+            $t->text('soru')->nullable();
+            $t->text('cevap')->nullable();
+            $t->string('intent', 32)->nullable();
+            $t->string('kaynak', 32)->nullable();
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'personel_id', 'id']);
+        });
+    }
+
     public function gecmisGetir($userId)
     {
-        try { $v = Cache::get('resto_asistan_gecmis:' . (int) $userId); if (is_array($v)) return $v; } catch (\Throwable $e) {}
+        try { $v = Cache::get('resto_asistan_gecmis:' . (int) $userId); if (is_array($v) && !empty($v)) return $v; } catch (\Throwable $e) {}
+        // Önbellek boş -> DB'den son turları yükle (yeniden başlamada/30dk sonrasında bağlam korunur)
+        try {
+            if (Schema::hasTable('asistan_konusma')) {
+                $rows = DB::table('asistan_konusma')->where('personel_id', (int) $userId)->orderByDesc('id')->limit(3)->get()->reverse();
+                $g = [];
+                foreach ($rows as $r) {
+                    $g[] = ['role' => 'user', 'content' => mb_substr((string) $r->soru, 0, 400)];
+                    $g[] = ['role' => 'assistant', 'content' => mb_substr((string) $r->cevap, 0, 600)];
+                }
+                return $g;
+            }
+        } catch (\Throwable $e) {
+        }
         return [];
     }
 
-    public function gecmisEkle($userId, $soru, $cevap)
+    public function gecmisEkle($userId, $soru, $cevap, $subeId = null, $intent = null, $kaynak = null)
     {
         $soru = trim((string) $soru); $cevap = trim((string) $cevap);
         if ($soru === '' || $cevap === '') return;
@@ -534,6 +564,18 @@ class RestoAsistan
             $g[] = ['role' => 'assistant', 'content' => mb_substr($cevap, 0, 600)];
             if (count($g) > 6) $g = array_slice($g, -6);
             Cache::put('resto_asistan_gecmis:' . (int) $userId, $g, now()->addMinutes(30));
+        } catch (\Throwable $e) {
+        }
+        // KALICI kayit
+        try {
+            $this->_gecmisTabloEnsure();
+            DB::table('asistan_konusma')->insert([
+                'sube_id' => $subeId, 'personel_id' => (int) $userId,
+                'soru' => mb_substr($soru, 0, 1000), 'cevap' => mb_substr($cevap, 0, 2000),
+                'intent' => $intent ? mb_substr((string) $intent, 0, 32) : null,
+                'kaynak' => $kaynak ? mb_substr((string) $kaynak, 0, 32) : null,
+                'created_at' => now(),
+            ]);
         } catch (\Throwable $e) {
         }
     }

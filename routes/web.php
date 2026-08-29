@@ -2503,11 +2503,24 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
         else { $sonuc = $a->yardimCevabi($niyet); $kaynak = ($a->aiTeshis === 'anahtar_yok') ? 'yardim_anahtarsiz' : 'yardim'; }
     }
 
-    $a->gecmisEkle($userId, $soru, $sonuc['cevap'] ?? '');
+    $a->gecmisEkle($userId, $soru, $sonuc['cevap'] ?? '', $p->sube_id, $sonuc['intent'] ?? null, $kaynak);
     return [
         'ok' => 1, 'cevap' => $sonuc['cevap'] ?? '', 'seslendir' => $sonuc['seslendir'] ?? true,
         'kart' => $sonuc['kart'] ?? null, 'intent' => $sonuc['intent'] ?? 'bilinmiyor', 'kaynak' => $kaynak,
     ];
+});
+
+// KONUSMA GECMISI (kalici) — sube bazinda son sorular/cevaplar
+Route::get('/api/patron/asistan-gecmis', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasTable('asistan_konusma')) return ['ok' => 1, 'gecmis' => []];
+    $limit = min(100, max(1, (int) ($r->limit ?: 40)));
+    $adlar = DB::table('personeller')->pluck('ad', 'id');
+    $liste = DB::table('asistan_konusma')->where('sube_id', $p->sube_id)->orderByDesc('id')->limit($limit)
+        ->get(['personel_id', 'soru', 'cevap', 'intent', 'created_at'])
+        ->map(fn ($x) => ['soru' => $x->soru, 'cevap' => $x->cevap, 'kim' => $adlar[$x->personel_id] ?? '', 'tarih' => substr((string) $x->created_at, 0, 16)]);
+    return ['ok' => 1, 'gecmis' => $liste];
 });
 
 // PROAKTIF TESPITLER — asistan acilista patronun goremedigi kacak/risk/firsatlari sunar
