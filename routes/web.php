@@ -1896,7 +1896,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     if ($ciro > 0 && $iskonto > $ciro * 0.05) {
         $o = round($iskonto / $ciro * 100);
         $ekle('uyari', '🏷️', 'İskonto yüksek', 'İskonto oranı yüksek: ciro yaklaşık %' . $o . ' iskontoya gitmiş.',
-            'Bu dönem toplam ' . $tl($iskonto) . ' iskonto verildi — cironun %' . $o . '’i. Restoranda sağlıklı iskonto oranı genelde %2-3 civarındadır. Kimin ne kadar iskonto yaptığını Kayıp Radarı > İskonto dökümünden personel bazında görebilirsin; sürekli tekrarlayan indirimler alışkanlık ya da suistimal işareti olabilir. Gerekirse personel iskonto limitini Yetkiler’den kıs.',
+            'Bu dönem toplam ' . $tl($iskonto) . ' iskonto verildi — cironun %' . $o . '’sı. Restoranda sağlıklı iskonto oranı genelde %2-3 civarındadır. Kimin ne kadar iskonto yaptığını Kayıp Radarı > İskonto dökümünden personel bazında görebilirsin; sürekli tekrarlayan indirimler alışkanlık ya da suistimal işareti olabilir. Gerekirse personel iskonto limitini Yetkiler’den kıs.',
             ['tip' => 'kayip', 'alt' => 'iskonto', 'etiket' => 'İskonto dökümünü aç']);
     }
     if ($maliyetYuzde >= 40) {
