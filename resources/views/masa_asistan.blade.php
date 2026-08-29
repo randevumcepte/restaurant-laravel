@@ -343,17 +343,32 @@ function seseHazirla(t){
 }
 let _konusBit = null;                 // aktif konusmayi disaridan kesmek icin (dokunmayla)
 function konusKes(){ if(_konusBit){ const b=_konusBit; _konusBit=null; b(); } }
-// KONUS: konusur (mic KAPALI -> tanima catismaz, yanki yok). Ses bitince cozulur. Dokununca kesilir. BASIT + SAGLAM.
-function konus(t){
+// KONUS: konusur. bargeIn=true -> VAD ile: musteri konusmaya baslayinca SUSAR (rec'e DOKUNMAZ -> kararli); dongu sonra dinler.
+function konus(t, bargeIn){
   return new Promise(async (resolve)=>{
     const temiz = seseHazirla(t);
     if(!temiz){ resolve(); return; }
     try{ rec && rec.stop(); }catch(_){}
     konusuyor = true;
-    let bitti=false;
+    let bitti=false, vad=null;
     const emniyet = setTimeout(()=>bit(), Math.min(20000, 2600 + temiz.length*95));
-    function bit(){ if(bitti) return; bitti=true; clearTimeout(emniyet); _konusBit=null; konusuyor=false; sesDurdur(); resolve(); }
+    function bit(){ if(bitti) return; bitti=true; clearTimeout(emniyet); if(vad) clearInterval(vad); _konusBit=null; konusuyor=false; sesDurdur(); resolve(); }
     _konusBit = bit;
+    // ARAYA GIRME (VAD): mic enerjisi yukselirse (musteri konusuyor) -> SUS. Tanima motoruna dokunmaz (kararli).
+    if(bargeIn && _analiz){
+      let yuksek=0, taban=0;
+      const kalib = setInterval(()=>{ if(bitti){ clearInterval(kalib); return; } taban = Math.max(taban, sesSeviyesi()); }, 50);
+      setTimeout(()=>{
+        clearInterval(kalib);
+        if(bitti) return;
+        const esik = Math.max(_vadEsik, taban * 1.5 + 0.02);
+        vad = setInterval(()=>{
+          if(bitti) return;
+          if(sesSeviyesi() > esik){ if(++yuksek >= 3){ bit(); } }   // ~120ms sureli konusma -> sus
+          else if(yuksek > 0) yuksek--;
+        }, 40);
+      }, 450);
+    }
     let ok = await cloudKonus(temiz, bit);
     if(!ok) ok = cihazKonus(temiz, bit);
     if(!ok) bit();
@@ -390,17 +405,28 @@ function dinle(){
   });
 }
 function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
-// Mikrofon iznini ACIKCA iste (ilk sefer dialog); izin gelince tanima tek dokunusla baslar.
-let _izinVerildi = false;
+// Mikrofon izni + VAD (araya girme icin ses enerjisi olcer). Echo-cancelled -> asistanin kendi sesi elenir.
+let _izinVerildi = false, _audioCtx = null, _analiz = null, _vadBuf = null;
+const _vadEsik = 0.055;
 async function micIzniIste(){
-  if(_izinVerildi) return;
+  if(_analiz){ try{ _audioCtx && _audioCtx.state==='suspended' && _audioCtx.resume(); }catch(_){} return; }
   try{
-    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      const s = await navigator.mediaDevices.getUserMedia({audio:true});
-      s.getTracks().forEach(t=>t.stop());   // sadece izin icindi
-      _izinVerildi = true;
-    }
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try{ await _audioCtx.resume(); }catch(_){}
+    const src = _audioCtx.createMediaStreamSource(stream);
+    _analiz = _audioCtx.createAnalyser(); _analiz.fftSize = 512;
+    src.connect(_analiz);
+    _vadBuf = new Uint8Array(_analiz.fftSize);
+    _izinVerildi = true;
   }catch(e){}
+}
+function sesSeviyesi(){
+  if(!_analiz) return 0;
+  _analiz.getByteTimeDomainData(_vadBuf);
+  let s=0; for(let i=0;i<_vadBuf.length;i++){ const v=(_vadBuf[i]-128)/128; s+=v*v; }
+  return Math.sqrt(s/_vadBuf.length);
 }
 // SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
 let _sonBaslaAn = 0;
@@ -415,10 +441,10 @@ async function basla(selamla=true){
   }
   sohbetAktif=true; micBtn.classList.add('acik');
   await micIzniIste();   // izin + VAD kurulumu (ilk sefer dialog cikar; izin gelince devam)
-  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM); ilkSelamVerildi = true; }
+  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM, true); ilkSelamVerildi = true; }
   let bos=0;
   while(sohbetAktif){
-    const c = await dinle();
+    const c = await dinle();   // konus VAD ile kesildiyse burada temiz dinler
     if(!sohbetAktif) break;
     if(!c){ if(++bos>=2){ await konus('Başka bir arzunuz yoksa dinlemeyi kapatıyorum. İstediğinizde mikrofona tekrar dokunun.'); break; } await konus('Sizi tam anlayamadım, tekrar eder misiniz?'); continue; }
     bos=0;
@@ -426,7 +452,7 @@ async function basla(selamla=true){
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
     if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap = await sunucudanCevap(c);
-    if(cevap) await konus(cevap);
+    if(cevap) await konus(cevap, true);   // konusurken musteri konusursa SUSAR -> dongu tekrar dinler
   }
   sohbetAktif=false; micBtn.classList.remove('acik');
   if(!konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
