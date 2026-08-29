@@ -53,6 +53,15 @@ class MusteriAsistan
             }
         }
 
+        // 2.35) GORME istegi (siparis DEGIL): "burgerleri gormek istiyorum", "menuyu goster", "salatalara bakalim"
+        if ($this->has($c, ['gormek', 'goster', 'gorebilir', 'gorelim', 'gorsem', 'bakmak', 'bakalim', 'bakabilir', 'goz at', 'goz atalim', 'incele', 'menusu', 'menusunu', 'listesi', 'listesini'])) {
+            $kv = $this->kategoriEslesme($c);
+            if ($kv) return $this->kategori([$this->norm($kv->ad)], $kv->ad, $this->katEmoji($kv->ad));
+            $uv = $this->urunBul($c);
+            if ($uv) return $this->urunTanit($uv, $c);
+            return $this->menu();
+        }
+
         // 2.4) SIPARIS DUZENLE: "kofteyi 2 olsun" (adedi AYARLA), "kolayi istemiyorum/vazgectim" (CIKAR)
         $duz = $this->siparisDuzenle($c, $soru, $baglam);
         if ($duz) return $duz;
