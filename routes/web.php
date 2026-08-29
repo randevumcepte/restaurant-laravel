@@ -1860,17 +1860,44 @@ Route::get('/api/patron/ozet', function (Request $r) {
         $gunluk[] = ['gun' => $g0->format('d/m'), 'ciro' => $ciroArasi($g0, $g1)];
     }
 
-    // --- Uyarilar (AI oncesi kural motoru) ---
-    $uyarilar = [];
-    if ($compCiro > 0 && $ciro < $compCiro * 0.85) $uyarilar[] = 'Ciro önceki döneme göre %' . round(($compCiro - $ciro) / $compCiro * 100) . ' geride.';
-    elseif ($compCiro > 0 && $ciro > $compCiro * 1.15) $uyarilar[] = 'Ciro önceki döneme göre %' . round(($ciro - $compCiro) / $compCiro * 100) . ' önde. 🚀';
-    if ($ciro > 0 && $iskonto > $ciro * 0.05) $uyarilar[] = 'İskonto oranı yüksek: ciro yaklaşık %' . round($iskonto / $ciro * 100) . ' iskontoya gitmiş.';
-    if ($maliyetYuzde >= 40) $uyarilar[] = 'Maliyet oranı %' . $maliyetYuzde . ' — kârlılık baskı altında.';
+    // --- Uyarilar / AI Bildirimleri (kural motoru) — hem string listesi (legacy) hem yapili bildirim ---
+    $uyarilar = [];      // legacy: eski app derlemeleri kirilmasin
+    $bildirimler = [];   // yeni: baslik + detayli aciklama + onem + aksiyon linki (AI bildirim merkezi)
+    $tl = fn ($v) => number_format((float) $v, 0, ',', '.') . 'TL';
+    $ekle = function ($seviye, $ikon, $baslik, $mesaj, $detay, $aksiyon = null) use (&$uyarilar, &$bildirimler) {
+        $uyarilar[] = $mesaj;
+        $bildirimler[] = compact('seviye', 'ikon', 'baslik', 'mesaj', 'detay', 'aksiyon');
+    };
+
+    if ($compCiro > 0 && $ciro < $compCiro * 0.85) {
+        $dd = round(($compCiro - $ciro) / $compCiro * 100);
+        $ekle('riskli', '📉', 'Ciro düşüşte', 'Ciro önceki döneme göre %' . $dd . ' geride.',
+            'Bu dönem ' . $tl($ciro) . ' ciro var; önceki dönem ' . $tl($compCiro) . ' idi — yaklaşık %' . $dd . ' düşüş. Düşüş genelde iki sebepten gelir: ya daha az misafir geldi (folyo/trafik azaldı), ya da kişi başı harcama küçüldü (sepet düştü). Önce Kayıp Radarı’na bak — iskonto, ikram, iptal ve fire sızıntısı ciroyu aşağı çekiyor olabilir. Sonra kapanan adisyon sayısını ve kişi başı tutarı önceki dönemle karşılaştır.',
+            ['tip' => 'kayip', 'alt' => 'iskonto', 'etiket' => 'Kayıp Radarı’nı aç']);
+    } elseif ($compCiro > 0 && $ciro > $compCiro * 1.15) {
+        $dd = round(($ciro - $compCiro) / $compCiro * 100);
+        $ekle('iyi', '🚀', 'Ciro artışta', 'Ciro önceki döneme göre %' . $dd . ' önde.',
+            'Tebrikler — bu dönem ciro önceki döneme göre %' . $dd . ' arttı (' . $tl($ciro) . '). Bu ivmeyi sürdürmek için hangi ürünlerin ve hangi servis tipinin (salon/paket) çektiğine Satış & Maliyet ve Servis Tipi dağılımından bak; işe yarayan kampanya/menüyü koru.',
+            null);
+    }
+    if ($ciro > 0 && $iskonto > $ciro * 0.05) {
+        $o = round($iskonto / $ciro * 100);
+        $ekle('uyari', '🏷️', 'İskonto yüksek', 'İskonto oranı yüksek: ciro yaklaşık %' . $o . ' iskontoya gitmiş.',
+            'Bu dönem toplam ' . $tl($iskonto) . ' iskonto verildi — cironun %' . $o . '’i. Restoranda sağlıklı iskonto oranı genelde %2-3 civarındadır. Kimin ne kadar iskonto yaptığını Kayıp Radarı > İskonto dökümünden personel bazında görebilirsin; sürekli tekrarlayan indirimler alışkanlık ya da suistimal işareti olabilir. Gerekirse personel iskonto limitini Yetkiler’den kıs.',
+            ['tip' => 'kayip', 'alt' => 'iskonto', 'etiket' => 'İskonto dökümünü aç']);
+    }
+    if ($maliyetYuzde >= 40) {
+        $ekle($maliyetYuzde >= 50 ? 'riskli' : 'uyari', '🍳', 'Food-cost baskısı', 'Maliyet oranı %' . $maliyetYuzde . ' — kârlılık baskı altında.',
+            'Yemek maliyeti (food-cost) ciroya oranla %' . $maliyetYuzde . '. Restoranda hedef genelde %28-35 arasıdır; bunun üstü kârı eritir. Muhtemel sebepler: porsiyon kaçağı, fire/zayi, maliyeti yüksek ürünlerin çok satması ya da güncellenmemiş satış fiyatları. Food-Cost dökümünden hangi ürünlerin maliyeti şişirdiğini gör; gerekirse fiyat güncelle veya reçete/porsiyonu standartlaştır.',
+            ['tip' => 'maliyet', 'etiket' => 'Food-Cost dökümü']);
+    }
     try {
         $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
             ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
             ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
-        if ($kritik > 0) $uyarilar[] = $kritik . ' malzeme kritik stok seviyesinde.';
+        if ($kritik > 0) $ekle('uyari', '📦', 'Kritik stok', $kritik . ' malzeme kritik stok seviyesinde.',
+            $kritik . ' malzemenin stoğu kritik eşiğin altına düştü. Bunlar tükenirse ilgili ürünleri satamazsın (mutfakta 86’ya düşer, sipariş kaçar). Stok & Satın Alma ekranından eksik malzemeleri tedarikçiye sipariş et; yoğun günlerden önce kritik kalemleri hazırda tut.',
+            null);
     } catch (\Throwable $e) {
     }
 
@@ -1894,6 +1921,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
         'gunluk' => $gunluk,
         'urunler' => $urunler,
         'uyarilar' => $uyarilar,
+        'bildirimler' => $bildirimler,
         // legacy
         'bugun' => $bugun, 'dun' => $dun,
         'acikMasa' => DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count(),
