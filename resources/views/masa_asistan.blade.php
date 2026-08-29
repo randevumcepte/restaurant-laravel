@@ -390,15 +390,14 @@ function dinle(){
 function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
 // SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
 let _sonBaslaAn = 0;
-async function basla(){
+async function basla(selamla=true){
   const simdi = (window.performance && performance.now) ? performance.now() : (+new Date());
   if(simdi - _sonBaslaAn < 700) return; // ekran+buton ayni anda -> cift tetiklemeyi yut
   _sonBaslaAn = simdi;
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
   if(sohbetAktif){ sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return; }
   sohbetAktif=true; micBtn.classList.add('acik');
-  await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM);
-  ilkSelamVerildi = true;
+  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM); ilkSelamVerildi = true; }
   let bos=0;
   while(sohbetAktif){
     const c = await dinle();
@@ -450,21 +449,23 @@ async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
 }
 
-/* ---- Acilis: mumkunse OTOMATIK dinle; degilse ilk dokunusta (ekranin her yeri) basla ---- */
+/* ---- Acilis: karsilamayi OTOMATIK seslendir; sonra mumkunse otomatik dinle, degilse ilk dokunusta ---- */
 window.addEventListener('load', async ()=>{
   ekle('ai', SELAM);
+  const karsilama = konus(SELAM);   // OTOMATIK seslendir (ses, mikrofondan bagimsiz — onceki gibi)
+  ilkSelamVerildi = true;
   let oto = false;
-  // 1) Mikrofon izni DAHA ONCE verildiyse (donen musteri) -> dokunmadan otomatik basla
+  // Mikrofon izni verildiyse: karsilama bitince kendiliginden dinlemeye gec
   try{
     if(navigator.permissions && navigator.permissions.query){
       const st = await navigator.permissions.query({name:'microphone'});
-      if(st.state === 'granted'){ oto = true; setTimeout(basla, 350); }
+      if(st.state === 'granted'){ oto = true; karsilama.then(()=>{ if(!sohbetAktif) basla(false); }); }
     }
   }catch(e){}
-  // 2) Degilse: ekranin HERHANGI bir yerine ilk dokunusta basla (mikrofonu aramaya gerek yok)
+  // Izin yoksa: ekranin HERHANGI bir yerine ilk dokunusta dinlemeye gec (karsilama bitince)
   if(!oto){
-    durumEl.textContent = 'Sohbete başlamak için ekrana dokunun 👆';
-    const ilkDokun = ()=>{ document.removeEventListener('pointerdown', ilkDokun); basla(); };
+    durumEl.textContent = 'Konuşmak için ekrana dokunun 👆';
+    const ilkDokun = ()=>{ document.removeEventListener('pointerdown', ilkDokun); karsilama.then(()=>{ if(!sohbetAktif) basla(false); }); };
     document.addEventListener('pointerdown', ilkDokun, { once:true });
   }
 });
