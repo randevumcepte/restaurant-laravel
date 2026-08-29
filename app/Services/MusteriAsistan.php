@@ -53,6 +53,11 @@ class MusteriAsistan
             }
         }
 
+        // ===== HAIKU NIYET COZUCU (BEYIN): kullanici ne dediyse dogru islemi sec (kesin/deterministik uygula) =====
+        // Anahtar varsa oncelikli beyin; yoksa asagidaki kelime-kurallari calisir (yedek).
+        $beyin = $this->niyetRouter($soru, $baglam);
+        if ($beyin !== null) return $beyin;
+
         // 2.35) GORME istegi (siparis DEGIL): "burgerleri gormek istiyorum", "menuyu goster", "salatalara bakalim"
         if ($this->has($c, ['gormek', 'goster', 'gorebilir', 'gorelim', 'gorsem', 'bakmak', 'bakalim', 'bakabilir', 'goz at', 'goz atalim', 'incele', 'menusu', 'menusunu', 'listesi', 'listesini'])) {
             $kv = $this->kategoriEslesme($c);
@@ -632,6 +637,154 @@ class MusteriAsistan
     protected function haikuGunlukSayac()
     {
         try { $this->ogrenTablo(); return (int) DB::table('musteri_ai_ogrenilen')->where('sube_id', $this->subeId)->whereDate('created_at', today())->count(); }
+        catch (\Throwable $e) { return 0; }
+    }
+
+    // ==================== HAIKU NIYET COZUCU (BEYIN) ====================
+    /** Haiku ile niyeti coz + KESIN uygula. Siniflandirma onbellekli (repeat bedava), gunluk tavanli. */
+    protected function niyetRouter($soru, $baglam)
+    {
+        if (!config('services.anthropic.sohbet_acik', true)) return null;
+        $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+        if ($anahtar === '') return null;
+        $q = trim((string) $soru);
+        if (mb_strlen($q) < 2) return null;
+        $key = $this->norm($q) . '|' . $this->norm((string) $baglam);
+
+        $j = $this->niyetCacheAl($key);
+        if ($j === null) {
+            if ($this->niyetGunlukSayac() >= (int) config('services.anthropic.sohbet_gunluk_limit', 80)) return null;
+            $j = $this->niyetCozAI($q, $baglam, $anahtar);
+            if (!is_array($j)) return null;
+            $this->niyetCacheYaz($key, $j);
+        }
+        return $this->niyetUygula($j, $q, $baglam); // taze veriyle uygula
+    }
+
+    protected function niyetCozAI($q, $baglam, $anahtar)
+    {
+        $sistem = 'Sen bir restoran masa asistanisin. Kullanicinin mesajini SINIFLANDIR ve SADECE gecerli JSON dondur (baska hicbir sey yazma). '
+            . "Urun ve kategori adlarini asagidaki MENUdeki TAM adla eslestir; menude olmayan urun UYDURMA.\n"
+            . "niyet degerleri:\n"
+            . 'kategori_goster (bir kategoriyi gormek/listelemek; "kategori"=menudeki kategori adi), '
+            . 'urun_bilgi (bir urunun icerigi/tanitimi; "urun"=urun adi), '
+            . 'siparis_ekle (urun siparis etmek; "urunler"=[{"ad","adet"}]), '
+            . 'siparis_ayarla (adet degistir; "urun","adet"), '
+            . 'siparis_cikar (bir urunden vazgecmek; "urun"), '
+            . 'oneri (ne onerirsin/gunun yemegi), menu (tum menu), '
+            . 'garson ("tip"="garson" veya "hesap"), '
+            . 'bitir (siparisi tamamla / hayir baska yok), '
+            . 'sohbet (selam/tesekkur/genel ya da menu disi soru; "cevap"=musteriye kisa sicak DUZ yanit, emoji ve tirnak yok, menu disi bilgiyi garsona yonlendir). '
+            . 'baglam verilirse "onu/bunu/sunu" gibi ifadelerde bu urunu kullan. '
+            . 'SADECE su JSON semasi: {"niyet":"","kategori":null,"urun":null,"urunler":[],"adet":null,"tip":null,"cevap":null}'
+            . ($baglam ? ("\n\nbaglam (son konusulan urun): " . $baglam) : '')
+            . "\n\nMENU:\n" . $this->menuOzetMetni();
+        $govde = [
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'max_tokens' => 320, 'system' => $sistem,
+            'messages' => [['role' => 'user', 'content' => $q]],
+        ];
+        $data = $this->cagirAnthropic($anahtar, $govde);
+        if (!$data || empty($data['content'])) return null;
+        $t = '';
+        foreach ($data['content'] as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+        $t = trim($t);
+        if (preg_match('/\{.*\}/s', $t, $m)) $t = $m[0];
+        $j = json_decode($t, true);
+        return is_array($j) ? $j : null;
+    }
+
+    protected function niyetUygula($j, $q, $baglam)
+    {
+        switch ((string) ($j['niyet'] ?? '')) {
+            case 'kategori_goster':
+                $kat = $this->kategoriAdBul((string) ($j['kategori'] ?? ''));
+                return $kat ? $this->kategori([$this->norm($kat->ad)], $kat->ad, $this->katEmoji($kat->ad)) : $this->menu();
+            case 'urun_bilgi':
+                $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+                return $u ? $this->urunTanit($u, $q) : null;
+            case 'siparis_ekle':
+                $lines = [];
+                foreach ((array) ($j['urunler'] ?? []) as $it) {
+                    $ad = is_array($it) ? ($it['ad'] ?? '') : $it;
+                    $adet = is_array($it) ? (int) ($it['adet'] ?? 1) : 1;
+                    $u = $this->urunAdBul((string) $ad) ?: $this->urunAdBulGevsek((string) $ad);
+                    if ($u) $lines[] = ['u' => $u, 'adet' => max(1, $adet)];
+                }
+                return $lines ? $this->sepetEkleCevap($lines)
+                    : $this->cvp('Hangi ürünü almak istersiniz? Ürün adını söylemeniz yeterli. 😊', ['aksiyon' => 'siparis_basla']);
+            case 'siparis_ayarla':
+                $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+                if (!$u) return null;
+                $adet = max(1, (int) ($j['adet'] ?? 1));
+                return $this->cvp($u->ad . ' adedini ' . $adet . ' yaptım. Başka bir arzunuz var mı? 😊',
+                    ['aksiyon' => 'sepet_ayarla', 'eklenen' => [['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat]]]);
+            case 'siparis_cikar':
+                $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+                return $u ? $this->cvp($u->ad . ', siparişinizden çıkardım. Başka bir arzunuz var mı? 😊',
+                    ['aksiyon' => 'sepet_cikar', 'cikar' => ['urun_id' => (int) $u->id, 'ad' => $u->ad]]) : null;
+            case 'oneri': return $this->oneri();
+            case 'menu': return $this->menu();
+            case 'garson':
+                $hesap = (($j['tip'] ?? '') === 'hesap');
+                return $this->cvp($hesap ? 'Garsonumuza hesabınızı iletmesini söyledim, birazdan yanınızda olacak. 🙋' : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋',
+                    ['aksiyon' => 'garson_cagir', 'tip' => $hesap ? 'hesap' : 'garson']);
+            case 'bitir': return $this->cvp('Tamamdır, siparişinizi bağlıyorum. 😊', ['aksiyon' => 'siparis_bitir']);
+            case 'sohbet':
+                $cev = trim((string) ($j['cevap'] ?? ''));
+                return $cev !== '' ? $this->cvp($cev, ['kaynak' => 'niyet']) : null;
+            default: return null; // bilinmeyen -> kelime-kural zincirine dus
+        }
+    }
+
+    protected function kategoriAdBul($ad)
+    {
+        $na = $this->norm($ad);
+        if ($na === '') return null;
+        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->get(['id', 'ad']);
+        return $kats->first(fn ($k) => $this->norm($k->ad) === $na)
+            ?: $kats->first(fn ($k) => strpos($this->norm($k->ad), $na) !== false || strpos($na, $this->norm($k->ad)) !== false);
+    }
+
+    protected function urunAdBulGevsek($ad)
+    {
+        $na = $this->norm($ad);
+        if (mb_strlen($na) < 3) return null;
+        return DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)
+            ->select('id', 'ad', 'fiyat', 'aciklama', 'tukendi', 'kategori_id')->get()
+            ->first(fn ($u) => strpos($this->norm($u->ad), $na) !== false || strpos($na, $this->norm($u->ad)) !== false);
+    }
+
+    protected function niyetTablo()
+    {
+        if (!Schema::hasTable('musteri_ai_niyet')) {
+            Schema::create('musteri_ai_niyet', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->string('soru_key', 191);
+                $t->text('niyet_json');
+                $t->unsignedInteger('kullanim')->default(1);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'soru_key']);
+            });
+        }
+    }
+    protected function niyetCacheAl($key)
+    {
+        try {
+            $this->niyetTablo();
+            $row = DB::table('musteri_ai_niyet')->where('sube_id', $this->subeId)->where('soru_key', mb_substr($key, 0, 191))->first();
+            if ($row) { try { DB::table('musteri_ai_niyet')->where('id', $row->id)->increment('kullanim'); } catch (\Throwable $e) {} $d = json_decode($row->niyet_json, true); return is_array($d) ? $d : null; }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+    protected function niyetCacheYaz($key, $j)
+    {
+        try { $this->niyetTablo(); DB::table('musteri_ai_niyet')->insert(['sube_id' => $this->subeId, 'soru_key' => mb_substr($key, 0, 191), 'niyet_json' => json_encode($j, JSON_UNESCAPED_UNICODE), 'kullanim' => 1, 'created_at' => now()]); } catch (\Throwable $e) {}
+    }
+    protected function niyetGunlukSayac()
+    {
+        try { $this->niyetTablo(); return (int) DB::table('musteri_ai_niyet')->where('sube_id', $this->subeId)->whereDate('created_at', today())->count(); }
         catch (\Throwable $e) { return 0; }
     }
 

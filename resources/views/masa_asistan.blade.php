@@ -431,6 +431,7 @@ async function sunucudanCevap(soru){
     if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ siparisModu=true; sepetMerge(j.eklenen); sepetGuncelle(); }
     if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)){ siparisModu=true; j.eklenen.forEach(sepetSet); sepetGuncelle(); }
     if(j.aksiyon==='sepet_cikar' && j.cikar){ sepetCikar(j.cikar.urun_id); sepetGuncelle(); }
+    if(j.aksiyon==='siparis_bitir'){ if(siparisModu && sepet.length){ finalizeSiparis(); return ''; } }
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
     return (j.seslendir===false) ? '' : cevap;
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); return ''; }
