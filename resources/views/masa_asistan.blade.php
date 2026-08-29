@@ -147,6 +147,8 @@
 
 <script>
 const MASA = @json($masa->id);
+const SELAM = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masa asistanınızım. Menü, öneri ya da sipariş, buyurun.';
+let ilkSelamVerildi = false;
 const sohbet = document.getElementById('sohbet');
 const orb = document.getElementById('orb');
 const micBtn = document.getElementById('mic');
@@ -387,11 +389,16 @@ function dinle(){
 }
 function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
 // SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
+let _sonBaslaAn = 0;
 async function basla(){
+  const simdi = (window.performance && performance.now) ? performance.now() : (+new Date());
+  if(simdi - _sonBaslaAn < 700) return; // ekran+buton ayni anda -> cift tetiklemeyi yut
+  _sonBaslaAn = simdi;
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
-  if(sohbetAktif){ sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Dokunup konuşun ya da yazın'; return; }
+  if(sohbetAktif){ sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return; }
   sohbetAktif=true; micBtn.classList.add('acik');
-  await konus('Buyurun, sizi dinliyorum.');
+  await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM);
+  ilkSelamVerildi = true;
   let bos=0;
   while(sohbetAktif){
     const c = await dinle();
@@ -443,12 +450,23 @@ async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
 }
 
-/* ---- Acilis karsilama ---- */
-window.addEventListener('load', ()=>{
-  const selam = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masa asistanınızım. Konuşmak için mikrofona dokunun; menü, öneri ya da sipariş, buyurun.';
-  ekle('ai', selam);
-  // Tarayicilar otomatik sesi kullanici etkilesimi olmadan engelleyebilir; deneriz.
-  setTimeout(()=>konus(selam), 400);
+/* ---- Acilis: mumkunse OTOMATIK dinle; degilse ilk dokunusta (ekranin her yeri) basla ---- */
+window.addEventListener('load', async ()=>{
+  ekle('ai', SELAM);
+  let oto = false;
+  // 1) Mikrofon izni DAHA ONCE verildiyse (donen musteri) -> dokunmadan otomatik basla
+  try{
+    if(navigator.permissions && navigator.permissions.query){
+      const st = await navigator.permissions.query({name:'microphone'});
+      if(st.state === 'granted'){ oto = true; setTimeout(basla, 350); }
+    }
+  }catch(e){}
+  // 2) Degilse: ekranin HERHANGI bir yerine ilk dokunusta basla (mikrofonu aramaya gerek yok)
+  if(!oto){
+    durumEl.textContent = 'Sohbete başlamak için ekrana dokunun 👆';
+    const ilkDokun = ()=>{ document.removeEventListener('pointerdown', ilkDokun); basla(); };
+    document.addEventListener('pointerdown', ilkDokun, { once:true });
+  }
 });
 </script>
 </body>
