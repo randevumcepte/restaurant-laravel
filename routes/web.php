@@ -1163,6 +1163,13 @@ Route::post('/api/qr/asistan', function (Request $r) {
     return $a->cevapla((string) $r->soru, (string) $r->input('baglam', ''));
 });
 
+// Musteri kendi basina TUM menuyu inceler (sesli asistan kapali)
+Route::get('/api/qr/menu-tam', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    return (new \App\Services\MusteriAsistan($subeId))->menuTam();
+});
+
 // Garson/hesap cagrisi -> masa_cagrilari (KDS/patron tarafinda gorunebilir)
 Route::post('/api/qr/garson-cagir', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);

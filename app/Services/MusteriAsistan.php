@@ -147,6 +147,20 @@ class MusteriAsistan
         return $this->cvp('Bunu tam anlayamadım 🙂 Menümüzü sorabilir, "günün yemeği ne" diyebilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
     }
 
+    /** TUM menu: her kategori + urun kartlari (musteri kendi basina inceler). */
+    public function menuTam()
+    {
+        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
+        $out = [];
+        foreach ($kats as $k) {
+            $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)
+                ->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat', 'aciklama', 'tukendi']);
+            $kartlar = $urunler->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $u->tukendi ? 'Tükendi' : null, [], $u->id))->all();
+            if (!empty($kartlar)) $out[] = ['ad' => $k->ad, 'emoji' => $this->katEmoji($k->ad), 'kartlar' => $kartlar];
+        }
+        return ['ok' => 1, 'kategoriler' => $out];
+    }
+
     // -------- MENU HANDLERS --------
     protected function menu()
     {

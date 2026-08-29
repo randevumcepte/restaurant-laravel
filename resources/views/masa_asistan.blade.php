@@ -12,7 +12,10 @@
   header{ padding:14px 16px; display:flex; align-items:center; gap:10px; }
   header .logo{ background:linear-gradient(135deg,var(--mor),var(--mavi)); padding:5px 9px; border-radius:9px; font-weight:800; font-size:13px; }
   header .ad{ font-weight:800; font-size:16px; }
-  header .masa{ margin-left:auto; background:rgba(124,58,237,.25); color:#C4B5FD; font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; }
+  header .menuBtn{ margin-left:auto; background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; border:none; font-size:12.5px; font-weight:800; padding:7px 13px; border-radius:20px; box-shadow:0 4px 12px rgba(124,58,237,.4); }
+  header .masa{ margin-left:8px; background:rgba(124,58,237,.25); color:#C4B5FD; font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; }
+  .menuBaslik{ margin:16px 4px 8px; font-size:16px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px; }
+  .menuBaslik span{ font-size:22px; }
   #orb-wrap{ display:flex; flex-direction:column; align-items:center; padding:8px 0 2px; }
   #orb{ width:120px; height:120px; border-radius:50%; position:relative;
     background:conic-gradient(from 0deg,#22D3EE,#3B82F6,#8B5CF6,#EC4899,#22D3EE);
@@ -116,6 +119,7 @@
   <header>
     <span class="logo">RestoOS</span>
     <span class="ad">{{ $sube->ad ?? 'Restoran' }}</span>
+    <button class="menuBtn" onclick="menuyuIncele()">📋 Menüyü İncele</button>
     <span class="masa">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
   <div id="orb-wrap">
@@ -183,7 +187,7 @@ function kartlariEkle(kartlar){
       + `<div class="body"><div class="mad">${esc(k.ad)}</div>`
       + `<div class="mfi">${esc(k.fiyat_yazi||'')}</div>${ac}`
       + `<button class="mbtn">🙋 İstiyorum</button></div>`;
-    c.querySelector('.mbtn').addEventListener('click', e=>{ e.stopPropagation(); istiyorum(k.ad); });
+    c.querySelector('.mbtn').addEventListener('click', e=>{ e.stopPropagation(); istiyorum(k); });
     c.querySelector('.gor').addEventListener('click', e=>{ e.stopPropagation(); acGaleri(k); });
     c.addEventListener('click', ()=> sor(k.ad));
     sar.appendChild(c);
@@ -205,7 +209,7 @@ function acGaleri(k){
     im.addEventListener('error', function(){ this.style.background = gradientFor(k.ad); this.removeAttribute('src'); });
     wrap.appendChild(im);
   });
-  document.getElementById('lb-iste').onclick = ()=>{ kapatGaleri(); istiyorum(k.ad); };
+  document.getElementById('lb-iste').onclick = ()=>{ kapatGaleri(); istiyorum(k); };
   lb.querySelector('.lb-ipucu').style.display = liste.length > 1 ? 'block' : 'none';
   lb.style.display = 'flex';
 }
@@ -226,8 +230,39 @@ function kategorilerEkle(kats){
   sohbet.appendChild(sar); sohbet.scrollTop = sohbet.scrollHeight;
 }
 
-// "Istiyorum" -> urunu sepete ekle (birikimli akis)
-function istiyorum(ad){ sor(ad + ' istiyorum'); }
+// "Istiyorum" -> urunu sepete ekle. Sessiz (inceleme) modda konusmadan direkt sepete.
+function istiyorum(k){
+  const ad = (k && typeof k==='object') ? k.ad : k;
+  if(sessizMod && k && typeof k==='object' && k.urun_id){
+    sepetMerge([{urun_id:k.urun_id, ad:k.ad, adet:1, fiyat:k.fiyat}]); siparisModu=true; sepetGuncelle();
+    ekle('ai', k.ad+' sepetinize eklendi. 😊 Eklemeye devam edebilir ya da sepetten "Onayla ve Gönder"e dokunabilirsiniz.');
+    return;
+  }
+  sor(ad + ' istiyorum');
+}
+
+/* ---- MENUYU KENDIM INCELE: sesli asistani kapat, tum menuyu goster ---- */
+async function menuyuIncele(){
+  // sesli asistani/dinlemeyi kapat
+  sessizMod = true; sohbetAktif = false;
+  konusKes(); sesDurdur(); konusuyor = false; try{ rec && rec.stop(); }catch(_){}
+  micBtn.classList.remove('acik');
+  durumEl.textContent = 'Menüyü inceliyorsunuz — konuşmak için mikrofona dokunun';
+  ekle('ai', 'Buyurun, menümüzü dilediğiniz gibi inceleyin. 😊 Beğendiğinize "İstiyorum" deyin; hazır olunca sepetten gönderin. Bana dokunarak istediğinizde tekrar konuşabiliriz.');
+  try{
+    const r = await fetch('/api/qr/menu-tam?masa='+MASA);
+    const j = await r.json();
+    if(j.ok && Array.isArray(j.kategoriler)){
+      j.kategoriler.forEach(k=>{
+        const h = document.createElement('div'); h.className='menuBaslik';
+        h.innerHTML = `<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`;
+        sohbet.appendChild(h);
+        kartlariEkle(k.kartlar);
+      });
+      sohbet.scrollTop = sohbet.scrollHeight;
+    }
+  }catch(e){ ekle('ai','Menü yüklenemedi, tekrar dener misiniz?'); }
+}
 
 /* ---- Sepet (Faz 2: konusarak biriken siparis) ---- */
 let sepet = [];            // birikimli sepet (mesajlar arasi korunur)
@@ -315,6 +350,7 @@ let bargeAktif = false;      // asistan konusurken musteri konusmaya basladi mi 
 let _bekleyenCoz = null;     // siradaki kullanici sozunu bekleyen cozucu (dinle ya da barge)
 let _islenmis = 0;          // continuous tanimada islenen final sonuc sayisi
 let kufurSay = 0, kapatIstegi = false;   // kufur sayaci + 2. kufurde kapat
+let sessizMod = false;                   // musteri kendi basina menuyu inceliyor (asistan susar)
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
 // SADECE Android bedava cihaz sesi kullanir; diger herkes (iPhone/masaustu) Cloud (Puck).
@@ -356,6 +392,7 @@ function konusKes(){ if(_konusBit){ const b=_konusBit; _konusBit=null; b(null); 
 // Araya girilen metni doner (yoksa null).
 function konus(t, bargeIn){
   return new Promise((resolve)=>{
+    if(sessizMod){ resolve(null); return; }   // menuyu inceleme modunda asistan susar
     const temiz = seseHazirla(t);
     if(!temiz){ resolve(null); return; }
     konusuyor = true; bargeAktif = false;
@@ -459,6 +496,7 @@ async function basla(selamla=true){
     if(konusuyor){ konusKes(); return; } // konusurken dokunmak = KES ve dinle (kapatma degil)
     sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return;
   }
+  sessizMod=false;       // asistan geri geldi (menu inceleme modundan cik)
   sohbetAktif=true; micBtn.classList.add('acik');
   await micIzniIste();   // izin + VAD kurulumu (ilk sefer dialog cikar; izin gelince devam)
   recBaslat();           // SUREKLI tanima BASLASIN (hep acik -> araya girince ilk kelime yakalanir)
