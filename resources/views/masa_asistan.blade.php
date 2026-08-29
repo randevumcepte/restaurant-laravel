@@ -417,6 +417,18 @@ function dinle(){
   });
 }
 function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
+// Mikrofon iznini ACIKCA iste (ilk sefer dialog cikar); izin gelince tanima tek dokunusla baslar.
+let _izinVerildi = false;
+async function micIzniIste(){
+  if(_izinVerildi) return;
+  try{
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      const s = await navigator.mediaDevices.getUserMedia({audio:true});
+      s.getTracks().forEach(t=>t.stop());   // sadece izin icindi, akisi birak
+      _izinVerildi = true;
+    }
+  }catch(e){}
+}
 // SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
 let _sonBaslaAn = 0;
 async function basla(selamla=true){
@@ -429,6 +441,7 @@ async function basla(selamla=true){
     sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return;
   }
   sohbetAktif=true; micBtn.classList.add('acik');
+  await micIzniIste();   // izin dialogu (ilk sefer) -> izin gelince devam; ikinci dokunusa gerek kalmaz
   let girdi = null; // araya girmede yakalanan metin -> dinle atlanir
   if(selamla){ const bi = await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM, true); ilkSelamVerildi = true; if(bi) girdi = bi; }
   let bos=0;
