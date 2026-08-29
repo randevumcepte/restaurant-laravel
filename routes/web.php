@@ -2081,15 +2081,32 @@ Route::get('/api/patron/detay', function (Request $r) {
                 if ($oran >= 40) $ai[] = ['seviye' => 'riskli', 'mesaj' => ($basliklar[$alt] ?? 'Kayıp') . ' işlemlerinin %' . $oran . '\'ı ' . $tg->garson . '\'da yoğunlaşmış — kontrol edilmesi önerilir.'];
             }
         }
+        // Kayitlarin adisyonlari icin masa + musteri (tek ek sorgu) -> karttan gorulsun, tiklaninca detaya gidilsin
+        $aids = $kayitlar->pluck('adisyon_id')->filter()->unique()->values()->all();
+        $adisyonBilgi = [];
+        if ($aids) {
+            foreach (DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+                ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+                ->whereIn('adisyonlar.id', $aids)
+                ->select('adisyonlar.id', 'adisyonlar.kanal', 'masalar.ad as masa', 'musteriler.ad as musteri')->get() as $rw) {
+                $adisyonBilgi[$rw->id] = $rw;
+            }
+        }
+        $yerAd = ['salon' => 'Masa Servis', 'paket' => 'Paket', 'qr' => 'QR'];
         return [
             'ok' => 1, 'baslik' => ($basliklar[$alt] ?? 'Kayıp') . ' Detayı', 'tip' => 'kayip', 'ai' => $ai,
             'toplam' => (float) $kayitlar->sum('tutar'), 'adet' => $kayitlar->count(),
             'sebepler' => $sebepDagilim,
-            'kayitlar' => $kayitlar->map(fn ($k) => [
-                'garson' => $k->garson ?? '-', 'tutar' => (float) $k->tutar, 'sebep' => $k->sebep ?? '-',
-                'zaman' => $k->created_at ? \Carbon\Carbon::parse($k->created_at)->format('d.m H:i') : '',
-                'adisyon_id' => $k->adisyon_id,
-            ]),
+            'kayitlar' => $kayitlar->map(function ($k) use ($adisyonBilgi, $yerAd) {
+                $b = ($k->adisyon_id && isset($adisyonBilgi[$k->adisyon_id])) ? $adisyonBilgi[$k->adisyon_id] : null;
+                return [
+                    'garson' => $k->garson ?? '-', 'tutar' => (float) $k->tutar, 'sebep' => $k->sebep ?? '-',
+                    'zaman' => $k->created_at ? \Carbon\Carbon::parse($k->created_at)->format('d.m H:i') : '',
+                    'adisyon_id' => $k->adisyon_id,
+                    'masa' => $b ? ($b->masa ?? ($yerAd[$b->kanal] ?? null)) : null,
+                    'musteri' => $b ? $b->musteri : null,
+                ];
+            }),
         ];
     }
 
