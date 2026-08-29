@@ -2434,8 +2434,12 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     $sonuc = null;
     $kaynak = 'kural';
 
-    // 0) TESPIT (BEDAVA): "benim goremedigim ne var / nerede para kaciyor" -> proaktif tespitler
-    if ($intent === 'tespit') { $sonuc = $a->tespitCevap($p->sube_id); $kaynak = 'tespit'; }
+    // 0) TESPIT (BEDAVA): "goremedigim ne var / gozune carpan yanlis bir sey / sence sorun var mi"
+    //    gibi YORUM isteyen her soru -> proaktif tespitler (kelime listesine takilmadan)
+    if ($intent === 'tespit' || ($intent === 'bilinmiyor' && $a->analitikMi($soru))) {
+        $sonuc = $a->tespitCevap($p->sube_id);
+        $kaynak = 'tespit';
+    }
 
     // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet HARIC; "nasil gidiyor" karaktere/tespite gider)
     if (!$sonuc && $intent !== 'bilinmiyor' && $intent !== 'ozet') $sonuc = $a->cevapla($niyet);

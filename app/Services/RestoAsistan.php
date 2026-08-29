@@ -45,7 +45,9 @@ class RestoAsistan
         'tespit' => ['terslik', 'goremedigim', 'gormedigim', 'goremedigim ne', 'nerede para', 'para kaciyor', 'para kaciriyoruz',
             'kacan para', 'dikkat etmem', 'endiselendirecek', 'sorun var mi', 'ters giden', 'beni uzecek', 'ne yapmaliyim',
             'anormallik', 'gizli firsat', 'firsat var mi', 'kacak var mi', 'beni koru', 'neyi kacir', 'gozden kacan',
-            'dikkatimi ceken', 'onemli bir sey', 'nasil gidiyor sence', 'sence nasil', 'durum raporu', 'ne var ne yok'],
+            'dikkatimi ceken', 'onemli bir sey', 'nasil gidiyor sence', 'sence nasil', 'ne var ne yok',
+            'gozune carpan', 'gozune batan', 'gozune takilan', 'yanlis giden', 'yanlis bir sey', 'ters bir sey',
+            'sikinti var', 'problem var', 'yolunda gitmeyen', 'kotu giden', 'dikkat cekici', 'fark ettin', 'farkettin'],
         'finans' => ['net kar', 'kar zarar', 'zarar mi', 'karda mi', 'zararda mi', 'kar mi ediyor', 'kar mi zarar',
             'gelir gider', 'net kazanc', 'ay sonu kar', 'karli mi', 'kar ettim mi', 'ne kar ettim', 'kara mi geciyor',
             'zarardayiz', 'kar mi ettim', 'kar ettim', 'kar mi', 'kar mi var', 'kazandim mi', 'para kaldi mi'],
@@ -977,6 +979,17 @@ class RestoAsistan
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /** Soru "bir terslik/sorun/fırsat var mı, sence nasıl" gibi YORUM isteyen bir soru mu?
+     *  Kelime listesine takılmadan geniş yakalar -> tespit motoruna yönlendirilir (bedava). */
+    public function analitikMi($metin)
+    {
+        $n = $this->normalize($metin);
+        return (bool) preg_match(
+            '/(var mi|sorun|sikinti|problem|yanlis|ters|dikkat|kotu (giden|mu|gidiyor)|endise|iyi mi|iyi gidiyor mu|sence|gozune (carpan|batan|takilan)|gozden kacan|fark ?ettin|yolunda|olumsuz|riskli|tehlike|kayg|neyi kacir|nerede (kayb|para)|bir terslik|dusen bir sey)/',
+            $n
+        );
     }
 
     /** BEDAVA tespit cevabı (LLM'siz): "benim göremediğim ne var / nerede para kaçıyor" gibi
