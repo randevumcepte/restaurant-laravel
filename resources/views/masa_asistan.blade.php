@@ -410,7 +410,8 @@ async function sunucudanCevap(soru){
     const r = await fetch('/api/qr/asistan', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
       body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || ''})});
     const j = await r.json();
-    if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan urunu hatirla
+    if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan tekil urunu hatirla
+    else if(Array.isArray(j.kategoriler) || (Array.isArray(j.kartlar) && j.kartlar.length>1)) window.sonUrun=''; // kategori/coklu liste -> baglam belirsiz, temizle
     const cevap = j.cevap || 'Bir sorun oldu, tekrar dener misiniz?';
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);

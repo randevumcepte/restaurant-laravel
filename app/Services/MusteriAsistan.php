@@ -55,15 +55,23 @@ class MusteriAsistan
 
         // 2.6) SIPARIS NIYETI (Faz 2): konusarak siparis akisi
         $sip = $this->siparisCoz($soru);
-        if (empty($sip['lines'])) {
-            // Urun yok ama "siparis vermek istiyorum" -> dinlemeye gec
-            if ($this->has($c, ['siparis vermek', 'siparis verecegim', 'siparis alabilir', 'siparis verebilir', 'siparis vereyim', 'siparisim var', 'siparis verelim', 'siparis alir misin', 'siparis gecelim']) || trim($c) === 'siparis') {
-                return $this->cvp('Tabii efendim, sizi dinliyorum. Ne almak istersiniz? Dilerseniz tek tek de söyleyebilirsiniz. 😊', ['aksiyon' => 'siparis_basla']);
+        // Zayif fiiller (urun VARSA siparis sayilir): getir/olsun/ekle/bir de/soyle...
+        $zayifVerb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim', 'ekler misin']);
+        // Guclu istek (urun YOKSA bile siparis niyeti; bağlamdaki urunu ekler): istiyorum/alayim/olsun...
+        $gucluVerb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'istiyoruz', 'alacagim', 'onu istiyorum', 'bunu istiyorum', 'onu alayim', 'bunu alayim', 'siparis vermek', 'siparis verecegim', 'siparis vereyim', 'siparisim var']);
+        if (!empty($sip['lines'])) {
+            if ($zayifVerb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
+                return $this->sepetEkleCevap($sip['lines']);
             }
         } else {
-            $verb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'soyle', 'soyleyin', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim', 'ekler misin']);
-            if ($verb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
-                return $this->sepetEkleCevap($sip['lines']);
+            // Urun adi gecmiyor. Guclu istek + BAGLAM (son konusulan urun) varsa ONU ekle
+            if ($gucluVerb && $baglam) {
+                $bu = $this->urunAdBul($baglam);
+                if ($bu) return $this->sepetEkleCevap([['u' => $bu, 'adet' => 1]]);
+            }
+            // Guclu istek ama urun/baglam yok -> nazikce sor (fallback yerine)
+            if ($gucluVerb || trim($c) === 'siparis') {
+                return $this->cvp('Tabii, hangi ürünü almak istersiniz? Ürün adını söylemeniz yeterli, hemen ekleyeyim. 😊', ['aksiyon' => 'siparis_basla']);
             }
         }
 
