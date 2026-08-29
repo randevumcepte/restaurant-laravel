@@ -2450,19 +2450,27 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
         if ($kalip) { $sonuc = $kalip; $kaynak = 'kalip'; }
     }
 
-    // 3) KARAKTER (isletme ortagi) — LLM; GUNLUK LIMIT + ONBELLEK ile MALIYET KONTROLLU
+    // 3) KARAKTER (isletme ortagi) — LLM; GUNLUK LIMIT + VERI-FARKINDA AKILLI ONBELLEK
     if (!$sonuc && config('services.anthropic.sohbet_acik')) {
         $gunKey = 'resto_patron_ai_gun:' . (int) $p->sube_id . ':' . date('Y-m-d');
-        $onbKey = 'resto_patron_ai_cev:' . (int) $p->sube_id . ':' . md5(mb_strtolower(trim($soru)));
+        // VERI PARMAK IZI: rakamlar degismedikce ayni analiz tekrar kullanilir (bayat DEGIL,
+        // cunku parmak izi yeni satis/fatura olunca degisir -> otomatik tazelenir). Saat/dakika DAHIL EDILMEZ.
+        $fp = substr(md5(json_encode([
+            $brief['ciro_bugun'] ?? 0, $brief['ciro_bu_hafta'] ?? 0, $brief['misafir_bu_hafta'] ?? 0,
+            $brief['acik_masa'] ?? 0, count($brief['tespitler'] ?? []), implode(',', $brief['kritik_stok'] ?? []),
+        ], JSON_UNESCAPED_UNICODE)), 0, 12);
+        // "Genel durum" sorulari (nasil gidiyor/isler nasil/durum ne...) tek KOVADA -> farkli sorus, ayni cevap
+        $kova = ($intent === 'ozet') ? 'genel' : ('s:' . md5(mb_strtolower(trim($soru))));
+        $onbKey = 'resto_patron_ai_cev:' . (int) $p->sube_id . ':' . $kova . ':' . $fp;
         $limit = (int) config('services.anthropic.sohbet_gunluk_limit', 80);
         $onbek = cache()->get($onbKey);
         if ($onbek) {
-            // Ayni soru kisa surede tekrar -> onbellekten (BEDAVA)
+            // Ayni analiz + veri degismemis -> onbellekten (BEDAVA, kredi harcanmaz)
             $sonuc = ['cevap' => $onbek, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai_onbellek';
         } elseif ((int) cache()->get($gunKey, 0) < $limit) {
             $c = $a->patronSohbet($soru, $gecmis, $brief);
             if ($c) {
-                cache()->put($onbKey, $c, now()->addMinutes(10));
+                cache()->put($onbKey, $c, now()->addHours(2)); // veri degisince zaten parmak izi degisip tazelenir
                 cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->addHours(26));
                 $sonuc = ['cevap' => $c, 'seslendir' => true, 'kart' => null, 'intent' => 'patron']; $kaynak = 'patron_ai';
             }
