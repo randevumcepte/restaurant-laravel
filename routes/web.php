@@ -1302,47 +1302,49 @@ if (!function_exists('resto_erkek_sesler')) {
 }
 
 // Urunlere istah acici FAKE aciklama doldur (bos olanlara). Kart sunumlari zengin gorunsun.
-Route::get('/enrich-urun-aciklama', function () {
+Route::get('/enrich-urun-aciklama', function (Request $r) {
+    $force = $r->boolean('force'); // ?force=1 -> mevcut aciklamalari da UZERINE yaz (istah kabartan yeni metin)
+    // ISTAH KABARTAN, duyusal aciklamalar ("woow" etkisi)
     $harita = [
-        'izgara kofte' => 'Mangalda pişen, sulu ve baharatlı dana köfte; közlenmiş biber ve pilav eşliğinde.',
-        'kofte' => 'Özenle yoğrulmuş dana kıymadan, mangal ateşinde pişen sulu köfteler.',
-        'ezogelin' => 'Kırmızı mercimek, bulgur ve nane ile hazırlanan sıcacık geleneksel çorba.',
-        'mercimek' => 'Kadifemsi kıvamda, tereyağı ve pul biberle servis edilen mercimek çorbası.',
-        'corba' => 'Günün taze çorbası; sıcacık ve doyurucu.',
-        'latte' => 'Espresso üzerine buğulanmış ipeksi süt; yumuşak ve dengeli bir kahve keyfi.',
-        'espresso' => 'Yoğun aromalı, taze çekilmiş espresso.',
-        'cay' => 'Demli, tavşan kanı Türk çayı; ince belli bardakta.',
-        'ayran' => 'Ev tipi, bol köpüklü, buz gibi ayran.',
-        'meyve suyu' => 'Taze sıkılmış mevsim meyvelerinden, buz gibi serinletici.',
-        'limonata' => 'Taze limon ve nane ile ferahlatan ev yapımı limonata.',
-        'kola' => 'Buz gibi, serinletici gazlı içecek.',
-        'pizza' => 'İnce hamur, bol malzeme ve tel tel eriyen mozzarella.',
-        'margarita' => 'Domates sos, mozzarella ve taze fesleğenli klasik lezzet.',
-        'burger' => '180 gr dana köftesi, eriyen cheddar ve ev yapımı özel sos; çıtır patates ile.',
-        'salata' => 'Mevsim yeşillikleri, zeytinyağı ve limon ile taptaze.',
-        'sezar' => 'Marul, kıtır kruton, parmesan ve özel sezar sos.',
-        'makarna' => 'Al dente makarna, özel hazırlanan sosuyla.',
-        'bolonez' => 'Dana kıymalı zengin domates sos ile İtalyan usulü makarna.',
-        'tavuk' => 'Marine edilip ızgarada pişen, sulu ve lezzetli tavuk.',
-        'pirzola' => 'Közde pişen, mühürlenmiş kuzu pirzola.',
-        'antrikot' => 'Dinlendirilmiş, ızgarada mühürlenen sulu antrikot.',
-        'baklava' => 'Kat kat yufka, bol Antep fıstığı ve hafif şerbet.',
-        'kunefe' => 'Tel kadayıf arasında eriyen peynir, sıcacık servis; üzeri fıstıklı.',
-        'sutlac' => 'Fırında kızarmış, tarçınlı geleneksel sütlaç.',
-        'brownie' => 'Yoğun çikolatalı, içi akışkan sıcak brownie; yanında top dondurma.',
-        'dondurma' => 'Geleneksel yöntemle hazırlanan, yoğun kıvamlı dondurma.',
+        'izgara kofte' => 'Mangalın közünde cızırdayarak pişen, dışı hafif çıtır içi sulu dana köfte; yanında közlenmiş biber ve tereyağlı pilavla.',
+        'kofte' => 'Elde yoğrulmuş dana kıymanın közle buluştuğu, her lokmada baharat kokan sulu köfteler.',
+        'ezogelin' => 'Nane ve pul biberin dans ettiği, kaşığınızı bekleyen sıcacık, kadifemsi ezogelin çorbası.',
+        'mercimek' => 'Tereyağında kavrulmuş naneyle taçlanan, ipeksi kıvamda sıcacık mercimek çorbası.',
+        'corba' => 'Günün tazecik çorbası; ilk kaşıkta içinizi ısıtan, doyurucu bir başlangıç.',
+        'latte' => 'Espresso üzerine buğulanan kadifemsi süt; köpüğünde erimek isteyeceğiniz yumuşacık bir kahve.',
+        'espresso' => 'Taze çekilmiş çekirdeklerden, yoğun aroması burnunuza vuran gerçek espresso.',
+        'cay' => 'İnce belli bardakta, tavşan kanı demli, buram buram Türk çayı.',
+        'ayran' => 'Elde çırpılmış, üstü kar gibi köpüklü, buz gibi ayran.',
+        'meyve suyu' => 'O an sıkılmış mevsim meyvelerinin buz gibi, ferahlatan tazeliği.',
+        'limonata' => 'Taze limon ve naneyle çırpılmış, ilk yudumda serinleten ev yapımı limonata.',
+        'kola' => 'Buz gibi, gazı çıtırdayan, serinletici bir mola.',
+        'pizza' => 'Odun ateşi sıcaklığında, kenarı çıtır, üstünde tel tel uzayan eriyik mozzarella.',
+        'margarita' => 'Domates sosu, taze fesleğen ve eriyen mozzarellanın sadeliğindeki o mükemmel uyum.',
+        'burger' => '180 gramlık sulu dana köftesi, üzerine akan cheddar ve ev yapımı özel sos; yanında altın sarısı çıtır patates.',
+        'salata' => 'Sabah toplanmış gibi taptaze yeşillikler, sızma zeytinyağı ve limonun canlı ferahlığı.',
+        'sezar' => 'Kıtır kruton, rendelenmiş parmesan ve kremsi sezar sosunun buluştuğu doyurucu klasik.',
+        'makarna' => 'Al dente pişmiş makarna, üzerinde parlayan özel sosuyla iştah kabartan bir tabak.',
+        'bolonez' => 'Saatlerce pişen dana kıymalı zengin domates sos, al dente makarnaya sarılıyor.',
+        'tavuk' => 'Baharatlarda marine edilip ızgarada mühürlenen, her dilimi sulu tavuk.',
+        'pirzola' => 'Közün üzerinde mühürlenen, kemiğinden ayrılan tereyağı yumuşaklığında kuzu pirzola.',
+        'antrikot' => 'Dinlendirilip ateşte mühürlenen, ortası pembe, çatalınıza gelince eriyen sulu antrikot.',
+        'baklava' => 'Kat kat el açması yufka, bol Antep fıstığı ve hafif şerbetin çıtır çıtır buluşması.',
+        'kunefe' => 'Tel kadayıfın arasında uzayan sıcacık peynir, üzeri fıstık; ilk çatalda gönül alan tatlı.',
+        'sutlac' => 'Fırında üzeri hafif kızarmış, tarçın kokan, kaşık kaşık çocukluğunuza götüren sütlaç.',
+        'brownie' => 'Sıcacık, içi akışkan çikolatalı brownie; yanında eriyen bir top vanilyalı dondurma.',
+        'dondurma' => 'Geleneksel yöntemle çekilmiş, kaşığa direnen yoğun kıvamlı dondurma.',
     ];
     $katFallback = [
-        'baslangiclar' => 'Yemeğe iştah açıcı bir başlangıç.',
-        'salatalar' => 'Taze ve hafif; her yemeğin yanına yakışır.',
-        'izgaralar' => 'Mangal ateşinde pişen, sulu ızgara lezzeti.',
-        'ana yemekler' => 'Şefimizin özenle hazırladığı doyurucu ana yemek.',
-        'burgerler' => 'Sulu köfte, taze malzeme ve çıtır ekmek.',
-        'pizzalar' => 'İnce hamur ve bol malzemeyle fırından sıcak.',
-        'makarnalar' => 'Özel sosuyla al dente makarna.',
-        'tatlilar' => 'Tatlı krizine birebir; sıcacık ya da buz gibi.',
-        'soguk icecekler' => 'Buz gibi, serinletici içecek.',
-        'sicak icecekler' => 'Sıcacık, keyifli bir mola.',
+        'baslangiclar' => 'İştahınızı açacak, sofraya neşe katan tazecik bir başlangıç.',
+        'salatalar' => 'Taptaze yeşillikler, canlı renkler; her yemeğin yanına yakışan ferahlık.',
+        'izgaralar' => 'Mangal közünde cızırdayarak pişen, dumanı üstünde sulu ızgara lezzeti.',
+        'ana yemekler' => 'Şefin özenle hazırladığı, tabağı boşaltacağınız doyurucu bir baş yemek.',
+        'burgerler' => 'Sulu köfte, eriyen peynir ve çıtır ekmeğin efsane uyumu.',
+        'pizzalar' => 'Fırından yeni çıkmış, kenarı çıtır, üstü bol malzemeli sıcacık dilimler.',
+        'makarnalar' => 'Özel sosuna sarılmış al dente makarna; sarımsak ve peynirin daveti.',
+        'tatlilar' => 'Tatlı krizinize birebir; ilk kaşıkta "bir tane daha" dedirten mutluluk.',
+        'soguk icecekler' => 'Buz gibi, ilk yudumda serinleten ferahlık.',
+        'sicak icecekler' => 'Avucunuzu ısıtan, keyifli bir mola.',
     ];
     $norm = function ($s) {
         $s = mb_strtolower(trim((string) $s), 'UTF-8');
@@ -1353,15 +1355,15 @@ Route::get('/enrich-urun-aciklama', function () {
         ->select('urunler.id', 'urunler.ad', 'urunler.aciklama', 'menu_kategorileri.ad as kat')->get();
     $n = 0;
     foreach ($urunler as $u) {
-        if (!empty(trim((string) $u->aciklama))) continue; // dolu olani ellemme
+        if (!$force && !empty(trim((string) $u->aciklama))) continue; // force yoksa dolu olani ellemme
         $adn = $norm($u->ad);
         $ac = null;
         foreach ($harita as $k => $v) { if (strpos($adn, $norm($k)) !== false) { $ac = $v; break; } }
-        if (!$ac) $ac = $katFallback[$norm($u->kat)] ?? 'Şefimizin özenle hazırladığı lezzetlerden.';
+        if (!$ac) $ac = $katFallback[$norm($u->kat)] ?? 'Şefin özenle hazırladığı, iştah kabartan lezzetlerden.';
         DB::table('urunler')->where('id', $u->id)->update(['aciklama' => $ac]);
         $n++;
     }
-    return "Ürün açıklamaları dolduruldu: $n ürün. ✅";
+    return "Ürün açıklamaları güncellendi: $n ürün. " . ($force ? '(mevcutlar dahil üzerine yazıldı)' : '(sadece boşlar)') . ' ✅';
 });
 
 // ---- URUN FOTOGRAFLARI (isletme panelinden yukleme) ----

@@ -246,11 +246,18 @@ class MusteriAsistan
                 ->where('recete_kalemleri.recete_id', $malz)->orderByDesc('recete_kalemleri.miktar')->limit(4)->pluck('malzemeler.ad')->all();
         }
         $kat = DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad');
-        // Akici, garson agzindan; FIYAT YOK (kart uzerinde zaten yaziyor)
-        $cevap = rtrim(trim($u->ad), '.') . '.';
-        if (!empty($u->aciklama)) $cevap .= ' ' . rtrim(trim($u->aciklama), '.') . '.';
-        if (!empty($icindekiler)) $cevap .= ' İçinde ' . $this->dogalListe($icindekiler) . ' bulunuyor.';
-        $cevap .= ' Beğendiyseniz "İstiyorum" demeniz yeterli, garsonumuzu hemen çağırayım. 😊';
+        // ISTAH KABARTAN garson agzi: coskulu acilis + duyusal aciklama + davetkar kapanis (FIYAT YOK; kartta yaziyor)
+        $acilislar = ['Harika seçim! ', 'Nefis bir tercih! ', 'Bunu çok seveceksiniz! ', 'Favorilerimizden! ', 'Ooo, çok güzel seçtiniz! ', ''];
+        $kapanislar = [
+            'Sıcacık, tazecik önünüze gelsin mi? "İstiyorum" demeniz yeterli. 😊',
+            'Ağzınıza layık; hemen hazırlatalım mı? "İstiyorum" deyin yeter. 😊',
+            'Bir tabak nefis, değil mi? Beğendiyseniz "İstiyorum" deyin, hemen geliyor. 😋',
+            'Kaçırılmaz; "İstiyorum" demeniz yeterli, garsonumuz hemen getirsin. 😊',
+        ];
+        $cevap = $acilislar[array_rand($acilislar)] . rtrim(trim($u->ad), '.') . '. ';
+        if (!empty($u->aciklama)) $cevap .= rtrim(trim($u->aciklama), '.') . '. ';
+        if (!empty($icindekiler)) $cevap .= 'İçinde ' . $this->dogalListe($icindekiler) . ' var. ';
+        $cevap .= $kapanislar[array_rand($kapanislar)];
         return $this->cvp($cevap, ['tip' => 'urun', 'urun_baglam' => $u->ad, 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
     }
 
