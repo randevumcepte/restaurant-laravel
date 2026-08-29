@@ -438,7 +438,7 @@ async function garsonCagir(tip){
 
 /* ---- Acilis karsilama ---- */
 window.addEventListener('load', ()=>{
-  const selam = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masanızın asistanıyım. Menüyü tanıtabilir, öneride bulunabilir ya da siparişinizi alabilirim. Benimle konuşmak için aşağıdaki mikrofona bir kez dokunmanız yeterli; sonrasında elinizi değmeden serbestçe konuşabilirsiniz.';
+  const selam = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masa asistanınızım. Konuşmak için mikrofona dokunun; menü, öneri ya da sipariş, buyurun.';
   ekle('ai', selam);
   // Tarayicilar otomatik sesi kullanici etkilesimi olmadan engelleyebilir; deneriz.
   setTimeout(()=>konus(selam), 400);
