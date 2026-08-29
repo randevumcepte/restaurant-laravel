@@ -21,7 +21,9 @@ class RestoAsistan
     protected $niyetAnahtarlari = [
         'ciro' => ['ciro', 'kasa', 'hasilat', 'kazanc', 'kazandik', 'ne kadar kazan', 'kac para', 'ne kadar para',
             'tahsilat', 'gelir', 'kac lira', 'ne kadar sattik', 'ne kadar satis', 'satis ne kadar', 'toplam satis',
-            'bugun ne kadar', 'kasada ne', 'kasa ne durumda', 'kac tl'],
+            'bugun ne kadar', 'kasada ne', 'kasa ne durumda', 'kac tl',
+            'kasa rapor', 'kasa raporu', 'ciro rapor', 'gelir rapor', 'satis rapor', 'hasilat rapor', 'kazanc rapor',
+            'hesabi cikar', 'hesap durumu', 'kasa durumu', 'kasa dokum'],
         'garson' => ['garson', 'personel', 'eleman', 'kim satti', 'en cok kim', 'kim en cok', 'hangi garson', 'hangi personel',
             'hangi eleman', 'kim ne satti', 'en iyi garson', 'en iyi personel', 'en cok satan personel', 'en cok satan garson',
             'en cok satan kim', 'satan kim', 'kim getirdi', 'kim calisti', 'performans',
@@ -36,7 +38,9 @@ class RestoAsistan
         'iptal' => ['iptal adisyon', 'iptal', 'iptaller', 'iptal olan', 'kac iptal', 'iptal edilen'],
         'musteri' => ['musteri', 'kac kisi', 'kac musteri', 'yeni musteri', 'sadik musteri', 'misafir sayisi', 'kac misafir'],
         'ozet' => ['ozet', 'genel durum', 'gun sonu', 'nasil gidiyor', 'nasil gecti', 'isler nasil', 'bugun nasil',
-            'ne alemde', 'durum ne', 'rapor ver', 'gunumuz nasil'],
+            'ne alemde', 'durum ne', 'rapor ver', 'gunumuz nasil',
+            'rapor', 'raporu', 'raporunu', 'rapor cikar', 'raporu cikar', 'durum raporu', 'genel rapor',
+            'isletme raporu', 'ozet cikar', 'ozetle'],
         // --- yeni modüller ---
         'tespit' => ['terslik', 'goremedigim', 'gormedigim', 'goremedigim ne', 'nerede para', 'para kaciyor', 'para kaciriyoruz',
             'kacan para', 'dikkat etmem', 'endiselendirecek', 'sorun var mi', 'ters giden', 'beni uzecek', 'ne yapmaliyim',
