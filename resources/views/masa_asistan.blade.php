@@ -147,7 +147,7 @@
 
 <script>
 const MASA = @json($masa->id);
-const SELAM = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masa asistanınızım. Menü, öneri ya da sipariş, buyurun.';
+const SELAM = 'Hoş geldiniz! Ben {{ $sube->ad ?? "restoranınızın" }} masa asistanınızım. Size nasıl yardımcı olabilirim? Benimle konuşmak için aşağıdaki mikrofon işaretine bir kez dokunmanız yeterli, gerisini bana bırakın.';
 let ilkSelamVerildi = false;
 const sohbet = document.getElementById('sohbet');
 const orb = document.getElementById('orb');
