@@ -275,15 +275,19 @@ function bitirMi(t){
 async function finalizeSiparis(){
   if(!sepet.length) return;
   if(sepetEl){ const b=sepetEl.querySelector('.onayla'); if(b){ b.disabled=true; b.textContent='Gönderiliyor…'; } }
-  const adet = sepet.reduce((s,k)=>s+k.adet,0);
-  let lo = Math.max(15, Math.min(35, Math.round((14 + adet*2)/5)*5)); const hi = lo + 10;
   try{
     const r = await fetch('/api/qr/siparis-gonder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({masa:MASA, kalemler: JSON.stringify(sepet.map(k=>({urun_id:k.urun_id, adet:k.adet})))})});
     const j = await r.json();
     if(j.ok){
       sepet=[]; siparisModu=false; sepetGuncelle();
-      const m = 'Harika, teşekkür ederim! 🎉 Siparişinizi mutfağımıza ilettim; yaklaşık '+lo+'-'+hi+' dakika içinde özenle hazırlanıp masanıza gelecek. Afiyet olsun!';
+      const kapanislar = [
+        'Harika, teşekkür ederim! 🎉 Siparişinizi mutfağımıza ilettim, hemen hazırlanmaya başlıyor. Sıcacık masanıza gelecek, afiyet olsun!',
+        'Süper, aldım! 🎉 Mutfağımız hemen işe koyuldu; birazdan tazecik önünüzde olur. Afiyet olsun!',
+        'Teşekkür ederim! 🎉 Siparişiniz mutfağa geçti, taptaze hazırlanıp masanıza gelecek. Afiyet olsun!',
+        'Harika seçim! 🎉 Mutfağımıza ilettim, özenle hazırlanıyor; az sonra sofranızda. Afiyet olsun!',
+      ];
+      const m = kapanislar[Math.floor((window.performance?performance.now():Date.now())) % kapanislar.length];
       ekle('ai', m); await konus(m);
     } else { ekle('ai', j.hata || 'Siparişi gönderemedim, tekrar dener misiniz?'); sepetGuncelle(); }
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); sepetGuncelle(); }
