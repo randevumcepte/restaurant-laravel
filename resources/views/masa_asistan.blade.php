@@ -341,20 +341,49 @@ function seseHazirla(t){
     .replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira')
     .replace(/₺/g,' lira');
 }
-// KONUS: mic KAPALI iken konusur; SES BITINCE cozulur (await'lenebilir). Boylece tarayici sesi bloklanmaz.
-function konus(t){
+// Duyulanda, TTS metninde OLMAYAN (yeni/gercek) kelime sayisi -> yankiyi (asistanin kendi sesini) elemek icin
+function yeniKelimeSayisi(duyulan, tts){
+  const ayikla = s => (s||'').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+  const tw = new Set(ayikla(tts));
+  return ayikla(duyulan).filter(w=>w.length>2 && !tw.has(w)).length;
+}
+let _konusBit = null;                 // aktif konusmayi disaridan kesmek icin
+function konusKes(){ if(_konusBit){ sesDurdur(); const b=_konusBit; b(null); } }
+// KONUS: konusur; SES BITINCE cozulur. bargeIn=true ise KONUSURKEN dinler, musteri yeni bir sey soylerse sesi keser ve o metni doner.
+function konus(t, bargeIn){
   return new Promise(async (resolve)=>{
     const temiz = seseHazirla(t);
-    if(!temiz){ resolve(); return; }
-    try{ rec && rec.stop(); }catch(_){}   // konusurken dinleme OLMASIN
+    if(!temiz){ resolve(null); return; }
+    try{ rec && rec.stop(); }catch(_){}
     konusuyor = true;
     let bitti = false;
-    const emniyet = setTimeout(()=>bit(), Math.min(20000, 2600 + temiz.length*95)); // ses hic bitmezse takilma
-    function bit(){ if(bitti) return; bitti=true; clearTimeout(emniyet); konusuyor=false; resolve(); }
+    const emniyet = setTimeout(()=>bit(null), Math.min(20000, 2600 + temiz.length*95));
+    function bit(barge){
+      if(bitti) return; bitti=true; clearTimeout(emniyet); _konusBit=null; konusuyor=false;
+      if(bargeIn && rec){ try{ rec.onresult=null; rec.onerror=null; rec.onend=null; rec.stop(); }catch(_){} }
+      resolve(barge || null);
+    }
+    _konusBit = bit;
+    // ARAYA GIRME (barge-in): Android disinda (speechSynthesis+tanima catismasin). Konusurken yeni soru gelirse kes.
+    if(bargeIn && rec && !isAndroid){
+      setTimeout(()=>{
+        if(bitti) return;
+        try{
+          rec.onresult=(e)=>{
+            let s=''; for(let i=0;i<e.results.length;i++) s += e.results[i][0].transcript;
+            const fin = e.results[e.results.length-1].isFinal;
+            const yeni = yeniKelimeSayisi(s, t);            // asistanin kendi sesini (yanki) ele
+            if(yeni>=2 || (fin && yeni>=1)){ sesDurdur(); bit(s.trim()); }
+          };
+          rec.onerror=()=>{}; rec.onend=()=>{};
+          rec.start();
+        }catch(_){}
+      }, 250);
+    }
     let ok = false;
-    if(isAndroid){ ok = cihazKonus(temiz, bit); if(!ok) ok = await cloudKonus(temiz, bit); }
-    else { ok = await cloudKonus(temiz, bit); if(!ok) ok = cihazKonus(temiz, bit); }
-    if(!ok) bit();
+    if(isAndroid){ ok = cihazKonus(temiz, ()=>bit(null)); if(!ok) ok = await cloudKonus(temiz, ()=>bit(null)); }
+    else { ok = await cloudKonus(temiz, ()=>bit(null)); if(!ok) ok = cihazKonus(temiz, ()=>bit(null)); }
+    if(!ok) bit(null);
   });
 }
 
@@ -395,12 +424,16 @@ async function basla(selamla=true){
   if(simdi - _sonBaslaAn < 700) return; // ekran+buton ayni anda -> cift tetiklemeyi yut
   _sonBaslaAn = simdi;
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
-  if(sohbetAktif){ sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return; }
+  if(sohbetAktif){
+    if(konusuyor){ konusKes(); return; } // konusurken dokunmak = KES ve dinle (kapatma degil)
+    sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return;
+  }
   sohbetAktif=true; micBtn.classList.add('acik');
-  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM); ilkSelamVerildi = true; }
+  let girdi = null; // araya girmede yakalanan metin -> dinle atlanir
+  if(selamla){ const bi = await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM, true); ilkSelamVerildi = true; if(bi) girdi = bi; }
   let bos=0;
   while(sohbetAktif){
-    const c = await dinle();
+    const c = girdi || await dinle(); girdi = null;
     if(!sohbetAktif) break;
     if(!c){ if(++bos>=2){ await konus('Başka bir arzunuz yoksa dinlemeyi kapatıyorum. İstediğinizde mikrofona tekrar dokunun.'); break; } await konus('Sizi tam anlayamadım, tekrar eder misiniz?'); continue; }
     bos=0;
@@ -408,7 +441,7 @@ async function basla(selamla=true){
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
     if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap = await sunucudanCevap(c);
-    if(cevap) await konus(cevap);
+    if(cevap){ const bi = await konus(cevap, true); if(bi) girdi = bi; } // konusurken araya girilirse o metni isle
   }
   sohbetAktif=false; micBtn.classList.remove('acik');
   if(!konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
@@ -468,7 +501,7 @@ window.addEventListener('load', async ()=>{
   // Ilk dokunus (ekranin herhangi yeri): karsilamayi KES ve HEMEN dinlemeye basla -> TEK dokunus yeterli
   const ilkDokun = ()=>{
     document.removeEventListener('pointerdown', ilkDokun);
-    sesDurdur(); konusuyor = false;              // uzun karsilamayi bekleme, hemen basla
+    konusKes();                                  // uzun karsilamayi HEMEN kes
     if(!sohbetAktif) basla(false);
   };
   document.addEventListener('pointerdown', ilkDokun, { once:true });
