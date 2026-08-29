@@ -2175,17 +2175,19 @@ Route::get('/api/patron/detay', function (Request $r) {
         if ((float) $a->ara_toplam > 0 && (float) $a->indirim > (float) $a->ara_toplam * 0.15) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Yüksek iskonto: ' . number_format($a->indirim, 0, ',', '.') . 'TL (ara toplamın %' . round($a->indirim / $a->ara_toplam * 100) . '\'ı).'];
         // Bu adisyona birlesmis masalar (bu adisyon hedefse) -> kendisi + kaynak masalar
         $birlesik = [];
+        $ayrilabilir = []; // gruptan ayrilabilecek kaynak masalar (id+ad) -> "Masa Ayir"
         if ($masa) {
             $kaynakMasaIdler = DB::table('adisyon_masa_loglari')->where('adisyon_id', $id)->where('islem', 'birlestirme')
-                ->pluck('eski_masa_id')->filter()->all();
+                ->pluck('eski_masa_id')->filter()->unique()->all();
             if ($kaynakMasaIdler) {
-                $adlar = DB::table('masalar')->whereIn('id', $kaynakMasaIdler)->pluck('ad')->all();
-                $birlesik = array_values(array_unique(array_merge([$masa], $adlar)));
+                $adMap = DB::table('masalar')->whereIn('id', $kaynakMasaIdler)->pluck('ad', 'id');
+                $birlesik = array_values(array_unique(array_merge([$masa], $adMap->values()->all())));
+                foreach ($adMap as $mid => $mad) $ayrilabilir[] = ['id' => (int) $mid, 'ad' => $mad];
             }
         }
         return [
             'ok' => 1, 'baslik' => ($masa ?? $kanalAd) . ' · Adisyon', 'tip' => 'adisyon', 'ai' => $ai,
-            'masa' => $masa, 'birlesik_masalar' => $birlesik,
+            'masa' => $masa, 'birlesik_masalar' => $birlesik, 'ayrilabilir_masalar' => $ayrilabilir,
             'ozet' => ['Masa' => $masa ?? $kanalAd, 'Garson' => $garson ?? '-', 'Kişi' => (string) $a->misafir_sayisi, 'Süre' => $sureStr],
             'durum' => $a->durum, 'kanal' => $kanalAd,
             'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
@@ -4236,6 +4238,50 @@ Route::post('/api/patron/masa-grupla', function (Request $r) {
     $yeniMisafir = $yeniAcildi ? (int) $hedef->misafir_sayisi : ((int) $hedef->misafir_sayisi + $ekMisafir);
     DB::table('adisyonlar')->where('id', $hedef->id)->update(['ara_toplam' => $ara, 'toplam' => $top, 'misafir_sayisi' => $yeniMisafir, 'updated_at' => now()]);
     return ['ok' => 1, 'mesaj' => 'Masalar birleştirildi.', 'adisyon_id' => $hedef->id, 'yeni_acildi' => $yeniAcildi, 'toplam' => $top];
+});
+
+// ---- MASA AYIR: birlesik gruptan bir masayi ayir -> o masaya YENI bagimsiz adisyon (secili urunlerle) ----
+// Senaryo: 3 masa birlestirildi, bir alt-grup kalan masada oturuyor; onlari ayri hesaba/masaya al.
+Route::post('/api/patron/masa-ayir', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!_restoYetkiVar($p, 'adisyon_birlestir') && !_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa ayırma yetkiniz yok.'];
+    $ana = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$ana || $ana->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyon bulunamadı'];
+    $masaId = (int) $r->masa_id;
+    // Bu masa gercekten bu adisyonun birlesik grubunda (kaynak) mi?
+    $log = DB::table('adisyon_masa_loglari')->where('adisyon_id', $ana->id)->where('islem', 'birlestirme')
+        ->where('eski_masa_id', $masaId)->first();
+    if (!$log) return ['ok' => 0, 'hata' => 'Bu masa bu birleşik grupta değil.'];
+    $ayrilanMasa = DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->first();
+    if (!$ayrilanMasa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    if (DB::table('adisyonlar')->where('masa_id', $masaId)->where('durum', 'acik')->exists()) {
+        return ['ok' => 0, 'hata' => $ayrilanMasa->ad . ' zaten dolu.'];
+    }
+    // Ayrilan masaya yeni acik adisyon
+    $misafir = max(1, (int) ($r->misafir ?? 1));
+    $yeniId = DB::table('adisyonlar')->insertGetId([
+        'sube_id' => $ana->sube_id, 'masa_id' => $masaId, 'kanal' => 'salon', 'misafir_sayisi' => $misafir, 'durum' => 'acik',
+        'acan_personel_id' => $p->id, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+        'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    // Secili kalemleri yeni adisyona tasi (bos gelirse masa bos acilir)
+    $ids = array_filter(array_map('intval', explode(',', (string) $r->kalem_idler)));
+    if ($ids) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $ana->id)->whereIn('id', $ids)
+            ->where('durum', '!=', 'iptal')->update(['adisyon_id' => $yeniId, 'updated_at' => now()]);
+    }
+    // Masa gruptan cikar (log sil) + dolu yap
+    DB::table('adisyon_masa_loglari')->where('id', $log->id)->delete();
+    DB::table('masalar')->where('id', $masaId)->update(['durum' => 'dolu']);
+    // Iki adisyonu da yeniden hesapla
+    foreach ([$ana->id, $yeniId] as $aid) {
+        $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $aid)->where('durum', '!=', 'iptal')->sum('tutar');
+        $adis = DB::table('adisyonlar')->find($aid);
+        $top = max(0, $ara - (float) $adis->indirim - (float) $adis->ikram);
+        DB::table('adisyonlar')->where('id', $aid)->update(['ara_toplam' => $ara, 'toplam' => $top, 'updated_at' => now()]);
+    }
+    return ['ok' => 1, 'mesaj' => $ayrilanMasa->ad . ' ayrıldı, kendi hesabı açıldı.', 'yeni_adisyon_id' => $yeniId];
 });
 
 // ---- ADISYON BOL ----
