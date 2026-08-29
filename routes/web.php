@@ -94,7 +94,8 @@ if (!function_exists('_paketSiparisAl')) {
             $mid = $musteri->id;
         }
 
-        $adisyonId = DB::table('adisyonlar')->insertGetId([
+        if (function_exists('_paketOdemeEnsure')) _paketOdemeEnsure();
+        $satir = [
             'sube_id' => $sube->id, 'masa_id' => null, 'musteri_id' => $mid, 'kurye_id' => null,
             'kanal' => 'paket', 'platform' => $platform,
             'platform_siparis_no' => $data['siparis_no'] ?? (strtoupper(substr($platform, 0, 3)) . random_int(100000, 999999)),
@@ -102,7 +103,12 @@ if (!function_exists('_paketSiparisAl')) {
             'teslimat_durumu' => 'hazirlaniyor', 'misafir_sayisi' => 1, 'durum' => 'acik',
             'acan_personel_id' => null, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
             'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        ];
+        // Odeme yontemi: gelen veri veya platforma gore varsayilan
+        if (Schema::hasColumn('adisyonlar', 'odeme_yontemi')) {
+            $satir['odeme_yontemi'] = ($data['odeme_yontemi'] ?? null) ?: (function_exists('_paketOdemeVarsayilan') ? _paketOdemeVarsayilan($platform) : 'nakit');
+        }
+        $adisyonId = DB::table('adisyonlar')->insertGetId($satir);
 
         $ara = 0;
         foreach (($data['kalemler'] ?? []) as $k) {
@@ -4566,15 +4572,40 @@ Route::post('/api/patron/cari-ekle', function (Request $r) {
     return ['ok' => 1, 'id' => (int) $id, 'ad' => $ad, 'tip' => $tip];
 });
 
+// Paket odeme yontemi: kolonu kur + bos siparisleri platforma gore doldur (tek sefer, stabil)
+if (!function_exists('_paketOdemeVarsayilan')) {
+    function _paketOdemeVarsayilan($platform, $id = 0)
+    {
+        $online = ['getir', 'yemeksepeti', 'trendyol', 'migros'];
+        if (in_array(strtolower((string) $platform), $online)) return 'online';
+        return ((int) $id % 2 === 0) ? 'nakit' : 'kredi'; // whatsapp/telefon: kapida nakit/kart
+    }
+}
+if (!function_exists('_paketOdemeEnsure')) {
+    function _paketOdemeEnsure()
+    {
+        if (!Schema::hasColumn('adisyonlar', 'odeme_yontemi')) {
+            try { Schema::table('adisyonlar', fn ($t) => $t->string('odeme_yontemi', 20)->nullable()); } catch (\Throwable $e) { return; }
+        }
+        try {
+            foreach (DB::table('adisyonlar')->where('kanal', 'paket')->whereNull('odeme_yontemi')->get(['id', 'platform']) as $b) {
+                DB::table('adisyonlar')->where('id', $b->id)->update(['odeme_yontemi' => _paketOdemeVarsayilan($b->platform, $b->id)]);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+}
+
 Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
+    _paketOdemeEnsure();
     $simdi = now();
     $siparisler = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.platform_siparis_no', 'adisyonlar.teslimat_durumu',
-            'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.teslimat_adres',
+            'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.teslimat_adres', 'adisyonlar.odeme_yontemi',
             'musteriler.ad as musteri', 'musteriler.telefon', 'kuryeler.ad as kurye')
         ->orderByDesc('adisyonlar.acilis')->get()
         ->map(function ($s) use ($simdi) {
@@ -4582,6 +4613,7 @@ Route::get('/api/paket', function (Request $r) {
             $s->gecen_dk = $dk;
             $s->gecen_metin = $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk');
             $s->urun_adet = (int) DB::table('adisyon_kalemleri')->where('adisyon_id', $s->id)->sum('adet');
+            $s->odeme_yontemi = $s->odeme_yontemi ?: _paketOdemeVarsayilan($s->platform, $s->id);
             return $s;
         });
     return ['ok' => 1, 'siparisler' => $siparisler];
@@ -4610,6 +4642,7 @@ Route::get('/api/paket/{id}', function (Request $r, $id) {
         'teslimat_adres' => $a->teslimat_adres ?: $a->musteri_adres,
         'kurye' => $a->kurye,
         'kurye_tel' => $a->kurye_tel,
+        'odeme_yontemi' => ($a->odeme_yontemi ?? null) ?: _paketOdemeVarsayilan($a->platform, $a->id),
         'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m.Y H:i') : '-',
         'gecen_dk' => $dk,
         'gecen_metin' => $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk'),
