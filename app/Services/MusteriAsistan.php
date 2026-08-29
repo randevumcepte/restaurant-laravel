@@ -90,10 +90,11 @@ class MusteriAsistan
         if ($this->has($c, ['makarna', 'makarnalar', 'pasta'])) return $this->kategori(['makarnalar'], 'Makarnalarımız', '🍝');
         if ($this->has($c, ['izgara', 'kebap', 'et', 'et yemek'])) return $this->kategori(['izgaralar', 'ana yemekler'], 'Izgara ve Ana Yemekler', '🍖');
         if ($this->has($c, ['vejetaryen', 'etsiz', 'vegan'])) return $this->vejetaryen();
-        if ($this->has($c, ['menu', 'ne var', 'neler var', 'yemek listesi', 'kategoriler', 'neler yapiyorsunuz'])) return $this->menu();
-        // 4b) DINAMIK kategori: menudeki herhangi bir kategori adi ("ana yemekler", "makarnalara bakalim", "tatlilara")
+        // 4b) DINAMIK kategori ONCE: "ana yemeklerde ne var", "makarnalar", "tatlilara" -> ilgili kategori
+        //     (genel "ne var" menusunden ONCE ki "ana yemeklerde ne var" genel menuyu acmasin)
         $kat = $this->kategoriEslesme($c);
         if ($kat) return $this->kategori([$this->norm($kat->ad)], $kat->ad, $this->katEmoji($kat->ad));
+        if ($this->has($c, ['menu', 'ne var', 'neler var', 'yemek listesi', 'kategoriler', 'neler yapiyorsunuz'])) return $this->menu();
 
         // 5) Belirli urun (fiyat / nasil / icinde ne)
         $urun = $this->urunBul($c);
