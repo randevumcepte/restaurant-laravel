@@ -309,6 +309,7 @@ let konusuyor = false;
 let bargeAktif = false;      // asistan konusurken musteri konusmaya basladi mi (VAD)
 let _bekleyenCoz = null;     // siradaki kullanici sozunu bekleyen cozucu (dinle ya da barge)
 let _islenmis = 0;          // continuous tanimada islenen final sonuc sayisi
+let kufurSay = 0, kapatIstegi = false;   // kufur sayaci + 2. kufurde kapat
 function sesDurdur(){ try{ synth && synth.cancel(); }catch(_){}; try{ sesCalar.pause(); }catch(_){} }
 function temizle(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim(); }
 // SADECE Android bedava cihaz sesi kullanir; diger herkes (iPhone/masaustu) Cloud (Puck).
@@ -468,7 +469,8 @@ async function basla(selamla=true){
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
     if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap = await sunucudanCevap(c);
-    if(cevap){ const bi = await konus(cevap, true); if(bi) girdi = bi; }   // araya girilirse yakalanan metni isle
+    if(cevap){ const bi = await konus(cevap, true); if(bi){ girdi = bi; } }   // araya girilirse yakalanan metni isle
+    if(kapatIstegi){ kapatIstegi=false; break; }   // 2. kufur -> gorusmeyi kapat
   }
   sohbetAktif=false; micBtn.classList.remove('acik');
   try{ rec.stop(); }catch(_){}   // sohbet bitti -> continuous tanimayi durdur
@@ -484,6 +486,12 @@ async function sunucudanCevap(soru){
     const j = await r.json();
     if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan tekil urunu hatirla
     else if(Array.isArray(j.kategoriler) || (Array.isArray(j.kartlar) && j.kartlar.length>1)) window.sonUrun=''; // kategori/coklu liste -> baglam belirsiz, temizle
+    // KUFUR: 1. kez uyar; 2. kez kapat
+    if(j.aksiyon==='kufur'){
+      kufurSay++;
+      if(kufurSay>=2){ kapatIstegi=true; const m='Maalesef bu şekilde devam edemeyeceğim, görüşmeyi kapatıyorum. İyi günler dilerim.'; ekle('ai', m); return m; }
+      const uyari = j.cevap || 'Efendim, sizi saygıya davet ediyorum.'; ekle('ai', uyari); return uyari;
+    }
     const cevap = j.cevap || 'Bir sorun oldu, tekrar dener misiniz?';
     ekle('ai', cevap);
     if(Array.isArray(j.kategoriler) && j.kategoriler.length) kategorilerEkle(j.kategoriler);

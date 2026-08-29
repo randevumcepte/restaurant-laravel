@@ -24,6 +24,11 @@ class MusteriAsistan
         $c = $this->norm($soru);
         if ($c === '') return $this->cvp('Sizi dinliyorum. Menümüzü sorabilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
 
+        // 0) KUFUR / HAKARET -> saygiya davet (devam ederse on yuz kapatir)
+        if ($this->kufurMu($c)) {
+            return $this->cvp('Efendim, sizi saygıya davet ediyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi kapatmak zorunda kalacağım.', ['aksiyon' => 'kufur']);
+        }
+
         // 1) Kimlik / selam / tesekkur (musteri dostu)
         if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
             return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
@@ -968,6 +973,29 @@ class MusteriAsistan
         foreach ($ks as $k) {
             $kk = $this->norm($k);
             if ($kk !== '' && strpos($hay, ' ' . $kk) !== false) return true;
+        }
+        return false;
+    }
+
+    /** Genis kufur/hakaret tespiti (kelime sinirinda; sikayet/sikinti/malzeme gibi masum kelimeleri tetiklemez). */
+    protected function kufurMu($c)
+    {
+        $n = ' ' . $c . ' ';
+        // Kelime sinirinda (ek toleransli) eslesen net kufur/hakaret kokleri. Kisa/riskli olanlar (sik, mal, bok) ekli formda.
+        $set = [
+            'amk', 'amq', 'aq', 'amina', 'aminako', 'amcik', 'amcigin', 'amina koyay', 'amina kodu', 'aminakoyum',
+            'anani sik', 'ananisik', 'anasini sik', 'avradini', 'avradina', 'avradinin', 'sulaleni', 'sulaleni sik', 'sikeyim seni',
+            'orospu', 'orospucocu', 'orospu cocu', 'o cocugu', 'pic ', 'picler', 'piclik', 'kahpe', 'kahpelik',
+            'surtuk', 'yavsak', 'yavsagi', 'pezevenk', 'gavat', 'godos', 'godoş', 'ibne', 'ibnelik', 'pust', 'kaltak', 'kevase', 'kevaşe',
+            'serefsiz', 'namussuz', 'sik tir', 'siktir', 'siktir', 'sikeyim', 'sikeym', 'sikik', 'sikko', 'sikici', 'siktigim', 'sikims', 'sikimde', 'sikimsonik',
+            'yarrak', 'yarrag', 'yarak', 'tasak', 'tasagi', 'gotveren', 'gotlek', 'gotunden', 'gotune koy',
+            'boktan', 'bokla', 'boklu', 'bok herif', 'bok cuval', 'sicayim', 'sicarim', 'osuruk', 'osuruk',
+            'salak', 'aptal', 'gerizekali', 'gerzek', 'dangalak', 'denyo', 'embesil', 'ahmak', 'dallama', 'hoduk', 'mal herif', 'mal misin', 'defol', 'gebersin', 'geber',
+        ];
+        foreach ($set as $k) {
+            $kk = $this->norm($k);
+            if ($kk === '') continue;
+            if (preg_match('/(?:^| )' . preg_quote($kk, '/') . '/u', $n)) return true;
         }
         return false;
     }
