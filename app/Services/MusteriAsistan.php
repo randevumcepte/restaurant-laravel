@@ -58,12 +58,13 @@ class MusteriAsistan
             }
         }
 
-        // 2.35) GORME istegi (siparis DEGIL): "burgerleri gormek istiyorum", "menuyu goster", "salatalara bakalim"
+        // 2.35) GORME istegi (siparis DEGIL): "burgerleri gormek istiyorum", "menuyu goster", "coban salataya bakalim"
         if ($this->has($c, ['gormek', 'goster', 'gorebilir', 'gorelim', 'gorsem', 'bakmak', 'bakalim', 'bakabilir', 'goz at', 'goz atalim', 'incele', 'menusu', 'menusunu', 'listesi', 'listesini'])) {
-            $kv = $this->kategoriEslesme($c);
-            if ($kv) return $this->kategori([$this->norm($kv->ad)], $kv->ad, $this->katEmoji($kv->ad));
+            // ONCE belirli URUN ("coban salataya bakalim" -> Coban Salata, kategori Salatalar DEGIL)
             $uv = $this->urunBul($c);
             if ($uv) return $this->urunTanit($uv, $c);
+            $kv = $this->kategoriEslesme($c);
+            if ($kv) return $this->kategori([$this->norm($kv->ad)], $kv->ad, $this->katEmoji($kv->ad));
             return $this->menu();
         }
 
