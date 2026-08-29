@@ -53,17 +53,25 @@ class MusteriAsistan
             }
         }
 
-        // 2.6) SIPARIS NIYETI (Faz 2): konusarak siparis akisi
+        // 2.55) Belirli urun + BILGI istegi -> urunu ANLAT (siparis/kategori/oneri'den ONCE)
+        //       "ezogelin corbasi hakkinda bilgi ver" -> corba kategorisi DEGIL, o urunun detayi
+        $bilgiIster = $this->has($c, ['hakkinda', 'bilgi ver', 'bilgi al', 'bilgi verir', 'bilgi rica', 'anlat', 'anlatir', 'tanit', 'tanitir', 'nedir', 'ne demek', 'ozellik', 'nasil bir', 'detay', 'aciklar']);
+        if ($bilgiIster) {
+            $bu = $this->urunBul($c) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+            if ($bu) return $this->urunTanit($bu, $c);
+        }
+
+        // 2.6) SIPARIS NIYETI (Faz 2): konusarak siparis akisi (BILGI istegi ise siparis SAYMA)
         $sip = $this->siparisCoz($soru);
         // Zayif fiiller (urun VARSA siparis sayilir): getir/olsun/ekle/bir de/soyle...
         $zayifVerb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'siparis', 'getir', 'getirin', 'getirir misin', 'olsun', 'verir misin', 'ver bana', 'ekle', 'alalim', 'rica etsem', 'bir de', 'lutfen bir', 'istiyoruz', 'alacagim', 'ekler misin']);
         // Guclu istek (urun YOKSA bile siparis niyeti; bağlamdaki urunu ekler): istiyorum/alayim/olsun...
         $gucluVerb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'istiyoruz', 'alacagim', 'onu istiyorum', 'bunu istiyorum', 'onu alayim', 'bunu alayim', 'siparis vermek', 'siparis verecegim', 'siparis vereyim', 'siparisim var']);
-        if (!empty($sip['lines'])) {
+        if (!$bilgiIster && !empty($sip['lines'])) {
             if ($zayifVerb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
                 return $this->sepetEkleCevap($sip['lines']);
             }
-        } else {
+        } elseif (!$bilgiIster && empty($sip['lines'])) {
             // Urun adi gecmiyor. Guclu istek + BAGLAM (son konusulan urun) varsa ONU ekle
             if ($gucluVerb && $baglam) {
                 $bu = $this->urunAdBul($baglam);
