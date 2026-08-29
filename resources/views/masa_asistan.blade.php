@@ -367,9 +367,9 @@ function konus(t, bargeIn){
         vad = setInterval(()=>{
           if(bitti) return;
           const lvl = sesSeviyesi();
-          if(lvl > esik){ if(++yuksek >= 3){ sesDurdur(); bit(); } }   // ~180ms sureli konusma
+          if(lvl > esik){ if(++yuksek >= 2){ sesDurdur(); bit(); } }   // ~80ms -> hizli kes (ilk kelime kacmasin)
           else if(yuksek > 0) yuksek--;
-        }, 60);
+        }, 40);
       }, 450);
     }
     // HEP Cloud/Puck sesi (mikrofonla ayni anda calisir); Cloud yoksa cihaz sesine dus
@@ -404,8 +404,8 @@ function dinle(){
       if(e.results[e.results.length-1].isFinal){ try{rec.stop()}catch(_){} }
     };
     watch = setTimeout(()=>{ try{rec.stop()}catch(_){} }, 12000); // en fazla ~12sn
-    // TTS bittikten hemen sonra mic serbest kalsin diye ufak gecikme
-    setTimeout(()=>{ if(bitti) return; try{ rec.start(); }catch(e){ setTimeout(()=>{ try{rec.start()}catch(_){ bit(); } }, 250); } }, 180);
+    // Araya girmede ilk kelime kacmasin -> tanimayi cok hizli baslat
+    setTimeout(()=>{ if(bitti) return; try{ rec.start(); }catch(e){ setTimeout(()=>{ try{rec.start()}catch(_){ bit(); } }, 200); } }, 30);
   });
 }
 function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
