@@ -42,6 +42,12 @@ class RestoAsistan
             'rapor', 'raporu', 'raporunu', 'rapor cikar', 'raporu cikar', 'durum raporu', 'genel rapor',
             'isletme raporu', 'ozet cikar', 'ozetle'],
         // --- yeni modüller ---
+        'karsilastir' => ['karsilastir', 'kiyasla', 'karsilastirma', 'gecen aya gore', 'onceki aya gore', 'gecen ayla', 'onceki ayla',
+            'bu ayla gecen', 'gecen ay mi bu ay mi', 'artti mi azaldi mi', 'gecen aydan iyi', 'gecen aya kiyasla', 'fark ne kadar',
+            'ne kadar fark', 'daha mi iyi', 'daha mi kotu', 'gecen ay ne bu ay ne', 'gecen aya kiyas', 'bu ay gecen ay', 'ayla ayi', 'yukseldi mi dustu mu'],
+        'gecenay' => ['gecen ay ne kadar', 'onceki ay ne kadar', 'gecen ay satis', 'onceki ay satis', 'gecen ay ciro', 'onceki ay ciro',
+            'gecen ay kazanc', 'gecen ayki ciro', 'gecen ay hasilat', 'gecen ay ne sattik', 'onceki ay ne sattik', 'gecen ay kac',
+            'gecen ay toplam', 'gecen ayki satis', 'gecen ayki kazanc', 'onceki ayki ciro', 'gecen ay rapor', 'gecen ay kazandik'],
         'tespit' => ['terslik', 'goremedigim', 'gormedigim', 'goremedigim ne', 'nerede para', 'para kaciyor', 'para kaciriyoruz',
             'kacan para', 'dikkat etmem', 'endiselendirecek', 'sorun var mi', 'ters giden', 'beni uzecek', 'ne yapmaliyim',
             'anormallik', 'gizli firsat', 'firsat var mi', 'kacak var mi', 'beni koru', 'neyi kacir', 'gozden kacan',
@@ -73,7 +79,7 @@ class RestoAsistan
                 if (strpos($norm, $this->normalize($k)) !== false) $skor[$niyet]++;
             }
         }
-        $oncelik = ['tespit', 'finans', 'satinalma', 'maas', 'iptal', 'kayip', 'maliyet', 'stok', 'gider', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
+        $oncelik = ['karsilastir', 'gecenay', 'tespit', 'finans', 'satinalma', 'maas', 'iptal', 'kayip', 'maliyet', 'stok', 'gider', 'garson', 'urun', 'masa', 'paket', 'musteri', 'ciro', 'ozet'];
         $enIyi = 'bilinmiyor';
         $enYuksek = 0;
         foreach ($oncelik as $n) {
@@ -124,6 +130,8 @@ class RestoAsistan
             case 'iptal':   return $this->cvIptal($from, $to, $d, $niyet);
             case 'musteri': return $this->cvMusteri($from, $to, $d, $niyet);
             case 'ozet':    return $this->cvOzet($from, $to, $d, $niyet);
+            case 'karsilastir': return $this->cvKarsilastir($niyet);
+            case 'gecenay': return $this->cvGecenAy($niyet);
             case 'finans':  return $this->cvFinans($niyet);
             case 'satinalma': return $this->cvSatinAlma($niyet);
             case 'maas':    return $this->cvMaas($niyet);
@@ -137,6 +145,74 @@ class RestoAsistan
     protected function ayAralik()
     {
         return [now()->startOfMonth(), now()];
+    }
+
+    // Takvim ayı adı
+    protected function _ayAdi($m)
+    {
+        $a = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+        return $a[(int) $m] ?? '';
+    }
+
+    /** "Önceki ayla bu ayı karşılaştır" ve türevleri — ADİL kıyas (ayın aynı gününe kadar). */
+    protected function cvKarsilastir($niyet)
+    {
+        try {
+            $now = now();
+            $gun = (int) $now->day;
+            $buBas = $now->copy()->startOfMonth();
+            $buCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$buBas, $now])->sum('tutar');
+            $gecBas = $now->copy()->subMonthNoOverflow()->startOfMonth();
+            $gecSon = $gecBas->copy()->endOfMonth();
+            $gecAyniGun = $gecBas->copy()->addDays($gun - 1)->endOfDay();
+            if ($gecAyniGun->gt($gecSon)) $gecAyniGun = $gecSon;
+            $gecCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$gecBas, $gecAyniGun])->sum('tutar');
+            $buAdet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$buBas, $now])->count();
+            $gecAdet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecAyniGun])->count();
+            if ($buCiro <= 0 && $gecCiro <= 0) return $this->paket_('karsilastir', 'Karşılaştıracak yeterli satış verisi yok henüz.', $niyet);
+            if ($gecCiro <= 0) {
+                $cevap = 'Bu ayın ilk ' . $gun . ' günü ' . $this->tl($buCiro) . ' ciro var; geçen ay aynı dönemde kayıt yok, kıyas yapamıyorum.';
+            } else {
+                $deg = (int) round(($buCiro - $gecCiro) / $gecCiro * 100);
+                $yon = $deg > 0 ? 'daha yüksek' : ($deg < 0 ? 'daha düşük' : 'aynı seviyede');
+                $cevap = 'Ayın ilk ' . $gun . ' gününü kıyaslıyorum. Bu ay ' . $this->tl($buCiro) . ', geçen ay aynı dönem ' . $this->tl($gecCiro) . '. Yani bu ay yüzde ' . abs($deg) . ' ' . $yon . '.';
+                if ($deg <= -10) $cevap .= ' Düşüş belirgin, nedenine bakmakta fayda var.';
+                elseif ($deg >= 10) $cevap .= ' Güzel bir artış, eline sağlık.';
+            }
+            return $this->cvp('karsilastir', $cevap, $niyet, ['tip' => 'karsilastir', 'baslik' => 'Bu Ay - Geçen Ay (ilk ' . $gun . ' gün)', 'kv' => [
+                ['k' => 'Bu ay', 'v' => $this->tl($buCiro) . ' · ' . $buAdet . ' adisyon'],
+                ['k' => 'Geçen ay (aynı dönem)', 'v' => $this->tl($gecCiro) . ' · ' . $gecAdet . ' adisyon'],
+            ]]);
+        } catch (\Throwable $e) {
+            return $this->paket_('karsilastir', 'Karşılaştırma verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
+    }
+
+    /** "Geçen/önceki ay ne kadar sattık" ve türevleri — TAM önceki takvim ayı. */
+    protected function cvGecenAy($niyet)
+    {
+        try {
+            $now = now();
+            $gecBas = $now->copy()->subMonthNoOverflow()->startOfMonth();
+            $gecSon = $gecBas->copy()->endOfMonth();
+            $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$gecBas, $gecSon])->sum('tutar');
+            if ($ciro <= 0) return $this->paket_('gecenay', 'Geçen ay için kayıtlı satış görünmüyor.', $niyet);
+            $adet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->count();
+            $misafir = (int) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->sum('misafir_sayisi');
+            $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$gecBas, $gecSon])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->select('urun_adi', DB::raw('SUM(adet) adet'))->groupBy('urun_adi')->orderByDesc('adet')->first();
+            $ay = $this->_ayAdi($gecBas->month);
+            $cevap = 'Geçen ay ' . $ay . ' toplam ' . $this->tl($ciro) . ' ciro, ' . $adet . ' adisyon kapandı';
+            if ($adet > 0) $cevap .= ', adisyon ortalaması ' . $this->tl($ciro / $adet);
+            $cevap .= '.';
+            if ($top) $cevap .= ' En çok satan ' . $top->urun_adi . ' oldu.';
+            $kv = [['k' => $ay . ' cirosu', 'v' => $this->tl($ciro)], ['k' => 'Adisyon', 'v' => (string) $adet], ['k' => 'Misafir', 'v' => (string) $misafir]];
+            if ($top) $kv[] = ['k' => 'En çok satan', 'v' => $top->urun_adi];
+            return $this->cvp('gecenay', $cevap, $niyet, ['tip' => 'gecenay', 'baslik' => 'Geçen Ay (' . $ay . ')', 'kv' => $kv]);
+        } catch (\Throwable $e) {
+            return $this->paket_('gecenay', 'Geçen ay verisine şu an ulaşamadım, birazdan tekrar deneyin.', $niyet);
+        }
     }
 
     protected function cvFinans($niyet)
