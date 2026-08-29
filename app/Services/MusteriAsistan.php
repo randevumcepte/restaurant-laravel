@@ -90,7 +90,9 @@ class MusteriAsistan
         // Guclu istek (urun YOKSA bile siparis niyeti; bağlamdaki urunu ekler): istiyorum/alayim/olsun...
         $gucluVerb = $this->has($c, ['istiyorum', 'isterim', 'isterdim', 'alayim', 'alabilir miyim', 'alabilirim', 'istiyoruz', 'alacagim', 'onu istiyorum', 'bunu istiyorum', 'onu alayim', 'bunu alayim', 'siparis vermek', 'siparis verecegim', 'siparis vereyim', 'siparisim var']);
         if (!$bilgiIster && !empty($sip['lines'])) {
-            if ($zayifVerb || $sip['explicitQty'] || count($sip['lines']) >= 2) {
+            // FARKLI urun sayisi (ayni urunu 2 kez anmak siparis SAYILMAZ; sohbette "Adana... Adana" gibi)
+            $farkliUrun = count(array_unique(array_map(fn ($l) => $l['u']->id, $sip['lines'])));
+            if ($zayifVerb || $sip['explicitQty'] || $farkliUrun >= 2) {
                 return $this->sepetEkleCevap($sip['lines']);
             }
         } elseif (!$bilgiIster && empty($sip['lines'])) {

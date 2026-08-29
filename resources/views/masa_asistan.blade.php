@@ -266,10 +266,11 @@ function sepetGuncelle(){
   wrap.querySelector('.onayla').addEventListener('click', finalizeSiparis);
   sohbet.appendChild(wrap); sepetEl = wrap; sohbet.scrollTop = sohbet.scrollHeight;
 }
-// "hayir / bu kadar / yeterli" -> siparisi bitir
+// "hayir / bu kadar / yeterli" -> siparisi bitir (SADECE net "bitirme" ifadesi; "hayir yanlis anladim" gibi DUZELTME -> bitirmez)
 function bitirMi(t){
-  const n = (t||'').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü ]/g,' ');
-  return /(^| )(hayir|hayır|yok|bu kadar|bukadar|yeterli|tamamdir|tamamdır|bitir|baska yok|başka yok|olmaz|bitti|tamam)( |$)/.test(' '+n+' ');
+  const n = (t||'').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü ]/g,' ').replace(/\s+/g,' ').trim();
+  if(/(yanlis|yanlış|anlamad|değil|degil|öyle değil|yanılıyor|yaniliyor|demek istemedim|kastetmedim)/.test(' '+n+' ')) return false; // duzeltme
+  return /^(hayir|hayır|yok|bu kadar|bukadar|yeterli|tamamdir|tamamdır|bitir|bitti|bu kadar yeter|baska yok|başka yok|olmaz|tamam|yok tesekkur|yok teşekkür|hayir tesekkur|hayır teşekkür)$/.test(n);
 }
 async function finalizeSiparis(){
   if(!sepet.length) return;
