@@ -788,8 +788,11 @@ class MusteriAsistan
 
     protected function has($c, array $ks)
     {
+        // Kelime SINIRINDA (ek toleransli) esles: " et" -> "et"/"etli"/"et yemek" evet ama "lezzeti" HAYIR.
+        $hay = ' ' . $c . ' ';
         foreach ($ks as $k) {
-            if (strpos(' ' . $c . ' ', ' ' . $this->norm($k)) !== false || strpos($c, $this->norm($k)) !== false) return true;
+            $kk = $this->norm($k);
+            if ($kk !== '' && strpos($hay, ' ' . $kk) !== false) return true;
         }
         return false;
     }
