@@ -47,6 +47,16 @@ class MusteriAsistan
                 : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
 
+        // 2.4) SIPARIS DUZENLE (deterministik, guvenilir): "kofteyi 2 olsun" (AYARLA), "kolayi istemiyorum" (CIKAR)
+        $duz = $this->siparisDuzenle($c, $soru, $baglam);
+        if ($duz) return $duz;
+
+        // ===== HAIKU NIYET COZUCU (BEYIN) — BIRINCIL: kullanici ne dediyse Haiku niyeti coz + KESIN uygula.
+        // Asagidaki kelime-kurallari yalnizca BEYIN yoksa (anahtar yok/tavan dolu/basarisiz) YEDEK calisir. =====
+        $beyin = $this->niyetRouter($soru, $baglam);
+        if ($beyin !== null) return $beyin;
+
+        // ---- YEDEK KELIME KURALLARI (Haiku devre disi ise) ----
         // 2.5) URUN OZELLIK SORUSU (tip + urun): "acili mi", "glutensiz mi", "yaninda ne gelir"...
         $tip = $this->urunSoruTipi($c);
         if ($tip) {
@@ -67,14 +77,6 @@ class MusteriAsistan
             if ($kv) return $this->kategori([$this->norm($kv->ad)], $kv->ad, $this->katEmoji($kv->ad));
             return $this->menu();
         }
-
-        // 2.4) SIPARIS DUZENLE: "kofteyi 2 olsun" (adedi AYARLA), "kolayi istemiyorum/vazgectim" (CIKAR) — deterministik, Haiku'dan ONCE
-        $duz = $this->siparisDuzenle($c, $soru, $baglam);
-        if ($duz) return $duz;
-
-        // ===== HAIKU NIYET COZUCU (BEYIN): net kural/duzenleme yakalamadi -> Haiku niyeti coz + KESIN uygula =====
-        $beyin = $this->niyetRouter($soru, $baglam);
-        if ($beyin !== null) return $beyin;
 
         // 2.55) Belirli urun + BILGI istegi -> urunu ANLAT (siparis/kategori/oneri'den ONCE)
         //       "ezogelin corbasi hakkinda bilgi ver" -> corba kategorisi DEGIL, o urunun detayi
