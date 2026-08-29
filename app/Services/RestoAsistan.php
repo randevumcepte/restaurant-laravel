@@ -1110,6 +1110,17 @@ class RestoAsistan
         );
     }
 
+    /** Soru bir ÖNERİ/STRATEJİ sorusu mu? ("satışları nasıl artırırım / ne yapmalıyım /
+     *  ne önerirsin / ciroyu yükseltmek için..."). Öyleyse kural tuzağına düşmeden AI karakterine gider. */
+    public function oneriMi($metin)
+    {
+        $n = $this->normalize($metin);
+        return (bool) preg_match(
+            '/(nasil (artir|yuksel|buyut|gelistir|cogalt|kazan|daha (iyi|cok|fazla))|artirmak icin|yukseltmek icin|buyutmek icin|gelistirmek icin|iyilestirmek icin|cogaltmak icin|dus(ur|me)mek icin|ne yapmaliyim|ne yapmam lazim|ne yapsam|ne yapabilirim|ne onerirsin|oneri ver|onerin ne|onerir misin|tavsiye|fikrin ne|ne yapmali|ne yapalim|nasil kazanirim|neyi degistir)/',
+            $n
+        );
+    }
+
     /** BEDAVA tespit cevabı (LLM'siz): "benim göremediğim ne var / nerede para kaçıyor" gibi
      *  meta sorulara proaktif tespitleri doğal cümleyle özetler + kart döner. */
     public function tespitCevap($subeId)

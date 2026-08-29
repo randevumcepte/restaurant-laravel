@@ -2450,6 +2450,9 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
 
     $niyet = $a->ogrenilenNiyet($soru) ?: $a->niyetCoz($soru);
     $intent = $niyet['intent'] ?? 'bilinmiyor';
+    // ONERI/STRATEJI sorusu ("satislari nasil artiririm / ne yapmaliyim / ne onerirsin"): kural
+    // tuzagina (ciro/tespit) dusmesin -> DOGRUDAN AI karakterine yonlendir (veriden tailored oneri).
+    if ($a->oneriMi($soru)) $intent = 'oneri';
     $sonuc = null;
     $kaynak = 'kural';
 
@@ -2460,8 +2463,8 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
         $kaynak = 'tespit';
     }
 
-    // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet HARIC; "nasil gidiyor" karaktere/tespite gider)
-    if (!$sonuc && $intent !== 'bilinmiyor' && $intent !== 'ozet') $sonuc = $a->cevapla($niyet);
+    // 1) DOGRUDAN sayisal niyet -> bedava kart (ozet ve oneri HARIC -> onlar karaktere gider)
+    if (!$sonuc && $intent !== 'bilinmiyor' && $intent !== 'ozet' && $intent !== 'oneri') $sonuc = $a->cevapla($niyet);
 
     // 2) KALIP kutuphanesi (bedava ogrenilmis soru-cevap)
     if (!$sonuc) {
@@ -2497,9 +2500,10 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
         // limit dolduysa: asagidaki fallback bedava ozet karti/yardim verir
     }
 
-    // 4) Anahtar yok / hata -> ozet ise en azindan kart, degilse yardim
+    // 4) Anahtar yok / hata -> ozet ise kart; oneri ise bedava tespitler (ne yapmali ipucu); degilse yardim
     if (!$sonuc) {
         if ($intent === 'ozet') { $sonuc = $a->cevapla($niyet); $kaynak = 'kural'; }
+        elseif ($intent === 'oneri') { $sonuc = $a->tespitCevap($p->sube_id); $kaynak = 'tespit'; }
         else { $sonuc = $a->yardimCevabi($niyet); $kaynak = ($a->aiTeshis === 'anahtar_yok') ? 'yardim_anahtarsiz' : 'yardim'; }
     }
 
