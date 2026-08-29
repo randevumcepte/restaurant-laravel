@@ -53,11 +53,6 @@ class MusteriAsistan
             }
         }
 
-        // ===== HAIKU NIYET COZUCU (BEYIN): kullanici ne dediyse dogru islemi sec (kesin/deterministik uygula) =====
-        // Anahtar varsa oncelikli beyin; yoksa asagidaki kelime-kurallari calisir (yedek).
-        $beyin = $this->niyetRouter($soru, $baglam);
-        if ($beyin !== null) return $beyin;
-
         // 2.35) GORME istegi (siparis DEGIL): "burgerleri gormek istiyorum", "menuyu goster", "salatalara bakalim"
         if ($this->has($c, ['gormek', 'goster', 'gorebilir', 'gorelim', 'gorsem', 'bakmak', 'bakalim', 'bakabilir', 'goz at', 'goz atalim', 'incele', 'menusu', 'menusunu', 'listesi', 'listesini'])) {
             $kv = $this->kategoriEslesme($c);
@@ -67,9 +62,13 @@ class MusteriAsistan
             return $this->menu();
         }
 
-        // 2.4) SIPARIS DUZENLE: "kofteyi 2 olsun" (adedi AYARLA), "kolayi istemiyorum/vazgectim" (CIKAR)
+        // 2.4) SIPARIS DUZENLE: "kofteyi 2 olsun" (adedi AYARLA), "kolayi istemiyorum/vazgectim" (CIKAR) — deterministik, Haiku'dan ONCE
         $duz = $this->siparisDuzenle($c, $soru, $baglam);
         if ($duz) return $duz;
+
+        // ===== HAIKU NIYET COZUCU (BEYIN): net kural/duzenleme yakalamadi -> Haiku niyeti coz + KESIN uygula =====
+        $beyin = $this->niyetRouter($soru, $baglam);
+        if ($beyin !== null) return $beyin;
 
         // 2.55) Belirli urun + BILGI istegi -> urunu ANLAT (siparis/kategori/oneri'den ONCE)
         //       "ezogelin corbasi hakkinda bilgi ver" -> corba kategorisi DEGIL, o urunun detayi
@@ -711,8 +710,15 @@ class MusteriAsistan
                     $u = $this->urunAdBul((string) $ad) ?: $this->urunAdBulGevsek((string) $ad);
                     if ($u) $lines[] = ['u' => $u, 'adet' => max(1, $adet)];
                 }
-                return $lines ? $this->sepetEkleCevap($lines)
-                    : $this->cvp('Hangi ürünü almak istersiniz? Ürün adını söylemeniz yeterli. 😊', ['aksiyon' => 'siparis_basla']);
+                if (!$lines) return $this->cvp('Hangi ürünü almak istersiniz? Ürün adını söylemeniz yeterli. 😊', ['aksiyon' => 'siparis_basla']);
+                // "X olsun / X yap" + TEK urun -> ADEDI AYARLA (topla degil), Haiku ekle dese bile
+                if (count($lines) === 1 && $this->has($this->norm($q), ['olsun', 'yap', 'olacak', 'yapalim', 'guncelle', 'degistir'])) {
+                    $u = $lines[0]['u'];
+                    $adet = $lines[0]['adet'];
+                    return $this->cvp($u->ad . ' adedini ' . $adet . ' yaptım. Başka bir arzunuz var mı? 😊',
+                        ['aksiyon' => 'sepet_ayarla', 'eklenen' => [['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat]]]);
+                }
+                return $this->sepetEkleCevap($lines);
             case 'siparis_ayarla':
                 $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
                 if (!$u) return null;
