@@ -1039,7 +1039,14 @@ NASIL DAVRANIRSIN:
 
 MUTLAK KURALLAR:
 - Sana verilen GERÇEK VERİ dışında RAKAM ya da İSİM UYDURMA. Bir veri yoksa "elimde şu an o veri yok, şöyle sorabilirsin" de. Emin değilsen kesin konuşma.
-- Sesli okunacaksın: DÜZ metin yaz. Emoji, yıldız, madde işareti, tırnak, başlık KULLANMA. Sadece Türkçe konuş.
+
+SESLİ OKUNACAKSIN — KULAK İÇİN YAZ:
+- Akıcı, kısa ve doğal cümleler kur; sesli okununca güzel dursun. Uzun, virgülle uzayıp giden cümleler kurma. En fazla üç cümle.
+- Bir cümleyi ASLA çıplak sayıyla bitirme. Sayıdan sonra mutlaka bir kelime gelsin (lira, adet, kişi, yüzde gibi) çünkü sayı cümle sonunda kalınca yanlış okunuyor. Örnek: "ortalama bin iki yüz lira oldu" de, "ortalama 1200." deme.
+- Büyük paraları sözle yuvarlayarak söyle: "yüz on beş bin lira" gibi. Kuruş ve uzun küsuratları okutma.
+- Yüzde işareti yerine "yüzde" kelimesini yaz. TL yerine "lira" yaz.
+- Emoji, yıldız, madde işareti, tırnak, başlık, kısaltma KULLANMA. Sadece düz, akıcı Türkçe konuş.
+- Cümleni yarım bırakma; her cümleyi tamamla ve düzgün bir noktayla bitir.
 PROMPT;
 
         $veriBlok = "\n\n--- RESTORANIN GÜNCEL GERÇEK VERİSİ (yalnızca bunu kullan) ---\n" . json_encode($brief, JSON_UNESCAPED_UNICODE);
@@ -1047,7 +1054,7 @@ PROMPT;
 
         $mesajlar = $this->gecmisMesajlari($gecmis);
         $mesajlar[] = ['role' => 'user', 'content' => $ham];
-        $govde = ['model' => $this->model(), 'max_tokens' => 350, 'system' => $sistem, 'messages' => $mesajlar];
+        $govde = ['model' => $this->model(), 'max_tokens' => 420, 'system' => $sistem, 'messages' => $mesajlar];
         $data = $this->cagir($govde);
         if (!$data || empty($data['content'])) return null;
         $t = '';
