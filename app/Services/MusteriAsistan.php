@@ -104,7 +104,11 @@ class MusteriAsistan
         $kalip = $this->kalip($soru);
         if ($kalip) return $kalip;
 
-        // 7) Fallback
+        // 7) HAIKU EMNIYET AGI: kural+kalip kacirdi -> ogrenilen onbellek -> (gerekirse) Haiku -> ogren
+        $ai = $this->haikuEmniyet($soru);
+        if ($ai !== null) return $ai;
+
+        // 8) Fallback
         return $this->cvp('Bunu tam anlayamadım 🙂 Menümüzü sorabilir, "günün yemeği ne" diyebilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
     }
 
@@ -459,6 +463,124 @@ class MusteriAsistan
             ->select('urunler.ad', 'menu_kategorileri.ad as kat')->get()
             ->first(fn ($x) => in_array($this->norm($x->kat), $normKats));
         return $r ? $r->ad : null;
+    }
+
+    // ==================== HAIKU EMNIYET AGI + OGRENEN ONBELLEK ====================
+    /** Kural+kalip kacirinca: ogrenilen onbellek -> (gunluk tavan altinda) Haiku -> ogren. Yoksa null. */
+    protected function haikuEmniyet($soru)
+    {
+        $q = trim((string) $soru);
+        if (mb_strlen($q) < 2) return null;
+        $key = $this->norm($q);
+        if ($key === '') return null;
+
+        // 1) Ogrenilen cevap onbelleginde var mi? (LLM'e gitmeden bedava)
+        $cev = $this->ogrenilenCevap($key);
+        if ($cev !== null && $cev !== '') return $this->cvp($cev, ['kaynak' => 'ogrenilen']);
+
+        // 2) Haiku acik mi + anahtar + gunluk tavan
+        if (!config('services.anthropic.sohbet_acik', true)) return null;
+        $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+        if ($anahtar === '') return null;
+        $limit = (int) config('services.anthropic.sohbet_gunluk_limit', 80);
+        if ($limit > 0 && $this->haikuGunlukSayac() >= $limit) return null;
+
+        // 3) Haiku'ya sor (menu baglamiyla), ogren, don
+        $t = $this->haikuCevap($q, $anahtar);
+        if ($t === null || $t === '') return null;
+        $this->ogren($key, $t);
+        return $this->cvp($t, ['kaynak' => 'haiku']);
+    }
+
+    protected function haikuCevap($q, $anahtar)
+    {
+        $sistem = 'Sen bir RESTORANIN masasindaki dijital GARSON asistanisin. Musteriyle sicak, kibar ve KISA konusursun (en fazla iki cumle). '
+            . 'TTS ile seslendirilecegin icin DUZ yaz: emoji, madde, yildiz, tirnak KULLANMA. '
+            . 'Asagida MENU verildi; SADECE menudeki urun ve fiyatlari kullan, menude OLMAYAN urun ya da fiyat UYDURMA. Fiyat soylerken "lira" de. '
+            . 'Musteri menu/oneri/siparis isterse yardimci ol. Menude olmayan, bilmedigin ya da wifi/adres/rezervasyon/calisma saati gibi isletmeye ozel bir sey sorulursa "garsonumuz size hemen yardimci olsun, cagirayim mi" de. '
+            . 'Restoranla tamamen ilgisiz konularda kibarca menuye yonlendir. Sadece Turkce yanit ver.'
+            . "\n\nMENU:\n" . $this->menuOzetMetni();
+        $govde = [
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'max_tokens' => 200, 'system' => $sistem,
+            'messages' => [['role' => 'user', 'content' => $q]],
+        ];
+        $data = $this->cagirAnthropic($anahtar, $govde);
+        if (!$data || empty($data['content'])) return null;
+        $t = '';
+        foreach ($data['content'] as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+        $t = trim($t);
+        return $t !== '' ? $t : null;
+    }
+
+    protected function cagirAnthropic($anahtar, $govde)
+    {
+        try {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 14,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
+            ]);
+            $yanit = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($yanit === false || $kod !== 200) return null;
+            return json_decode($yanit, true);
+        } catch (\Throwable $e) { return null; }
+    }
+
+    /** Menuyu kompakt metne cevir (Haiku baglami). */
+    protected function menuOzetMetni()
+    {
+        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->get(['id', 'ad']);
+        $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->where('tukendi', 0)->get(['ad', 'fiyat', 'kategori_id']);
+        $byKat = [];
+        foreach ($urunler as $u) $byKat[(int) $u->kategori_id][] = $u->ad . ' (' . number_format((float) $u->fiyat, 0, ',', '') . ' TL)';
+        $lines = [];
+        foreach ($kats as $k) { if (!empty($byKat[$k->id])) $lines[] = $k->ad . ': ' . implode(', ', array_slice($byKat[$k->id], 0, 20)); }
+        return implode("\n", $lines);
+    }
+
+    // --- Ogrenen onbellek (soru -> cevap; sube bazli) ---
+    protected function ogrenTablo()
+    {
+        if (!Schema::hasTable('musteri_ai_ogrenilen')) {
+            Schema::create('musteri_ai_ogrenilen', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->string('soru_key', 191);
+                $t->text('cevap');
+                $t->unsignedInteger('kullanim')->default(1);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'soru_key']);
+            });
+        }
+    }
+
+    protected function ogrenilenCevap($key)
+    {
+        try {
+            $this->ogrenTablo();
+            $row = DB::table('musteri_ai_ogrenilen')->where('sube_id', $this->subeId)->where('soru_key', mb_substr($key, 0, 191))->first();
+            if ($row) { try { DB::table('musteri_ai_ogrenilen')->where('id', $row->id)->increment('kullanim'); } catch (\Throwable $e) {} return $row->cevap; }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+
+    protected function ogren($key, $cevap)
+    {
+        try {
+            $this->ogrenTablo();
+            DB::table('musteri_ai_ogrenilen')->insert(['sube_id' => $this->subeId, 'soru_key' => mb_substr($key, 0, 191), 'cevap' => $cevap, 'kullanim' => 1, 'created_at' => now()]);
+        } catch (\Throwable $e) {}
+    }
+
+    /** Bugun bu sube icin uretilen (yeni) Haiku cevabi sayisi = gunluk tavan sayaci. */
+    protected function haikuGunlukSayac()
+    {
+        try { $this->ogrenTablo(); return (int) DB::table('musteri_ai_ogrenilen')->where('sube_id', $this->subeId)->whereDate('created_at', today())->count(); }
+        catch (\Throwable $e) { return 0; }
     }
 
     // -------- KALIP (kimlik/sohbet disi; wifi/saat/adres...) --------
