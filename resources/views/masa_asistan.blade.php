@@ -364,8 +364,8 @@ function konus(t, bargeIn){
       resolve(barge || null);
     }
     _konusBit = bit;
-    // ARAYA GIRME (barge-in): Android disinda (speechSynthesis+tanima catismasin). Konusurken yeni soru gelirse kes.
-    if(bargeIn && rec && !isAndroid){
+    // ARAYA GIRME (barge-in): her tarayicida (hep Cloud/Puck sesi -> mikrofonla ayni anda calisir). Konusurken yeni soru gelirse kes.
+    if(bargeIn && rec){
       setTimeout(()=>{
         if(bitti) return;
         try{
@@ -380,9 +380,9 @@ function konus(t, bargeIn){
         }catch(_){}
       }, 250);
     }
-    let ok = false;
-    if(isAndroid){ ok = cihazKonus(temiz, ()=>bit(null)); if(!ok) ok = await cloudKonus(temiz, ()=>bit(null)); }
-    else { ok = await cloudKonus(temiz, ()=>bit(null)); if(!ok) ok = cihazKonus(temiz, ()=>bit(null)); }
+    // HEP Cloud/Puck sesi (mikrofonla ayni anda calisir -> araya girme her yerde); Cloud yoksa cihaz sesine dus
+    let ok = await cloudKonus(temiz, ()=>bit(null));
+    if(!ok) ok = cihazKonus(temiz, ()=>bit(null));
     if(!ok) bit(null);
   });
 }
