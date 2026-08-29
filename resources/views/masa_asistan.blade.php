@@ -450,25 +450,28 @@ async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
 }
 
-/* ---- Acilis: karsilamayi OTOMATIK seslendir; sonra mumkunse otomatik dinle, degilse ilk dokunusta ---- */
+/* ---- Acilis: karsilamayi OTOMATIK seslendir; ilk dokunusta HEMEN dinle (tek dokunus), izin varsa otomatik ---- */
 window.addEventListener('load', async ()=>{
   ekle('ai', SELAM);
-  const karsilama = konus(SELAM);   // OTOMATIK seslendir (ses, mikrofondan bagimsiz — onceki gibi)
   ilkSelamVerildi = true;
-  let oto = false;
-  // Mikrofon izni verildiyse: karsilama bitince kendiliginden dinlemeye gec
+  const karsilama = konus(SELAM);   // OTOMATIK seslendir
+  durumEl.textContent = 'Konuşmak için ekrana dokunun 👆';
+
+  // Mikrofon izni verildiyse: karsilama bitince KENDILIGINDEN dinlemeye gec (dokunmaya gerek yok)
   try{
     if(navigator.permissions && navigator.permissions.query){
       const st = await navigator.permissions.query({name:'microphone'});
-      if(st.state === 'granted'){ oto = true; karsilama.then(()=>{ if(!sohbetAktif) basla(false); }); }
+      if(st.state === 'granted') karsilama.then(()=>{ if(!sohbetAktif) basla(false); });
     }
   }catch(e){}
-  // Izin yoksa: ekranin HERHANGI bir yerine ilk dokunusta dinlemeye gec (karsilama bitince)
-  if(!oto){
-    durumEl.textContent = 'Konuşmak için ekrana dokunun 👆';
-    const ilkDokun = ()=>{ document.removeEventListener('pointerdown', ilkDokun); karsilama.then(()=>{ if(!sohbetAktif) basla(false); }); };
-    document.addEventListener('pointerdown', ilkDokun, { once:true });
-  }
+
+  // Ilk dokunus (ekranin herhangi yeri): karsilamayi KES ve HEMEN dinlemeye basla -> TEK dokunus yeterli
+  const ilkDokun = ()=>{
+    document.removeEventListener('pointerdown', ilkDokun);
+    sesDurdur(); konusuyor = false;              // uzun karsilamayi bekleme, hemen basla
+    if(!sohbetAktif) basla(false);
+  };
+  document.addEventListener('pointerdown', ilkDokun, { once:true });
 });
 </script>
 </body>
