@@ -237,6 +237,11 @@ function sepetMerge(items){
     if(ex) ex.adet += it.adet; else sepet.push({urun_id:it.urun_id, ad:it.ad, adet:it.adet, fiyat:it.fiyat});
   });
 }
+function sepetSet(it){ // adedi AYARLA (topla degil)
+  const ex = sepet.find(x=>x.urun_id===it.urun_id);
+  if(ex) ex.adet = Math.max(1, it.adet); else sepet.push({urun_id:it.urun_id, ad:it.ad, adet:Math.max(1,it.adet), fiyat:it.fiyat});
+}
+function sepetCikar(id){ sepet = sepet.filter(x=>x.urun_id!==id); }
 function sepetGuncelle(){
   if(sepetEl){ sepetEl.remove(); sepetEl=null; }
   if(!sepet.length) return;
@@ -380,7 +385,7 @@ function dinle(){
     setTimeout(()=>{ if(bitti) return; try{ rec.start(); }catch(e){ setTimeout(()=>{ try{rec.start()}catch(_){ bit(); } }, 250); } }, 180);
   });
 }
-function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|iptal|sus|görüşürüz|gorusuruz|hoşça kal|hosca kal|kapatabilir)( )/.test(n); }
+function iptalMi(t){ const n=' '+(t||'').toLocaleLowerCase('tr')+' '; return /( )(kapat|kapatabilir|görüşürüz|gorusuruz|hoşça kal|hosca kal|sohbeti kapat)( )/.test(n); }
 // SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
 async function basla(){
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
@@ -418,6 +423,8 @@ async function sunucudanCevap(soru){
     if(Array.isArray(j.kartlar) && j.kartlar.length) kartlariEkle(j.kartlar);
     if(j.aksiyon==='siparis_basla') siparisModu=true;
     if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ siparisModu=true; sepetMerge(j.eklenen); sepetGuncelle(); }
+    if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)){ siparisModu=true; j.eklenen.forEach(sepetSet); sepetGuncelle(); }
+    if(j.aksiyon==='sepet_cikar' && j.cikar){ sepetCikar(j.cikar.urun_id); sepetGuncelle(); }
     if(j.aksiyon==='garson_cagir') garsonCagir(j.tip || 'garson');
     return (j.seslendir===false) ? '' : cevap;
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); return ''; }

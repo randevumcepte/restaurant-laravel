@@ -53,6 +53,10 @@ class MusteriAsistan
             }
         }
 
+        // 2.4) SIPARIS DUZENLE: "kofteyi 2 olsun" (adedi AYARLA), "kolayi istemiyorum/vazgectim" (CIKAR)
+        $duz = $this->siparisDuzenle($c, $soru, $baglam);
+        if ($duz) return $duz;
+
         // 2.55) Belirli urun + BILGI istegi -> urunu ANLAT (siparis/kategori/oneri'den ONCE)
         //       "ezogelin corbasi hakkinda bilgi ver" -> corba kategorisi DEGIL, o urunun detayi
         $bilgiIster = $this->has($c, ['hakkinda', 'bilgi ver', 'bilgi al', 'bilgi verir', 'bilgi rica', 'anlat', 'anlatir', 'tanit', 'tanitir', 'nedir', 'ne demek', 'ozellik', 'nasil bir', 'detay', 'aciklar']);
@@ -238,6 +242,37 @@ class MusteriAsistan
     }
 
     // ==================== SIPARIS ZEKASI (Faz 2) ====================
+    /** Sipariş düzenleme: adedi AYARLA ("kofteyi 2 olsun") veya CIKAR ("kolayi istemiyorum"). Yoksa null. */
+    protected function siparisDuzenle($c, $soru, $baglam)
+    {
+        $cikarVerb = $this->has($c, ['istemiyorum', 'istemem', 'istemedim', 'vazgectim', 'vazgeciyorum', 'cikar', 'cikart', 'kaldir', 'iptal', 'sil ', 'silin', 'almayayim', 'olmasin', 'gerek yok', 'eksilt', 'gitsin']);
+        $ayarlaVerb = $this->has($c, ['olsun', 'yap ', 'yapar misin', 'yapalim', 'olacak', 'guncelle', 'degistir']);
+        if (!$cikarVerb && !$ayarlaVerb) return null;
+        $sip = $this->siparisCoz($soru);
+        $urun = null;
+        if (count($sip['lines']) === 1) $urun = $sip['lines'][0]['u'];
+        elseif (empty($sip['lines']) && $baglam) $urun = $this->urunAdBul($baglam);
+        if (!$urun) return null; // urun net degilse duzenleme sayma (normal akisa biraksin)
+        if ($cikarVerb) {
+            return $this->cvp($urun->ad . ', siparişinizden çıkardım. Başka bir arzunuz var mı? 😊',
+                ['aksiyon' => 'sepet_cikar', 'cikar' => ['urun_id' => (int) $urun->id, 'ad' => $urun->ad]]);
+        }
+        // AYARLA -> sayi sart (yoksa "olsun" normal siparise dussun)
+        $sayi = $this->sayiCoz($c);
+        if ($sayi === null) return null;
+        return $this->cvp($urun->ad . ' adedini ' . $sayi . ' yaptım. Başka bir arzunuz var mı? 😊',
+            ['aksiyon' => 'sepet_ayarla', 'eklenen' => [['urun_id' => (int) $urun->id, 'ad' => $urun->ad, 'adet' => $sayi, 'fiyat' => (float) $urun->fiyat]]]);
+    }
+
+    /** Metinden ilk sayiyi coz (rakam veya yazi). Yoksa null. */
+    protected function sayiCoz($c)
+    {
+        if (preg_match('/(?<!\d)(\d{1,2})(?!\d)/', $c, $m)) return (int) $m[1];
+        $map = ['bir' => 1, 'iki' => 2, 'uc' => 3, 'dort' => 4, 'bes' => 5, 'alti' => 6, 'yedi' => 7, 'sekiz' => 8, 'dokuz' => 9, 'on' => 10];
+        foreach ($map as $w => $v) { if (preg_match('/(?:^| )' . $w . '(?= |$)/u', ' ' . $c . ' ')) return $v; }
+        return null;
+    }
+
     /** Serbest metni ürün+adet satirlarina cevirir. "iki adana bir ayran" -> [{u,adet:2},{u,adet:1}]. */
     protected function siparisCoz($metin)
     {
