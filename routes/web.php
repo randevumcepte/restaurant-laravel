@@ -1176,6 +1176,27 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// Musteri AI: ogrenilen cevaplar (Haiku onbellegi) — listele / sil / durum
+Route::get('/musteri-ai-ogrenilen', function (Request $r) {
+    $anahtarVar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY')) !== '';
+    if (!Schema::hasTable('musteri_ai_ogrenilen')) {
+        return response()->json(['anahtar_var' => $anahtarVar, 'bugun_uretilen' => 0, 'toplam' => 0, 'ogrenilenler' => []], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    }
+    if ($r->filled('sil')) { DB::table('musteri_ai_ogrenilen')->where('id', (int) $r->input('sil'))->delete(); }
+    $q = DB::table('musteri_ai_ogrenilen');
+    if ($r->filled('sube')) $q->where('sube_id', (int) $r->input('sube'));
+    $liste = $q->orderByDesc('kullanim')->orderByDesc('id')->limit(300)
+        ->get(['id', 'sube_id', 'soru_key', 'cevap', 'kullanim', 'created_at']);
+    return response()->json([
+        'anahtar_var' => $anahtarVar,
+        'gunluk_tavan' => (int) config('services.anthropic.sohbet_gunluk_limit', 80),
+        'bugun_uretilen' => DB::table('musteri_ai_ogrenilen')->whereDate('created_at', today())->count(),
+        'toplam' => DB::table('musteri_ai_ogrenilen')->count(),
+        'not' => 'Silmek icin: /musteri-ai-ogrenilen?sil=ID',
+        'ogrenilenler' => $liste,
+    ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+});
+
 // QR SIPARIS -> acik adisyon bul/olustur + kalem ekle (mutfaga gonderildi) + garson bildirimi
 Route::post('/api/qr/siparis-gonder', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
