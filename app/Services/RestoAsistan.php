@@ -81,9 +81,11 @@ class RestoAsistan
 
     protected function donemCoz($norm)
     {
-        if (preg_match('/\b(bu ?yil|yillik|gecen ?yil|senelik)\b/', $norm)) return ['anahtar' => 'yillik', 'ad' => 'bu yıl'];
-        if (preg_match('/\b(bu ?ay|aylik|son ?30|gecen ?ay|ay ?boyunca)\b/', $norm)) return ['anahtar' => 'aylik', 'ad' => 'bu ay'];
-        if (preg_match('/\b(bu ?hafta|haftalik|son ?7|hafta ?boyunca)\b/', $norm)) return ['anahtar' => 'haftalik', 'ad' => 'bu hafta'];
+        // "bugun/gunluk" acikca istenirse gune sabitle
+        if (preg_match('/\b(bugun|bu ?gun|gunluk|bugunku|son ?24|gun ?ici)\b/', $norm)) return ['anahtar' => 'gunluk', 'ad' => 'bugün'];
+        if (preg_match('/\b(bu ?yil|bu ?yilki|yillik|yilki|gecen ?yil|senelik|bir ?yil|son ?365|son ?12 ?ay|yil ?ici|yil ?boyunca|yilin)\b/', $norm)) return ['anahtar' => 'yillik', 'ad' => 'bu yıl'];
+        if (preg_match('/\b(bu ?ay|bu ?ayki|ayki|aylik|son ?30|son ?bir ?ay|gecen ?ay|bir ?ay|ay ?ici|ay ?boyunca|ayin|aya ?ait|gecen ?aya)\b/', $norm)) return ['anahtar' => 'aylik', 'ad' => 'bu ay'];
+        if (preg_match('/\b(bu ?hafta|bu ?haftaki|haftaki|haftalik|son ?7|son ?bir ?hafta|gecen ?hafta|bir ?hafta|hafta ?ici|hafta ?boyunca|haftanin)\b/', $norm)) return ['anahtar' => 'haftalik', 'ad' => 'bu hafta'];
         return ['anahtar' => 'gunluk', 'ad' => 'bugün'];
     }
 
@@ -486,7 +488,14 @@ class RestoAsistan
     {
         try {
             $v = Cache::get('resto_asistan_ogr:' . md5($this->normalize($metin)));
-            if (is_array($v) && !empty($v['intent'])) { $v['ham'] = trim((string) $metin); return $v; }
+            if (is_array($v) && !empty($v['intent'])) {
+                // Donemi HER ZAMAN metinden taze coz (eski yanlis donem takili kalmasin)
+                $d = $this->donemCoz($this->normalize($metin));
+                $v['ham'] = trim((string) $metin);
+                $v['donem'] = $d['anahtar'];
+                $v['donemAdi'] = $d['ad'];
+                return $v;
+            }
         } catch (\Throwable $e) {
         }
         return null;
