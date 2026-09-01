@@ -20,10 +20,23 @@
   :root{ --mor:{{ $tema['ana'] ?? '#F6DFA0' }}; --mor2:{{ $tema['ana2'] ?? '#E9C46A' }}; --mavi:{{ $tema['ana3'] ?? '#C9962F' }};
     --ana-ink:{{ $tema['ink'] ?? '#3a2600' }}; --glow:{{ $tema['glow'] ?? 'rgba(233,196,106,.16)' }};
     --card:#201a24; --card2:#2a2130;
+    --neutral:rgba(255,255,255,.08); --navbg:rgba(20,10,22,.94); --input:rgba(0,0,0,.28);
     --gold:{{ $detayHex }}; --gold2:{{ $detay2Hex }}; --gold-ink:{{ $goldInk }};
     --cizgi:rgba({{ $dr }},{{ $dg }},{{ $db }},.22); --gold-bg:rgba({{ $dr }},{{ $dg }},{{ $db }},.08); --gold-bd:rgba({{ $dr }},{{ $dg }},{{ $db }},.40);
     --ink:#F3E9EE; --sessiz:#B49CB6;
     --serif:'Playfair Display',Georgia,serif; --script:'Dancing Script',cursive; }
+  /* ===== ACIK MOD (gunduz): html.acik -> yuzey/yazi degiskenleri ters cevrilir ===== */
+  html.acik{ --card:#FFFFFF; --card2:#F4EDF2; --ink:#241826; --sessiz:#877884;
+    --neutral:rgba(0,0,0,.09); --navbg:rgba(255,255,255,.96); --input:rgba(0,0,0,.045); }
+  html.acik body{ background:#F5EFF3;
+    background-image:
+      radial-gradient(900px 620px at 90% -8%, var(--glow), transparent 62%),
+      radial-gradient(760px 560px at 4% 106%, var(--glow), transparent 62%),
+      radial-gradient(1200px 900px at 60% 0%, #FCF8FB 0%, #F2E9F0 58%, #EDE3EB 100%); }
+  html.acik .pk .ad, html.acik .pk .fi{ text-shadow:0 2px 8px rgba(0,0,0,.85); }  /* foto uzeri yazi hep beyaz kalir */
+  /* gece/gunduz butonu (menu sol ust) */
+  .modbtn{ width:38px; height:38px; border-radius:50%; border:1px solid var(--cizgi); background:var(--card2); color:var(--gold);
+    font-size:17px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.25); }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
   html,body{ height:100%; color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
     background:#120912;
@@ -41,17 +54,18 @@
   .brand .bt b{ font-family:var(--serif); font-weight:800; font-size:20px; letter-spacing:1px;
     background:linear-gradient(135deg,var(--gold),var(--gold2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
   .brand .bt i{ font-style:normal; font-size:8px; font-weight:700; letter-spacing:4px; color:var(--gold2); margin-top:3px; }
-  .trbtn{ background:rgba(255,255,255,.06); border:1px solid var(--cizgi); color:#E7D3B4; font-size:12px; font-weight:700; padding:6px 11px; border-radius:12px; }
+  .trbtn{ background:var(--neutral); border:1px solid var(--cizgi); color:var(--ink); font-size:12px; font-weight:700; padding:6px 11px; border-radius:12px; }
 
   /* yildiz */
   .yildiz{ display:inline-flex; align-items:center; gap:3px; font-size:12.5px; font-weight:800; color:var(--gold); }
-  .yildiz.yeni{ color:#C9B7CB; font-weight:700; font-size:11px; background:rgba(255,255,255,.07); padding:2px 8px; border-radius:12px; }
+  .yildiz.yeni{ color:#C9B7CB; font-weight:700; font-size:11px; background:var(--neutral); padding:2px 8px; border-radius:12px; }
 
   /* ==================== TELEFON (tek ekrana sigar, kaydirma yok) ==================== */
   #wrap{ height:100dvh; overflow:hidden; display:flex; flex-direction:column; padding:0 14px calc(80px + env(safe-area-inset-bottom)); }
   #wrap > *{ flex-shrink:0; }
   #wrap > header{ position:relative; display:flex; align-items:center; justify-content:center; padding:8px 0 8px; }
   #wrap > header .trbtn{ position:absolute; right:0; top:50%; transform:translateY(-50%); }
+  #wrap > header .modbtn{ position:absolute; left:0; top:50%; transform:translateY(-50%); }
   #wrap > header .brand{ flex-direction:column; gap:2px; }
   #wrap > header .brand .bt{ align-items:center; } #wrap > header .brand .toque{ font-size:22px; }
   #wrap > header .brand .bt b{ font-size:18px; }
@@ -60,7 +74,7 @@
   .hg h1{ font-family:var(--serif); font-weight:800; font-size:18px; }
   .hg p{ color:var(--sessiz); font-size:12px; margin-top:3px; }
   .ara{ display:flex; gap:8px; margin-top:10px; }
-  .ara input{ flex:1; background:rgba(0,0,0,.28); border:1px solid var(--cizgi); color:#fff; font-size:13.5px; padding:11px 14px; border-radius:13px; outline:none; }
+  .ara input{ flex:1; background:var(--input); border:1px solid var(--cizgi); color:#fff; font-size:13.5px; padding:11px 14px; border-radius:13px; outline:none; }
   .ara input::placeholder{ color:#9a8a9c; }
   .ara button{ width:46px; border:none; border-radius:13px; font-size:17px; color:#fff; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
 
@@ -68,7 +82,7 @@
   .chip{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; min-width:66px; padding:9px 9px 8px;
     border-radius:15px; background:var(--card); border:1px solid var(--cizgi); cursor:pointer; }
   .chip .ci{ width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:17px; background:rgba(139,59,234,.16); }
-  .chip .cn{ font-size:11px; font-weight:700; color:#E7D3B4; white-space:nowrap; }
+  .chip .cn{ font-size:11px; font-weight:700; color:var(--ink); white-space:nowrap; }
   .chip.act{ background:linear-gradient(135deg,var(--mor),var(--mavi)); border-color:transparent; box-shadow:0 8px 20px rgba(139,59,234,.5); }
   .chip.act .ci{ background:rgba(255,255,255,.18); } .chip.act .cn{ color:#fff; }
 
@@ -112,12 +126,12 @@
 
   /* alt nav */
   #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:60; display:flex; align-items:flex-end; justify-content:space-around;
-    padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:rgba(20,10,22,.94); backdrop-filter:blur(14px); border-top:1px solid var(--cizgi); }
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:var(--navbg); backdrop-filter:blur(14px); border-top:1px solid var(--cizgi); }
   #altbar button{ flex:1; background:none; border:none; color:var(--sessiz); font-size:10.5px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 0; }
   #altbar button span{ font-size:19px; } #altbar button.act{ color:var(--gold); }
   #altbar .qr{ flex:0 0 auto; }
   #altbar .qr .qi{ width:58px; height:58px; margin-top:-24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:23px; color:#fff;
-    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 22px rgba(139,59,234,.6), 0 0 0 5px rgba(20,10,22,.94); }
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 22px rgba(139,59,234,.6), 0 0 0 5px var(--navbg); }
   .nrozet{ position:absolute; top:-3px; right:calc(50% - 22px); background:#F43F5E; color:#fff; font-size:10px; font-weight:800; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
 
   /* ==================== TABLET / GENIS EKRAN ==================== */
@@ -131,7 +145,7 @@
     #side .nav{ display:flex; flex-direction:column; gap:4px; }
     #side .nav a{ display:flex; align-items:center; gap:13px; padding:13px 15px; border-radius:14px; color:#D8C6D8; font-size:14.5px; font-weight:600; cursor:pointer; }
     #side .nav a span{ font-size:18px; width:22px; text-align:center; }
-    #side .nav a:hover{ background:rgba(255,255,255,.05); }
+    #side .nav a:hover{ background:var(--neutral); }
     #side .nav a.act{ background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; box-shadow:0 8px 20px rgba(139,59,234,.45); }
     #side .sp{ flex:1; }
     #side .sbtn{ display:flex; align-items:center; gap:11px; padding:14px 16px; border-radius:16px; border:none; cursor:pointer; text-align:left; margin-top:10px; }
@@ -172,7 +186,7 @@
     .dk .art{ width:38px; height:38px; border-radius:12px; border:none; color:#fff; font-size:22px; line-height:1; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 18px rgba(139,59,234,.5); }
 
     .qrban{ margin-top:30px; border-radius:24px; padding:32px 36px; display:flex; align-items:center; gap:20px;
-      background:linear-gradient(120deg,#241329,#1a0d20); border:1px solid var(--cizgi); box-shadow:0 20px 44px -24px rgba(0,0,0,.85); }
+      background:linear-gradient(120deg,var(--card),var(--card2)); border:1px solid var(--cizgi); box-shadow:0 20px 44px -24px rgba(0,0,0,.85); }
     .qrban .qt{ flex:1; }
     .qrban .qt b{ font-family:var(--serif); font-size:24px; }
     .qrban .qt p{ color:var(--sessiz); font-size:14px; margin-top:8px; max-width:460px; line-height:1.5; }
@@ -195,7 +209,7 @@
   /* urun detay */
   #detay{ align-items:flex-end; justify-content:center; }
   @media(min-width:920px){ #detay{ align-items:center; } }
-  #detay .kutu{ position:relative; z-index:2; width:100%; max-width:480px; background:linear-gradient(180deg,#2a1731,#160a1a); border:1px solid var(--cizgi);
+  #detay .kutu{ position:relative; z-index:2; width:100%; max-width:480px; background:linear-gradient(180deg,var(--card),var(--card2)); border:1px solid var(--cizgi);
     border-radius:26px 26px 0 0; overflow:hidden; max-height:92dvh; overflow-y:auto; animation:slideUp .3s cubic-bezier(.2,.8,.2,1); }
   @media(min-width:920px){ #detay .kutu{ border-radius:26px; } }
   #detay .foto{ position:relative; height:240px; background:#1e1024; }
@@ -205,7 +219,7 @@
   #detay .in{ padding:20px 20px 26px; }
   #detay .in h2{ font-family:var(--serif); font-size:24px; }
   #detay .in .fi{ display:inline-block; margin-top:10px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); font-weight:800; font-size:17px; padding:5px 15px; border-radius:22px; }
-  #detay .in .ac{ color:#D8C8D6; font-size:14px; line-height:1.55; margin-top:14px; }
+  #detay .in .ac{ color:var(--sessiz); font-size:14px; line-height:1.55; margin-top:14px; }
   #detay .puanbox{ margin-top:18px; padding:15px; border-radius:16px; background:rgba(0,0,0,.22); border:1px solid var(--cizgi); }
   #detay .puanbox .u{ font-size:13px; color:var(--sessiz); }
   #detay .puanbox .u b{ color:var(--gold); }
@@ -223,14 +237,14 @@
   /* sepet sheet */
   #sepet{ align-items:flex-end; justify-content:center; }
   @media(min-width:920px){ #sepet{ align-items:center; } }
-  #sepet .kutu{ position:relative; z-index:2; width:100%; max-width:480px; background:linear-gradient(180deg,#241329,#160a1a); border:1px solid var(--cizgi);
+  #sepet .kutu{ position:relative; z-index:2; width:100%; max-width:480px; background:linear-gradient(180deg,var(--card),var(--card2)); border:1px solid var(--cizgi);
     border-radius:26px 26px 0 0; max-height:88dvh; display:flex; flex-direction:column; animation:slideUp .3s cubic-bezier(.2,.8,.2,1); }
   @media(min-width:920px){ #sepet .kutu{ border-radius:24px; } }
   #sepet .bar{ display:flex; align-items:center; padding:18px 20px 12px; }
   #sepet .bar b{ font-family:var(--serif); font-size:20px; color:var(--gold); }
-  #sepet .bar .x{ margin-left:auto; width:36px; height:36px; border-radius:50%; border:none; background:rgba(255,255,255,.1); color:#fff; font-size:16px; }
+  #sepet .bar .x{ margin-left:auto; width:36px; height:36px; border-radius:50%; border:none; background:var(--neutral); color:#fff; font-size:16px; }
   #sepet .liste{ flex:1; overflow-y:auto; padding:0 20px; }
-  #sepet .sat{ display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+  #sepet .sat{ display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid var(--neutral); }
   #sepet .sat .sad{ flex:1; font-size:14.5px; font-weight:600; }
   #sepet .sat .sf{ color:var(--gold); font-weight:800; font-size:14px; min-width:78px; text-align:right; }
   #sepet .adet{ display:flex; align-items:center; gap:10px; }
@@ -266,7 +280,7 @@
   #menu .mk .fi{ color:var(--gold); font-weight:800; font-size:14.5px; }
   #menu .mk .art{ width:30px; height:30px; border-radius:10px; border:none; color:#fff; font-size:18px; background:linear-gradient(135deg,var(--mor),var(--mavi)); }
 
-  #toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:95; background:linear-gradient(135deg,#2a1731,#160a1a); color:#fff;
+  #toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:95; background:linear-gradient(135deg,var(--card),var(--card2)); color:#fff;
     border:1px solid var(--cizgi); padding:13px 18px; border-radius:16px; font-size:13.5px; font-weight:600; box-shadow:0 14px 34px rgba(0,0,0,.6); max-width:88%; text-align:center; opacity:0; transition:.25s; pointer-events:none; }
 
   @keyframes up{ to{ opacity:1; transform:none; } }
@@ -279,11 +293,11 @@
       radial-gradient(680px 520px at 4% 106%, var(--glow), transparent 60%),
       radial-gradient(1200px 900px at 60% 0%, #1b1620 0%, #130f15 46%, #0b090c 100%); }
   /* karsilama + bugune-ozel: koyu + altin ince kenar (tum paletlerde sabit luks) */
-  .hg{ background:linear-gradient(160deg, var(--gold-bg), rgba(18,13,18,.74)); border-color:var(--gold-bd); }
-  .ozel{ background:linear-gradient(135deg,#241a20,#130f10); border-color:var(--gold-bd); }
-  .ozel .ic p{ color:#E9D8BE; }
-  #menu .mbar{ background:linear-gradient(135deg, rgba(0,0,0,.42), rgba(18,13,18,.72)); }
-  .chip .ci{ background:rgba(255,255,255,.06); }
+  .hg{ background:linear-gradient(160deg, var(--gold-bg), var(--card)); border-color:var(--gold-bd); }
+  .ozel{ background:linear-gradient(135deg,var(--mor),var(--mavi)); border-color:var(--gold-bd); }
+  .ozel .ic b{ color:#fff; } .ozel .ic p{ color:rgba(255,255,255,.9); }
+  #menu .mbar{ background:linear-gradient(135deg, rgba(0,0,0,.42), var(--card2)); }
+  .chip .ci{ background:var(--neutral); }
   /* aksan butonlarinin YAZI rengi palete gore (altin->koyu, koyu renkler->beyaz) */
   .ara button, .hero .kesfet, #detay .ekle, .pk .art, .dk .art, #menu .mk .art, .qrban .okut,
   #altbar .qr .qi, #side .cagir, #deskcart, .chip.act .cn, #side .nav a.act{ color:var(--ana-ink) !important; }
@@ -295,6 +309,7 @@
 <!-- ==================== TELEFON ==================== -->
 <div id="wrap">
   <header>
+    <button class="modbtn" id="modBtn" onclick="modDegistir()" aria-label="Koyu/Açık">🌙</button>
     <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
     <button class="trbtn">TR ▾</button>
   </header>
@@ -338,7 +353,10 @@
 <!-- ==================== TABLET / GENIS EKRAN ==================== -->
 <div id="desk">
   <aside id="side">
-    <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 4px 22px">
+      <span class="brand" style="margin:0"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
+      <button class="modbtn" id="modBtn2" onclick="modDegistir()" style="margin-left:auto" aria-label="Koyu/Açık">🌙</button>
+    </div>
     <div class="nav">
       <a class="act" onclick="anaSayfa(this)"><span>🏠</span>Ana Sayfa</a>
       <a onclick="menuAc()"><span>📖</span>Menüler</a>

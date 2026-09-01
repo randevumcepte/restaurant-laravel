@@ -450,6 +450,124 @@ Route::get('/kurye', function () {
     return view('kurye.index', compact('kuryeler', 'teslimatlar'));
 });
 
+// ---------------- CANLI KURYE GPS ----------------
+// Kurye telefonundan canli konum -> patron haritada gorur. Dis bagimlilik YOK (OSM/Leaflet bedava).
+if (!function_exists('_kuryeCanliEnsure')) {
+    function _kuryeCanliEnsure($subeId)
+    {
+        if (!Schema::hasColumn('kuryeler', 'token')) {
+            Schema::table('kuryeler', fn ($t) => $t->string('token', 40)->nullable()->after('id'));
+        }
+        if (!Schema::hasColumn('kuryeler', 'konum_zamani')) {
+            Schema::table('kuryeler', fn ($t) => $t->timestamp('konum_zamani')->nullable());
+        }
+        // En az 2 kurye olsun + token + demo konum (Kadikoy civari)
+        $baseLat = 40.9905; $baseLng = 29.0250;
+        $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->get();
+        if ($kuryeler->count() < 2) {
+            foreach (['Mehmet Kurye', 'Ali Kurye', 'Emre Kurye'] as $i => $ad) {
+                if ($kuryeler->count() + $i >= 3) break;
+                DB::table('kuryeler')->insert(['sube_id' => $subeId, 'ad' => $ad, 'telefon' => '053' . rand(10000000, 99999999),
+                    'aktif' => 1, 'durum' => 'musait', 'created_at' => now(), 'updated_at' => now()]);
+            }
+            $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->get();
+        }
+        foreach ($kuryeler as $k) {
+            $upd = [];
+            if (empty($k->token)) $upd['token'] = \Illuminate\Support\Str::random(24);
+            if ($k->son_lat === null) { $upd['son_lat'] = $baseLat + (rand(-120, 120) / 10000); $upd['son_lng'] = $baseLng + (rand(-120, 120) / 10000); $upd['konum_zamani'] = now(); }
+            if ($upd) DB::table('kuryeler')->where('id', $k->id)->update($upd);
+        }
+        // En az 3 aktif teslimat (yolda) olsun
+        $yolda = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')->where('teslimat_durumu', 'yolda')->count();
+        if ($yolda < 3) {
+            $kids = DB::table('kuryeler')->where('sube_id', $subeId)->pluck('id')->all();
+            $adresler = ['Bağdat Cad. No:112 D:4, Kadıköy', 'Moda Cad. No:45, Kadıköy', 'Feneryolu Mah. Ressam Salih Sk. 8', 'Caferağa Mah. Dr. Esat Işık Cd. 21', 'Osmanağa Mah. Söğütlüçeşme Cd. 60'];
+            for ($i = $yolda; $i < 3; $i++) {
+                DB::table('adisyonlar')->insert([
+                    'sube_id' => $subeId, 'masa_id' => null, 'kurye_id' => $kids[array_rand($kids)] ?? null,
+                    'kanal' => 'paket', 'platform' => ['telefon', 'yemeksepeti', 'getir'][array_rand([0, 1, 2])],
+                    'teslimat_adres' => $adresler[array_rand($adresler)], 'teslimat_durumu' => 'yolda',
+                    'misafir_sayisi' => 1, 'durum' => 'acik', 'ara_toplam' => rand(180, 640), 'toplam' => rand(180, 640),
+                    'acilis' => now()->subMinutes(rand(5, 40)), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        }
+    }
+}
+
+Route::get('/kurye-kur', function () {
+    $subeId = DB::table('subeler')->value('id');
+    _kuryeCanliEnsure($subeId);
+    $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->get(['ad', 'token']);
+    $links = $kuryeler->map(fn ($k) => $k->ad . ' -> ' . url('/kurye/' . $k->token))->implode("\n");
+    return response("Canli kurye GPS hazir.\n\nKurye panel linkleri (telefonda ac):\n" . $links)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// Kurye telefon paneli (canli konum gonderir + teslimatlarini gorur)
+Route::get('/kurye/{token}', function ($token) {
+    $k = DB::table('kuryeler')->where('token', $token)->first();
+    if (!$k) abort(404);
+    $teslimatlar = DB::table('adisyonlar')->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+        ->where('adisyonlar.kurye_id', $k->id)->whereIn('adisyonlar.teslimat_durumu', ['hazir', 'yolda'])
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'adisyonlar.teslimat_durumu', 'adisyonlar.platform', 'musteriler.ad as musteri', 'musteriler.telefon')
+        ->orderBy('adisyonlar.id')->get();
+    return view('kurye_panel', ['k' => $k, 'teslimatlar' => $teslimatlar]);
+});
+
+// Kurye konum guncelle (CSRF muaf: kurye/*)
+Route::post('/kurye/{token}/konum', function (Request $r, $token) {
+    $k = DB::table('kuryeler')->where('token', $token)->first();
+    if (!$k) return response()->json(['ok' => 0], 404);
+    $lat = (float) $r->input('lat'); $lng = (float) $r->input('lng');
+    if (!$lat || !$lng) return ['ok' => 0];
+    DB::table('kuryeler')->where('id', $k->id)->update(['son_lat' => $lat, 'son_lng' => $lng, 'konum_zamani' => now()]);
+    return ['ok' => 1];
+});
+
+// Kurye teslimat durumu (yola cikti / teslim etti)
+Route::post('/kurye/{token}/durum', function (Request $r, $token) {
+    $k = DB::table('kuryeler')->where('token', $token)->first();
+    if (!$k) return response()->json(['ok' => 0], 404);
+    $aid = (int) $r->input('adisyon_id'); $durum = (string) $r->input('durum');
+    $a = DB::table('adisyonlar')->where('id', $aid)->where('kurye_id', $k->id)->first();
+    if (!$a) return ['ok' => 0, 'hata' => 'Sipariş bulunamadı'];
+    if (!in_array($durum, ['yolda', 'teslim'])) return ['ok' => 0];
+    $upd = ['teslimat_durumu' => $durum, 'updated_at' => now()];
+    if ($durum === 'teslim') $upd['teslim_zamani'] = now();
+    DB::table('adisyonlar')->where('id', $aid)->update($upd);
+    // Kurye durumu: yolda ise teslimatta, kalan teslimat yoksa musait
+    $kalan = DB::table('adisyonlar')->where('kurye_id', $k->id)->whereIn('teslimat_durumu', ['hazir', 'yolda'])->count();
+    DB::table('kuryeler')->where('id', $k->id)->update(['durum' => $kalan > 0 ? 'teslimatta' : 'musait']);
+    return ['ok' => 1, 'mesaj' => $durum === 'teslim' ? 'Teslim edildi ✅' : 'Yola çıkıldı 🛵'];
+});
+
+// Patron canli harita sayfasi
+Route::get('/kurye-canli', function () {
+    $subeId = DB::table('subeler')->value('id');
+    _kuryeCanliEnsure($subeId);
+    return view('kurye_harita', ['sube' => DB::table('subeler')->where('id', $subeId)->first()]);
+});
+
+// Canli veri (harita + Flutter icin JSON) — kurye konumlari + aktif teslimatlar
+Route::get('/api/kurye-canli-veri', function (Request $r) {
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->value('id'));
+    $simdi = now();
+    $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->where('aktif', 1)->get()->map(function ($k) use ($simdi) {
+        $aktifTeslimat = DB::table('adisyonlar')->where('kurye_id', $k->id)->whereIn('teslimat_durumu', ['hazir', 'yolda'])->count();
+        $dk = $k->konum_zamani ? (int) \Carbon\Carbon::parse($k->konum_zamani)->diffInMinutes($simdi) : null;
+        return ['id' => (int) $k->id, 'ad' => $k->ad, 'durum' => $k->durum, 'lat' => $k->son_lat ? (float) $k->son_lat : null,
+            'lng' => $k->son_lng ? (float) $k->son_lng : null, 'aktif_teslimat' => $aktifTeslimat, 'konum_dk' => $dk];
+    })->values();
+    $teslimatlar = DB::table('adisyonlar')->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+        ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
+        ->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.kanal', 'paket')->whereIn('adisyonlar.teslimat_durumu', ['hazir', 'yolda'])
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'adisyonlar.teslimat_durumu', 'adisyonlar.platform', 'kuryeler.ad as kurye', 'musteriler.ad as musteri')
+        ->orderBy('adisyonlar.id')->get();
+    return ['ok' => 1, 'kuryeler' => $kuryeler, 'teslimatlar' => $teslimatlar,
+        'ozet' => ['kurye' => $kuryeler->count(), 'musait' => $kuryeler->where('durum', 'musait')->count(), 'yolda' => $teslimatlar->count()]];
+});
+
 // ============================ MUTFAK (KDS) ============================
 Route::get('/mutfak', function () {
     $kalemler = DB::table('adisyon_kalemleri')
