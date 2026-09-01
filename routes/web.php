@@ -1155,6 +1155,13 @@ Route::get('/masa/{id}', function ($id) {
     $sube = DB::table('subeler')->find($masa->sube_id);
     return view('masa_menu', ['masa' => $masa, 'sube' => $sube]);
 });
+// ONIZLEME: masa ID bilmeden ilk gercek masanin QR menusunu ac (test icin)
+Route::get('/menu-onizle', function () {
+    $masa = DB::table('masalar')->orderBy('id')->first();
+    if (!$masa) abort(404, 'Once masa eklenmeli');
+    return redirect('/masa/' . $masa->id);
+});
+
 // Sesli asistan (sonra ana akisa baglanacak) — ayri linkte korunuyor
 Route::get('/masa/{id}/asistan', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
