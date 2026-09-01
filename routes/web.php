@@ -1153,8 +1153,33 @@ Route::get('/masa/{id}', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
     if (!$masa) abort(404);
     $sube = DB::table('subeler')->find($masa->sube_id);
-    return view('masa_menu', ['masa' => $masa, 'sube' => $sube]);
+    $temalar = config('temalar');
+    $key = ($sube && isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
+    return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $temalar[$key], 'temaKey' => $key]);
 });
+
+// RENK KARTELASI: restoran QR menu temasini secer (subeler.tema)
+Route::get('/tema/{subeId?}', function ($subeId = null) {
+    if (!Schema::hasColumn('subeler', 'tema')) {
+        Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
+    }
+    $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
+    if (!$sube) abort(404, 'Şube yok');
+    $temalar = config('temalar');
+    $secili = (isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
+    return view('tema', ['sube' => $sube, 'temalar' => $temalar, 'secili' => $secili]);
+});
+Route::post('/tema/kaydet', function (Request $r) {
+    if (!Schema::hasColumn('subeler', 'tema')) {
+        Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
+    }
+    $key = (string) $r->tema;
+    if (!isset(config('temalar')[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
+    $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
+    DB::table('subeler')->where('id', $subeId)->update(['tema' => $key]);
+    return ['ok' => 1, 'tema' => $key];
+});
+
 // ONIZLEME: masa ID bilmeden ilk gercek masanin QR menusunu ac (test icin)
 Route::get('/menu-onizle', function () {
     $masa = DB::table('masalar')->orderBy('id')->first();

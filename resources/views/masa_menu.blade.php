@@ -9,7 +9,9 @@
 <title>{{ $sube->ad ?? 'Restoran' }} · {{ $masa->ad ?? '' }}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Dancing+Script:wght@600;700&display=swap');
-  :root{ --mor:#8B3BEA; --mor2:#A855F7; --mavi:#6D28D9; --card:#241329; --card2:#2c1734;
+  :root{ --mor:{{ $tema['ana'] ?? '#F6DFA0' }}; --mor2:{{ $tema['ana2'] ?? '#E9C46A' }}; --mavi:{{ $tema['ana3'] ?? '#C9962F' }};
+    --ana-ink:{{ $tema['ink'] ?? '#3a2600' }}; --glow:{{ $tema['glow'] ?? 'rgba(233,196,106,.16)' }};
+    --card:#201a24; --card2:#2a2130;
     --gold:#E9C46A; --gold2:#C9962F; --ink:#F3E9EE; --sessiz:#B49CB6; --cizgi:rgba(233,196,106,.18);
     --serif:'Playfair Display',Georgia,serif; --script:'Dancing Script',cursive; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
@@ -260,28 +262,22 @@
   @keyframes up{ to{ opacity:1; transform:none; } }
   @keyframes slideUp{ from{ transform:translateY(40px); opacity:.4; } to{ transform:none; opacity:1; } }
 
-  /* ============ LUKS TEMA: siyah + altin agirlikli (mor azaltildi) ============ */
+  /* ============ LUKS TEMA (renk kartelasindan gelir) : siyah zemin + palet aksani + altin detay ============ */
   html,body{ background:#0b090c;
     background-image:
-      radial-gradient(920px 640px at 90% -8%, rgba(233,196,106,.16), transparent 58%),
-      radial-gradient(680px 520px at 4% 106%, rgba(139,59,234,.09), transparent 60%),
-      radial-gradient(1200px 900px at 60% 0%, #231a25 0%, #140f16 46%, #0b090c 100%); }
-  /* karsilama + bugune-ozel: mor blok yerine koyu + altin ince kenar */
-  .hg{ background:linear-gradient(160deg, rgba(233,196,106,.08), rgba(18,13,18,.74)); border-color:rgba(233,196,106,.30); }
+      radial-gradient(920px 640px at 90% -8%, var(--glow), transparent 58%),
+      radial-gradient(680px 520px at 4% 106%, var(--glow), transparent 60%),
+      radial-gradient(1200px 900px at 60% 0%, #1b1620 0%, #130f15 46%, #0b090c 100%); }
+  /* karsilama + bugune-ozel: koyu + altin ince kenar (tum paletlerde sabit luks) */
+  .hg{ background:linear-gradient(160deg, rgba(233,196,106,.07), rgba(18,13,18,.74)); border-color:rgba(233,196,106,.30); }
   .ozel{ background:linear-gradient(135deg,#241a20,#130f10); border-color:rgba(233,196,106,.36); }
   .ozel .ic p{ color:#E9D8BE; }
-  /* birincil aksiyonlar ALTIN (luks) */
-  .ara button, .hero .kesfet, #detay .ekle, .pk .art, .dk .art, #menu .mk .art, .qrban .okut{
-    background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important;
-    box-shadow:0 7px 18px rgba(201,150,47,.5) !important; }
-  #altbar .qr .qi{ background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important;
-    box-shadow:0 8px 22px rgba(201,150,47,.55), 0 0 0 5px rgba(11,9,12,.94) !important; }
-  /* aktif kategori: altin cerceveli koyu (mor dolgu yerine) */
-  .chip.act{ background:linear-gradient(160deg, rgba(233,196,106,.20), rgba(28,20,26,.9)) !important; border:1px solid var(--gold) !important; box-shadow:0 8px 20px -8px rgba(201,150,47,.5) !important; }
-  .chip.act .ci{ background:rgba(233,196,106,.22) !important; } .chip.act .cn{ color:var(--gold) !important; }
-  /* masaustu sol menu aktif: altin */
-  #side .nav a.act{ background:linear-gradient(135deg, rgba(233,196,106,.18), rgba(28,20,26,.9)); border:1px solid var(--gold); color:var(--gold); box-shadow:0 8px 20px -8px rgba(201,150,47,.5); }
-  #side .cagir{ background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important; }
+  #menu .mbar{ background:linear-gradient(135deg, rgba(0,0,0,.42), rgba(18,13,18,.72)); }
+  .chip .ci{ background:rgba(255,255,255,.06); }
+  /* aksan butonlarinin YAZI rengi palete gore (altin->koyu, koyu renkler->beyaz) */
+  .ara button, .hero .kesfet, #detay .ekle, .pk .art, .dk .art, #menu .mk .art, .qrban .okut,
+  #altbar .qr .qi, #side .cagir, #deskcart, .chip.act .cn, #side .nav a.act{ color:var(--ana-ink) !important; }
+  .chip.act{ color:var(--ana-ink); } .chip.act .ci{ background:rgba(255,255,255,.20); }
 </style>
 </head>
 <body>
