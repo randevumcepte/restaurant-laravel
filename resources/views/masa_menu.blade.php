@@ -34,7 +34,10 @@
 
   /* ==================== TELEFON ==================== */
   #wrap{ min-height:100dvh; display:flex; flex-direction:column; padding:0 16px calc(94px + env(safe-area-inset-bottom)); }
-  #wrap > header{ display:flex; align-items:center; justify-content:space-between; padding:15px 0 12px; }
+  #wrap > header{ position:relative; display:flex; align-items:center; justify-content:center; padding:15px 0 12px; }
+  #wrap > header .trbtn{ position:absolute; right:0; top:50%; transform:translateY(-50%); }
+  #wrap > header .brand{ flex-direction:column; gap:3px; }
+  #wrap > header .brand .bt{ align-items:center; } #wrap > header .brand .toque{ font-size:26px; }
   .hg{ background:linear-gradient(150deg,rgba(139,59,234,.20),rgba(36,19,41,.65)); border:1px solid var(--cizgi);
     border-radius:22px; padding:20px 18px; box-shadow:0 16px 36px -20px rgba(0,0,0,.8); }
   .hg h1{ font-family:var(--serif); font-weight:800; font-size:22px; }
