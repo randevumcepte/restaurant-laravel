@@ -5,33 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>{{ $sube->ad ?? 'Restoran' }} · {{ $masa->ad ?? '' }}</title>
 <style>
-  :root{ --mor:#7C3AED; --mor2:#9D5DC8; --mavi:#4F46E5; --bg:#0B1020; --card:#161C2E; }
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Dancing+Script:wght@600;700&display=swap');
+  :root{ --mor:#8B3BEA; --mor2:#A855F7; --mavi:#6D28D9; --bg:#150a1a; --card:#241329;
+    --gold:#E9C46A; --gold2:#C9962F; --ink:#F3E9EE; --sessiz:#B49CB6; --cizgi:rgba(233,196,106,.18);
+    --serif:'Playfair Display',Georgia,'Times New Roman',serif; --script:'Dancing Script',cursive; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ margin:0; height:100%; background:var(--bg); color:#fff; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  html,body{ margin:0; height:100%; color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:#120912;
+    background-image:
+      radial-gradient(900px 620px at 88% -8%, rgba(233,150,60,.20), transparent 60%),
+      radial-gradient(760px 560px at 6% 108%, rgba(139,59,234,.20), transparent 58%),
+      radial-gradient(1200px 900px at 60% 0%, #331436 0%, #1c0d22 44%, #120912 100%); }
   #app{ display:flex; flex-direction:column; height:100dvh; }
-  header{ padding:14px 16px; display:flex; align-items:center; gap:10px; }
-  header .logo{ background:linear-gradient(135deg,var(--mor),var(--mavi)); padding:5px 9px; border-radius:9px; font-weight:800; font-size:13px; }
-  header .ad{ font-weight:800; font-size:16px; }
-  header .menuBtn{ margin-left:auto; background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; border:none; font-size:12.5px; font-weight:800; padding:7px 13px; border-radius:20px; box-shadow:0 4px 12px rgba(124,58,237,.4); }
-  header .masa{ margin-left:8px; background:rgba(124,58,237,.25); color:#C4B5FD; font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; }
-  .menuBaslik{ margin:16px 4px 8px; font-size:16px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px; }
+  header{ padding:15px 16px 12px; display:flex; align-items:center; gap:11px; }
+  header .logo{ display:inline-flex; align-items:center; gap:7px; }
+  header .logo .toque{ font-size:22px; filter:drop-shadow(0 2px 6px rgba(233,196,106,.5)); }
+  header .logo .lz{ display:flex; flex-direction:column; line-height:1; }
+  header .logo .lz b{ font-family:var(--serif); font-weight:800; font-size:20px; letter-spacing:1px;
+    background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  header .logo .lz i{ font-style:normal; font-size:8px; font-weight:700; letter-spacing:4px; color:var(--gold2); margin-top:2px; }
+  header .ad{ font-family:var(--serif); font-weight:700; font-size:15px; color:var(--ink); opacity:.9; }
+  header .menuBtn{ margin-left:auto; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; border:none; font-size:12.5px; font-weight:800; padding:8px 14px; border-radius:22px; box-shadow:0 5px 14px rgba(201,150,47,.4); }
+  header .masa{ margin-left:8px; background:rgba(139,59,234,.22); color:#D6BBF3; font-size:12px; font-weight:700; padding:5px 11px; border-radius:20px; border:1px solid rgba(139,59,234,.3); }
+  .menuBaslik{ margin:16px 4px 8px; font-family:var(--serif); font-size:17px; font-weight:800; color:var(--gold); display:flex; align-items:center; gap:8px; }
   .menuBaslik span{ font-size:22px; }
   #orb-wrap{ display:flex; flex-direction:column; align-items:center; padding:8px 0 2px; }
   #orb{ width:120px; height:120px; border-radius:50%; position:relative;
-    background:conic-gradient(from 0deg,#22D3EE,#3B82F6,#8B5CF6,#EC4899,#22D3EE);
-    box-shadow:0 0 40px rgba(139,92,246,.45),0 0 22px rgba(34,211,238,.3); animation:spin 6s linear infinite; }
+    background:conic-gradient(from 0deg,#E9C46A,#A855F7,#8B3BEA,#F6DFA0,#E9C46A);
+    box-shadow:0 0 42px rgba(168,85,247,.45),0 0 24px rgba(233,196,106,.4); animation:spin 6s linear infinite; }
   #orb::after{ content:''; position:absolute; inset:26px; border-radius:50%;
     background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.85) 45%,rgba(255,255,255,0) 72%); }
   #orb.dinliyor{ animation:spin 3s linear infinite, pulse 1s ease-in-out infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   @keyframes pulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.06);} }
-  #durum{ text-align:center; color:#94A3B8; font-size:13px; margin:8px 20px 0; min-height:18px; }
+  #durum{ text-align:center; color:var(--sessiz); font-size:13px; margin:8px 20px 0; min-height:18px; }
   #sohbet{ flex:1; overflow-y:auto; padding:12px 14px 4px; -webkit-overflow-scrolling:touch; }
   .balon{ max-width:86%; padding:11px 15px; border-radius:16px; margin-bottom:10px; font-size:14.5px; line-height:1.4; }
   .ben{ margin-left:auto; background:linear-gradient(135deg,var(--mor),var(--mavi)); border-bottom-right-radius:4px; }
-  .ai{ background:var(--card); border-bottom-left-radius:4px; color:#E2E8F0; }
+  .ai{ background:var(--card); border:1px solid var(--cizgi); border-bottom-left-radius:4px; color:#EBDDE9; }
   .cips{ display:flex; gap:8px; overflow-x:auto; padding:6px 14px; }
-  .cip{ flex:0 0 auto; background:var(--card); border:1px solid #2D3752; color:#C4B5FD; font-size:12.5px; font-weight:600;
+  .cip{ flex:0 0 auto; background:var(--card); border:1px solid var(--cizgi); color:#E7D3B4; font-size:12.5px; font-weight:600;
     padding:9px 13px; border-radius:20px; white-space:nowrap; }
   footer{ padding:10px 12px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:8px; align-items:center; }
   #metin{ flex:1; background:var(--card); border:none; color:#fff; font-size:14.5px; padding:13px 16px; border-radius:24px; outline:none; }
@@ -39,16 +52,16 @@
   #mic{ background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 4px 14px rgba(124,58,237,.4); }
   #mic.acik{ background:linear-gradient(135deg,#16A34A,#22C55E); box-shadow:0 0 0 4px rgba(34,197,94,.25),0 4px 14px rgba(34,197,94,.5); }
   #mic.dinliyor{ background:linear-gradient(135deg,#F43F5E,#EF4444); }
-  #gonder{ background:var(--card); color:#C4B5FD; }
+  #gonder{ background:var(--card); color:var(--gold); }
   /* ---- Gorsel kartlar (PREMIUM) ---- */
   .kartsira{ display:flex; gap:14px; overflow-x:auto; padding:6px 2px 18px; margin-bottom:4px;
     -webkit-overflow-scrolling:touch; scroll-snap-type:x mandatory; }
   .kartsira::-webkit-scrollbar{ height:0; }
   .mkart{ flex:0 0 236px; scroll-snap-align:start; position:relative; height:312px; border-radius:24px; overflow:hidden;
-    background:#0e1428; border:1px solid rgba(255,255,255,.07); box-shadow:0 14px 34px rgba(0,0,0,.5);
+    background:#1e1024; border:1px solid rgba(255,255,255,.07); box-shadow:0 14px 34px rgba(0,0,0,.5);
     opacity:0; transform:translateY(18px) scale(.97); animation:kartGir .55s cubic-bezier(.2,.75,.2,1) forwards; }
   @keyframes kartGir{ to{ opacity:1; transform:none; } }
-  .mkart .gor{ position:absolute; inset:0; background:#0e1428; }
+  .mkart .gor{ position:absolute; inset:0; background:#1e1024; }
   .mkart .gor img{ width:100%; height:100%; object-fit:cover; transform:scale(1.03); transition:transform .7s ease; }
   .mkart:active .gor img{ transform:scale(1.1); }
   .mkart .tile{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
@@ -71,13 +84,13 @@
   .katsira::-webkit-scrollbar{ height:0; }
   .kkart{ flex:0 0 auto; min-width:100px; display:flex; flex-direction:column; align-items:center; gap:7px;
     padding:17px 15px; border-radius:20px; border:1px solid rgba(255,255,255,.08);
-    background:linear-gradient(160deg,#1c2542,#141a30); box-shadow:0 8px 20px rgba(0,0,0,.4);
+    background:linear-gradient(160deg,#2a1731,#1c0f22); box-shadow:0 8px 20px rgba(0,0,0,.4);
     opacity:0; transform:translateY(14px); animation:kartGir .5s cubic-bezier(.2,.75,.2,1) forwards; }
-  .kkart:active{ border-color:rgba(124,58,237,.6); }
+  .kkart:active{ border-color:rgba(233,196,106,.6); }
   .kkart .ke{ font-size:32px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.4)); }
   .kkart .kad{ font-weight:700; font-size:12.5px; color:#E7ECF5; text-align:center; }
   /* ---- Sepet (sipariş onayı) ---- */
-  .sepet{ background:linear-gradient(160deg,#1b2340,#141a2e); border:1px solid #2D3752; border-radius:18px; padding:14px 15px; margin-bottom:10px;
+  .sepet{ background:linear-gradient(160deg,#2a1731,#1c0f22); border:1px solid #2D3752; border-radius:18px; padding:14px 15px; margin-bottom:10px;
     box-shadow:0 10px 26px rgba(0,0,0,.4); }
   .sepet h4{ margin:0 0 10px; font-size:15px; color:#fff; }
   .sepet .satir{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #232B42; }
@@ -113,10 +126,10 @@
     background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 20px rgba(124,58,237,.5); }
   .lb-ipucu{ text-align:center; color:#64748B; font-size:11.5px; padding:6px 0 2px; }
   /* ---- SALT OKUNUR PREMIUM tam ekran menu ---- */
-  #menuTam{ position:fixed; inset:0; z-index:70; background:radial-gradient(1200px 600px at 50% -10%, #16203c 0%, #0B1020 55%); display:none; flex-direction:column; }
+  #menuTam{ position:fixed; inset:0; z-index:70; background:radial-gradient(1000px 700px at 70% -8%, #331436 0%, #1c0d22 46%, #120912 100%); display:none; flex-direction:column; }
   #menuTam .mt-bar{ display:flex; align-items:center; gap:10px; padding:15px 18px; border-bottom:1px solid rgba(255,255,255,.06);
-    background:linear-gradient(135deg,rgba(124,58,237,.35),rgba(79,70,229,.2)); position:sticky; top:0; z-index:2; backdrop-filter:blur(8px); }
-  #menuTam .mt-title{ font-weight:800; font-size:18px; color:#fff; letter-spacing:.3px; }
+    background:linear-gradient(135deg,rgba(139,59,234,.30),rgba(51,20,54,.55)); border-bottom:1px solid var(--cizgi); position:sticky; top:0; z-index:2; backdrop-filter:blur(8px); }
+  #menuTam .mt-title{ font-family:var(--serif); font-weight:800; font-size:19px; color:var(--gold); letter-spacing:.3px; }
   #menuTam .mt-kapat{ margin-left:auto; background:rgba(255,255,255,.16); color:#fff; border:none; font-size:13.5px; font-weight:800; padding:9px 15px; border-radius:22px; }
   #menuTam .mt-body{ flex:1; overflow-y:auto; padding:4px 14px 48px; -webkit-overflow-scrolling:touch; }
   #menuTam .mt-yukle{ text-align:center; color:#94A3B8; padding:48px 0; }
@@ -130,10 +143,12 @@
   #menuTam .mt-hero::before{ content:''; position:absolute; inset:0;
     background:radial-gradient(60% 80% at 50% -10%, rgba(246,206,99,.16), transparent 70%); }
   #menuTam .mt-hero-ic{ position:relative; }
-  #menuTam .mt-hero-ad{ font-family:Georgia,'Times New Roman',serif; font-size:34px; font-weight:800; color:#fff;
-    letter-spacing:.5px; text-shadow:0 4px 18px rgba(0,0,0,.55); line-height:1.1; }
-  #menuTam .mt-hero-alt{ display:inline-block; margin-top:14px; padding-top:12px; font-size:11px; font-weight:800; letter-spacing:4px; color:#F6CE63;
-    border-top:1px solid rgba(246,206,99,.45); }
+  #menuTam .mt-hero-scr{ font-family:var(--script); font-size:26px; font-weight:700; color:var(--gold); line-height:1; margin-bottom:2px;
+    text-shadow:0 3px 14px rgba(233,196,106,.35); }
+  #menuTam .mt-hero-ad{ font-family:var(--serif); font-size:36px; font-weight:900; color:#fff;
+    letter-spacing:.5px; text-shadow:0 4px 18px rgba(0,0,0,.55); line-height:1.05; }
+  #menuTam .mt-hero-alt{ display:inline-block; margin-top:14px; padding-top:12px; font-size:11px; font-weight:800; letter-spacing:4px; color:var(--gold);
+    border-top:1px solid rgba(233,196,106,.45); }
   /* SEVIYE 1: kategori kutulari - sabit guzel oran (16:10), responsive auto-fill */
   #menuTam .mt-katgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; padding:2px 0; }
   #menuTam .mt-kattile{ position:relative; border-radius:20px; overflow:hidden; aspect-ratio:16/10; cursor:pointer;
@@ -169,10 +184,10 @@
   @media(min-width:640px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr; } }
   @media(min-width:1000px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr 1fr; } }
   /* immersive foto hero kart */
-  #menuTam .mt-urun{ border-radius:22px; overflow:hidden; background:#0e1428; border:1px solid rgba(255,255,255,.07);
+  #menuTam .mt-urun{ border-radius:22px; overflow:hidden; background:#1e1024; border:1px solid rgba(255,255,255,.07);
     box-shadow:0 16px 38px rgba(0,0,0,.5); opacity:0; transform:translateY(16px) scale(.98);
     animation:kartGir .55s cubic-bezier(.2,.75,.2,1) forwards; }
-  #menuTam .mt-gor{ position:relative; height:210px; background:#0e1428; }
+  #menuTam .mt-gor{ position:relative; height:210px; background:#1e1024; }
   #menuTam .mt-gor img{ width:100%; height:100%; object-fit:cover; transform:scale(1.03); transition:transform .7s ease; }
   #menuTam .mt-urun:active .mt-gor img{ transform:scale(1.09); }
   #menuTam .mt-tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
@@ -184,16 +199,15 @@
   #menuTam .mt-ad{ font-weight:800; font-size:20px; color:#fff; line-height:1.15; letter-spacing:.2px; text-shadow:0 2px 10px rgba(0,0,0,.7); flex:1; }
   #menuTam .mt-fi{ background:rgba(255,255,255,.14); backdrop-filter:blur(8px); color:#FDE9B5; font-weight:800; font-size:15px;
     padding:5px 13px; border-radius:22px; border:1px solid rgba(246,206,99,.45); white-space:nowrap; }
-  #menuTam .mt-ac{ color:#C9D3E3; font-size:12.8px; line-height:1.45; padding:12px 16px 4px;
+  #menuTam .mt-ac{ color:#D8C8D6; font-size:12.8px; line-height:1.45; padding:12px 16px 4px;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  #menuTam .mt-bak{ color:#8b93c4; font-size:11.5px; font-weight:700; padding:6px 16px 14px; }
+  #menuTam .mt-bak{ color:var(--gold2); font-size:11.5px; font-weight:700; padding:6px 16px 14px; }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <span class="logo">RestoOS</span>
-    <span class="ad">{{ $sube->ad ?? 'Restoran' }}</span>
+    <span class="logo"><span class="toque">👨‍🍳</span><span class="lz"><b>{{ $sube->ad ?? 'RestoOS' }}</b><i>RESTORAN</i></span></span>
     <button class="menuBtn" onclick="menuyuIncele()">📋 Menüyü İncele</button>
     <span class="masa">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
@@ -353,7 +367,7 @@ function menuIzgaraGoster(){
   const body = document.getElementById('menuTam').querySelector('.mt-body'); body.innerHTML='';
   const col = document.createElement('div'); col.className='mt-col'; body.appendChild(col);
   const hero = document.createElement('div'); hero.className='mt-hero';
-  hero.innerHTML = `<div class="mt-hero-ic"><div class="mt-hero-ad">${esc(SUBE_AD)}</div><div class="mt-hero-alt">— DİJİTAL MENÜ —</div></div>`;
+  hero.innerHTML = `<div class="mt-hero-ic"><div class="mt-hero-scr">Afiyet olsun</div><div class="mt-hero-ad">${esc(SUBE_AD)}</div><div class="mt-hero-alt">— DİJİTAL MENÜ —</div></div>`;
   col.appendChild(hero);
   const grid = document.createElement('div'); grid.className='mt-katgrid';
   _menuData.forEach((k,i)=>{
