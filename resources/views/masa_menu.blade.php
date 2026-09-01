@@ -66,7 +66,8 @@
   .pk{ flex:0 0 155px; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--cizgi); border-radius:18px; overflow:hidden;
     box-shadow:0 12px 26px -16px rgba(0,0,0,.75); cursor:pointer;
     opacity:0; transform:translateY(12px); animation:up .5s cubic-bezier(.2,.75,.2,1) forwards; }
-  .pk .g{ position:relative; flex:1 1 auto; min-height:80px; background:#1e1024; }
+  .pk .g{ position:relative; flex:1 1 auto; min-height:0; background:#1e1024; }
+  .pk .b{ background:var(--card); }   /* fiyat satiri her zaman tam gorunur (gorsel gerekince kuculur) */
   .pk .g img{ width:100%; height:100%; object-fit:cover; }
   .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:44px; }
   .pk .tag{ position:absolute; top:8px; left:8px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
