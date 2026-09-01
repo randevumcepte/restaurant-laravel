@@ -74,7 +74,7 @@
   .hg h1{ font-family:var(--serif); font-weight:800; font-size:18px; }
   .hg p{ color:var(--sessiz); font-size:12px; margin-top:3px; }
   .ara{ display:flex; gap:8px; margin-top:10px; }
-  .ara input{ flex:1; background:var(--input); border:1px solid var(--cizgi); color:#fff; font-size:13.5px; padding:11px 14px; border-radius:13px; outline:none; }
+  .ara input{ flex:1; background:var(--input); border:1px solid var(--cizgi); color:var(--ink); font-size:13.5px; padding:11px 14px; border-radius:13px; outline:none; }
   .ara input::placeholder{ color:#9a8a9c; }
   .ara button{ width:46px; border:none; border-radius:13px; font-size:17px; color:#fff; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
 
@@ -705,6 +705,19 @@ function sayac(){
     sa.textContent=String(Math.floor(f/3600)).padStart(2,'0'); f%=3600; dk.textContent=String(Math.floor(f/60)).padStart(2,'0'); sn.textContent=String(f%60).padStart(2,'0'); }
   tik(); setInterval(tik,1000);
 }
+
+// KOYU/ACIK MOD — musteri kendi cihazinda secer, tercihi hatirlanir (localStorage)
+function modUygula(mod){
+  const acik = mod==='acik';
+  document.documentElement.classList.toggle('acik', acik);
+  document.querySelectorAll('#modBtn,#modBtn2').forEach(b=> b.textContent = acik ? '☀️' : '🌙');
+}
+function modDegistir(){
+  const yeni = document.documentElement.classList.contains('acik') ? 'koyu' : 'acik';
+  try{ localStorage.setItem('qr_mod', yeni); }catch(e){}
+  modUygula(yeni);
+}
+(function(){ let m='koyu'; try{ m=localStorage.getItem('qr_mod')||'koyu'; }catch(e){} modUygula(m); })();
 
 window.addEventListener('load',()=>{ yukle(); sayac(); });
 </script>
