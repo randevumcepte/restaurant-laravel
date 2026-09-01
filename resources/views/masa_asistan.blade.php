@@ -95,7 +95,7 @@
   .sepet .vazgec{ background:#2a2030; color:#FCA5A5; border:none; border-radius:13px; padding:13px 16px; font-weight:700; }
   .mkart .gor{ cursor:pointer; }
   /* ---- Foto galeri (lightbox) ---- */
-  #lightbox{ position:fixed; inset:0; z-index:60; background:rgba(4,7,15,.95); backdrop-filter:blur(8px);
+  #lightbox{ position:fixed; inset:0; z-index:80; background:rgba(4,7,15,.95); backdrop-filter:blur(8px);
     display:none; flex-direction:column; animation:lbGir .25s ease; }
   @keyframes lbGir{ from{ opacity:0; } to{ opacity:1; } }
   .lb-bar{ display:flex; align-items:center; gap:10px; padding:16px 18px; }
@@ -112,6 +112,29 @@
   .lb-alt #lb-iste{ width:100%; border:none; border-radius:14px; padding:14px; font-weight:800; font-size:14.5px; color:#fff;
     background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 20px rgba(124,58,237,.5); }
   .lb-ipucu{ text-align:center; color:#64748B; font-size:11.5px; padding:6px 0 2px; }
+  /* ---- SALT OKUNUR tam ekran menu ---- */
+  #menuTam{ position:fixed; inset:0; z-index:70; background:var(--bg); display:none; flex-direction:column; }
+  #menuTam .mt-bar{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid #1e2740;
+    background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(79,70,229,.18)); position:sticky; top:0; }
+  #menuTam .mt-title{ font-weight:800; font-size:17px; color:#fff; }
+  #menuTam .mt-kapat{ margin-left:auto; background:rgba(255,255,255,.14); color:#fff; border:none; font-size:13.5px; font-weight:700; padding:8px 14px; border-radius:20px; }
+  #menuTam .mt-body{ flex:1; overflow-y:auto; padding:6px 12px 40px; -webkit-overflow-scrolling:touch; }
+  #menuTam .mt-yukle{ text-align:center; color:#94A3B8; padding:40px 0; }
+  #menuTam .mt-kat{ display:flex; align-items:center; gap:9px; font-size:17px; font-weight:800; color:#fff; margin:18px 4px 10px; }
+  #menuTam .mt-kat span{ font-size:23px; }
+  #menuTam .mt-grid{ display:grid; grid-template-columns:1fr; gap:11px; }
+  @media(min-width:620px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr; } }
+  #menuTam .mt-urun{ display:flex; gap:12px; background:var(--card); border:1px solid #232B42; border-radius:16px; overflow:hidden; }
+  #menuTam .mt-ph{ position:relative; flex:0 0 104px; width:104px; height:104px; background:#0e1428; }
+  #menuTam .mt-ph img{ width:100%; height:100%; object-fit:cover; }
+  #menuTam .mt-tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+  #menuTam .mt-tile span{ font-size:40px; }
+  #menuTam .mt-rz{ position:absolute; top:6px; left:6px; background:linear-gradient(135deg,#F6CE63,#E0A431); color:#3a2600; font-size:10px; font-weight:800; padding:2px 7px; border-radius:12px; }
+  #menuTam .mt-in{ flex:1; min-width:0; padding:10px 12px 10px 0; display:flex; flex-direction:column; }
+  #menuTam .mt-ad{ font-weight:800; font-size:15px; color:#fff; }
+  #menuTam .mt-fi{ color:#FDE9B5; font-weight:800; font-size:14px; margin-top:2px; }
+  #menuTam .mt-ac{ color:#94A3B8; font-size:12px; line-height:1.35; margin-top:5px;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 </style>
 </head>
 <body>
@@ -147,6 +170,15 @@
   <div class="lb-imgs" id="lb-imgs"></div>
   <div class="lb-ipucu">← kaydırarak diğer fotoğraflara bakın →</div>
   <div class="lb-alt"><span id="lb-fi"></span><span id="lb-ac"></span><button id="lb-iste">🙋 İstiyorum</button></div>
+</div>
+
+<!-- SALT OKUNUR tam ekran menu (AI kapali) -->
+<div id="menuTam">
+  <div class="mt-bar">
+    <span class="mt-title">📋 {{ $sube->ad ?? 'Menü' }}</span>
+    <button class="mt-kapat" onclick="kapatMenu()">✕ Kapat</button>
+  </div>
+  <div class="mt-body"></div>
 </div>
 
 <script>
@@ -209,7 +241,10 @@ function acGaleri(k){
     im.addEventListener('error', function(){ this.style.background = gradientFor(k.ad); this.removeAttribute('src'); });
     wrap.appendChild(im);
   });
-  document.getElementById('lb-iste').onclick = ()=>{ kapatGaleri(); istiyorum(k); };
+  const menuAcik = document.getElementById('menuTam').style.display === 'flex';   // salt okunur menu -> siparis butonu yok
+  const iste = document.getElementById('lb-iste');
+  iste.style.display = menuAcik ? 'none' : '';
+  iste.onclick = ()=>{ kapatGaleri(); istiyorum(k); };
   lb.querySelector('.lb-ipucu').style.display = liste.length > 1 ? 'block' : 'none';
   lb.style.display = 'flex';
 }
@@ -241,28 +276,46 @@ function istiyorum(k){
   sor(ad + ' istiyorum');
 }
 
-/* ---- MENUYU KENDIM INCELE: sesli asistani kapat, tum menuyu goster ---- */
+/* ---- MENUYU İNCELE: SALT OKUNUR tam ekran QR menu (AI TAMAMEN kapali, hicbir yazi/mesaj yok) ---- */
 async function menuyuIncele(){
-  // sesli asistani/dinlemeyi kapat
+  // AI'yi ve sesi TAMAMEN durdur
   sessizMod = true; sohbetAktif = false;
   konusKes(); sesDurdur(); konusuyor = false; try{ rec && rec.stop(); }catch(_){}
   micBtn.classList.remove('acik');
-  durumEl.textContent = 'Menüyü inceliyorsunuz — konuşmak için mikrofona dokunun';
-  ekle('ai', 'Buyurun, menümüzü dilediğiniz gibi inceleyin. 😊 Beğendiğinize "İstiyorum" deyin; hazır olunca sepetten gönderin. Bana dokunarak istediğinizde tekrar konuşabiliriz.');
+  const ov = document.getElementById('menuTam');
+  const body = ov.querySelector('.mt-body');
+  body.innerHTML = '<div class="mt-yukle">Menü yükleniyor…</div>';
+  ov.style.display = 'flex';
   try{
     const r = await fetch('/api/qr/menu-tam?masa='+MASA);
     const j = await r.json();
-    if(j.ok && Array.isArray(j.kategoriler)){
+    if(j.ok && Array.isArray(j.kategoriler) && j.kategoriler.length){
+      body.innerHTML = '';
       j.kategoriler.forEach(k=>{
-        const h = document.createElement('div'); h.className='menuBaslik';
-        h.innerHTML = `<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`;
-        sohbet.appendChild(h);
-        kartlariEkle(k.kartlar);
+        const sec = document.createElement('div'); sec.className='mt-sec';
+        const kat = document.createElement('div'); kat.className='mt-kat';
+        kat.innerHTML = `<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`;
+        sec.appendChild(kat);
+        const grid = document.createElement('div'); grid.className='mt-grid';
+        k.kartlar.forEach(u=>{
+          const c = document.createElement('div'); c.className='mt-urun';
+          const tile = `<div class="mt-tile" style="background:${gradientFor(u.ad)}"><span>${u.emoji||'🍽️'}</span></div>`;
+          const gorsel = u.gorsel
+            ? `<img src="${esc(u.gorsel)}" alt="${esc(u.ad)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML=${JSON.stringify(tile)}">`
+            : tile;
+          const et = u.etiket ? `<span class="mt-rz">★ ${esc(u.etiket)}</span>` : '';
+          const ac = u.aciklama ? `<div class="mt-ac">${esc(u.aciklama)}</div>` : '';
+          c.innerHTML = `<div class="mt-ph">${gorsel}${et}</div>`
+            + `<div class="mt-in"><div class="mt-ad">${esc(u.ad)}</div><div class="mt-fi">${esc(u.fiyat_yazi||'')}</div>${ac}</div>`;
+          c.addEventListener('click', ()=> acGaleri(u));   // foto galeri (salt okuma)
+          grid.appendChild(c);
+        });
+        sec.appendChild(grid); body.appendChild(sec);
       });
-      sohbet.scrollTop = sohbet.scrollHeight;
-    }
-  }catch(e){ ekle('ai','Menü yüklenemedi, tekrar dener misiniz?'); }
+    } else { body.innerHTML = '<div class="mt-yukle">Menü şu an görüntülenemiyor.</div>'; }
+  }catch(e){ body.innerHTML = '<div class="mt-yukle">Menü yüklenemedi.</div>'; }
 }
+function kapatMenu(){ document.getElementById('menuTam').style.display = 'none'; }
 
 /* ---- Sepet (Faz 2: konusarak biriken siparis) ---- */
 let sepet = [];            // birikimli sepet (mesajlar arasi korunur)
