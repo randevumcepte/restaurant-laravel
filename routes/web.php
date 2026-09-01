@@ -568,6 +568,121 @@ Route::get('/api/kurye-canli-veri', function (Request $r) {
         'ozet' => ['kurye' => $kuryeler->count(), 'musait' => $kuryeler->where('durum', 'musait')->count(), 'yolda' => $teslimatlar->count()]];
 });
 
+// ============================ CALLERID (arayan tanima — VoIP/FreePBX webhook) ============================
+if (!function_exists('_telNorm')) {
+    function _telNorm($t) { $d = preg_replace('/\D/', '', (string) $t); return strlen($d) > 10 ? substr($d, -10) : $d; }
+}
+if (!function_exists('_calleridEnsure')) {
+    function _calleridEnsure()
+    {
+        if (Schema::hasTable('cagri_loglari') && !Schema::hasColumn('cagri_loglari', 'durum')) {
+            Schema::table('cagri_loglari', fn ($t) => $t->string('durum', 15)->default('bekliyor')->after('sonuc'));
+        }
+        if (Schema::hasTable('cagri_loglari') && !Schema::hasColumn('cagri_loglari', 'hat')) {
+            Schema::table('cagri_loglari', fn ($t) => $t->string('hat', 40)->nullable());
+        }
+        if (Schema::hasTable('musteriler') && !Schema::hasColumn('musteriler', 'telefon_norm')) {
+            Schema::table('musteriler', fn ($t) => $t->string('telefon_norm', 12)->nullable()->index());
+            foreach (DB::table('musteriler')->get(['id', 'telefon']) as $m) {
+                DB::table('musteriler')->where('id', $m->id)->update(['telefon_norm' => _telNorm($m->telefon)]);
+            }
+        }
+    }
+}
+if (!function_exists('_musteriKart')) {
+    function _musteriKart($m)
+    {
+        if (!$m) return null;
+        $sonlar = DB::table('adisyonlar')->where('musteri_id', $m->id)->orderByDesc('id')->limit(3)
+            ->get(['id', 'toplam', 'durum', 'created_at'])
+            ->map(fn ($a) => ['id' => (int) $a->id, 'toplam' => (float) $a->toplam, 'durum' => $a->durum,
+                'tarih' => $a->created_at ? \Carbon\Carbon::parse($a->created_at)->format('d.m.Y') : '']);
+        return ['id' => (int) $m->id, 'ad' => $m->ad, 'telefon' => $m->telefon, 'adres' => $m->adres ?? '',
+            'siparis_sayisi' => (int) ($m->siparis_sayisi ?? 0), 'toplam_harcama' => (float) ($m->toplam_harcama ?? 0),
+            'puan' => (int) ($m->puan ?? 0), 'notlar' => $m->notlar ?? '', 'son_siparisler' => $sonlar];
+    }
+}
+if (!function_exists('_calleridGelen')) {
+    function _calleridGelen($subeId, $telefon, $hat = null)
+    {
+        _calleridEnsure();
+        $norm = _telNorm($telefon);
+        $m = $norm ? DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first() : null;
+        $cid = DB::table('cagri_loglari')->insertGetId([
+            'sube_id' => $subeId, 'telefon' => $telefon, 'musteri_id' => $m->id ?? null,
+            'yon' => 'gelen', 'sonuc' => 'cevaplandi', 'durum' => 'bekliyor', 'hat' => $hat, 'created_at' => now(),
+        ]);
+        return ['ok' => 1, 'cagri_id' => $cid, 'yeni_musteri' => $m ? false : true, 'musteri' => _musteriKart($m), 'telefon' => $telefon];
+    }
+}
+
+// VOIP WEBHOOK — FreePBX/Asterisk buraya POST/GET atar (CSRF muaf: api/*)
+Route::match(['get', 'post'], '/api/callerid/gelen', function (Request $r) {
+    $tel = $r->input('telefon') ?: $r->query('telefon');
+    if (!$tel) return response()->json(['ok' => 0, 'hata' => 'telefon gerekli'], 422);
+    $subeId = (int) ($r->input('sube') ?: $r->query('sube') ?: DB::table('subeler')->value('id'));
+    return _calleridGelen($subeId, $tel, $r->input('hat') ?: $r->query('hat'));
+});
+
+// TEST — VoIP olmadan gelen cagri simule et
+Route::get('/callerid-test', function (Request $r) {
+    $subeId = DB::table('subeler')->value('id');
+    _calleridEnsure();
+    $tel = $r->query('telefon');
+    if (!$tel) {
+        $m = DB::table('musteriler')->where('sube_id', $subeId)->inRandomOrder()->first();
+        $tel = $m->telefon ?? '0555 000 00 00';
+    }
+    $res = _calleridGelen($subeId, $tel, 'dahili-101');
+    return response()->json(['test' => true, 'cagri' => $res], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// KURULUM
+Route::get('/callerid-kur', function () {
+    _calleridEnsure();
+    $subeId = DB::table('subeler')->value('id');
+    $mus = DB::table('musteriler')->where('sube_id', $subeId)->count();
+    $ornek = DB::table('musteriler')->where('sube_id', $subeId)->value('telefon');
+    return response("CallerID hazir.\nMusteri sayisi: $mus\nTest: " . url('/callerid-test') . "  (ya da ?telefon=$ornek)\nEkran-pop: " . url('/cagri-ekran') . "\nWebhook (FreePBX): " . url('/api/callerid/gelen') . "?telefon=NUMARA")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// EKRAN-POP verisi: son 90 sn icinde bekleyen gelen cagri
+Route::get('/api/callerid-aktif', function (Request $r) {
+    _calleridEnsure();
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->value('id'));
+    $c = DB::table('cagri_loglari')->where('sube_id', $subeId)->where('yon', 'gelen')->where('durum', 'bekliyor')
+        ->where('created_at', '>=', now()->subSeconds(90))->orderByDesc('id')->first();
+    if (!$c) return ['ok' => 1, 'cagri' => null];
+    $m = $c->musteri_id ? DB::table('musteriler')->where('id', $c->musteri_id)->first() : null;
+    return ['ok' => 1, 'cagri' => ['id' => (int) $c->id, 'telefon' => $c->telefon, 'hat' => $c->hat,
+        'saniye' => (int) \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()),
+        'yeni_musteri' => $m ? false : true, 'musteri' => _musteriKart($m)]];
+});
+
+Route::post('/api/callerid-goruldu', function (Request $r) {
+    DB::table('cagri_loglari')->where('id', (int) $r->input('cagri_id'))->update(['durum' => 'goruldu']);
+    return ['ok' => 1];
+});
+
+Route::get('/api/patron/cagrilar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _calleridEnsure();
+    $rows = DB::table('cagri_loglari')->leftJoin('musteriler', 'cagri_loglari.musteri_id', '=', 'musteriler.id')
+        ->where('cagri_loglari.sube_id', $p->sube_id)->orderByDesc('cagri_loglari.id')->limit(80)
+        ->select('cagri_loglari.*', 'musteriler.ad as musteri_ad')
+        ->get()->map(fn ($c) => ['id' => (int) $c->id, 'telefon' => $c->telefon, 'musteri' => $c->musteri_ad,
+            'yon' => $c->yon, 'sonuc' => $c->sonuc, 'zaman' => \Carbon\Carbon::parse($c->created_at)->format('d.m H:i')]);
+    return ['ok' => 1, 'cagrilar' => $rows];
+});
+
+// EKRAN-POP sayfasi — telefonun yanindaki ekranda acilir; cagri gelince kart patlar
+Route::get('/cagri-ekran', function () {
+    $subeId = DB::table('subeler')->value('id');
+    _calleridEnsure();
+    return view('cagri_ekran', ['sube' => DB::table('subeler')->where('id', $subeId)->first()]);
+});
+
 // ============================ MUTFAK (KDS) ============================
 Route::get('/mutfak', function () {
     $kalemler = DB::table('adisyon_kalemleri')
