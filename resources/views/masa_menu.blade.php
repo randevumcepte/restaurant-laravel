@@ -76,7 +76,7 @@
   .pk .tag{ position:absolute; z-index:3; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
   .pk .tuk{ position:absolute; z-index:3; inset:0; background:rgba(10,6,12,.55); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
   .pk .glass{ position:absolute; z-index:1; inset:0;
-    background:linear-gradient(180deg, rgba(88,42,140,0) 0%, rgba(80,38,128,.28) 48%, rgba(64,30,104,.72) 80%, rgba(52,24,86,.92) 100%); }
+    background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.30) 48%, rgba(0,0,0,.74) 80%, rgba(0,0,0,.94) 100%); }
   .pk .b{ position:absolute; z-index:2; left:0; right:0; bottom:0; padding:10px 12px 12px; }
   .pk .ad{ font-weight:800; font-size:13.5px; line-height:1.15; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.75); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pk .yildiz{ margin-top:5px; font-size:11.5px; text-shadow:0 1px 6px rgba(0,0,0,.6); }
