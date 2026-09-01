@@ -3819,6 +3819,28 @@ Route::get('/api/patron/menu-yonetim', function (Request $r) {
     return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler];
 });
 
+// QR MENU RENK TEMASI: uygulamadan sec (kartela) -> subeler.tema
+Route::get('/api/patron/tema', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    $temalar = resto_temalar();
+    $sube = DB::table('subeler')->find($p->sube_id);
+    $secili = ($sube && isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
+    $liste = [];
+    foreach ($temalar as $k => $t) $liste[] = ['key' => $k] + $t;
+    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'secili' => $secili, 'temalar' => $liste];
+});
+Route::post('/api/patron/tema-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    $key = (string) $r->input('tema');
+    if (!isset(resto_temalar()[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
+    DB::table('subeler')->where('id', $p->sube_id)->update(['tema' => $key]);
+    return ['ok' => 1, 'tema' => $key];
+});
+
 // Urun ekle/guncelle (id bos -> yeni)
 Route::post('/api/patron/urun-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
