@@ -118,17 +118,19 @@
     #side .dil{ margin-top:14px; background:rgba(0,0,0,.25); border:1px solid var(--cizgi); color:#D8C6D8; padding:12px 15px; border-radius:14px; font-size:13.5px; display:flex; align-items:center; gap:9px; }
 
     #deskmain{ flex:1; min-width:0; padding:26px 30px 60px; overflow-y:auto; height:100dvh; }
-    .hero{ position:relative; border-radius:26px; overflow:hidden; min-height:300px; display:flex; align-items:center; padding:44px 48px;
-      background:linear-gradient(115deg, #2a1140 0%, #3a1a55 42%, rgba(58,26,85,.2) 100%), radial-gradient(120% 160% at 100% 30%, #7a3b1d, #431d3f 55%, #241233 100%);
-      border:1px solid var(--cizgi); box-shadow:0 26px 60px -30px rgba(0,0,0,.9); }
-    .hero .ht{ position:relative; max-width:52%; }
+    .hero{ position:relative; border-radius:26px; overflow:hidden; min-height:320px; display:flex; align-items:center; padding:44px 48px;
+      background:#241233; border:1px solid var(--cizgi); box-shadow:0 26px 60px -30px rgba(0,0,0,.9); }
+    .hero .hbg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
+    .hero .hsh{ position:absolute; inset:0; z-index:1;
+      background:linear-gradient(100deg, rgba(18,9,18,.96) 0%, rgba(28,13,34,.85) 38%, rgba(28,13,34,.25) 70%, rgba(28,13,34,.05) 100%); }
+    .hero .ht{ position:relative; z-index:2; max-width:56%; }
     .hero .scr{ font-family:var(--script); font-size:40px; font-weight:700; color:var(--gold); line-height:.9; text-shadow:0 4px 18px rgba(233,196,106,.35); }
     .hero .big{ font-family:var(--serif); font-weight:900; font-size:46px; line-height:1.02; margin-top:4px; letter-spacing:.5px; }
     .hero .sub{ color:#E9D3EE; font-size:14.5px; margin-top:14px; max-width:400px; line-height:1.5; }
     .hero .kesfet{ margin-top:22px; display:inline-flex; align-items:center; gap:10px; background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; border:none;
       font-size:14.5px; font-weight:800; padding:14px 26px; border-radius:16px; cursor:pointer; box-shadow:0 12px 26px rgba(139,59,234,.5); }
     .hero .plate{ position:absolute; right:6%; top:50%; transform:translateY(-50%); font-size:150px; filter:drop-shadow(0 20px 40px rgba(0,0,0,.6)); opacity:.92; }
-    .hero .dots{ position:absolute; left:48px; bottom:22px; display:flex; gap:7px; }
+    .hero .dots{ position:absolute; z-index:2; left:48px; bottom:22px; display:flex; gap:7px; }
     .hero .dots i{ width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.3); }
     .hero .dots i.on{ width:22px; border-radius:5px; background:var(--gold); }
 
@@ -313,13 +315,14 @@
 
   <main id="deskmain">
     <div class="hero">
+      <img class="hbg" src="https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=1200&q=75" alt="" onerror="this.style.display='none'">
+      <div class="hsh"></div>
       <div class="ht">
         <div class="scr">Lezzetin</div>
         <div class="big">EN KEYİFLİSİ</div>
         <div class="sub">En özel tarifler, taptaze malzemelerle sizler için hazırlandı.</div>
         <button class="kesfet" onclick="menuAc()">MENÜYÜ KEŞFET →</button>
       </div>
-      <div class="plate">🍽️</div>
       <div class="dots"><i class="on"></i><i></i><i></i></div>
     </div>
 
@@ -401,7 +404,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 async function yukle(){
   try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; }
   catch(e){ _data=[]; }
-  _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ if(u.urun_id) _urun[u.urun_id]=u; }));
+  _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) _urun[u.urun_id]=u; }));
   chipleriCiz(); populerCiz('*'); dgridCiz();
 }
 
@@ -410,9 +413,44 @@ function yildizHtml(u){
   if(u.puan && u.puan_say>0) return `<span class="yildiz">★ ${u.puan.toFixed(1)} <span style="color:var(--sessiz);font-weight:600">(${u.puan_say})</span></span>`;
   return `<span class="yildiz yeni">Yeni</span>`;
 }
+/* ---- yemek turune gore GERCEK stok fotograf (URL'ler curl ile test edildi=200) ---- */
+const IMG='https://images.unsplash.com/photo-', Q='?auto=format&fit=crop&w=600&q=72';
+const FOTO_HARITA=[
+  ['izgara kofte','1529042410759-befb1204b468'],['kofte','1529042410759-befb1204b468'],
+  ['adana','1601050690597-df0568f70950'],['urfa','1601050690597-df0568f70950'],['iskender','1601050690597-df0568f70950'],
+  ['beyti','1601050690597-df0568f70950'],['sis','1601050690597-df0568f70950'],['kebap','1601050690597-df0568f70950'],
+  ['pirzola','1601050690597-df0568f70950'],['kuzu','1601050690597-df0568f70950'],
+  ['antrikot','1600891964092-4316c288032e'],['biftek','1600891964092-4316c288032e'],['bonfile','1600891964092-4316c288032e'],['steak','1600891964092-4316c288032e'],
+  ['tavuk','1598103442097-8b74394b95c6'],['pilic','1598103442097-8b74394b95c6'],['kanat','1598103442097-8b74394b95c6'],
+  ['somon','1519708227418-c8fd9a32b7a2'],['levrek','1519708227418-c8fd9a32b7a2'],['cipura','1519708227418-c8fd9a32b7a2'],['karides','1519708227418-c8fd9a32b7a2'],['balik','1519708227418-c8fd9a32b7a2'],['deniz','1519708227418-c8fd9a32b7a2'],
+  ['sote','1541014741259-de529411b96a'],['guvec','1541014741259-de529411b96a'],['kavurma','1541014741259-de529411b96a'],['tas kebap','1541014741259-de529411b96a'],
+  ['lahmacun','1513104890138-7c749659a591'],['pide','1513104890138-7c749659a591'],['pizza','1513104890138-7c749659a591'],
+  ['hamburger','1568901346375-23c9450c58cd'],['cheeseburger','1568901346375-23c9450c58cd'],['burger','1568901346375-23c9450c58cd'],
+  ['spagetti','1551183053-bf91a1d81141'],['bolonez','1551183053-bf91a1d81141'],['penne','1551183053-bf91a1d81141'],['makarna','1551183053-bf91a1d81141'],
+  ['sezar','1512621776951-a57141f2eefd'],['coban','1546069901-ba9599a7e63c'],['salata','1512621776951-a57141f2eefd'],
+  ['mercimek','1547592166-23ac45744acd'],['ezogelin','1547592166-23ac45744acd'],['yayla','1547592166-23ac45744acd'],['corba','1547592166-23ac45744acd'],
+  ['kunefe','1631452180519-c014fe946bc7'],['baklava','1551024601-bec78aea704b'],
+  ['sutlac','1551024601-bec78aea704b'],['kazandibi','1551024601-bec78aea704b'],['profiterol','1578985545062-69928b1d9587'],['browni','1578985545062-69928b1d9587'],['brownie','1578985545062-69928b1d9587'],['cheesecake','1578985545062-69928b1d9587'],['tiramisu','1578985545062-69928b1d9587'],['magnolya','1578985545062-69928b1d9587'],['kek','1578985545062-69928b1d9587'],['tatli','1578985545062-69928b1d9587'],
+  ['dondurma','1497034825429-c343d7c6a68f'],
+  ['latte','1509042239860-f550ce710b93'],['espresso','1509042239860-f550ce710b93'],['cappuccino','1509042239860-f550ce710b93'],['americano','1509042239860-f550ce710b93'],['filtre','1509042239860-f550ce710b93'],['kahve','1509042239860-f550ce710b93'],
+  ['bitki cay','1544787219-7f47ccb76574'],['cay','1544787219-7f47ccb76574'],
+  ['milkshake','1558961363-fa8fdf82db35'],['smoothie','1558961363-fa8fdf82db35'],['shake','1558961363-fa8fdf82db35'],['ayran','1558961363-fa8fdf82db35'],
+  ['portakal suyu','1621263764928-df1444c5e859'],['meyve suyu','1621263764928-df1444c5e859'],['limonata','1621263764928-df1444c5e859'],
+  ['kola','1600335895229-6e75511892c8'],['gazoz','1600335895229-6e75511892c8'],['soda','1600335895229-6e75511892c8'],['sprite','1600335895229-6e75511892c8'],['fanta','1600335895229-6e75511892c8'],
+  ['pilav','1476718406336-bb5a9690ee2a'],['pirinc','1476718406336-bb5a9690ee2a'],['bulgur','1476718406336-bb5a9690ee2a'],['risotto','1476718406336-bb5a9690ee2a'],
+  ['humus','1587314168485-3236d6710814'],['haydari','1587314168485-3236d6710814'],['sigara boregi','1587314168485-3236d6710814'],['meze','1587314168485-3236d6710814'],['baslangic','1587314168485-3236d6710814'],['antre','1587314168485-3236d6710814'],
+  ['menemen','1533089860892-a7c6f0a88666'],['omlet','1533089860892-a7c6f0a88666'],['yumurta','1533089860892-a7c6f0a88666'],['serpme','1533089860892-a7c6f0a88666'],['kahvalti','1533089860892-a7c6f0a88666'],
+  ['nugget','1573080496219-bb080dd4f877'],['sogan halka','1573080496219-bb080dd4f877'],['cips','1573080496219-bb080dd4f877'],['patates','1573080496219-bb080dd4f877'],
+];
+function norm(s){ return (s||'').toLocaleLowerCase('tr').replace(/ı/g,'i').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s').replace(/ö/g,'o').replace(/ç/g,'c'); }
+function stokFoto(ad, kat){
+  const t=norm(ad+' '+(kat||''));
+  for(const [k,id] of FOTO_HARITA){ if(t.indexOf(norm(k))!==-1) return IMG+id+Q; }
+  return IMG+'1541014741259-de529411b96a'+Q;   // genel: sik tabak
+}
 function gorselHtml(u, cls){
-  if(u.gercek_foto && u.gorsel) return `<img src="${esc(u.gorsel)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML='<div class=&quot;${cls}&quot;>${u.emoji||'🍽️'}</div>'">`;
-  return `<div class="${cls}" style="background:${gradientFor(u.ad)}">${u.emoji||'🍽️'}</div>`;
+  const src = (u.gercek_foto && u.gorsel) ? u.gorsel : stokFoto(u.ad, u._kat);
+  return `<img src="${esc(src)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML='<div class=&quot;${cls}&quot; style=&quot;background:${gradientFor(u.ad)}&quot;>${u.emoji||'🍽️'}</div>'">`;
 }
 
 /* ---- telefon: cipler ---- */
