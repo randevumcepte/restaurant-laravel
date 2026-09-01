@@ -5218,6 +5218,40 @@ Route::get('/api/paket/{id}', function (Request $r, $id) {
     ]];
 });
 
+// Paket sipariş durum akışı (token'li): kabul -> hazir, yola -> yolda, teslim -> kapat, iptal -> iptal
+Route::post('/api/paket/durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $id = (int) $r->input('id');
+    $aksiyon = (string) $r->input('aksiyon');
+    $a = DB::table('adisyonlar')->where('id', $id)->where('kanal', 'paket')->first();
+    if (!$a) return response()->json(['ok' => 0, 'mesaj' => 'Sipariş bulunamadı'], 404);
+    $upd = ['updated_at' => now()];
+    switch ($aksiyon) {
+        case 'kabul':
+            $upd['teslimat_durumu'] = 'hazir';
+            break;
+        case 'yola':
+            $upd['teslimat_durumu'] = 'yolda';
+            break;
+        case 'teslim':
+            $upd['teslimat_durumu'] = 'teslim';
+            $upd['durum'] = 'odendi';
+            $upd['kapanis'] = now();
+            if (Schema::hasColumn('adisyonlar', 'teslim_zamani')) $upd['teslim_zamani'] = now();
+            break;
+        case 'iptal':
+            $upd['teslimat_durumu'] = 'iptal';
+            $upd['durum'] = 'iptal';
+            $upd['kapanis'] = now();
+            break;
+        default:
+            return response()->json(['ok' => 0, 'mesaj' => 'Geçersiz aksiyon'], 422);
+    }
+    DB::table('adisyonlar')->where('id', $id)->update($upd);
+    return ['ok' => 1];
+});
+
 Route::get('/api/raporlar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
