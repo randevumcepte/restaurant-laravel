@@ -66,21 +66,24 @@
 
   /* Populer kartlar KALAN dikey boslugu esnek doldurur -> her sey tek ekrana sigar */
   .pop{ flex:1 1 0; min-height:0; display:flex; gap:12px; overflow-x:auto; align-items:stretch; padding:8px 2px 4px; }
-  .pk{ flex:0 0 155px; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--cizgi); border-radius:18px; overflow:hidden;
+  /* Kart bastan sona FOTOGRAF; yazilar en altta; foto->yazi gecisi YUMUSAK + FLU (buzlu cam maske) */
+  .pk{ position:relative; flex:0 0 158px; background:#1e1024; border:1px solid var(--cizgi); border-radius:18px; overflow:hidden;
     box-shadow:0 12px 26px -16px rgba(0,0,0,.75); cursor:pointer;
     opacity:0; transform:translateY(12px); animation:up .5s cubic-bezier(.2,.75,.2,1) forwards; }
-  .pk .g{ position:relative; flex:1 1 auto; min-height:0; background:#1e1024; }
-  .pk .b{ background:var(--card); }   /* fiyat satiri her zaman tam gorunur (gorsel gerekince kuculur) */
+  .pk .g{ position:absolute; inset:0; }
   .pk .g img{ width:100%; height:100%; object-fit:cover; }
-  .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:44px; }
-  .pk .tag{ position:absolute; top:8px; left:8px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
-  .pk .tuk{ position:absolute; inset:0; background:rgba(10,6,12,.55); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
-  .pk .b{ flex-shrink:0; padding:9px 11px 11px; }
-  .pk .ad{ font-weight:800; font-size:13.5px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pk .yildiz{ margin-top:5px; font-size:11.5px; }
-  .pk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:7px; }
-  .pk .fi{ color:var(--gold); font-weight:800; font-size:14px; }
-  .pk .art{ width:29px; height:29px; border-radius:10px; border:none; color:#fff; font-size:17px; line-height:1; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
+  .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:54px; }
+  .pk .tag{ position:absolute; z-index:3; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
+  .pk .tuk{ position:absolute; z-index:3; inset:0; background:rgba(10,6,12,.55); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
+  .pk .glass{ position:absolute; z-index:1; inset:0; backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    background:linear-gradient(180deg, rgba(28,13,34,0) 0%, rgba(28,13,34,.30) 52%, rgba(28,13,34,.74) 80%, rgba(28,13,34,.94) 100%);
+    -webkit-mask-image:linear-gradient(180deg, transparent 38%, #000 66%); mask-image:linear-gradient(180deg, transparent 38%, #000 66%); }
+  .pk .b{ position:absolute; z-index:2; left:0; right:0; bottom:0; padding:10px 12px 12px; }
+  .pk .ad{ font-weight:800; font-size:13.5px; line-height:1.15; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.75); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk .yildiz{ margin-top:5px; font-size:11.5px; text-shadow:0 1px 6px rgba(0,0,0,.6); }
+  .pk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+  .pk .fi{ color:var(--gold); font-weight:800; font-size:15px; text-shadow:0 2px 8px rgba(0,0,0,.75); }
+  .pk .art{ width:30px; height:30px; border-radius:10px; border:none; color:#fff; font-size:18px; line-height:1; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.6); }
 
   .ozel{ position:relative; margin-top:12px; border-radius:18px; overflow:hidden; padding:13px 15px;
     background:linear-gradient(135deg,#4a1d6b,#2a1140); border:1px solid rgba(233,196,106,.28); box-shadow:0 14px 30px -18px rgba(0,0,0,.85); display:flex; align-items:center; }
@@ -420,8 +423,8 @@ async function yukle(){
 
 /* ---- yildiz gosterim ---- */
 function yildizHtml(u){
-  if(u.puan && u.puan_say>0) return `<span class="yildiz">★ ${u.puan.toFixed(1)} <span style="color:var(--sessiz);font-weight:600">(${u.puan_say})</span></span>`;
-  return `<span class="yildiz yeni">Yeni</span>`;
+  if(u.puan && u.puan_say>0) return `<span class="yildiz">★ ${u.puan.toFixed(1)} <span style="color:#d8c8d6;font-weight:600">(${u.puan_say})</span></span>`;
+  return '';   // puan yoksa hicbir sey gosterme ("Yeni" kaldirildi)
 }
 /* ---- yemek turune gore GERCEK stok fotograf (URL'ler curl ile test edildi=200) ---- */
 const IMG='https://images.unsplash.com/photo-', Q='?auto=format&fit=crop&w=600&q=72';
@@ -486,7 +489,7 @@ function populerCiz(key){
   list.forEach((u,i)=>{
     const c=document.createElement('div'); c.className='pk'; c.style.animationDelay=(i*40)+'ms';
     const tuk=u.etiket==='Tükendi';
-    c.innerHTML=`<div class="g">${gorselHtml(u,'em')}${u.etiket&&!tuk?`<span class="tag">${esc(u.etiket)}</span>`:''}${tuk?'<div class="tuk">Tükendi</div>':''}</div>`
+    c.innerHTML=`<div class="g">${gorselHtml(u,'em')}</div>${u.etiket&&!tuk?`<span class="tag">${esc(u.etiket)}</span>`:''}${tuk?'<div class="tuk">Tükendi</div>':''}<div class="glass"></div>`
       +`<div class="b"><div class="ad">${esc(u.ad)}</div>${yildizHtml(u)}`
       +`<div class="alt"><span class="fi">${esc(u.fiyat_yazi||'')}</span><button class="art" ${tuk?'disabled style=opacity:.4':''}>+</button></div></div>`;
     c.querySelector('.art').addEventListener('click',ev=>{ ev.stopPropagation(); if(!tuk) sepeteEkle(u,1,true); });
