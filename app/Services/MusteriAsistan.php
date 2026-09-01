@@ -872,6 +872,7 @@ class MusteriAsistan
             'emoji' => $this->katEmoji($kat, $ad),
             'gorsel' => $gorseller[0] ?? null,
             'gorseller' => $gorseller,           // galeri: ayni yemegin birkac fotografi
+            'gercek_foto' => (bool) $yuklenen,   // TRUE = isletmenin yukledigi gercek foto (stok/loremflickr degil)
             'etiket' => $etiket,
             'icindekiler' => array_values((array) $icindekiler),
             'urun_id' => $urunId ? (int) $urunId : null,

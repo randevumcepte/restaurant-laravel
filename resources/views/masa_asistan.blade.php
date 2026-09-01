@@ -120,35 +120,44 @@
   #menuTam .mt-kapat{ margin-left:auto; background:rgba(255,255,255,.16); color:#fff; border:none; font-size:13.5px; font-weight:800; padding:9px 15px; border-radius:22px; }
   #menuTam .mt-body{ flex:1; overflow-y:auto; padding:4px 14px 48px; -webkit-overflow-scrolling:touch; }
   #menuTam .mt-yukle{ text-align:center; color:#94A3B8; padding:48px 0; }
-  /* SEVIYE 1: hero (salon arka plan foto + isim) */
-  #menuTam .mt-hero{ position:relative; margin:-4px -14px 20px; height:210px; overflow:hidden;
-    border-bottom-left-radius:26px; border-bottom-right-radius:26px; box-shadow:0 18px 40px -20px rgba(0,0,0,.8); }
-  #menuTam .mt-hero img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-  #menuTam .mt-hero-sh{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(9,11,25,.25) 0%,rgba(9,11,25,.55) 55%,rgba(9,11,25,.96) 100%); }
-  #menuTam .mt-hero-ic{ position:absolute; left:0; right:0; bottom:20px; text-align:center; padding:0 20px; }
-  #menuTam .mt-hero-ad{ font-family:Georgia,'Times New Roman',serif; font-size:32px; font-weight:800; color:#fff;
-    letter-spacing:.5px; text-shadow:0 4px 18px rgba(0,0,0,.7); line-height:1.1; }
-  #menuTam .mt-hero-alt{ margin-top:8px; font-size:11.5px; font-weight:800; letter-spacing:3px; color:#F6CE63; }
-  /* SEVIYE 1: fotografli kategori kutulari */
-  #menuTam .mt-katgrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:2px 0; }
-  @media(min-width:760px){ #menuTam .mt-katgrid{ grid-template-columns:1fr 1fr 1fr; } }
-  #menuTam .mt-kattile{ position:relative; border-radius:20px; overflow:hidden; height:150px; cursor:pointer;
-    border:1px solid rgba(255,255,255,.08); box-shadow:0 12px 26px -14px rgba(0,0,0,.75);
-    opacity:0; transform:translateY(14px); animation:mtUp .5s cubic-bezier(.2,.7,.2,1) forwards; }
+  /* icerigi masaustunde ortala + genisligi sinirla (full-bleed cirkinligi biter) */
+  #menuTam .mt-col{ width:100%; max-width:1000px; margin:0 auto; }
+  /* SEVIYE 1: sik gradient hero (isletme foto yuklerse ileride arka plana konur) */
+  #menuTam .mt-hero{ position:relative; margin-top:6px; margin-bottom:22px; padding:40px 20px 34px; overflow:hidden;
+    border-radius:24px; text-align:center; box-shadow:0 20px 44px -22px rgba(0,0,0,.85);
+    background:radial-gradient(120% 140% at 50% 0%, #3a1d63 0%, #241247 45%, #12102b 100%);
+    border:1px solid rgba(246,206,99,.22); }
+  #menuTam .mt-hero::before{ content:''; position:absolute; inset:0;
+    background:radial-gradient(60% 80% at 50% -10%, rgba(246,206,99,.16), transparent 70%); }
+  #menuTam .mt-hero-ic{ position:relative; }
+  #menuTam .mt-hero-ad{ font-family:Georgia,'Times New Roman',serif; font-size:34px; font-weight:800; color:#fff;
+    letter-spacing:.5px; text-shadow:0 4px 18px rgba(0,0,0,.55); line-height:1.1; }
+  #menuTam .mt-hero-alt{ display:inline-block; margin-top:14px; padding-top:12px; font-size:11px; font-weight:800; letter-spacing:4px; color:#F6CE63;
+    border-top:1px solid rgba(246,206,99,.45); }
+  /* SEVIYE 1: kategori kutulari - sabit guzel oran (16:10), responsive auto-fill */
+  #menuTam .mt-katgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; padding:2px 0; }
+  #menuTam .mt-kattile{ position:relative; border-radius:20px; overflow:hidden; aspect-ratio:16/10; cursor:pointer;
+    border:1px solid rgba(255,255,255,.09); box-shadow:0 14px 30px -16px rgba(0,0,0,.8);
+    opacity:0; transform:translateY(16px); animation:mtUp .5s cubic-bezier(.2,.7,.2,1) forwards; transition:transform .18s; }
+  @supports not (aspect-ratio:1/1){ #menuTam .mt-kattile{ height:170px; } }
+  #menuTam .mt-kattile:hover{ transform:translateY(-3px); }
   #menuTam .mt-kattile:active{ transform:scale(.97); }
   #menuTam .mt-kt-gor{ position:absolute; inset:0; }
   #menuTam .mt-kt-gor img{ width:100%; height:100%; object-fit:cover; transition:transform .5s; }
-  #menuTam .mt-kattile:active .mt-kt-gor img{ transform:scale(1.08); }
-  #menuTam .mt-kt-tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-  #menuTam .mt-kt-tile span{ font-size:48px; filter:drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
-  #menuTam .mt-kt-shade{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.05) 30%,rgba(0,0,0,.82) 100%); }
-  #menuTam .mt-kt-ad{ position:absolute; left:12px; right:12px; bottom:11px; display:flex; align-items:center; gap:7px;
-    font-size:16px; font-weight:800; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6); }
-  #menuTam .mt-kt-ad span{ font-size:19px; }
-  #menuTam .mt-kt-ad em{ margin-left:auto; font-style:normal; font-size:10.5px; font-weight:700; color:#F6CE63; opacity:.92; }
+  #menuTam .mt-kattile:hover .mt-kt-gor img{ transform:scale(1.07); }
+  #menuTam .mt-kt-em{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:64px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)); opacity:.96; }
+  #menuTam .mt-kt-grad::after{ content:''; position:absolute; inset:0;
+    background:radial-gradient(80% 60% at 50% 30%, rgba(255,255,255,.14), transparent 70%); pointer-events:none; }
+  #menuTam .mt-kt-shade{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,.72) 100%); }
+  #menuTam .mt-kt-ad{ position:absolute; left:14px; right:14px; bottom:12px; display:flex; align-items:center; gap:8px;
+    font-size:16.5px; font-weight:800; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.65); }
+  #menuTam .mt-kt-ad span{ font-size:20px; }
+  #menuTam .mt-kt-ad em{ margin-left:auto; font-style:normal; font-size:10.5px; font-weight:700; color:#F6CE63; opacity:.95;
+    background:rgba(0,0,0,.35); padding:3px 9px; border-radius:20px; white-space:nowrap; }
   /* SEVIYE 2: geri butonu */
   #menuTam .mt-geri{ display:inline-flex; align-items:center; gap:6px; margin:6px 0 2px; background:rgba(255,255,255,.1);
-    color:#E8ECF7; border:1px solid rgba(255,255,255,.1); font-size:13.5px; font-weight:800; padding:9px 16px; border-radius:22px; cursor:pointer; }
+    color:#E8ECF7; border:1px solid rgba(255,255,255,.12); font-size:13.5px; font-weight:800; padding:9px 16px; border-radius:22px; cursor:pointer; }
   #menuTam .mt-geri:active{ transform:scale(.96); }
   @keyframes mtUp{ to{ opacity:1; transform:translateY(0); } }
   /* zarif kategori basligi + altin cizgi */
@@ -278,7 +287,8 @@ function acGaleri(k){
   document.getElementById('lb-fi').textContent = k.fiyat_yazi || '';
   document.getElementById('lb-ac').textContent = k.aciklama || '';
   const wrap = document.getElementById('lb-imgs'); wrap.innerHTML = '';
-  const liste = (k.gorseller && k.gorseller.length ? k.gorseller : [k.gorsel]).filter(Boolean);
+  // Sadece isletmenin YUKLEDIGI gercek fotograf; yoksa sik gradient+emoji (loremflickr saçma foto YOK)
+  const liste = k.gercek_foto ? (k.gorseller && k.gorseller.length ? k.gorseller : [k.gorsel]).filter(Boolean) : [];
   if(!liste.length){ const d=document.createElement('div'); d.className='tile'; d.style.cssText='flex:0 0 100%;background:'+gradientFor(k.ad); d.innerHTML='<span style="font-size:120px">'+(k.emoji||'🍽️')+'</span>'; wrap.appendChild(d); }
   liste.forEach(src=>{
     const im = document.createElement('img'); im.src = src; im.alt = k.ad; im.loading='lazy';
@@ -338,51 +348,56 @@ async function menuyuIncele(){
     else body.innerHTML = '<div class="mt-yukle">Menü şu an görüntülenemiyor.</div>';
   }catch(e){ body.innerHTML = '<div class="mt-yukle">Menü yüklenemedi.</div>'; }
 }
-// SEVIYE 1: hero + fotografli kategori kutulari
+// SEVIYE 1: hero + kategori kutulari (gercek foto varsa foto, yoksa sik gradient+emoji)
 function menuIzgaraGoster(){
   const body = document.getElementById('menuTam').querySelector('.mt-body'); body.innerHTML='';
+  const col = document.createElement('div'); col.className='mt-col'; body.appendChild(col);
   const hero = document.createElement('div'); hero.className='mt-hero';
-  const heroBg = 'https://loremflickr.com/900/500/restaurant,interior,dining?lock=7';
-  hero.innerHTML = `<img src="${heroBg}" loading="lazy" onerror="this.style.display='none'"><div class="mt-hero-sh"></div>`
-    + `<div class="mt-hero-ic"><div class="mt-hero-ad">${esc(SUBE_AD)}</div><div class="mt-hero-alt">— DİJİTAL MENÜ —</div></div>`;
-  body.appendChild(hero);
+  hero.innerHTML = `<div class="mt-hero-ic"><div class="mt-hero-ad">${esc(SUBE_AD)}</div><div class="mt-hero-alt">— DİJİTAL MENÜ —</div></div>`;
+  col.appendChild(hero);
   const grid = document.createElement('div'); grid.className='mt-katgrid';
   _menuData.forEach((k,i)=>{
     const t = document.createElement('div'); t.className='mt-kattile'; t.style.animationDelay=(i*45)+'ms';
-    const bg = (k.kartlar && k.kartlar[0] && k.kartlar[0].gorsel) ? k.kartlar[0].gorsel : '';
-    const gorsel = bg
-      ? `<img src="${esc(bg)}" loading="lazy" onerror="this.parentNode.style.background='${gradientFor(k.ad)}';this.remove()">`
-      : `<div class="mt-kt-tile" style="background:${gradientFor(k.ad)}"><span>${k.emoji||'🍽️'}</span></div>`;
+    const ilk = (k.kartlar && k.kartlar[0]) ? k.kartlar[0] : null;
+    let gorsel;
+    if(ilk && ilk.gercek_foto && ilk.gorsel){                    // sadece isletmenin YUKLEDIGI gercek foto
+      gorsel = `<img src="${esc(ilk.gorsel)}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'mt-kt-em\\'>${k.emoji||'🍽️'}</div>'">`;
+    } else {                                                     // stok/loremflickr YOK -> sik gradient + buyuk emoji
+      t.classList.add('mt-kt-grad'); t.style.background = gradientFor(k.ad);
+      gorsel = `<div class="mt-kt-em">${k.emoji||'🍽️'}</div>`;
+    }
     t.innerHTML = `<div class="mt-kt-gor">${gorsel}<div class="mt-kt-shade"></div></div>`
       + `<div class="mt-kt-ad"><span>${k.emoji||'🍽️'}</span>${esc(k.ad)}<em>${(k.kartlar||[]).length} çeşit</em></div>`;
     t.addEventListener('click', ()=> kategoriAc(i));
     grid.appendChild(t);
   });
-  body.appendChild(grid); body.scrollTop=0;
+  col.appendChild(grid); body.scrollTop=0;
 }
 // SEVIYE 2: bir kategorinin urunleri (immersive kartlar)
 function kategoriAc(i){
   const k = _menuData[i]; if(!k) return;
   const body = document.getElementById('menuTam').querySelector('.mt-body'); body.innerHTML='';
+  const col = document.createElement('div'); col.className='mt-col'; body.appendChild(col);
   const geri = document.createElement('button'); geri.className='mt-geri'; geri.innerHTML='← Kategoriler';
-  geri.addEventListener('click', menuIzgaraGoster); body.appendChild(geri);
-  const kat = document.createElement('div'); kat.className='mt-kat'; kat.innerHTML=`<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`; body.appendChild(kat);
+  geri.addEventListener('click', menuIzgaraGoster); col.appendChild(geri);
+  const kat = document.createElement('div'); kat.className='mt-kat'; kat.innerHTML=`<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`; col.appendChild(kat);
   const grid = document.createElement('div'); grid.className='mt-grid';
   (k.kartlar||[]).forEach((u, idx)=>{
     const c = document.createElement('div'); c.className='mt-urun'; c.style.animationDelay=(idx*55)+'ms';
     const tile = `<div class="mt-tile" style="background:${gradientFor(u.ad)}"><span>${u.emoji||'🍽️'}</span></div>`;
-    const gorsel = u.gorsel
+    const gorsel = (u.gercek_foto && u.gorsel)   // sadece gercek yuklenen foto; degilse sik gradient tile (loremflickr YOK)
       ? `<img src="${esc(u.gorsel)}" alt="${esc(u.ad)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML=${JSON.stringify(tile)}">`
       : tile;
     const et = u.etiket ? `<span class="mt-rz">★ ${esc(u.etiket)}</span>` : '';
     const ac = u.aciklama ? `<div class="mt-ac">${esc(u.aciklama)}</div>` : '';
+    const bak = (u.gercek_foto && u.gorsel) ? '📷 Fotoğraflara bak' : 'ℹ️ Detaya bak';
     c.innerHTML = `<div class="mt-gor">${gorsel}<div class="mt-shade"></div>${et}`
       + `<div class="mt-ov"><div class="mt-ad">${esc(u.ad)}</div><div class="mt-fi">${esc(u.fiyat_yazi||'')}</div></div></div>`
-      + ac + `<div class="mt-bak">📷 Fotoğraflara bak</div>`;
+      + ac + `<div class="mt-bak">${bak}</div>`;
     c.addEventListener('click', ()=> acGaleri(u));
     grid.appendChild(c);
   });
-  body.appendChild(grid); body.scrollTop=0;
+  col.appendChild(grid); body.scrollTop=0;
 }
 function kapatMenu(){ document.getElementById('menuTam').style.display = 'none'; }
 
