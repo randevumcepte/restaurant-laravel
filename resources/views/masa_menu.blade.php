@@ -717,7 +717,7 @@ function modDegistir(){
   try{ localStorage.setItem('qr_mod', yeni); }catch(e){}
   modUygula(yeni);
 }
-(function(){ let m='koyu'; try{ m=localStorage.getItem('qr_mod')||'koyu'; }catch(e){} modUygula(m); })();
+(function(){ let m='{{ $mod ?? "koyu" }}'; try{ m=localStorage.getItem('qr_mod')||m; }catch(e){} modUygula(m); })();
 
 window.addEventListener('load',()=>{ yukle(); sayac(); });
 </script>

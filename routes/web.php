@@ -1282,6 +1282,7 @@ if (!function_exists('resto_tema_kolon')) {
             if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
             if (!Schema::hasColumn('subeler', 'tema_renk')) Schema::table('subeler', function ($t) { $t->string('tema_renk', 9)->nullable(); });
             if (!Schema::hasColumn('subeler', 'tema_renk2')) Schema::table('subeler', function ($t) { $t->string('tema_renk2', 9)->nullable(); });
+            if (!Schema::hasColumn('subeler', 'tema_mod')) Schema::table('subeler', function ($t) { $t->string('tema_mod', 10)->nullable(); });
         } catch (\Throwable $e) {}
     }
 }
@@ -1324,7 +1325,8 @@ Route::get('/masa/{id}', function ($id) {
     if ($stored === 'ozel' && !empty($sube->tema_renk)) { $key = 'ozel'; $tema = resto_tema_uret($sube->tema_renk, $sube->tema_renk2 ?? null); }
     elseif ($stored && isset($temalar[$stored])) { $key = $stored; $tema = $temalar[$stored]; }
     else { $key = 'altin'; $tema = $temalar['altin'] ?? reset($temalar); }
-    return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key]);
+    $mod = ($sube && isset($sube->tema_mod) && $sube->tema_mod === 'acik') ? 'acik' : 'koyu';
+    return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key, 'mod' => $mod]);
 });
 
 // RENK KARTELASI: restoran QR menu temasini secer (subeler.tema)
@@ -3991,7 +3993,17 @@ Route::get('/api/patron/tema', function (Request $r) {
     return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'secili' => $secili,
         'renk' => (isset($sube->tema_renk) && $sube->tema_renk) ? $sube->tema_renk : '#C41E3A',
         'renk2' => (isset($sube->tema_renk2) && $sube->tema_renk2) ? $sube->tema_renk2 : '',
+        'mod' => (isset($sube->tema_mod) && $sube->tema_mod === 'acik') ? 'acik' : 'koyu',
         'temalar' => $liste];
+});
+// QR menu varsayilan MODU (koyu/acik) — musteri yine kendi cihazinda cevirebilir
+Route::post('/api/patron/tema-mod', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    resto_tema_kolon();
+    $mod = $r->input('mod') === 'acik' ? 'acik' : 'koyu';
+    DB::table('subeler')->where('id', $p->sube_id)->update(['tema_mod' => $mod]);
+    return ['ok' => 1, 'mod' => $mod];
 });
 Route::post('/api/patron/tema-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
