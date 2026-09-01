@@ -112,29 +112,41 @@
   .lb-alt #lb-iste{ width:100%; border:none; border-radius:14px; padding:14px; font-weight:800; font-size:14.5px; color:#fff;
     background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 20px rgba(124,58,237,.5); }
   .lb-ipucu{ text-align:center; color:#64748B; font-size:11.5px; padding:6px 0 2px; }
-  /* ---- SALT OKUNUR tam ekran menu ---- */
-  #menuTam{ position:fixed; inset:0; z-index:70; background:var(--bg); display:none; flex-direction:column; }
-  #menuTam .mt-bar{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid #1e2740;
-    background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(79,70,229,.18)); position:sticky; top:0; }
-  #menuTam .mt-title{ font-weight:800; font-size:17px; color:#fff; }
-  #menuTam .mt-kapat{ margin-left:auto; background:rgba(255,255,255,.14); color:#fff; border:none; font-size:13.5px; font-weight:700; padding:8px 14px; border-radius:20px; }
-  #menuTam .mt-body{ flex:1; overflow-y:auto; padding:6px 12px 40px; -webkit-overflow-scrolling:touch; }
-  #menuTam .mt-yukle{ text-align:center; color:#94A3B8; padding:40px 0; }
-  #menuTam .mt-kat{ display:flex; align-items:center; gap:9px; font-size:17px; font-weight:800; color:#fff; margin:18px 4px 10px; }
-  #menuTam .mt-kat span{ font-size:23px; }
-  #menuTam .mt-grid{ display:grid; grid-template-columns:1fr; gap:11px; }
-  @media(min-width:620px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr; } }
-  #menuTam .mt-urun{ display:flex; gap:12px; background:var(--card); border:1px solid #232B42; border-radius:16px; overflow:hidden; }
-  #menuTam .mt-ph{ position:relative; flex:0 0 104px; width:104px; height:104px; background:#0e1428; }
-  #menuTam .mt-ph img{ width:100%; height:100%; object-fit:cover; }
+  /* ---- SALT OKUNUR PREMIUM tam ekran menu ---- */
+  #menuTam{ position:fixed; inset:0; z-index:70; background:radial-gradient(1200px 600px at 50% -10%, #16203c 0%, #0B1020 55%); display:none; flex-direction:column; }
+  #menuTam .mt-bar{ display:flex; align-items:center; gap:10px; padding:15px 18px; border-bottom:1px solid rgba(255,255,255,.06);
+    background:linear-gradient(135deg,rgba(124,58,237,.35),rgba(79,70,229,.2)); position:sticky; top:0; z-index:2; backdrop-filter:blur(8px); }
+  #menuTam .mt-title{ font-weight:800; font-size:18px; color:#fff; letter-spacing:.3px; }
+  #menuTam .mt-kapat{ margin-left:auto; background:rgba(255,255,255,.16); color:#fff; border:none; font-size:13.5px; font-weight:800; padding:9px 15px; border-radius:22px; }
+  #menuTam .mt-body{ flex:1; overflow-y:auto; padding:4px 14px 48px; -webkit-overflow-scrolling:touch; }
+  #menuTam .mt-yukle{ text-align:center; color:#94A3B8; padding:48px 0; }
+  /* zarif kategori basligi + altin cizgi */
+  #menuTam .mt-kat{ display:flex; align-items:center; gap:10px; font-size:20px; font-weight:800; color:#fff; margin:26px 2px 14px; letter-spacing:.3px; }
+  #menuTam .mt-kat span{ font-size:26px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.4)); }
+  #menuTam .mt-kat::after{ content:''; flex:1; height:2px; margin-left:6px; border-radius:2px;
+    background:linear-gradient(90deg,rgba(246,206,99,.7),rgba(246,206,99,0)); }
+  #menuTam .mt-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:640px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr; } }
+  @media(min-width:1000px){ #menuTam .mt-grid{ grid-template-columns:1fr 1fr 1fr; } }
+  /* immersive foto hero kart */
+  #menuTam .mt-urun{ border-radius:22px; overflow:hidden; background:#0e1428; border:1px solid rgba(255,255,255,.07);
+    box-shadow:0 16px 38px rgba(0,0,0,.5); opacity:0; transform:translateY(16px) scale(.98);
+    animation:kartGir .55s cubic-bezier(.2,.75,.2,1) forwards; }
+  #menuTam .mt-gor{ position:relative; height:210px; background:#0e1428; }
+  #menuTam .mt-gor img{ width:100%; height:100%; object-fit:cover; transform:scale(1.03); transition:transform .7s ease; }
+  #menuTam .mt-urun:active .mt-gor img{ transform:scale(1.09); }
   #menuTam .mt-tile{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-  #menuTam .mt-tile span{ font-size:40px; }
-  #menuTam .mt-rz{ position:absolute; top:6px; left:6px; background:linear-gradient(135deg,#F6CE63,#E0A431); color:#3a2600; font-size:10px; font-weight:800; padding:2px 7px; border-radius:12px; }
-  #menuTam .mt-in{ flex:1; min-width:0; padding:10px 12px 10px 0; display:flex; flex-direction:column; }
-  #menuTam .mt-ad{ font-weight:800; font-size:15px; color:#fff; }
-  #menuTam .mt-fi{ color:#FDE9B5; font-weight:800; font-size:14px; margin-top:2px; }
-  #menuTam .mt-ac{ color:#94A3B8; font-size:12px; line-height:1.35; margin-top:5px;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  #menuTam .mt-tile span{ font-size:86px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)); }
+  #menuTam .mt-shade{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(6,10,20,.05) 30%,rgba(6,10,20,.55) 62%,rgba(6,10,20,.96) 100%); }
+  #menuTam .mt-rz{ position:absolute; top:12px; left:12px; z-index:2; background:linear-gradient(135deg,#F6CE63,#E0A431); color:#3a2600;
+    font-size:11px; font-weight:800; letter-spacing:.3px; padding:5px 12px; border-radius:30px; box-shadow:0 5px 14px rgba(224,164,49,.5); }
+  #menuTam .mt-ov{ position:absolute; left:0; right:0; bottom:0; z-index:2; padding:15px 16px; display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+  #menuTam .mt-ad{ font-weight:800; font-size:20px; color:#fff; line-height:1.15; letter-spacing:.2px; text-shadow:0 2px 10px rgba(0,0,0,.7); flex:1; }
+  #menuTam .mt-fi{ background:rgba(255,255,255,.14); backdrop-filter:blur(8px); color:#FDE9B5; font-weight:800; font-size:15px;
+    padding:5px 13px; border-radius:22px; border:1px solid rgba(246,206,99,.45); white-space:nowrap; }
+  #menuTam .mt-ac{ color:#C9D3E3; font-size:12.8px; line-height:1.45; padding:12px 16px 4px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  #menuTam .mt-bak{ color:#8b93c4; font-size:11.5px; font-weight:700; padding:6px 16px 14px; }
 </style>
 </head>
 <body>
@@ -297,16 +309,18 @@ async function menuyuIncele(){
         kat.innerHTML = `<span>${k.emoji||'🍽️'}</span>${esc(k.ad)}`;
         sec.appendChild(kat);
         const grid = document.createElement('div'); grid.className='mt-grid';
-        k.kartlar.forEach(u=>{
+        k.kartlar.forEach((u, idx)=>{
           const c = document.createElement('div'); c.className='mt-urun';
+          c.style.animationDelay = (idx*60)+'ms';
           const tile = `<div class="mt-tile" style="background:${gradientFor(u.ad)}"><span>${u.emoji||'🍽️'}</span></div>`;
           const gorsel = u.gorsel
             ? `<img src="${esc(u.gorsel)}" alt="${esc(u.ad)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML=${JSON.stringify(tile)}">`
             : tile;
           const et = u.etiket ? `<span class="mt-rz">★ ${esc(u.etiket)}</span>` : '';
           const ac = u.aciklama ? `<div class="mt-ac">${esc(u.aciklama)}</div>` : '';
-          c.innerHTML = `<div class="mt-ph">${gorsel}${et}</div>`
-            + `<div class="mt-in"><div class="mt-ad">${esc(u.ad)}</div><div class="mt-fi">${esc(u.fiyat_yazi||'')}</div>${ac}</div>`;
+          c.innerHTML = `<div class="mt-gor">${gorsel}<div class="mt-shade"></div>${et}`
+            + `<div class="mt-ov"><div class="mt-ad">${esc(u.ad)}</div><div class="mt-fi">${esc(u.fiyat_yazi||'')}</div></div></div>`
+            + ac + `<div class="mt-bak">📷 Fotoğraflara bak</div>`;
           c.addEventListener('click', ()=> acGaleri(u));   // foto galeri (salt okuma)
           grid.appendChild(c);
         });
