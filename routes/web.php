@@ -1157,6 +1157,44 @@ if (!function_exists('resto_temalar')) {
         return is_file($f) ? require $f : ['altin' => ['ad' => 'Altın & Siyah', 'emoji' => '👑', 'ana' => '#F6DFA0', 'ana2' => '#E9C46A', 'ana3' => '#C9962F', 'ink' => '#3a2600', 'glow' => 'rgba(233,196,106,.16)']];
     }
 }
+// subeler.tema + tema_renk + tema_renk2 kolonlarini garanti et
+if (!function_exists('resto_tema_kolon')) {
+    function resto_tema_kolon() {
+        try {
+            if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
+            if (!Schema::hasColumn('subeler', 'tema_renk')) Schema::table('subeler', function ($t) { $t->string('tema_renk', 9)->nullable(); });
+            if (!Schema::hasColumn('subeler', 'tema_renk2')) Schema::table('subeler', function ($t) { $t->string('tema_renk2', 9)->nullable(); });
+        } catch (\Throwable $e) {}
+    }
+}
+// tek hex'ten acik/koyu ton + okunur yazi rengi uret (yardimci)
+if (!function_exists('resto_renk_tonlar')) {
+    function resto_renk_tonlar($hex, $varsayilan = '#C41E3A') {
+        $hex = '#' . ltrim((string) $hex, '#');
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $hex)) $hex = $varsayilan;
+        $r = hexdec(substr($hex, 1, 2)); $g = hexdec(substr($hex, 3, 2)); $b = hexdec(substr($hex, 5, 2));
+        $mix = function ($t, $hedef) use ($r, $g, $b) {
+            $f = function ($c) use ($t, $hedef) { return (int) round($c + ($hedef - $c) * $t); };
+            return sprintf('#%02X%02X%02X', $f($r), $f($g), $f($b));
+        };
+        $lum = (0.299 * $r + 0.587 * $g + 0.114 * $b) / 255;
+        return ['ana' => strtoupper($hex), 'acik' => $mix(0.22, 255), 'koyu' => $mix(0.26, 0),
+            'ink' => $lum > 0.62 ? '#3a2600' : '#ffffff', 'r' => $r, 'g' => $g, 'b' => $b];
+    }
+}
+// OZEL tema: ana renk (butonlar) + detay renk (cizgi/fiyat/logo). detay bos ise ana renk kullanilir (hepsi ayni renk).
+if (!function_exists('resto_tema_uret')) {
+    function resto_tema_uret($anaHex, $detayHex = null) {
+        $a = resto_renk_tonlar($anaHex, '#C41E3A');
+        $d = resto_renk_tonlar($detayHex ?: $anaHex, $a['ana']);
+        return [
+            'ad' => 'Özel Renk', 'emoji' => '🎨',
+            'ana' => $a['ana'], 'ana2' => $a['acik'], 'ana3' => $a['koyu'], 'ink' => $a['ink'],
+            'glow' => "rgba({$a['r']},{$a['g']},{$a['b']},.15)",
+            'detay' => $d['ana'], 'detay2' => $d['koyu'],   // altin yerine gecen "detay" rengi
+        ];
+    }
+}
 
 // QR MENU (mockup 'Lezzet Duragi' — birebir): telefon + tablet, gercek puan, sipariş
 Route::get('/masa/{id}', function ($id) {
@@ -1164,8 +1202,10 @@ Route::get('/masa/{id}', function ($id) {
     if (!$masa) abort(404);
     $sube = DB::table('subeler')->find($masa->sube_id);
     $temalar = resto_temalar();
-    $key = ($sube && isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
-    $tema = $temalar[$key] ?? reset($temalar);
+    $stored = ($sube && isset($sube->tema)) ? $sube->tema : null;
+    if ($stored === 'ozel' && !empty($sube->tema_renk)) { $key = 'ozel'; $tema = resto_tema_uret($sube->tema_renk, $sube->tema_renk2 ?? null); }
+    elseif ($stored && isset($temalar[$stored])) { $key = $stored; $tema = $temalar[$stored]; }
+    else { $key = 'altin'; $tema = $temalar['altin'] ?? reset($temalar); }
     return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key]);
 });
 
@@ -3823,19 +3863,32 @@ Route::get('/api/patron/menu-yonetim', function (Request $r) {
 Route::get('/api/patron/tema', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    resto_tema_kolon();
     $temalar = resto_temalar();
     $sube = DB::table('subeler')->find($p->sube_id);
-    $secili = ($sube && isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
+    $stored = isset($sube->tema) ? $sube->tema : null;
+    $secili = ($stored === 'ozel') ? 'ozel' : (isset($temalar[$stored]) ? $stored : 'altin');
     $liste = [];
     foreach ($temalar as $k => $t) $liste[] = ['key' => $k] + $t;
-    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'secili' => $secili, 'temalar' => $liste];
+    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'secili' => $secili,
+        'renk' => (isset($sube->tema_renk) && $sube->tema_renk) ? $sube->tema_renk : '#C41E3A',
+        'renk2' => (isset($sube->tema_renk2) && $sube->tema_renk2) ? $sube->tema_renk2 : '',
+        'temalar' => $liste];
 });
 Route::post('/api/patron/tema-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
-    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    resto_tema_kolon();
     $key = (string) $r->input('tema');
+    if ($key === 'ozel') {
+        $renk = '#' . ltrim((string) $r->input('renk'), '#');
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $renk)) return ['ok' => 0, 'hata' => 'Geçersiz renk'];
+        $renk2raw = (string) $r->input('renk2');
+        $renk2 = $renk2raw ? ('#' . ltrim($renk2raw, '#')) : null;
+        if ($renk2 !== null && !preg_match('/^#[0-9a-fA-F]{6}$/', $renk2)) $renk2 = null;
+        DB::table('subeler')->where('id', $p->sube_id)->update(['tema' => 'ozel', 'tema_renk' => strtoupper($renk), 'tema_renk2' => $renk2 ? strtoupper($renk2) : null]);
+        return ['ok' => 1, 'tema' => 'ozel', 'renk' => strtoupper($renk), 'renk2' => $renk2 ? strtoupper($renk2) : ''];
+    }
     if (!isset(resto_temalar()[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
     DB::table('subeler')->where('id', $p->sube_id)->update(['tema' => $key]);
     return ['ok' => 1, 'tema' => $key];

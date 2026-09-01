@@ -1,3 +1,11 @@
+@php
+  $detayHex = $tema['detay'] ?? '#E9C46A';
+  $detay2Hex = $tema['detay2'] ?? '#C9962F';
+  $dh = ltrim($detayHex, '#'); if (strlen($dh) < 6) $dh = 'E9C46A';
+  $dr = hexdec(substr($dh, 0, 2)); $dg = hexdec(substr($dh, 2, 2)); $db = hexdec(substr($dh, 4, 2));
+  $detayLum = (0.299 * $dr + 0.587 * $dg + 0.114 * $db) / 255;
+  $goldInk = $detayLum > 0.62 ? '#3a2600' : '#ffffff';
+@endphp
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -12,7 +20,9 @@
   :root{ --mor:{{ $tema['ana'] ?? '#F6DFA0' }}; --mor2:{{ $tema['ana2'] ?? '#E9C46A' }}; --mavi:{{ $tema['ana3'] ?? '#C9962F' }};
     --ana-ink:{{ $tema['ink'] ?? '#3a2600' }}; --glow:{{ $tema['glow'] ?? 'rgba(233,196,106,.16)' }};
     --card:#201a24; --card2:#2a2130;
-    --gold:#E9C46A; --gold2:#C9962F; --ink:#F3E9EE; --sessiz:#B49CB6; --cizgi:rgba(233,196,106,.18);
+    --gold:{{ $detayHex }}; --gold2:{{ $detay2Hex }}; --gold-ink:{{ $goldInk }};
+    --cizgi:rgba({{ $dr }},{{ $dg }},{{ $db }},.22); --gold-bg:rgba({{ $dr }},{{ $dg }},{{ $db }},.08); --gold-bd:rgba({{ $dr }},{{ $dg }},{{ $db }},.40);
+    --ink:#F3E9EE; --sessiz:#B49CB6;
     --serif:'Playfair Display',Georgia,serif; --script:'Dancing Script',cursive; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
   html,body{ height:100%; color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
@@ -26,10 +36,10 @@
 
   /* marka logo */
   .brand{ display:inline-flex; align-items:center; gap:9px; }
-  .brand .toque{ font-size:24px; filter:drop-shadow(0 2px 6px rgba(233,196,106,.5)); }
+  .brand .toque{ font-size:24px; filter:drop-shadow(0 2px 6px var(--cizgi)); }
   .brand .bt{ display:flex; flex-direction:column; line-height:1; }
   .brand .bt b{ font-family:var(--serif); font-weight:800; font-size:20px; letter-spacing:1px;
-    background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+    background:linear-gradient(135deg,var(--gold),var(--gold2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
   .brand .bt i{ font-style:normal; font-size:8px; font-weight:700; letter-spacing:4px; color:var(--gold2); margin-top:3px; }
   .trbtn{ background:rgba(255,255,255,.06); border:1px solid var(--cizgi); color:#E7D3B4; font-size:12px; font-weight:700; padding:6px 11px; border-radius:12px; }
 
@@ -75,7 +85,7 @@
   .pk .g{ position:absolute; inset:0; }
   .pk .g img{ width:100%; height:100%; object-fit:cover; }
   .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:54px; }
-  .pk .tag{ position:absolute; z-index:3; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
+  .pk .tag{ position:absolute; z-index:3; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
   .pk .tuk{ position:absolute; z-index:3; inset:0; background:rgba(10,6,12,.55); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
   .pk .glass{ position:absolute; z-index:1; inset:0;
     background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.30) 48%, rgba(0,0,0,.74) 80%, rgba(0,0,0,.94) 100%); }
@@ -88,7 +98,7 @@
 
   .ozel{ position:relative; margin-top:12px; border-radius:18px; overflow:hidden; padding:13px 15px;
     background:linear-gradient(135deg,#4a1d6b,#2a1140); border:1px solid rgba(233,196,106,.28); box-shadow:0 14px 30px -18px rgba(0,0,0,.85); display:flex; align-items:center; }
-  .ozel::before{ content:''; position:absolute; inset:0; background:radial-gradient(60% 90% at 90% 10%, rgba(233,196,106,.18), transparent 60%); }
+  .ozel::before{ content:''; position:absolute; inset:0; background:radial-gradient(60% 90% at 90% 10%, var(--cizgi), transparent 60%); }
   .ozel .ic{ position:relative; flex:1; }
   .ozel .ic b{ font-family:var(--serif); font-size:16px; }
   .ozel .ic p{ color:#E9D3EE; font-size:11.5px; margin-top:2px; }
@@ -97,7 +107,7 @@
   .sayac b{ display:block; font-size:17px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
   .sayac i{ font-style:normal; font-size:8px; font-weight:700; letter-spacing:.5px; color:var(--sessiz); }
   .rozet{ position:relative; width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-left:10px; flex:0 0 auto;
-    background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-weight:800; font-size:12px; box-shadow:0 8px 20px rgba(201,150,47,.5); }
+    background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); font-weight:800; font-size:12px; box-shadow:0 8px 20px rgba(201,150,47,.5); }
   .rozet span{ font-size:18px; }
 
   /* alt nav */
@@ -138,7 +148,7 @@
     .hero .hsh{ position:absolute; inset:0; z-index:1;
       background:linear-gradient(100deg, rgba(18,9,18,.96) 0%, rgba(28,13,34,.85) 38%, rgba(28,13,34,.25) 70%, rgba(28,13,34,.05) 100%); }
     .hero .ht{ position:relative; z-index:2; max-width:56%; }
-    .hero .scr{ font-family:var(--script); font-size:40px; font-weight:700; color:var(--gold); line-height:.9; text-shadow:0 4px 18px rgba(233,196,106,.35); }
+    .hero .scr{ font-family:var(--script); font-size:40px; font-weight:700; color:var(--gold); line-height:.9; text-shadow:0 4px 18px var(--cizgi); }
     .hero .big{ font-family:var(--serif); font-weight:900; font-size:46px; line-height:1.02; margin-top:4px; letter-spacing:.5px; }
     .hero .sub{ color:#E9D3EE; font-size:14.5px; margin-top:14px; max-width:400px; line-height:1.5; }
     .hero .kesfet{ margin-top:22px; display:inline-flex; align-items:center; gap:10px; background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; border:none;
@@ -154,7 +164,7 @@
     .dk .g{ position:relative; height:150px; background:#1e1024; }
     .dk .g img{ width:100%; height:100%; object-fit:cover; }
     .dk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:58px; }
-    .dk .tag{ position:absolute; top:11px; left:11px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:10.5px; font-weight:800; padding:4px 10px; border-radius:20px; }
+    .dk .tag{ position:absolute; top:11px; left:11px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); font-size:10.5px; font-weight:800; padding:4px 10px; border-radius:20px; }
     .dk .b{ padding:14px 15px 16px; }
     .dk .ad{ font-weight:800; font-size:16px; }
     .dk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:11px; }
@@ -194,7 +204,7 @@
   #detay .foto .x{ position:absolute; top:14px; right:14px; width:40px; height:40px; border-radius:50%; border:none; background:rgba(0,0,0,.5); color:#fff; font-size:18px; }
   #detay .in{ padding:20px 20px 26px; }
   #detay .in h2{ font-family:var(--serif); font-size:24px; }
-  #detay .in .fi{ display:inline-block; margin-top:10px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-weight:800; font-size:17px; padding:5px 15px; border-radius:22px; }
+  #detay .in .fi{ display:inline-block; margin-top:10px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); font-weight:800; font-size:17px; padding:5px 15px; border-radius:22px; }
   #detay .in .ac{ color:#D8C8D6; font-size:14px; line-height:1.55; margin-top:14px; }
   #detay .puanbox{ margin-top:18px; padding:15px; border-radius:16px; background:rgba(0,0,0,.22); border:1px solid var(--cizgi); }
   #detay .puanbox .u{ font-size:13px; color:var(--sessiz); }
@@ -243,7 +253,7 @@
   #menu .mbar .x{ margin-left:auto; background:rgba(255,255,255,.16); color:#fff; border:none; font-size:13.5px; font-weight:800; padding:9px 15px; border-radius:22px; }
   #menu .mbody{ padding:6px 16px 40px; max-width:1000px; margin:0 auto; width:100%; }
   #menu .kat{ display:flex; align-items:center; gap:10px; font-family:var(--serif); font-size:21px; font-weight:800; margin:24px 2px 12px; }
-  #menu .kat span{ font-size:24px; } #menu .kat::after{ content:''; flex:1; height:2px; margin-left:6px; border-radius:2px; background:linear-gradient(90deg,rgba(233,196,106,.6),transparent); }
+  #menu .kat span{ font-size:24px; } #menu .kat::after{ content:''; flex:1; height:2px; margin-left:6px; border-radius:2px; background:linear-gradient(90deg,var(--gold),transparent); }
   #menu .mgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
   #menu .mk{ display:flex; gap:12px; background:var(--card); border:1px solid var(--cizgi); border-radius:18px; padding:11px; cursor:pointer; }
   #menu .mk .g{ width:82px; height:82px; flex:0 0 82px; border-radius:13px; overflow:hidden; background:#1e1024; }
@@ -269,8 +279,8 @@
       radial-gradient(680px 520px at 4% 106%, var(--glow), transparent 60%),
       radial-gradient(1200px 900px at 60% 0%, #1b1620 0%, #130f15 46%, #0b090c 100%); }
   /* karsilama + bugune-ozel: koyu + altin ince kenar (tum paletlerde sabit luks) */
-  .hg{ background:linear-gradient(160deg, rgba(233,196,106,.07), rgba(18,13,18,.74)); border-color:rgba(233,196,106,.30); }
-  .ozel{ background:linear-gradient(135deg,#241a20,#130f10); border-color:rgba(233,196,106,.36); }
+  .hg{ background:linear-gradient(160deg, var(--gold-bg), rgba(18,13,18,.74)); border-color:var(--gold-bd); }
+  .ozel{ background:linear-gradient(135deg,#241a20,#130f10); border-color:var(--gold-bd); }
   .ozel .ic p{ color:#E9D8BE; }
   #menu .mbar{ background:linear-gradient(135deg, rgba(0,0,0,.42), rgba(18,13,18,.72)); }
   .chip .ci{ background:rgba(255,255,255,.06); }
