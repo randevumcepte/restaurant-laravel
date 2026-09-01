@@ -202,33 +202,166 @@
   #menuTam .mt-ac{ color:#D8C8D6; font-size:12.8px; line-height:1.45; padding:12px 16px 4px;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   #menuTam .mt-bak{ color:var(--gold2); font-size:11.5px; font-weight:700; padding:6px 16px 14px; }
+
+  /* =================== MOCKUP HOME (Lezzet Duragi) =================== */
+  header .tr{ background:rgba(255,255,255,.06); border:1px solid var(--cizgi); color:#E7D3B4; font-size:12px; font-weight:700; padding:5px 11px; border-radius:12px; }
+  #home{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:4px 16px calc(96px + env(safe-area-inset-bottom)); }
+  #home::-webkit-scrollbar{ width:0; }
+  /* karsilama + arama */
+  .hg{ background:linear-gradient(150deg,rgba(139,59,234,.18),rgba(36,19,41,.6)); border:1px solid var(--cizgi);
+    border-radius:22px; padding:20px 18px; box-shadow:0 16px 36px -20px rgba(0,0,0,.8); }
+  .hg-h{ font-family:var(--serif); font-weight:800; font-size:22px; color:#fff; }
+  .hg-s{ color:var(--sessiz); font-size:13.5px; margin-top:5px; }
+  .ara{ display:flex; gap:9px; margin-top:15px; }
+  .ara input{ flex:1; background:rgba(0,0,0,.28); border:1px solid var(--cizgi); color:#fff; font-size:14.5px;
+    padding:14px 16px; border-radius:16px; outline:none; }
+  .ara input::placeholder{ color:#9a8a9c; }
+  .ara button{ width:52px; border:none; border-radius:16px; font-size:19px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 18px rgba(139,59,234,.5); }
+  /* kategori cipleri (ikonlu) */
+  .katcips{ display:flex; gap:10px; overflow-x:auto; padding:18px 2px 6px; -webkit-overflow-scrolling:touch; }
+  .katcips::-webkit-scrollbar{ height:0; }
+  .kc{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:74px; padding:12px 12px 10px;
+    border-radius:18px; background:var(--card); border:1px solid var(--cizgi); cursor:pointer; transition:.18s; }
+  .kc .kci{ width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;
+    background:rgba(139,59,234,.16); }
+  .kc .kcn{ font-size:11.5px; font-weight:700; color:#E7D3B4; white-space:nowrap; }
+  .kc.act{ background:linear-gradient(135deg,var(--mor),var(--mavi)); border-color:transparent; box-shadow:0 8px 20px rgba(139,59,234,.5); }
+  .kc.act .kci{ background:rgba(255,255,255,.18); }
+  .kc.act .kcn{ color:#fff; }
+  /* bolum basligi */
+  .bolum-bas{ display:flex; align-items:baseline; justify-content:space-between; margin:20px 2px 4px; }
+  .bolum-bas b{ font-family:var(--serif); font-size:19px; color:#fff; }
+  .bolum-bas a{ color:var(--gold); font-size:12.5px; font-weight:700; cursor:pointer; }
+  /* populer yatay kartlar */
+  .popsira{ display:flex; gap:14px; overflow-x:auto; padding:10px 2px 6px; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+  .popsira::-webkit-scrollbar{ height:0; }
+  .pop-yuk{ color:var(--sessiz); font-size:13px; padding:20px 4px; }
+  .pk{ flex:0 0 168px; scroll-snap-align:start; background:var(--card); border:1px solid var(--cizgi); border-radius:20px;
+    overflow:hidden; box-shadow:0 14px 30px -16px rgba(0,0,0,.75); cursor:pointer;
+    opacity:0; transform:translateY(14px); animation:kartGir .5s cubic-bezier(.2,.75,.2,1) forwards; }
+  .pk .pk-g{ position:relative; height:118px; background:#1e1024; }
+  .pk .pk-g img{ width:100%; height:100%; object-fit:cover; }
+  .pk .pk-em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:46px; }
+  .pk .pk-tag{ position:absolute; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600;
+    font-size:10px; font-weight:800; padding:3px 9px; border-radius:20px; }
+  .pk .pk-b{ padding:11px 12px 13px; }
+  .pk .pk-ad{ font-weight:800; font-size:14px; color:#fff; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk .pk-alt{ display:flex; align-items:center; justify-content:space-between; margin-top:9px; }
+  .pk .pk-fi{ color:var(--gold); font-weight:800; font-size:14px; }
+  .pk .pk-art{ width:30px; height:30px; border-radius:10px; border:none; color:#fff; font-size:17px; line-height:1;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
+  /* bugune ozel geri sayim */
+  .ozel{ position:relative; margin-top:22px; border-radius:22px; overflow:hidden; padding:20px 18px;
+    background:linear-gradient(135deg,#4a1d6b,#2a1140); border:1px solid rgba(233,196,106,.28);
+    box-shadow:0 18px 40px -20px rgba(0,0,0,.85); display:flex; align-items:center; }
+  .ozel::before{ content:''; position:absolute; inset:0; background:radial-gradient(60% 90% at 90% 10%, rgba(233,196,106,.18), transparent 60%); }
+  .ozel-ic{ position:relative; flex:1; }
+  .ozel-b{ font-family:var(--serif); font-size:18px; font-weight:800; color:#fff; }
+  .ozel-s{ color:#E9D3EE; font-size:12.5px; margin-top:3px; }
+  .sayac{ display:flex; gap:8px; margin-top:13px; }
+  .sayac > div{ background:rgba(0,0,0,.32); border:1px solid var(--cizgi); border-radius:12px; padding:7px 0; width:52px; text-align:center; }
+  .sayac b{ display:block; font-size:19px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .sayac i{ font-style:normal; font-size:8.5px; font-weight:700; letter-spacing:1px; color:var(--sessiz); }
+  .ozel-rozet{ position:relative; width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-weight:800; font-size:13px; flex:0 0 auto; margin-left:12px;
+    box-shadow:0 8px 20px rgba(201,150,47,.5); }
+  .ozel-rozet span{ font-size:19px; }
+  /* alt navigasyon bar */
+  #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:60; display:flex; align-items:flex-end; justify-content:space-around;
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:rgba(20,10,22,.92); backdrop-filter:blur(14px);
+    border-top:1px solid var(--cizgi); }
+  #altbar button{ flex:1; background:none; border:none; color:var(--sessiz); font-size:10.5px; font-weight:700;
+    display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 0; }
+  #altbar button span{ font-size:19px; }
+  #altbar button.act{ color:var(--gold); }
+  #altbar .qr{ flex:0 0 auto; }
+  #altbar .qr .qri{ width:58px; height:58px; margin-top:-24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 22px rgba(139,59,234,.6), 0 0 0 5px rgba(20,10,22,.92); }
+  /* asistan kayan panel */
+  #asheet{ position:fixed; left:0; right:0; bottom:0; z-index:75; height:82dvh; display:flex; flex-direction:column;
+    background:linear-gradient(180deg,#241329,#160a1a); border-top-left-radius:26px; border-top-right-radius:26px;
+    border:1px solid var(--cizgi); box-shadow:0 -20px 50px rgba(0,0,0,.6); transform:translateY(102%); transition:transform .34s cubic-bezier(.2,.8,.2,1); }
+  #asheet.acik{ transform:translateY(0); }
+  #asheet .as-tut{ width:44px; height:5px; border-radius:3px; background:rgba(255,255,255,.22); margin:9px auto 2px; }
+  #asheet .as-bar{ display:flex; align-items:center; gap:12px; padding:6px 16px 8px; }
+  #asheet #orb{ width:46px; height:46px; flex:0 0 auto; }
+  #asheet #orb::after{ inset:10px; }
+  #asheet .as-t{ display:flex; flex-direction:column; }
+  #asheet .as-t b{ font-family:var(--serif); font-size:16px; color:var(--gold); }
+  #asheet #durum{ text-align:left; margin:0; font-size:12px; }
+  #asheet .as-x{ margin-left:auto; width:38px; height:38px; border-radius:50%; border:none; background:rgba(255,255,255,.1); color:#fff; font-size:16px; }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
     <span class="logo"><span class="toque">👨‍🍳</span><span class="lz"><b>{{ $sube->ad ?? 'RestoOS' }}</b><i>RESTORAN</i></span></span>
-    <button class="menuBtn" onclick="menuyuIncele()">📋 Menüyü İncele</button>
-    <span class="masa">🍽️ {{ $masa->ad ?? '' }}</span>
+    <span class="masa" style="margin-left:auto">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
-  <div id="orb-wrap">
-    <div id="orb" onclick="basla()"></div>
-    <div id="durum">Konuşmak için mikrofona ya da daireye dokunun 🎤</div>
+
+  <!-- ===== MOCKUP HOME ===== -->
+  <main id="home">
+    <div class="hg">
+      <div class="hg-h">Hoş geldiniz! 👋</div>
+      <div class="hg-s">Lezzet dolu bir deneyime hazır mısınız?</div>
+      <form class="ara" onsubmit="aramaGonder(event)">
+        <input id="ara" placeholder="Ne yemek istersiniz?" autocomplete="off">
+        <button type="submit" aria-label="Ara">🔍</button>
+      </form>
+    </div>
+
+    <div class="katcips" id="katcips"></div>
+
+    <div class="bolum-bas"><b>Popüler Lezzetler</b><a onclick="menuyuIncele()">Tümünü Gör →</a></div>
+    <div class="popsira" id="popsira"><div class="pop-yuk">Lezzetler yükleniyor…</div></div>
+
+    <div class="ozel">
+      <div class="ozel-ic">
+        <div class="ozel-b">Bugüne Özel</div>
+        <div class="ozel-s">Seçili menülerde %20 indirim!</div>
+        <div class="sayac" id="sayac">
+          <div><b id="s-sa">00</b><i>SAAT</i></div>
+          <div><b id="s-dk">00</b><i>DAKİKA</i></div>
+          <div><b id="s-sn">00</b><i>SANİYE</i></div>
+        </div>
+      </div>
+      <div class="ozel-rozet">%<span>20</span></div>
+    </div>
+  </main>
+
+  <!-- ===== ASISTAN KAYAN PANEL ===== -->
+  <div id="asheet">
+    <div class="as-tut"></div>
+    <div class="as-bar">
+      <div id="orb" onclick="basla()"></div>
+      <div class="as-t"><b>Sesli Asistan</b><span id="durum">Dokunup konuşun ya da yazın</span></div>
+      <button class="as-x" onclick="sheetKapat()" aria-label="Kapat">✕</button>
+    </div>
+    <div id="sohbet"></div>
+    <div class="cips">
+      <div class="cip" onclick="sor('Menüde neler var?')">📋 Menü</div>
+      <div class="cip" onclick="sor('Günün yemeği ne?')">⭐ Günün yemeği</div>
+      <div class="cip" onclick="sor('Ne önerirsin?')">👍 Öneri</div>
+      <div class="cip" onclick="sor('Tatlılar neler?')">🍰 Tatlılar</div>
+      <div class="cip" onclick="sor('WiFi şifresi ne?')">📶 WiFi</div>
+      <div class="cip" onclick="sor('Garsonu çağır')">🙋 Garson</div>
+    </div>
+    <footer>
+      <button class="yuvarlak" id="mic" onclick="basla()">🎤</button>
+      <input id="metin" placeholder="Sorunuzu yazın…" onkeydown="if(event.key==='Enter')gonderMetin()">
+      <button class="yuvarlak" id="gonder" onclick="gonderMetin()">➤</button>
+    </footer>
   </div>
-  <div id="sohbet"></div>
-  <div class="cips">
-    <div class="cip" onclick="sor('Menüde neler var?')">📋 Menü</div>
-    <div class="cip" onclick="sor('Günün yemeği ne?')">⭐ Günün yemeği</div>
-    <div class="cip" onclick="sor('Ne önerirsin?')">👍 Öneri</div>
-    <div class="cip" onclick="sor('Tatlılar neler?')">🍰 Tatlılar</div>
-    <div class="cip" onclick="sor('WiFi şifresi ne?')">📶 WiFi</div>
-    <div class="cip" onclick="sor('Garsonu çağır')">🙋 Garson</div>
-  </div>
-  <footer>
-    <button class="yuvarlak" id="mic" onclick="basla()">🎤</button>
-    <input id="metin" placeholder="Sorunuzu yazın…" onkeydown="if(event.key==='Enter')gonderMetin()">
-    <button class="yuvarlak" id="gonder" onclick="gonderMetin()">➤</button>
-  </footer>
+
+  <!-- ===== ALT NAVIGASYON ===== -->
+  <nav id="altbar">
+    <button class="act" onclick="menuyuIncele()"><span>📋</span>Menü</button>
+    <button onclick="siparislerimAc()"><span>🧾</span>Siparişlerim</button>
+    <button class="qr" onclick="asistanAc()"><div class="qri">🎤</div></button>
+    <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
+    <button onclick="cagir('hesap')"><span>💳</span>Hesabım</button>
+  </nav>
 </div>
 
 <div id="lightbox">
@@ -703,6 +836,7 @@ async function sunucudanCevap(soru){
 /* ---- Yazili / cip gonderimi (mikrofonsuz tek seferlik) ---- */
 function gonderMetin(){ const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
 async function sor(soru){
+  sheetAc();
   ekle('ben', soru);
   if(siparisModu && sepet.length && bitirMi(soru)){ await finalizeSiparis(); return; }
   const cevap = await sunucudanCevap(soru);
@@ -713,28 +847,89 @@ async function garsonCagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
 }
 
-/* ---- Acilis: karsilamayi OTOMATIK seslendir; ilk dokunusta HEMEN dinle (tek dokunus), izin varsa otomatik ---- */
-window.addEventListener('load', async ()=>{
-  ekle('ai', SELAM);
-  ilkSelamVerildi = true;
-  const karsilama = konus(SELAM);   // OTOMATIK seslendir
-  durumEl.textContent = 'Konuşmak için ekrana dokunun 👆';
+/* ==================== MOCKUP HOME + ASISTAN PANEL ==================== */
+const asheetEl = document.getElementById('asheet');
+let _homeData = [], _popList = [];
+function sheetAc(){ asheetEl.classList.add('acik'); }
+function sheetKapat(){
+  asheetEl.classList.remove('acik');
+  sohbetAktif=false; try{ rec && rec.stop(); }catch(_){} sesDurdur(); konusuyor=false;
+  micBtn.classList.remove('acik','dinliyor'); orb.classList.remove('dinliyor');
+}
+// Alt bar QR/mic -> asistani ac + sesli baslat
+function asistanAc(){ sheetAc(); if(!sohbetAktif) basla(true); }
+// Arama cubugu -> asistana yaz
+function aramaGonder(e){ e.preventDefault(); const el=document.getElementById('ara'); const t=(el.value||'').trim(); if(!t) return; el.value=''; sheetAc(); sor(t); }
+// Siparislerim -> paneli ac (sepet zaten sohbette gorunur)
+function siparislerimAc(){ sheetAc(); if(!sepet.length){ const m='Henüz sepetinizde bir şey yok. 🙂 Ne istersiniz? Bana söylemeniz yeterli.'; ekle('ai', m); } sohbet.scrollTop=sohbet.scrollHeight; }
+// Garson / hesap cagir + geri bildirim
+async function cagir(tip){ await garsonCagir(tip); toast(tip==='hesap' ? '💳 Hesap isteğiniz iletildi, birazdan geliyoruz.' : '🔔 Garson çağrıldı, birazdan yanınızdayız.'); }
+function toast(msg){
+  let t=document.getElementById('_toast');
+  if(!t){ t=document.createElement('div'); t.id='_toast'; t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:90;background:linear-gradient(135deg,#2a1731,#160a1a);color:#fff;border:1px solid var(--cizgi);padding:13px 18px;border-radius:16px;font-size:13.5px;font-weight:600;box-shadow:0 14px 34px rgba(0,0,0,.6);max-width:88%;text-align:center;opacity:0;transition:.25s;'; document.body.appendChild(t); }
+  t.textContent=msg; requestAnimationFrame(()=>{ t.style.opacity='1'; }); clearTimeout(t._z); t._z=setTimeout(()=>{ t.style.opacity='0'; }, 3200);
+}
 
-  // Mikrofon izni verildiyse: karsilama bitince KENDILIGINDEN dinlemeye gec (dokunmaya gerek yok)
+// HOME verisini yukle: kategori cipleri + populer kartlar
+async function homeYukle(){
   try{
-    if(navigator.permissions && navigator.permissions.query){
-      const st = await navigator.permissions.query({name:'microphone'});
-      if(st.state === 'granted') karsilama.then(()=>{ if(!sohbetAktif) basla(false); });
-    }
-  }catch(e){}
+    const r = await fetch('/api/qr/menu-tam?masa='+MASA); const j = await r.json();
+    _homeData = (j.ok && Array.isArray(j.kategoriler)) ? j.kategoriler : [];
+  }catch(e){ _homeData = []; }
+  cipleriKur(); populerKur('*');
+}
+function cipleriKur(){
+  const wrap=document.getElementById('katcips'); if(!wrap) return;
+  let h = `<div class="kc act" data-k="*" onclick="cipSec(this,'*')"><div class="kci">🍽️</div><div class="kcn">Tüm Menüler</div></div>`;
+  _homeData.forEach((k,i)=>{ h += `<div class="kc" data-k="${i}" onclick="cipSec(this,'${i}')"><div class="kci">${k.emoji||'🍽️'}</div><div class="kcn">${esc(k.ad)}</div></div>`; });
+  wrap.innerHTML = h;
+}
+function cipSec(el, key){ document.querySelectorAll('#katcips .kc').forEach(c=>c.classList.remove('act')); el.classList.add('act'); populerKur(key); }
+function populerKur(key){
+  const wrap=document.getElementById('popsira'); if(!wrap) return;
+  let urunler=[];
+  if(key==='*'){ _homeData.forEach(k=> (k.kartlar||[]).slice(0,2).forEach(u=> urunler.push(u))); urunler=urunler.slice(0,10); }
+  else { const k=_homeData[+key]; urunler=(k&&k.kartlar)?k.kartlar.slice(0,12):[]; }
+  if(!urunler.length){ wrap.innerHTML='<div class="pop-yuk">Bu kategoride ürün yok.</div>'; return; }
+  _popList = urunler; wrap.innerHTML='';
+  urunler.forEach((u,i)=>{
+    const c=document.createElement('div'); c.className='pk'; c.style.animationDelay=(i*45)+'ms';
+    const gor = (u.gercek_foto && u.gorsel)
+      ? `<img src="${esc(u.gorsel)}" loading="lazy" onerror="this.onerror=null;this.parentNode.innerHTML='<div class=\\'pk-em\\'>${u.emoji||'🍽️'}</div>'">`
+      : `<div class="pk-em" style="background:${gradientFor(u.ad)}">${u.emoji||'🍽️'}</div>`;
+    const tag = u.etiket ? `<span class="pk-tag">${esc(u.etiket)}</span>` : `<span class="pk-tag">Popüler</span>`;
+    const artBtn = document.createElement('button'); artBtn.className='pk-art'; artBtn.textContent='+';
+    artBtn.addEventListener('click', ev=>{ ev.stopPropagation(); hizliEkle(i); });
+    c.innerHTML = `<div class="pk-g">${gor}${tag}</div>`
+      + `<div class="pk-b"><div class="pk-ad">${esc(u.ad)}</div>`
+      + `<div class="pk-alt"><span class="pk-fi">${esc(u.fiyat_yazi||'')}</span></div></div>`;
+    c.querySelector('.pk-alt').appendChild(artBtn);
+    c.addEventListener('click', ()=> acGaleri(u));
+    wrap.appendChild(c);
+  });
+}
+// Populer karttan '+' ile hizli sepete ekle (panel acilir)
+function hizliEkle(i){ const u=_popList[i]; if(!u) return; sheetAc(); sessizMod=false; istiyorum(u); toast('🛒 '+u.ad+' sepete eklendi'); }
 
-  // Ilk dokunus (ekranin herhangi yeri): karsilamayi KES ve HEMEN dinlemeye basla -> TEK dokunus yeterli
-  const ilkDokun = ()=>{
-    document.removeEventListener('pointerdown', ilkDokun);
-    konusKes();                                  // uzun karsilamayi HEMEN kes
-    if(!sohbetAktif) basla(false);
-  };
-  document.addEventListener('pointerdown', ilkDokun, { once:true });
+// Geri sayim (bugun sonuna kadar) — sadece gorsel
+function sayacBasla(){
+  const sa=document.getElementById('s-sa'), dk=document.getElementById('s-dk'), sn=document.getElementById('s-sn');
+  if(!sa) return;
+  function tik(){
+    const now=new Date(); const bit=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+    let f=Math.max(0,Math.floor((bit-now)/1000));
+    const h=String(Math.floor(f/3600)).padStart(2,'0'); f%=3600;
+    const m=String(Math.floor(f/60)).padStart(2,'0'); const s=String(f%60).padStart(2,'0');
+    sa.textContent=h; dk.textContent=m; sn.textContent=s;
+  }
+  tik(); setInterval(tik,1000);
+}
+
+/* ---- Acilis: home hazirla; asistan panelde, sohbete karsilama koyulur (otomatik konusma YOK) ---- */
+window.addEventListener('load', ()=>{
+  ekle('ai', SELAM);          // panel acilinca gorunur
+  homeYukle();
+  sayacBasla();
 });
 </script>
 </body>
