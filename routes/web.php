@@ -1148,7 +1148,15 @@ Route::get('/kalip-sil', function (Request $r) {
 
 // ============================ MUSTERI QR ASISTANI (public, girissiz) ============================
 // Masadaki QR -> tarayicida AI asistan sayfasi acilir.
+// QR MENU (mockup 'Lezzet Duragi' — birebir): telefon + tablet, gercek puan, sipariş
 Route::get('/masa/{id}', function ($id) {
+    $masa = DB::table('masalar')->find((int) $id);
+    if (!$masa) abort(404);
+    $sube = DB::table('subeler')->find($masa->sube_id);
+    return view('masa_menu', ['masa' => $masa, 'sube' => $sube]);
+});
+// Sesli asistan (sonra ana akisa baglanacak) — ayri linkte korunuyor
+Route::get('/masa/{id}/asistan', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
     if (!$masa) abort(404);
     $sube = DB::table('subeler')->find($masa->sube_id);
@@ -1187,6 +1195,39 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
         'tip' => in_array($r->tip, ['garson', 'hesap']) ? $r->tip : 'garson', 'durum' => 'bekliyor', 'created_at' => now()]);
     return ['ok' => 1];
+});
+
+// QR MENU: musteri urune PUAN verir (gercek degerlendirme sistemi) -> urun_puanlari
+Route::post('/api/qr/urun-puan', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    $urunId = (int) $r->urun_id;
+    $puan = (int) $r->puan;
+    if (!$urunId || $puan < 1 || $puan > 5) return ['ok' => 0, 'hata' => 'Geçersiz puan'];
+    if (!Schema::hasTable('urun_puanlari')) {
+        Schema::create('urun_puanlari', function ($t) {
+            $t->increments('id');
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('urun_id');
+            $t->unsignedBigInteger('masa_id')->nullable();
+            $t->unsignedTinyInteger('puan');           // 1-5
+            $t->string('parmak', 64)->nullable();      // cihaz parmak izi (spam/tekrar engeli)
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'urun_id']);
+        });
+    }
+    $parmak = substr(sha1(($r->parmak ?: $r->ip()) . '|' . $urunId), 0, 64);
+    // Ayni cihaz ayni urune tekrar verirse GUNCELLE (spam engeli)
+    $mevcut = DB::table('urun_puanlari')->where('urun_id', $urunId)->where('parmak', $parmak)->first();
+    if ($mevcut) {
+        DB::table('urun_puanlari')->where('id', $mevcut->id)->update(['puan' => $puan, 'created_at' => now()]);
+    } else {
+        DB::table('urun_puanlari')->insert(['sube_id' => $subeId, 'urun_id' => $urunId,
+            'masa_id' => $masa->id ?? null, 'puan' => $puan, 'parmak' => $parmak, 'created_at' => now()]);
+    }
+    $agg = DB::table('urun_puanlari')->where('urun_id', $urunId)
+        ->selectRaw('ROUND(AVG(puan),1) as ort, COUNT(*) as say')->first();
+    return ['ok' => 1, 'puan' => (float) $agg->ort, 'puan_say' => (int) $agg->say];
 });
 
 // Musteri AI: ogrenilen cevaplar (Haiku onbellegi) — listele / sil / durum

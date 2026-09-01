@@ -151,14 +151,32 @@ class MusteriAsistan
     public function menuTam()
     {
         $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
+        $puanlar = $this->urunPuanlari();   // [urun_id => ['ort'=>x, 'say'=>y]]
         $out = [];
         foreach ($kats as $k) {
             $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)
                 ->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat', 'aciklama', 'tukendi']);
-            $kartlar = $urunler->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $u->tukendi ? 'Tükendi' : null, [], $u->id))->all();
+            $kartlar = $urunler->map(function ($u) use ($k, $puanlar) {
+                $kart = $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $u->tukendi ? 'Tükendi' : null, [], $u->id);
+                if (isset($puanlar[$u->id])) { $kart['puan'] = $puanlar[$u->id]['ort']; $kart['puan_say'] = $puanlar[$u->id]['say']; }
+                return $kart;
+            })->all();
             if (!empty($kartlar)) $out[] = ['ad' => $k->ad, 'emoji' => $this->katEmoji($k->ad), 'kartlar' => $kartlar];
         }
         return ['ok' => 1, 'kategoriler' => $out];
+    }
+
+    /** Bu subenin urun puan ortalamalari [urun_id => ['ort'=>1.0-5.0, 'say'=>N]]. Tablo yoksa bos. */
+    public function urunPuanlari()
+    {
+        try {
+            if (!Schema::hasTable('urun_puanlari')) return [];
+            $rows = DB::table('urun_puanlari')->where('sube_id', $this->subeId)
+                ->selectRaw('urun_id, ROUND(AVG(puan),1) as ort, COUNT(*) as say')->groupBy('urun_id')->get();
+            $map = [];
+            foreach ($rows as $r) $map[$r->urun_id] = ['ort' => (float) $r->ort, 'say' => (int) $r->say];
+            return $map;
+        } catch (\Throwable $e) { return []; }
     }
 
     // -------- MENU HANDLERS --------
@@ -873,6 +891,8 @@ class MusteriAsistan
             'gorsel' => $gorseller[0] ?? null,
             'gorseller' => $gorseller,           // galeri: ayni yemegin birkac fotografi
             'gercek_foto' => (bool) $yuklenen,   // TRUE = isletmenin yukledigi gercek foto (stok/loremflickr degil)
+            'puan' => null,                      // gercek musteri puani (menuTam icinde doldurulur)
+            'puan_say' => 0,
             'etiket' => $etiket,
             'icindekiler' => array_values((array) $icindekiler),
             'urun_id' => $urunId ? (int) $urunId : null,
