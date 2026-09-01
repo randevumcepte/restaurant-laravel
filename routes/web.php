@@ -4179,6 +4179,163 @@ Route::get('/api/mutfak/analiz', function (Request $r) {
         'en_yavas' => $enYavas, 'istasyon_yuku' => $istasyonYuku, 'saatlik' => $saatDizi, 'oneriler' => $oneriler];
 });
 
+// ============================ REZERVASYON (online masa rezervasyonu) ============================
+if (!function_exists('_rezervasyonEnsure')) {
+    function _rezervasyonEnsure($subeId)
+    {
+        if (!Schema::hasTable('rezervasyonlar')) {
+            Schema::create('rezervasyonlar', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id');
+                $t->unsignedBigInteger('masa_id')->nullable();     // atanan masa (opsiyonel)
+                $t->string('ad');
+                $t->string('telefon', 30)->nullable();
+                $t->unsignedInteger('kisi')->default(2);
+                $t->date('tarih');
+                $t->string('saat', 5);                              // "19:30"
+                $t->string('durum', 20)->default('bekliyor');       // bekliyor | onaylandi | geldi | iptal | gelmedi
+                $t->string('kaynak', 20)->default('telefon');       // telefon | web | qr
+                $t->string('not')->nullable();
+                $t->unsignedBigInteger('personel_id')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'tarih']);
+            });
+        }
+        if (DB::table('rezervasyonlar')->where('sube_id', $subeId)->count() > 0) return;
+        $bugun = now()->format('Y-m-d');
+        $yarin = now()->addDay()->format('Y-m-d');
+        $demo = [
+            ['ad' => 'Ahmet Yılmaz', 'telefon' => '0532 111 22 33', 'kisi' => 4, 'tarih' => $bugun, 'saat' => '19:30', 'durum' => 'onaylandi', 'kaynak' => 'telefon', 'not' => 'Pencere kenarı isteği'],
+            ['ad' => 'Elif Kaya', 'telefon' => '0533 999 88 77', 'kisi' => 2, 'tarih' => $bugun, 'saat' => '20:00', 'durum' => 'bekliyor', 'kaynak' => 'web', 'not' => null],
+            ['ad' => 'Berk İnşaat (kurumsal)', 'telefon' => '0216 555 44 33', 'kisi' => 8, 'tarih' => $bugun, 'saat' => '21:00', 'durum' => 'onaylandi', 'kaynak' => 'telefon', 'not' => 'Doğum günü pastası'],
+            ['ad' => 'Deniz Demir', 'telefon' => '0534 222 11 00', 'kisi' => 3, 'tarih' => $yarin, 'saat' => '13:00', 'durum' => 'bekliyor', 'kaynak' => 'web', 'not' => 'Bebek sandalyesi'],
+            ['ad' => 'Selin Ak', 'telefon' => '0535 333 22 11', 'kisi' => 6, 'tarih' => $yarin, 'saat' => '20:30', 'durum' => 'onaylandi', 'kaynak' => 'qr', 'not' => null],
+        ];
+        foreach ($demo as $d) {
+            DB::table('rezervasyonlar')->insert(array_merge($d, ['sube_id' => $subeId, 'created_at' => now()]));
+        }
+    }
+}
+
+// Kurulum + demo seed
+Route::get('/rezervasyon-kur', function () {
+    $subeId = DB::table('subeler')->value('id');
+    _rezervasyonEnsure($subeId);
+    $say = DB::table('rezervasyonlar')->where('sube_id', $subeId)->count();
+    return ['ok' => 1, 'mesaj' => "Rezervasyon tablosu hazır + demo yüklendi. Toplam kayıt: $say"];
+});
+
+if (!function_exists('_rezDurumlar')) {
+    function _rezDurumlar() { return ['bekliyor', 'onaylandi', 'geldi', 'iptal', 'gelmedi']; }
+}
+
+// PATRON API: gune gore rezervasyon listesi (varsayilan bugun)
+Route::get('/api/patron/rezervasyonlar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _rezervasyonEnsure($p->sube_id);
+    $tarih = $r->query('tarih') ?: now()->format('Y-m-d');
+    $rows = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
+        ->where('rezervasyonlar.sube_id', $p->sube_id)->where('rezervasyonlar.tarih', $tarih)
+        ->orderBy('rezervasyonlar.saat')
+        ->select('rezervasyonlar.*', 'masalar.ad as masa_ad')
+        ->get()->map(fn ($x) => [
+            'id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'kisi' => (int) $x->kisi,
+            'tarih' => $x->tarih, 'saat' => substr($x->saat, 0, 5), 'durum' => $x->durum, 'kaynak' => $x->kaynak,
+            'not' => $x->not, 'masa_id' => $x->masa_id ? (int) $x->masa_id : null, 'masa_ad' => $x->masa_ad,
+        ]);
+    // Gunluk ozet
+    $aktif = $rows->whereIn('durum', ['bekliyor', 'onaylandi']);
+    $ozet = [
+        'toplam' => $rows->count(),
+        'bekleyen' => $rows->where('durum', 'bekliyor')->count(),
+        'onayli' => $rows->where('durum', 'onaylandi')->count(),
+        'geldi' => $rows->where('durum', 'geldi')->count(),
+        'kisi' => $aktif->sum('kisi'),
+    ];
+    // Sonraki 7 gunun rezervasyon sayilari (mini takvim)
+    $gunler = [];
+    for ($i = 0; $i < 7; $i++) {
+        $g = now()->addDays($i)->format('Y-m-d');
+        $gunler[] = ['tarih' => $g, 'adet' => DB::table('rezervasyonlar')->where('sube_id', $p->sube_id)->where('tarih', $g)->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi'])->count()];
+    }
+    return ['ok' => 1, 'tarih' => $tarih, 'rezervasyonlar' => $rows->values(), 'ozet' => $ozet, 'gunler' => $gunler];
+});
+
+// PATRON API: rezervasyon ekle
+Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _rezervasyonEnsure($p->sube_id);
+    $ad = trim((string) $r->input('ad'));
+    if ($ad === '') return ['ok' => 0, 'hata' => 'İsim gerekli'];
+    $tarih = $r->input('tarih') ?: now()->format('Y-m-d');
+    $saat = substr(trim((string) $r->input('saat', '19:00')), 0, 5);
+    $masaId = (int) $r->input('masa_id');
+    if ($masaId && !DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->exists()) $masaId = 0;
+    $id = DB::table('rezervasyonlar')->insertGetId([
+        'sube_id' => $p->sube_id, 'masa_id' => $masaId ?: null, 'ad' => $ad,
+        'telefon' => trim((string) $r->input('telefon')) ?: null, 'kisi' => max(1, (int) $r->input('kisi', 2)),
+        'tarih' => $tarih, 'saat' => $saat, 'durum' => 'onaylandi', 'kaynak' => 'telefon',
+        'not' => trim((string) $r->input('not')) ?: null, 'personel_id' => $p->id, 'created_at' => now(),
+    ]);
+    return ['ok' => 1, 'id' => $id, 'mesaj' => "$ad · $tarih $saat rezervasyonu eklendi."];
+});
+
+// PATRON API: rezervasyon durum guncelle (+ masa atama opsiyonel)
+Route::post('/api/patron/rezervasyon-durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $rez = DB::table('rezervasyonlar')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->first();
+    if (!$rez) return ['ok' => 0, 'hata' => 'Rezervasyon bulunamadı'];
+    $durum = (string) $r->input('durum');
+    $upd = [];
+    if (in_array($durum, _rezDurumlar())) $upd['durum'] = $durum;
+    if ($r->has('masa_id')) {
+        $masaId = (int) $r->input('masa_id');
+        $upd['masa_id'] = ($masaId && DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->exists()) ? $masaId : null;
+    }
+    if (empty($upd)) return ['ok' => 0, 'hata' => 'Geçersiz işlem'];
+    DB::table('rezervasyonlar')->where('id', $rez->id)->update($upd);
+    // Masa durumu senkron: onaylandi+masa -> rezerve; iptal/gelmedi -> masa bos (rezerve idiyse)
+    if (!empty($rez->masa_id) || !empty($upd['masa_id'])) {
+        $masaId = $upd['masa_id'] ?? $rez->masa_id;
+        $yeniDurum = $upd['durum'] ?? $rez->durum;
+        if ($masaId) {
+            $m = DB::table('masalar')->where('id', $masaId)->first();
+            if ($m) {
+                if ($yeniDurum === 'onaylandi' && $m->durum === 'bos') DB::table('masalar')->where('id', $masaId)->update(['durum' => 'rezerve']);
+                if (in_array($yeniDurum, ['iptal', 'gelmedi', 'geldi']) && $m->durum === 'rezerve') DB::table('masalar')->where('id', $masaId)->update(['durum' => 'bos']);
+            }
+        }
+    }
+    return ['ok' => 1, 'mesaj' => 'Rezervasyon güncellendi.'];
+});
+
+// ONLINE REZERVASYON (musteri tarafi) — /rez/{sube}
+Route::get('/rez/{sube}', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) abort(404);
+    _rezervasyonEnsure($s->id);
+    return view('rez', ['sube' => $s]);
+});
+Route::post('/rez/{sube}', function (Request $r, $sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) abort(404);
+    _rezervasyonEnsure($s->id);
+    $ad = trim((string) $r->input('ad'));
+    $tel = trim((string) $r->input('telefon'));
+    if ($ad === '' || $tel === '') return response()->json(['ok' => 0, 'hata' => 'Ad ve telefon zorunlu.'], 422);
+    $tarih = $r->input('tarih') ?: now()->format('Y-m-d');
+    $saat = substr(trim((string) $r->input('saat', '19:00')), 0, 5);
+    DB::table('rezervasyonlar')->insert([
+        'sube_id' => $s->id, 'masa_id' => null, 'ad' => $ad, 'telefon' => $tel,
+        'kisi' => max(1, (int) $r->input('kisi', 2)), 'tarih' => $tarih, 'saat' => $saat,
+        'durum' => 'bekliyor', 'kaynak' => 'web', 'not' => trim((string) $r->input('not')) ?: null, 'created_at' => now(),
+    ]);
+    return ['ok' => 1, 'mesaj' => 'Rezervasyon talebiniz alındı! En kısa sürede sizi arayıp onaylayacağız.'];
+});
+
 // ---- SEBEPLER (silme/iskonto/ikram/iptal) - duzenlenebilir liste ----
 if (!function_exists('_restoSebeplerEnsure')) {
     function _restoSebeplerEnsure($subeId)
