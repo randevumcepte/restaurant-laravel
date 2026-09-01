@@ -259,6 +259,29 @@
 
   @keyframes up{ to{ opacity:1; transform:none; } }
   @keyframes slideUp{ from{ transform:translateY(40px); opacity:.4; } to{ transform:none; opacity:1; } }
+
+  /* ============ LUKS TEMA: siyah + altin agirlikli (mor azaltildi) ============ */
+  html,body{ background:#0b090c;
+    background-image:
+      radial-gradient(920px 640px at 90% -8%, rgba(233,196,106,.16), transparent 58%),
+      radial-gradient(680px 520px at 4% 106%, rgba(139,59,234,.09), transparent 60%),
+      radial-gradient(1200px 900px at 60% 0%, #231a25 0%, #140f16 46%, #0b090c 100%); }
+  /* karsilama + bugune-ozel: mor blok yerine koyu + altin ince kenar */
+  .hg{ background:linear-gradient(160deg, rgba(233,196,106,.08), rgba(18,13,18,.74)); border-color:rgba(233,196,106,.30); }
+  .ozel{ background:linear-gradient(135deg,#241a20,#130f10); border-color:rgba(233,196,106,.36); }
+  .ozel .ic p{ color:#E9D8BE; }
+  /* birincil aksiyonlar ALTIN (luks) */
+  .ara button, .hero .kesfet, #detay .ekle, .pk .art, .dk .art, #menu .mk .art, .qrban .okut{
+    background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important;
+    box-shadow:0 7px 18px rgba(201,150,47,.5) !important; }
+  #altbar .qr .qi{ background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important;
+    box-shadow:0 8px 22px rgba(201,150,47,.55), 0 0 0 5px rgba(11,9,12,.94) !important; }
+  /* aktif kategori: altin cerceveli koyu (mor dolgu yerine) */
+  .chip.act{ background:linear-gradient(160deg, rgba(233,196,106,.20), rgba(28,20,26,.9)) !important; border:1px solid var(--gold) !important; box-shadow:0 8px 20px -8px rgba(201,150,47,.5) !important; }
+  .chip.act .ci{ background:rgba(233,196,106,.22) !important; } .chip.act .cn{ color:var(--gold) !important; }
+  /* masaustu sol menu aktif: altin */
+  #side .nav a.act{ background:linear-gradient(135deg, rgba(233,196,106,.18), rgba(28,20,26,.9)); border:1px solid var(--gold); color:var(--gold); box-shadow:0 8px 20px -8px rgba(201,150,47,.5); }
+  #side .cagir{ background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F) !important; color:#3a2600 !important; }
 </style>
 </head>
 <body>
