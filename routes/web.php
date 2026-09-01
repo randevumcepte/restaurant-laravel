@@ -1148,33 +1148,40 @@ Route::get('/kalip-sil', function (Request $r) {
 
 // ============================ MUSTERI QR ASISTANI (public, girissiz) ============================
 // Masadaki QR -> tarayicida AI asistan sayfasi acilir.
+// Palet haritasi: config('temalar') bos ise (config cache) dosyayi DOGRUDAN yukle -> canliyi bozmaz
+if (!function_exists('resto_temalar')) {
+    function resto_temalar() {
+        $t = config('temalar');
+        if (is_array($t) && !empty($t)) return $t;
+        $f = base_path('config/temalar.php');
+        return is_file($f) ? require $f : ['altin' => ['ad' => 'Altın & Siyah', 'emoji' => '👑', 'ana' => '#F6DFA0', 'ana2' => '#E9C46A', 'ana3' => '#C9962F', 'ink' => '#3a2600', 'glow' => 'rgba(233,196,106,.16)']];
+    }
+}
+
 // QR MENU (mockup 'Lezzet Duragi' — birebir): telefon + tablet, gercek puan, sipariş
 Route::get('/masa/{id}', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
     if (!$masa) abort(404);
     $sube = DB::table('subeler')->find($masa->sube_id);
-    $temalar = config('temalar');
+    $temalar = resto_temalar();
     $key = ($sube && isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
-    return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $temalar[$key], 'temaKey' => $key]);
+    $tema = $temalar[$key] ?? reset($temalar);
+    return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key]);
 });
 
 // RENK KARTELASI: restoran QR menu temasini secer (subeler.tema)
 Route::get('/tema/{subeId?}', function ($subeId = null) {
-    if (!Schema::hasColumn('subeler', 'tema')) {
-        Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
-    }
+    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
     $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
     if (!$sube) abort(404, 'Şube yok');
-    $temalar = config('temalar');
+    $temalar = resto_temalar();
     $secili = (isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
     return view('tema', ['sube' => $sube, 'temalar' => $temalar, 'secili' => $secili]);
 });
 Route::post('/tema/kaydet', function (Request $r) {
-    if (!Schema::hasColumn('subeler', 'tema')) {
-        Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); });
-    }
+    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
     $key = (string) $r->tema;
-    if (!isset(config('temalar')[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
+    if (!isset(resto_temalar()[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
     $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
     DB::table('subeler')->where('id', $subeId)->update(['tema' => $key]);
     return ['ok' => 1, 'tema' => $key];
