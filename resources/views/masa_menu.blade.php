@@ -252,7 +252,7 @@
 <!-- ==================== TELEFON ==================== -->
 <div id="wrap">
   <header>
-    <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'RestoOS' }}</b><i>RESTORAN</i></span></span>
+    <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
     <button class="trbtn">TR ▾</button>
   </header>
 
@@ -295,7 +295,7 @@
 <!-- ==================== TABLET / GENIS EKRAN ==================== -->
 <div id="desk">
   <aside id="side">
-    <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'RestoOS' }}</b><i>RESTORAN</i></span></span>
+    <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
     <div class="nav">
       <a class="act" onclick="anaSayfa(this)"><span>🏠</span>Ana Sayfa</a>
       <a onclick="menuAc()"><span>📖</span>Menüler</a>

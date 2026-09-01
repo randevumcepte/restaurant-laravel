@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Ürün Fotoğrafları · RestoOS</title>
+<title>Ürün Fotoğrafları · ResteOS</title>
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --bg:#0B1020; --card:#151b2e; --yesil:#22C55E; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }

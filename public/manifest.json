@@ -1,6 +1,6 @@
 {
-    "name": "RestoOS - Restoran Yönetimi",
-    "short_name": "RestoOS",
+    "name": "ResteOS - Restoran Yönetimi",
+    "short_name": "ResteOS",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",

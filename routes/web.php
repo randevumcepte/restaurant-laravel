@@ -4411,7 +4411,7 @@ Route::get('/api/patron/fis', function (Request $r) {
         ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
     return [
         'ok' => 1,
-        'isletme' => $sube->ad ?? 'RestoOS', 'adres' => $sube->adres ?? '', 'telefon' => $sube->telefon ?? '',
+        'isletme' => $sube->ad ?? 'ResteOS', 'adres' => $sube->adres ?? '', 'telefon' => $sube->telefon ?? '',
         'masa' => $masa ?? ucfirst($a->kanal), 'garson' => $garson ?? '-',
         'tarih' => now()->format('d.m.Y H:i'), 'adisyon_no' => $a->id,
         'kalemler' => $kalemler,
@@ -4471,7 +4471,7 @@ Route::get('/api/patron/z-raporu', function (Request $r) {
     $acikKalan = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->count();
 
     return [
-        'ok' => 1, 'isletme' => $sube->ad ?? 'RestoOS', 'tarih' => $tarih->format('d.m.Y'),
+        'ok' => 1, 'isletme' => $sube->ad ?? 'ResteOS', 'tarih' => $tarih->format('d.m.Y'),
         'ciro' => $ciro, 'kapanan' => $kapanan, 'misafir' => $misafir,
         'ortalama' => $kapanan > 0 ? round($ciro / $kapanan) : 0, 'kisi_basi' => $misafir > 0 ? round($ciro / $misafir) : 0,
         'odeme' => $odeme, 'servis' => $servis, 'top' => $top,

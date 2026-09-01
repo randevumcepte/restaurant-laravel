@@ -1,4 +1,4 @@
-// RestoOS Service Worker — offline temeli
+// ResteOS Service Worker — offline temeli
 // HTML: network-first (online'da daima guncel, offline'da cache)
 // Statik (css/js/img): cache-first (hizli)
 const CACHE = 'restoos-v2';

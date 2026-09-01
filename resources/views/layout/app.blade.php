@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#4f46e5">
-    <title>@yield('title', 'Lezzet Duragi') — RestoOS</title>
+    <title>@yield('title', 'Lezzet Duragi') — ResteOS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}</style>
@@ -44,7 +44,7 @@
     {{-- Sidebar --}}
     <aside class="w-60 shrink-0 bg-slate-900 text-slate-300 flex flex-col fixed h-screen">
         <div class="px-5 py-4 border-b border-slate-700/50">
-            <div class="text-white font-bold text-lg">🍔 RestoOS</div>
+            <div class="text-white font-bold text-lg">🍔 ResteOS</div>
             <div class="text-xs text-slate-400">Lezzet Duragi</div>
         </div>
         <nav class="flex-1 overflow-y-auto py-3">
@@ -57,7 +57,7 @@
             @endforeach
         </nav>
         <div class="px-5 py-3 border-t border-slate-700/50 text-xs text-slate-500">
-            RestoOS MVP · {{ now()->format('d.m.Y') }}
+            ResteOS MVP · {{ now()->format('d.m.Y') }}
         </div>
     </aside>
 

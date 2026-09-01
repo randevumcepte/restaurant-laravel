@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Erkek Ses Seçimi · RestoOS</title>
+<title>Erkek Ses Seçimi · ResteOS</title>
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --bg:#0B1020; --card:#161C2E; --yesil:#22C55E; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }

@@ -296,7 +296,7 @@
 <body>
 <div id="app">
   <header>
-    <span class="logo"><span class="toque">👨‍🍳</span><span class="lz"><b>{{ $sube->ad ?? 'RestoOS' }}</b><i>RESTORAN</i></span></span>
+    <span class="logo"><span class="toque">👨‍🍳</span><span class="lz"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
     <span class="masa" style="margin-left:auto">🍽️ {{ $masa->ad ?? '' }}</span>
   </header>
 
