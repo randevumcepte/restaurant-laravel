@@ -32,62 +32,65 @@
   .yildiz{ display:inline-flex; align-items:center; gap:3px; font-size:12.5px; font-weight:800; color:var(--gold); }
   .yildiz.yeni{ color:#C9B7CB; font-weight:700; font-size:11px; background:rgba(255,255,255,.07); padding:2px 8px; border-radius:12px; }
 
-  /* ==================== TELEFON ==================== */
-  #wrap{ min-height:100dvh; display:flex; flex-direction:column; padding:0 16px calc(94px + env(safe-area-inset-bottom)); }
-  #wrap > header{ position:relative; display:flex; align-items:center; justify-content:center; padding:15px 0 12px; }
+  /* ==================== TELEFON (tek ekrana sigar, kaydirma yok) ==================== */
+  #wrap{ height:100dvh; overflow:hidden; display:flex; flex-direction:column; padding:0 14px calc(80px + env(safe-area-inset-bottom)); }
+  #wrap > *{ flex-shrink:0; }
+  #wrap > header{ position:relative; display:flex; align-items:center; justify-content:center; padding:8px 0 8px; }
   #wrap > header .trbtn{ position:absolute; right:0; top:50%; transform:translateY(-50%); }
-  #wrap > header .brand{ flex-direction:column; gap:3px; }
-  #wrap > header .brand .bt{ align-items:center; } #wrap > header .brand .toque{ font-size:26px; }
+  #wrap > header .brand{ flex-direction:column; gap:2px; }
+  #wrap > header .brand .bt{ align-items:center; } #wrap > header .brand .toque{ font-size:22px; }
+  #wrap > header .brand .bt b{ font-size:18px; }
   .hg{ background:linear-gradient(150deg,rgba(139,59,234,.20),rgba(36,19,41,.65)); border:1px solid var(--cizgi);
-    border-radius:22px; padding:20px 18px; box-shadow:0 16px 36px -20px rgba(0,0,0,.8); }
-  .hg h1{ font-family:var(--serif); font-weight:800; font-size:22px; }
-  .hg p{ color:var(--sessiz); font-size:13.5px; margin-top:5px; }
-  .ara{ display:flex; gap:9px; margin-top:15px; }
-  .ara input{ flex:1; background:rgba(0,0,0,.28); border:1px solid var(--cizgi); color:#fff; font-size:14.5px; padding:14px 16px; border-radius:16px; outline:none; }
+    border-radius:18px; padding:13px 15px; box-shadow:0 12px 28px -18px rgba(0,0,0,.8); }
+  .hg h1{ font-family:var(--serif); font-weight:800; font-size:18px; }
+  .hg p{ color:var(--sessiz); font-size:12px; margin-top:3px; }
+  .ara{ display:flex; gap:8px; margin-top:10px; }
+  .ara input{ flex:1; background:rgba(0,0,0,.28); border:1px solid var(--cizgi); color:#fff; font-size:13.5px; padding:11px 14px; border-radius:13px; outline:none; }
   .ara input::placeholder{ color:#9a8a9c; }
-  .ara button{ width:52px; border:none; border-radius:16px; font-size:19px; color:#fff; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 18px rgba(139,59,234,.5); }
+  .ara button{ width:46px; border:none; border-radius:13px; font-size:17px; color:#fff; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
 
-  .chips{ display:flex; gap:10px; overflow-x:auto; padding:18px 0 6px; }
-  .chip{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:76px; padding:12px 12px 10px;
-    border-radius:18px; background:var(--card); border:1px solid var(--cizgi); cursor:pointer; }
-  .chip .ci{ width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; background:rgba(139,59,234,.16); }
-  .chip .cn{ font-size:11.5px; font-weight:700; color:#E7D3B4; white-space:nowrap; }
+  .chips{ display:flex; gap:9px; overflow-x:auto; padding:11px 0 3px; }
+  .chip{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:5px; min-width:66px; padding:9px 9px 8px;
+    border-radius:15px; background:var(--card); border:1px solid var(--cizgi); cursor:pointer; }
+  .chip .ci{ width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:17px; background:rgba(139,59,234,.16); }
+  .chip .cn{ font-size:11px; font-weight:700; color:#E7D3B4; white-space:nowrap; }
   .chip.act{ background:linear-gradient(135deg,var(--mor),var(--mavi)); border-color:transparent; box-shadow:0 8px 20px rgba(139,59,234,.5); }
   .chip.act .ci{ background:rgba(255,255,255,.18); } .chip.act .cn{ color:#fff; }
 
-  .bbas{ display:flex; align-items:baseline; justify-content:space-between; margin:20px 2px 4px; }
-  .bbas b{ font-family:var(--serif); font-size:19px; }
-  .bbas a{ color:var(--gold); font-size:12.5px; font-weight:700; cursor:pointer; }
+  .bbas{ display:flex; align-items:baseline; justify-content:space-between; margin:12px 2px 2px; }
+  .bbas b{ font-family:var(--serif); font-size:17px; }
+  .bbas a{ color:var(--gold); font-size:12px; font-weight:700; cursor:pointer; }
 
-  .pop{ display:flex; gap:14px; overflow-x:auto; padding:10px 2px 6px; }
-  .pk{ flex:0 0 176px; background:var(--card); border:1px solid var(--cizgi); border-radius:20px; overflow:hidden;
-    box-shadow:0 14px 30px -16px rgba(0,0,0,.75); cursor:pointer;
-    opacity:0; transform:translateY(14px); animation:up .5s cubic-bezier(.2,.75,.2,1) forwards; }
-  .pk .g{ position:relative; height:122px; background:#1e1024; }
+  /* Populer kartlar KALAN dikey boslugu esnek doldurur -> her sey tek ekrana sigar */
+  .pop{ flex:1 1 0; min-height:0; display:flex; gap:12px; overflow-x:auto; align-items:stretch; padding:8px 2px 4px; }
+  .pk{ flex:0 0 155px; display:flex; flex-direction:column; background:var(--card); border:1px solid var(--cizgi); border-radius:18px; overflow:hidden;
+    box-shadow:0 12px 26px -16px rgba(0,0,0,.75); cursor:pointer;
+    opacity:0; transform:translateY(12px); animation:up .5s cubic-bezier(.2,.75,.2,1) forwards; }
+  .pk .g{ position:relative; flex:1 1 auto; min-height:80px; background:#1e1024; }
   .pk .g img{ width:100%; height:100%; object-fit:cover; }
-  .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:48px; }
-  .pk .tag{ position:absolute; top:9px; left:9px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:10px; font-weight:800; padding:3px 9px; border-radius:20px; }
+  .pk .em{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:44px; }
+  .pk .tag{ position:absolute; top:8px; left:8px; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-size:9.5px; font-weight:800; padding:3px 8px; border-radius:20px; }
   .pk .tuk{ position:absolute; inset:0; background:rgba(10,6,12,.55); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
-  .pk .b{ padding:11px 12px 13px; }
-  .pk .ad{ font-weight:800; font-size:14.5px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pk .yildiz{ margin-top:7px; }
-  .pk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:9px; }
-  .pk .fi{ color:var(--gold); font-weight:800; font-size:15px; }
-  .pk .art{ width:32px; height:32px; border-radius:11px; border:none; color:#fff; font-size:19px; line-height:1; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
+  .pk .b{ flex-shrink:0; padding:9px 11px 11px; }
+  .pk .ad{ font-weight:800; font-size:13.5px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk .yildiz{ margin-top:5px; font-size:11.5px; }
+  .pk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:7px; }
+  .pk .fi{ color:var(--gold); font-weight:800; font-size:14px; }
+  .pk .art{ width:29px; height:29px; border-radius:10px; border:none; color:#fff; font-size:17px; line-height:1; background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 6px 14px rgba(139,59,234,.5); }
 
-  .ozel{ position:relative; margin-top:22px; border-radius:22px; overflow:hidden; padding:20px 18px;
-    background:linear-gradient(135deg,#4a1d6b,#2a1140); border:1px solid rgba(233,196,106,.28); box-shadow:0 18px 40px -20px rgba(0,0,0,.85); display:flex; align-items:center; }
+  .ozel{ position:relative; margin-top:12px; border-radius:18px; overflow:hidden; padding:13px 15px;
+    background:linear-gradient(135deg,#4a1d6b,#2a1140); border:1px solid rgba(233,196,106,.28); box-shadow:0 14px 30px -18px rgba(0,0,0,.85); display:flex; align-items:center; }
   .ozel::before{ content:''; position:absolute; inset:0; background:radial-gradient(60% 90% at 90% 10%, rgba(233,196,106,.18), transparent 60%); }
   .ozel .ic{ position:relative; flex:1; }
-  .ozel .ic b{ font-family:var(--serif); font-size:18px; }
-  .ozel .ic p{ color:#E9D3EE; font-size:12.5px; margin-top:3px; }
-  .sayac{ display:flex; gap:8px; margin-top:13px; }
-  .sayac > div{ background:rgba(0,0,0,.32); border:1px solid var(--cizgi); border-radius:12px; padding:7px 0; width:54px; text-align:center; }
-  .sayac b{ display:block; font-size:19px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
-  .sayac i{ font-style:normal; font-size:8.5px; font-weight:700; letter-spacing:1px; color:var(--sessiz); }
-  .rozet{ position:relative; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-left:12px; flex:0 0 auto;
-    background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-weight:800; font-size:13px; box-shadow:0 8px 20px rgba(201,150,47,.5); }
-  .rozet span{ font-size:20px; }
+  .ozel .ic b{ font-family:var(--serif); font-size:16px; }
+  .ozel .ic p{ color:#E9D3EE; font-size:11.5px; margin-top:2px; }
+  .sayac{ display:flex; gap:7px; margin-top:9px; }
+  .sayac > div{ background:rgba(0,0,0,.32); border:1px solid var(--cizgi); border-radius:11px; padding:5px 0; width:48px; text-align:center; }
+  .sayac b{ display:block; font-size:17px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .sayac i{ font-style:normal; font-size:8px; font-weight:700; letter-spacing:.5px; color:var(--sessiz); }
+  .rozet{ position:relative; width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-left:10px; flex:0 0 auto;
+    background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#3a2600; font-weight:800; font-size:12px; box-shadow:0 8px 20px rgba(201,150,47,.5); }
+  .rozet span{ font-size:18px; }
 
   /* alt nav */
   #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:60; display:flex; align-items:flex-end; justify-content:space-around;
