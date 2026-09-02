@@ -683,6 +683,117 @@ Route::get('/cagri-ekran', function () {
     return view('cagri_ekran', ['sube' => DB::table('subeler')->where('id', $subeId)->first()]);
 });
 
+// ============================ MUSTERI MARKALI APP (online siparis PWA) ============================
+if (!function_exists('_appEnsure')) {
+    function _appEnsure()
+    {
+        if (!Schema::hasColumn('adisyonlar', 'takip_token')) {
+            Schema::table('adisyonlar', fn ($t) => $t->string('takip_token', 40)->nullable()->index());
+        }
+        if (!Schema::hasColumn('adisyonlar', 'odeme_yontemi')) {
+            Schema::table('adisyonlar', fn ($t) => $t->string('odeme_yontemi', 20)->nullable());
+        }
+    }
+}
+
+// Markali siparis sayfasi (PWA)
+Route::get('/app/{sube}', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) abort(404);
+    _appEnsure();
+    return view('app_siparis', ['sube' => $s]);
+});
+
+// Kurulum / test linki
+Route::get('/app-kur', function () {
+    _appEnsure();
+    $s = DB::table('subeler')->first();
+    return response("Musteri App hazir.\nSiparis sayfasi: " . url('/app/' . $s->id) . "\n(QR/link ile musteriye verilir)")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// Public menu (app icin)
+Route::get('/api/app/{sube}/menu', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) return response()->json(['ok' => 0], 404);
+    $kats = DB::table('menu_kategorileri')->where('sube_id', $s->id)->where('aktif', 1)->orderBy('sira')->orderBy('ad')
+        ->get(['id', 'ad'])->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad]);
+    $urunler = DB::table('urunler')->where('sube_id', $s->id)->where('aktif', 1)->orderBy('ad')
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'gorsel'])
+        ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
+            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'gorsel' => $u->gorsel ?: null]);
+    return ['ok' => 1, 'sube' => ['id' => (int) $s->id, 'ad' => $s->ad, 'adres' => $s->adres ?? '', 'telefon' => $s->telefon ?? ''],
+        'kategoriler' => $kats, 'urunler' => $urunler];
+});
+
+// Siparis olustur (paket / gel-al) — CSRF muaf (api/*)
+Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) return response()->json(['ok' => 0, 'hata' => 'Şube bulunamadı'], 404);
+    _appEnsure();
+    _calleridEnsure(); // musteriler.telefon_norm
+    $ad = trim((string) $r->input('ad')); $tel = trim((string) $r->input('telefon'));
+    if ($ad === '' || $tel === '') return ['ok' => 0, 'hata' => 'Ad ve telefon zorunlu'];
+    $tip = $r->input('tip') === 'gelal' ? 'gelal' : 'paket';
+    $adres = trim((string) $r->input('adres'));
+    if ($tip === 'paket' && $adres === '') return ['ok' => 0, 'hata' => 'Teslimat adresi gerekli'];
+    $kalemler = json_decode((string) $r->input('kalemler'), true);
+    if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Sepet boş'];
+    $odeme = in_array($r->input('odeme'), ['nakit', 'kart_kapida']) ? $r->input('odeme') : 'nakit';
+    // Musteri upsert (telefondan)
+    $norm = _telNorm($tel);
+    $m = $norm ? DB::table('musteriler')->where('sube_id', $s->id)->where('telefon_norm', $norm)->first() : null;
+    if ($m) { DB::table('musteriler')->where('id', $m->id)->update(['ad' => $ad, 'adres' => $adres ?: $m->adres, 'updated_at' => now()]); $mid = $m->id; }
+    else { $mid = DB::table('musteriler')->insertGetId(['sube_id' => $s->id, 'ad' => $ad, 'telefon' => $tel, 'telefon_norm' => $norm, 'adres' => $adres ?: null, 'created_at' => now(), 'updated_at' => now()]); }
+    // Adisyon (kanal=paket, platform=app) -> mutfaga duser
+    $token = \Illuminate\Support\Str::random(28);
+    $adId = DB::table('adisyonlar')->insertGetId([
+        'sube_id' => $s->id, 'masa_id' => null, 'musteri_id' => $mid, 'kanal' => 'paket', 'platform' => 'app',
+        'teslimat_adres' => $tip === 'paket' ? $adres : 'GEL-AL', 'teslimat_durumu' => 'hazirlaniyor',
+        'takip_token' => $token, 'odeme_yontemi' => $odeme, 'misafir_sayisi' => 1, 'durum' => 'acik',
+        'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0, 'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $eklenen = 0; $tukendi = [];
+    $notEk = ($tip === 'gelal' ? 'Gel-Al' : 'Paket') . ' · App';
+    foreach ($kalemler as $k) {
+        $uid = (int) ($k['urun_id'] ?? 0); $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $s->id)->first();
+        if (!$u) continue;
+        if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
+        DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
+            'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet, 'durum' => 'gonderildi', 'not' => $notEk,
+            'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $eklenen++;
+    }
+    if ($eklenen === 0) { DB::table('adisyonlar')->where('id', $adId)->delete(); return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Ürün eklenemedi']; }
+    $araTop = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->sum('tutar');
+    DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $araTop, 'toplam' => $araTop, 'updated_at' => now()]);
+    return ['ok' => 1, 'adisyon_id' => $adId, 'takip_token' => $token, 'toplam' => $araTop, 'takip_url' => url('/siparisim/' . $token), 'tukendi' => $tukendi];
+});
+
+// Siparis takip verisi (durum + canli kurye)
+Route::get('/api/app/siparis-durum/{token}', function ($token) {
+    $a = DB::table('adisyonlar')->where('takip_token', $token)->first();
+    if (!$a) return response()->json(['ok' => 0], 404);
+    $durum = $a->teslimat_durumu ?: 'hazirlaniyor';
+    if ($a->durum === 'odendi' && $durum !== 'teslim') $durum = 'teslim';
+    $kurye = null;
+    if ($a->kurye_id && $durum === 'yolda') {
+        $k = DB::table('kuryeler')->find($a->kurye_id);
+        if ($k) $kurye = ['ad' => $k->ad, 'telefon' => $k->telefon, 'lat' => $k->son_lat ? (float) $k->son_lat : null, 'lng' => $k->son_lng ? (float) $k->son_lng : null];
+    }
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')
+        ->get(['urun_adi', 'adet', 'tutar'])->map(fn ($x) => ['ad' => $x->urun_adi, 'adet' => (float) $x->adet, 'tutar' => (float) $x->tutar]);
+    return ['ok' => 1, 'no' => (int) $a->id, 'durum' => $durum, 'adres' => $a->teslimat_adres, 'toplam' => (float) $a->toplam,
+        'odeme' => $a->odeme_yontemi, 'kurye' => $kurye, 'kalemler' => $kalemler];
+});
+
+// Siparis takip sayfasi (musteri)
+Route::get('/siparisim/{token}', function ($token) {
+    $a = DB::table('adisyonlar')->where('takip_token', $token)->first();
+    if (!$a) abort(404);
+    return view('app_takip', ['token' => $token, 'sube' => DB::table('subeler')->where('id', $a->sube_id)->first()]);
+});
+
 // ============================ MUTFAK (KDS) ============================
 Route::get('/mutfak', function () {
     $kalemler = DB::table('adisyon_kalemleri')
