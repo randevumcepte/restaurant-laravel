@@ -1909,6 +1909,20 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     return ['ok' => 1, 'mesaj' => 'Siparişiniz mutfağa iletildi', 'eklenen' => $eklenen, 'toplam' => $toplam, 'tukendi' => $tukendi];
 });
 
+// QR masa: acik hesabi online odemeye baslat (masadaki "Online Ode")
+Route::post('/api/qr/ode-baslat', function (Request $r) {
+    if (function_exists('_odemeEnsure')) _odemeEnsure();
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
+    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
+    if (!$a) return ['ok' => 0, 'hata' => 'Açık hesabınız yok'];
+    if ((float) $a->toplam <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
+    $token = \Illuminate\Support\Str::random(30);
+    DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
+        'tutar' => (float) $a->toplam, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor', 'created_at' => now()]);
+    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => (float) $a->toplam];
+});
+
 // Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
 Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     $metin = trim((string) $r->input('metin', ''));

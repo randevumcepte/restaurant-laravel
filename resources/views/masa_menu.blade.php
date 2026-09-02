@@ -344,9 +344,9 @@
   <nav id="altbar">
     <button class="act" onclick="menuAc()"><span>📋</span>Menü</button>
     <button onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
-    <button class="qr" onclick="menuAc()"><div class="qi">🍽️</div></button>
+    <button class="qr" onclick="asistanAc()"><div class="qi">🤖</div></button>
     <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
-    <button onclick="cagir('hesap')"><span>💳</span>Hesabım</button>
+    <button onclick="hesapOde()"><span>💳</span>Öde</button>
   </nav>
 </div>
 
@@ -368,7 +368,8 @@
     </div>
     <div class="sp"></div>
     <button class="sbtn cagir" onclick="cagir('garson')"><span>🔔</span><span><b>Garson Çağır</b><i>Size hemen yardımcı olalım</i></span></button>
-    <button class="sbtn hesap" onclick="cagir('hesap')"><span>💳</span><span><b>Hesabımı İste</b><i>Hesabınızı kolayca alın</i></span></button>
+    <button class="sbtn hesap" onclick="hesapOde()"><span>💳</span><span><b>Hesabı Öde</b><i>Online öde ya da garsondan iste</i></span></button>
+    <button class="sbtn cagir" onclick="asistanAc()"><span>🤖</span><span><b>Yapay Zekâ Asistan</b><i>Ürün öner, soru sor, yardım al</i></span></button>
     <div class="dil">🌐 Türkçe ▾</div>
   </aside>
 
@@ -690,6 +691,17 @@ function menuAra(q){
 async function cagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
   toast(tip==='hesap'?'💳 Hesap isteğiniz iletildi, birazdan geliyoruz.':'🔔 Garson çağrıldı, birazdan yanınızdayız.');
+}
+
+/* ---- AI asistan + online ode ---- */
+function asistanAc(){ location.href = '/masa/' + MASA + '/asistan'; }
+async function hesapOde(){
+  try{
+    const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA})});
+    const j = await r.json();
+    if(j.ok && j.ode_url){ location.href = j.ode_url; return; }
+    await cagir('hesap'); toast(j.hata ? ('ℹ️ '+j.hata+' — garson çağrıldı.') : '💳 Hesap isteğiniz iletildi.');
+  }catch(e){ cagir('hesap'); }
 }
 
 /* ---- tablet sidebar ---- */
