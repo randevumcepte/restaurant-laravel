@@ -1555,6 +1555,63 @@ Route::get('/masa/{id}', function ($id) {
     return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key, 'mod' => $mod]);
 });
 
+// ---------------- MASA QR (otomatik token + yazdirilabilir afis) ----------------
+if (!function_exists('_masaQrEnsure')) {
+    function _masaQrEnsure($subeId = null)
+    {
+        if (!Schema::hasColumn('masalar', 'qr_token')) {
+            Schema::table('masalar', fn ($t) => $t->string('qr_token', 32)->nullable()->index());
+        }
+        $q = DB::table('masalar')->where(function ($w) { $w->whereNull('qr_token')->orWhere('qr_token', ''); });
+        if ($subeId) $q->where('sube_id', $subeId);
+        foreach ($q->get(['id']) as $m) {
+            DB::table('masalar')->where('id', $m->id)->update(['qr_token' => \Illuminate\Support\Str::random(18)]);
+        }
+    }
+}
+// masa deneyim view (tema hazirligi) — /masa/{id} ile ayni
+if (!function_exists('_masaView')) {
+    function _masaView($masa)
+    {
+        $sube = DB::table('subeler')->find($masa->sube_id);
+        $temalar = resto_temalar();
+        $stored = ($sube && isset($sube->tema)) ? $sube->tema : null;
+        if ($stored === 'ozel' && !empty($sube->tema_renk)) { $key = 'ozel'; $tema = resto_tema_uret($sube->tema_renk, $sube->tema_renk2 ?? null); }
+        elseif ($stored && isset($temalar[$stored])) { $key = $stored; $tema = $temalar[$stored]; }
+        else { $key = 'altin'; $tema = $temalar['altin'] ?? reset($temalar); }
+        $mod = ($sube && isset($sube->tema_mod) && $sube->tema_mod === 'acik') ? 'acik' : 'koyu';
+        return view('masa_menu', ['masa' => $masa, 'sube' => $sube, 'tema' => $tema, 'temaKey' => $key, 'mod' => $mod]);
+    }
+}
+// QR hedefi: /m/{token} -> masadaki tam deneyim (AI + siparis + garson + hesap + odeme)
+Route::get('/m/{token}', function ($token) {
+    _masaQrEnsure();
+    $masa = DB::table('masalar')->where('qr_token', $token)->first();
+    if (!$masa) abort(404);
+    return _masaView($masa);
+});
+// Kurulum: tum masalara token
+Route::get('/masa-qr-kur', function () {
+    _masaQrEnsure();
+    $n = DB::table('masalar')->whereNotNull('qr_token')->count();
+    return response("Masa QR hazir. $n masaya token atandi.\nTum afisler (yazdir): " . url('/masa-afisler'))->header('Content-Type', 'text/plain; charset=utf-8');
+});
+// Tek masa afisi (yazdirilabilir)
+Route::get('/masa-afis/{id}', function ($id) {
+    $masa = DB::table('masalar')->find((int) $id);
+    if (!$masa) abort(404);
+    _masaQrEnsure($masa->sube_id);
+    $masa = DB::table('masalar')->find((int) $id);
+    return view('masa_afis', ['masalar' => [$masa], 'sube' => DB::table('subeler')->find($masa->sube_id)]);
+});
+// Tum masalar tek sayfa (toplu yazdir/PDF)
+Route::get('/masa-afisler', function (Request $r) {
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->value('id'));
+    _masaQrEnsure($subeId);
+    $masalar = DB::table('masalar')->where('sube_id', $subeId)->orderBy('id')->get();
+    return view('masa_afis', ['masalar' => $masalar, 'sube' => DB::table('subeler')->find($subeId)]);
+});
+
 // RENK KARTELASI: restoran QR menu temasini secer (subeler.tema)
 Route::get('/tema/{subeId?}', function ($subeId = null) {
     try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
