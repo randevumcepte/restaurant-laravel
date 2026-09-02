@@ -65,6 +65,7 @@
       <div id="kalemler"></div>
       <div class="si top-toplam"><span>Toplam</span><span id="t-toplam">—</span></div>
       <div class="si" style="color:var(--gri);font-size:13px"><span id="t-odeme"></span><span id="t-adres"></span></div>
+      <button id="odeBtn" onclick="onlineOde()" style="display:none;width:100%;margin-top:14px;border:none;border-radius:14px;padding:15px;background:linear-gradient(135deg,var(--mor),var(--mavi));color:#fff;font-size:15px;font-weight:800;cursor:pointer">💳 Online Öde</button>
     </div>
   </div>
 
@@ -101,6 +102,7 @@
     document.getElementById('t-toplam').textContent=TL(d.toplam);
     document.getElementById('t-odeme').textContent = d.odeme==='kart_kapida'?'💳 Kapıda Kart':(d.odeme==='nakit'?'💵 Kapıda Nakit':'');
     document.getElementById('t-adres').textContent = gelal?'🏃 Gel-Al':'📍 '+(d.adres||'');
+    document.getElementById('odeBtn').style.display = (d.durum!=='teslim')?'block':'none';
 
     // Kurye + harita (yolda ise)
     if(d.durum==='yolda' && d.kurye && d.kurye.lat){
@@ -116,6 +118,12 @@
       document.getElementById('kuryeKart').style.display='none';
       document.getElementById('map').style.display='none';
     }
+  }
+  function onlineOde(){
+    var b=document.getElementById('odeBtn'); b.disabled=true; b.textContent='Yönlendiriliyor…';
+    fetch('/api/odeme/baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'takip_token='+TOKEN})
+      .then(function(r){return r.json();}).then(function(j){ if(j.ok){ location.href=j.ode_url; } else { b.disabled=false; b.textContent='💳 Online Öde'; alert(j.hata||'Ödeme başlatılamadı'); } })
+      .catch(function(){ b.disabled=false; b.textContent='💳 Online Öde'; });
   }
   function yukle(){ fetch('/api/app/siparis-durum/'+TOKEN).then(function(r){return r.json();}).then(function(d){ if(d.ok)ciz(d); }).catch(function(){}); }
   yukle(); setInterval(yukle, 8000);

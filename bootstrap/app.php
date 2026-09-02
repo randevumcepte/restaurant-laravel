@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Disaridan POST eden yollar (paket webhook + Flutter API) -> CSRF muafiyeti
-        $middleware->validateCsrfTokens(except: ['webhook/*', 'api/*', 'rez/*', 'kurye/*']);
+        $middleware->validateCsrfTokens(except: ['webhook/*', 'api/*', 'rez/*', 'kurye/*', 'ode/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

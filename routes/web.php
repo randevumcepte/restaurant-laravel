@@ -986,7 +986,7 @@ Route::post('/entegrasyon/test', function (Request $r) {
     ]);
 });
 
-// PUBLIC WEBHOOK: middleware (Posentegra vb.) siparisleri buraya POST eder
+// PUBLIC WEBHOOK: middleware/aggregator (Posentegra/Entegro vb.) siparisleri buraya POST eder (bizim normalize formatimiz)
 Route::post('/webhook/siparis/{token}', function (Request $r, $token) {
     $sube = DB::table('subeler')->where('webhook_token', $token)->first();
     if (!$sube) return response()->json(['ok' => 0, 'hata' => 'Gecersiz token'], 403);
@@ -995,6 +995,141 @@ Route::post('/webhook/siparis/{token}', function (Request $r, $token) {
     } catch (\Throwable $e) {
         return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 500);
     }
+});
+
+// Platform JSON -> bizim format (dogrudan Getir/Yemeksepeti/Trendyol baglaninca; gercek alan adlari API doc'a gore netlesir)
+if (!function_exists('_pazaryeriNormalize')) {
+    function _pazaryeriNormalize($platform, array $raw): array
+    {
+        if (isset($raw['kalemler']) || isset($raw['musteri'])) { $raw['platform'] = $platform; return $raw; } // zaten bizim format
+        $m = [
+            'platform' => $platform,
+            'siparis_no' => $raw['orderId'] ?? $raw['order_id'] ?? $raw['id'] ?? null,
+            'musteri' => [
+                'ad' => $raw['customer']['name'] ?? $raw['customerName'] ?? $raw['name'] ?? 'Paket Müşteri',
+                'telefon' => $raw['customer']['phone'] ?? $raw['phone'] ?? null,
+                'adres' => $raw['delivery']['address'] ?? $raw['address'] ?? ($raw['customer']['address'] ?? null),
+            ],
+            'odeme_yontemi' => $raw['paymentType'] ?? $raw['payment'] ?? null,
+            'kalemler' => [],
+        ];
+        foreach (($raw['items'] ?? $raw['products'] ?? $raw['lines'] ?? []) as $it) {
+            $m['kalemler'][] = [
+                'ad' => $it['name'] ?? $it['productName'] ?? $it['title'] ?? 'Ürün',
+                'adet' => $it['count'] ?? $it['quantity'] ?? $it['qty'] ?? 1,
+                'fiyat' => $it['price'] ?? $it['unitPrice'] ?? 0,
+                'not' => $it['note'] ?? ($it['comment'] ?? null),
+            ];
+        }
+        return $m;
+    }
+}
+
+// Platform-basi webhook: dogrudan pazaryeri baglanirsa (normalize edip ayni hatta verir)
+Route::post('/webhook/{platform}/{token}', function (Request $r, $platform, $token) {
+    $sube = DB::table('subeler')->where('webhook_token', $token)->first();
+    if (!$sube) return response()->json(['ok' => 0, 'hata' => 'Gecersiz token'], 403);
+    if (!in_array($platform, ['getir', 'yemeksepeti', 'trendyol', 'migros', 'gofody'])) return response()->json(['ok' => 0, 'hata' => 'Bilinmeyen platform'], 400);
+    try {
+        return response()->json(_paketSiparisAl($sube, _pazaryeriNormalize($platform, $r->all())));
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 500);
+    }
+});
+
+// Kurulum/ozet: aggregatore/pazaryerine verilecek webhook adresleri
+Route::get('/pazaryeri-kur', function () {
+    $sube = DB::table('subeler')->first();
+    if (empty($sube->webhook_token)) {
+        DB::table('subeler')->where('id', $sube->id)->update(['webhook_token' => \Illuminate\Support\Str::random(32)]);
+        $sube = DB::table('subeler')->first();
+    }
+    $t = $sube->webhook_token;
+    $out = "Pazaryeri alim hatti HAZIR.\n\nGenel webhook (aggregator - Posentegra/Entegro; onerilir):\n" . url('/webhook/siparis/' . $t) . "\n\nDogrudan baglanti (platform-basi):\n";
+    foreach (['getir', 'yemeksepeti', 'trendyol', 'migros'] as $p) $out .= "  " . ucfirst($p) . ": " . url('/webhook/' . $p . '/' . $t) . "\n";
+    $out .= "\nGelen siparis -> otomatik musteri + adisyon (kanal=paket) -> MUTFAK ekranina duser.\nGercek siparis icin: aggregator uyeligi VEYA pazaryeri API anahtari (senin tarafinda).";
+    return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// ==================== ONLINE ODEME (pluggable: Iyzico/PayTR; simulasyon -> anahtar gelince canli) ====================
+if (!function_exists('_odemeEnsure')) {
+    function _odemeEnsure()
+    {
+        if (!Schema::hasTable('odeme_islemleri')) {
+            Schema::create('odeme_islemleri', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id'); $t->unsignedBigInteger('adisyon_id');
+                $t->string('token', 40)->index(); $t->decimal('tutar', 12, 2);
+                $t->string('saglayici', 20)->default('simulasyon'); $t->string('durum', 15)->default('bekliyor');
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+        if (!Schema::hasTable('odeme_ayarlari')) {
+            Schema::create('odeme_ayarlari', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->unique();
+                $t->string('saglayici', 20)->default('kapali'); $t->boolean('aktif')->default(0);
+                $t->string('api_key')->nullable(); $t->string('secret')->nullable(); $t->string('magaza_id')->nullable();
+                $t->timestamps();
+            });
+        }
+    }
+}
+if (!function_exists('_odemeSaglayici')) {
+    function _odemeSaglayici($subeId)
+    {
+        _odemeEnsure();
+        $a = DB::table('odeme_ayarlari')->where('sube_id', $subeId)->first();
+        if ($a && $a->aktif && $a->saglayici !== 'kapali' && $a->api_key) return $a->saglayici;
+        return 'simulasyon';
+    }
+}
+// Odeme baslat: takip_token VEYA adisyon_id
+Route::post('/api/odeme/baslat', function (Request $r) {
+    _odemeEnsure();
+    $a = null;
+    if ($r->filled('takip_token')) $a = DB::table('adisyonlar')->where('takip_token', $r->takip_token)->first();
+    elseif ($r->filled('adisyon_id')) $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    if (!$a) return response()->json(['ok' => 0, 'hata' => 'Adisyon bulunamadı'], 404);
+    if ($a->durum === 'odendi') return ['ok' => 0, 'hata' => 'Bu sipariş zaten ödendi'];
+    $tutar = (float) $a->toplam;
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
+    $saglayici = _odemeSaglayici($a->sube_id);
+    $token = \Illuminate\Support\Str::random(30);
+    DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
+        'tutar' => $tutar, 'saglayici' => $saglayici, 'durum' => 'bekliyor', 'created_at' => now()]);
+    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'saglayici' => $saglayici, 'tutar' => $tutar];
+});
+// Odeme sayfasi
+Route::get('/ode/{token}', function ($token) {
+    _odemeEnsure();
+    $i = DB::table('odeme_islemleri')->where('token', $token)->first();
+    if (!$i) abort(404);
+    return view('odeme', ['islem' => $i, 'sube' => DB::table('subeler')->find($i->sube_id)]);
+});
+// Odeme tamamla (CSRF muaf: ode/*) — simulasyon basarili; gercek saglayici callback'i buraya baglanir
+Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
+    _odemeEnsure();
+    $i = DB::table('odeme_islemleri')->where('token', $token)->first();
+    if (!$i) return response()->json(['ok' => 0], 404);
+    if ($i->durum === 'odendi') return ['ok' => 1, 'mesaj' => 'Zaten ödendi'];
+    // === GERCEK SAGLAYICI DOGRULAMASI (Iyzico/PayTR 3D sonucu) BURAYA ===
+    $a = DB::table('adisyonlar')->find($i->adisyon_id);
+    if ($a && $a->durum !== 'odendi') {
+        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'created_at' => now()]);
+        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
+        if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+    }
+    DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
+    return ['ok' => 1, 'mesaj' => 'Ödeme başarılı'];
+});
+Route::get('/api/odeme/durum/{token}', function ($token) {
+    _odemeEnsure();
+    $i = DB::table('odeme_islemleri')->where('token', $token)->first();
+    if (!$i) return response()->json(['ok' => 0], 404);
+    return ['ok' => 1, 'durum' => $i->durum, 'tutar' => (float) $i->tutar, 'saglayici' => $i->saglayici];
+});
+Route::get('/odeme-kur', function () {
+    _odemeEnsure();
+    return response("Online odeme hazir (SIMULASYON modu; Iyzico/PayTR anahtari girilince CANLI).\nAkis: POST /api/odeme/baslat {adisyon_id|takip_token} -> ode_url -> /ode/{token} -> POST /ode/{token}/tamamla\nMasada QR ve musteri app'te 'Online Ode' bu akisi kullanir.")->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
 // ============================ PATRON HIZLI KARSILASTIRMA (Kerzz Boss tarzi) ============================
