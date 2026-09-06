@@ -776,7 +776,8 @@ function modDegistir(){
 }
 (function(){ let m='{{ $mod ?? "koyu" }}'; try{ m=localStorage.getItem('qr_mod')||m; }catch(e){} modUygula(m); })();
 
-window.addEventListener('load',()=>{ yukle(); sayac(); });
+// Sayfa acilinca AI asistan kutusu OTOMATIK acilir ve (autostart ile) konusmaya baslar.
+window.addEventListener('load',()=>{ yukle(); sayac(); asistanAc(); });
 </script>
 </body>
 </html>
