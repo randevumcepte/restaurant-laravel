@@ -938,6 +938,9 @@ window.addEventListener('load', ()=>{
   ekle('ai', SELAM);          // panel acilinca gorunur
   homeYukle();
   sayacBasla();
+  // Gomulu panelde (menu sayfasindaki yuzen widget) acilir acilmaz sesli sohbeti otomatik baslat.
+  // Kullanicinin tiklamasi iframe'i olusturdugu icin aktivasyon var -> mikrofon/ses hemen calisir.
+  if(location.search.indexOf('autostart')>=0){ setTimeout(()=>{ try{ if(!sohbetAktif) basla(true); }catch(_){} }, 400); }
 });
 </script>
 </body>

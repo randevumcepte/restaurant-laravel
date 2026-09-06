@@ -727,9 +727,8 @@ async function cagir(tip){
 /* ---- AI asistan: AYNI sayfada YÜZEN panel (iframe embed) — ayrı sayfaya gitmez ---- */
 function asistanAc(){
   const p=document.getElementById('aiPanel'), w=document.getElementById('aiFrameWrap');
-  if(!w.querySelector('iframe')){
-    w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1" allow="microphone; autoplay" style="flex:1;width:100%;height:100%;border:none;background:transparent"></iframe>';
-  }
+  // Her açılışta TAZE iframe: kullanıcının tıklaması aktivasyon sağlar -> autostart ile mikrofon/ses hemen açılır
+  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1" allow="microphone; autoplay" style="flex:1;width:100%;height:100%;border:none;background:transparent"></iframe>';
   p.classList.add('acik');
   const fab=document.getElementById('aiFab'); if(fab) fab.style.display='none';
 }
