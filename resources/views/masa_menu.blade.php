@@ -724,8 +724,20 @@ async function cagir(tip){
   toast(tip==='hesap'?'💳 Hesap isteğiniz iletildi, birazdan geliyoruz.':'🔔 Garson çağrıldı, birazdan yanınızdayız.');
 }
 
-/* ---- AI asistan + online ode ---- */
-function asistanAc(){ location.href = '/masa/' + MASA + '/asistan'; }
+/* ---- AI asistan: AYNI sayfada YÜZEN panel (iframe embed) — ayrı sayfaya gitmez ---- */
+function asistanAc(){
+  const p=document.getElementById('aiPanel'), w=document.getElementById('aiFrameWrap');
+  if(!w.querySelector('iframe')){
+    w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1" allow="microphone; autoplay" style="flex:1;width:100%;height:100%;border:none;background:transparent"></iframe>';
+  }
+  p.classList.add('acik');
+  const fab=document.getElementById('aiFab'); if(fab) fab.style.display='none';
+}
+function asistanKapat(){
+  document.getElementById('aiPanel').classList.remove('acik');
+  document.getElementById('aiFrameWrap').innerHTML=''; // iframe kaldır -> mikrofon/ses durur
+  const fab=document.getElementById('aiFab'); if(fab) fab.style.display='';
+}
 async function hesapOde(){
   try{
     const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA})});
