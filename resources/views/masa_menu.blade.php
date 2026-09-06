@@ -282,8 +282,8 @@
   #menu .mk .fi{ color:var(--gold); font-weight:800; font-size:14.5px; }
   #menu .mk .art{ width:30px; height:30px; border-radius:10px; border:none; color:#fff; font-size:18px; background:linear-gradient(135deg,var(--mor),var(--mavi)); }
 
-  #toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:95; background:linear-gradient(135deg,var(--card),var(--card2)); color:#fff;
-    border:1px solid var(--cizgi); padding:13px 18px; border-radius:16px; font-size:13.5px; font-weight:600; box-shadow:0 14px 34px rgba(0,0,0,.6); max-width:88%; text-align:center; opacity:0; transition:.25s; pointer-events:none; }
+  #toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:95; background:linear-gradient(135deg,var(--card),var(--card2)); color:var(--ink);
+    border:1px solid var(--cizgi); padding:13px 18px; border-radius:16px; font-size:13.5px; font-weight:700; box-shadow:0 14px 34px rgba(0,0,0,.35); max-width:88%; text-align:center; opacity:0; transition:.25s; pointer-events:none; }
 
   @keyframes up{ to{ opacity:1; transform:none; } }
   @keyframes slideUp{ from{ transform:translateY(40px); opacity:.4; } to{ transform:none; opacity:1; } }

@@ -1814,6 +1814,33 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// PERSONEL: canli garson cagri ekrani (tezgah/tablet) — masadan gelen QR cagrilarini gosterir
+Route::get('/garson-ekran/{subeId?}', function ($subeId = null) {
+    $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
+    if (!$sube) abort(404, 'Şube yok');
+    return view('garson_ekran', ['sube' => $sube]);
+});
+// Bekleyen QR cagrilari (garson/hesap) — poll ile cekilir
+Route::get('/api/garson-cagrilari', function (Request $r) {
+    $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
+    if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
+        ->where('masa_cagrilari.sube_id', $subeId)->where('masa_cagrilari.durum', 'bekliyor')
+        ->orderBy('masa_cagrilari.id')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad')
+        ->limit(50)->get()
+        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+            'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
+            'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
+    return ['ok' => 1, 'cagrilar' => $rows, 'sunucu_saat' => now()->format('H:i:s')];
+});
+// Cagriyi karsilandi isaretle
+Route::post('/api/garson-cagri-kapat', function (Request $r) {
+    if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
+    DB::table('masa_cagrilari')->where('id', (int) $r->id)->update(['durum' => 'karsilandi']);
+    return ['ok' => 1];
+});
+
 // QR MENU: musteri urune PUAN verir (gercek degerlendirme sistemi) -> urun_puanlari
 Route::post('/api/qr/urun-puan', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
