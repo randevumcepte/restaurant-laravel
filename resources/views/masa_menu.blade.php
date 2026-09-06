@@ -227,11 +227,13 @@
   #detay .puanver .s{ font-size:30px; cursor:pointer; filter:grayscale(1) opacity(.5); transition:.12s; }
   #detay .puanver .s.on{ filter:none; transform:scale(1.08); }
   #detay .puanver .s:hover{ transform:scale(1.12); }
-  #detay .miktar{ display:flex; align-items:center; gap:16px; margin-top:20px; }
-  #detay .miktar button{ width:44px; height:44px; border-radius:13px; border:none; background:var(--card2); color:#fff; font-size:22px; }
-  #detay .miktar span{ font-size:20px; font-weight:800; min-width:26px; text-align:center; }
+  #detay .miktar{ display:flex; align-items:center; gap:12px; margin-top:20px; }
+  #detay .miktar > button:not(.ekle){ flex:0 0 auto; width:48px; height:52px; border-radius:14px; border:none; background:var(--card2); color:var(--ink); font-size:22px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  #detay .miktar span{ font-size:20px; font-weight:800; min-width:26px; text-align:center; color:var(--ink); }
   #detay .ekle{ width:100%; margin-top:20px; border:none; border-radius:16px; padding:16px; font-weight:800; font-size:15.5px; color:#fff;
     background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 10px 24px rgba(139,59,234,.5); }
+  /* alt satirdaki Sepete Ekle: qty butonlariyla AYNI yukseklik, metin ortali, tasma yok */
+  #detay .miktar .ekle{ flex:1 1 auto; width:auto; height:52px; margin-top:0; padding:0 16px; display:flex; align-items:center; justify-content:center; white-space:nowrap; }
   #detay .ekle:disabled{ opacity:.5; }
 
   /* sepet sheet */
