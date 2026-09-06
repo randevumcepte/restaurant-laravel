@@ -261,7 +261,8 @@
   #sepet .gonder:disabled{ opacity:.5; }
 
   /* tam menu overlay */
-  #menu{ }
+  #menu{ background:#120912; }
+  html.acik #menu{ background:#F5EFF3; }
   #menu .kutu{ position:relative; z-index:2; width:100%; height:100dvh; overflow-y:auto; display:flex; flex-direction:column; }
   #menu .mbar{ position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:12px; padding:16px 18px;
     background:linear-gradient(135deg,rgba(139,59,234,.3),rgba(51,20,54,.65)); border-bottom:1px solid var(--cizgi); backdrop-filter:blur(10px); }
