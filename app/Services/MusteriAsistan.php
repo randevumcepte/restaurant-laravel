@@ -935,20 +935,20 @@ class MusteriAsistan
         return 'food,plate';
     }
 
-    /** Panel onizlemesi icin: yuklenmis foto varsa onu, yoksa stok fotoyu don. */
+    /** Panel onizlemesi icin: yuklenmis gercek foto varsa onu, yoksa null (emoji tile gosterilir). */
     public function onizlemeGorsel($kat, $ad, $urunId = null)
     {
-        return $this->gorselUrl($urunId) ?: $this->stokGorseller($kat, $ad, 1)[0];
+        return $this->gorselUrl($urunId);
     }
 
-    /** Ayni yemegin birkac farkli gercek fotografi (galeri icin). Sabit lock -> hep ayni set. */
+    /**
+     * Stok/placeholder foto KAPALI. Onceden loremflickr kullaniliyordu ama nis/Turkce terimlerde
+     * alakasiz foto donuyordu (Ayran->kurabiye, Su->salata). Gercek foto yuklenene kadar kart
+     * DOGRU EMOJI tile gosterir; isletme Menu Yonetimi'nden foto yukleyince otomatik gercek foto gorunur.
+     */
     protected function stokGorseller($kat, $ad, $n = 4)
     {
-        $kw = $this->katKelime($kat, $ad);
-        $seed = abs(crc32((string) $ad)) % 997;
-        $out = [];
-        for ($i = 0; $i < $n; $i++) $out[] = 'https://loremflickr.com/500/380/' . $kw . '?lock=' . ($seed + $i * 7 + 1);
-        return $out;
+        return [];
     }
 
     /** Kategori/urun adina gore uygun emoji (foto yuklenemezse kartin gorseli). */
