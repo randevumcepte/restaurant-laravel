@@ -748,7 +748,7 @@ function dinle(){
     if(!rec){ resolve(''); return; }
     let done=false;
     orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';
-    const watch = setTimeout(()=>fin(''), 15000);
+    const watch = setTimeout(()=>fin(''), 20000);
     function fin(m){ if(done) return; done=true; clearTimeout(watch); _bekleyenCoz=null; orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor'); resolve((m||'').trim()); }
     _bekleyenCoz = (m)=>fin(m);
   });
@@ -786,7 +786,7 @@ async function basla(selamla=true){
   if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
   if(sohbetAktif){
     if(konusuyor){ konusKes(); return; } // konusurken dokunmak = KES ve dinle (kapatma degil)
-    sohbetAktif=false; try{rec.stop()}catch(_){}; sesDurdur(); konusuyor=false; micBtn.classList.remove('acik'); durumEl.textContent='Ekrana dokunup tekrar konuşabilirsiniz'; return;
+    return; // zaten dinliyor -> dokunmak bir sey YAPMAZ (yanlislikla kapanma yok; kapatmak icin ✕)
   }
   sessizMod=false;       // asistan geri geldi (menu inceleme modundan cik)
   sohbetAktif=true; micBtn.classList.add('acik');
@@ -798,7 +798,7 @@ async function basla(selamla=true){
   while(sohbetAktif){
     const c = girdi || await dinle(); girdi = null;
     if(!sohbetAktif) break;
-    if(!c){ if(++bos>=2){ await konus('Başka bir arzunuz yoksa dinlemeyi kapatıyorum. İstediğinizde mikrofona tekrar dokunun.'); break; } await konus('Sizi tam anlayamadım, tekrar eder misiniz?'); continue; }
+    if(!c){ bos++; if(bos>=3){ await konus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.'); break; } if(bos===1) await konus('Buyurun, sizi dinliyorum.'); continue; }
     bos=0;
     ekle('ben', c);
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
