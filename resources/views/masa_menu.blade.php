@@ -140,10 +140,10 @@
     #wrap{ display:none; }
     #desk{ display:flex; min-height:100dvh; }
     #side{ width:270px; flex:0 0 270px; position:sticky; top:0; align-self:flex-start; height:100dvh; padding:26px 20px;
-      display:flex; flex-direction:column; gap:6px; border-right:1px solid var(--cizgi); background:rgba(20,10,22,.4); }
+      display:flex; flex-direction:column; gap:6px; border-right:1px solid var(--cizgi); background:var(--card); }
     #side .brand{ margin:4px 4px 22px; }
     #side .nav{ display:flex; flex-direction:column; gap:4px; }
-    #side .nav a{ display:flex; align-items:center; gap:13px; padding:13px 15px; border-radius:14px; color:#D8C6D8; font-size:14.5px; font-weight:600; cursor:pointer; }
+    #side .nav a{ display:flex; align-items:center; gap:13px; padding:13px 15px; border-radius:14px; color:var(--ink); font-size:14.5px; font-weight:600; cursor:pointer; }
     #side .nav a span{ font-size:18px; width:22px; text-align:center; }
     #side .nav a:hover{ background:var(--neutral); }
     #side .nav a.act{ background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; box-shadow:0 8px 20px rgba(139,59,234,.45); }
@@ -153,7 +153,7 @@
     #side .sbtn b{ display:block; font-size:14px; font-weight:800; } #side .sbtn i{ font-style:normal; font-size:11px; opacity:.85; }
     #side .cagir{ background:linear-gradient(135deg,var(--mor),var(--mavi)); color:#fff; }
     #side .hesap{ background:var(--card2); color:var(--ink); border:1px solid var(--cizgi); }
-    #side .dil{ margin-top:14px; background:rgba(0,0,0,.25); border:1px solid var(--cizgi); color:#D8C6D8; padding:12px 15px; border-radius:14px; font-size:13.5px; display:flex; align-items:center; gap:9px; }
+    #side .dil{ margin-top:14px; background:var(--card2); border:1px solid var(--cizgi); color:var(--ink); padding:12px 15px; border-radius:14px; font-size:13.5px; display:flex; align-items:center; gap:9px; }
 
     #deskmain{ flex:1; min-width:0; padding:26px 30px 60px; overflow-y:auto; height:100dvh; }
     .hero{ position:relative; border-radius:26px; overflow:hidden; min-height:320px; display:flex; align-items:center; padding:44px 48px;
