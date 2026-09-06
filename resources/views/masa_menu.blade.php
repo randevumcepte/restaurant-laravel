@@ -699,9 +699,12 @@ function menuAc(filtre){
   body.querySelectorAll('.mk .art').forEach(b=>{
     b.addEventListener('click',ev=>{ ev.stopPropagation(); const u=_urun[b.dataset.uid]; if(u) sepeteEkle(u,1,true); });
   });
-  document.getElementById('menu').classList.add('acik');
+  document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
-function menuKapat(){ document.getElementById('menu').classList.remove('acik'); }
+function menuKapat(){ document.getElementById('menu').classList.remove('acik'); if(history.state&&history.state.ov==='menu'){ history.back(); } }
+function menuGecmisEkle(){ if(!(history.state&&history.state.ov==='menu')){ try{ history.pushState({ov:'menu'},''); }catch(e){} } }
+// Tarayici GERI tusu: acik menu katmanini kapat (siteden dusme)
+window.addEventListener('popstate', function(){ var m=document.getElementById('menu'); if(m&&m.classList.contains('acik')) m.classList.remove('acik'); });
 function araGonder(e){ e.preventDefault(); const t=(document.getElementById('ara').value||'').trim(); if(!t) return; menuAra(t); }
 function menuAra(q){
   const body=document.getElementById('menu-body'); body.innerHTML=''; document.getElementById('menu-bas').textContent='"'+q+'" için sonuçlar';
@@ -715,7 +718,7 @@ function menuAra(q){
     body.querySelectorAll('.mk').forEach(el=>el.addEventListener('click',()=>{ const u=_urun[el.dataset.uid]; if(u) detayAc(u); }));
     body.querySelectorAll('.mk .art').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); const u=_urun[b.dataset.uid]; if(u) sepeteEkle(u,1,true); }));
   }
-  document.getElementById('menu').classList.add('acik');
+  document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
 
 /* ---- garson/hesap ---- */
