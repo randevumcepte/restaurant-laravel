@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" class="{{ request()->has('embed') ? 'embed' : '' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -291,6 +291,14 @@
   #asheet .as-t b{ font-family:var(--serif); font-size:16px; color:var(--gold); }
   #asheet #durum{ text-align:left; margin:0; font-size:12px; }
   #asheet .as-x{ margin-left:auto; width:38px; height:38px; border-radius:50%; border:none; background:rgba(255,255,255,.1); color:#fff; font-size:16px; }
+
+  /* ===== GÖMÜLÜ (embed) MOD: menü sayfasındaki yüzen panel içinde sadece asistan paneli tam ekran ===== */
+  html.embed, html.embed body{ background:transparent; }
+  html.embed #app{ height:100dvh; }
+  html.embed #app > header, html.embed #home, html.embed #altbar{ display:none !important; }
+  html.embed #asheet{ position:static !important; transform:none !important; flex:1; height:auto;
+    border:none; border-radius:0; box-shadow:none; }
+  html.embed #asheet .as-x{ display:none; } /* kapatma dıştaki panel başlığında */
 </style>
 </head>
 <body>

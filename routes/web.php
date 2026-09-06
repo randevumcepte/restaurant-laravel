@@ -1841,6 +1841,29 @@ Route::post('/api/garson-cagri-kapat', function (Request $r) {
     return ['ok' => 1];
 });
 
+// PATRON UYGULAMASI (auth'lu): bekleyen garson cagrilari + karsilandi
+Route::get('/api/patron/garson-cagrilari', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
+        ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor')
+        ->orderBy('masa_cagrilari.id')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad')
+        ->limit(60)->get()
+        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+            'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
+            'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
+    return ['ok' => 1, 'cagrilar' => $rows];
+});
+Route::post('/api/patron/garson-cagri-kapat', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
+    DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
+    return ['ok' => 1];
+});
+
 // QR MENU: musteri urune PUAN verir (gercek degerlendirme sistemi) -> urun_puanlari
 Route::post('/api/qr/urun-puan', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);

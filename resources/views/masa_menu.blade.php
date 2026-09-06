@@ -305,6 +305,27 @@
   .ara button, .hero .kesfet, #detay .ekle, .pk .art, .dk .art, #menu .mk .art, .qrban .okut,
   #altbar .qr .qi, #side .cagir, #deskcart, .chip.act .cn, #side .nav a.act{ color:var(--ana-ink) !important; }
   .chip.act{ color:var(--ana-ink); } .chip.act .ci{ background:rgba(255,255,255,.20); }
+
+  /* ==================== YÜZEN AI ASISTAN BALONCUĞU + PANEL ==================== */
+  #aiFab{ position:fixed; z-index:85; right:16px; bottom:calc(88px + env(safe-area-inset-bottom));
+    width:60px; height:60px; border-radius:50%; border:none; cursor:pointer; color:#fff; font-size:27px;
+    background:linear-gradient(135deg,#8B3BEA,#6D28D9); display:flex; align-items:center; justify-content:center;
+    box-shadow:0 12px 28px rgba(124,58,237,.6); }
+  #aiFab::before{ content:''; position:absolute; inset:-5px; border-radius:50%; border:2px solid #A855F7;
+    opacity:.55; animation:aiPulse 2s ease-out infinite; pointer-events:none; }
+  @keyframes aiPulse{ 0%{ transform:scale(.92); opacity:.55; } 100%{ transform:scale(1.55); opacity:0; } }
+  @media(min-width:920px){ #aiFab{ right:26px; bottom:104px; width:66px; height:66px; font-size:30px; } }
+
+  #aiPanel{ position:fixed; z-index:90; display:none; flex-direction:column; overflow:hidden;
+    left:0; right:0; bottom:0; height:88dvh; border-radius:22px 22px 0 0;
+    background:var(--card); border:1px solid var(--cizgi); box-shadow:0 -18px 50px rgba(0,0,0,.5); }
+  #aiPanel.acik{ display:flex; animation:aiUp .3s cubic-bezier(.2,.8,.2,1); }
+  @keyframes aiUp{ from{ transform:translateY(30px); opacity:.5; } to{ transform:none; opacity:1; } }
+  @media(min-width:920px){ #aiPanel{ left:auto; right:26px; bottom:26px; width:410px; height:78vh; max-height:720px; border-radius:22px; box-shadow:0 24px 60px rgba(0,0,0,.5); } }
+  #aiPanel .ai-bar{ display:flex; align-items:center; gap:9px; padding:12px 14px; background:linear-gradient(135deg,#8B3BEA,#6D28D9); color:#fff; }
+  #aiPanel .ai-bar b{ font-size:15px; font-weight:800; color:#fff; }
+  #aiPanel .ai-bar .ai-x{ margin-left:auto; width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,.22); color:#fff; font-size:16px; cursor:pointer; }
+  #aiFrameWrap{ flex:1; min-height:0; display:flex; }
 </style>
 </head>
 <body>
@@ -448,6 +469,13 @@
 </div>
 
 <button id="deskcart" class="bos" onclick="sepetAc()">🧾 Sepetim <span class="dc-n" id="dc-n">0</span></button>
+
+<!-- ==================== YÜZEN AI ASISTAN (aynı sayfada, iframe embed) ==================== -->
+<button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan">🤖</button>
+<div id="aiPanel">
+  <div class="ai-bar"><span style="font-size:19px">🤖</span><b>Yapay Zekâ Asistan</b><button class="ai-x" onclick="asistanKapat()" aria-label="Kapat">✕</button></div>
+  <div id="aiFrameWrap"></div>
+</div>
 
 <div id="toast"></div>
 
