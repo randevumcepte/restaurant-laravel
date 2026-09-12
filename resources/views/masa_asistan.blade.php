@@ -808,43 +808,49 @@ async function dilSec(k){
   konusKes(); aktifDil=k; dilCiz();
   await sistemKonus(SELAM, true);   // YENI dilde karsila (hem metin hem ses o dilde)
 }
+// iOS TUZAGI: her tur YENI AudioContext acmak, Safari'de askida kalip mikrofon ornegi vermiyordu ("sessiz").
+// COZUM: mikrofonu + AudioContext + islemciyi TEK sefer ac, surekli acik tut; her tur sadece kayit bayragi ac/kapa.
+let _actx=null, _proc=null, _srSample=48000;
+let _rec={active:false, chunks:[], started:false, silence:0, elapsed:0, resolve:null};
 async function micHazir(){
-  if(_stream && _stream.active) return true;
+  if(_actx && _stream && _stream.active){ try{ await _actx.resume(); }catch(_){} return true; }
   try{
     if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return false;
     _stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
-    return true;
-  }catch(e){ return false; }
-}
-// Bir konusma turunu kaydet: konusma baslayinca ~1.2s sessizlikte biter; hic konusma yoksa ~7s'te bos doner.
-function turKaydet(){
-  return new Promise(async (resolve)=>{
-    if(!await micHazir()){ resolve(null); return; }
-    let actx;
-    try{ actx = new (window.AudioContext||window.webkitAudioContext)(); await actx.resume(); }catch(e){ resolve(null); return; }
-    const src = actx.createMediaStreamSource(_stream);
-    const proc = actx.createScriptProcessor(4096,1,1);
-    const sr = actx.sampleRate;
-    const chunks=[]; let started=false, silence=0, elapsed=0, done=false;
-    function bit(gonder){
-      if(done) return; done=true;
-      try{ proc.disconnect(); src.disconnect(); }catch(_){}
-      try{ actx.close(); }catch(_){}
-      resolve((gonder && chunks.length) ? pcmToWav(chunks, sr) : null);
-    }
-    proc.onaudioprocess = (e)=>{
-      if(done) return;
+    _actx = new (window.AudioContext||window.webkitAudioContext)();
+    await _actx.resume();
+    _srSample = _actx.sampleRate || 48000;
+    const src = _actx.createMediaStreamSource(_stream);
+    _proc = _actx.createScriptProcessor(4096,1,1);
+    _proc.onaudioprocess = (e)=>{
+      if(!_rec.active) return;
       const d = e.inputBuffer.getChannelData(0);
       let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
       const rms = Math.sqrt(s/d.length);
-      elapsed += d.length/sr;
-      if(rms > 0.02){ started=true; silence=0; chunks.push(new Float32Array(d)); }
-      else if(started){ silence += d.length/sr; chunks.push(new Float32Array(d)); }
-      if(started && silence > 1.2) bit(true);        // konustu, durdu -> gonder
-      else if(!started && elapsed > 7) bit(false);   // hic konusmadi -> bos
-      else if(elapsed > 14) bit(started);            // uzun tavani
+      _rec.elapsed += d.length/_srSample;
+      if(rms > 0.012){ _rec.started=true; _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
+      else if(_rec.started){ _rec.silence += d.length/_srSample; _rec.chunks.push(new Float32Array(d)); }
+      if(_rec.started && _rec.silence > 1.2) _recBit(true);        // konustu, durdu -> gonder
+      else if(!_rec.started && _rec.elapsed > 7) _recBit(false);   // hic konusmadi -> bos
+      else if(_rec.elapsed > 14) _recBit(_rec.started);            // uzun tavani
     };
-    src.connect(proc); proc.connect(actx.destination);
+    src.connect(_proc); _proc.connect(_actx.destination);
+    return true;
+  }catch(e){ return false; }
+}
+function _recBit(gonder){
+  if(!_rec.active) return;
+  _rec.active=false;
+  const chunks=_rec.chunks, r=_rec.resolve; _rec.resolve=null;
+  if(r) r((gonder && chunks.length) ? pcmToWav(chunks, _srSample) : null);
+}
+// Bir konusma turunu kaydet: surekli acik islemciye kayit bayragini ac; sessizlikte/timeoutta biter.
+function turKaydet(){
+  return new Promise(async (resolve)=>{
+    if(!await micHazir()){ resolve(null); return; }
+    try{ await _actx.resume(); }catch(_){}
+    _rec = {active:true, chunks:[], started:false, silence:0, elapsed:0, resolve:resolve};
+    setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); }, 16000); // sert tavan
   });
 }
 function pcmToWav(chunks, sr){
