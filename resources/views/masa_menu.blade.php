@@ -349,7 +349,7 @@
 
   <div class="chips" id="chips"></div>
 
-  <div class="bbas"><b>Popüler Lezzetler</b><a onclick="menuAc()">Tümünü Gör →</a></div>
+  <div class="bbas"><b id="popBas">Popüler Lezzetler</b><a onclick="menuAc()">Tümünü Gör →</a></div>
   <div class="pop" id="pop"><div style="color:var(--sessiz);font-size:13px;padding:16px 2px">Lezzetler yükleniyor…</div></div>
 
   <div class="ozel">
@@ -410,7 +410,7 @@
       <div class="dots"><i class="on"></i><i></i><i></i></div>
     </div>
 
-    <div class="bbas" style="margin-top:30px"><b style="font-size:24px">Öne Çıkanlar</b><a onclick="menuAc()">Tümünü Gör →</a></div>
+    <div class="bbas" style="margin-top:30px"><b id="dgridBas" style="font-size:24px">Öne Çıkanlar</b><a onclick="menuAc()">Tümünü Gör →</a></div>
     <div class="dgrid" id="dgrid"></div>
 
     <div class="qrban">
@@ -731,9 +731,41 @@ async function cagir(tip){
 function asistanAc(){
   const p=document.getElementById('aiPanel'), w=document.getElementById('aiFrameWrap');
   // Her açılışta TAZE iframe: kullanıcının tıklaması aktivasyon sağlar -> autostart ile mikrofon/ses hemen açılır
-  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1" allow="microphone; autoplay" style="flex:1;width:100%;height:100%;border:none;background:transparent"></iframe>';
+  const wide = (window.innerWidth>=920) ? '&wide=1' : ''; // masaüstü: ürün kartları ANA ekranda; telefon: panelde
+  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1'+wide+'" allow="microphone; autoplay" style="flex:1;width:100%;height:100%;border:none;background:transparent"></iframe>';
   p.classList.add('acik');
   const fab=document.getElementById('aiFab'); if(fab) fab.style.display='none';
+}
+/* ---- Asistan panelinden gelen menü -> ANA ekranda göster (panel dar; menü tek yerden yönetilir) ---- */
+window.addEventListener('message', (e)=>{
+  const d=e.data||{};
+  if(d.resto==='kartlar' && Array.isArray(d.kartlar) && d.kartlar.length){
+    const urunler=d.kartlar.map(k=>(k && k.urun_id && _urun[k.urun_id]) ? _urun[k.urun_id] : k).filter(Boolean);
+    if(urunler.length===1) detayAc(urunler[0]);
+    else if(urunler.length) asistanUrunGoster(urunler);
+  } else if(d.resto==='kategoriler' && Array.isArray(d.kategoriler) && d.kategoriler.length){
+    menuAc();
+  }
+});
+function asistanUrunGoster(list){
+  const pb=document.getElementById('popBas'); if(pb) pb.textContent='🤖 Asistanın Önerileri';
+  const db=document.getElementById('dgridBas'); if(db) db.textContent='🤖 Asistanın Önerileri';
+  const pop=document.getElementById('pop');
+  if(pop){ pop.innerHTML=''; list.forEach((u,i)=>{ const tuk=u.etiket==='Tükendi'; const c=document.createElement('div'); c.className='pk'; c.style.animationDelay=(i*40)+'ms';
+    c.innerHTML=`<div class="g">${gorselHtml(u,'em')}</div>${u.etiket&&!tuk?`<span class="tag">${esc(u.etiket)}</span>`:''}${tuk?'<div class="tuk">Tükendi</div>':''}<div class="glass"></div>`
+      +`<div class="b"><div class="ad">${esc(u.ad)}</div>${yildizHtml(u)}`
+      +`<div class="alt"><span class="fi">${esc(u.fiyat_yazi||'')}</span><button class="art" ${tuk?'disabled style=opacity:.4':''}>+</button></div></div>`;
+    c.querySelector('.art').addEventListener('click',ev=>{ ev.stopPropagation(); if(!tuk) sepeteEkle(u,1,true); });
+    c.addEventListener('click',()=>detayAc(u)); pop.appendChild(c); }); }
+  const dg=document.getElementById('dgrid');
+  if(dg){ dg.innerHTML=''; list.forEach(u=>{ const tuk=u.etiket==='Tükendi'; const c=document.createElement('div'); c.className='dk';
+    c.innerHTML=`<div class="g">${gorselHtml(u,'em')}${u.etiket&&!tuk?`<span class="tag">${esc(u.etiket)}</span>`:''}${tuk?'<div class="tuk">Tükendi</div>':''}</div>`
+      +`<div class="b"><div class="ad">${esc(u.ad)}</div><div style="margin-top:7px">${yildizHtml(u)}</div>`
+      +`<div class="alt"><span class="fi">${esc(u.fiyat_yazi||'')}</span><button class="art" ${tuk?'disabled style=opacity:.4':''}>+</button></div></div>`;
+    c.querySelector('.art').addEventListener('click',ev=>{ ev.stopPropagation(); if(!tuk) sepeteEkle(u,1,true); });
+    c.addEventListener('click',()=>detayAc(u)); dg.appendChild(c); }); }
+  try{ const dm=document.getElementById('deskmain'); if(dm) dm.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
+  try{ toast('🤖 Önerilenleri menüde gösterdim'); }catch(_){}
 }
 function asistanKapat(){
   document.getElementById('aiPanel').classList.remove('acik');

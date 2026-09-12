@@ -413,6 +413,11 @@ function gradientFor(str){ let h=0; for(let i=0;i<String(str).length;i++) h=(h*3
 
 // Urun kartlari (tam boy foto hero + altin etiket + cam fiyat rozeti + "Istiyorum")
 function kartlariEkle(kartlar){
+  // GÖMÜLÜ + geniş ekran: ürün kartlarını dar PANELDE çizme -> ana menü sayfasında göster
+  if(location.search.indexOf('wide')>=0 && window.parent!==window){
+    try{ window.parent.postMessage({resto:'kartlar', kartlar}, '*'); }catch(_){}
+    return;
+  }
   const sar = document.createElement('div'); sar.className='kartsira';
   kartlar.forEach((k, idx)=>{
     const c = document.createElement('div'); c.className='mkart';
@@ -463,6 +468,11 @@ lb.addEventListener('click', e=>{ if(e.target === lb) kapatGaleri(); });
 
 // Kategori kartlari (dokun -> o kategoriyi ac)
 function kategorilerEkle(kats){
+  // GÖMÜLÜ + geniş ekran: kategorileri panelde çizme -> ana sayfada tam menüyü aç
+  if(location.search.indexOf('wide')>=0 && window.parent!==window){
+    try{ window.parent.postMessage({resto:'kategoriler', kategoriler:kats}, '*'); }catch(_){}
+    return;
+  }
   const sar = document.createElement('div'); sar.className='katsira';
   kats.forEach((k, idx)=>{
     const c = document.createElement('div'); c.className='kkart';
