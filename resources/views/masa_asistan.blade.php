@@ -297,12 +297,13 @@
   html.embed #app{ height:100dvh; }
   html.embed #app > header, html.embed #home, html.embed #altbar{ display:none !important; }
   html.embed #asheet{ position:static !important; transform:none !important; flex:1; height:auto;
-    border:none; border-radius:0; box-shadow:none; }
+    border:none; border-radius:0; box-shadow:none; background:transparent !important; }
+  html.embed .as-tut{ display:none; }
   html.embed #asheet .as-x{ display:none; } /* kapatma dıştaki panel başlığında */
 
   /* ===== ORB-MERKEZLI (embed): yazışma kutusu YOK; büyük renk-kodlu orb + 'anladım' satırı + bayraklar ===== */
   html.embed #sohbet, html.embed footer, html.embed .cips{ display:none !important; }
-  html.embed #asheet{ justify-content:flex-start; }
+  html.embed #asheet{ justify-content:center; }
   html.embed .as-bar{ flex-direction:column; align-items:center; gap:14px; padding:30px 16px 4px; }
   html.embed .as-bar #orb{ width:152px; height:152px; }
   html.embed .as-bar #orb::after{ inset:34px; }
@@ -311,7 +312,8 @@
   html.embed #durum{ text-align:center; font-size:15px; max-width:340px; margin:0 auto; }
   html.embed #diller{ justify-content:center; flex-wrap:wrap; margin-top:16px; }
   #anladim{ display:none; }
-  html.embed #anladim{ display:block; text-align:center; color:#D6BBF3; font-size:14px; font-style:italic; min-height:20px; margin:10px 18px 0; }
+  html.embed #anladim{ display:block; text-align:center; color:#EAD9F5; font-size:14px; font-style:italic; min-height:20px; margin:10px 18px 0; }
+  html.embed .as-t b, html.embed #durum, html.embed #anladim, html.embed #yazAc{ text-shadow:0 2px 12px rgba(0,0,0,.92); }
   /* orb renk durumlari: MOR = AI konuşuyor, YEŞİL = sıra sende */
   #orb.aiKonus{ background:conic-gradient(from 0deg,#C4B5FD,#A855F7,#7C3AED,#C4B5FD) !important; box-shadow:0 0 56px rgba(139,59,234,.6) !important; animation:spin 3s linear infinite !important; }
   #orb.dinliyor{ background:conic-gradient(from 0deg,#86EFAC,#22C55E,#16A34A,#86EFAC) !important; box-shadow:0 0 56px rgba(34,197,94,.55) !important; }

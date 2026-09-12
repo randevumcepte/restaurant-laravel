@@ -1830,6 +1830,12 @@ Route::get('/ceviri-test', function () {
     return response("HTTP $kod\n\n$resp\n\n(HTTP 200 + 'Hello world...' gorursen Translation API CALISIYOR. 403 = API kapali ya da anahtar kisitli.)")->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
+// TEST: bugunun STT sayacini sifirla (test ederken 'cok yogun' derse)
+Route::get('/stt-sifirla', function () {
+    if (Schema::hasTable('stt_kullanim')) DB::table('stt_kullanim')->where('gun', now()->toDateString())->delete();
+    return response('Bugunun STT sayaci sifirlandi. Artik sesli asistan tekrar dinler.')->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 // TESHIS: Speech-to-Text API erisilebilir mi? (0.5 sn sessizlik gonderir; 200=calisir, 403=kapali/kisitli)
 Route::get('/stt-test', function () {
     $key = (string) config('services.google_tts.key', '');
@@ -1974,8 +1980,8 @@ Route::post('/api/qr/stt', function (Request $r) {
     $masaId = $masa ? (int) $masa->id : 0;
     _sttTabloEnsure();
     $bugun = now()->toDateString();
-    $subeLimit = (int) resto_ayar_al('stt_gunluk_sube_limit', 300);
-    $masaLimit = (int) resto_ayar_al('stt_gunluk_masa_limit', 50);
+    $subeLimit = (int) resto_ayar_al('stt_gunluk_sube_limit', 1500);
+    $masaLimit = (int) resto_ayar_al('stt_gunluk_masa_limit', 150);
     if ($subeLimit > 0) {
         $subeToplam = (int) DB::table('stt_kullanim')->where('sube_id', $subeId)->where('gun', $bugun)->sum('adet');
         if ($subeToplam >= $subeLimit) return response()->json(['metin' => '', 'limit' => true], 200);

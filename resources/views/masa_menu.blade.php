@@ -316,15 +316,14 @@
   @keyframes aiPulse{ 0%{ transform:scale(.92); opacity:.55; } 100%{ transform:scale(1.55); opacity:0; } }
   @media(min-width:920px){ #aiFab{ right:26px; bottom:104px; width:66px; height:66px; font-size:30px; } }
 
-  #aiPanel{ position:fixed; z-index:90; display:none; flex-direction:column; overflow:hidden;
-    left:0; right:0; bottom:0; height:88dvh; border-radius:22px 22px 0 0;
-    background:var(--card); border:1px solid var(--cizgi); box-shadow:0 -18px 50px rgba(0,0,0,.5); }
+  /* KUTU YOK: sadece ortada yüzen orb (şeffaf) — menü arkada görünür */
+  #aiPanel{ position:fixed; z-index:90; display:none; flex-direction:column; overflow:visible;
+    left:50%; top:50%; transform:translate(-50%,-50%); width:340px; max-width:92vw; height:500px; max-height:88dvh;
+    background:transparent; border:none; box-shadow:none; }
   #aiPanel.acik{ display:flex; animation:aiUp .3s cubic-bezier(.2,.8,.2,1); }
-  @keyframes aiUp{ from{ transform:translateY(30px); opacity:.5; } to{ transform:none; opacity:1; } }
-  @media(min-width:920px){ #aiPanel{ left:auto; right:26px; bottom:26px; width:410px; height:78vh; max-height:720px; border-radius:22px; box-shadow:0 24px 60px rgba(0,0,0,.5); } }
-  #aiPanel .ai-bar{ display:flex; align-items:center; gap:9px; padding:12px 14px; background:linear-gradient(135deg,#8B3BEA,#6D28D9); color:#fff; }
-  #aiPanel .ai-bar b{ font-size:15px; font-weight:800; color:#fff; }
-  #aiPanel .ai-bar .ai-x{ margin-left:auto; width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,.22); color:#fff; font-size:16px; cursor:pointer; }
+  @keyframes aiUp{ from{ transform:translate(-50%,-46%); opacity:.3; } to{ transform:translate(-50%,-50%); opacity:1; } }
+  @media(min-width:920px){ #aiPanel{ width:360px; height:520px; } }
+  #aiPanel .ai-x{ position:absolute; top:-2px; right:-2px; z-index:3; width:34px; height:34px; border-radius:50%; border:none; background:rgba(20,10,22,.72); color:#fff; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.4); }
   #aiFrameWrap{ flex:1; min-height:0; display:flex; }
 </style>
 </head>
@@ -473,7 +472,7 @@
 <!-- ==================== YÜZEN AI ASISTAN (aynı sayfada, iframe embed) ==================== -->
 <button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan">🤖</button>
 <div id="aiPanel">
-  <div class="ai-bar"><span style="font-size:19px">🤖</span><b>Yapay Zekâ Asistan</b><button class="ai-x" onclick="asistanKapat()" aria-label="Kapat">✕</button></div>
+  <button class="ai-x" onclick="asistanKapat()" aria-label="Kapat">✕</button>
   <div id="aiFrameWrap"></div>
 </div>
 
