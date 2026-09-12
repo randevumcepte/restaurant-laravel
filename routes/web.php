@@ -1784,9 +1784,80 @@ Route::get('/masa/{id}/asistan', function ($id) {
 Route::post('/api/qr/asistan', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
+    $kodlar = _qrDilKodlari();
+    if (!isset($kodlar[$dil])) $dil = 'tr';
     $a = new \App\Services\MusteriAsistan($subeId);
-    return $a->cevapla((string) $r->soru, (string) $r->input('baglam', ''));
+    $soru = (string) $r->soru;
+    // COK DILLI: yabanci soru -> Turkce (motor Turkce calisir); cevap -> tekrar o dile.
+    if ($dil !== 'tr' && $soru !== '') $soru = _qrCevir($soru, 'tr', $dil);
+    $res = $a->cevapla($soru, (string) $r->input('baglam', ''));
+    if ($dil !== 'tr' && is_array($res)) {
+        $parts = [(string) ($res['cevap'] ?? '')];
+        $idx = [];
+        if (!empty($res['kartlar']) && is_array($res['kartlar'])) {
+            foreach ($res['kartlar'] as $i => $k) {
+                if (!empty($k['aciklama'])) { $idx[] = $i; $parts[] = (string) $k['aciklama']; }
+            }
+        }
+        $cev = _qrCevirCoklu($parts, $dil, 'tr');
+        if (is_array($cev) && count($cev) === count($parts)) {
+            $res['cevap'] = $cev[0];
+            foreach ($idx as $n => $ki) $res['kartlar'][$ki]['aciklama'] = $cev[$n + 1];
+        }
+        $res['dil'] = $dil;
+    }
+    return $res;
 });
+
+// ---- COK DILLI destek: dil -> STT/TTS kodlari + Google Translate cevirmen ----
+if (!function_exists('_qrDilKodlari')) {
+    function _qrDilKodlari()
+    {
+        return [
+            'tr' => ['stt' => 'tr-TR', 'tts' => 'tr-TR-Wavenet-D'],
+            'en' => ['stt' => 'en-US', 'tts' => 'en-US-Wavenet-D'],
+            'ar' => ['stt' => 'ar-SA', 'tts' => 'ar-XA-Wavenet-B'],
+            'de' => ['stt' => 'de-DE', 'tts' => 'de-DE-Wavenet-B'],
+            'ru' => ['stt' => 'ru-RU', 'tts' => 'ru-RU-Wavenet-D'],
+            'es' => ['stt' => 'es-ES', 'tts' => 'es-ES-Wavenet-B'],
+            'fr' => ['stt' => 'fr-FR', 'tts' => 'fr-FR-Wavenet-D'],
+            'nl' => ['stt' => 'nl-NL', 'tts' => 'nl-NL-Wavenet-B'],
+            'it' => ['stt' => 'it-IT', 'tts' => 'it-IT-Wavenet-C'],
+            'uk' => ['stt' => 'uk-UA', 'tts' => 'uk-UA-Wavenet-A'],
+        ];
+    }
+}
+if (!function_exists('_qrCevirCoklu')) {
+    function _qrCevirCoklu(array $metinler, $hedef, $kaynak = '')
+    {
+        $key = (string) config('services.google_tts.key', '');
+        if ($key === '' || $hedef === $kaynak || empty($metinler)) return $metinler;
+        $payload = ['q' => array_values($metinler), 'target' => $hedef, 'format' => 'text'];
+        if ($kaynak) $payload['source'] = $kaynak;
+        try {
+            $ch = curl_init('https://translation.googleapis.com/language/translate/v2?key=' . $key);
+            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_TIMEOUT => 10]);
+            $resp = curl_exec($ch);
+            curl_close($ch);
+            $j = json_decode($resp, true);
+            $tr = $j['data']['translations'] ?? null;
+            if (!is_array($tr) || count($tr) !== count($metinler)) return $metinler;
+            $out = [];
+            foreach ($tr as $t) $out[] = (string) ($t['translatedText'] ?? '');
+            return $out;
+        } catch (\Throwable $e) {
+            return $metinler;
+        }
+    }
+}
+if (!function_exists('_qrCevir')) {
+    function _qrCevir($metin, $hedef, $kaynak = '')
+    {
+        $r = _qrCevirCoklu([(string) $metin], $hedef, $kaynak);
+        return $r[0] ?? (string) $metin;
+    }
+}
 
 // Gunluk STT kullanim sayaci (MALIYET TAVANI icin)
 if (!function_exists('_sttTabloEnsure')) {
@@ -1831,17 +1902,20 @@ Route::post('/api/qr/stt', function (Request $r) {
     if ($masaLimit > 0 && $mrow && (int) $mrow->adet >= $masaLimit) return response()->json(['metin' => '', 'limit' => true], 200);
     if ($mrow) DB::table('stt_kullanim')->where('id', $mrow->id)->update(['adet' => (int) $mrow->adet + 1]);
     else DB::table('stt_kullanim')->insert(['sube_id' => $subeId, 'masa_id' => $masaId, 'gun' => $bugun, 'adet' => 1]);
-    $payload = [
-        'config' => [
-            'encoding' => 'LINEAR16',
-            'sampleRateHertz' => 16000,
-            'languageCode' => 'tr-TR',
-            'model' => 'latest_short',
-            'enableAutomaticPunctuation' => true,
-            'maxAlternatives' => 1,
-        ],
-        'audio' => ['content' => base64_encode($bytes)],
+    // Dil: istemcinin aktif dili birincil; otomatik algilama icin birkac alternatif (Google en fazla 3 alternatif).
+    $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
+    $kodlar = _qrDilKodlari();
+    if (!isset($kodlar[$dil])) $dil = 'tr';
+    $cfg = [
+        'encoding' => 'LINEAR16',
+        'sampleRateHertz' => 16000,
+        'languageCode' => $kodlar[$dil]['stt'],
+        'model' => 'latest_short',
+        'enableAutomaticPunctuation' => true,
+        'maxAlternatives' => 1,
     ];
+    $cfg['alternativeLanguageCodes'] = ($dil === 'tr') ? ['en-US', 'ar-SA', 'ru-RU'] : ['tr-TR'];
+    $payload = ['config' => $cfg, 'audio' => ['content' => base64_encode($bytes)]];
     try {
         $ch = curl_init('https://speech.googleapis.com/v1/speech:recognize?key=' . $key);
         curl_setopt_array($ch, [
@@ -1856,7 +1930,9 @@ Route::post('/api/qr/stt', function (Request $r) {
         curl_close($ch);
         $j = json_decode($resp, true);
         $metin = $j['results'][0]['alternatives'][0]['transcript'] ?? '';
-        return response()->json(['metin' => trim((string) $metin), 'kod' => $kod]);
+        $algDil = strtolower(substr((string) ($j['results'][0]['languageCode'] ?? $kodlar[$dil]['stt']), 0, 2));
+        if (!isset($kodlar[$algDil])) $algDil = $dil;
+        return response()->json(['metin' => trim((string) $metin), 'dil' => $algDil, 'kod' => $kod]);
     } catch (\Throwable $e) {
         return response()->json(['metin' => '', 'hata' => 'stt_hata'], 200);
     }
@@ -2058,6 +2134,9 @@ Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     elseif ($r->filled('sube')) { $subeId = (int) $r->input('sube'); }
     $servis = new \App\Services\SeslendirmeServisi($subeId);
     $ses = $r->input('ses');
+    // COK DILLI: dil verildiyse o dilin sesini sec (tr'de patronun sectigi kalici ses).
+    $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
+    if (!$ses && $dil && $dil !== 'tr') { $kd = _qrDilKodlari(); if (isset($kd[$dil])) $ses = $kd[$dil]['tts']; }
     if (!$ses) $ses = resto_ayar_al('tts_ses', null); // patronun sectigi kalici ses (yoksa config varsayilani)
     $ad = $servis->uret($metin, $ses);
     if (!$ad) return response()->json(['basarili' => false, 'anahtar_var' => (string) config('services.google_tts.key', '') !== ''], 200);

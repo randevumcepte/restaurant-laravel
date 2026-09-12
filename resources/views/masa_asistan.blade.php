@@ -346,6 +346,7 @@
       <div class="as-t"><b>Sesli Asistan</b><span id="durum">Dokunup konuşun ya da yazın</span></div>
       <button class="as-x" onclick="sheetKapat()" aria-label="Kapat">✕</button>
     </div>
+    <div id="diller" class="cips" style="padding:4px 14px 2px"></div>
     <div id="sohbet"></div>
     <div class="cips">
       <div class="cip" onclick="sor('Menüde neler var?')">📋 Menü</div>
@@ -673,7 +674,7 @@ function cihazKonus(temiz, done){
 // Sunucu Google TTS; bitince done() cagirir. Basarili ise true.
 async function cloudKonus(temiz, done){
   try{
-    const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA})});
+    const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA, dil: aktifDil})});
     const j = await r.json();
     if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.onended = done; sesCalar.onerror = done; sesCalar.play().catch(()=>{}); return true; }
   }catch(e){}
@@ -789,7 +790,14 @@ function sesSeviyesi(){
 }
 /* ===== SUNUCU STT: mikrofonu WAV kaydet -> /api/qr/stt -> metin. Her cihazda (iPhone dahil)
    deterministik calisir; tarayici Web Speech kirilganligi + mic cakismasi + echo biter. ===== */
-let _stream=null, _sttLimit=false;
+let _stream=null, _sttLimit=false, aktifDil='tr';
+// Desteklenen diller (bayrak). Musteri konusunca otomatik gecis + elle secim.
+const DILLER={tr:'🇹🇷',en:'🇬🇧',ar:'🇸🇦',de:'🇩🇪',ru:'🇷🇺',es:'🇪🇸',fr:'🇫🇷',nl:'🇳🇱',it:'🇮🇹',uk:'🇺🇦'};
+function dilCiz(){
+  const w=document.getElementById('diller'); if(!w) return;
+  w.innerHTML=Object.keys(DILLER).map(k=>`<div class="cip" onclick="dilSec('${k}')" style="padding:7px 11px;${k===aktifDil?'border-color:var(--gold);background:rgba(233,196,106,.16)':''}">${DILLER[k]}</div>`).join('');
+}
+function dilSec(k){ if(!DILLER[k]) return; aktifDil=k; dilCiz(); durumEl.textContent = (k==='tr'?'Türkçe':k.toUpperCase())+' — dokunup konuşun ya da yazın'; }
 async function micHazir(){
   if(_stream && _stream.active) return true;
   try{
@@ -851,10 +859,11 @@ async function dinleSunucu(){
   if(!wav) return '';
   durumEl.textContent='Anlıyorum…';
   try{
-    const fd=new FormData(); fd.append('ses', wav, 'ses.wav'); fd.append('masa', MASA);
+    const fd=new FormData(); fd.append('ses', wav, 'ses.wav'); fd.append('masa', MASA); fd.append('dil', aktifDil);
     const r=await fetch('/api/qr/stt',{method:'POST', body:fd});
     const j=await r.json();
     if(j.limit){ _sttLimit=true; return ''; }   // gunluk maliyet tavani -> yaziya dus
+    if(j.dil && j.dil!==aktifDil && DILLER[j.dil]){ aktifDil=j.dil; dilCiz(); }   // OTOMATIK dil gecisi
     return (j.metin||'').trim();
   }catch(e){ return ''; }
 }
@@ -897,7 +906,7 @@ async function sunucudanCevap(soru){
   durumEl.textContent='Düşünüyorum…';
   try{
     const r = await fetch('/api/qr/asistan', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
-      body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || ''})});
+      body:new URLSearchParams({masa:MASA, soru, baglam: window.sonUrun || '', dil: aktifDil})});
     const j = await r.json();
     if(j.urun_baglam) window.sonUrun = j.urun_baglam;  // son konusulan tekil urunu hatirla
     else if(Array.isArray(j.kategoriler) || (Array.isArray(j.kartlar) && j.kartlar.length>1)) window.sonUrun=''; // kategori/coklu liste -> baglam belirsiz, temizle
@@ -1016,6 +1025,7 @@ function sayacBasla(){
 /* ---- Acilis: home hazirla; asistan panelde, sohbete karsilama koyulur (otomatik konusma YOK) ---- */
 window.addEventListener('load', ()=>{
   ekle('ai', SELAM);          // panel acilinca gorunur
+  dilCiz();                   // dil bayraklari
   homeYukle();
   sayacBasla();
   // Gomulu panelde (menu sayfasindaki yuzen widget) acilir acilmaz sesli sohbeti otomatik baslat.
