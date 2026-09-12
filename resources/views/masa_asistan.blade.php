@@ -866,16 +866,19 @@ async function dinleSunucu(){
   orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';
   const wav = await turKaydet();
   orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
-  if(!wav) return '';
+  if(!wav){ durumEl.textContent='Sizi duyamadım (mikrofon sessiz). Biraz yüksek/net konuşun ya da yazın.'; return ''; }
   durumEl.textContent='Anlıyorum…';
   try{
     const fd=new FormData(); fd.append('ses', wav, 'ses.wav'); fd.append('masa', MASA); fd.append('dil', aktifDil);
     const r=await fetch('/api/qr/stt',{method:'POST', body:fd});
     const j=await r.json();
     if(j.limit){ _sttLimit=true; return ''; }   // gunluk maliyet tavani -> yaziya dus
+    if(j.kod && j.kod!==200){ durumEl.textContent='Ses tanıma hatası: HTTP '+j.kod+' — Google Speech-to-Text API kapalı/kısıtlı olabilir.'; return ''; }
     if(j.dil && j.dil!==aktifDil && DILLER[j.dil]){ aktifDil=j.dil; dilCiz(); }   // OTOMATIK dil gecisi
-    return (j.metin||'').trim();
-  }catch(e){ return ''; }
+    const m=(j.metin||'').trim();
+    if(!m) durumEl.textContent='Sizi net duyamadım, tekrar eder misiniz?';
+    return m;
+  }catch(e){ durumEl.textContent='Bağlantı hatası, tekrar deneyin.'; return ''; }
 }
 
 // SOHBET DONGUSU (SIRA TABANLI): karsila -> [dinle(sunucu STT) -> isle -> konus] tekrar
