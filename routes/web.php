@@ -1810,6 +1810,26 @@ Route::post('/api/qr/asistan', function (Request $r) {
     return $res;
 });
 
+// Istemci metinlerini (karsilama/sistem) hedef dile cevir
+Route::post('/api/qr/cevir', function (Request $r) {
+    $metin = trim((string) $r->input('metin', ''));
+    $hedef = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('hedef', 'tr')));
+    if ($metin === '' || $hedef === 'tr' || $hedef === '') return response()->json(['metin' => $metin]);
+    return response()->json(['metin' => _qrCevir($metin, $hedef, 'tr')]);
+});
+
+// TESHIS: Translation API acik mi? Tarayicida ac -> HTTP 200 + ceviri gorursen calisir, 403 = kapali/kisitli.
+Route::get('/ceviri-test', function () {
+    $key = (string) config('services.google_tts.key', '');
+    if ($key === '') return response('ANAHTAR YOK (services.google_tts.key bos)')->header('Content-Type', 'text/plain; charset=utf-8');
+    $ch = curl_init('https://translation.googleapis.com/language/translate/v2?key=' . $key);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode(['q' => 'Merhaba dünya, ne önerirsiniz?', 'target' => 'en', 'source' => 'tr', 'format' => 'text']), CURLOPT_TIMEOUT => 10]);
+    $resp = curl_exec($ch);
+    $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return response("HTTP $kod\n\n$resp\n\n(HTTP 200 + 'Hello world...' gorursen Translation API CALISIYOR. 403 = API kapali ya da anahtar kisitli.)")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 // ---- COK DILLI destek: dil -> STT/TTS kodlari + Google Translate cevirmen ----
 if (!function_exists('_qrDilKodlari')) {
     function _qrDilKodlari()

@@ -625,7 +625,7 @@ async function finalizeSiparis(){
         'Teşekkür ederim! 🎉 Siparişiniz mutfağa geçti, taptaze hazırlanıp masanıza gelecek. Afiyet olsun!',
         'Harika seçim! 🎉 Mutfağımıza ilettim, özenle hazırlanıyor; az sonra sofranızda. Afiyet olsun!',
       ];
-      const m = kapanislar[Math.floor((window.performance?performance.now():Date.now())) % kapanislar.length];
+      const m = await cevirYap(kapanislar[Math.floor((window.performance?performance.now():Date.now())) % kapanislar.length]);
       ekle('ai', m); await konus(m);
     } else { ekle('ai', j.hata || 'Siparişi gönderemedim, tekrar dener misiniz?'); sepetGuncelle(); }
   }catch(e){ ekle('ai','Bağlantı hatası, tekrar dener misiniz?'); sepetGuncelle(); }
@@ -797,7 +797,17 @@ function dilCiz(){
   const w=document.getElementById('diller'); if(!w) return;
   w.innerHTML=Object.keys(DILLER).map(k=>`<div class="cip" onclick="dilSec('${k}')" style="padding:7px 11px;${k===aktifDil?'border-color:var(--gold);background:rgba(233,196,106,.16)':''}">${DILLER[k]}</div>`).join('');
 }
-function dilSec(k){ if(!DILLER[k]) return; aktifDil=k; dilCiz(); durumEl.textContent = (k==='tr'?'Türkçe':k.toUpperCase())+' — dokunup konuşun ya da yazın'; }
+// Turkce sistem/karsilama metnini aktif dile cevir (sunucu Google Translate)
+async function cevirYap(tr){
+  if(aktifDil==='tr' || !tr) return tr;
+  try{ const r=await fetch('/api/qr/cevir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:tr, hedef:aktifDil})}); const j=await r.json(); return j.metin||tr; }catch(_){ return tr; }
+}
+async function sistemKonus(tr, goster){ const t=await cevirYap(tr); if(goster) ekle('ai', t); await konus(t); }
+async function dilSec(k){
+  if(!DILLER[k] || k===aktifDil) return;
+  konusKes(); aktifDil=k; dilCiz();
+  await sistemKonus(SELAM, true);   // YENI dilde karsila (hem metin hem ses o dilde)
+}
 async function micHazir(){
   if(_stream && _stream.active) return true;
   try{
@@ -882,17 +892,17 @@ async function basla(selamla=true){
   sohbetAktif=true; micBtn.classList.add('acik');
   const izin = await micHazir();
   if(!izin){ durumEl.textContent='Konuşmak için mikrofon izni gerekli. Dilerseniz aşağıdan yazabilirsiniz.'; sohbetAktif=false; micBtn.classList.remove('acik'); return; }
-  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM); ilkSelamVerildi = true; }
+  if(selamla){ await sistemKonus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM, false); ilkSelamVerildi = true; }
   let bos=0;
   while(sohbetAktif){
     const c = await dinleSunucu();
     if(!sohbetAktif) break;
-    if(_sttLimit){ _sttLimit=false; await konus('Şu an sesli asistan çok yoğun. Dilerseniz aşağıdan yazarak devam edebilirsiniz, buradayım.'); break; }
-    if(!c){ bos++; if(bos>=3){ await konus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.'); break; } continue; }
+    if(_sttLimit){ _sttLimit=false; await sistemKonus('Şu an sesli asistan çok yoğun. Dilerseniz aşağıdan yazarak devam edebilirsiniz, buradayım.', false); break; }
+    if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.', false); break; } continue; }
     bos=0;
     ekle('ben', c);
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
-    if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    if(iptalMi(c)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!', false); break; }
     const cevap = await sunucudanCevap(c);
     if(cevap) await konus(cevap);   // sira tabanli: tam konusur, sonra tekrar dinler
     if(kapatIstegi){ kapatIstegi=false; break; }
