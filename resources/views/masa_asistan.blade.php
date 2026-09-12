@@ -315,8 +315,16 @@
   html.embed #anladim{ display:block; text-align:center; color:#EAD9F5; font-size:14px; font-style:italic; min-height:20px; margin:10px 18px 0; }
   html.embed .as-t b, html.embed #durum, html.embed #anladim, html.embed #yazAc{ text-shadow:0 2px 12px rgba(0,0,0,.92); }
   /* orb renk durumlari: MOR = AI konuşuyor, YEŞİL = sıra sende */
-  #orb.aiKonus{ background:conic-gradient(from 0deg,#C4B5FD,#A855F7,#7C3AED,#C4B5FD) !important; box-shadow:0 0 56px rgba(139,59,234,.6) !important; animation:spin 3s linear infinite !important; }
-  #orb.dinliyor{ background:conic-gradient(from 0deg,#86EFAC,#22C55E,#16A34A,#86EFAC) !important; box-shadow:0 0 56px rgba(34,197,94,.55) !important; }
+  /* ORB = temiz ROBOT ikonu (soyut top DEĞİL): renkli daire + 🤖 + dalga; MOR=AI, YEŞİL=sıra sende */
+  html.embed #orb{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; display:flex; align-items:center; justify-content:center; animation:none !important; box-shadow:0 14px 44px rgba(124,58,237,.5) !important; }
+  html.embed #orb::after{ display:none !important; }
+  html.embed #orb .ikon{ display:block; font-size:66px; line-height:1; filter:drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+  html.embed #orb::before{ content:''; position:absolute; inset:0; border-radius:50%; border:3px solid rgba(255,255,255,.85); pointer-events:none; animation:orbDalga 2s ease-out infinite; }
+  @keyframes orbDalga{ 0%{ transform:scale(1); opacity:.7; } 100%{ transform:scale(1.55); opacity:0; } }
+  html.embed #orb.aiKonus{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
+  html.embed #orb.dinliyor{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
+  html.embed #diller{ display:none !important; }   /* dil artık ÜST menüden global; panelde bayrak yok */
+  #orb .ikon{ display:none; }
   #yazAc{ display:none; }
   html.embed #yazAc{ display:block; margin:16px auto 8px; background:transparent; border:none; color:#8b7a8d; font-size:12.5px; text-decoration:underline; cursor:pointer; }
   html.embed #app.yaziAcik footer{ display:flex !important; }
@@ -363,7 +371,7 @@
   <div id="asheet">
     <div class="as-tut"></div>
     <div class="as-bar">
-      <div id="orb" onclick="basla()"></div>
+      <div id="orb" onclick="basla()"><span class="ikon">🤖</span></div>
       <div class="as-t"><b>Sesli Asistan</b><span id="durum">Dokunup konuşun ya da yazın</span></div>
       <button class="as-x" onclick="sheetKapat()" aria-label="Kapat">✕</button>
     </div>
@@ -1090,7 +1098,8 @@ window.addEventListener('load', ()=>{
   sayacBasla();
   // Gomulu panelde (menu sayfasindaki yuzen widget) acilir acilmaz sesli sohbeti otomatik baslat.
   // Kullanicinin tiklamasi iframe'i olusturdugu icin aktivasyon var -> mikrofon/ses hemen calisir.
-  if(location.search.indexOf('autostart')>=0){ setTimeout(()=>{ try{ if(!sohbetAktif) basla(true); }catch(_){} }, 400); }
+  // iOS: mikrofon/ses ancak KULLANICI DOKUNUŞUYLA açılır -> otomatik başlatmıyoruz, robota dokun.
+  if(location.search.indexOf('autostart')>=0){ durumEl.textContent='🎤 Konuşmak için robota dokun'; }
 });
 </script>
 </body>

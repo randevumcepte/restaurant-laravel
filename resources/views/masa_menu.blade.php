@@ -321,25 +321,18 @@
   @keyframes aiPulse{ 0%{ transform:scale(.92); opacity:.55; } 100%{ transform:scale(1.55); opacity:0; } }
   @media(min-width:920px){ #aiFab{ right:26px; bottom:104px; width:66px; height:66px; font-size:30px; } }
 
-  /* Asistan GÖRÜNMEZ motor (orb YOK): iframe sadece sesi çalıştırır; durum alt menü robotuna yansır */
-  #aiPanel{ position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; pointer-events:none; overflow:hidden; display:none; z-index:1; }
-  #aiPanel.acik{ display:block; }
-  #aiFrameWrap{ width:100%; height:100%; }
+  /* Ortada YÜZEN robot paneli (kutu yok, şeffaf) — menü arkada görünür; içinde robot ikonu + yazı */
+  #aiPanel{ position:fixed; z-index:96; display:none; flex-direction:column; overflow:visible;
+    left:50%; top:50%; transform:translate(-50%,-50%); width:330px; max-width:92vw; height:470px; max-height:86dvh;
+    background:transparent; border:none; box-shadow:none; }
+  #aiPanel.acik{ display:flex; }
+  @media(min-width:920px){ #aiPanel{ width:350px; height:490px; } }
+  #aiPanel .ai-x{ position:absolute; top:-2px; right:-2px; z-index:3; width:34px; height:34px; border-radius:50%; border:none; background:rgba(20,10,22,.72); color:#fff; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+  #aiFrameWrap{ flex:1; min-height:0; display:flex; }
   @media(max-width:919px){ #aiFab{ display:none !important; } }   /* telefonda giriş = alt menü robotu */
-  /* Alt menü robot DURUM renkleri: MOR = AI konuşuyor, YEŞİL = sıra sende */
-  #altbar .qr .qi.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; box-shadow:0 10px 24px rgba(124,58,237,.6), 0 0 0 5px var(--navbg) !important; }
-  #altbar .qr .qi.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; box-shadow:0 10px 24px rgba(34,197,94,.6), 0 0 0 5px var(--navbg) !important; }
-  #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
-  #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
-  /* Asistan durum/anladım baloncuğu (alt menünün üstünde) */
-  #asDurum{ position:fixed; left:12px; right:12px; bottom:calc(90px + env(safe-area-inset-bottom)); z-index:84; display:none; justify-content:center; pointer-events:none; }
-  #asDurum.acik{ display:flex; }
-  #asDurum b{ background:linear-gradient(150deg,var(--gold-bg),var(--card)); border:1px solid var(--gold-bd); color:var(--ink); font-size:13.5px; font-weight:600; padding:9px 16px; border-radius:18px; box-shadow:0 12px 28px rgba(0,0,0,.4); max-width:92%; text-align:center; }
-  /* Dil bayrakları (asistan açıkken alt menü üstünde) */
-  #asDil{ position:fixed; left:0; right:0; bottom:calc(132px + env(safe-area-inset-bottom)); z-index:84; display:none; gap:7px; justify-content:center; flex-wrap:wrap; padding:0 12px; }
-  #asDil.acik{ display:flex; }
-  #asDil .bayrak{ background:var(--card); border:1px solid var(--cizgi); border-radius:16px; padding:6px 10px; font-size:16px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.25); }
-  #asDil .bayrak.act{ border-color:var(--gold); background:var(--gold-bg); }
+  /* Alt menü + masaüstü yüzen robot renk yankısı: MOR = AI konuşuyor, YEŞİL = sıra sende */
+  #altbar .qr .qi.ai, #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
+  #altbar .qr .qi.dinle, #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
 </style>
 </head>
 <body>
@@ -486,9 +479,10 @@
 
 <!-- ==================== YÜZEN AI ASISTAN (aynı sayfada, iframe embed) ==================== -->
 <button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan">🤖</button>
-<div id="aiPanel"><div id="aiFrameWrap"></div></div>
-<div id="asDil"></div>
-<div id="asDurum"><b id="asDurumT"></b></div>
+<div id="aiPanel">
+  <button class="ai-x" onclick="asistanKapat()" aria-label="Kapat">✕</button>
+  <div id="aiFrameWrap"></div>
+</div>
 
 <div id="toast"></div>
 
@@ -742,26 +736,18 @@ async function cagir(tip){
 }
 
 /* ---- AI asistan: AYNI sayfada YÜZEN panel (iframe embed) — ayrı sayfaya gitmez ---- */
-const DILLER_ALT={tr:'🇹🇷',en:'🇬🇧',ar:'🇸🇦',de:'🇩🇪',ru:'🇷🇺',es:'🇪🇸',fr:'🇫🇷',nl:'🇳🇱',it:'🇮🇹',uk:'🇺🇦'};
-let _asAktif=false, _asDil='tr';
+let _asAktif=false;
 function asistanAc(){
   if(_asAktif){ asistanKapat(); return; }   // 2. dokunuş = kapat
   const p=document.getElementById('aiPanel'), w=document.getElementById('aiFrameWrap');
   const wide = (window.innerWidth>=920) ? '&wide=1' : '';
-  // GÖRÜNMEZ motor: iframe sesi çalıştırır; orb yok. Durum alt menü robotuna yansır.
-  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1'+wide+'" allow="microphone; autoplay" style="width:100%;height:100%;border:none"></iframe>';
+  const dil = (window.sayfaDil && window.sayfaDil!=='tr') ? ('&dil='+window.sayfaDil) : '';   // global dil
+  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1'+wide+dil+'" allow="microphone; autoplay" style="width:100%;height:100%;border:none;background:transparent"></iframe>';
   p.classList.add('acik'); _asAktif=true;
-  asDilCiz(); document.getElementById('asDil').classList.add('acik');
-  robotHal('ai'); asDurumYaz('🔊 Merhaba, sizi dinliyorum…');
 }
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
-  if(hal==='ai') asDurumYaz('🔊 Konuşuyorum…');
-  else if(hal==='dinle') asDurumYaz('🎤 Sizi dinliyorum, buyurun…');
 }
-function asDurumYaz(t){ const d=document.getElementById('asDurum'), b=document.getElementById('asDurumT'); if(b) b.textContent=t; if(d) d.classList.add('acik'); }
-function asDilCiz(){ const w=document.getElementById('asDil'); if(w) w.innerHTML=Object.keys(DILLER_ALT).map(k=>`<div class="bayrak${k===_asDil?' act':''}" onclick="asDilSec('${k}')">${DILLER_ALT[k]}</div>`).join(''); }
-function asDilSec(k){ if(!DILLER_ALT[k]) return; _asDil=k; asDilCiz(); const f=document.querySelector('#aiFrameWrap iframe'); if(f&&f.contentWindow){ try{ f.contentWindow.postMessage({resto:'dilSet',dil:k},'*'); }catch(_){} } }
 /* ---- Çok dilli menü: seçili dilde menüyü sunucudan çek (ONBELLEKLI, bir kez) ---- */
 async function menuVeriDil(dil){
   if(!dil || dil==='tr') return _data;
@@ -782,8 +768,7 @@ async function asistanMenuGoster(dil){
 /* ---- Asistan panelinden gelen menü -> ANA ekranda (seçili dilde) göster ---- */
 window.addEventListener('message', async (e)=>{
   const d=e.data||{};
-  if(d.resto==='durum'){ robotHal(d.hal); return; }                                  // robot rengi
-  if(d.resto==='anladim'){ if(d.metin) asDurumYaz('“'+d.metin+'”'); return; }          // ne duyduğu
+  if(d.resto==='durum'){ robotHal(d.hal); return; }                                  // alt menü robot rengi yankısı
   if(d.resto==='kartlar' && Array.isArray(d.kartlar) && d.kartlar.length){
     let bak=_urun;
     if(d.dil && d.dil!=='tr'){ await menuVeriDil(d.dil); if(_urunDil[d.dil]) bak=_urunDil[d.dil]; }
@@ -818,8 +803,6 @@ function asistanKapat(){
   document.getElementById('aiPanel').classList.remove('acik');
   document.getElementById('aiFrameWrap').innerHTML='';   // iframe kaldır -> mikrofon/ses durur
   _asAktif=false; robotHal('bekle');
-  document.getElementById('asDil').classList.remove('acik');
-  document.getElementById('asDurum').classList.remove('acik');
 }
 async function hesapOde(){
   try{
