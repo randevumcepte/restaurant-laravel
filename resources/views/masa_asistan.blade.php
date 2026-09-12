@@ -648,6 +648,12 @@ function seciSes(){
 }
 if(synth){ synth.onvoiceschanged = seciSes; seciSes(); }
 let sesCalar = new Audio();
+let _sesAcildi=false;
+// iOS: sesi ilk KULLANICI DOKUNUSUNDA (mic/gonder/bayrak) kilitle -> sonraki async TTS'ler calisir.
+function sesUnlock(){
+  if(_sesAcildi) return;
+  try{ sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){}
+}
 let konusuyor = false;
 let bargeAktif = false;      // asistan konusurken musteri konusmaya basladi mi (VAD)
 let _bekleyenCoz = null;     // siradaki kullanici sozunu bekleyen cozucu (dinle ya da barge)
@@ -676,7 +682,7 @@ async function cloudKonus(temiz, done){
   try{
     const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({metin:temiz, masa:MASA, dil: aktifDil})});
     const j = await r.json();
-    if(j.basarili && j.url){ sesDurdur(); sesCalar = new Audio(j.url); sesCalar.onended = done; sesCalar.onerror = done; sesCalar.play().catch(()=>{}); return true; }
+    if(j.basarili && j.url){ sesDurdur(); sesCalar.src = j.url; sesCalar.onended = done; sesCalar.onerror = done; const p=sesCalar.play(); if(p&&p.catch) p.catch(()=>{ done(); }); return true; }
   }catch(e){}
   return false;
 }
@@ -804,6 +810,7 @@ async function cevirYap(tr){
 }
 async function sistemKonus(tr, goster){ const t=await cevirYap(tr); if(goster) ekle('ai', t); await konus(t); }
 async function dilSec(k){
+  sesUnlock();   // iOS ses kilidi (dokunus icinde)
   if(!DILLER[k] || k===aktifDil) return;
   konusKes(); aktifDil=k; dilCiz();
   await sistemKonus(SELAM, true);   // YENI dilde karsila (hem metin hem ses o dilde)
@@ -890,6 +897,7 @@ async function dinleSunucu(){
 // SOHBET DONGUSU (SIRA TABANLI): karsila -> [dinle(sunucu STT) -> isle -> konus] tekrar
 let _sonBaslaAn = 0;
 async function basla(selamla=true){
+  sesUnlock();   // iOS ses kilidi (dokunus icinde)
   const simdi = (window.performance && performance.now) ? performance.now() : (+new Date());
   if(simdi - _sonBaslaAn < 700) return; // cift tetiklemeyi yut
   _sonBaslaAn = simdi;
@@ -950,8 +958,9 @@ async function sunucudanCevap(soru){
 }
 
 /* ---- Yazili / cip gonderimi (mikrofonsuz tek seferlik) ---- */
-function gonderMetin(){ const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
+function gonderMetin(){ sesUnlock(); const el=document.getElementById('metin'); const t=el.value.trim(); if(!t)return; el.value=''; sor(t); }
 async function sor(soru){
+  sesUnlock();   // iOS ses kilidi (dokunus icinde)
   sheetAc();
   ekle('ben', soru);
   if(siparisModu && sepet.length && bitirMi(soru)){ await finalizeSiparis(); return; }
