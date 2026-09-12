@@ -874,7 +874,7 @@ async function dinleSunucu(){
     const j=await r.json();
     if(j.limit){ _sttLimit=true; return ''; }   // gunluk maliyet tavani -> yaziya dus
     if(j.kod && j.kod!==200){ durumEl.textContent='Ses tanıma hatası: HTTP '+j.kod+' — Google Speech-to-Text API kapalı/kısıtlı olabilir.'; return ''; }
-    if(j.dil && j.dil!==aktifDil && DILLER[j.dil]){ aktifDil=j.dil; dilCiz(); }   // OTOMATIK dil gecisi
+    // Dil SADECE bayrakla degisir (otomatik gecis yok) -> secilen dil kilitli kalir
     const m=(j.metin||'').trim();
     if(!m) durumEl.textContent='Sizi net duyamadım, tekrar eder misiniz?';
     return m;
