@@ -333,6 +333,13 @@
   /* Alt menü + masaüstü yüzen robot renk yankısı: MOR = AI konuşuyor, YEŞİL = sıra sende */
   #altbar .qr .qi.ai, #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
   #altbar .qr .qi.dinle, #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
+  /* Global dil seçici dropdown */
+  #dilMenu{ position:fixed; top:54px; right:12px; z-index:100; display:none; flex-direction:column; gap:2px; padding:6px;
+    background:var(--card); border:1px solid var(--cizgi); border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.45); max-height:72vh; overflow-y:auto; }
+  #dilMenu.acik{ display:flex; }
+  #dilMenu button{ display:flex; align-items:center; gap:10px; background:none; border:none; color:var(--ink); font-size:14px; font-weight:600; padding:9px 14px; border-radius:10px; cursor:pointer; white-space:nowrap; text-align:left; }
+  #dilMenu button.act{ background:var(--gold-bg); color:var(--gold); }
+  @media(min-width:920px){ #dilMenu{ top:auto; bottom:120px; left:20px; right:auto; } }
 </style>
 </head>
 <body>
@@ -342,7 +349,7 @@
   <header>
     <button class="modbtn" id="modBtn" onclick="modDegistir()" aria-label="Koyu/Açık">🌙</button>
     <span class="brand"><span class="toque">👨‍🍳</span><span class="bt"><b>{{ $sube->ad ?? 'ResteOS' }}</b><i>RESTORAN</i></span></span>
-    <button class="trbtn">TR ▾</button>
+    <button class="trbtn" id="trbtn" onclick="dilMenuAc(event)">TR ▾</button>
   </header>
 
   <div class="hg">
@@ -401,7 +408,7 @@
     <button class="sbtn cagir" onclick="cagir('garson')"><span>🔔</span><span><b>Garson Çağır</b><i>Size hemen yardımcı olalım</i></span></button>
     <button class="sbtn hesap" onclick="hesapOde()"><span>💳</span><span><b>Hesabı Öde</b><i>Online öde ya da garsondan iste</i></span></button>
     <button class="sbtn cagir" onclick="asistanAc()"><span>🤖</span><span><b>Yapay Zekâ Asistan</b><i>Ürün öner, soru sor, yardım al</i></span></button>
-    <div class="dil">🌐 Türkçe ▾</div>
+    <div class="dil" id="dilDesk" onclick="dilMenuAc(event)">🌐 Türkçe ▾</div>
   </aside>
 
   <main id="deskmain">
@@ -484,6 +491,7 @@
   <div id="aiFrameWrap"></div>
 </div>
 
+<div id="dilMenu"></div>
 <div id="toast"></div>
 
 <script>
@@ -748,6 +756,42 @@ function asistanAc(){
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
 }
+
+/* ============ GLOBAL DİL (üst seçici): menü + arayüz + AI hepsi seçilen dile ============ */
+const DILAD={tr:'🇹🇷 Türkçe',en:'🇬🇧 English',ar:'🇸🇦 العربية',de:'🇩🇪 Deutsch',ru:'🇷🇺 Русский',es:'🇪🇸 Español',fr:'🇫🇷 Français',nl:'🇳🇱 Nederlands',it:'🇮🇹 Italiano',uk:'🇺🇦 Українська'};
+window.sayfaDil=(function(){ try{ return localStorage.getItem('qr_dil')||'tr'; }catch(e){ return 'tr'; } })();
+let _cvOrijinal=null;
+function dilMenuAc(ev){ if(ev) ev.stopPropagation(); const m=document.getElementById('dilMenu'); m.innerHTML=Object.keys(DILAD).map(k=>`<button class="${k===window.sayfaDil?'act':''}" onclick="dilSecGlobal('${k}')">${DILAD[k]}</button>`).join(''); m.classList.toggle('acik'); }
+document.addEventListener('click', ()=>{ const m=document.getElementById('dilMenu'); if(m) m.classList.remove('acik'); });
+function dilEtiketGuncelle(dil){ const tb=document.getElementById('trbtn'); if(tb) tb.textContent=dil.toUpperCase()+' ▾'; const dd=document.getElementById('dilDesk'); if(dd) dd.textContent='🌐 '+(DILAD[dil]||'🇹🇷 Türkçe').replace(/^\S+\s/,'')+' ▾'; }
+async function dilSecGlobal(dil){
+  const m=document.getElementById('dilMenu'); if(m) m.classList.remove('acik');
+  if(!DILAD[dil]) return;
+  window.sayfaDil=dil; try{ localStorage.setItem('qr_dil',dil); }catch(e){}
+  dilEtiketGuncelle(dil);
+  await sayfaCevir(dil);
+  const f=document.querySelector('#aiFrameWrap iframe'); if(f&&f.contentWindow){ try{ f.contentWindow.postMessage({resto:'dilSet',dil},'*'); }catch(_){} }
+}
+function _cvEl(el){ const tn=[...el.childNodes].filter(n=>n.nodeType===3 && n.textContent.trim()); return tn.length ? tn.map(n=>n.textContent).join(' ').trim() : el.textContent.trim(); }
+function _cvSet(el,metin){ const tn=[...el.childNodes].filter(n=>n.nodeType===3 && n.textContent.trim()); if(tn.length){ tn[0].textContent=' '+metin+' '; for(let i=1;i<tn.length;i++) tn[i].textContent=''; } else el.textContent=metin; }
+async function cevirCoklu(metinler,dil){
+  if(dil==='tr') return metinler;
+  try{ const r=await fetch('/api/qr/cevir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metinler:JSON.stringify(metinler),hedef:dil})}); const j=await r.json(); return (j.metinler&&j.metinler.length===metinler.length)?j.metinler:metinler; }catch(_){ return metinler; }
+}
+async function sayfaCevir(dil){
+  const seller=['.hg h1','.hg p','.bbas b','.bbas a','.ozel .ic b','.ozel .ic p','.sayac i','#altbar button','#menu .mbar b',
+    '#side .nav a','#side .sbtn b','#side .sbtn i','.hero .scr','.hero .big','.hero .sub','.hero .kesfet','.qrban .qt b','.qrban .qt p','.qrban .okut'];
+  if(!_cvOrijinal){ _cvOrijinal=[]; seller.forEach(s=>document.querySelectorAll(s).forEach(el=>_cvOrijinal.push({el,m:_cvEl(el)}))); const ara=document.getElementById('ara'); if(ara) _cvOrijinal.push({el:ara,ph:ara.getAttribute('placeholder')||''}); }
+  if(dil==='tr'){ _cvOrijinal.forEach(o=>{ if(o.ph!==undefined) o.el.setAttribute('placeholder',o.ph); else _cvSet(o.el,o.m); }); }
+  else{
+    const metinler=_cvOrijinal.map(o=> o.ph!==undefined ? o.ph : o.m);
+    const cev=await cevirCoklu(metinler,dil);
+    _cvOrijinal.forEach((o,i)=>{ const t=cev[i]||metinler[i]; if(o.ph!==undefined) o.el.setAttribute('placeholder',t); else _cvSet(o.el,t); });
+  }
+  const kats=await menuVeriDil(dil);
+  _data=kats; _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) _urun[u.urun_id]=u; }));
+  try{ chipleriCiz(); }catch(_){} try{ populerCiz('*'); }catch(_){} try{ dgridCiz(); }catch(_){}
+}
 /* ---- Çok dilli menü: seçili dilde menüyü sunucudan çek (ONBELLEKLI, bir kez) ---- */
 async function menuVeriDil(dil){
   if(!dil || dil==='tr') return _data;
@@ -841,7 +885,7 @@ function modDegistir(){
 (function(){ let m='{{ $mod ?? "koyu" }}'; try{ m=localStorage.getItem('qr_mod')||m; }catch(e){} modUygula(m); })();
 
 // Sayfa acilinca AI asistan kutusu OTOMATIK acilir ve (autostart ile) konusmaya baslar.
-window.addEventListener('load',()=>{ yukle(); sayac(); asistanAc(); });
+window.addEventListener('load', async ()=>{ await yukle(); sayac(); if(window.sayfaDil && window.sayfaDil!=='tr'){ dilEtiketGuncelle(window.sayfaDil); sayfaCevir(window.sayfaDil); } });
 </script>
 </body>
 </html>

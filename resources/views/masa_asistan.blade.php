@@ -832,6 +832,7 @@ function sesSeviyesi(){
 let _stream=null, _sttLimit=false, aktifDil='tr';
 // Desteklenen diller (bayrak). Musteri konusunca otomatik gecis + elle secim.
 const DILLER={tr:'🇹🇷',en:'🇬🇧',ar:'🇸🇦',de:'🇩🇪',ru:'🇷🇺',es:'🇪🇸',fr:'🇫🇷',nl:'🇳🇱',it:'🇮🇹',uk:'🇺🇦'};
+try{ const _d=new URLSearchParams(location.search).get('dil'); if(_d && DILLER[_d]) aktifDil=_d; }catch(_){}   // global dil
 function dilCiz(){
   const w=document.getElementById('diller'); if(!w) return;
   w.innerHTML=Object.keys(DILLER).map(k=>`<div class="cip" onclick="dilSec('${k}')" style="padding:7px 11px;${k===aktifDil?'border-color:var(--gold);background:rgba(233,196,106,.16)':''}">${DILLER[k]}</div>`).join('');

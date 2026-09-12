@@ -1810,10 +1810,18 @@ Route::post('/api/qr/asistan', function (Request $r) {
     return $res;
 });
 
-// Istemci metinlerini (karsilama/sistem) hedef dile cevir
+// Istemci metinlerini (karsilama/sistem/arayuz) hedef dile cevir; tekil (metin) veya toplu (metinler=JSON dizi)
 Route::post('/api/qr/cevir', function (Request $r) {
-    $metin = trim((string) $r->input('metin', ''));
     $hedef = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('hedef', 'tr')));
+    if ($r->filled('metinler')) {
+        $arr = json_decode((string) $r->input('metinler'), true);
+        if (!is_array($arr)) $arr = [];
+        if ($hedef === 'tr' || $hedef === '' || empty($arr)) return response()->json(['metinler' => $arr]);
+        $out = [];
+        foreach (array_chunk($arr, 100) as $c) $out = array_merge($out, _qrCevirCoklu($c, $hedef, 'tr'));
+        return response()->json(['metinler' => (count($out) === count($arr)) ? $out : $arr]);
+    }
+    $metin = trim((string) $r->input('metin', ''));
     if ($metin === '' || $hedef === 'tr' || $hedef === '') return response()->json(['metin' => $metin]);
     return response()->json(['metin' => _qrCevir($metin, $hedef, 'tr')]);
 });
