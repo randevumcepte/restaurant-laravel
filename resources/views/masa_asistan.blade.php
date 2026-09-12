@@ -729,7 +729,7 @@ function konus(t, bargeIn){
     if(sessizMod){ resolve(null); return; }   // menuyu inceleme modunda asistan susar
     const temiz = seseHazirla(t);
     if(!temiz){ resolve(null); return; }
-    konusuyor = true; bargeAktif = false; try{ orb.classList.add('aiKonus'); }catch(_){}   // MOR: AI konuşuyor
+    konusuyor = true; bargeAktif = false; try{ orb.classList.add('aiKonus'); }catch(_){} postDurum('ai');   // MOR: AI konuşuyor
     let bitti=false, vad=null, bargeWatch=null;
     const emniyet = setTimeout(()=>bit(null), Math.min(22000, 3000 + temiz.length*95));
     function bit(userText){
@@ -840,6 +840,11 @@ async function dilSec(k){
   konusKes(); aktifDil=k; dilCiz();
   await sistemKonus(SELAM, true);   // YENI dilde karsila (hem metin hem ses o dilde)
 }
+// Durumu EBEVEYNE bildir (alt menudeki robot rengi + yazi icin). hal: ai | dinle | bekle
+function postDurum(hal){ if(location.search.indexOf('embed')>=0 && window.parent!==window){ try{ window.parent.postMessage({resto:'durum', hal:hal}, '*'); }catch(_){} } }
+function postAnladim(m){ if(location.search.indexOf('embed')>=0 && window.parent!==window){ try{ window.parent.postMessage({resto:'anladim', metin:m}, '*'); }catch(_){} } }
+// Ebeveynden (alt menü bayrakları) dil seçimi
+window.addEventListener('message', function(e){ const d=e&&e.data; if(d && d.resto==='dilSet' && DILLER[d.dil]) dilSec(d.dil); });
 // iOS TUZAGI: her tur YENI AudioContext acmak, Safari'de askida kalip mikrofon ornegi vermiyordu ("sessiz").
 // COZUM: mikrofonu + AudioContext + islemciyi TEK sefer ac, surekli acik tut; her tur sadece kayit bayragi ac/kapa.
 let _actx=null, _proc=null, _srSample=48000;
@@ -902,7 +907,7 @@ function pcmToWav(chunks, sr){
 // Bir tur dinle -> sunucudan metin
 async function dinleSunucu(){
   const _an=document.getElementById('anladim'); if(_an) _an.textContent='';
-  orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';   // YEŞİL: sıra sende
+  orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…'; postDurum('dinle');   // YEŞİL: sıra sende
   const wav = await turKaydet();
   orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
   if(!wav){ durumEl.textContent='Sizi duyamadım (mikrofon sessiz). Biraz yüksek/net konuşun ya da yazın.'; return ''; }
@@ -916,7 +921,7 @@ async function dinleSunucu(){
     // Dil SADECE bayrakla degisir (otomatik gecis yok) -> secilen dil kilitli kalir
     const m=(j.metin||'').trim();
     if(!m){ durumEl.textContent='Sizi net duyamadım, tekrar eder misiniz?'; }
-    else if(_an){ _an.textContent='“'+m+'”'; }   // 'anladım' satırı
+    else { if(_an) _an.textContent='“'+m+'”'; postAnladim(m); }   // 'anladım' satırı + ebeveyne
     return m;
   }catch(e){ durumEl.textContent='Bağlantı hatası, tekrar deneyin.'; return ''; }
 }
@@ -951,7 +956,7 @@ async function basla(selamla=true){
     if(cevap) await konus(cevap);   // sira tabanli: tam konusur, sonra tekrar dinler
     if(kapatIstegi){ kapatIstegi=false; break; }
   }
-  sohbetAktif=false; micBtn.classList.remove('acik');
+  sohbetAktif=false; micBtn.classList.remove('acik'); postDurum('bekle');
   if(!konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
 }
 
