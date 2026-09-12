@@ -299,6 +299,25 @@
   html.embed #asheet{ position:static !important; transform:none !important; flex:1; height:auto;
     border:none; border-radius:0; box-shadow:none; }
   html.embed #asheet .as-x{ display:none; } /* kapatma dıştaki panel başlığında */
+
+  /* ===== ORB-MERKEZLI (embed): yazışma kutusu YOK; büyük renk-kodlu orb + 'anladım' satırı + bayraklar ===== */
+  html.embed #sohbet, html.embed footer, html.embed .cips{ display:none !important; }
+  html.embed #asheet{ justify-content:flex-start; }
+  html.embed .as-bar{ flex-direction:column; align-items:center; gap:14px; padding:30px 16px 4px; }
+  html.embed .as-bar #orb{ width:152px; height:152px; }
+  html.embed .as-bar #orb::after{ inset:34px; }
+  html.embed .as-t{ align-items:center; }
+  html.embed .as-t b{ font-size:18px; }
+  html.embed #durum{ text-align:center; font-size:15px; max-width:340px; margin:0 auto; }
+  html.embed #diller{ justify-content:center; flex-wrap:wrap; margin-top:16px; }
+  #anladim{ display:none; }
+  html.embed #anladim{ display:block; text-align:center; color:#D6BBF3; font-size:14px; font-style:italic; min-height:20px; margin:10px 18px 0; }
+  /* orb renk durumlari: MOR = AI konuşuyor, YEŞİL = sıra sende */
+  #orb.aiKonus{ background:conic-gradient(from 0deg,#C4B5FD,#A855F7,#7C3AED,#C4B5FD) !important; box-shadow:0 0 56px rgba(139,59,234,.6) !important; animation:spin 3s linear infinite !important; }
+  #orb.dinliyor{ background:conic-gradient(from 0deg,#86EFAC,#22C55E,#16A34A,#86EFAC) !important; box-shadow:0 0 56px rgba(34,197,94,.55) !important; }
+  #yazAc{ display:none; }
+  html.embed #yazAc{ display:block; margin:16px auto 8px; background:transparent; border:none; color:#8b7a8d; font-size:12.5px; text-decoration:underline; cursor:pointer; }
+  html.embed #app.yaziAcik footer{ display:flex !important; }
 </style>
 </head>
 <body>
@@ -347,6 +366,8 @@
       <button class="as-x" onclick="sheetKapat()" aria-label="Kapat">✕</button>
     </div>
     <div id="diller" class="cips" style="padding:4px 14px 2px"></div>
+    <div id="anladim"></div>
+    <button id="yazAc" onclick="yaziToggle()">⌨️ Yazmak istersen dokun</button>
     <div id="sohbet"></div>
     <div class="cips">
       <div class="cip" onclick="sor('Menüde neler var?')">📋 Menü</div>
@@ -654,6 +675,8 @@ function sesUnlock(){
   if(_sesAcildi) return;
   try{ sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){}
 }
+// Gurultulu ortam yedegi: yazi kutusunu ac/kapa (embed orb modunda)
+function yaziToggle(){ try{ document.getElementById('app').classList.toggle('yaziAcik'); }catch(_){} }
 let konusuyor = false;
 let bargeAktif = false;      // asistan konusurken musteri konusmaya basladi mi (VAD)
 let _bekleyenCoz = null;     // siradaki kullanici sozunu bekleyen cozucu (dinle ya da barge)
@@ -704,13 +727,13 @@ function konus(t, bargeIn){
     if(sessizMod){ resolve(null); return; }   // menuyu inceleme modunda asistan susar
     const temiz = seseHazirla(t);
     if(!temiz){ resolve(null); return; }
-    konusuyor = true; bargeAktif = false;
+    konusuyor = true; bargeAktif = false; try{ orb.classList.add('aiKonus'); }catch(_){}   // MOR: AI konuşuyor
     let bitti=false, vad=null, bargeWatch=null;
     const emniyet = setTimeout(()=>bit(null), Math.min(22000, 3000 + temiz.length*95));
     function bit(userText){
       if(bitti) return; bitti=true;
       clearTimeout(emniyet); clearTimeout(bargeWatch); if(vad) clearInterval(vad);
-      _konusBit=null; _bekleyenCoz=null; konusuyor=false; bargeAktif=false; sesDurdur();
+      _konusBit=null; _bekleyenCoz=null; konusuyor=false; bargeAktif=false; try{ orb.classList.remove('aiKonus'); }catch(_){} sesDurdur();
       resolve(userText || null);
     }
     _konusBit = ()=>bit(null);
@@ -876,7 +899,8 @@ function pcmToWav(chunks, sr){
 }
 // Bir tur dinle -> sunucudan metin
 async function dinleSunucu(){
-  orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';
+  const _an=document.getElementById('anladim'); if(_an) _an.textContent='';
+  orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';   // YEŞİL: sıra sende
   const wav = await turKaydet();
   orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
   if(!wav){ durumEl.textContent='Sizi duyamadım (mikrofon sessiz). Biraz yüksek/net konuşun ya da yazın.'; return ''; }
@@ -889,7 +913,8 @@ async function dinleSunucu(){
     if(j.kod && j.kod!==200){ durumEl.textContent='Ses tanıma hatası: HTTP '+j.kod+' — Google Speech-to-Text API kapalı/kısıtlı olabilir.'; return ''; }
     // Dil SADECE bayrakla degisir (otomatik gecis yok) -> secilen dil kilitli kalir
     const m=(j.metin||'').trim();
-    if(!m) durumEl.textContent='Sizi net duyamadım, tekrar eder misiniz?';
+    if(!m){ durumEl.textContent='Sizi net duyamadım, tekrar eder misiniz?'; }
+    else if(_an){ _an.textContent='“'+m+'”'; }   // 'anladım' satırı
     return m;
   }catch(e){ durumEl.textContent='Bağlantı hatası, tekrar deneyin.'; return ''; }
 }
