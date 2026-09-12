@@ -125,13 +125,17 @@
   .rozet span{ font-size:18px; }
 
   /* alt nav */
-  #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:60; display:flex; align-items:flex-end; justify-content:space-around;
+  #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:85; display:flex; align-items:flex-end; justify-content:space-around;
     padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:var(--navbg); backdrop-filter:blur(14px); border-top:1px solid var(--cizgi); }
   #altbar button{ flex:1; background:none; border:none; color:var(--sessiz); font-size:10.5px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 0; }
   #altbar button span{ font-size:19px; } #altbar button.act{ color:var(--gold); }
   #altbar .qr{ flex:0 0 auto; }
-  #altbar .qr .qi{ width:58px; height:58px; margin-top:-24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:23px; color:#fff;
-    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 8px 22px rgba(139,59,234,.6), 0 0 0 5px var(--navbg); }
+  #altbar .qr .qi{ position:relative; width:64px; height:64px; margin-top:-28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:26px; color:#fff;
+    background:linear-gradient(135deg,var(--mor),var(--mavi)); box-shadow:0 10px 24px rgba(139,59,234,.6), 0 0 0 5px var(--navbg); }
+  /* PATLAYAN DALGA: 'dokun bana' hissi (iki halka, kaymalı) */
+  #altbar .qr .qi::before, #altbar .qr .qi::after{ content:''; position:absolute; inset:0; border-radius:50%; border:2.5px solid rgba(255,255,255,.9); pointer-events:none; animation:qrDalga 2.2s ease-out infinite; }
+  #altbar .qr .qi::after{ animation-delay:1.1s; }
+  @keyframes qrDalga{ 0%{ transform:scale(1); opacity:.75; } 100%{ transform:scale(2); opacity:0; } }
   .nrozet{ position:absolute; top:-3px; right:calc(50% - 22px); background:#F43F5E; color:#fff; font-size:10px; font-weight:800; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
 
   /* ==================== TABLET / GENIS EKRAN ==================== */
@@ -203,6 +207,7 @@
 
   /* ==================== ORTAK OVERLAY'LER ==================== */
   .ov{ position:fixed; inset:0; z-index:80; display:none; }
+  #sepet, #detay{ z-index:92; }   /* sepet/detay alt menünün ÜSTÜNDE (85) */
   .ov.acik{ display:flex; }
   .ov-bg{ position:absolute; inset:0; background:rgba(6,4,10,.7); backdrop-filter:blur(4px); }
 
@@ -268,7 +273,7 @@
     background:linear-gradient(135deg,rgba(139,59,234,.3),rgba(51,20,54,.65)); border-bottom:1px solid var(--cizgi); backdrop-filter:blur(10px); }
   #menu .mbar b{ font-family:var(--serif); font-size:19px; color:var(--gold); }
   #menu .mbar .x{ margin-left:auto; background:rgba(255,255,255,.16); color:#fff; border:none; font-size:13.5px; font-weight:800; padding:9px 15px; border-radius:22px; }
-  #menu .mbody{ padding:6px 16px 40px; max-width:1000px; margin:0 auto; width:100%; }
+  #menu .mbody{ padding:6px 16px 100px; max-width:1000px; margin:0 auto; width:100%; }   /* alt menü için altta boşluk */
   #menu .kat{ display:flex; align-items:center; gap:10px; font-family:var(--serif); font-size:21px; font-weight:800; margin:24px 2px 12px; }
   #menu .kat span{ font-size:24px; } #menu .kat::after{ content:''; flex:1; height:2px; margin-left:6px; border-radius:2px; background:linear-gradient(90deg,var(--gold),transparent); }
   #menu .mgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
@@ -317,7 +322,7 @@
   @media(min-width:920px){ #aiFab{ right:26px; bottom:104px; width:66px; height:66px; font-size:30px; } }
 
   /* KUTU YOK: sadece ortada yüzen orb (şeffaf) — menü arkada görünür */
-  #aiPanel{ position:fixed; z-index:90; display:none; flex-direction:column; overflow:visible;
+  #aiPanel{ position:fixed; z-index:96; display:none; flex-direction:column; overflow:visible;
     left:50%; top:50%; transform:translate(-50%,-50%); width:340px; max-width:92vw; height:500px; max-height:88dvh;
     background:transparent; border:none; box-shadow:none; }
   #aiPanel.acik{ display:flex; animation:aiUp .3s cubic-bezier(.2,.8,.2,1); }
