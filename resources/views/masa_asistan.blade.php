@@ -874,8 +874,14 @@ async function micHazir(){
       let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
       const rms = Math.sqrt(s/d.length);
       _rec.elapsed += d.length/_srSample;
-      if(rms > 0.012){ _rec.started=true; _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
-      else if(_rec.started){ _rec.silence += d.length/_srSample; _rec.chunks.push(new Float32Array(d)); }
+      if(rms > 0.010){
+        if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } }  // on-tampon: kelime basi kesilmesin
+        _rec.silence=0; _rec.chunks.push(new Float32Array(d));
+      } else if(_rec.started){
+        _rec.silence += d.length/_srSample; _rec.chunks.push(new Float32Array(d));
+      } else {
+        (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>3) _rec.pre.shift();   // son ~3 blok konusma oncesi sesi tut
+      }
       if(_rec.started && _rec.silence > 1.2) _recBit(true);        // konustu, durdu -> gonder
       else if(!_rec.started && _rec.elapsed > 7) _recBit(false);   // hic konusmadi -> bos
       else if(_rec.elapsed > 14) _recBit(_rec.started);            // uzun tavani
@@ -899,19 +905,16 @@ function turKaydet(){
     setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); }, 16000); // sert tavan
   });
 }
+// HAM PCM (LINEAR16, 16kHz, mono) dondurur — Google STT'nin bekledigi tam bicim.
+// (Onceden WAV basligiyla gonderiliyordu; sunucu "ham LINEAR16" diyordu -> 44 baytlik baslik
+//  ses ornegi sanilip basta cizirti/tik + ilk kelime bozulmasi yapiyordu. Baslik KALDIRILDI.)
 function pcmToWav(chunks, sr){
   let len=0; for(const c of chunks) len+=c.length;
   const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; }
   const oran=Math.max(1, sr/16000); const yeniLen=Math.floor(all.length/oran);
   const pcm=new Int16Array(yeniLen);
-  for(let i=0;i<yeniLen;i++){ let v=all[Math.floor(i*oran)]; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; }
-  const bytes=pcm.length*2; const dv=new DataView(new ArrayBuffer(44+bytes));
-  const ws=(off,str)=>{ for(let i=0;i<str.length;i++) dv.setUint8(off+i,str.charCodeAt(i)); };
-  ws(0,'RIFF'); dv.setUint32(4,36+bytes,true); ws(8,'WAVE'); ws(12,'fmt '); dv.setUint32(16,16,true);
-  dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,16000,true); dv.setUint32(28,16000*2,true);
-  dv.setUint16(32,2,true); dv.setUint16(34,16,true); ws(36,'data'); dv.setUint32(40,bytes,true);
-  let p=44; for(let i=0;i<pcm.length;i++){ dv.setInt16(p,pcm[i],true); p+=2; }
-  return new Blob([dv.buffer], {type:'audio/wav'});
+  for(let i=0;i<yeniLen;i++){ let v=all[Math.round(i*oran)]||0; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; }
+  return new Blob([pcm.buffer], {type:'application/octet-stream'});
 }
 // Bir tur dinle -> sunucudan metin
 async function dinleSunucu(){

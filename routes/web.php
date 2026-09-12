@@ -2011,14 +2011,10 @@ Route::post('/api/qr/stt', function (Request $r) {
         'maxAlternatives' => 1,
     ];
     // Otomatik dil KARISTIRMA yok (yanlis dil algilamayi + dogruluk kaybini onler): tek dil = secili dil.
-    // Menu adlarini ipucu ver -> ozel adlari (Adana Kebap, Ezogelin Corbasi...) cok daha iyi yakalar.
-    try {
-        $adlar = DB::table('urunler')->where('sube_id', $subeId)->pluck('ad')->filter()->take(400)->values()->all();
-        $ekstra = ['garson', 'hesap', 'menü', 'öneri', 'günün yemeği', 'tatlı', 'içecek', 'çorba', 'salata', 'teşekkürler', 'evet', 'hayır'];
-        $phrases = array_values(array_unique(array_merge($ekstra, array_map('strval', $adlar))));
-        if (!empty($phrases)) $cfg['speechContexts'] = [['phrases' => array_slice($phrases, 0, 500), 'boost' => 16]];
-    } catch (\Throwable $e) {
-    }
+    // NOT: Menu adlarini "speechContexts + boost 16" ile ipucu vermek HER konusmayi urun adina zorluyordu
+    // ("hesap alabilir miyim" -> rastgele urun) = kullanici "kafasina gore konusuyor" sikayeti.
+    // Cozum: cok daha HAFIF boost (2) ve sadece birkac genel komut ipucu. Uzun urun listesi HIC verilmiyor.
+    $cfg['speechContexts'] = [['phrases' => ['garson', 'hesap', 'menü', 'öneri', 'evet', 'hayır', 'teşekkürler'], 'boost' => 2]];
     $payload = ['config' => $cfg, 'audio' => ['content' => base64_encode($bytes)]];
     try {
         $ch = curl_init('https://speech.googleapis.com/v1/speech:recognize?key=' . $key);
