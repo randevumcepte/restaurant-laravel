@@ -789,7 +789,7 @@ function sesSeviyesi(){
 }
 /* ===== SUNUCU STT: mikrofonu WAV kaydet -> /api/qr/stt -> metin. Her cihazda (iPhone dahil)
    deterministik calisir; tarayici Web Speech kirilganligi + mic cakismasi + echo biter. ===== */
-let _stream=null;
+let _stream=null, _sttLimit=false;
 async function micHazir(){
   if(_stream && _stream.active) return true;
   try{
@@ -854,6 +854,7 @@ async function dinleSunucu(){
     const fd=new FormData(); fd.append('ses', wav, 'ses.wav'); fd.append('masa', MASA);
     const r=await fetch('/api/qr/stt',{method:'POST', body:fd});
     const j=await r.json();
+    if(j.limit){ _sttLimit=true; return ''; }   // gunluk maliyet tavani -> yaziya dus
     return (j.metin||'').trim();
   }catch(e){ return ''; }
 }
@@ -877,6 +878,7 @@ async function basla(selamla=true){
   while(sohbetAktif){
     const c = await dinleSunucu();
     if(!sohbetAktif) break;
+    if(_sttLimit){ _sttLimit=false; await konus('Şu an sesli asistan çok yoğun. Dilerseniz aşağıdan yazarak devam edebilirsiniz, buradayım.'); break; }
     if(!c){ bos++; if(bos>=3){ await konus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.'); break; } continue; }
     bos=0;
     ekle('ben', c);

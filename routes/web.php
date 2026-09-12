@@ -1788,14 +1788,49 @@ Route::post('/api/qr/asistan', function (Request $r) {
     return $a->cevapla((string) $r->soru, (string) $r->input('baglam', ''));
 });
 
+// Gunluk STT kullanim sayaci (MALIYET TAVANI icin)
+if (!function_exists('_sttTabloEnsure')) {
+    function _sttTabloEnsure()
+    {
+        if (!Schema::hasTable('stt_kullanim')) {
+            Schema::create('stt_kullanim', function ($t) {
+                $t->bigIncrements('id');
+                $t->unsignedBigInteger('sube_id')->nullable();
+                $t->unsignedBigInteger('masa_id')->nullable();
+                $t->string('gun', 10);
+                $t->integer('adet')->default(0);
+                $t->index(['sube_id', 'gun']);
+                $t->index(['sube_id', 'masa_id', 'gun']);
+            });
+        }
+    }
+}
+
 // Sesli tanima (STT): tarayici WAV kaydini Google Speech-to-Text'e gonderir -> metin.
-// Boylece her cihazda (iPhone dahil) deterministik calisir; tarayici Web Speech API kirilganligi biter.
+// Her cihazda (iPhone dahil) deterministik calisir; tarayici Web Speech API kirilganligi biter.
+// MALIYET TAVANI: gunluk sube + masa limiti; asilinca Google'a HIC gitmez (ucret YOK), sesli->yaziya duser.
 Route::post('/api/qr/stt', function (Request $r) {
     $key = (string) config('services.google_tts.key', '');
     if ($key === '') return response()->json(['metin' => '', 'hata' => 'stt_anahtar_yok'], 200);
     if (!$r->hasFile('ses')) return response()->json(['metin' => '', 'hata' => 'ses_yok'], 200);
     $bytes = @file_get_contents($r->file('ses')->getRealPath());
     if ($bytes === false || strlen($bytes) < 800) return response()->json(['metin' => ''], 200); // cok kisa/bos
+    // ---- MALIYET TAVANI: gunluk sube + masa limiti (asilinca Google cagrilmaz -> ucret yok) ----
+    $masa = $r->filled('masa') ? DB::table('masalar')->find((int) $r->input('masa')) : null;
+    $subeId = $masa ? (int) $masa->sube_id : (int) DB::table('subeler')->value('id');
+    $masaId = $masa ? (int) $masa->id : 0;
+    _sttTabloEnsure();
+    $bugun = now()->toDateString();
+    $subeLimit = (int) resto_ayar_al('stt_gunluk_sube_limit', 300);
+    $masaLimit = (int) resto_ayar_al('stt_gunluk_masa_limit', 50);
+    if ($subeLimit > 0) {
+        $subeToplam = (int) DB::table('stt_kullanim')->where('sube_id', $subeId)->where('gun', $bugun)->sum('adet');
+        if ($subeToplam >= $subeLimit) return response()->json(['metin' => '', 'limit' => true], 200);
+    }
+    $mrow = DB::table('stt_kullanim')->where('sube_id', $subeId)->where('masa_id', $masaId)->where('gun', $bugun)->first();
+    if ($masaLimit > 0 && $mrow && (int) $mrow->adet >= $masaLimit) return response()->json(['metin' => '', 'limit' => true], 200);
+    if ($mrow) DB::table('stt_kullanim')->where('id', $mrow->id)->update(['adet' => (int) $mrow->adet + 1]);
+    else DB::table('stt_kullanim')->insert(['sube_id' => $subeId, 'masa_id' => $masaId, 'gun' => $bugun, 'adet' => 1]);
     $payload = [
         'config' => [
             'encoding' => 'LINEAR16',
