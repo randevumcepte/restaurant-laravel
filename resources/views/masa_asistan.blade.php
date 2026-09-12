@@ -416,7 +416,7 @@ function gradientFor(str){ let h=0; for(let i=0;i<String(str).length;i++) h=(h*3
 function kartlariEkle(kartlar){
   // GÖMÜLÜ + geniş ekran: ürün kartlarını dar PANELDE çizme -> ana menü sayfasında göster
   if(location.search.indexOf('wide')>=0 && window.parent!==window){
-    try{ window.parent.postMessage({resto:'kartlar', kartlar}, '*'); }catch(_){}
+    try{ window.parent.postMessage({resto:'kartlar', kartlar, dil:aktifDil}, '*'); }catch(_){}
     return;
   }
   const sar = document.createElement('div'); sar.className='kartsira';
@@ -471,7 +471,7 @@ lb.addEventListener('click', e=>{ if(e.target === lb) kapatGaleri(); });
 function kategorilerEkle(kats){
   // GÖMÜLÜ + geniş ekran: kategorileri panelde çizme -> ana sayfada tam menüyü aç
   if(location.search.indexOf('wide')>=0 && window.parent!==window){
-    try{ window.parent.postMessage({resto:'kategoriler', kategoriler:kats}, '*'); }catch(_){}
+    try{ window.parent.postMessage({resto:'kategoriler', kategoriler:kats, dil:aktifDil}, '*'); }catch(_){}
     return;
   }
   const sar = document.createElement('div'); sar.className='katsira';

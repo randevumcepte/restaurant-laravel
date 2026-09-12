@@ -1892,6 +1892,54 @@ if (!function_exists('_qrCevir')) {
         return $r[0] ?? (string) $metin;
     }
 }
+// Tum menuyu (kategori + urun ad/aciklama) hedef dile cevir — ONBELLEKLI (bir kez cevir, tekrar kullan).
+if (!function_exists('_qrMenuCevir')) {
+    function _qrMenuCevir($kategoriler, $subeId, $dil)
+    {
+        if ($dil === 'tr' || !is_array($kategoriler) || empty($kategoriler)) return $kategoriler;
+        $metinler = [];
+        $harita = [];
+        foreach ($kategoriler as $ki => $k) {
+            if (!empty($k['ad'])) { $harita[] = ['k', $ki, 'ad']; $metinler[] = (string) $k['ad']; }
+            foreach (($k['kartlar'] ?? []) as $ci => $c) {
+                if (!empty($c['ad'])) { $harita[] = ['c', $ki, $ci, 'ad']; $metinler[] = (string) $c['ad']; }
+                if (!empty($c['aciklama'])) { $harita[] = ['c', $ki, $ci, 'aciklama']; $metinler[] = (string) $c['aciklama']; }
+            }
+        }
+        if (empty($metinler)) return $kategoriler;
+        $hash = md5($dil . '|' . implode('~', $metinler));
+        try {
+            if (!Schema::hasTable('qr_menu_ceviri')) {
+                Schema::create('qr_menu_ceviri', function ($t) {
+                    $t->bigIncrements('id');
+                    $t->unsignedBigInteger('sube_id')->nullable();
+                    $t->string('dil', 5);
+                    $t->string('hash', 32);
+                    $t->longText('icerik');
+                    $t->index(['sube_id', 'dil']);
+                });
+            }
+            $c = DB::table('qr_menu_ceviri')->where('sube_id', $subeId)->where('dil', $dil)->where('hash', $hash)->value('icerik');
+            if ($c) { $d = json_decode($c, true); if (is_array($d)) return $d; }
+        } catch (\Throwable $e) {
+        }
+        $cevrilen = [];
+        foreach (array_chunk($metinler, 100) as $chunk) {
+            $cevrilen = array_merge($cevrilen, _qrCevirCoklu($chunk, $dil, 'tr'));
+        }
+        if (count($cevrilen) !== count($metinler)) return $kategoriler; // ceviri basarisiz -> orijinal
+        foreach ($harita as $i => $h) {
+            if ($h[0] === 'k') $kategoriler[$h[1]][$h[2]] = $cevrilen[$i];
+            else $kategoriler[$h[1]]['kartlar'][$h[2]][$h[3]] = $cevrilen[$i];
+        }
+        try {
+            DB::table('qr_menu_ceviri')->where('sube_id', $subeId)->where('dil', $dil)->delete();
+            DB::table('qr_menu_ceviri')->insert(['sube_id' => $subeId, 'dil' => $dil, 'hash' => $hash, 'icerik' => json_encode($kategoriler)]);
+        } catch (\Throwable $e) {
+        }
+        return $kategoriler;
+    }
+}
 
 // Gunluk STT kullanim sayaci (MALIYET TAVANI icin)
 if (!function_exists('_sttTabloEnsure')) {
@@ -1984,7 +2032,14 @@ Route::post('/api/qr/stt', function (Request $r) {
 Route::get('/api/qr/menu-tam', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
-    return (new \App\Services\MusteriAsistan($subeId))->menuTam();
+    $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
+    $kodlar = _qrDilKodlari();
+    if (!isset($kodlar[$dil])) $dil = 'tr';
+    $res = (new \App\Services\MusteriAsistan($subeId))->menuTam();
+    if ($dil !== 'tr' && is_array($res) && !empty($res['kategoriler'])) {
+        $res['kategoriler'] = _qrMenuCevir($res['kategoriler'], $subeId, $dil);
+    }
+    return $res;
 });
 
 // Garson/hesap cagrisi -> masa_cagrilari (KDS/patron tarafinda gorunebilir)

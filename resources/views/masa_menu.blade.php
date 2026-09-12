@@ -482,8 +482,9 @@
 <script>
 const MASA = @json($masa->id ?? 0);
 const SUBE_AD = @json($sube->ad ?? 'Restoran');
-let _data = [];            // kategoriler
+let _data = [];            // kategoriler (Türkçe)
 let _urun = {};            // urun_id -> urun (detay/sepet icin)
+let _menuGecici=null, _dataDil={}, _urunDil={};   // çok dilli: çevrilmiş menü önbelleği (dil -> kategoriler)
 let _sepet = [];           // {urun_id, ad, fiyat, adet}
 let _detayUrun = null, _detayMik = 1, _aktifKey = '*';
 
@@ -680,7 +681,7 @@ async function siparisGonder(){
 function menuAc(filtre){
   const body=document.getElementById('menu-body'); body.innerHTML='';
   document.getElementById('menu-bas').textContent = filtre ? filtre.charAt(0).toLocaleUpperCase('tr')+filtre.slice(1) : 'Menü';
-  let kats=_data;
+  let kats=_menuGecici||_data;   // çok dilli: asistan çevrilmiş menü verdiyse onu göster
   if(filtre){ const f=filtre.toLocaleLowerCase('tr'); kats=_data.filter(k=>k.ad.toLocaleLowerCase('tr').includes(f)); if(!kats.length) kats=_data; }
   kats.forEach(k=>{
     const sec=document.createElement('div');
@@ -736,15 +737,34 @@ function asistanAc(){
   p.classList.add('acik');
   const fab=document.getElementById('aiFab'); if(fab) fab.style.display='none';
 }
-/* ---- Asistan panelinden gelen menü -> ANA ekranda göster (panel dar; menü tek yerden yönetilir) ---- */
-window.addEventListener('message', (e)=>{
+/* ---- Çok dilli menü: seçili dilde menüyü sunucudan çek (ONBELLEKLI, bir kez) ---- */
+async function menuVeriDil(dil){
+  if(!dil || dil==='tr') return _data;
+  if(_dataDil[dil]) return _dataDil[dil];
+  try{
+    const r=await fetch('/api/qr/menu-tam?masa='+MASA+'&dil='+dil); const j=await r.json();
+    if(j.ok && Array.isArray(j.kategoriler)){
+      _dataDil[dil]=j.kategoriler; const m={}; j.kategoriler.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) m[u.urun_id]=u; })); _urunDil[dil]=m;
+      return j.kategoriler;
+    }
+  }catch(_){}
+  return _data;
+}
+async function asistanMenuGoster(dil){
+  const kats = await menuVeriDil(dil);
+  _menuGecici = kats; menuAc(); _menuGecici = null;
+}
+/* ---- Asistan panelinden gelen menü -> ANA ekranda (seçili dilde) göster ---- */
+window.addEventListener('message', async (e)=>{
   const d=e.data||{};
   if(d.resto==='kartlar' && Array.isArray(d.kartlar) && d.kartlar.length){
-    const urunler=d.kartlar.map(k=>(k && k.urun_id && _urun[k.urun_id]) ? _urun[k.urun_id] : k).filter(Boolean);
+    let bak=_urun;
+    if(d.dil && d.dil!=='tr'){ await menuVeriDil(d.dil); if(_urunDil[d.dil]) bak=_urunDil[d.dil]; }
+    const urunler=d.kartlar.map(k=>(k && k.urun_id && bak[k.urun_id]) ? bak[k.urun_id] : k).filter(Boolean);
     if(urunler.length===1) detayAc(urunler[0]);
     else if(urunler.length) asistanUrunGoster(urunler);
   } else if(d.resto==='kategoriler' && Array.isArray(d.kategoriler) && d.kategoriler.length){
-    menuAc();
+    asistanMenuGoster(d.dil);
   }
 });
 function asistanUrunGoster(list){
