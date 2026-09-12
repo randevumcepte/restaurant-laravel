@@ -1788,6 +1788,45 @@ Route::post('/api/qr/asistan', function (Request $r) {
     return $a->cevapla((string) $r->soru, (string) $r->input('baglam', ''));
 });
 
+// Sesli tanima (STT): tarayici WAV kaydini Google Speech-to-Text'e gonderir -> metin.
+// Boylece her cihazda (iPhone dahil) deterministik calisir; tarayici Web Speech API kirilganligi biter.
+Route::post('/api/qr/stt', function (Request $r) {
+    $key = (string) config('services.google_tts.key', '');
+    if ($key === '') return response()->json(['metin' => '', 'hata' => 'stt_anahtar_yok'], 200);
+    if (!$r->hasFile('ses')) return response()->json(['metin' => '', 'hata' => 'ses_yok'], 200);
+    $bytes = @file_get_contents($r->file('ses')->getRealPath());
+    if ($bytes === false || strlen($bytes) < 800) return response()->json(['metin' => ''], 200); // cok kisa/bos
+    $payload = [
+        'config' => [
+            'encoding' => 'LINEAR16',
+            'sampleRateHertz' => 16000,
+            'languageCode' => 'tr-TR',
+            'model' => 'latest_short',
+            'enableAutomaticPunctuation' => true,
+            'maxAlternatives' => 1,
+        ],
+        'audio' => ['content' => base64_encode($bytes)],
+    ];
+    try {
+        $ch = curl_init('https://speech.googleapis.com/v1/speech:recognize?key=' . $key);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_TIMEOUT => 15,
+        ]);
+        $resp = curl_exec($ch);
+        $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = json_decode($resp, true);
+        $metin = $j['results'][0]['alternatives'][0]['transcript'] ?? '';
+        return response()->json(['metin' => trim((string) $metin), 'kod' => $kod]);
+    } catch (\Throwable $e) {
+        return response()->json(['metin' => '', 'hata' => 'stt_hata'], 200);
+    }
+});
+
 // Musteri kendi basina TUM menuyu inceler (sesli asistan kapali)
 Route::get('/api/qr/menu-tam', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);

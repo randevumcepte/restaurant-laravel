@@ -787,38 +787,106 @@ function sesSeviyesi(){
   let s=0; for(let i=0;i<_vadBuf.length;i++){ const v=(_vadBuf[i]-128)/128; s+=v*v; }
   return Math.sqrt(s/_vadBuf.length);
 }
-// SOHBET DONGUSU: karsila -> [dinle -> isle -> konus] tekrar (mic konusurken KAPALI)
+/* ===== SUNUCU STT: mikrofonu WAV kaydet -> /api/qr/stt -> metin. Her cihazda (iPhone dahil)
+   deterministik calisir; tarayici Web Speech kirilganligi + mic cakismasi + echo biter. ===== */
+let _stream=null;
+async function micHazir(){
+  if(_stream && _stream.active) return true;
+  try{
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return false;
+    _stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+    return true;
+  }catch(e){ return false; }
+}
+// Bir konusma turunu kaydet: konusma baslayinca ~1.2s sessizlikte biter; hic konusma yoksa ~7s'te bos doner.
+function turKaydet(){
+  return new Promise(async (resolve)=>{
+    if(!await micHazir()){ resolve(null); return; }
+    let actx;
+    try{ actx = new (window.AudioContext||window.webkitAudioContext)(); await actx.resume(); }catch(e){ resolve(null); return; }
+    const src = actx.createMediaStreamSource(_stream);
+    const proc = actx.createScriptProcessor(4096,1,1);
+    const sr = actx.sampleRate;
+    const chunks=[]; let started=false, silence=0, elapsed=0, done=false;
+    function bit(gonder){
+      if(done) return; done=true;
+      try{ proc.disconnect(); src.disconnect(); }catch(_){}
+      try{ actx.close(); }catch(_){}
+      resolve((gonder && chunks.length) ? pcmToWav(chunks, sr) : null);
+    }
+    proc.onaudioprocess = (e)=>{
+      if(done) return;
+      const d = e.inputBuffer.getChannelData(0);
+      let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
+      const rms = Math.sqrt(s/d.length);
+      elapsed += d.length/sr;
+      if(rms > 0.02){ started=true; silence=0; chunks.push(new Float32Array(d)); }
+      else if(started){ silence += d.length/sr; chunks.push(new Float32Array(d)); }
+      if(started && silence > 1.2) bit(true);        // konustu, durdu -> gonder
+      else if(!started && elapsed > 7) bit(false);   // hic konusmadi -> bos
+      else if(elapsed > 14) bit(started);            // uzun tavani
+    };
+    src.connect(proc); proc.connect(actx.destination);
+  });
+}
+function pcmToWav(chunks, sr){
+  let len=0; for(const c of chunks) len+=c.length;
+  const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; }
+  const oran=Math.max(1, sr/16000); const yeniLen=Math.floor(all.length/oran);
+  const pcm=new Int16Array(yeniLen);
+  for(let i=0;i<yeniLen;i++){ let v=all[Math.floor(i*oran)]; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; }
+  const bytes=pcm.length*2; const dv=new DataView(new ArrayBuffer(44+bytes));
+  const ws=(off,str)=>{ for(let i=0;i<str.length;i++) dv.setUint8(off+i,str.charCodeAt(i)); };
+  ws(0,'RIFF'); dv.setUint32(4,36+bytes,true); ws(8,'WAVE'); ws(12,'fmt '); dv.setUint32(16,16,true);
+  dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,16000,true); dv.setUint32(28,16000*2,true);
+  dv.setUint16(32,2,true); dv.setUint16(34,16,true); ws(36,'data'); dv.setUint32(40,bytes,true);
+  let p=44; for(let i=0;i<pcm.length;i++){ dv.setInt16(p,pcm[i],true); p+=2; }
+  return new Blob([dv.buffer], {type:'audio/wav'});
+}
+// Bir tur dinle -> sunucudan metin
+async function dinleSunucu(){
+  orb.classList.add('dinliyor'); micBtn.classList.add('dinliyor'); durumEl.textContent='Sizi dinliyorum, buyurun…';
+  const wav = await turKaydet();
+  orb.classList.remove('dinliyor'); micBtn.classList.remove('dinliyor');
+  if(!wav) return '';
+  durumEl.textContent='Anlıyorum…';
+  try{
+    const fd=new FormData(); fd.append('ses', wav, 'ses.wav'); fd.append('masa', MASA);
+    const r=await fetch('/api/qr/stt',{method:'POST', body:fd});
+    const j=await r.json();
+    return (j.metin||'').trim();
+  }catch(e){ return ''; }
+}
+
+// SOHBET DONGUSU (SIRA TABANLI): karsila -> [dinle(sunucu STT) -> isle -> konus] tekrar
 let _sonBaslaAn = 0;
 async function basla(selamla=true){
   const simdi = (window.performance && performance.now) ? performance.now() : (+new Date());
-  if(simdi - _sonBaslaAn < 700) return; // ekran+buton ayni anda -> cift tetiklemeyi yut
+  if(simdi - _sonBaslaAn < 700) return; // cift tetiklemeyi yut
   _sonBaslaAn = simdi;
-  if(!rec){ durumEl.textContent='Bu tarayıcı sesi desteklemiyor, aşağıdan yazabilirsiniz.'; return; }
   if(sohbetAktif){
-    if(konusuyor){ konusKes(); return; } // konusurken dokunmak = KES ve dinle (kapatma degil)
-    return; // zaten dinliyor -> dokunmak bir sey YAPMAZ (yanlislikla kapanma yok; kapatmak icin ✕)
+    if(konusuyor){ konusKes(); return; } // konusurken dokunmak = KES
+    return; // zaten dinliyor -> dokunmak bir sey YAPMAZ (kapatmak icin ✕)
   }
-  sessizMod=false;       // asistan geri geldi (menu inceleme modundan cik)
+  sessizMod=false;
   sohbetAktif=true; micBtn.classList.add('acik');
-  await micIzniIste();   // izin + VAD kurulumu (ilk sefer dialog cikar; izin gelince devam)
-  recBaslat();           // SUREKLI tanima BASLASIN (hep acik -> araya girince ilk kelime yakalanir)
-  let girdi = null;      // araya girmede continuous akistan yakalanan metin -> dinle atlanir
-  if(selamla){ const bi = await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM, true); ilkSelamVerildi = true; if(bi) girdi = bi; }
+  const izin = await micHazir();
+  if(!izin){ durumEl.textContent='Konuşmak için mikrofon izni gerekli. Dilerseniz aşağıdan yazabilirsiniz.'; sohbetAktif=false; micBtn.classList.remove('acik'); return; }
+  if(selamla){ await konus(ilkSelamVerildi ? 'Buyurun, sizi dinliyorum.' : SELAM); ilkSelamVerildi = true; }
   let bos=0;
   while(sohbetAktif){
-    const c = girdi || await dinle(); girdi = null;
+    const c = await dinleSunucu();
     if(!sohbetAktif) break;
-    if(!c){ bos++; if(bos>=3){ await konus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.'); break; } if(bos===1) await konus('Buyurun, sizi dinliyorum.'); continue; }
+    if(!c){ bos++; if(bos>=3){ await konus('İstediğinizde tekrar konuşabilir ya da yazabilirsiniz, buradayım.'); break; } continue; }
     bos=0;
     ekle('ben', c);
     if(siparisModu && sepet.length && bitirMi(c)){ await finalizeSiparis(); continue; }
     if(iptalMi(c)){ await konus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap = await sunucudanCevap(c);
-    if(cevap){ const bi = await konus(cevap, true); if(bi){ girdi = bi; } }   // araya girilirse yakalanan metni isle
-    if(kapatIstegi){ kapatIstegi=false; break; }   // 2. kufur -> gorusmeyi kapat
+    if(cevap) await konus(cevap);   // sira tabanli: tam konusur, sonra tekrar dinler
+    if(kapatIstegi){ kapatIstegi=false; break; }
   }
   sohbetAktif=false; micBtn.classList.remove('acik');
-  try{ rec.stop(); }catch(_){}   // sohbet bitti -> continuous tanimayi durdur
   if(!konusuyor) durumEl.textContent='Dokunup konuşun ya da yazın';
 }
 
