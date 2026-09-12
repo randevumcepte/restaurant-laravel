@@ -1830,6 +1830,20 @@ Route::get('/ceviri-test', function () {
     return response("HTTP $kod\n\n$resp\n\n(HTTP 200 + 'Hello world...' gorursen Translation API CALISIYOR. 403 = API kapali ya da anahtar kisitli.)")->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
+// TESHIS: Speech-to-Text API erisilebilir mi? (0.5 sn sessizlik gonderir; 200=calisir, 403=kapali/kisitli)
+Route::get('/stt-test', function () {
+    $key = (string) config('services.google_tts.key', '');
+    if ($key === '') return response('ANAHTAR YOK (services.google_tts.key bos)')->header('Content-Type', 'text/plain; charset=utf-8');
+    $pcm = str_repeat("\x00\x00", 8000); // 0.5 sn sessizlik, 16kHz mono
+    $payload = ['config' => ['encoding' => 'LINEAR16', 'sampleRateHertz' => 16000, 'languageCode' => 'tr-TR'], 'audio' => ['content' => base64_encode($pcm)]];
+    $ch = curl_init('https://speech.googleapis.com/v1/speech:recognize?key=' . $key);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_TIMEOUT => 15]);
+    $resp = curl_exec($ch);
+    $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return response("HTTP $kod\n\n$resp\n\n(HTTP 200 = Speech-to-Text API CALISIYOR/erisilebilir. 403 = API kapali ya da anahtar kisitli.)")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 // ---- COK DILLI destek: dil -> STT/TTS kodlari + Google Translate cevirmen ----
 if (!function_exists('_qrDilKodlari')) {
     function _qrDilKodlari()
