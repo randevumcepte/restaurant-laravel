@@ -2779,6 +2779,13 @@ Route::get('/api/sefgarson/cache-temizle', function () {
     return ['ok' => 1, 'mesaj' => 'config cache temizlendi (bir sonraki istekte taze okunur)'];
 });
 
+// GECICI: takip + yonetici bildirimlerini sifirla (temiz test icin)
+Route::get('/api/sefgarson/sifirla', function () {
+    $t = Schema::hasTable('sef_garson_takip') ? DB::table('sef_garson_takip')->delete() : 0;
+    $y = Schema::hasTable('sef_garson_yonetici_bildirim') ? DB::table('sef_garson_yonetici_bildirim')->delete() : 0;
+    return ['ok' => 1, 'silinen_takip' => $t, 'silinen_yonetici' => $y];
+});
+
 // GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
 Route::get('/api/sefgarson/tani', function () {
     $s = new \App\Services\SefGarsonAI(0);

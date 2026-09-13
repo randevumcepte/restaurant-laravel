@@ -80,6 +80,7 @@ class SefGarsonAI
         $kalabalik  = $this->esik('kalabalik_kisi');
 
         $ham = [];
+        $facts = [];
         foreach ($adisyonlar as $a) {
             $kl = $kalemler[$a->id] ?? collect();
             $masaAd = $a->masa_adi ?: ('#' . $a->masa_id);
@@ -98,6 +99,16 @@ class SefGarsonAI
                 if (!$this->isIcecek($k) && !$this->isTatli($k)) $yemekVar = true;
             }
             $kalemSayi = $kl->count();
+
+            // Gercek-sonuc denetimi icin masa ozetini sakla
+            $facts[(int) $a->id] = [
+                'masa_id'    => (int) $a->masa_id,
+                'masa_adi'   => (string) $masaAd,
+                'garson_id'  => (int) $a->acan_personel_id,
+                'garson_adi' => (string) ($a->garson_adi ?? ''),
+                'hasAna'     => $hasAna, 'hasTatli' => $hasTatli, 'hasIcecek' => $hasIcecek,
+                'yemekVar'   => $yemekVar, 'kalemSayi' => $kalemSayi, 'sonKalemAt' => $sonKalemAt,
+            ];
 
             $ekle = function ($tip, $oncelik, $baslik, $mesaj, $ikon) use (&$ham, $a, $masaAd) {
                 $ham[] = [
@@ -154,8 +165,13 @@ class SefGarsonAI
             }
         }
 
-        // YASAM DONGUSU: yeni/hatirlat/goruldu/eskalasyon takibi (bildir bayragi + durum)
-        $uyarilar = $this->yasamDongusu($ham);
+        // Kart alanlarini (taze) anahtara gore hazirla
+        $hamMap = [];
+        foreach ($ham as $u) $hamMap[$u['adisyon_id'] . '.' . $u['tip']] = $u;
+
+        // YASAM DONGUSU: takip tablosu + GERCEK SONUC (satis) uzerinden (kurala bagimli DEGIL)
+        $uyarilar = $this->yasamDongusu($facts, $hamMap);
+
         // Sirala: once GORULMEMIS (turuncu, oncelik) sonra GORULDU (yesil)
         usort($uyarilar, function ($x, $y) {
             $gx = $x['durum'] === 'goruldu' ? 1 : 0;
@@ -167,104 +183,160 @@ class SefGarsonAI
     }
 
     /**
-     * Her ham uyariyi (adisyon_id.tip) sunucuda takip et:
-     * - ilk gorulme -> bildir=true (telefon titresin + popup)
-     * - hatirlatma araligi gecti, hala gorulmedi -> tekrar bildir=true
-     * - esik kadar hatirlatilip hala gorulmedi -> durum=eskale + YONETICIYE bildir
-     * - garson "Anladim" derse -> durum=goruldu (yesil), bir sure gosterilip duser
-     * Doner: her uyariya 'durum' (aktif|goruldu|eskale) + 'bildir' (bool) eklenmis liste.
+     * Yasam dongusu — TAKIP tablosu + GERCEK SATIS sonucu uzerinden calisir (heuristik kural
+     * hala tetikleniyor mu diye BAKMAZ). Boylece "Anladim" deyip satmayan garson yakalanir,
+     * kural zaman penceresiyle sussa bile (or. kalabalik_baslangic acikDk>25).
+     *
+     * @param array $facts    adisyon_id => masa/urun ozetleri (acik masalar)
+     * @param array $hamMap   anahtar => o an tetiklenen ham uyari (taze kart alanlari)
      */
-    protected function yasamDongusu(array $ham)
+    protected function yasamDongusu(array $facts, array $hamMap)
     {
-        if (empty($ham)) return [];
         $this->takipTablo();
         $aralik  = $this->esik('hatirlatma_dk');
         $esik    = $this->esik('eskalasyon_esik');
         $sozSure = $this->esik('soz_suresi_dk');   // "Anladim" sonrasi satis icin taninan sure
         $sozEsik = $this->esik('soz_esik');        // bu kadar "bos soz"dan sonra -> yoneticiye
 
-        $adIds = array_values(array_unique(array_map(fn ($u) => $u['adisyon_id'], $ham)));
-        $rows = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->whereIn('adisyon_id', $adIds)->get();
-        $map = [];
-        foreach ($rows as $r) $map[$r->adisyon_id . '.' . $r->tip] = $r;
+        $openIds = array_map('intval', array_keys($facts));
+        if (empty($openIds)) return [];
 
-        $out = [];
-        foreach ($ham as $u) {
-            $key = $u['adisyon_id'] . '.' . $u['tip'];
-            $t = $map[$key] ?? null;
-            $bildir = false; $durum = 'aktif';
+        // Mevcut takip kayitlari (sadece acik masalar)
+        $rows = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->whereIn('adisyon_id', $openIds)->get();
+        $takip = [];
+        foreach ($rows as $r) $takip[$r->adisyon_id . '.' . $r->tip] = $r;
 
-            if (!$t) {
+        // Yeni tetiklenen uyarilar icin takip kaydi olustur / kart alanlarini tazele
+        $yeniKeys = [];
+        foreach ($hamMap as $key => $u) {
+            $kart = json_encode($u, JSON_UNESCAPED_UNICODE);
+            if (!isset($takip[$key])) {
                 try {
                     DB::table('sef_garson_takip')->insert([
                         'sube_id' => $this->subeId, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'],
-                        'garson_id' => $u['garson_id'] ?: null, 'durum' => 'aktif', 'hatirlatma' => 1,
+                        'garson_id' => $u['garson_id'] ?: null, 'durum' => 'aktif', 'hatirlatma' => 1, 'soz_bozdu' => 0,
                         'yonetici_bildirildi' => 0, 'ilk_at' => now(), 'son_hatirlatma_at' => now(),
-                        'created_at' => now(), 'updated_at' => now(),
+                        'kart' => $kart, 'created_at' => now(), 'updated_at' => now(),
                     ]);
                 } catch (\Throwable $e) {}
-                $bildir = true;
+                $yeniKeys[$key] = true;
+                $takip[$key] = (object) [
+                    'id' => null, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'], 'durum' => 'aktif',
+                    'hatirlatma' => 1, 'soz_bozdu' => 0, 'yonetici_bildirildi' => 0,
+                    'ilk_at' => (string) now(), 'son_hatirlatma_at' => (string) now(), 'goruldu_at' => null, 'kart' => $kart,
+                ];
+            } else {
+                try { DB::table('sef_garson_takip')->where('id', $takip[$key]->id)->update(['kart' => $kart, 'updated_at' => now()]); }
+                catch (\Throwable $e) {}
+            }
+        }
+
+        $out = [];
+        foreach ($takip as $key => $t) {
+            $ad = (int) $t->adisyon_id;
+            $f = $facts[$ad] ?? null;
+            if (!$f) continue;  // masa kapanmis
+
+            // SONUC DENETIMI: beklenen satis GERCEKTEN oldu mu? Olduysa uyari cozulur (silinir).
+            if ($this->sonucGerceklesti($t->tip, $f, $t->ilk_at)) {
+                if ($t->id) { try { DB::table('sef_garson_takip')->where('id', $t->id)->delete(); } catch (\Throwable $e) {} }
+                continue;
+            }
+
+            $bildir = false; $durum = $t->durum;
+
+            if (isset($yeniKeys[$key])) {
+                $bildir = true; $durum = 'aktif';        // yeni firsat -> titre + popup
             } elseif ($t->durum === 'goruldu') {
-                // ONEMLI: bu satir HALA $ham'da demek -> kosul cozulmemis (garson sipari? EKLEMEMIS).
-                // Kosul cozulseydi ham'da olmaz, uyari sessizce kaybolurdu (basari).
                 $gecti = $t->goruldu_at ? $this->dkGecti($t->goruldu_at) : 999;
                 if ($gecti < $sozSure) {
-                    $durum = 'goruldu';    // soz suresi icinde: yesil goster, satis icin bekle
+                    $durum = 'goruldu';                  // soz suresi icinde: yesil, satis bekleniyor
                 } else {
-                    // SOZ SURESI DOLDU ama hala satis yok => "Anladim" dedi, yapmadi = BOS SOZ
+                    // Soz suresi doldu, satis HALA yok => BOS SOZ
                     $sozBozdu = (int) ($t->soz_bozdu ?? 0) + 1;
                     if ($sozBozdu >= $sozEsik) {
                         $durum = 'eskale';
                         $ilkKez = !$t->yonetici_bildirildi;
-                        try {
-                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
-                                'durum' => 'eskale', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now(),
-                                'yonetici_bildirildi' => 1, 'updated_at' => now(),
-                            ]);
-                        } catch (\Throwable $e) {}
-                        if ($ilkKez) $this->yoneticiyeBildir($u, true);  // "anladim dedi ama yapmadi"
-                        $bildir = false;
+                        $this->takipGuncelle($t->id, ['durum' => 'eskale', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now(), 'yonetici_bildirildi' => 1]);
+                        if ($ilkKez) $this->yoneticiyeBildir($this->kartAl($t, $hamMap, $key), true);
                     } else {
                         $durum = 'aktif';
-                        try {
-                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
-                                'durum' => 'aktif', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now(), 'updated_at' => now(),
-                            ]);
-                        } catch (\Throwable $e) {}
-                        $bildir = true;   // geri dondu: tekrar titre + popup
+                        $this->takipGuncelle($t->id, ['durum' => 'aktif', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now()]);
+                        $bildir = true;                  // geri dondu: tekrar titre + popup
                     }
                 }
-            } else { // aktif | eskale
-                $durum = $t->durum;
+            } elseif ($t->durum === 'eskale') {
+                $durum = 'eskale';                       // yonetici devrede
+            } else { // aktif
                 $elapsed = $t->son_hatirlatma_at ? $this->dkGecti($t->son_hatirlatma_at) : 999;
-                if ($t->durum === 'aktif' && $elapsed >= $aralik) {
+                if ($elapsed >= $aralik) {
                     $yeniSayi = (int) $t->hatirlatma + 1;
                     if ($yeniSayi >= $esik) {
                         $durum = 'eskale';
                         $ilkKez = !$t->yonetici_bildirildi;
-                        try {
-                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
-                                'durum' => 'eskale', 'hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now(),
-                                'yonetici_bildirildi' => 1, 'updated_at' => now(),
-                            ]);
-                        } catch (\Throwable $e) {}
-                        if ($ilkKez) $this->yoneticiyeBildir($u);
-                        $bildir = false; // yonetici devrede: garsona artik popup atma
+                        $this->takipGuncelle($t->id, ['durum' => 'eskale', 'hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now(), 'yonetici_bildirildi' => 1]);
+                        if ($ilkKez) $this->yoneticiyeBildir($this->kartAl($t, $hamMap, $key), false);
                     } else {
-                        try {
-                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
-                                'hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now(), 'updated_at' => now(),
-                            ]);
-                        } catch (\Throwable $e) {}
-                        $bildir = true; // tekrar hatirlat (titre + popup)
+                        $this->takipGuncelle($t->id, ['hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now()]);
+                        $bildir = true;                  // tekrar hatirlat (titre + popup)
                     }
                 }
             }
-            $u['durum'] = $durum;
-            $u['bildir'] = $bildir;
-            $out[] = $u;
+
+            // Kart alanlari: o an tetikleniyorsa taze ham'dan, degilse takipteki json'dan
+            $src = $this->kartAl($t, $hamMap, $key);
+            $out[] = [
+                'adisyon_id' => $ad,
+                'masa_id'    => (int) ($src['masa_id'] ?? 0),
+                'masa_adi'   => (string) ($src['masa_adi'] ?? ('#' . $ad)),
+                'garson_id'  => (int) ($src['garson_id'] ?? 0),
+                'garson_adi' => (string) ($src['garson_adi'] ?? ''),
+                'tip'        => $t->tip,
+                'oncelik'    => (int) ($src['oncelik'] ?? 2),
+                'baslik'     => (string) ($src['baslik'] ?? ''),
+                'mesaj'      => (string) ($src['mesaj'] ?? ''),
+                'ikon'       => (string) ($src['ikon'] ?? '💡'),
+                'durum'      => $durum,
+                'bildir'     => $bildir,
+            ];
         }
         return $out;
+    }
+
+    /** Kart alanlarini getir: once taze ham, yoksa takipteki json snapshot. */
+    protected function kartAl($t, array $hamMap, $key)
+    {
+        if (isset($hamMap[$key])) return $hamMap[$key];
+        $j = json_decode((string) ($t->kart ?? ''), true);
+        return is_array($j) ? $j : [];
+    }
+
+    protected function takipGuncelle($id, array $data)
+    {
+        if (!$id) return;
+        $data['updated_at'] = now();
+        try { DB::table('sef_garson_takip')->where('id', $id)->update($data); } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Beklenen SATIS gerceklesti mi? (kurala degil, adisyondaki gercek urunlere bakar)
+     * true -> uyari cozuldu (silinir). false -> hala bekliyor.
+     */
+    protected function sonucGerceklesti($tip, $f, $ilkAt)
+    {
+        switch ($tip) {
+            case 'bos_masa':        return $f['kalemSayi'] > 0;
+            case 'tatli_firsati':   return $f['hasTatli'];
+            case 'tatli_icecek':    return $f['hasIcecek'];
+            case 'icecek_firsati':  return $f['hasIcecek'];
+            case 'sadece_icecek':   return $f['yemekVar'];
+            case 'durgun':
+            case 'kalabalik_baslangic':
+                // uyaridan SONRA yeni bir kalem eklendiyse cozuldu sayilir
+                if (empty($f['sonKalemAt']) || empty($ilkAt)) return false;
+                return strtotime((string) $f['sonKalemAt']) > strtotime((string) $ilkAt);
+            default: return false;
+        }
     }
 
     /** Garson "Anladim" dedi -> uyariyi goruldu (yesil) yap; popup/hatirlatma durur. */
@@ -339,6 +411,7 @@ class SefGarsonAI
                     $t->unsignedInteger('hatirlatma')->default(1);
                     $t->unsignedInteger('soz_bozdu')->default(0);    // "Anladim" deyip yapmama sayisi
                     $t->boolean('yonetici_bildirildi')->default(false);
+                    $t->text('kart')->nullable();                    // kart alanlari snapshot (kural sussa da goster)
                     $t->timestamp('ilk_at')->nullable();
                     $t->timestamp('son_hatirlatma_at')->nullable();
                     $t->timestamp('goruldu_at')->nullable();
@@ -348,9 +421,13 @@ class SefGarsonAI
             } catch (\Throwable $e) {}
             return;
         }
-        // Canlida tablo once olusmus olabilir -> eksik kolonu ekle
+        // Canlida tablo once olusmus olabilir -> eksik kolonlari ekle
         if (!Schema::hasColumn('sef_garson_takip', 'soz_bozdu')) {
             try { Schema::table('sef_garson_takip', function ($t) { $t->unsignedInteger('soz_bozdu')->default(0); }); }
+            catch (\Throwable $e) {}
+        }
+        if (!Schema::hasColumn('sef_garson_takip', 'kart')) {
+            try { Schema::table('sef_garson_takip', function ($t) { $t->text('kart')->nullable(); }); }
             catch (\Throwable $e) {}
         }
     }
