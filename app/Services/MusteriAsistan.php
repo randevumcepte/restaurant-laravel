@@ -181,13 +181,13 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $one = $this->oneCikanKolonVar();
         foreach ($kats as $k) {
             $cols = ['id', 'ad', 'fiyat', 'aciklama', 'tukendi'];
-            if ($one) { $cols[] = 'one_cikan'; $cols[] = 'one_etiket'; $cols[] = 'one_sira'; }
+            if ($one) { $cols[] = 'one_cikan'; $cols[] = 'one_sira'; }
             $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)
                 ->where('aktif', 1)->orderBy('ad')->get($cols);
             // One cikanlar kategoride EN BASA (one_sira'ya gore)
             if ($one) $urunler = $urunler->sortByDesc(fn ($u) => !empty($u->one_cikan) ? (1000 - (int) $u->one_sira) : 0)->values();
             $kartlar = $urunler->map(function ($u) use ($k, $puanlar, $one) {
-                $et = $u->tukendi ? 'Tükendi' : (($one && !empty($u->one_etiket)) ? $u->one_etiket : null);
+                $et = $u->tukendi ? 'Tükendi' : (($one && !empty($u->one_cikan)) ? 'Şefin Önerisi' : null);
                 $kart = $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $et, [], $u->id);
                 if (isset($puanlar[$u->id])) { $kart['puan'] = $puanlar[$u->id]['ort']; $kart['puan_say'] = $puanlar[$u->id]['say']; }
                 return $kart;
@@ -224,7 +224,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     {
         $one = $this->oneCikanKolonVar();
         $sel = ['urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat'];
-        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_etiket'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_sira'; }
+        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_ai_soz'; $sel[] = 'urunler.one_sira'; }
         $urunler = DB::table('urunler')->join('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
             ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
             ->select($sel)->get()->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
@@ -232,13 +232,14 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         // One cikanlar EN BASA (one_sira'ya gore), sonra digerleri
         if ($one) $urunler = $urunler->sortByDesc(fn ($u) => !empty($u->one_cikan) ? (1000 - (int) $u->one_sira) : 0)->values();
         $kartlar = $urunler->take(12)->map(function ($u) use ($one) {
-            $et = ($one && !empty($u->one_etiket)) ? $u->one_etiket : null;
+            $et = ($one && !empty($u->one_cikan)) ? 'Şefin Önerisi' : null;
             return $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, $et, [], $u->id);
         })->all();
-        // Istah kabartici GIRIS: bu kategoride isletmenin ozel sozu olan one cikan urun varsa onu soyle
-        $vitrin = $one ? $urunler->first(fn ($u) => !empty($u->one_cikan) && !empty($u->one_soz)) : null;
+        // Istah kabartici GIRIS: bu kategoride one cikan urunun AI cumlesi (yoksa ham notu) varsa onu soyle
+        $vitrin = $one ? $urunler->first(fn ($u) => !empty($u->one_cikan) && (!empty($u->one_ai_soz) || !empty($u->one_soz))) : null;
         if ($vitrin) {
-            return $this->cvp("$emoji " . trim($vitrin->one_soz) . ' Aşağıdakilere göz atabilirsiniz. 😊',
+            $vsoz = trim((string) (($vitrin->one_ai_soz ?? '') ?: ($vitrin->one_soz ?? '')));
+            return $this->cvp("$emoji " . $vsoz . ' Aşağıdakilere göz atabilirsiniz. 😊',
                 ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
         }
         $ornek = $urunler->take(3)->map(fn ($u) => $u->ad)->implode(', ');
@@ -291,7 +292,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
         $one = $this->oneCikanKolonVar();
         $sel = ['urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat'];
-        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_etiket'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_sira'; }
+        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_ai_soz'; $sel[] = 'urunler.one_sira'; }
         $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
             ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
             ->select($sel)->get();
@@ -325,11 +326,13 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $vetiket = ['Şefin Önerisi', 'Çok seviliyor', 'Misafir favorisi', 'Doyurucu'];
         $kartlar = [];
         foreach ($secili as $i => $u) {
-            $et = ($one && !empty($u->one_etiket)) ? $u->one_etiket : ($vetiket[$i] ?? 'Öneri');
+            $et = ($one && !empty($u->one_cikan)) ? 'Şefin Önerisi' : ($vetiket[$i] ?? 'Öneri');
             $kartlar[] = $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat ?? null, $et, [], $u->id);
         }
         $bas = ($secili->first()->ad ?? 'Köfte');
-        $soz = ($one && $secili->isNotEmpty() && !empty($secili->first()->one_soz)) ? trim($secili->first()->one_soz) : '';
+        // Istah kabartici cumle: AI'in urettigi one_ai_soz oncelikli, yoksa ham not (one_soz)
+        $ilk = $secili->first();
+        $soz = ($one && $ilk) ? trim((string) (($ilk->one_ai_soz ?? '') ?: ($ilk->one_soz ?? ''))) : '';
         if ($soz !== '') $mesaj = $soz . ' Aşağıdaki lezzetlere göz atabilirsiniz. 😊';
         elseif ($ac) $mesaj = "Karnınız açsa doyurucu gider; özellikle $bas gönül rahatlığıyla tavsiye ederim. Aşağıdakilere göz atabilirsiniz. 😊";
         else $mesaj = "Size özenle seçtiğimiz birkaç lezzeti önereyim; özellikle $bas çok beğeniliyor. Aşağıdakilere göz atabilirsiniz. 😊";
