@@ -4941,12 +4941,20 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'aktif' => $r->input('aktif') !== null ? ($r->boolean('aktif') ? 1 : 0) : 1,
         'updated_at' => now(),
     ];
-    // ONE CIKAN / GUNUN ONERISI (form gonderirse)
-    if ($r->has('one_cikan') || $r->has('one_etiket') || $r->has('one_soz') || $r->has('one_sira')) {
-        $data['one_cikan'] = $r->boolean('one_cikan') ? 1 : 0;
+    // ONE CIKAN / GUNUN ONERISI (form gonderirse). SIRA ELLE GIRILMEZ (cakisma olmasin):
+    // yeni one cikan -> otomatik SONA eklenir; mevcut sirasi korunur. Sirayi surukleyerek one-sira-kaydet degistirir.
+    if ($r->has('one_cikan') || $r->has('one_etiket') || $r->has('one_soz')) {
+        $oc = $r->boolean('one_cikan') ? 1 : 0;
+        $data['one_cikan'] = $oc;
         $data['one_etiket'] = trim((string) $r->input('one_etiket')) !== '' ? mb_substr(trim((string) $r->input('one_etiket')), 0, 60) : null;
         $data['one_soz'] = trim((string) $r->input('one_soz')) !== '' ? mb_substr(trim((string) $r->input('one_soz')), 0, 255) : null;
-        $data['one_sira'] = (int) $r->input('one_sira', 0);
+        if ($oc) {
+            $curId = (int) $r->input('id');
+            $mevcut = $curId ? (int) DB::table('urunler')->where('id', $curId)->value('one_sira') : 0;
+            $data['one_sira'] = $mevcut > 0 ? $mevcut : ((int) DB::table('urunler')->where('sube_id', $p->sube_id)->where('one_cikan', 1)->max('one_sira') + 1);
+        } else {
+            $data['one_sira'] = 0;
+        }
     }
     $id = (int) $r->input('id');
     if ($id) {
@@ -4965,6 +4973,23 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . time()) : null,
         'one_cikan' => (bool) ($u->one_cikan ?? false), 'one_etiket' => ($u->one_etiket ?? '') ?: '', 'one_soz' => ($u->one_soz ?? '') ?: '', 'one_sira' => (int) ($u->one_sira ?? 0),
     ]];
+});
+
+// One cikan urunlerin SIRASINI surukleyerek kaydet (ids = istenen sirada urun id listesi -> one_sira 1..N; cakisma imkansiz)
+Route::post('/api/patron/one-sira-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    _oneCikanEnsure();
+    $ids = json_decode((string) $r->input('ids', '[]'), true);
+    if (!is_array($ids)) $ids = [];
+    $s = 1;
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        if ($id <= 0) continue;
+        DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->update(['one_sira' => $s, 'one_cikan' => 1]);
+        $s++;
+    }
+    return ['ok' => 1];
 });
 
 // Urun sil (FK varsa gizle=aktif 0)
