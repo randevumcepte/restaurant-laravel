@@ -67,7 +67,7 @@ class SefGarsonAI
             $acilis = $a->acilis ?: $a->a_created;
             $acikDk = $acilis ? $this->dkGecti($acilis) : 0;
 
-            $hasAna = false; $hasTatli = false; $hasIcecek = false;
+            $hasAna = false; $hasTatli = false; $hasIcecek = false; $yemekVar = false;
             $sonKalemAt = null; $sonAnaAt = null;
             foreach ($kl as $k) {
                 $t = $k->created_at ?: $k->gonderim_zamani;
@@ -75,6 +75,8 @@ class SefGarsonAI
                 if ($this->isAna($k))    { $hasAna = true; if ($t && (!$sonAnaAt || $t > $sonAnaAt)) $sonAnaAt = $t; }
                 if ($this->isTatli($k))  $hasTatli = true;
                 if ($this->isIcecek($k)) $hasIcecek = true;
+                // yemek = icecek de tatli da olmayan kalem (ana/baslangic/meze/salata...)
+                if (!$this->isIcecek($k) && !$this->isTatli($k)) $yemekVar = true;
             }
             $kalemSayi = $kl->count();
 
@@ -112,8 +114,8 @@ class SefGarsonAI
                     $masaAd . ' masasında ' . $this->dkGecti($sonKalemAt) . ' dakikadır yeni sipariş yok. Uğra; tatlı, içecek ya da bir şey daha ister mi diye sor.', '💤');
             }
 
-            // 4) ICECEK FIRSATI (birlikte gosterilebilir): yemek var ama icecek yok
-            if ($kalemSayi > 0 && $hasAna && !$hasIcecek) {
+            // 4) ICECEK FIRSATI: yemek var, icecek yok, tatli da yok (tatli varsa rule 6 kapsar)
+            if ($kalemSayi > 0 && $hasAna && !$hasIcecek && !$hasTatli) {
                 $ekle('icecek_firsati', 1, $masaAd . ' içeceksiz',
                     $masaAd . ' yemek aldı ama içecek yok. Ayran, şalgam, soda ya da bir içecek öner.', '🥤');
             }
@@ -121,6 +123,16 @@ class SefGarsonAI
             if ($a->misafir_sayisi >= $kalabalik && $kalemSayi > 0 && !$hasTatli && $acikDk <= 25) {
                 $ekle('kalabalik_baslangic', 2, $masaAd . ' kalabalık masa',
                     $masaAd . ' ' . $a->misafir_sayisi . ' kişilik. Ortaya paylaşımlık başlangıç/meze öner; masanın ortalama hesabını büyütür.', '👥');
+            }
+            // 6) TATLI geldi ama sicak icecek yok -> cay/kahve caprazsatisi
+            if ($hasTatli && !$hasIcecek) {
+                $ekle('tatli_icecek', 2, $masaAd . ' tatlının yanına içecek',
+                    $masaAd . ' tatlı aldı ama çay/kahve yok. Yanına sıcak içecek öner, tatlıyla mükemmel gider.', '☕');
+            }
+            // 7) SADECE ICECEK: masada icecek var ama hic yemek yok, bir suredir oturuyor
+            if ($kalemSayi > 0 && !$yemekVar && !$hasTatli && $acikDk >= $bosDk) {
+                $ekle('sadece_icecek', 2, $masaAd . ' sadece içecekte',
+                    $masaAd . ' içecekle oturmuş ama henüz yemek yok. Meze/başlangıç ya da ana yemek öner.', '🍽️');
             }
         }
 
