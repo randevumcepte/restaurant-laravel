@@ -125,7 +125,7 @@
   .rozet span{ font-size:18px; }
 
   /* alt nav */
-  #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:85; display:flex; align-items:flex-end; justify-content:space-around;
+  #altbar{ position:fixed; left:0; right:0; bottom:0; z-index:94; display:flex; align-items:flex-end; justify-content:space-around;
     padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:var(--navbg); backdrop-filter:blur(14px); border-top:1px solid var(--cizgi); }
   #altbar button{ flex:1; background:none; border:none; color:var(--sessiz); font-size:10.5px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 0; }
   #altbar button span{ font-size:19px; } #altbar button.act{ color:var(--gold); }
@@ -207,7 +207,12 @@
 
   /* ==================== ORTAK OVERLAY'LER ==================== */
   .ov{ position:fixed; inset:0; z-index:80; display:none; }
-  #sepet, #detay{ z-index:92; }   /* sepet/detay alt menünün ÜSTÜNDE (85) */
+  #sepet, #detay{ z-index:92; }   /* sepet/detay katmanı; alt menü (94) HER ZAMAN üstte kalır */
+  /* Alt menü her sayfada SABİT görünsün: sheet alta yaslı kalır ama içerik (butonlar) alt menünün ÜSTÜNde biter (mobil) */
+  @media(max-width:919px){
+    #detay .in{ padding-bottom:calc(26px + 66px + env(safe-area-inset-bottom)); }
+    #sepet .foot{ padding-bottom:calc(18px + 66px + env(safe-area-inset-bottom)); }
+  }
   .ov.acik{ display:flex; }
   .ov-bg{ position:absolute; inset:0; background:rgba(6,4,10,.7); backdrop-filter:blur(4px); }
 
@@ -334,8 +339,8 @@
   #altbar .qr .qi.ai, #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
   #altbar .qr .qi.dinle, #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
   /* Asistan durum hapı: alt barın hemen üstünde, ORTA DEĞİL alt-hizalı, sadece asistan açıkken */
-  #asbar{ position:fixed; left:50%; transform:translateX(-50%) translateY(10px); bottom:calc(76px + env(safe-area-inset-bottom));
-    z-index:88; max-width:86%; padding:9px 16px; border-radius:20px; font-size:13px; font-weight:700; text-align:center;
+  #asbar{ position:fixed; left:50%; transform:translateX(-50%) translateY(10px); bottom:calc(102px + env(safe-area-inset-bottom));
+    z-index:96; max-width:86%; padding:9px 16px; border-radius:20px; font-size:13px; font-weight:700; text-align:center;
     background:linear-gradient(135deg,#2a1731,#160a1a); color:#fff; border:1px solid rgba(255,255,255,.14); box-shadow:0 12px 30px rgba(0,0,0,.5);
     opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #asbar.acik{ opacity:1; transform:translateX(-50%) translateY(0); }
