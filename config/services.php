@@ -58,7 +58,9 @@ return [
         // ESKALASYON (normal: hatirlatma 3dk / esik 3 / goruldu_tut 5) - CANLI TEST icin dusuk:
         'hatirlatma_dk'        => (int) env('SEF_GARSON_HATIRLATMA_DK', 1),      // gorulmezse kac dk sonra tekrar titre+popup
         'eskalasyon_esik'      => (int) env('SEF_GARSON_ESKALASYON_ESIK', 3),    // bu kadar hatirlatmaya ragmen gorulmezse -> yoneticiye
-        'goruldu_tut_dk'       => (int) env('SEF_GARSON_GORULDU_TUT_DK', 3),     // "Anladim" sonrasi yesil kart kac dk gorunsun
+        // SONUC DENETIMI: "Anladim" tiklamak yetmez, GERCEK satis lazim (normal: soz 4dk / esik 2):
+        'soz_suresi_dk'        => (int) env('SEF_GARSON_SOZ_SURESI_DK', 1),      // "Anladim" sonrasi satis icin taninan sure
+        'soz_esik'             => (int) env('SEF_GARSON_SOZ_ESIK', 2),           // bu kadar "anladim ama yapmadi" -> yoneticiye
     ],
 
     // Google Cloud TTS (musteri QR asistani icin kaliteli ERKEK ses). Randevumcepte ile AYNI anahtar.

@@ -157,9 +157,10 @@ class SefGarsonAI
     {
         if (empty($ham)) return [];
         $this->takipTablo();
-        $aralik = (int) config('sefgarson.hatirlatma_dk', 3);
-        $esik   = (int) config('sefgarson.eskalasyon_esik', 3);
-        $tut    = (int) config('sefgarson.goruldu_tut_dk', 5);
+        $aralik  = (int) config('sefgarson.hatirlatma_dk', 3);
+        $esik    = (int) config('sefgarson.eskalasyon_esik', 3);
+        $sozSure = (int) config('sefgarson.soz_suresi_dk', 4);   // "Anladim" sonrasi satis icin taninan sure
+        $sozEsik = (int) config('sefgarson.soz_esik', 2);        // bu kadar "bos soz"dan sonra -> yoneticiye
 
         $adIds = array_values(array_unique(array_map(fn ($u) => $u['adisyon_id'], $ham)));
         $rows = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->whereIn('adisyon_id', $adIds)->get();
@@ -183,8 +184,35 @@ class SefGarsonAI
                 } catch (\Throwable $e) {}
                 $bildir = true;
             } elseif ($t->durum === 'goruldu') {
-                if ($t->goruldu_at && $this->dkGecti($t->goruldu_at) >= $tut) continue;  // yesil suresi doldu -> dus
-                $durum = 'goruldu';
+                // ONEMLI: bu satir HALA $ham'da demek -> kosul cozulmemis (garson sipari? EKLEMEMIS).
+                // Kosul cozulseydi ham'da olmaz, uyari sessizce kaybolurdu (basari).
+                $gecti = $t->goruldu_at ? $this->dkGecti($t->goruldu_at) : 999;
+                if ($gecti < $sozSure) {
+                    $durum = 'goruldu';    // soz suresi icinde: yesil goster, satis icin bekle
+                } else {
+                    // SOZ SURESI DOLDU ama hala satis yok => "Anladim" dedi, yapmadi = BOS SOZ
+                    $sozBozdu = (int) ($t->soz_bozdu ?? 0) + 1;
+                    if ($sozBozdu >= $sozEsik) {
+                        $durum = 'eskale';
+                        $ilkKez = !$t->yonetici_bildirildi;
+                        try {
+                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
+                                'durum' => 'eskale', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now(),
+                                'yonetici_bildirildi' => 1, 'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {}
+                        if ($ilkKez) $this->yoneticiyeBildir($u, true);  // "anladim dedi ama yapmadi"
+                        $bildir = false;
+                    } else {
+                        $durum = 'aktif';
+                        try {
+                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
+                                'durum' => 'aktif', 'soz_bozdu' => $sozBozdu, 'son_hatirlatma_at' => now(), 'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {}
+                        $bildir = true;   // geri dondu: tekrar titre + popup
+                    }
+                }
             } else { // aktif | eskale
                 $durum = $t->durum;
                 $elapsed = $t->son_hatirlatma_at ? $this->dkGecti($t->son_hatirlatma_at) : 999;
@@ -257,15 +285,20 @@ class SefGarsonAI
         return ['ok' => 1];
     }
 
-    protected function yoneticiyeBildir($u)
+    protected function yoneticiyeBildir($u, $sozBozarak = false)
     {
         $this->yoneticiTablo();
+        $garson = ($u['garson_adi'] ?? '') ?: 'Garson';
+        $masa = $u['masa_adi'] ?? '';
+        $mesaj = $sozBozarak
+            ? ($garson . ', ' . $masa . ' için "anladım" dedi ama satışı yapmadı (' . $u['baslik'] . ').')
+            : ($garson . ', ' . $masa . ' uyarısını dikkate almadı (' . $u['baslik'] . ').');
         try {
             DB::table('sef_garson_yonetici_bildirim')->insert([
                 'sube_id' => $this->subeId, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'],
-                'masa_adi' => mb_substr((string) ($u['masa_adi'] ?? ''), 0, 60),
+                'masa_adi' => mb_substr((string) $masa, 0, 60),
                 'garson_id' => $u['garson_id'] ?: null, 'garson_adi' => mb_substr((string) ($u['garson_adi'] ?? ''), 0, 80),
-                'mesaj' => mb_substr((($u['garson_adi'] ?? '') ?: 'Garson') . ' "' . $u['baslik'] . '" uyarısını dikkate almadı.', 0, 255),
+                'mesaj' => mb_substr($mesaj, 0, 255),
                 'okundu' => 0, 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {}
@@ -273,24 +306,32 @@ class SefGarsonAI
 
     protected function takipTablo()
     {
-        if (Schema::hasTable('sef_garson_takip')) return;
-        try {
-            Schema::create('sef_garson_takip', function ($t) {
-                $t->increments('id');
-                $t->unsignedBigInteger('sube_id');
-                $t->unsignedBigInteger('adisyon_id');
-                $t->string('tip', 40);
-                $t->unsignedBigInteger('garson_id')->nullable();
-                $t->string('durum', 20)->default('aktif');       // aktif | goruldu | eskale
-                $t->unsignedInteger('hatirlatma')->default(1);
-                $t->boolean('yonetici_bildirildi')->default(false);
-                $t->timestamp('ilk_at')->nullable();
-                $t->timestamp('son_hatirlatma_at')->nullable();
-                $t->timestamp('goruldu_at')->nullable();
-                $t->timestamps();
-                $t->index(['sube_id', 'adisyon_id']);
-            });
-        } catch (\Throwable $e) {}
+        if (!Schema::hasTable('sef_garson_takip')) {
+            try {
+                Schema::create('sef_garson_takip', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id');
+                    $t->unsignedBigInteger('adisyon_id');
+                    $t->string('tip', 40);
+                    $t->unsignedBigInteger('garson_id')->nullable();
+                    $t->string('durum', 20)->default('aktif');       // aktif | goruldu | eskale
+                    $t->unsignedInteger('hatirlatma')->default(1);
+                    $t->unsignedInteger('soz_bozdu')->default(0);    // "Anladim" deyip yapmama sayisi
+                    $t->boolean('yonetici_bildirildi')->default(false);
+                    $t->timestamp('ilk_at')->nullable();
+                    $t->timestamp('son_hatirlatma_at')->nullable();
+                    $t->timestamp('goruldu_at')->nullable();
+                    $t->timestamps();
+                    $t->index(['sube_id', 'adisyon_id']);
+                });
+            } catch (\Throwable $e) {}
+            return;
+        }
+        // Canlida tablo once olusmus olabilir -> eksik kolonu ekle
+        if (!Schema::hasColumn('sef_garson_takip', 'soz_bozdu')) {
+            try { Schema::table('sef_garson_takip', function ($t) { $t->unsignedInteger('soz_bozdu')->default(0); }); }
+            catch (\Throwable $e) {}
+        }
     }
 
     protected function yoneticiTablo()
