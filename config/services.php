@@ -48,11 +48,12 @@ return [
     // + "bu masaya ne satayim" derin oneride Haiku (anthropic anahtarini paylasir). Esikler sube icin ortak.
     'sefgarson' => [
         'acik'                 => (bool) env('SEF_GARSON_ACIK', true),           // 0 -> gozcu kapali
-        'bos_masa_dk'          => (int) env('SEF_GARSON_BOS_MASA_DK', 12),       // acildi, siparis yok -> uyar
-        'durgun_dk'            => (int) env('SEF_GARSON_DURGUN_DK', 18),         // son kalemden bu kadar dk gecti -> uyar
-        'tatli_dk'             => (int) env('SEF_GARSON_TATLI_DK', 22),          // ana yemekten sonra tatli firsati
-        'kalabalik_kisi'       => (int) env('SEF_GARSON_KALABALIK_KISI', 4),     // bu ve ustu -> paylasimlik oner
-        'kapatma_cooldown_dk'  => (int) env('SEF_GARSON_KAPATMA_DK', 15),        // garson kapatinca kac dk sussun
+        // NOT: asagidaki varsayilanlar CANLI TEST icin gecici olarak dusuruldu (normal: 12/18/22/4/15). Test bitince geri al.
+        'bos_masa_dk'          => (int) env('SEF_GARSON_BOS_MASA_DK', 1),        // acildi, siparis yok -> uyar
+        'durgun_dk'            => (int) env('SEF_GARSON_DURGUN_DK', 2),          // son kalemden bu kadar dk gecti -> uyar
+        'tatli_dk'             => (int) env('SEF_GARSON_TATLI_DK', 1),           // ana yemekten sonra tatli firsati
+        'kalabalik_kisi'       => (int) env('SEF_GARSON_KALABALIK_KISI', 3),     // bu ve ustu -> paylasimlik oner
+        'kapatma_cooldown_dk'  => (int) env('SEF_GARSON_KAPATMA_DK', 2),         // garson kapatinca kac dk sussun
         'gunluk_limit'         => (int) env('SEF_GARSON_GUNLUK_LIMIT', 200),     // derin oneri (Haiku) gunluk tavan (sube basi)
     ],
 
