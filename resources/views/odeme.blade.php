@@ -8,7 +8,13 @@
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:18px}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:18px;padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+  /* Alt menu — her sayfada sabit (menuyle ayni gorunum) */
+  .altnav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;align-items:flex-end;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+  .altnav a{flex:1;text-decoration:none;color:var(--gri);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0}
+  .altnav a span{font-size:19px}.altnav a.act{color:var(--mor)}
+  .altnav .qr{flex:0 0 auto}
+  .altnav .qr .qi{width:60px;height:60px;margin-top:-26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:25px;color:#fff;background:linear-gradient(135deg,var(--mor),var(--mavi));box-shadow:0 10px 24px rgba(124,58,237,.5),0 0 0 5px #fff}
   .card{width:100%;max-width:420px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 30px 70px rgba(80,50,160,.18)}
   .bas{background:linear-gradient(135deg,var(--mor),var(--mavi));color:#fff;padding:24px;text-align:center}
   .bas .l{font-size:13px;color:#E9D5FF}
@@ -56,6 +62,15 @@
       <p>Teşekkürler, siparişiniz onaylandı.</p>
     </div>
   </div>
+
+  @php $menuUrl = !empty($masaId) ? url('/masa/'.$masaId) : url('/'); @endphp
+  <nav class="altnav">
+    <a href="{{ $menuUrl }}"><span>📋</span>Menü</a>
+    <a href="{{ $menuUrl }}"><span>🧾</span>Siparişlerim</a>
+    <a class="qr" href="{{ $menuUrl }}" aria-label="Menü"><span class="qi">🤖</span></a>
+    <a href="{{ $menuUrl }}"><span>🔔</span>Çağır</a>
+    <a class="act" href="javascript:void(0)"><span>💳</span>Öde</a>
+  </nav>
 <script>
   var TOKEN=@json($islem->token);
   function fmt(el){ el.value=el.value.replace(/\D/g,'').replace(/(.{4})/g,'$1 ').trim(); }

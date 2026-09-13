@@ -1103,7 +1103,13 @@ Route::get('/ode/{token}', function ($token) {
     _odemeEnsure();
     $i = DB::table('odeme_islemleri')->where('token', $token)->first();
     if (!$i) abort(404);
-    return view('odeme', ['islem' => $i, 'sube' => DB::table('subeler')->find($i->sube_id)]);
+    // Alt menu "Menuye Don" icin masa id
+    $masaId = 0;
+    if (!empty($i->adisyon_id)) {
+        $ad = DB::table('adisyonlar')->find($i->adisyon_id);
+        $masaId = ($ad && !empty($ad->masa_id)) ? (int) $ad->masa_id : 0;
+    }
+    return view('odeme', ['islem' => $i, 'sube' => DB::table('subeler')->find($i->sube_id), 'masaId' => $masaId]);
 });
 // Odeme tamamla (CSRF muaf: ode/*) — simulasyon basarili; gercek saglayici callback'i buraya baglanir
 Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
