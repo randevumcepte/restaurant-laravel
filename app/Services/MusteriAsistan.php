@@ -260,7 +260,7 @@ class MusteriAsistan
         }
         $bas = $top[0] ?? 'Köfte';
         return $this->cvp("Size birkaç favorimizi önereyim. Özellikle $bas, misafirlerimizin en beğendiği lezzetlerden; gönül rahatlığıyla tavsiye ederim. Aşağıdaki önerilere göz atabilirsiniz. 😊",
-            ['tip' => 'oneri', 'kartlar' => $kartlar]);
+            ['tip' => 'oneri', 'baslik' => '🤖 Günün Önerileri', 'kartlar' => $kartlar]);
     }
 
     protected function urunBul($c)

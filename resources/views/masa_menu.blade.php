@@ -863,18 +863,34 @@ async function sunucudanCevap(soru){
     const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil})});
     const j=await r.json();
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
-    if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar); }
+    if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
     if((j.aksiyon==='sepet_ekle'||j.aksiyon==='sepet_ayarla') && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen);
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
-async function asKartGoster(kartlar){
+async function asKartGoster(kartlar, baslik){
   let bak=_urun;
   if(aktifAsDil && aktifAsDil!=='tr'){ await menuVeriDil(aktifAsDil); if(_urunDil[aktifAsDil]) bak=_urunDil[aktifAsDil]; }
   const urunler=kartlar.map(k=>(k&&k.urun_id&&bak[k.urun_id])?bak[k.urun_id]:k).filter(Boolean);
-  if(urunler.length===1) detayAc(urunler[0]); else if(urunler.length) asistanUrunGoster(urunler);
+  if(urunler.length===1){ detayAc(urunler[0]); return; }
+  if(urunler.length) asistanKatmanGoster(urunler, baslik);
+}
+/* Asistanın getirdiği ürünleri ÖNDEKİ menü katmanında göster (ekran net değişsin) */
+function asistanKatmanGoster(urunler, baslik){
+  const body=document.getElementById('menu-body'); if(!body) return;
+  document.getElementById('menu-bas').textContent = baslik || '🤖 Önerilenler';
+  const bul=uid=>urunler.find(x=>String(x.urun_id)===String(uid)) || _urun[uid];
+  let h='<div class="mgrid" style="margin-top:16px">';
+  urunler.forEach(u=>{ const tuk=u.etiket==='Tükendi';
+    h+=`<div class="mk" data-uid="${u.urun_id}"><div class="g">${gorselHtml(u,'em')}${u.etiket&&!tuk?`<span class="tag">${esc(u.etiket)}</span>`:''}</div>`
+      +`<div class="b"><div class="ad">${esc(u.ad)}</div><div class="ac">${esc(u.aciklama||'')}</div>`
+      +`<div class="alt"><span class="fi">${esc(u.fiyat_yazi||'')}</span><button class="art" data-uid="${u.urun_id}" ${tuk?'disabled style=opacity:.4':''}>+</button></div></div></div>`; });
+  h+='</div>'; body.innerHTML=h;
+  body.querySelectorAll('.mk').forEach(el=>el.addEventListener('click',()=>{ const u=bul(el.dataset.uid); if(u) detayAc(u); }));
+  body.querySelectorAll('.mk .art').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); const u=bul(b.dataset.uid); if(u) sepeteEkle(u,1,true); }));
+  document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
 function asSepetEkle(eklenen){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast('🛒 Siparişiniz sepete eklendi'); }
 function robotHal(hal){
