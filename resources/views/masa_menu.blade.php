@@ -340,6 +340,11 @@
   /* Alt menü + masaüstü yüzen robot renk yankısı: MOR = AI konuşuyor, YEŞİL = sıra sende */
   #altbar .qr .qi.ai, #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
   #altbar .qr .qi.dinle, #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
+  /* Mikrofon ikonu (patron tarafındaki gibi) — currentColor ile renk alır */
+  .micico{ width:1em; height:1em; fill:currentColor; display:block; }
+  #side .sbtn .micico{ width:20px; height:20px; }
+  /* Yuvarlak asistan butonlarında arka plan hep koyu (mor/yeşil) -> mikrofon BEYAZ */
+  #altbar .qr .qi .micico, #aiFab .micico{ fill:#fff !important; }
   /* Asistan durum hapı: alt barın hemen üstünde, ORTA DEĞİL alt-hizalı, sadece asistan açıkken */
   #asbar{ position:fixed; left:50%; transform:translateX(-50%) translateY(10px); bottom:calc(102px + env(safe-area-inset-bottom));
     z-index:96; max-width:86%; padding:9px 16px; border-radius:20px; font-size:13px; font-weight:700; text-align:center;
@@ -396,7 +401,7 @@
   <nav id="altbar">
     <button class="act" onclick="menuAc()"><span>📋</span>Menü</button>
     <button onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
-    <button class="qr" onclick="asistanAc()"><div class="qi">🤖</div></button>
+    <button class="qr" onclick="asistanAc()"><div class="qi"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></div></button>
     <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
     <button onclick="hesapOde()"><span>💳</span>Öde</button>
   </nav>
@@ -421,7 +426,7 @@
     <div class="sp"></div>
     <button class="sbtn cagir" onclick="cagir('garson')"><span>🔔</span><span><b>Garson Çağır</b><i>Size hemen yardımcı olalım</i></span></button>
     <button class="sbtn hesap" onclick="hesapOde()"><span>💳</span><span><b>Hesabı Öde</b><i>Online öde ya da garsondan iste</i></span></button>
-    <button class="sbtn cagir" onclick="asistanAc()"><span>🤖</span><span><b>Yapay Zekâ Asistan</b><i>Ürün öner, soru sor, yardım al</i></span></button>
+    <button class="sbtn cagir" onclick="asistanAc()"><span><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></span><span><b>Yapay Zekâ Asistan</b><i>Ürün öner, soru sor, yardım al</i></span></button>
     <div class="dil" id="dilDesk" onclick="dilMenuAc(event)">🌐 Türkçe ▾</div>
   </aside>
 
@@ -499,8 +504,8 @@
 <button id="deskcart" class="bos" onclick="sepetAc()">🧾 Sepetim <span class="dc-n" id="dc-n">0</span></button>
 
 <!-- ==================== AI ASISTAN: SADECE alt robot ikonu (iframe/panel YOK, orta bos) ==================== -->
-<button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan">🤖</button>
-<div id="asbar"><span id="asbar-t">Dokunun, konuşun</span></div>
+<button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></button>
+<div id="asbar"><span id="asbar-t">🎤 Konuşmak için mikrofona dokunun</span></div>
 
 <div id="dilMenu"></div>
 <div id="toast"></div>
@@ -855,7 +860,7 @@ async function basla(){
     const c=await dinleSunucu();
     if(!sohbetAktif) break;
     if(_sttLimit){ _sttLimit=false; await sistemKonus('Şu an sesli asistan çok yoğun. Menüden yazarak devam edebilirsiniz.'); break; }
-    if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde robota tekrar dokunun, buradayım.'); break; } continue; }
+    if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde mikrofona tekrar dokunun, buradayım.'); break; } continue; }
     bos=0;
     if(/^(kapat|kapan|görüşürüz|hoşça kal)\b/i.test(c)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap=await sunucudanCevap(c);
