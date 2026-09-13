@@ -210,9 +210,10 @@
   #sepet, #detay{ z-index:92; }   /* sepet/detay katmanı; alt menü (94) HER ZAMAN üstte kalır */
   /* Alt menü her sayfada SABİT görünsün: sheet alta yaslı kalır ama içerik (butonlar) alt menünün ÜSTÜNde biter (mobil) */
   @media(max-width:919px){
-    /* 112px: alt menü barı (~62px) + ortada 28px yukarı taşan robot dahil temiz boşluk */
-    #detay .in{ padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
-    #sepet .foot{ padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
+    /* 112px: alt menü barı (~62px) + ortada 28px yukarı taşan robot dahil temiz boşluk.
+       !important: taban '#detay .in' / '#sepet .foot' padding kurallari CSS'te DAHA SONRA gelip bunu eziyordu. */
+    #detay .in{ padding-bottom:calc(112px + env(safe-area-inset-bottom)) !important; }
+    #sepet .foot{ padding-bottom:calc(112px + env(safe-area-inset-bottom)) !important; }
   }
   .ov.acik{ display:flex; }
   .ov-bg{ position:absolute; inset:0; background:rgba(6,4,10,.7); backdrop-filter:blur(4px); }
