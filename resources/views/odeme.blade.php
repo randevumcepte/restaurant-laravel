@@ -66,9 +66,9 @@
   @php $menuUrl = !empty($masaId) ? url('/masa/'.$masaId) : url('/'); @endphp
   <nav class="altnav">
     <a href="{{ $menuUrl }}"><span>📋</span>Menü</a>
-    <a href="{{ $menuUrl }}"><span>🧾</span>Siparişlerim</a>
-    <a class="qr" href="{{ $menuUrl }}" aria-label="Menü"><span class="qi">🤖</span></a>
-    <a href="{{ $menuUrl }}"><span>🔔</span>Çağır</a>
+    <a href="{{ $menuUrl }}?sepet=1"><span>🧾</span>Siparişlerim</a>
+    <a class="qr" href="{{ $menuUrl }}?ai=1" aria-label="Asistan"><span class="qi">🤖</span></a>
+    <a href="{{ $menuUrl }}?cagir=1"><span>🔔</span>Çağır</a>
     <a class="act" href="javascript:void(0)"><span>💳</span>Öde</a>
   </nav>
 <script>
