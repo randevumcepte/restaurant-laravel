@@ -2792,6 +2792,10 @@ Route::get('/api/sefgarson/tani', function () {
         'ef_eskalasyon' => $s->esik('eskalasyon_esik'),
         'col_soz_bozdu' => Schema::hasTable('sef_garson_takip') ? Schema::hasColumn('sef_garson_takip', 'soz_bozdu') : false,
         'now' => (string) now(),
+        'takip' => Schema::hasTable('sef_garson_takip')
+            ? DB::table('sef_garson_takip')->orderByDesc('id')->limit(12)
+                ->get(['id', 'sube_id', 'adisyon_id', 'tip', 'durum', 'hatirlatma', 'soz_bozdu', 'goruldu_at', 'son_hatirlatma_at'])
+            : [],
     ];
 });
 
