@@ -55,6 +55,10 @@ return [
         'kalabalik_kisi'       => (int) env('SEF_GARSON_KALABALIK_KISI', 3),     // bu ve ustu -> paylasimlik oner
         'kapatma_cooldown_dk'  => (int) env('SEF_GARSON_KAPATMA_DK', 2),         // garson kapatinca kac dk sussun
         'gunluk_limit'         => (int) env('SEF_GARSON_GUNLUK_LIMIT', 200),     // derin oneri (Haiku) gunluk tavan (sube basi)
+        // ESKALASYON (normal: hatirlatma 3dk / esik 3 / goruldu_tut 5) - CANLI TEST icin dusuk:
+        'hatirlatma_dk'        => (int) env('SEF_GARSON_HATIRLATMA_DK', 1),      // gorulmezse kac dk sonra tekrar titre+popup
+        'eskalasyon_esik'      => (int) env('SEF_GARSON_ESKALASYON_ESIK', 3),    // bu kadar hatirlatmaya ragmen gorulmezse -> yoneticiye
+        'goruldu_tut_dk'       => (int) env('SEF_GARSON_GORULDU_TUT_DK', 3),     // "Anladim" sonrasi yesil kart kac dk gorunsun
     ],
 
     // Google Cloud TTS (musteri QR asistani icin kaliteli ERKEK ses). Randevumcepte ile AYNI anahtar.

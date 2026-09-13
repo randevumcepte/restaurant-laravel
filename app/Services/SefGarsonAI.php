@@ -53,14 +53,12 @@ class SefGarsonAI
             ->get(['k.adisyon_id', 'k.kur', 'k.urun_adi', 'k.created_at', 'k.gonderim_zamani', 'u.istasyon', 'mk.ad as kat'])
             ->groupBy('adisyon_id');
 
-        $kapatilan = $this->kapatilanlar($ids);   // [adisyon_id.tip => true] (cooldown icinde susturulmus)
-
         $bosDk      = (int) config('sefgarson.bos_masa_dk', 12);
         $durgunDk   = (int) config('sefgarson.durgun_dk', 18);
         $tatliDk    = (int) config('sefgarson.tatli_dk', 22);
         $kalabalik  = (int) config('sefgarson.kalabalik_kisi', 4);
 
-        $uyarilar = [];
+        $ham = [];
         foreach ($adisyonlar as $a) {
             $kl = $kalemler[$a->id] ?? collect();
             $masaAd = $a->masa_adi ?: ('#' . $a->masa_id);
@@ -80,9 +78,8 @@ class SefGarsonAI
             }
             $kalemSayi = $kl->count();
 
-            $ekle = function ($tip, $oncelik, $baslik, $mesaj, $ikon) use (&$uyarilar, $a, $masaAd, $kapatilan) {
-                if (!empty($kapatilan[$a->id . '.' . $tip])) return;   // garson kapatti, cooldown icinde
-                $uyarilar[] = [
+            $ekle = function ($tip, $oncelik, $baslik, $mesaj, $ikon) use (&$ham, $a, $masaAd) {
+                $ham[] = [
                     'adisyon_id' => (int) $a->id,
                     'masa_id'    => (int) $a->masa_id,
                     'masa_adi'   => (string) $masaAd,
@@ -136,9 +133,184 @@ class SefGarsonAI
             }
         }
 
-        // Oncelik + masa adina gore sirala
-        usort($uyarilar, fn ($x, $y) => ($y['oncelik'] <=> $x['oncelik']) ?: strcmp($x['masa_adi'], $y['masa_adi']));
+        // YASAM DONGUSU: yeni/hatirlat/goruldu/eskalasyon takibi (bildir bayragi + durum)
+        $uyarilar = $this->yasamDongusu($ham);
+        // Sirala: once GORULMEMIS (turuncu, oncelik) sonra GORULDU (yesil)
+        usort($uyarilar, function ($x, $y) {
+            $gx = $x['durum'] === 'goruldu' ? 1 : 0;
+            $gy = $y['durum'] === 'goruldu' ? 1 : 0;
+            if ($gx !== $gy) return $gx <=> $gy;
+            return ($y['oncelik'] <=> $x['oncelik']) ?: strcmp($x['masa_adi'], $y['masa_adi']);
+        });
         return $uyarilar;
+    }
+
+    /**
+     * Her ham uyariyi (adisyon_id.tip) sunucuda takip et:
+     * - ilk gorulme -> bildir=true (telefon titresin + popup)
+     * - hatirlatma araligi gecti, hala gorulmedi -> tekrar bildir=true
+     * - esik kadar hatirlatilip hala gorulmedi -> durum=eskale + YONETICIYE bildir
+     * - garson "Anladim" derse -> durum=goruldu (yesil), bir sure gosterilip duser
+     * Doner: her uyariya 'durum' (aktif|goruldu|eskale) + 'bildir' (bool) eklenmis liste.
+     */
+    protected function yasamDongusu(array $ham)
+    {
+        if (empty($ham)) return [];
+        $this->takipTablo();
+        $aralik = (int) config('sefgarson.hatirlatma_dk', 3);
+        $esik   = (int) config('sefgarson.eskalasyon_esik', 3);
+        $tut    = (int) config('sefgarson.goruldu_tut_dk', 5);
+
+        $adIds = array_values(array_unique(array_map(fn ($u) => $u['adisyon_id'], $ham)));
+        $rows = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->whereIn('adisyon_id', $adIds)->get();
+        $map = [];
+        foreach ($rows as $r) $map[$r->adisyon_id . '.' . $r->tip] = $r;
+
+        $out = [];
+        foreach ($ham as $u) {
+            $key = $u['adisyon_id'] . '.' . $u['tip'];
+            $t = $map[$key] ?? null;
+            $bildir = false; $durum = 'aktif';
+
+            if (!$t) {
+                try {
+                    DB::table('sef_garson_takip')->insert([
+                        'sube_id' => $this->subeId, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'],
+                        'garson_id' => $u['garson_id'] ?: null, 'durum' => 'aktif', 'hatirlatma' => 1,
+                        'yonetici_bildirildi' => 0, 'ilk_at' => now(), 'son_hatirlatma_at' => now(),
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                } catch (\Throwable $e) {}
+                $bildir = true;
+            } elseif ($t->durum === 'goruldu') {
+                if ($t->goruldu_at && $this->dkGecti($t->goruldu_at) >= $tut) continue;  // yesil suresi doldu -> dus
+                $durum = 'goruldu';
+            } else { // aktif | eskale
+                $durum = $t->durum;
+                $elapsed = $t->son_hatirlatma_at ? $this->dkGecti($t->son_hatirlatma_at) : 999;
+                if ($t->durum === 'aktif' && $elapsed >= $aralik) {
+                    $yeniSayi = (int) $t->hatirlatma + 1;
+                    if ($yeniSayi >= $esik) {
+                        $durum = 'eskale';
+                        $ilkKez = !$t->yonetici_bildirildi;
+                        try {
+                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
+                                'durum' => 'eskale', 'hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now(),
+                                'yonetici_bildirildi' => 1, 'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {}
+                        if ($ilkKez) $this->yoneticiyeBildir($u);
+                        $bildir = false; // yonetici devrede: garsona artik popup atma
+                    } else {
+                        try {
+                            DB::table('sef_garson_takip')->where('id', $t->id)->update([
+                                'hatirlatma' => $yeniSayi, 'son_hatirlatma_at' => now(), 'updated_at' => now(),
+                            ]);
+                        } catch (\Throwable $e) {}
+                        $bildir = true; // tekrar hatirlat (titre + popup)
+                    }
+                }
+            }
+            $u['durum'] = $durum;
+            $u['bildir'] = $bildir;
+            $out[] = $u;
+        }
+        return $out;
+    }
+
+    /** Garson "Anladim" dedi -> uyariyi goruldu (yesil) yap; popup/hatirlatma durur. */
+    public function uyariGordum($adisyonId, $tip)
+    {
+        $this->takipTablo();
+        $tip = mb_substr((string) $tip, 0, 40);
+        try {
+            $r = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->where('adisyon_id', (int) $adisyonId)->where('tip', $tip)->first();
+            if ($r) {
+                DB::table('sef_garson_takip')->where('id', $r->id)->update(['durum' => 'goruldu', 'goruldu_at' => now(), 'updated_at' => now()]);
+            } else {
+                DB::table('sef_garson_takip')->insert([
+                    'sube_id' => $this->subeId, 'adisyon_id' => (int) $adisyonId, 'tip' => $tip, 'durum' => 'goruldu',
+                    'hatirlatma' => 1, 'yonetici_bildirildi' => 0, 'ilk_at' => now(), 'son_hatirlatma_at' => now(),
+                    'goruldu_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {}
+        return ['ok' => 1];
+    }
+
+    /** YONETICI (sahip/mudur) icin: garsonun dikkate almadigi (eskale) uyarilar. */
+    public function yoneticiUyarilar()
+    {
+        $this->yoneticiTablo();
+        try {
+            $rows = DB::table('sef_garson_yonetici_bildirim')->where('sube_id', $this->subeId)->where('okundu', 0)
+                ->orderByDesc('id')->limit(30)->get();
+            return ['ok' => 1, 'uyarilar' => $rows];
+        } catch (\Throwable $e) { return ['ok' => 1, 'uyarilar' => []]; }
+    }
+
+    public function yoneticiUyariOku($id)
+    {
+        $this->yoneticiTablo();
+        try { DB::table('sef_garson_yonetici_bildirim')->where('sube_id', $this->subeId)->where('id', (int) $id)->update(['okundu' => 1]); }
+        catch (\Throwable $e) {}
+        return ['ok' => 1];
+    }
+
+    protected function yoneticiyeBildir($u)
+    {
+        $this->yoneticiTablo();
+        try {
+            DB::table('sef_garson_yonetici_bildirim')->insert([
+                'sube_id' => $this->subeId, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'],
+                'masa_adi' => mb_substr((string) ($u['masa_adi'] ?? ''), 0, 60),
+                'garson_id' => $u['garson_id'] ?: null, 'garson_adi' => mb_substr((string) ($u['garson_adi'] ?? ''), 0, 80),
+                'mesaj' => mb_substr((($u['garson_adi'] ?? '') ?: 'Garson') . ' "' . $u['baslik'] . '" uyarısını dikkate almadı.', 0, 255),
+                'okundu' => 0, 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+
+    protected function takipTablo()
+    {
+        if (Schema::hasTable('sef_garson_takip')) return;
+        try {
+            Schema::create('sef_garson_takip', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->unsignedBigInteger('adisyon_id');
+                $t->string('tip', 40);
+                $t->unsignedBigInteger('garson_id')->nullable();
+                $t->string('durum', 20)->default('aktif');       // aktif | goruldu | eskale
+                $t->unsignedInteger('hatirlatma')->default(1);
+                $t->boolean('yonetici_bildirildi')->default(false);
+                $t->timestamp('ilk_at')->nullable();
+                $t->timestamp('son_hatirlatma_at')->nullable();
+                $t->timestamp('goruldu_at')->nullable();
+                $t->timestamps();
+                $t->index(['sube_id', 'adisyon_id']);
+            });
+        } catch (\Throwable $e) {}
+    }
+
+    protected function yoneticiTablo()
+    {
+        if (Schema::hasTable('sef_garson_yonetici_bildirim')) return;
+        try {
+            Schema::create('sef_garson_yonetici_bildirim', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->unsignedBigInteger('adisyon_id');
+                $t->string('tip', 40);
+                $t->string('masa_adi', 60)->nullable();
+                $t->unsignedBigInteger('garson_id')->nullable();
+                $t->string('garson_adi', 80)->nullable();
+                $t->string('mesaj', 255);
+                $t->boolean('okundu')->default(false);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'okundu']);
+            });
+        } catch (\Throwable $e) {}
     }
 
     // ======================================================================
