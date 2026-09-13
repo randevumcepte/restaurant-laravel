@@ -1031,13 +1031,14 @@ function modDegistir(){
 (function(){ let m='{{ $mod ?? "koyu" }}'; try{ m=localStorage.getItem('qr_mod')||m; }catch(e){} modUygula(m); })();
 
 // Sayfa acilinca AI asistan kutusu OTOMATIK acilir ve (autostart ile) konusmaya baslar.
-window.addEventListener('load', async ()=>{ await yukle(); sayac(); if(window.sayfaDil && window.sayfaDil!=='tr'){ dilEtiketGuncelle(window.sayfaDil); sayfaCevir(window.sayfaDil); }
+window.addEventListener('load', async ()=>{
   // Odeme sayfasindan alt menuyle gelince dogru katmani ac (?sepet=1 / ?ai=1 / ?cagir=1)
-  try{ const q=new URLSearchParams(location.search);
-    if(q.get('sepet')==='1') sepetAc();
-    else if(q.get('ai')==='1') asistanAc();
-    else if(q.get('cagir')==='1') cagir('garson');
-  }catch(_){}
+  let _ac=''; try{ const q=new URLSearchParams(location.search); _ac=q.get('sepet')==='1'?'sepet':(q.get('ai')==='1'?'ai':(q.get('cagir')==='1'?'cagir':'')); }catch(_){}
+  if(_ac==='sepet'){ try{ sepetAc(); }catch(_){} }   // ANINDA ac: menu arkada yuklenirken sepet ustte -> flash olmaz
+  await yukle(); sayac();
+  if(window.sayfaDil && window.sayfaDil!=='tr'){ dilEtiketGuncelle(window.sayfaDil); sayfaCevir(window.sayfaDil); }
+  if(_ac==='ai'){ try{ asistanAc(); }catch(_){} }
+  else if(_ac==='cagir'){ try{ cagir('garson'); }catch(_){} }
 });
 </script>
 </body>
