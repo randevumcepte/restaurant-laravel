@@ -13,10 +13,34 @@ use Illuminate\Support\Facades\Schema;
 class MusteriAsistan
 {
     protected $subeId;
+    protected $_oneVar = null;   // urunler.one_cikan kolonlari mevcut mu (memoize)
 
     public function __construct($subeId)
     {
         $this->subeId = (int) $subeId;
+    }
+
+    /** Isletmenin "one cikan urun" kolonlari kurulu mu? (yonetim sayfasi ilk kayitta kurar) */
+    protected function oneCikanKolonVar()
+    {
+        if ($this->_oneVar === null) {
+            try { $this->_oneVar = Schema::hasColumn('urunler', 'one_cikan'); }
+            catch (\Throwable $e) { $this->_oneVar = false; }
+        }
+        return $this->_oneVar;
+    }
+
+    /** Urun ICECEK mi? Ad + kategoriden anlar (kategori bos/yanlis olsa bile ad'dan yakalar).
+why: "yemek oner" derken meyve suyu/su cikmasin. */
+    protected function icecekMi($ad, $kat)
+    {
+        if (trim($this->norm($ad)) === 'su') return true;
+        $n = ' ' . $this->norm($ad) . ' ';
+        $adKok = ['meyve suyu', 'ayran', 'kola', 'fanta', 'sprite', 'soda', 'gazoz', 'limonata', 'maden suyu', 'cay', 'kahve', 'latte', 'espresso', 'cappuccino', 'mocha', 'milkshake', 'smoothie', 'kokteyl', 'kokteil', 'bira', 'sarap', 'nescafe', 'frappe', 'sahlep', 'boza', 'ice tea', 'ice coffee', 'sinalco', 'kombucha', 'sicak cikolata', 'menta'];
+        foreach ($adKok as $x) { $xx = $this->norm($x); if ($xx !== '' && strpos($n, ' ' . $xx) !== false) return true; }
+        $k = $this->norm($kat);
+        if ($k !== '') { foreach (['icecek', 'mesrubat', 'kahve', 'cay', 'soft', 'shake', 'smoothie'] as $x) { if (strpos(' ' . $k . ' ', ' ' . $x) !== false) return true; } }
+        return false;
     }
 
     public function cevapla($soru, $baglam = null)
@@ -154,11 +178,17 @@ class MusteriAsistan
         $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
         $puanlar = $this->urunPuanlari();   // [urun_id => ['ort'=>x, 'say'=>y]]
         $out = [];
+        $one = $this->oneCikanKolonVar();
         foreach ($kats as $k) {
+            $cols = ['id', 'ad', 'fiyat', 'aciklama', 'tukendi'];
+            if ($one) { $cols[] = 'one_cikan'; $cols[] = 'one_etiket'; $cols[] = 'one_sira'; }
             $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)
-                ->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat', 'aciklama', 'tukendi']);
-            $kartlar = $urunler->map(function ($u) use ($k, $puanlar) {
-                $kart = $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $u->tukendi ? 'Tükendi' : null, [], $u->id);
+                ->where('aktif', 1)->orderBy('ad')->get($cols);
+            // One cikanlar kategoride EN BASA (one_sira'ya gore)
+            if ($one) $urunler = $urunler->sortByDesc(fn ($u) => !empty($u->one_cikan) ? (1000 - (int) $u->one_sira) : 0)->values();
+            $kartlar = $urunler->map(function ($u) use ($k, $puanlar, $one) {
+                $et = $u->tukendi ? 'Tükendi' : (($one && !empty($u->one_etiket)) ? $u->one_etiket : null);
+                $kart = $this->kart($u->ad, $u->fiyat, $u->aciklama, $k->ad, $et, [], $u->id);
                 if (isset($puanlar[$u->id])) { $kart['puan'] = $puanlar[$u->id]['ort']; $kart['puan_say'] = $puanlar[$u->id]['say']; }
                 return $kart;
             })->all();
@@ -192,12 +222,25 @@ class MusteriAsistan
 
     protected function kategori(array $normAdlar, $baslik, $emoji = '')
     {
+        $one = $this->oneCikanKolonVar();
+        $sel = ['urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat'];
+        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_etiket'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_sira'; }
         $urunler = DB::table('urunler')->join('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
             ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
-            ->select('urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat')
-            ->get()->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
+            ->select($sel)->get()->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
         if ($urunler->isEmpty()) return $this->cvp($baslik . ' şu an listede görünmüyor.');
-        $kartlar = $urunler->take(10)->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, null, [], $u->id))->all();
+        // One cikanlar EN BASA (one_sira'ya gore), sonra digerleri
+        if ($one) $urunler = $urunler->sortByDesc(fn ($u) => !empty($u->one_cikan) ? (1000 - (int) $u->one_sira) : 0)->values();
+        $kartlar = $urunler->take(12)->map(function ($u) use ($one) {
+            $et = ($one && !empty($u->one_etiket)) ? $u->one_etiket : null;
+            return $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, $et, [], $u->id);
+        })->all();
+        // Istah kabartici GIRIS: bu kategoride isletmenin ozel sozu olan one cikan urun varsa onu soyle
+        $vitrin = $one ? $urunler->first(fn ($u) => !empty($u->one_cikan) && !empty($u->one_soz)) : null;
+        if ($vitrin) {
+            return $this->cvp("$emoji " . trim($vitrin->one_soz) . ' Aşağıdakilere göz atabilirsiniz. 😊',
+                ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
+        }
         $ornek = $urunler->take(3)->map(fn ($u) => $u->ad)->implode(', ');
         return $this->cvp("$emoji $baslik hazır. $ornek gibi lezzetlerimiz var; resimlere göz atıp beğendiğinizi sorabilir ya da hemen isteyebilirsiniz.",
             ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
@@ -237,53 +280,60 @@ class MusteriAsistan
 
     protected function oneri($c = '')
     {
-        // "Ne yiyeyim / acıktım" onerisi = YEMEK oncelikli. Icecek/su bir yemek onerisi olamaz (meyve suyu onerme sacmaligi).
-        $icecekKok = ['icecek', 'mesrubat', 'kahve', 'cay', 'soft', 'shake', 'smoothie', 'limonata', 'soda', 'kokteyl', 'ayran', 'meyve su', 'maden su', 'gazoz', 'bira', 'sarap'];
-        $anaKok = ['ana yemek', 'izgara', 'kebap', 'pizza', 'burger', 'makarna', 'pide', 'doner', 'kofte', 'tavuk', 'et', 'balik', 'durum', 'lahmacun', 'pilav', 'guvec', 'wrap', 'sandvic', 'tost'];
         $ac = $this->has($c, ['karnim', 'acim', 'aciktim', 'aclik', 'doyur', 'doyurucu', 'cok yemek', 'agir bir', 'karin']); // aclik niyeti
-        $isKok = function ($kat, $kokler) {
+        $anaKok = ['ana yemek', 'izgara', 'kebap', 'pizza', 'burger', 'makarna', 'pide', 'doner', 'kofte', 'tavuk', 'et', 'balik', 'durum', 'lahmacun', 'pilav', 'guvec', 'wrap', 'sandvic', 'tost'];
+        $isAna = function ($kat) use ($anaKok) {
             $k = $this->norm($kat);
             if ($k === '') return false;
-            foreach ($kokler as $x) { $xx = $this->norm($x); if ($xx !== '' && strpos(' ' . $k . ' ', ' ' . $xx) !== false) return true; }
+            foreach ($anaKok as $x) { $xx = $this->norm($x); if ($xx !== '' && strpos(' ' . $k . ' ', ' ' . $xx) !== false) return true; }
             return false;
         };
 
-        // Populerlik sirasi (son 30 gun) — urun adi -> sira
-        $topAdlar = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', now()->subDays(30))->where('adisyon_kalemleri.durum', '!=', 'iptal')
-            ->select('urun_adi', DB::raw('SUM(adet) as adet'))->groupBy('urun_adi')->orderByDesc('adet')->limit(40)->pluck('urun_adi')->all();
-        $sira = [];
-        foreach ($topAdlar as $ix => $ad) $sira[$this->norm($ad)] = $ix;
-
-        // Tum aktif urunler + kategori
+        $one = $this->oneCikanKolonVar();
+        $sel = ['urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat'];
+        if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_etiket'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_sira'; }
         $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
-            ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)
-            ->select('urunler.id', 'urunler.ad', 'urunler.fiyat', 'urunler.aciklama', 'menu_kategorileri.ad as kat')->get();
+            ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
+            ->select($sel)->get();
 
-        // Icecekleri (ve acliktaysa tatliyi degil ama icecegi) ELE — yemek onerisi icecek olamaz
-        $yemekler = $rows->filter(fn ($u) => !$isKok($u->kat, $icecekKok));
-        if ($yemekler->isEmpty()) $yemekler = $rows; // hic yemek yoksa son care
+        // ICECEK bir yemek onerisi olamaz -> ele (ad + kategoriden)
+        $yemekler = $rows->reject(fn ($u) => $this->icecekMi($u->ad, $u->kat))->values();
+        if ($yemekler->isEmpty()) $yemekler = $rows;
 
-        // Puanla: populer + ana yemek onceligi (ac ise ana yemek cok daha agirlikli)
-        $sirala = $yemekler->sortByDesc(function ($u) use ($sira, $isKok, $anaKok, $ac) {
-            $p = 0;
-            $n = $this->norm($u->ad);
-            if (isset($sira[$n])) $p += (100 - $sira[$n]);
-            if ($isKok($u->kat, $anaKok)) $p += $ac ? 70 : 20;
-            return $p;
-        })->values();
-        $secili = $sirala->take(4)->values();
+        // 1) ONCELIK: isletmenin ISARETLEDIGI one cikan yemekler (one_sira'ya gore)
+        $secili = collect();
+        if ($one) {
+            $secili = $yemekler->filter(fn ($u) => !empty($u->one_cikan))->sortBy(fn ($u) => (int) $u->one_sira)->values();
+            if ($ac) $secili = $secili->sortByDesc(fn ($u) => $isAna($u->kat) ? 1 : 0)->values();
+        }
+        // 2) YOKSA: populer (son 30 gun) yemekler + ana yemek onceligi
+        if ($secili->isEmpty()) {
+            $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', now()->subDays(30))->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->select('urun_adi', DB::raw('SUM(adet) as adet'))->groupBy('urun_adi')->orderByDesc('adet')->limit(40)->pluck('urun_adi')->all();
+            $sira = [];
+            foreach ($top as $ix => $ad) $sira[$this->norm($ad)] = $ix;
+            $secili = $yemekler->sortByDesc(function ($u) use ($sira, $isAna, $ac) {
+                $p = 0; $n = $this->norm($u->ad);
+                if (isset($sira[$n])) $p += (100 - $sira[$n]);
+                if ($isAna($u->kat)) $p += $ac ? 70 : 20;
+                return $p;
+            })->values();
+        }
+        $secili = $secili->take(4)->values();
 
-        $etiketler = ['Misafir favorisi', 'Çok seviliyor', 'Şefin önerisi', 'Doyurucu'];
+        $vetiket = ['Şefin Önerisi', 'Çok seviliyor', 'Misafir favorisi', 'Doyurucu'];
         $kartlar = [];
         foreach ($secili as $i => $u) {
-            $kartlar[] = $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat, $etiketler[$i] ?? 'Öneri', [], $u->id);
+            $et = ($one && !empty($u->one_etiket)) ? $u->one_etiket : ($vetiket[$i] ?? 'Öneri');
+            $kartlar[] = $this->kart($u->ad, $u->fiyat, $u->aciklama, $u->kat ?? null, $et, [], $u->id);
         }
         $bas = ($secili->first()->ad ?? 'Köfte');
-        $mesaj = $ac
-            ? "Karnınız açsa doyurucu gider; özellikle $bas gönül rahatlığıyla tavsiye ederim. Aşağıdaki lezzetlere göz atabilirsiniz. 😊"
-            : "Size birkaç favorimizi önereyim. Özellikle $bas, misafirlerimizin en beğendiği lezzetlerden; gönül rahatlığıyla tavsiye ederim. Aşağıdaki önerilere göz atabilirsiniz. 😊";
-        return $this->cvp($mesaj, ['tip' => 'oneri', 'baslik' => $ac ? '🍽️ Doyurucu Öneriler' : '🤖 Günün Önerileri', 'kartlar' => $kartlar]);
+        $soz = ($one && $secili->isNotEmpty() && !empty($secili->first()->one_soz)) ? trim($secili->first()->one_soz) : '';
+        if ($soz !== '') $mesaj = $soz . ' Aşağıdaki lezzetlere göz atabilirsiniz. 😊';
+        elseif ($ac) $mesaj = "Karnınız açsa doyurucu gider; özellikle $bas gönül rahatlığıyla tavsiye ederim. Aşağıdakilere göz atabilirsiniz. 😊";
+        else $mesaj = "Size özenle seçtiğimiz birkaç lezzeti önereyim; özellikle $bas çok beğeniliyor. Aşağıdakilere göz atabilirsiniz. 😊";
+        return $this->cvp($mesaj, ['tip' => 'oneri', 'baslik' => $ac ? '🍽️ Doyurucu Öneriler' : '🤖 Bugünün Önerileri', 'kartlar' => $kartlar]);
     }
 
     protected function urunBul($c)

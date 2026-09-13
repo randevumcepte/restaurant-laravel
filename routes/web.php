@@ -2044,6 +2044,109 @@ Route::post('/api/qr/stt', function (Request $r) {
     }
 });
 
+// ============ ONE CIKAN URUN / GUNUN ONERISI YONETIMI (isletme onceden girer, asistan okur) ============
+if (!function_exists('_oneCikanEnsure')) {
+    function _oneCikanEnsure()
+    {
+        try {
+            if (!Schema::hasColumn('urunler', 'one_cikan')) {
+                Schema::table('urunler', function ($t) {
+                    $t->tinyInteger('one_cikan')->default(0);
+                    $t->string('one_etiket', 60)->nullable();
+                    $t->string('one_soz', 255)->nullable();
+                    $t->integer('one_sira')->default(0);
+                });
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+}
+Route::get('/one-cikanlar', function (Request $r) {
+    _oneCikanEnsure();
+    $subeId = (int) ($r->input('sube') ?: DB::table('subeler')->min('id'));
+    $sube = DB::table('subeler')->find($subeId);
+    $kats = DB::table('menu_kategorileri')->where('sube_id', $subeId)->where('aktif', 1)->orderBy('sira')->get(['id', 'ad']);
+    $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->orderBy('one_sira')->orderBy('ad')->get(['id', 'ad', 'kategori_id', 'one_cikan', 'one_etiket', 'one_soz', 'one_sira']);
+    $byKat = [];
+    foreach ($urunler as $u) $byKat[(int) $u->kategori_id][] = $u;
+    $e = fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $ok = $r->input('ok') ? '<div class="ok">✅ Kaydedildi. Asistan artık bu önerileri sunacak.</div>' : '';
+    $token = csrf_token();
+
+    $rowHtml = function ($u) use ($e) {
+        $chk = !empty($u->one_cikan) ? 'checked' : '';
+        return '<div class="urun ' . (!empty($u->one_cikan) ? 'aktif' : '') . '">'
+            . '<label class="ust"><input type="checkbox" name="oc[' . $u->id . ']" value="1" ' . $chk . ' onchange="this.closest(\'.urun\').classList.toggle(\'aktif\',this.checked)"><b>' . $e($u->ad) . '</b></label>'
+            . '<div class="alan">'
+            . '<input name="et[' . $u->id . ']" value="' . $e($u->one_etiket) . '" maxlength="60" placeholder="Rozet: örn. Şefin Önerisi / Bugüne Özel">'
+            . '<input name="sz[' . $u->id . ']" value="' . $e($u->one_soz) . '" maxlength="255" placeholder="İştah kabartıcı cümle: örn. Bugüne özel, mangalda pişmiş enfes köftemiz sizi bekliyor 😋">'
+            . '<input class="sira" type="number" name="sr[' . $u->id . ']" value="' . (int) $u->one_sira . '" placeholder="Sıra" title="Küçük sayı önce gösterilir">'
+            . '</div></div>';
+    };
+
+    $bolumler = '';
+    foreach ($kats as $k) {
+        if (empty($byKat[$k->id])) continue;
+        $bolumler .= '<div class="kat"><h2>' . $e($k->ad) . '</h2>';
+        foreach ($byKat[$k->id] as $u) $bolumler .= $rowHtml($u);
+        $bolumler .= '</div>';
+    }
+    if (!empty($byKat[0])) {
+        $bolumler .= '<div class="kat"><h2>Kategorisiz</h2>';
+        foreach ($byKat[0] as $u) $bolumler .= $rowHtml($u);
+        $bolumler .= '</div>';
+    }
+    if ($bolumler === '') $bolumler = '<p style="text-align:center;color:#888;padding:40px">Bu şubede aktif ürün bulunamadı.</p>';
+
+    $html = '<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>Öne Çıkan Ürünler · ' . $e($sube->ad ?? 'Restoran') . '</title><style>'
+        . '*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}'
+        . 'body{background:#F4F2FA;color:#1B1730;padding:0 0 110px}'
+        . '.bas{background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;padding:22px 18px}'
+        . '.bas h1{font-size:20px}.bas p{font-size:13px;color:#E9D5FF;margin-top:4px;line-height:1.5}'
+        . '.wrap{max-width:760px;margin:0 auto;padding:16px}'
+        . '.ok{background:#DCFCE7;color:#166534;padding:12px 16px;border-radius:12px;font-weight:700;margin:14px 0}'
+        . '.kat{margin-top:18px}.kat h2{font-size:16px;color:#4F46E5;margin:0 2px 10px;border-bottom:2px solid #E5E0F5;padding-bottom:6px}'
+        . '.urun{background:#fff;border:1px solid #EAE6F5;border-radius:14px;padding:12px 14px;margin-bottom:10px;transition:.15s}'
+        . '.urun.aktif{border-color:#7C3AED;box-shadow:0 6px 18px rgba(124,58,237,.14)}'
+        . '.urun .ust{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px}'
+        . '.urun .ust input{width:20px;height:20px;accent-color:#7C3AED}'
+        . '.urun .alan{display:none;flex-direction:column;gap:8px;margin-top:10px}'
+        . '.urun.aktif .alan{display:flex}'
+        . '.urun .alan input{border:1px solid #E1DCEF;border-radius:10px;padding:11px;font-size:14px;width:100%}'
+        . '.urun .alan input:focus{outline:none;border-color:#7C3AED}'
+        . '.urun .alan .sira{width:120px}'
+        . '.kaydet{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-top:1px solid #E5E0F5}'
+        . '.kaydet button{display:block;width:100%;max-width:760px;margin:0 auto;border:none;border-radius:14px;padding:16px;background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;font-size:16px;font-weight:800;cursor:pointer}'
+        . '.ipucu{background:#FFF7E6;color:#92600A;padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.55;margin-top:12px}'
+        . '</style></head><body>'
+        . '<div class="bas"><h1>⭐ Öne Çıkan Ürünler / Günün Önerisi</h1><p>' . $e($sube->ad ?? 'Restoran') . ' — İşaretlediğiniz ürünleri asistan müşteriye <b>öne çıkararak</b> önerir. İştah kabartıcı bir cümle yazın; müşteri "ne önerirsin / içecek / günün yemeği" dediğinde bunları anlatır.</p></div>'
+        . '<form method="post" action="/one-cikanlar-kaydet"><input type="hidden" name="_token" value="' . $token . '"><input type="hidden" name="sube" value="' . $subeId . '">'
+        . '<div class="wrap">' . $ok
+        . '<div class="ipucu">💡 <b>Nasıl çalışır?</b> Bir ürünü işaretleyin → <b>Rozet</b> (kartta görünen küçük etiket) ve <b>iştah kabartıcı cümle</b> girin. <b>Sıra</b> küçük olan önce gösterilir. Örn. içecek kategorisinde bir kokteyli işaretleyip "Bugüne özel serinleten limonatamız var" yazarsanız, müşteri içecek isteyince asistan bunu söyler.</div>'
+        . $bolumler
+        . '</div><div class="kaydet"><button type="submit">💾 Kaydet</button></div></form></body></html>';
+    return response($html)->header('Content-Type', 'text/html; charset=utf-8');
+});
+Route::post('/one-cikanlar-kaydet', function (Request $r) {
+    _oneCikanEnsure();
+    $oc = (array) $r->input('oc', []);
+    $et = (array) $r->input('et', []);
+    $sz = (array) $r->input('sz', []);
+    $sr = (array) $r->input('sr', []);
+    $ids = array_unique(array_map('intval', array_merge(array_keys($oc), array_keys($et), array_keys($sz), array_keys($sr))));
+    foreach ($ids as $id) {
+        if ($id <= 0) continue;
+        DB::table('urunler')->where('id', $id)->update([
+            'one_cikan' => !empty($oc[$id]) ? 1 : 0,
+            'one_etiket' => isset($et[$id]) && trim($et[$id]) !== '' ? mb_substr(trim($et[$id]), 0, 60) : null,
+            'one_soz' => isset($sz[$id]) && trim($sz[$id]) !== '' ? mb_substr(trim($sz[$id]), 0, 255) : null,
+            'one_sira' => isset($sr[$id]) ? (int) $sr[$id] : 0,
+        ]);
+    }
+    return redirect('/one-cikanlar?sube=' . (int) $r->input('sube') . '&ok=1');
+});
+
 // Musteri kendi basina TUM menuyu inceler (sesli asistan kapali)
 Route::get('/api/qr/menu-tam', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
