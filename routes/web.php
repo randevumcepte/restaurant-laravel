@@ -2733,6 +2733,12 @@ Route::post('/api/sefgarson/uyari-kapat', function (Request $r) {
     return (new \App\Services\SefGarsonAI($p->sube_id))->uyariKapat((int) $r->input('adisyon_id'), (string) $r->input('tip'), $p->id);
 });
 
+// GECICI: stale config cache'i temizle (yeni sefgarson ayarlari devreye girsin)
+Route::get('/api/sefgarson/cache-temizle', function () {
+    \Artisan::call('config:clear');
+    return ['ok' => 1, 'mesaj' => 'config cache temizlendi (bir sonraki istekte taze okunur)'];
+});
+
 // GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
 Route::get('/api/sefgarson/tani', function () {
     return [
