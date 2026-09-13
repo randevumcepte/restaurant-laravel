@@ -2733,6 +2733,28 @@ Route::post('/api/sefgarson/uyari-kapat', function (Request $r) {
     return (new \App\Services\SefGarsonAI($p->sube_id))->uyariKapat((int) $r->input('adisyon_id'), (string) $r->input('tip'), $p->id);
 });
 
+// Garson "Anladim" dedi -> uyari goruldu (yesil), popup/hatirlatma durur
+Route::post('/api/sefgarson/uyari-gordum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    return (new \App\Services\SefGarsonAI($p->sube_id))->uyariGordum((int) $r->input('adisyon_id'), (string) $r->input('tip'));
+});
+
+// YONETICI (sahip/mudur): garsonun dikkate almadigi eskale uyarilar
+Route::get('/api/sefgarson/yonetici-uyarilar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 1, 'uyarilar' => []];
+    return (new \App\Services\SefGarsonAI($p->sube_id))->yoneticiUyarilar();
+});
+
+Route::post('/api/sefgarson/yonetici-uyari-oku', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    return (new \App\Services\SefGarsonAI($p->sube_id))->yoneticiUyariOku((int) $r->input('id'));
+});
+
 // Urun bazinda birim maliyet haritasi (receteden hesaplanir; food-cost icin).
 // Cok katmanli receteyi (yari mamul/alt_recete) memoize ederek cozer.
 if (!function_exists('_restoUrunMaliyetMap')) {
@@ -4841,15 +4863,17 @@ if (!function_exists('_restoMenuYetki')) {
 Route::get('/api/patron/menu-yonetim', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _oneCikanEnsure();   // one cikan kolonlari
     $kats = DB::table('menu_kategorileri')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')
         ->get(['id', 'ad', 'sira', 'aktif'])
         ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad, 'sira' => (int) $k->sira, 'aktif' => (bool) $k->aktif]);
     $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->orderBy('ad')
-        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at'])
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at', 'one_cikan', 'one_etiket', 'one_soz', 'one_sira'])
         ->map(fn ($u) => [
             'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
             'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
             'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null,
+            'one_cikan' => (bool) $u->one_cikan, 'one_etiket' => $u->one_etiket ?: '', 'one_soz' => $u->one_soz ?: '', 'one_sira' => (int) $u->one_sira,
         ]);
     return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler];
 });
@@ -4903,6 +4927,7 @@ Route::post('/api/patron/tema-kaydet', function (Request $r) {
 Route::post('/api/patron/urun-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Menü düzenleme yetkiniz yok'], $p ? 403 : 401);
+    _oneCikanEnsure();
     $ad = trim((string) $r->input('ad'));
     if ($ad === '') return ['ok' => 0, 'hata' => 'Ürün adı gerekli'];
     $katId = (int) $r->input('kategori_id');
@@ -4916,6 +4941,13 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'aktif' => $r->input('aktif') !== null ? ($r->boolean('aktif') ? 1 : 0) : 1,
         'updated_at' => now(),
     ];
+    // ONE CIKAN / GUNUN ONERISI (form gonderirse)
+    if ($r->has('one_cikan') || $r->has('one_etiket') || $r->has('one_soz') || $r->has('one_sira')) {
+        $data['one_cikan'] = $r->boolean('one_cikan') ? 1 : 0;
+        $data['one_etiket'] = trim((string) $r->input('one_etiket')) !== '' ? mb_substr(trim((string) $r->input('one_etiket')), 0, 60) : null;
+        $data['one_soz'] = trim((string) $r->input('one_soz')) !== '' ? mb_substr(trim((string) $r->input('one_soz')), 0, 255) : null;
+        $data['one_sira'] = (int) $r->input('one_sira', 0);
+    }
     $id = (int) $r->input('id');
     if ($id) {
         if (!DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
@@ -4931,6 +4963,7 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
         'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
         'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . time()) : null,
+        'one_cikan' => (bool) ($u->one_cikan ?? false), 'one_etiket' => ($u->one_etiket ?? '') ?: '', 'one_soz' => ($u->one_soz ?? '') ?: '', 'one_sira' => (int) ($u->one_sira ?? 0),
     ]];
 });
 
