@@ -2733,6 +2733,20 @@ Route::post('/api/sefgarson/uyari-kapat', function (Request $r) {
     return (new \App\Services\SefGarsonAI($p->sube_id))->uyariKapat((int) $r->input('adisyon_id'), (string) $r->input('tip'), $p->id);
 });
 
+// GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
+Route::get('/api/sefgarson/tani', function () {
+    return [
+        'v' => 'outcome-1',
+        'soz_suresi_dk' => config('sefgarson.soz_suresi_dk'),
+        'soz_esik' => config('sefgarson.soz_esik'),
+        'hatirlatma_dk' => config('sefgarson.hatirlatma_dk'),
+        'eskalasyon_esik' => config('sefgarson.eskalasyon_esik'),
+        'takip_tablo' => Schema::hasTable('sef_garson_takip'),
+        'col_soz_bozdu' => Schema::hasTable('sef_garson_takip') ? Schema::hasColumn('sef_garson_takip', 'soz_bozdu') : false,
+        'now' => (string) now(),
+    ];
+});
+
 // Garson "Anladim" dedi -> uyari goruldu (yesil), popup/hatirlatma durur
 Route::post('/api/sefgarson/uyari-gordum', function (Request $r) {
     $p = _apiPersonel($r);
