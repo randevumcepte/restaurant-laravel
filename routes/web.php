@@ -2600,6 +2600,30 @@ Route::post('/api/login', function (Request $r) {
     ];
 });
 
+// ---------------- SEF GARSON AI (garsonun gozu: satis uyarilari + oneri) ----------------
+// Garson app 30 sn'de bir cagirir; kartlari gosterir. Push (arka plan) faz 2 (FCM gerekir).
+Route::get('/api/sefgarson/uyarilar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    // sadece_benim=1 -> sadece bu garsonun masalari; degilse tum salon (sef gorunumu)
+    $garsonId = ((int) $r->query('sadece_benim', 0)) ? $p->id : null;
+    $uyarilar = (new \App\Services\SefGarsonAI($p->sube_id))->masalariTara($garsonId);
+    return ['ok' => 1, 'uyarilar' => $uyarilar, 'sayi' => count($uyarilar)];
+});
+
+Route::post('/api/sefgarson/oneri', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $derin = (bool) $r->input('derin', false);   // true -> Haiku koc notu (onbellekli)
+    return (new \App\Services\SefGarsonAI($p->sube_id))->oneriSor((int) $r->input('adisyon_id'), $derin);
+});
+
+Route::post('/api/sefgarson/uyari-kapat', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    return (new \App\Services\SefGarsonAI($p->sube_id))->uyariKapat((int) $r->input('adisyon_id'), (string) $r->input('tip'), $p->id);
+});
+
 // Urun bazinda birim maliyet haritasi (receteden hesaplanir; food-cost icin).
 // Cok katmanli receteyi (yari mamul/alt_recete) memoize ederek cozer.
 if (!function_exists('_restoUrunMaliyetMap')) {
