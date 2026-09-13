@@ -677,6 +677,7 @@ function sepetRozet(){
   const dc=document.getElementById('deskcart'); document.getElementById('dc-n').textContent=n; dc.classList.toggle('bos',n===0);
 }
 function sepetAc(){
+  document.getElementById('menu').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik diger katmanlari kapat
   const l=document.getElementById('sepet-liste');
   if(!_sepet.length){ l.innerHTML='<div class="bos">Sepetiniz boş. 🙂<br>Menüden lezzet seçebilirsiniz.</div>'; }
   else{
@@ -705,6 +706,7 @@ async function siparisGonder(){
 
 /* ---- TAM MENU ---- */
 function menuAc(filtre){
+  document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik diger katmanlari kapat
   const body=document.getElementById('menu-body'); body.innerHTML='';
   document.getElementById('menu-bas').textContent = filtre ? filtre.charAt(0).toLocaleUpperCase('tr')+filtre.slice(1) : 'Menü';
   let kats=_menuGecici||_data;   // çok dilli: asistan çevrilmiş menü verdiyse onu göster
@@ -897,6 +899,7 @@ function asistanKatmanGoster(urunler, baslik){
   h+='</div>'; body.innerHTML=h;
   body.querySelectorAll('.mk').forEach(el=>el.addEventListener('click',()=>{ const u=bul(el.dataset.uid); if(u) detayAc(u); }));
   body.querySelectorAll('.mk .art').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); const u=bul(b.dataset.uid); if(u) sepeteEkle(u,1,true); }));
+  document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik katmanlari kapat
   document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
 function asSepetEkle(eklenen){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast('🛒 Siparişiniz sepete eklendi'); }
