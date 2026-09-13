@@ -333,6 +333,13 @@
   /* Alt menü + masaüstü yüzen robot renk yankısı: MOR = AI konuşuyor, YEŞİL = sıra sende */
   #altbar .qr .qi.ai, #aiFab.ai{ background:linear-gradient(135deg,#8B3BEA,#6D28D9) !important; }
   #altbar .qr .qi.dinle, #aiFab.dinle{ background:linear-gradient(135deg,#16A34A,#22C55E) !important; }
+  /* Asistan durum hapı: alt barın hemen üstünde, ORTA DEĞİL alt-hizalı, sadece asistan açıkken */
+  #asbar{ position:fixed; left:50%; transform:translateX(-50%) translateY(10px); bottom:calc(76px + env(safe-area-inset-bottom));
+    z-index:88; max-width:86%; padding:9px 16px; border-radius:20px; font-size:13px; font-weight:700; text-align:center;
+    background:linear-gradient(135deg,#2a1731,#160a1a); color:#fff; border:1px solid rgba(255,255,255,.14); box-shadow:0 12px 30px rgba(0,0,0,.5);
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #asbar.acik{ opacity:1; transform:translateX(-50%) translateY(0); }
+  @media(min-width:920px){ #asbar{ bottom:26px; } }
   /* Global dil seçici dropdown */
   #dilMenu{ position:fixed; top:54px; right:12px; z-index:100; display:none; flex-direction:column; gap:2px; padding:6px;
     background:var(--card); border:1px solid var(--cizgi); border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.45); max-height:72vh; overflow-y:auto; }
@@ -484,12 +491,9 @@
 
 <button id="deskcart" class="bos" onclick="sepetAc()">🧾 Sepetim <span class="dc-n" id="dc-n">0</span></button>
 
-<!-- ==================== YÜZEN AI ASISTAN (aynı sayfada, iframe embed) ==================== -->
+<!-- ==================== AI ASISTAN: SADECE alt robot ikonu (iframe/panel YOK, orta bos) ==================== -->
 <button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan">🤖</button>
-<div id="aiPanel">
-  <button class="ai-x" onclick="asistanKapat()" aria-label="Kapat">✕</button>
-  <div id="aiFrameWrap"></div>
-</div>
+<div id="asbar"><span id="asbar-t">Dokunun, konuşun</span></div>
 
 <div id="dilMenu"></div>
 <div id="toast"></div>
@@ -745,14 +749,134 @@ async function cagir(tip){
 
 /* ---- AI asistan: AYNI sayfada YÜZEN panel (iframe embed) — ayrı sayfaya gitmez ---- */
 let _asAktif=false;
-function asistanAc(){
-  if(_asAktif){ asistanKapat(); return; }   // 2. dokunuş = kapat
-  const p=document.getElementById('aiPanel'), w=document.getElementById('aiFrameWrap');
-  const wide = (window.innerWidth>=920) ? '&wide=1' : '';
-  const dil = (window.sayfaDil && window.sayfaDil!=='tr') ? ('&dil='+window.sayfaDil) : '';   // global dil
-  w.innerHTML='<iframe src="/masa/'+MASA+'/asistan?embed=1&autostart=1'+wide+dil+'" allow="microphone; autoplay" style="width:100%;height:100%;border:none;background:transparent"></iframe>';
-  p.classList.add('acik'); _asAktif=true;
+/* ===== AI ASISTAN — SAYFA İÇİ ses motoru (iframe YOK: iOS mikrofonu AYNI sayfada dokunmayı ister).
+   Orta panel/orb yok; SADECE alt robot ikonu + küçük durum hapı. ===== */
+const _asbar=document.getElementById('asbar');
+function asDurum(t, goster){ if(!_asbar) return; if(t!=null){ const el=document.getElementById('asbar-t'); if(el) el.textContent=t; } if(goster!==false) _asbar.classList.add('acik'); }
+function asGizle(){ if(_asbar) _asbar.classList.remove('acik'); }
+
+// iOS ses kilidi: ilk dokunuşta sessiz ses çal → sonraki async TTS'ler çalışır
+let _sesCalar=new Audio(), _sesAcildi=false;
+function sesUnlock(){ if(_sesAcildi) return; try{ _sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=_sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){} }
+function sesDurdur(){ try{ _sesCalar.pause(); }catch(_){} }
+const _isAndroid=/android/i.test(navigator.userAgent);
+function seseHazirla(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim().replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2').replace(/₺\s*(\d+)/g,'$1 lira').replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira').replace(/₺/g,' lira'); }
+
+// Mikrofon: TEK AudioContext sürekli açık; her tur kayıt bayrağı (iOS şartı). Ham PCM (LINEAR16 16k) gönderir.
+let _stream=null,_actx=null,_proc=null,_srSample=48000;
+let _rec={active:false,chunks:[],started:false,silence:0,elapsed:0,resolve:null,pre:null};
+async function micHazir(){
+  if(_actx && _stream && _stream.active){ try{ await _actx.resume(); }catch(_){} return true; }
+  try{
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return false;
+    _stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    _actx=new (window.AudioContext||window.webkitAudioContext)(); await _actx.resume();
+    _srSample=_actx.sampleRate||48000;
+    const src=_actx.createMediaStreamSource(_stream); _proc=_actx.createScriptProcessor(4096,1,1);
+    _proc.onaudioprocess=(e)=>{
+      if(!_rec.active) return;
+      const d=e.inputBuffer.getChannelData(0); let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
+      const rms=Math.sqrt(s/d.length); _rec.elapsed+=d.length/_srSample;
+      if(rms>0.010){ if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } } _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
+      else if(_rec.started){ _rec.silence+=d.length/_srSample; _rec.chunks.push(new Float32Array(d)); }
+      else { (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>3) _rec.pre.shift(); }
+      if(_rec.started && _rec.silence>1.2) _recBit(true);
+      else if(!_rec.started && _rec.elapsed>7) _recBit(false);
+      else if(_rec.elapsed>14) _recBit(_rec.started);
+    };
+    src.connect(_proc); _proc.connect(_actx.destination); return true;
+  }catch(e){ return false; }
 }
+function _recBit(gonder){ if(!_rec.active) return; _rec.active=false; const chunks=_rec.chunks,r=_rec.resolve; _rec.resolve=null; if(r) r((gonder&&chunks.length)?pcmRaw(chunks,_srSample):null); }
+function turKaydet(){ return new Promise(async(resolve)=>{ if(!await micHazir()){ resolve(null); return; } try{ await _actx.resume(); }catch(_){} _rec={active:true,chunks:[],started:false,silence:0,elapsed:0,resolve:resolve,pre:null}; setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); },16000); }); }
+function pcmRaw(chunks,sr){ let len=0; for(const c of chunks) len+=c.length; const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; } const oran=Math.max(1,sr/16000); const yeniLen=Math.floor(all.length/oran); const pcm=new Int16Array(yeniLen); for(let i=0;i<yeniLen;i++){ let v=all[Math.round(i*oran)]||0; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; } return new Blob([pcm.buffer],{type:'application/octet-stream'}); }
+
+// Konuş (Google TTS /api/tts). Sıra tabanlı: tam konuşur, sonra dinler.
+let konusuyor=false,_konusBit=null,aktifAsDil='tr';
+function konusKes(){ sesDurdur(); if(_konusBit){ const b=_konusBit; _konusBit=null; b(); } }
+function konus(t){ return new Promise((resolve)=>{
+  const temiz=seseHazirla(t); if(!temiz){ resolve(); return; }
+  konusuyor=true; robotHal('ai'); asDurum(t);
+  let bitti=false; const bit=()=>{ if(bitti) return; bitti=true; _konusBit=null; konusuyor=false; sesDurdur(); robotHal(sohbetAktif?'dinle':'bekle'); resolve(); };
+  _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
+  fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
+    .then(r=>r.json()).then(j=>{ if(bitti) return;
+      if(j.basarili&&j.url){ sesDurdur(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
+      else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
+      else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
+}); }
+async function asCevir(tr){ if(aktifAsDil==='tr'||!tr) return tr; try{ const r=await fetch('/api/qr/cevir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:tr,hedef:aktifAsDil})}); const j=await r.json(); return j.metin||tr; }catch(_){ return tr; } }
+async function sistemKonus(tr){ await konus(await asCevir(tr)); }
+
+// STT: bir tur dinle -> metin
+let _sttLimit=false;
+async function dinleSunucu(){
+  robotHal('dinle'); asDurum('🎧 Sizi dinliyorum, buyurun…');
+  const wav=await turKaydet();
+  if(!wav){ asDurum('Sizi duyamadım. Biraz yüksek/net konuşun.'); return ''; }
+  asDurum('… anlıyorum');
+  try{
+    const fd=new FormData(); fd.append('ses',wav,'ses.pcm'); fd.append('masa',MASA); fd.append('dil',aktifAsDil);
+    const r=await fetch('/api/qr/stt',{method:'POST',body:fd}); const j=await r.json();
+    if(j.limit){ _sttLimit=true; return ''; }
+    if(j.kod && j.kod!==200){ asDurum('Ses tanıma hatası (HTTP '+j.kod+')'); return ''; }
+    const m=(j.metin||'').trim();
+    if(!m){ asDurum('Sizi net duyamadım, tekrar eder misiniz?'); } else { asDurum('“'+m+'”'); }
+    return m;
+  }catch(e){ asDurum('Bağlantı hatası, tekrar deneyin.'); return ''; }
+}
+
+// Sohbet döngüsü (sıra tabanlı) — alt robota dokun: başlat / AI konuşurken kes / dinlerken kapat
+let sohbetAktif=false, _sonTik=0, _ilkSelam=false;
+function asistanAc(){
+  sesUnlock();
+  const simdi=(window.performance&&performance.now)?performance.now():(+new Date()); if(simdi-_sonTik<600) return; _sonTik=simdi;
+  if(!sohbetAktif){ basla(); return; }
+  if(konusuyor){ konusKes(); return; }
+  sohbetKapat();
+}
+async function basla(){
+  aktifAsDil=(window.sayfaDil||'tr');
+  sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
+  const izin=await micHazir();
+  if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
+  await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
+  let bos=0;
+  while(sohbetAktif){
+    const c=await dinleSunucu();
+    if(!sohbetAktif) break;
+    if(_sttLimit){ _sttLimit=false; await sistemKonus('Şu an sesli asistan çok yoğun. Menüden yazarak devam edebilirsiniz.'); break; }
+    if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde robota tekrar dokunun, buradayım.'); break; } continue; }
+    bos=0;
+    if(/^(kapat|kapan|görüşürüz|hoşça kal)\b/i.test(c)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    const cevap=await sunucudanCevap(c);
+    if(cevap) await konus(cevap);
+  }
+  sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
+}
+function sohbetKapat(){ sohbetAktif=false; konusKes(); try{ _rec.active=false; }catch(_){} robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
+
+// Sunucuya sor + ANA ekranı güncelle; seslendirilecek metni döner
+async function sunucudanCevap(soru){
+  asDurum('🤖 Düşünüyorum…');
+  try{
+    const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil})});
+    const j=await r.json();
+    if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
+    if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar); }
+    else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
+    if((j.aksiyon==='sepet_ekle'||j.aksiyon==='sepet_ayarla') && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen);
+    if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
+    return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
+  }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
+}
+async function asKartGoster(kartlar){
+  let bak=_urun;
+  if(aktifAsDil && aktifAsDil!=='tr'){ await menuVeriDil(aktifAsDil); if(_urunDil[aktifAsDil]) bak=_urunDil[aktifAsDil]; }
+  const urunler=kartlar.map(k=>(k&&k.urun_id&&bak[k.urun_id])?bak[k.urun_id]:k).filter(Boolean);
+  if(urunler.length===1) detayAc(urunler[0]); else if(urunler.length) asistanUrunGoster(urunler);
+}
+function asSepetEkle(eklenen){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast('🛒 Siparişiniz sepete eklendi'); }
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
 }
@@ -769,8 +893,8 @@ async function dilSecGlobal(dil){
   if(!DILAD[dil]) return;
   window.sayfaDil=dil; try{ localStorage.setItem('qr_dil',dil); }catch(e){}
   dilEtiketGuncelle(dil);
+  aktifAsDil=dil;   // asistan da bu dilde dinlesin/konuşsun
   await sayfaCevir(dil);
-  const f=document.querySelector('#aiFrameWrap iframe'); if(f&&f.contentWindow){ try{ f.contentWindow.postMessage({resto:'dilSet',dil},'*'); }catch(_){} }
 }
 function _cvEl(el){ const tn=[...el.childNodes].filter(n=>n.nodeType===3 && n.textContent.trim()); return tn.length ? tn.map(n=>n.textContent).join(' ').trim() : el.textContent.trim(); }
 function _cvSet(el,metin){ const tn=[...el.childNodes].filter(n=>n.nodeType===3 && n.textContent.trim()); if(tn.length){ tn[0].textContent=' '+metin+' '; for(let i=1;i<tn.length;i++) tn[i].textContent=''; } else el.textContent=metin; }
@@ -843,11 +967,7 @@ function asistanUrunGoster(list){
   try{ const dm=document.getElementById('deskmain'); if(dm) dm.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
   try{ toast('🤖 Önerilenleri menüde gösterdim'); }catch(_){}
 }
-function asistanKapat(){
-  document.getElementById('aiPanel').classList.remove('acik');
-  document.getElementById('aiFrameWrap').innerHTML='';   // iframe kaldır -> mikrofon/ses durur
-  _asAktif=false; robotHal('bekle');
-}
+function asistanKapat(){ sohbetKapat(); }   // geriye dönük uyum
 async function hesapOde(){
   try{
     const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA})});
