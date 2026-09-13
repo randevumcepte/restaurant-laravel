@@ -110,8 +110,9 @@ class MusteriAsistan
             }
         }
 
-        // 3) Gunun yemegi / sef onerisi
-        if ($this->has($c, ['gunun yemegi', 'gunun spesiyali', 'sef onerisi', 'spesiyal', 'bugun ne var', 'ne onerirsin', 'ne tavsiye', 'oneri', 'populer', 'en cok', 'en sevilen', 'favori', 'ne yesem', 'ne yiyeyim'])) {
+        // 3) Gunun yemegi / sef onerisi  (Turkce yumusama: "yemegi"[tekil] vs "yemekleri"[cogul] farkli normalize olur
+        //    -> "gunun yeme" ikisini de yakalar: yeme-gi / yeme-kleri / yeme-k)
+        if ($this->has($c, ['gunun yeme', 'gunun spesiyal', 'gunun menu', 'gunun onerisi', 'gunun favori', 'gunun lezzet', 'sef onerisi', 'sef spesiyal', 'spesiyal', 'bugun ne var', 'bugun ne yiye', 'bugun ne yesek', 'bugun ne guzel', 'ne onerirsin', 'ne oneri', 'ne tavsiye', 'oneri', 'populer', 'en cok', 'en sevilen', 'favori', 'ne yesem', 'ne yiyeyim', 'ne yiyelim', 'ne yemeli', 'nefis ne var'])) {
             return $this->oneri();
         }
 
