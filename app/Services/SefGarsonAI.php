@@ -22,6 +22,27 @@ class SefGarsonAI
         $this->subeId = (int) $subeId;
     }
 
+    /**
+     * Esik degerleri TEK KAYNAK. config('sefgarson.*') saglikli okunuyorsa (env/cache guncel) onu
+     * kullanir; okunamiyorsa (bu sunucuda config cache web'den yenilenemiyor) asagidaki degere duser.
+     * NOT: su an CANLI TEST degerleri aktif; prod'a gecince yanlardaki "normal" degerleri yaz.
+     */
+    public function esik($k)
+    {
+        static $t = [
+            'bos_masa_dk'     => 1,   // normal 12
+            'durgun_dk'       => 2,   // normal 18
+            'tatli_dk'        => 1,   // normal 22
+            'kalabalik_kisi'  => 3,   // normal 4
+            'hatirlatma_dk'   => 1,   // normal 3
+            'eskalasyon_esik' => 3,   // normal 3
+            'soz_suresi_dk'   => 1,   // normal 4
+            'soz_esik'        => 2,   // normal 2
+        ];
+        $c = config('sefgarson.' . $k);
+        return $c !== null ? (int) $c : ($t[$k] ?? 0);
+    }
+
     // ======================================================================
     // GOZCU — tum acik masalari tara, uyari listesi uret (BEDAVA)
     // ======================================================================
@@ -53,10 +74,10 @@ class SefGarsonAI
             ->get(['k.adisyon_id', 'k.kur', 'k.urun_adi', 'k.created_at', 'k.gonderim_zamani', 'u.istasyon', 'mk.ad as kat'])
             ->groupBy('adisyon_id');
 
-        $bosDk      = (int) config('sefgarson.bos_masa_dk', 12);
-        $durgunDk   = (int) config('sefgarson.durgun_dk', 18);
-        $tatliDk    = (int) config('sefgarson.tatli_dk', 22);
-        $kalabalik  = (int) config('sefgarson.kalabalik_kisi', 4);
+        $bosDk      = $this->esik('bos_masa_dk');
+        $durgunDk   = $this->esik('durgun_dk');
+        $tatliDk    = $this->esik('tatli_dk');
+        $kalabalik  = $this->esik('kalabalik_kisi');
 
         $ham = [];
         foreach ($adisyonlar as $a) {
@@ -157,10 +178,10 @@ class SefGarsonAI
     {
         if (empty($ham)) return [];
         $this->takipTablo();
-        $aralik  = (int) config('sefgarson.hatirlatma_dk', 3);
-        $esik    = (int) config('sefgarson.eskalasyon_esik', 3);
-        $sozSure = (int) config('sefgarson.soz_suresi_dk', 4);   // "Anladim" sonrasi satis icin taninan sure
-        $sozEsik = (int) config('sefgarson.soz_esik', 2);        // bu kadar "bos soz"dan sonra -> yoneticiye
+        $aralik  = $this->esik('hatirlatma_dk');
+        $esik    = $this->esik('eskalasyon_esik');
+        $sozSure = $this->esik('soz_suresi_dk');   // "Anladim" sonrasi satis icin taninan sure
+        $sozEsik = $this->esik('soz_esik');        // bu kadar "bos soz"dan sonra -> yoneticiye
 
         $adIds = array_values(array_unique(array_map(fn ($u) => $u['adisyon_id'], $ham)));
         $rows = DB::table('sef_garson_takip')->where('sube_id', $this->subeId)->whereIn('adisyon_id', $adIds)->get();

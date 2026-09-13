@@ -2057,7 +2057,47 @@ if (!function_exists('_oneCikanEnsure')) {
                     $t->integer('one_sira')->default(0);
                 });
             }
+            // one_soz artik ISLETMENIN HAM NOTU; AI'in urettigi istah kabartici cumle one_ai_soz'da
+            if (!Schema::hasColumn('urunler', 'one_ai_soz')) {
+                Schema::table('urunler', function ($t) { $t->string('one_ai_soz', 255)->nullable(); });
+            }
         } catch (\Throwable $e) {
+        }
+    }
+}
+// Isletmenin ham notlarindan AI ile TEK istah kabartici cumle uretir (kaydederken bir kez). AI yoksa null.
+if (!function_exists('_oneAiSozUret')) {
+    function _oneAiSozUret($notlar, $urunAd)
+    {
+        $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+        if ($anahtar === '' || trim((string) $notlar) === '') return null;
+        $sistem = 'Sen bir restoran menusu icin istah kabartici, kisa tanitim cumleleri yazan usta bir gastronomi metin yazarisin. '
+            . 'Sana urun adi ve isletmenin girdigi HAM notlar verilir. Bunlari TEK, akici, davetkar bir Turkce cumleye cevir. '
+            . 'Kurallar: en fazla 22 kelime; abartma ama istah kabart; fiyat/rakam UYDURMA; en fazla 1 emoji; tirnak kullanma; sadece cumleyi yaz, baska hicbir sey yazma.';
+        $govde = [
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'max_tokens' => 120,
+            'system' => $sistem,
+            'messages' => [['role' => 'user', 'content' => "Urun: $urunAd\nNotlar: $notlar"]],
+        ];
+        try {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 12,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
+            ]);
+            $yanit = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($yanit === false || $kod !== 200) return null;
+            $j = json_decode($yanit, true);
+            $t = '';
+            foreach (($j['content'] ?? []) as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+            $t = trim(trim($t), "\"'");
+            return $t !== '' ? mb_substr($t, 0, 255) : null;
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 }
@@ -2741,13 +2781,15 @@ Route::get('/api/sefgarson/cache-temizle', function () {
 
 // GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
 Route::get('/api/sefgarson/tani', function () {
+    $s = new \App\Services\SefGarsonAI(0);
     return [
-        'v' => 'outcome-1',
-        'soz_suresi_dk' => config('sefgarson.soz_suresi_dk'),
-        'soz_esik' => config('sefgarson.soz_esik'),
-        'hatirlatma_dk' => config('sefgarson.hatirlatma_dk'),
-        'eskalasyon_esik' => config('sefgarson.eskalasyon_esik'),
-        'takip_tablo' => Schema::hasTable('sef_garson_takip'),
+        'v' => 'outcome-2',
+        'ef_bos' => $s->esik('bos_masa_dk'),
+        'ef_tatli' => $s->esik('tatli_dk'),
+        'ef_hatirlatma' => $s->esik('hatirlatma_dk'),
+        'ef_soz_suresi' => $s->esik('soz_suresi_dk'),
+        'ef_soz_esik' => $s->esik('soz_esik'),
+        'ef_eskalasyon' => $s->esik('eskalasyon_esik'),
         'col_soz_bozdu' => Schema::hasTable('sef_garson_takip') ? Schema::hasColumn('sef_garson_takip', 'soz_bozdu') : false,
         'now' => (string) now(),
     ];
@@ -4888,12 +4930,12 @@ Route::get('/api/patron/menu-yonetim', function (Request $r) {
         ->get(['id', 'ad', 'sira', 'aktif'])
         ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad, 'sira' => (int) $k->sira, 'aktif' => (bool) $k->aktif]);
     $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->orderBy('ad')
-        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at', 'one_cikan', 'one_etiket', 'one_soz', 'one_sira'])
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at', 'one_cikan', 'one_soz', 'one_ai_soz', 'one_sira'])
         ->map(fn ($u) => [
             'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
             'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
             'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null,
-            'one_cikan' => (bool) $u->one_cikan, 'one_etiket' => $u->one_etiket ?: '', 'one_soz' => $u->one_soz ?: '', 'one_sira' => (int) $u->one_sira,
+            'one_cikan' => (bool) $u->one_cikan, 'one_soz' => $u->one_soz ?: '', 'one_ai_soz' => $u->one_ai_soz ?: '', 'one_sira' => (int) $u->one_sira,
         ]);
     return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler];
 });
@@ -4961,17 +5003,24 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'aktif' => $r->input('aktif') !== null ? ($r->boolean('aktif') ? 1 : 0) : 1,
         'updated_at' => now(),
     ];
-    // ONE CIKAN / GUNUN ONERISI (form gonderirse). SIRA ELLE GIRILMEZ (cakisma olmasin):
-    // yeni one cikan -> otomatik SONA eklenir; mevcut sirasi korunur. Sirayi surukleyerek one-sira-kaydet degistirir.
-    if ($r->has('one_cikan') || $r->has('one_etiket') || $r->has('one_soz')) {
+    // ONE CIKAN / GUNUN ONERISI. Isletme HAM NOT girer (one_soz); AI istah kabartici cumleye cevirir (one_ai_soz).
+    // Rozet elle girilmez. SIRA elle girilmez (yeni one cikan sona eklenir; surukleyerek one-sira-kaydet degistirir).
+    if ($r->has('one_cikan') || $r->has('one_soz')) {
         $oc = $r->boolean('one_cikan') ? 1 : 0;
         $data['one_cikan'] = $oc;
-        $data['one_etiket'] = trim((string) $r->input('one_etiket')) !== '' ? mb_substr(trim((string) $r->input('one_etiket')), 0, 60) : null;
-        $data['one_soz'] = trim((string) $r->input('one_soz')) !== '' ? mb_substr(trim((string) $r->input('one_soz')), 0, 255) : null;
+        $notlar = trim((string) $r->input('one_soz'));
+        $data['one_soz'] = $notlar !== '' ? mb_substr($notlar, 0, 255) : null;
+        $curId = (int) $r->input('id');
         if ($oc) {
-            $curId = (int) $r->input('id');
             $mevcut = $curId ? (int) DB::table('urunler')->where('id', $curId)->value('one_sira') : 0;
             $data['one_sira'] = $mevcut > 0 ? $mevcut : ((int) DB::table('urunler')->where('sube_id', $p->sube_id)->where('one_cikan', 1)->max('one_sira') + 1);
+            if ($notlar !== '') {
+                $eskiNot = $curId ? (string) DB::table('urunler')->where('id', $curId)->value('one_soz') : '';
+                $eskiAi = $curId ? (string) DB::table('urunler')->where('id', $curId)->value('one_ai_soz') : '';
+                if ($notlar !== $eskiNot || $eskiAi === '') $data['one_ai_soz'] = _oneAiSozUret($notlar, $ad);   // AI yoksa null -> asistan ham nota duser
+            } else {
+                $data['one_ai_soz'] = null;
+            }
         } else {
             $data['one_sira'] = 0;
         }
@@ -4991,7 +5040,7 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
         'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
         'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . time()) : null,
-        'one_cikan' => (bool) ($u->one_cikan ?? false), 'one_etiket' => ($u->one_etiket ?? '') ?: '', 'one_soz' => ($u->one_soz ?? '') ?: '', 'one_sira' => (int) ($u->one_sira ?? 0),
+        'one_cikan' => (bool) ($u->one_cikan ?? false), 'one_soz' => ($u->one_soz ?? '') ?: '', 'one_ai_soz' => ($u->one_ai_soz ?? '') ?: '', 'one_sira' => (int) ($u->one_sira ?? 0),
     ]];
 });
 
