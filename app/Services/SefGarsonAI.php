@@ -240,6 +240,11 @@ class SefGarsonAI
             // SONUC DENETIMI: beklenen satis GERCEKTEN oldu mu? Olduysa uyari cozulur (silinir).
             if ($this->sonucGerceklesti($t->tip, $f, $t->ilk_at)) {
                 if ($t->id) { try { DB::table('sef_garson_takip')->where('id', $t->id)->delete(); } catch (\Throwable $e) {} }
+                // (A) Satis GERCEKLESTI -> patronun/garsonun kirmizi karti da otomatik kapansin
+                try {
+                    DB::table('sef_garson_yonetici_bildirim')->where('sube_id', $this->subeId)
+                        ->where('adisyon_id', $ad)->where('tip', $t->tip)->where('okundu', 0)->update(['okundu' => 1]);
+                } catch (\Throwable $e) {}
                 continue;
             }
 
@@ -383,9 +388,12 @@ class SefGarsonAI
         $this->yoneticiTablo();
         $garson = ($u['garson_adi'] ?? '') ?: 'Garson';
         $masa = $u['masa_adi'] ?? '';
-        $mesaj = $sozBozarak
+        // (C) garson aslinda sahip/mudur ise "kendine hatirlatma" notu
+        $rol = !empty($u['garson_id']) ? DB::table('personeller')->where('id', $u['garson_id'])->value('rol') : null;
+        $kendiNot = in_array($rol, ['sahip', 'mudur']) ? ' (kendine hatırlatma)' : '';
+        $mesaj = ($sozBozarak
             ? ($garson . ', ' . $masa . ' için "anladım" dedi ama satışı yapmadı (' . $u['baslik'] . ').')
-            : ($garson . ', ' . $masa . ' uyarısını dikkate almadı (' . $u['baslik'] . ').');
+            : ($garson . ', ' . $masa . ' uyarısını dikkate almadı (' . $u['baslik'] . ').')) . $kendiNot;
         try {
             DB::table('sef_garson_yonetici_bildirim')->insert([
                 'sube_id' => $this->subeId, 'adisyon_id' => $u['adisyon_id'], 'tip' => $u['tip'],

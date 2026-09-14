@@ -2782,55 +2782,6 @@ Route::post('/api/sefgarson/uyari-kapat', function (Request $r) {
     return (new \App\Services\SefGarsonAI($p->sube_id))->uyariKapat((int) $r->input('adisyon_id'), (string) $r->input('tip'), $p->id);
 });
 
-// GECICI: stale config cache'i temizle (yeni sefgarson ayarlari devreye girsin)
-Route::get('/api/sefgarson/cache-temizle', function () {
-    \Artisan::call('config:clear');
-    return ['ok' => 1, 'mesaj' => 'config cache temizlendi (bir sonraki istekte taze okunur)'];
-});
-
-// GECICI: takip + yonetici bildirimlerini sifirla (temiz test icin)
-Route::get('/api/sefgarson/sifirla', function () {
-    $t = Schema::hasTable('sef_garson_takip') ? DB::table('sef_garson_takip')->delete() : 0;
-    $y = Schema::hasTable('sef_garson_yonetici_bildirim') ? DB::table('sef_garson_yonetici_bildirim')->delete() : 0;
-    return ['ok' => 1, 'silinen_takip' => $t, 'silinen_yonetici' => $y];
-});
-
-// GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
-Route::get('/api/sefgarson/tani', function () {
-    $s = new \App\Services\SefGarsonAI(0);
-    $tara = null;
-    try { $u = (new \App\Services\SefGarsonAI(2))->masalariTara(); $tara = 'OK sayi=' . count($u); }
-    catch (\Throwable $e) { $tara = 'HATA: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(); }
-    $diff = null;
-    $row = Schema::hasTable('sef_garson_takip') ? DB::table('sef_garson_takip')->where('durum', 'goruldu')->orderByDesc('id')->first() : null;
-    if ($row && $row->goruldu_at) {
-        $c = \Illuminate\Support\Carbon::parse($row->goruldu_at);
-        $diff = [
-            'carbon' => defined('\\Carbon\\Carbon::VERSION') ? \Carbon\Carbon::VERSION : '?',
-            'gor_at' => (string) $row->goruldu_at,
-            'now_diff_to_gor' => now()->diffInMinutes($c),          // benim kodun kullandigi
-            'gor_diff_to_now' => $c->diffInMinutes(now()),          // dogru pozitif olmasi gereken
-        ];
-    }
-    return [
-        'v' => 'outcome-4',
-        'tara' => $tara,
-        'diff' => $diff,
-        'ef_bos' => $s->esik('bos_masa_dk'),
-        'ef_tatli' => $s->esik('tatli_dk'),
-        'ef_hatirlatma' => $s->esik('hatirlatma_dk'),
-        'ef_soz_suresi' => $s->esik('soz_suresi_dk'),
-        'ef_soz_esik' => $s->esik('soz_esik'),
-        'ef_eskalasyon' => $s->esik('eskalasyon_esik'),
-        'col_soz_bozdu' => Schema::hasTable('sef_garson_takip') ? Schema::hasColumn('sef_garson_takip', 'soz_bozdu') : false,
-        'now' => (string) now(),
-        'takip' => Schema::hasTable('sef_garson_takip')
-            ? DB::table('sef_garson_takip')->orderByDesc('id')->limit(12)
-                ->get(['id', 'sube_id', 'adisyon_id', 'tip', 'durum', 'hatirlatma', 'soz_bozdu', 'goruldu_at', 'son_hatirlatma_at'])
-            : [],
-    ];
-});
-
 // Garson "Anladim" dedi -> uyari goruldu (yesil), popup/hatirlatma durur
 Route::post('/api/sefgarson/uyari-gordum', function (Request $r) {
     $p = _apiPersonel($r);
