@@ -776,17 +776,18 @@ function sesDurdur(){ try{ _sesCalar.pause(); }catch(_){} }
 const _isAndroid=/android/i.test(navigator.userAgent);
 function seseHazirla(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim().replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2').replace(/₺\s*(\d+)/g,'$1 lira').replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira').replace(/₺/g,' lira'); }
 
-// Mikrofon: TEK AudioContext sürekli açık; her tur kayıt bayrağı (iOS şartı). Ham PCM (LINEAR16 16k) gönderir.
-let _stream=null,_actx=null,_proc=null,_srSample=48000;
+// Mikrofon: AudioContext TEK sefer; STREAM her dinleme turunda AC/KAPA edilir.
+// iOS TUZAK: mikrofon acikken ses KULAKLIK hoparlorune yonleniyor (AI cok kisik duyuluyor). COZUM:
+// AI konusmadan once mikrofonu KAPAT (micKapat) -> ses LOUD hoparlorden calar; dinlerken tekrar AC (micAc).
+let _stream=null,_actx=null,_proc=null,_src=null,_srSample=48000;
 let _rec={active:false,chunks:[],started:false,silence:0,elapsed:0,resolve:null,pre:null};
-async function micHazir(){
-  if(_actx && _stream && _stream.active){ try{ await _actx.resume(); }catch(_){} return true; }
+async function actxHazir(){ if(!_actx){ try{ _actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(_){ return null; } } try{ await _actx.resume(); }catch(_){} _srSample=_actx.sampleRate||48000; return _actx; }
+async function micAc(){
   try{
     if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return false;
-    _stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
-    _actx=new (window.AudioContext||window.webkitAudioContext)(); await _actx.resume();
-    _srSample=_actx.sampleRate||48000;
-    const src=_actx.createMediaStreamSource(_stream); _proc=_actx.createScriptProcessor(4096,1,1);
+    if(!await actxHazir()) return false;
+    if(!_stream || !_stream.active){ _stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
+    _src=_actx.createMediaStreamSource(_stream); _proc=_actx.createScriptProcessor(4096,1,1);
     _proc.onaudioprocess=(e)=>{
       if(!_rec.active) return;
       const d=e.inputBuffer.getChannelData(0); let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
@@ -798,11 +799,17 @@ async function micHazir(){
       else if(!_rec.started && _rec.elapsed>7) _recBit(false);
       else if(_rec.elapsed>14) _recBit(_rec.started);
     };
-    src.connect(_proc); _proc.connect(_actx.destination); return true;
+    _src.connect(_proc); _proc.connect(_actx.destination); return true;
   }catch(e){ return false; }
 }
+function micKapat(){   // mikrofonu serbest birak -> iOS sesi LOUD hoparlore alir
+  try{ _rec.active=false; }catch(_){}
+  try{ if(_proc){ _proc.onaudioprocess=null; _proc.disconnect(); _proc=null; } }catch(_){}
+  try{ if(_src){ _src.disconnect(); _src=null; } }catch(_){}
+  try{ if(_stream){ _stream.getTracks().forEach(t=>t.stop()); _stream=null; } }catch(_){}
+}
 function _recBit(gonder){ if(!_rec.active) return; _rec.active=false; const chunks=_rec.chunks,r=_rec.resolve; _rec.resolve=null; if(r) r((gonder&&chunks.length)?pcmRaw(chunks,_srSample):null); }
-function turKaydet(){ return new Promise(async(resolve)=>{ if(!await micHazir()){ resolve(null); return; } try{ await _actx.resume(); }catch(_){} _rec={active:true,chunks:[],started:false,silence:0,elapsed:0,resolve:resolve,pre:null}; setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); },16000); }); }
+function turKaydet(){ return new Promise(async(resolve)=>{ if(!await micAc()){ resolve(null); return; } _rec={active:true,chunks:[],started:false,silence:0,elapsed:0,resolve:resolve,pre:null}; setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); },16000); }); }
 function pcmRaw(chunks,sr){ let len=0; for(const c of chunks) len+=c.length; const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; } const oran=Math.max(1,sr/16000); const yeniLen=Math.floor(all.length/oran); const pcm=new Int16Array(yeniLen); for(let i=0;i<yeniLen;i++){ let v=all[Math.round(i*oran)]||0; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; } return new Blob([pcm.buffer],{type:'application/octet-stream'}); }
 
 // Konuş (Google TTS /api/tts). Sıra tabanlı: tam konuşur, sonra dinler.
@@ -810,6 +817,7 @@ let konusuyor=false,_konusBit=null,aktifAsDil='tr';
 function konusKes(){ sesDurdur(); if(_konusBit){ const b=_konusBit; _konusBit=null; b(); } }
 function konus(t){ return new Promise((resolve)=>{
   const temiz=seseHazirla(t); if(!temiz){ resolve(); return; }
+  micKapat();   // AI konusmadan ONCE mikrofonu kapat -> ses LOUD hoparlorden gelir (iOS kulaklik yonlenmesi biter)
   konusuyor=true; robotHal('ai'); asDurum(t);
   let bitti=false; const bit=()=>{ if(bitti) return; bitti=true; _konusBit=null; konusuyor=false; sesDurdur(); robotHal(sohbetAktif?'dinle':'bekle'); resolve(); };
   _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
@@ -852,7 +860,7 @@ function asistanAc(){
 async function basla(){
   aktifAsDil=(window.sayfaDil||'tr');
   sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
-  const izin=await micHazir();
+  const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
   await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
   let bos=0;
@@ -868,7 +876,7 @@ async function basla(){
   }
   sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
 }
-function sohbetKapat(){ sohbetAktif=false; konusKes(); try{ _rec.active=false; }catch(_){} robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
+function sohbetKapat(){ sohbetAktif=false; konusKes(); micKapat(); robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
 
 // Sunucuya sor + ANA ekranı güncelle; seslendirilecek metni döner
 async function sunucudanCevap(soru){
