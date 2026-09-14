@@ -1039,6 +1039,8 @@ function modDegistir(){
 window.addEventListener('load', async ()=>{
   // Odeme sayfasindan alt menuyle gelince dogru katmani ac (?sepet=1 / ?ai=1 / ?cagir=1)
   let _ac=''; try{ const q=new URLSearchParams(location.search); _ac=q.get('sepet')==='1'?'sepet':(q.get('ai')==='1'?'ai':(q.get('cagir')==='1'?'cagir':'')); }catch(_){}
+  // Parametreyi URL'den TEMIZLE ki YENILEYINCE tekrar acilmasin (yoksa hep sepet acilir)
+  if(_ac){ try{ history.replaceState(null,'',location.pathname); }catch(_){} }
   if(_ac==='sepet'){ try{ sepetAc(); }catch(_){} }   // ANINDA ac: menu arkada yuklenirken sepet ustte -> flash olmaz
   await yukle(); sayac();
   if(window.sayfaDil && window.sayfaDil!=='tr'){ dilEtiketGuncelle(window.sayfaDil); sayfaCevir(window.sayfaDil); }
