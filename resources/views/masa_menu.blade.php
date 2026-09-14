@@ -792,24 +792,13 @@ async function micAc(){
       if(!_rec.active) return;
       const d=e.inputBuffer.getChannelData(0); let s=0; for(let i=0;i<d.length;i++) s+=d[i]*d[i];
       const rms=Math.sqrt(s/d.length); const dt=d.length/_srSample; _rec.elapsed+=dt;
-      // KALIBRASYON: ilk ~0.4sn ORTAM gurultusunu olc -> esik ortama gore (gurultulu restoranda sadece senin sesin tetikler)
-      if(!_rec.kalibOk){
-        (_rec.kalib=_rec.kalib||[]).push(rms);
-        (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>4) _rec.pre.shift();
-        if(_rec.elapsed>=0.4){
-          const a=_rec.kalib.slice().sort((x,y)=>x-y); const taban=a[Math.floor(a.length*0.35)]||0.01;  // ortam (alt yuzde)
-          _rec.esik=Math.max(0.028, taban*2.6 + 0.02);      // konusma esigi: ortamdan BELIRGIN yuksek
-          _rec.bitEsik=Math.max(0.014, taban*1.35 + 0.008); // sessizlik esigi
-          _rec.kalibOk=true;
-        }
-        return;
-      }
-      if(rms>_rec.esik){ if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } } _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
-      else if(_rec.started){ _rec.silence += (rms<_rec.bitEsik ? dt : dt*0.4); _rec.chunks.push(new Float32Array(d)); }  // arada ses varsa yavas say
-      else { (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>4) _rec.pre.shift(); }
-      if(_rec.started && _rec.silence>1.0) _recBit(true);         // konustu, durdu -> gonder
-      else if(!_rec.started && _rec.elapsed>7.5) _recBit(false);  // hic konusma yok
-      else if(_rec.elapsed>15) _recBit(_rec.started);             // uzun tavani
+      // Sabit esik (guvenilir): konusmayi yakala. Gurultu ayiklama sunucuda (noiseSuppression + STT).
+      if(rms>0.012){ if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } } _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
+      else if(_rec.started){ _rec.silence+=dt; _rec.chunks.push(new Float32Array(d)); }
+      else { (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>3) _rec.pre.shift(); }
+      if(_rec.started && _rec.silence>1.2) _recBit(true);         // konustu, durdu -> gonder
+      else if(!_rec.started && _rec.elapsed>7) _recBit(false);    // hic konusma yok
+      else if(_rec.elapsed>14) _recBit(_rec.started);             // uzun tavani
     };
     _src.connect(_proc); _proc.connect(_actx.destination); return true;
   }catch(e){ return false; }
