@@ -2798,8 +2798,12 @@ Route::get('/api/sefgarson/sifirla', function () {
 // GECICI TANI: canli kodun/kolonun durumu (test sonrasi silinecek)
 Route::get('/api/sefgarson/tani', function () {
     $s = new \App\Services\SefGarsonAI(0);
+    $tara = null;
+    try { $u = (new \App\Services\SefGarsonAI(2))->masalariTara(); $tara = 'OK sayi=' . count($u); }
+    catch (\Throwable $e) { $tara = 'HATA: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(); }
     return [
-        'v' => 'outcome-2',
+        'v' => 'outcome-3',
+        'tara' => $tara,
         'ef_bos' => $s->esik('bos_masa_dk'),
         'ef_tatli' => $s->esik('tatli_dk'),
         'ef_hatirlatma' => $s->esik('hatirlatma_dk'),
