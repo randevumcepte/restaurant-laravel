@@ -14,8 +14,12 @@
   .altnav a{flex:1;text-decoration:none;color:var(--gri);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0}
   .altnav a span{font-size:19px}.altnav a.act{color:var(--mor)}
   .altnav .qr{flex:0 0 auto}
-  .altnav .qr .qi{width:60px;height:60px;margin-top:-26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:25px;color:#fff;background:linear-gradient(135deg,var(--aksan),var(--aksan2));box-shadow:0 10px 24px rgba(0,0,0,.25),0 0 0 5px #fff}
-  .altnav .qr .qi svg{width:26px;height:26px;fill:#fff}
+  .altnav .qr .qi{position:relative;width:64px;height:64px;margin-top:-28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,var(--aksan),var(--aksan2));box-shadow:0 10px 24px rgba(0,0,0,.28),0 0 0 5px #fff}
+  .altnav .qr .qi svg{width:28px;height:28px;fill:#fff;position:relative;z-index:1}
+  /* PATLAYAN DALGA (menüdeki gibi): beyaz nav olduğu için halkalar aksan renginde */
+  .altnav .qr .qi::before,.altnav .qr .qi::after{content:'';position:absolute;inset:0;border-radius:50%;border:2.5px solid var(--aksan);pointer-events:none;animation:qrDalga 2.2s ease-out infinite}
+  .altnav .qr .qi::after{animation-delay:1.1s}
+  @keyframes qrDalga{0%{transform:scale(1);opacity:.7}100%{transform:scale(2);opacity:0}}
   .card{width:100%;max-width:420px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 30px 70px rgba(80,50,160,.18)}
   .bas{background:linear-gradient(135deg,var(--mor),var(--mavi));color:#fff;padding:24px;text-align:center}
   .bas .l{font-size:13px;color:#E9D5FF}
