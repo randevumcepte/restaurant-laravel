@@ -28,7 +28,7 @@ class SeslendirmeServisi
         $okunacak = $this->okunusHazirla($metin);
         if ($okunacak === '') return null;
 
-        $ad = md5($ses . '|' . $okunacak) . '.mp3';
+        $ad = md5($ses . '|g16|' . $okunacak) . '.mp3';   // g16 = +16dB ses yukseltme surumu (onbellek tazelensin)
         $yol = $this->klasor . '/' . $ad;
         // ONBELLEK: daha once uretilmisse diskten don (karakter YAKMAZ, limite saymaz)
         // @touch: kullanilan dosyayi "taze" tut -> otomatik temizlik onu silmesin (sik kullanilanlar kalir)
@@ -115,7 +115,8 @@ class SeslendirmeServisi
         $key = (string) config('services.google_tts.key', '');
         if ($key === '') return null;
         $url = 'https://texttospeech.googleapis.com/v1/text:synthesize?key=' . urlencode($key);
-        $audioConfig = ['audioEncoding' => 'MP3', 'speakingRate' => 1.0];
+        // volumeGainDb: +16 (max) -> gurultulu restoranda AI net/yuksek duyulsun (tum seslerde desteklenir)
+        $audioConfig = ['audioEncoding' => 'MP3', 'speakingRate' => 1.0, 'volumeGainDb' => 16.0];
         // Chirp3-HD sesleri pitch desteklemez -> gonderme (aksi halde hata)
         if (strpos($ses, 'Chirp') === false) $audioConfig['pitch'] = 0.0;
         $govde = json_encode([
