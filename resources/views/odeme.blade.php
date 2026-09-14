@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#7C3AED">
 <title>Ödeme · {{ $sube->ad ?? 'ResteOS' }}</title>
+<script>
+  // Odeme sayfasi YENILENIRSE (nerede olursa olsun) -> menuye (dashboard) don. Ilk aciliste kalir.
+  (function(){
+    try{
+      var e = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]);
+      var yenilendi = e ? (e.type === 'reload') : (performance.navigation && performance.navigation.type === 1);
+      if(yenilendi){ location.replace(@json(!empty($masaId) ? url('/masa/'.$masaId) : url('/'))); }
+    }catch(_){}
+  })();
+</script>
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; --aksan:{{ $aksan ?? '#C41E3A' }}; --aksan3:{{ $aksan3 ?? '#C41E3A' }}; }
   *{box-sizing:border-box;margin:0;padding:0}
