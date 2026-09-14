@@ -57,8 +57,19 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
             return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
         }
-        if ($this->has($c, ['merhaba', 'selam', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'alo', 'hey'])) {
-            return $this->cvp('Hoş geldiniz! 😊 Menümüzü mü tanıtayım yoksa bir önerim mi olsun?');
+        if ($this->has($c, ['merhaba', 'merhabalar', 'selam', 'selamlar', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'alo', 'hey', 'selamun aleykum'])) {
+            // Selamdan SONRA baska istek var mi? "merhaba bugun menude ne var" -> selami AT, asil istegi isle
+            $kalan = ' ' . $c . ' ';
+            foreach (['selamun aleykum', 'merhabalar', 'merhaba', 'selamlar', 'selam', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'iyi sabahlar', 'alo', 'hey', 'nasilsin', 'naber', 'ne haber'] as $s) {
+                $kalan = str_replace(' ' . $this->norm($s) . ' ', ' ', $kalan);
+            }
+            $kalan = trim(preg_replace('/\s+/', ' ', $kalan));
+            if (mb_strlen($kalan) < 3) {
+                return $this->cvp('Hoş geldiniz! 😊 Menümüzü mü tanıtayım yoksa bir önerim mi olsun?');
+            }
+            // Selam + gercek istek -> selami dusur, ASIL istegi normal isle (asagida devam)
+            $c = $kalan;
+            $soru = $kalan;
         }
         if ($this->has($c, ['tesekkur', 'sagol', 'sag ol', 'eyvallah', 'minnettar'])) {
             return $this->cvp('Rica ederim, afiyet olsun! 😊');

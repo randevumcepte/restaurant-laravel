@@ -827,6 +827,17 @@ function pcmRaw(chunks,sr){ let len=0; for(const c of chunks) len+=c.length; con
 // Konuş (Google TTS /api/tts). Sıra tabanlı: tam konuşur, sonra dinler.
 let konusuyor=false,_konusBit=null,aktifAsDil='tr';
 function konusKes(){ sesDurdur(); if(_konusBit){ const b=_konusBit; _konusBit=null; b(); } }
+// iOS'ta <audio> cihaz maksimumunu asamaz; Web Audio kazanc dugumu sesi ~2.8x YUKSELTIR (gurultulu ortam icin).
+let _ttsSrc=null,_ttsGain=null,_ttsDenendi=false;
+function ttsBoost(){
+  if(_ttsDenendi || !_actx) return;
+  _ttsDenendi=true;
+  try{
+    _ttsSrc=_actx.createMediaElementSource(_sesCalar);
+    _ttsGain=_actx.createGain(); _ttsGain.gain.value=2.8;
+    _ttsSrc.connect(_ttsGain); _ttsGain.connect(_actx.destination);
+  }catch(e){ try{ if(_ttsSrc) _ttsSrc.connect(_actx.destination); }catch(_){} }
+}
 function konus(t){ return new Promise((resolve)=>{
   const temiz=seseHazirla(t); if(!temiz){ resolve(); return; }
   micKapat();   // AI konusmadan ONCE mikrofonu kapat -> ses LOUD hoparlorden gelir (iOS kulaklik yonlenmesi biter)
@@ -835,7 +846,7 @@ function konus(t){ return new Promise((resolve)=>{
   _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
   fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
     .then(r=>r.json()).then(j=>{ if(bitti) return;
-      if(j.basarili&&j.url){ sesDurdur(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
+      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
       else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
       else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
 }); }
