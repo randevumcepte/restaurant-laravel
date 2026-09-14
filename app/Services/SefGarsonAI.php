@@ -632,10 +632,11 @@ class SefGarsonAI
         return implode(', ', $adlar) . ' veya ' . $son;
     }
 
-    /** Kac dakika gecti (timestamp string/Carbon). */
+    /** Kac dakika gecti (timestamp string/Carbon). Carbon 2 ve 3'te de POZITIF olsun diye
+     *  gecmis->now yonunde hesapla (now()->diffInMinutes(gecmis) Carbon 3'te NEGATIF doner). */
     protected function dkGecti($t)
     {
-        try { return now()->diffInMinutes(\Illuminate\Support\Carbon::parse($t)); }
+        try { return (int) \Illuminate\Support\Carbon::parse($t)->diffInMinutes(now()); }
         catch (\Throwable $e) { return 0; }
     }
 
