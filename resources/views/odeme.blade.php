@@ -6,20 +6,20 @@
 <meta name="theme-color" content="#7C3AED">
 <title>Ödeme · {{ $sube->ad ?? 'ResteOS' }}</title>
 <style>
-  :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; --aksan:{{ $aksan ?? '#C41E3A' }}; --aksan2:{{ $aksan2 ?? '#C41E3A' }}; }
+  :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; --aksan:{{ $aksan ?? '#C41E3A' }}; --aksan3:{{ $aksan3 ?? '#C41E3A' }}; }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:18px;padding-bottom:calc(104px + env(safe-area-inset-bottom))}
   /* Alt menu — her sayfada sabit (menuyle ayni gorunum) */
-  .altnav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;align-items:flex-end;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+  .altnav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;align-items:flex-end;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
   .altnav a{flex:1;text-decoration:none;color:var(--gri);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0}
   .altnav a span{font-size:19px}.altnav a.act{color:var(--mor)}
   .altnav .qr{flex:0 0 auto}
-  .altnav .qr .qi{position:relative;width:64px;height:64px;margin-top:-28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,var(--aksan),var(--aksan2));box-shadow:0 10px 24px rgba(0,0,0,.28),0 0 0 5px #fff}
-  .altnav .qr .qi svg{width:28px;height:28px;fill:#fff;position:relative;z-index:1}
-  /* PATLAYAN DALGA (menüdeki gibi): beyaz nav olduğu için halkalar aksan renginde */
-  .altnav .qr .qi::before,.altnav .qr .qi::after{content:'';position:absolute;inset:0;border-radius:50%;border:2.5px solid var(--aksan);pointer-events:none;animation:qrDalga 2.2s ease-out infinite}
+  .altnav .qr .qi{position:relative;width:64px;height:64px;margin-top:-28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,var(--aksan),var(--aksan3));box-shadow:0 10px 24px rgba(139,59,234,.6),0 0 0 5px rgba(255,255,255,.96)}
+  .altnav .qr .qi svg{width:26px;height:26px;fill:#fff;position:relative;z-index:1}
+  /* PATLAYAN DALGA — menüdeki ile birebir (beyaz halka) */
+  .altnav .qr .qi::before,.altnav .qr .qi::after{content:'';position:absolute;inset:0;border-radius:50%;border:2.5px solid rgba(255,255,255,.9);pointer-events:none;animation:qrDalga 2.2s ease-out infinite}
   .altnav .qr .qi::after{animation-delay:1.1s}
-  @keyframes qrDalga{0%{transform:scale(1);opacity:.7}100%{transform:scale(2);opacity:0}}
+  @keyframes qrDalga{0%{transform:scale(1);opacity:.75}100%{transform:scale(2);opacity:0}}
   .card{width:100%;max-width:420px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 30px 70px rgba(80,50,160,.18)}
   .bas{background:linear-gradient(135deg,var(--mor),var(--mavi));color:#fff;padding:24px;text-align:center}
   .bas .l{font-size:13px;color:#E9D5FF}

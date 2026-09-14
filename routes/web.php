@@ -1117,8 +1117,8 @@ Route::get('/ode/{token}', function ($token) {
     elseif ($stored && isset($temalar[$stored])) { $tema = $temalar[$stored]; }
     else { $tema = $temalar['altin'] ?? reset($temalar); }
     $aksan = $tema['ana'] ?? '#C41E3A';
-    $aksan2 = $tema['ana2'] ?? $aksan;
-    return view('odeme', ['islem' => $i, 'sube' => $sube, 'masaId' => $masaId, 'aksan' => $aksan, 'aksan2' => $aksan2]);
+    $aksan3 = $tema['ana3'] ?? ($tema['ana2'] ?? $aksan);   // menudeki .qi gradient = ana -> ana3
+    return view('odeme', ['islem' => $i, 'sube' => $sube, 'masaId' => $masaId, 'aksan' => $aksan, 'aksan3' => $aksan3]);
 });
 // Odeme tamamla (CSRF muaf: ode/*) — simulasyon basarili; gercek saglayici callback'i buraya baglanir
 Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
