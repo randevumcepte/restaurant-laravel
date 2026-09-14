@@ -845,7 +845,7 @@ async function sistemKonus(tr){ await konus(await asCevir(tr)); }
 // STT: bir tur dinle -> metin
 let _sttLimit=false;
 async function dinleSunucu(){
-  robotHal('dinle'); asDurum('🎧 Sizi dinliyorum… bitince mikrofona dokunun');
+  robotHal('dinle'); asDurum('🎧 Sizi dinliyorum, buyurun…');
   const wav=await turKaydet();
   if(!wav){ asDurum('Sizi duyamadım. Biraz yüksek/net konuşun.'); return ''; }
   asDurum('… anlıyorum');
@@ -866,11 +866,7 @@ function asistanAc(){
   sesUnlock();
   const simdi=(window.performance&&performance.now)?performance.now():(+new Date()); if(simdi-_sonTik<600) return; _sonTik=simdi;
   if(!sohbetAktif){ basla(); return; }
-  if(konusuyor){ konusKes(); return; }            // AI konuşurken dokun = kes
-  if(_rec && _rec.active){                          // DİNLERKEN dokun:
-    if(_rec.started){ _recBit(true); return; }      //   konuştuysan -> HEMEN gönder (gürültüde bekleme yok)
-    sohbetKapat(); return;                           //   hiç konuşmadıysan -> kapat
-  }
+  if(konusuyor){ konusKes(); return; }
   sohbetKapat();
 }
 async function basla(){
