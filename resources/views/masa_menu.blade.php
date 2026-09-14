@@ -796,9 +796,9 @@ async function micAc(){
       if(rms>0.012){ if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } } _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
       else if(_rec.started){ _rec.silence+=dt; _rec.chunks.push(new Float32Array(d)); }
       else { (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>3) _rec.pre.shift(); }
-      if(_rec.started && _rec.silence>1.2) _recBit(true);         // konustu, durdu -> gonder
-      else if(!_rec.started && _rec.elapsed>7) _recBit(false);    // hic konusma yok
-      else if(_rec.elapsed>14) _recBit(_rec.started);             // uzun tavani
+      if(_rec.started && _rec.silence>0.85) _recBit(true);        // konustu, ~0.85sn durdu -> hemen gonder
+      else if(!_rec.started && _rec.elapsed>6) _recBit(false);    // hic konusma yok
+      else if(_rec.elapsed>9) _recBit(_rec.started);              // uzun tavani (gurultu kayidi uzatmasin)
     };
     _src.connect(_proc); _proc.connect(_actx.destination); return true;
   }catch(e){ return false; }
@@ -810,7 +810,7 @@ function micKapat(){   // mikrofonu serbest birak -> iOS sesi LOUD hoparlore ali
   try{ if(_stream){ _stream.getTracks().forEach(t=>t.stop()); _stream=null; } }catch(_){}
 }
 function _recBit(gonder){ if(!_rec.active) return; _rec.active=false; const chunks=_rec.chunks,r=_rec.resolve; _rec.resolve=null; if(r) r((gonder&&chunks.length)?pcmRaw(chunks,_srSample):null); }
-function turKaydet(){ return new Promise(async(resolve)=>{ if(!await micAc()){ resolve(null); return; } _rec={active:true,chunks:[],started:false,silence:0,elapsed:0,resolve:resolve,pre:null}; setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); },16000); }); }
+function turKaydet(){ return new Promise(async(resolve)=>{ if(!await micAc()){ resolve(null); return; } _rec={active:true,chunks:[],started:false,silence:0,elapsed:0,resolve:resolve,pre:null}; setTimeout(()=>{ if(_rec.active) _recBit(_rec.started); },10000); }); }
 function pcmRaw(chunks,sr){ let len=0; for(const c of chunks) len+=c.length; const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; } const oran=Math.max(1,sr/16000); const yeniLen=Math.floor(all.length/oran); const pcm=new Int16Array(yeniLen); for(let i=0;i<yeniLen;i++){ let v=all[Math.round(i*oran)]||0; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7FFF; } return new Blob([pcm.buffer],{type:'application/octet-stream'}); }
 
 // Konuş (Google TTS /api/tts). Sıra tabanlı: tam konuşur, sonra dinler.
@@ -899,7 +899,9 @@ async function sunucudanCevap(soru){
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
-    if((j.aksiyon==='sepet_ekle'||j.aksiyon==='sepet_ayarla') && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen);
+    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, false);        // EKLE (topla)
+    else if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, true);   // AYARLA (adedi SET yap)
+    else if(j.aksiyon==='sepet_cikar' && j.cikar) asSepetCikar(j.cikar.urun_id);                     // CIKAR
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
@@ -927,7 +929,10 @@ function asistanKatmanGoster(urunler, baslik){
   document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik katmanlari kapat
   document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
-function asSepetEkle(eklenen){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast('🛒 Siparişiniz sepete eklendi'); }
+function asSepetEkle(eklenen, ayarla){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ if(ayarla) sepetAyarla(u, e.adet||1); else sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast(ayarla?'🛒 Sepet güncellendi':'🛒 Siparişiniz sepete eklendi'); }
+// AYARLA: adedi topla DEGIL, o degere SET yap ("1 olsun 60 degil" -> 1)
+function sepetAyarla(u,adet){ adet=parseInt(adet)||0; const v=_sepet.find(s=>s.urun_id===u.urun_id); if(v){ if(adet<=0){ _sepet=_sepet.filter(s=>s.urun_id!==u.urun_id); } else { v.adet=adet; } } else if(adet>0){ _sepet.push({urun_id:u.urun_id,ad:u.ad,fiyat:u.fiyat,adet:adet}); } sepetRozet(); }
+function asSepetCikar(urunId){ _sepet=_sepet.filter(s=>s.urun_id!==urunId); sepetRozet(); }
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
 }
