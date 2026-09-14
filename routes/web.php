@@ -1109,7 +1109,16 @@ Route::get('/ode/{token}', function ($token) {
         $ad = DB::table('adisyonlar')->find($i->adisyon_id);
         $masaId = ($ad && !empty($ad->masa_id)) ? (int) $ad->masa_id : 0;
     }
-    return view('odeme', ['islem' => $i, 'sube' => DB::table('subeler')->find($i->sube_id), 'masaId' => $masaId]);
+    // Alt menudeki asistan butonu MENUYLE AYNI renk olsun (isletme aksani, or. kirmizi)
+    $sube = DB::table('subeler')->find($i->sube_id);
+    $temalar = resto_temalar();
+    $stored = ($sube && isset($sube->tema)) ? $sube->tema : null;
+    if ($stored === 'ozel' && !empty($sube->tema_renk)) { $tema = resto_tema_uret($sube->tema_renk, $sube->tema_renk2 ?? null); }
+    elseif ($stored && isset($temalar[$stored])) { $tema = $temalar[$stored]; }
+    else { $tema = $temalar['altin'] ?? reset($temalar); }
+    $aksan = $tema['ana'] ?? '#C41E3A';
+    $aksan2 = $tema['ana2'] ?? $aksan;
+    return view('odeme', ['islem' => $i, 'sube' => $sube, 'masaId' => $masaId, 'aksan' => $aksan, 'aksan2' => $aksan2]);
 });
 // Odeme tamamla (CSRF muaf: ode/*) — simulasyon basarili; gercek saglayici callback'i buraya baglanir
 Route::post('/ode/{token}/tamamla', function (Request $r, $token) {

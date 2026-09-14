@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#7C3AED">
 <title>Ödeme · {{ $sube->ad ?? 'ResteOS' }}</title>
 <style>
-  :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; }
+  :root{ --mor:#7C3AED; --mavi:#4F46E5; --ink:#14121A; --gri:#6B7280; --line:#EEE9F5; --bg:#F5F4FB; --yesil:#10B981; --aksan:{{ $aksan ?? '#C41E3A' }}; --aksan2:{{ $aksan2 ?? '#C41E3A' }}; }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:18px;padding-bottom:calc(104px + env(safe-area-inset-bottom))}
   /* Alt menu — her sayfada sabit (menuyle ayni gorunum) */
@@ -14,7 +14,8 @@
   .altnav a{flex:1;text-decoration:none;color:var(--gri);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0}
   .altnav a span{font-size:19px}.altnav a.act{color:var(--mor)}
   .altnav .qr{flex:0 0 auto}
-  .altnav .qr .qi{width:60px;height:60px;margin-top:-26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:25px;color:#fff;background:linear-gradient(135deg,var(--mor),var(--mavi));box-shadow:0 10px 24px rgba(124,58,237,.5),0 0 0 5px #fff}
+  .altnav .qr .qi{width:60px;height:60px;margin-top:-26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:25px;color:#fff;background:linear-gradient(135deg,var(--aksan),var(--aksan2));box-shadow:0 10px 24px rgba(0,0,0,.25),0 0 0 5px #fff}
+  .altnav .qr .qi svg{width:26px;height:26px;fill:#fff}
   .card{width:100%;max-width:420px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 30px 70px rgba(80,50,160,.18)}
   .bas{background:linear-gradient(135deg,var(--mor),var(--mavi));color:#fff;padding:24px;text-align:center}
   .bas .l{font-size:13px;color:#E9D5FF}
@@ -67,7 +68,7 @@
   <nav class="altnav">
     <a href="{{ $menuUrl }}"><span>📋</span>Menü</a>
     <a href="{{ $menuUrl }}?sepet=1"><span>🧾</span>Siparişlerim</a>
-    <a class="qr" href="{{ $menuUrl }}?ai=1" aria-label="Asistan"><span class="qi">🤖</span></a>
+    <a class="qr" href="{{ $menuUrl }}?ai=1" aria-label="Asistan"><span class="qi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></span></a>
     <a href="{{ $menuUrl }}?cagir=1"><span>🔔</span>Çağır</a>
     <a class="act" href="javascript:void(0)"><span>💳</span>Öde</a>
   </nav>
