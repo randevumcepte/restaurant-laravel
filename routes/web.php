@@ -2801,9 +2801,21 @@ Route::get('/api/sefgarson/tani', function () {
     $tara = null;
     try { $u = (new \App\Services\SefGarsonAI(2))->masalariTara(); $tara = 'OK sayi=' . count($u); }
     catch (\Throwable $e) { $tara = 'HATA: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(); }
+    $diff = null;
+    $row = Schema::hasTable('sef_garson_takip') ? DB::table('sef_garson_takip')->where('durum', 'goruldu')->orderByDesc('id')->first() : null;
+    if ($row && $row->goruldu_at) {
+        $c = \Illuminate\Support\Carbon::parse($row->goruldu_at);
+        $diff = [
+            'carbon' => defined('\\Carbon\\Carbon::VERSION') ? \Carbon\Carbon::VERSION : '?',
+            'gor_at' => (string) $row->goruldu_at,
+            'now_diff_to_gor' => now()->diffInMinutes($c),          // benim kodun kullandigi
+            'gor_diff_to_now' => $c->diffInMinutes(now()),          // dogru pozitif olmasi gereken
+        ];
+    }
     return [
-        'v' => 'outcome-3',
+        'v' => 'outcome-4',
         'tara' => $tara,
+        'diff' => $diff,
         'ef_bos' => $s->esik('bos_masa_dk'),
         'ef_tatli' => $s->esik('tatli_dk'),
         'ef_hatirlatma' => $s->esik('hatirlatma_dk'),
