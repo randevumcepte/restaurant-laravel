@@ -75,11 +75,13 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             return $this->cvp('Rica ederim, afiyet olsun! 😊');
         }
 
-        // 2) Garson cagir / hesap
-        if ($this->has($c, ['garson', 'biri gelsin', 'cagir', 'yardim istiyorum', 'hesap', 'odeme', 'odeyecegim', 'hesabi getir', 'adisyon'])) {
-            $hesap = $this->has($c, ['hesap', 'odeme', 'odeyecegim', 'hesabi getir']);
-            return $this->cvp($hesap ? 'Garsonumuza hesabınızı iletmesini söyledim, birazdan yanınızda olacak. 🙋'
-                : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
+        // 2) ODEME / HESAP -> guvenli ONLINE odeme sayfasina yonlendir ("odeme yapmak istiyorum", "hesap", "kartla ode")
+        if ($this->has($c, ['odeme', 'odemek', 'odeyecegim', 'odeyeyim', 'odeme yap', 'online ode', 'kartla ode', 'kart ile ode', 'telefondan ode', 'hesap', 'hesabi ode', 'hesabimi ode', 'hesabi getir', 'hesabi al', 'adisyon', 'borcum ne', 'ne kadar odeyec'])) {
+            return $this->cvp('Tabii efendim, sizi güvenli ödeme sayfasına yönlendiriyorum. 💳', ['aksiyon' => 'ode']);
+        }
+        // 2b) GARSON cagir (odeme/hesap disi yardim)
+        if ($this->has($c, ['garson', 'biri gelsin', 'cagir', 'garsonu cagir', 'yardim istiyorum', 'yardim eder'])) {
+            return $this->cvp('Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
 
         // 2.25) MENU TANITIMI (genel): "menude ne var / neler var / menuyu goster / tum menu" -> TUM kategoriler kibar garson edasiyla.

@@ -931,7 +931,7 @@ async function dinleSunucu(){
 }
 
 // Sohbet döngüsü (sıra tabanlı) — alt robota dokun: başlat / AI konuşurken kes / dinlerken kapat
-let sohbetAktif=false, _sonTik=0, _ilkSelam=false, _siparisAkisi=false, _onayBekliyor=false;
+let sohbetAktif=false, _sonTik=0, _ilkSelam=false, _siparisAkisi=false, _onayBekliyor=false, _odeGit=false;
 // Sesli sipariş özeti (sepetten): "2 köfte, 1 ayran ... toplam N lira" (rakamlar sunucuda yazıya çevrilir)
 function asSiparisOzet(){
   if(!_sepet.length) return 'Sepetiniz boş.';
@@ -987,6 +987,7 @@ async function basla(){
     }
     const cevap=await sunucudanCevap(c);
     if(cevap) await konus(cevap);
+    if(_odeGit){ _odeGit=false; sohbetAktif=false; try{ await hesapOde(); }catch(_){} break; }   // AI konustu -> odeme sayfasina yonlendir
   }
   sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
 }
@@ -1009,6 +1010,7 @@ async function sunucudanCevap(soru){
       return 'Şu an gönderilecek yeni bir siparişiniz görünmüyor efendim. Menüden dilediğinizi seçebilirsiniz. 😊';
     }
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
+    if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Sizi güvenli ödeme sayfasına yönlendiriyorum. 💳'; }   // konustuktan sonra odeme sayfasina git
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
