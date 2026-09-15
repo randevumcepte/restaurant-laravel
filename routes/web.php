@@ -5496,6 +5496,10 @@ Route::get('/api/mutfak', function (Request $r) {
         if (($istSay[$kod] ?? 0) > 0) $istasyonlar[] = ['kod' => $kod, 'ad' => $ad, 'bekleyen' => (int) round($istSay[$kod])];
     }
     $topluArr = array_values($toplu);
+    // Istasyon filtresi TOPLU listeye de uygulansin (secili cip -> sadece o istasyon urunleri)
+    if ($filtre && $filtre !== 'hepsi') {
+        $topluArr = array_values(array_filter($topluArr, fn ($t) => $t['istasyon'] === $filtre));
+    }
     usort($topluArr, fn ($a, $b) => $b['dk'] <=> $a['dk']);
     foreach ($topluArr as &$t) { $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
     unset($t);
