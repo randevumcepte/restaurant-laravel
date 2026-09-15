@@ -801,9 +801,16 @@ function asDurum(t, goster){ if(!_asbar) return; if(t!=null){ const el=document.
 function asGizle(){ if(_asbar) _asbar.classList.remove('acik'); }
 
 // iOS ses kilidi: ilk dokunuşta sessiz ses çal → sonraki async TTS'ler çalışır
-let _sesCalar=new Audio(), _sesAcildi=false;
+let _sesCalar=new Audio(), _sesAcildi=false, _kasitliDur=false;
+_sesCalar.setAttribute('playsinline',''); _sesCalar.preload='auto';
+// iOS TUZAK: sayfayı kaydırınca ses KENDILIGINDEN duraklayabiliyor -> biz durdurmadıysak DEVAM ETTIR (konuşma kesilmesin)
+_sesCalar.addEventListener('pause', ()=>{
+  if(_kasitliDur || !konusuyor) return;
+  if(_sesCalar.ended || _sesCalar.currentTime<=0) return;
+  try{ if(_actx && _actx.state!=='running') _actx.resume(); const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{}); }catch(_){}
+});
 function sesUnlock(){ if(_sesAcildi) return; try{ _sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=_sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){} }
-function sesDurdur(){ try{ _sesCalar.pause(); }catch(_){} }
+function sesDurdur(){ _kasitliDur=true; try{ _sesCalar.pause(); }catch(_){} }
 const _isAndroid=/android/i.test(navigator.userAgent);
 function seseHazirla(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim().replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2').replace(/₺\s*(\d+)/g,'$1 lira').replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira').replace(/₺/g,' lira'); }
 
@@ -866,7 +873,7 @@ function konus(t){ return new Promise((resolve)=>{
   _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
   fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
     .then(r=>r.json()).then(j=>{ if(bitti) return;
-      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
+      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; _kasitliDur=false; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
       else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
       else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
 }); }
