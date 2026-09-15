@@ -1342,6 +1342,28 @@ Route::get('/fix-iskonto-log', function () {
     return 'Iskonto/ikram detay loglari geri dolduruldu -> indirim: ' . $eklenen['indirim'] . ', ikram: ' . $eklenen['ikram'] . ' kayit. ✅ Dashboard degismedi.';
 });
 
+// TESHIS: iskonto/ikram dashboard vs detay uyusmazligini olcer (gecici)
+Route::get('/kayip-teshis', function () {
+    $out = [];
+    foreach (['indirim', 'ikram'] as $tip) {
+        $adAdet = DB::table('adisyonlar')->where('durum', 'odendi')->where($tip, '>', 0)->count();
+        $adTop = (float) DB::table('adisyonlar')->where('durum', 'odendi')->where($tip, '>', 0)->sum($tip);
+        $logAdet = DB::table('iptal_indirim_loglari')->where('tip', $tip)->count();
+        $logTop = (float) DB::table('iptal_indirim_loglari')->where('tip', $tip)->sum('tutar');
+        $bugunAd = (float) DB::table('adisyonlar')->where('durum', 'odendi')->where($tip, '>', 0)
+            ->whereDate('kapanis', today())->sum($tip);
+        $bugunLog = (float) DB::table('iptal_indirim_loglari')->where('tip', $tip)
+            ->whereDate('created_at', today())->sum('tutar');
+        $out[$tip] = ['adisyon_adet' => $adAdet, 'adisyon_toplam' => round($adTop),
+            'log_adet' => $logAdet, 'log_toplam' => round($logTop),
+            'bugun_adisyon' => round($bugunAd), 'bugun_log' => round($bugunLog)];
+    }
+    $out['log_ornek'] = DB::table('iptal_indirim_loglari')->orderByDesc('created_at')->limit(3)
+        ->get(['tip', 'tutar', 'adisyon_id', 'created_at']);
+    $out['tablo_var'] = Schema::hasTable('iptal_indirim_loglari');
+    return response()->json($out);
+});
+
 // Musteri degerlendirmesi (anket/yorum) seed - tabloyu garantiye alir + doldurur (tek sefer)
 Route::get('/enrich-anket', function () {
     if (!Schema::hasTable('degerlendirmeler')) {
