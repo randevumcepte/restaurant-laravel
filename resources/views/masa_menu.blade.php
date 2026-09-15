@@ -136,7 +136,8 @@
   #altbar .qr .qi::before, #altbar .qr .qi::after{ content:''; position:absolute; inset:0; border-radius:50%; border:2.5px solid rgba(255,255,255,.9); pointer-events:none; animation:qrDalga 2.2s ease-out infinite; }
   #altbar .qr .qi::after{ animation-delay:1.1s; }
   @keyframes qrDalga{ 0%{ transform:scale(1); opacity:.75; } 100%{ transform:scale(2); opacity:0; } }
-  .nrozet{ position:absolute; top:-3px; right:calc(50% - 22px); background:#F43F5E; color:#fff; font-size:10px; font-weight:800; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  #altbar #navSiparis{ position:relative; }
+  .nrozet{ position:absolute; top:2px; left:calc(50% + 4px); background:#F43F5E; color:#fff; font-size:10px; font-weight:800; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; box-shadow:0 2px 6px rgba(0,0,0,.35); }
 
   /* ==================== TABLET / GENIS EKRAN ==================== */
   #desk{ display:none; }
@@ -261,6 +262,9 @@
   #sepet .sat{ display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid var(--neutral); }
   #sepet .sat .sad{ flex:1; font-size:14.5px; font-weight:600; }
   #sepet .sat .sf{ color:var(--gold); font-weight:800; font-size:14px; min-width:78px; text-align:right; }
+  #sepet .sbas{ font-size:12.5px; font-weight:800; color:var(--gold); margin:16px 2px 2px; }
+  #sepet .sbas i{ font-weight:600; font-style:normal; color:var(--sessiz); font-size:11px; }
+  #sepet .sat.gonderilen .sad b{ color:var(--gold); font-weight:800; }
   #sepet .adet{ display:flex; align-items:center; gap:10px; }
   #sepet .adet button{ width:30px; height:30px; border-radius:9px; border:none; background:var(--card2); color:#fff; font-size:18px; }
   #sepet .adet span{ min-width:18px; text-align:center; font-weight:800; }
@@ -400,7 +404,7 @@
 
   <nav id="altbar">
     <button class="act" onclick="menuAc()"><span>📋</span>Menü</button>
-    <button onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
+    <button id="navSiparis" onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
     <button class="qr" onclick="asistanAc()"><div class="qi"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></div></button>
     <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
     <button onclick="hesapOde()"><span>💳</span>Öde</button>
@@ -676,27 +680,40 @@ function sepeteEkle(u,adet,mesaj){
 }
 function sepetRozet(){
   const n=_sepet.reduce((s,k)=>s+k.adet,0);
-  let r=document.querySelector('#altbar .nrozet');
-  if(n>0){ if(!r){ r=document.createElement('div'); r.className='nrozet'; document.getElementById('altbar').appendChild(r); } r.textContent=n; }
+  let r=document.querySelector('#navSiparis .nrozet');
+  if(n>0){ if(!r){ r=document.createElement('div'); r.className='nrozet'; document.getElementById('navSiparis').appendChild(r); } r.textContent=n; }
   else if(r) r.remove();
   const dc=document.getElementById('deskcart'); document.getElementById('dc-n').textContent=n; dc.classList.toggle('bos',n===0);
 }
-function sepetAc(){
+let _gonderilen=[], _gToplam=0;
+async function sepetAc(){
   document.getElementById('menu').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik diger katmanlari kapat
-  const l=document.getElementById('sepet-liste');
-  if(!_sepet.length){ l.innerHTML='<div class="bos">Sepetiniz boş. 🙂<br>Menüden lezzet seçebilirsiniz.</div>'; }
-  else{
-    l.innerHTML=_sepet.map((k,i)=>`<div class="sat"><span class="sad">${esc(k.ad)}</span>`
+  document.getElementById('sepet').classList.add('acik');
+  sepetCiz();
+  // Mutfaga gonderilmis siparisler (odemeye kadar birikir)
+  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0; sepetCiz(); } }catch(_){}
+}
+function sepetCiz(){
+  const l=document.getElementById('sepet-liste'); if(!l) return;
+  let html='';
+  if(_gonderilen.length){
+    html+='<div class="sbas">🍽️ Mutfağa iletilenler</div>';
+    html+=_gonderilen.map(k=>`<div class="sat gonderilen"><span class="sad">${esc(k.ad)} <b>×${k.adet}</b></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`).join('');
+  }
+  if(_sepet.length){
+    html+='<div class="sbas">🛒 Sepetiniz <i>(henüz gönderilmedi)</i></div>';
+    html+=_sepet.map((k,i)=>`<div class="sat"><span class="sad">${esc(k.ad)}</span>`
       +`<span class="adet"><button onclick="sepetAdet(${i},-1)">−</button><span>${k.adet}</span><button onclick="sepetAdet(${i},1)">+</button></span>`
       +`<span class="sf">${(k.fiyat*k.adet).toLocaleString('tr')} TL</span></div>`).join('');
   }
-  const top=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
-  document.getElementById('sepet-toplam').textContent=top.toLocaleString('tr')+' TL';
+  if(!html) html='<div class="bos">Henüz siparişiniz yok. 🙂<br>Menüden lezzet seçebilirsiniz.</div>';
+  l.innerHTML=html;
+  const sepetTop=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
+  document.getElementById('sepet-toplam').textContent=(_gToplam+sepetTop).toLocaleString('tr')+' TL';
   document.getElementById('sepet-gonder').disabled=!_sepet.length;
-  document.getElementById('sepet').classList.add('acik');
 }
 function sepetKapat(){ document.getElementById('sepet').classList.remove('acik'); }
-function sepetAdet(i,d){ _sepet[i].adet+=d; if(_sepet[i].adet<=0) _sepet.splice(i,1); sepetRozet(); sepetAc(); }
+function sepetAdet(i,d){ _sepet[i].adet+=d; if(_sepet[i].adet<=0) _sepet.splice(i,1); sepetRozet(); sepetCiz(); }
 async function siparisGonder(){
   if(!_sepet.length) return;
   const btn=document.getElementById('sepet-gonder'); btn.disabled=true; btn.textContent='Gönderiliyor…';

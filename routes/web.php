@@ -2374,6 +2374,18 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     return ['ok' => 1, 'mesaj' => 'Siparişiniz mutfağa iletildi', 'eklenen' => $eklenen, 'toplam' => $toplam, 'tukendi' => $tukendi];
 });
 
+// QR masa: bu masanin GONDERILMIS siparisleri (acik adisyon) -> "Siparislerim"de gorunur (odemeye kadar birikir)
+Route::get('/api/qr/siparislerim', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return response()->json(['ok' => 0], 404);
+    $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
+    if (!$adId) return ['ok' => 1, 'kalemler' => [], 'toplam' => 0];
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')
+        ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum')->orderBy('id')->get()
+        ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar, 'durum' => $k->durum]);
+    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar')];
+});
+
 // QR masa: acik hesabi online odemeye baslat (masadaki "Online Ode")
 Route::post('/api/qr/ode-baslat', function (Request $r) {
     if (function_exists('_odemeEnsure')) _odemeEnsure();
