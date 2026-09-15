@@ -2239,6 +2239,8 @@ Route::get('/garson-ekran/{subeId?}', function ($subeId = null) {
 Route::get('/api/garson-cagrilari', function (Request $r) {
     $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    // Eski/unutulmus cagrilar birikmesin: 45 dk'dan eski bekleyenler otomatik kapansin
+    try { DB::table('masa_cagrilari')->where('sube_id', $subeId)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $subeId)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
@@ -2261,6 +2263,7 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    try { DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
@@ -2277,6 +2280,14 @@ Route::post('/api/patron/garson-cagri-kapat', function (Request $r) {
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
     DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
     return ['ok' => 1];
+});
+// TUMUNU KARSILA: bekleyen tum cagrilari kapat (garson bir turda temizler / test backlog)
+Route::post('/api/patron/garson-cagri-hepsini-kapat', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
+    $n = DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->update(['durum' => 'karsilandi']);
+    return ['ok' => 1, 'kapatilan' => $n];
 });
 
 // QR MENU: musteri urune PUAN verir (gercek degerlendirme sistemi) -> urun_puanlari
