@@ -2397,6 +2397,19 @@ Route::get('/api/qr/siparislerim', function (Request $r) {
     return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar')];
 });
 
+// TEST: bu masanin acik hesabini/siparislerini TEMIZLE (birikmis test siparisleri gitsin) -> /masa-sifirla/37
+Route::get('/masa-sifirla/{masa}', function ($masa) {
+    $m = DB::table('masalar')->find((int) $masa);
+    if (!$m) abort(404);
+    $adId = DB::table('adisyonlar')->where('masa_id', $m->id)->where('durum', 'acik')->value('id');
+    if ($adId) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->update(['durum' => 'iptal', 'updated_at' => now()]);
+        DB::table('adisyonlar')->where('id', $adId)->update(['durum' => 'iptal', 'ara_toplam' => 0, 'toplam' => 0, 'updated_at' => now()]);
+    }
+    DB::table('masalar')->where('id', $m->id)->update(['durum' => 'bos']);
+    return response('✅ Masa ' . $m->id . ' temizlendi. Artik "Siparislerim" bos baslar; yeni siparis verebilirsiniz.')->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 // QR masa: acik hesabi online odemeye baslat (masadaki "Online Ode")
 Route::post('/api/qr/ode-baslat', function (Request $r) {
     if (function_exists('_odemeEnsure')) _odemeEnsure();

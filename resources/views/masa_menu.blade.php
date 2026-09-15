@@ -931,7 +931,15 @@ async function dinleSunucu(){
 }
 
 // Sohbet döngüsü (sıra tabanlı) — alt robota dokun: başlat / AI konuşurken kes / dinlerken kapat
-let sohbetAktif=false, _sonTik=0, _ilkSelam=false;
+let sohbetAktif=false, _sonTik=0, _ilkSelam=false, _siparisAkisi=false, _onayBekliyor=false;
+// Sesli sipariş özeti (sepetten): "2 köfte, 1 ayran ... toplam N lira" (rakamlar sunucuda yazıya çevrilir)
+function asSiparisOzet(){
+  if(!_sepet.length) return 'Sepetiniz boş.';
+  const parts=_sepet.map(k=>k.adet+' '+k.ad);
+  const top=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
+  const liste = parts.length>1 ? (parts.slice(0,-1).join(', ')+' ve '+parts[parts.length-1]) : parts[0];
+  return liste+' olmak üzere toplam '+top+' lira.';
+}
 function asistanAc(){
   sesUnlock();
   const simdi=(window.performance&&performance.now)?performance.now():(+new Date()); if(simdi-_sonTik<600) return; _sonTik=simdi;
@@ -952,13 +960,37 @@ async function basla(){
     if(_sttLimit){ _sttLimit=false; await sistemKonus('Şu an sesli asistan çok yoğun. Menüden yazarak devam edebilirsiniz.'); break; }
     if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde mikrofona tekrar dokunun, buradayım.'); break; } continue; }
     bos=0;
-    if(/^(kapat|kapan|görüşürüz|hoşça kal)\b/i.test(c)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    const cn=norm(c);
+    if(/^(kapat|kapan|gorusuruz|hosca kal)\b/.test(cn)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    // ---- ONAY AŞAMASI: özet sonrası "evet/hayır" ----
+    if(_onayBekliyor){
+      if(/(evet|onayl|gonder|yolla|tamamdir|^tamam|olur|tabii|kesinlikle|dogru|aynen|onaylıyorum)/.test(cn)){
+        _onayBekliyor=false; _siparisAkisi=false;
+        await asSiparisBitir();
+        await konus('Siparişiniz mutfağa iletildi, afiyet olsun! 😊');
+        continue;
+      }
+      if(/(hayir|yok|iptal|vazgec|bekle|dur|degil|yanlis|ekle|birde|bir de|degistir)/.test(cn)){
+        _onayBekliyor=false;
+        await konus('Tabii efendim, dinliyorum. Başka ne eklemek ya da değiştirmek istersiniz?');
+        continue;
+      }
+      _onayBekliyor=false;   // belirsiz -> normal işle (yeni ürün olabilir)
+    }
+    // ---- SİPARİŞ BİTİRME NİYETİ: sepet doluyken "yok/bu kadar/teşekkürler" -> ÖZET + ONAY ----
+    if(_siparisAkisi && _sepet.length
+       && /(hayir|yok|bu kadar|hepsi bu|sadece bunlar|bunlar kadar|yeterli|tesekkur|sag ?ol|baska yok|kalsin|tamamdir|gonderel|hallet|siparisi ver)/.test(cn)
+       && !/(ekle|bir ?de|birde|istiyorum|isterim|alayim|olsun|ister|bir tane)/.test(cn)){
+      _onayBekliyor=true;
+      await konus('Başka bir arzunuz yoksa siparişinizi özetliyorum. '+asSiparisOzet()+' Onaylıyor musunuz efendim?');
+      continue;
+    }
     const cevap=await sunucudanCevap(c);
     if(cevap) await konus(cevap);
   }
   sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
 }
-function sohbetKapat(){ sohbetAktif=false; konusKes(); micKapat(); robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
+function sohbetKapat(){ sohbetAktif=false; _siparisAkisi=false; _onayBekliyor=false; konusKes(); micKapat(); robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
 
 // Sunucuya sor + ANA ekranı güncelle; seslendirilecek metni döner
 async function sunucudanCevap(soru){
@@ -969,10 +1001,13 @@ async function sunucudanCevap(soru){
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
-    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, false);        // EKLE (topla)
-    else if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, true);   // AYARLA (adedi SET yap)
+    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ asSepetEkle(j.eklenen, false); _siparisAkisi=true; }       // EKLE (topla)
+    else if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)){ asSepetEkle(j.eklenen, true); _siparisAkisi=true; }  // AYARLA (SET)
     else if(j.aksiyon==='sepet_cikar' && j.cikar) asSepetCikar(j.cikar.urun_id);                     // CIKAR
-    if(j.aksiyon==='siparis_bitir'){ await asSiparisBitir(); }                                        // MUTFAGA GONDER
+    if(j.aksiyon==='siparis_bitir'){   // MUTFAGA GONDER ama ONCE ozet + onay iste (hemen gonderme)
+      if(_sepet.length){ _onayBekliyor=true; return 'Başka bir arzunuz yoksa siparişinizi özetliyorum. '+asSiparisOzet()+' Onaylıyor musunuz efendim?'; }
+      return 'Şu an gönderilecek yeni bir siparişiniz görünmüyor efendim. Menüden dilediğinizi seçebilirsiniz. 😊';
+    }
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
