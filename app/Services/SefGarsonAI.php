@@ -291,22 +291,41 @@ class SefGarsonAI
 
             // Kart alanlari: o an tetikleniyorsa taze ham'dan, degilse takipteki json'dan
             $src = $this->kartAl($t, $hamMap, $key);
+            $masaAd = (string) ($src['masa_adi'] ?? ('#' . $ad));
+            // Eski takip kayitlarinda kart(json) bos olabilir -> baslik/mesaj BOS gelmesin (popup bombos gorunuyordu)
+            $bs = trim((string) ($src['baslik'] ?? ''));
+            $ms = trim((string) ($src['mesaj'] ?? ''));
+            if ($bs === '' || $ms === '') { $vd = $this->tipMetni($t->tip, $masaAd); if ($bs === '') $bs = $vd[0]; if ($ms === '') $ms = $vd[1]; }
             $out[] = [
                 'adisyon_id' => $ad,
                 'masa_id'    => (int) ($src['masa_id'] ?? 0),
-                'masa_adi'   => (string) ($src['masa_adi'] ?? ('#' . $ad)),
+                'masa_adi'   => $masaAd,
                 'garson_id'  => (int) ($src['garson_id'] ?? 0),
                 'garson_adi' => (string) ($src['garson_adi'] ?? ''),
                 'tip'        => $t->tip,
                 'oncelik'    => (int) ($src['oncelik'] ?? 2),
-                'baslik'     => (string) ($src['baslik'] ?? ''),
-                'mesaj'      => (string) ($src['mesaj'] ?? ''),
+                'baslik'     => $bs,
+                'mesaj'      => $ms,
                 'ikon'       => (string) ($src['ikon'] ?? '💡'),
                 'durum'      => $durum,
                 'bildir'     => $bildir,
             ];
         }
         return $out;
+    }
+
+    /** Kart(json) bos gelirse tipe gore anlamli varsayilan baslik+mesaj (eski takip kayitlari icin). */
+    protected function tipMetni($tip, $masaAd)
+    {
+        $m = [
+            'bos_masa'       => ['Sipariş bekliyor', $masaAd . ' masası açık ama sipariş yok. Bir uğra, "bir şey almak ister misiniz" diye sor.'],
+            'tatli_firsati'  => ['Tatlı fırsatı', $masaAd . ' yemeğini bitirdi; tatlı ya da çay öner.'],
+            'tatli_icecek'   => ['Tatlı / içecek fırsatı', $masaAd . ' için tatlı ya da içecek önerebilirsin.'],
+            'icecek_firsati' => ['İçecek fırsatı', $masaAd . ' için serinletici bir içecek öner.'],
+            'sadece_icecek'  => ['Yemek fırsatı', $masaAd . ' sadece içecek aldı; yanına bir şeyler öner.'],
+            'durgun'         => ['Masa durgun', $masaAd . ' bir süredir hareketsiz; bir uğra, ihtiyaç var mı bak.'],
+        ];
+        return $m[$tip] ?? ['Satış fırsatı', $masaAd . ' için satışı artırabileceğin bir fırsat var. Öneri için "Ne satayım?" de.'];
     }
 
     /** Kart alanlarini getir: once taze ham, yoksa takipteki json snapshot. */
