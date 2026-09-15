@@ -2410,6 +2410,111 @@ Route::get('/masa-sifirla/{masa}', function ($masa) {
     return response('✅ Masa ' . $m->id . ' temizlendi. Artik "Siparislerim" bos baslar; yeni siparis verebilirsiniz.')->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
+// ============ DEMO DOLDUR: eski veriyi sil + BUGUNE bol veri (yatirimci sunumu icin dashboard/masa/mutfak dolu) ============
+Route::get('/demo-doldur', function (Request $r) {
+    @set_time_limit(180);
+    $subeId = (int) DB::table('subeler')->min('id');
+    if (!$subeId) return 'Once sube olusturun.';
+    $masalar = DB::table('masalar')->where('sube_id', $subeId)->pluck('id')->all();
+    $urunlerC = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get(['id', 'ad', 'fiyat']);
+    if ($urunlerC->isEmpty()) return 'Once urun ekleyin (Menu Yonetimi).';
+    $urunArr = $urunlerC->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat])->values()->all();
+    $garsonlar = [];
+    try { if (Schema::hasTable('personeller')) $garsonlar = DB::table('personeller')->where('sube_id', $subeId)->pluck('id')->all(); } catch (\Throwable $e) {
+    }
+    if (function_exists('_kdsKolonEnsure')) _kdsKolonEnsure();
+    $hasAcan = Schema::hasColumn('adisyonlar', 'acan_personel_id');
+    $hasKur = Schema::hasColumn('adisyon_kalemleri', 'kur');
+    $hasSeat = Schema::hasColumn('adisyon_kalemleri', 'seat');
+    $rndGarson = fn () => empty($garsonlar) ? null : $garsonlar[array_rand($garsonlar)];
+    $rndUrun = fn () => $urunArr[array_rand($urunArr)];
+
+    // 1) TEMIZLE: bu subenin TUM adisyon verisi (gun olan/eski hersey gitsin)
+    $eskiIds = DB::table('adisyonlar')->where('sube_id', $subeId)->pluck('id')->all();
+    if ($eskiIds) {
+        foreach (array_chunk($eskiIds, 500) as $c) {
+            DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $c)->delete();
+            DB::table('odemeler')->whereIn('adisyon_id', $c)->delete();
+            if (Schema::hasTable('iptal_indirim_loglari')) DB::table('iptal_indirim_loglari')->whereIn('adisyon_id', $c)->delete();
+        }
+    }
+    DB::table('adisyonlar')->where('sube_id', $subeId)->delete();
+    DB::table('masalar')->where('sube_id', $subeId)->update(['durum' => 'bos']);
+
+    $ciro = 0.0; $kapali = 0; $acik = 0;
+    $adYap = function ($o) use ($subeId, $masalar, $rndGarson, $rndUrun, $hasAcan, $hasKur, $hasSeat, &$ciro, &$kapali, &$acik) {
+        $kanal = $o['kanal'];
+        $masa = $o['masa'] ?? ($kanal === 'salon' && $masalar ? $masalar[array_rand($masalar)] : null);
+        $garson = $rndGarson();
+        $ac = $o['acilis']; $kap = $o['kapanis'] ?? null; $durum = $o['durum'];
+        $row = ['sube_id' => $subeId, 'masa_id' => $masa, 'kanal' => $kanal, 'misafir_sayisi' => random_int(1, 6),
+            'durum' => $durum, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => $ac, 'kapanis' => $kap, 'created_at' => $ac, 'updated_at' => $kap ?? $ac];
+        if ($hasAcan) $row['acan_personel_id'] = $garson;
+        $adId = DB::table('adisyonlar')->insertGetId($row);
+        $ara = 0;
+        for ($k = 0, $kn = random_int(2, 5); $k < $kn; $k++) {
+            $u = $rndUrun(); $adet = random_int(1, 3); $tutar = $u['fiyat'] * $adet;
+            $kd = $o['kalem_durum'] ?? 'hazir'; if (is_array($kd)) $kd = $kd[array_rand($kd)];
+            $kal = ['adisyon_id' => $adId, 'urun_id' => $u['id'], 'urun_adi' => $u['ad'], 'adet' => $adet, 'birim_fiyat' => $u['fiyat'],
+                'tutar' => $tutar, 'durum' => $kd, 'not' => null, 'personel_id' => $garson,
+                'gonderim_zamani' => $o['gonderim'] ?? $ac, 'created_at' => $ac, 'updated_at' => $ac];
+            if ($hasKur) $kal['kur'] = null;
+            if ($hasSeat) $kal['seat'] = null;
+            DB::table('adisyon_kalemleri')->insert($kal);
+            if ($kd !== 'iptal') $ara += $tutar;
+        }
+        $indirim = 0; $ikram = 0;
+        if ($durum === 'odendi' && $ara > 0) {
+            if (random_int(0, 99) < 18) $indirim = round($ara * [0.05, 0.1, 0.15][random_int(0, 2)], 2);
+            if (random_int(0, 99) < 12) $ikram = min(round($ara * 0.15, 2), $ara - $indirim);
+        }
+        $toplam = max(0, $ara - $indirim - $ikram);
+        DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $ara, 'indirim' => $indirim, 'ikram' => $ikram, 'toplam' => $toplam]);
+        if ($durum === 'odendi') {
+            DB::table('odemeler')->insert(['adisyon_id' => $adId, 'tip' => ['nakit', 'kredi', 'kredi', 'kredi', 'yemek_karti'][random_int(0, 4)],
+                'tutar' => $toplam, 'bahsis' => random_int(0, 4) === 0 ? round($toplam * 0.05, 2) : 0, 'personel_id' => $garson, 'created_at' => $kap]);
+            $ciro += $toplam; $kapali++;
+        }
+        if ($durum === 'acik') { $acik++; if ($masa) DB::table('masalar')->where('id', $masa)->update(['durum' => 'dolu']); }
+        return $adId;
+    };
+
+    // 2) BUGUN kapali (odendi) folyolar — 09:00'dan 10 dk oncesine yayilmis (bir kismi 1+ saat once, odenmis)
+    $gunBasi = today()->setTime(9, 0, 0);
+    $sonKap = now()->copy()->subMinutes(10);
+    $span = max(60, (int) $gunBasi->diffInMinutes($sonKap));
+    for ($i = 0; $i < 48; $i++) {
+        $kap = (clone $gunBasi)->addMinutes(random_int(0, $span));
+        if ($kap->isFuture()) $kap = now()->copy()->subMinutes(random_int(10, 120));
+        $ac = (clone $kap)->subMinutes(random_int(30, 80));
+        $kr = random_int(0, 9); $kanal = $kr < 7 ? 'salon' : ($kr < 9 ? 'paket' : 'qr');
+        $adYap(['kanal' => $kanal, 'durum' => 'odendi', 'acilis' => $ac, 'kapanis' => $kap, 'kalem_durum' => 'hazir']);
+    }
+    // 3) Birkac IPTAL (kayip radari dolsun)
+    for ($i = 0; $i < 3; $i++) {
+        $ac = now()->copy()->subMinutes(random_int(60, 300));
+        $adYap(['kanal' => 'salon', 'durum' => 'iptal', 'acilis' => $ac, 'kapanis' => null, 'kalem_durum' => 'iptal']);
+    }
+    // 4) ACIK masalar — CANLI mutfak (yeni/hazirlaniyor/hazir), taze zamanlar
+    $am = $masalar; shuffle($am); $am = array_slice($am, 0, min(12, count($masalar)));
+    foreach ($am as $m) {
+        $ac = now()->copy()->subMinutes(random_int(3, 40));
+        $adYap(['kanal' => 'salon', 'masa' => $m, 'durum' => 'acik', 'acilis' => $ac, 'kapanis' => null,
+            'gonderim' => $ac, 'kalem_durum' => ['gonderildi', 'gonderildi', 'hazirlaniyor', 'hazir']]);
+    }
+    // 5) Birkac ACIK paket (Paket ekrani + mutfak)
+    for ($i = 0; $i < 4; $i++) {
+        $ac = now()->copy()->subMinutes(random_int(2, 25));
+        $adYap(['kanal' => 'paket', 'durum' => 'acik', 'acilis' => $ac, 'kapanis' => null, 'gonderim' => $ac, 'kalem_durum' => ['gonderildi', 'hazirlaniyor']]);
+    }
+
+    return response("✅ DEMO VERI YUKLENDI (bugun)\n\n"
+        . "Kapali (odenmis) folyo: $kapali\nAcik masa/paket: $acik\nBugun ciro: " . number_format($ciro, 0, ',', '.') . " TL\n\n"
+        . "Artik DOLU: Ozet(dashboard) · Masalar · Mutfak(canli asamalar) · Paket · Raporlar/Analiz · Kayip radari.\n"
+        . "Sunum oncesi tekrar taze gorunum istersen bu adresi yeniden ac.")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 // QR masa: acik hesabi online odemeye baslat (masadaki "Online Ode")
 Route::post('/api/qr/ode-baslat', function (Request $r) {
     if (function_exists('_odemeEnsure')) _odemeEnsure();
