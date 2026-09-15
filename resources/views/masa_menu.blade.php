@@ -39,6 +39,7 @@
     font-size:17px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.25); }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
   html,body{ height:100%; color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    overscroll-behavior:none;   /* tarayici 'asagi cek-yenile'yi (pull-to-refresh) KAPAT -> sayfa yenilenip basa donmesin */
     background:#120912;
     background-image:
       radial-gradient(900px 620px at 90% -6%, rgba(233,150,60,.18), transparent 60%),
@@ -258,7 +259,7 @@
   #sepet .bar{ display:flex; align-items:center; padding:18px 20px 12px; }
   #sepet .bar b{ font-family:var(--serif); font-size:20px; color:var(--gold); }
   #sepet .bar .x{ margin-left:auto; width:36px; height:36px; border-radius:50%; border:none; background:var(--neutral); color:#fff; font-size:16px; }
-  #sepet .liste{ flex:1; overflow-y:auto; padding:0 20px; }
+  #sepet .liste{ flex:1; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; padding:0 20px; }
   #sepet .sat{ display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid var(--neutral); }
   #sepet .sat .sad{ flex:1; font-size:14.5px; font-weight:600; }
   #sepet .sat .sf{ color:var(--gold); font-weight:800; font-size:14px; min-width:78px; text-align:right; }
@@ -279,7 +280,7 @@
   /* tam menu overlay */
   #menu{ background:#120912; }
   html.acik #menu{ background:#F5EFF3; }
-  #menu .kutu{ position:relative; z-index:2; width:100%; height:100dvh; overflow-y:auto; display:flex; flex-direction:column; }
+  #menu .kutu{ position:relative; z-index:2; width:100%; height:100dvh; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; }
   #menu .mbar{ position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:12px; padding:16px 18px;
     background:linear-gradient(135deg,rgba(139,59,234,.3),rgba(51,20,54,.65)); border-bottom:1px solid var(--cizgi); backdrop-filter:blur(10px); }
   #menu .mbar b{ font-family:var(--serif); font-size:19px; color:var(--gold); }
@@ -805,6 +806,17 @@ let _sesCalar=new Audio(), _sesAcildi=false;
 _sesCalar.setAttribute('playsinline','');
 function sesUnlock(){ if(_sesAcildi) return; try{ _sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=_sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){} }
 function sesDurdur(){ try{ _sesCalar.pause(); }catch(_){} }
+// Kisa sessiz WAV (data URI) — ses cikis hattini isitmak icin (ilk kelime kirpilmasin)
+function _sessizWav(ms){
+  const sr=8000, n=Math.max(1,Math.floor(sr*ms/1000)), b=new Uint8Array(44+n);
+  const w=(o,s)=>{ for(let i=0;i<s.length;i++) b[o+i]=s.charCodeAt(i); };
+  const u32=(o,v)=>{ b[o]=v&255; b[o+1]=(v>>8)&255; b[o+2]=(v>>16)&255; b[o+3]=(v>>>24)&255; };
+  const u16=(o,v)=>{ b[o]=v&255; b[o+1]=(v>>8)&255; };
+  w(0,'RIFF'); u32(4,36+n); w(8,'WAVE'); w(12,'fmt '); u32(16,16); u16(20,1); u16(22,1); u32(24,sr); u32(28,sr); u16(32,1); u16(34,8); w(36,'data'); u32(40,n);
+  for(let i=0;i<n;i++) b[44+i]=128;   // 8-bit sessizlik = 128
+  let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]);
+  return 'data:audio/wav;base64,'+btoa(s);
+}
 const _isAndroid=/android/i.test(navigator.userAgent);
 function seseHazirla(t){ return (t||'').replace(/[^\p{L}\p{N}\s.,!?%:₺'"()-]/gu,'').trim().replace(/(\d)\.(\d{3})(?=\D|$)/g,'$1$2').replace(/₺\s*(\d+)/g,'$1 lira').replace(/(\d+)\s*(?:₺|tl)\b/gi,'$1 lira').replace(/₺/g,' lira'); }
 
@@ -906,6 +918,8 @@ async function basla(){
   sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
+  // ISITMA: cikis hattini/grafi kisa sessizlikle isit -> ilk kelime ("Hoş") yutulmasin
+  try{ await actxHazir(); ttsBoost(); _sesCalar.src=_sessizWav(320); const wp=_sesCalar.play(); if(wp&&wp.catch) wp.catch(()=>{}); await new Promise(r=>setTimeout(r,230)); }catch(_){}
   await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){
