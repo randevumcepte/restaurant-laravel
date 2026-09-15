@@ -2898,6 +2898,49 @@ Route::post('/api/login', function (Request $r) {
         'sube' => DB::table('subeler')->where('id', $p->sube_id)->value('ad'),
     ];
 });
+// GARSON KENDI DASHBOARD'U: kendi sattiklari, masa sayisi, acik masalar, urun, bahsis (finansal kar/maliyet YOK).
+Route::get('/api/patron/garson-ozet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $pid = (int) $p->id;
+    $subeId = (int) $p->sube_id;
+    $bugun = today();
+    $hasAcan = Schema::hasColumn('adisyonlar', 'acan_personel_id');
+    if (!$hasAcan) return ['ok' => 1, 'ad' => $p->ad, 'satis' => 0, 'masa_sayisi' => 0, 'acik_masa' => 0, 'acik_toplam' => 0, 'urun_adedi' => 0, 'ort_masa' => 0, 'bahsis' => 0, 'acik_masalar' => [], 'top_urun' => [], 'kapali' => true];
+
+    // Bugün açtığım adisyonlar
+    $masaSayisi = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('acan_personel_id', $pid)->whereDate('acilis', $bugun)->count();
+    // Bugünkü kapanan (satış) — iptal/açık hariç
+    $satis = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('acan_personel_id', $pid)
+        ->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $bugun)->sum('toplam');
+    // Açık masalarım
+    $acik = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.acan_personel_id', $pid)->where('adisyonlar.durum', 'acik')
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kanal', 'masalar.ad as masa')->orderByDesc('adisyonlar.toplam')->get();
+    $acikToplam = (float) $acik->sum('toplam');
+    // Sattığım ürün adedi (bugün açtığım adisyonlar)
+    $urunAdedi = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.acan_personel_id', $pid)->whereDate('adisyonlar.acilis', $bugun)->where('adisyon_kalemleri.durum', '!=', 'iptal')->sum('adisyon_kalemleri.adet');
+    // Bahşiş (bugün)
+    $bahsis = 0;
+    if (Schema::hasColumn('odemeler', 'bahsis')) {
+        $bahsis = (float) DB::table('odemeler')->where('personel_id', $pid)->whereDate('created_at', $bugun)->sum('bahsis');
+    }
+    // En çok sattıklarım (bugün, top 6)
+    $topUrun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.acan_personel_id', $pid)->whereDate('adisyonlar.acilis', $bugun)->where('adisyon_kalemleri.durum', '!=', 'iptal')
+        ->select('adisyon_kalemleri.urun_adi', DB::raw('SUM(adisyon_kalemleri.adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as tutar'))
+        ->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('adet')->limit(6)->get();
+    $ortMasa = $masaSayisi > 0 ? ($satis / $masaSayisi) : 0;
+
+    return ['ok' => 1, 'ad' => $p->ad, 'rol' => $p->rol,
+        'satis' => $satis, 'masa_sayisi' => $masaSayisi, 'acik_masa' => $acik->count(), 'acik_toplam' => $acikToplam,
+        'urun_adedi' => (int) $urunAdedi, 'ort_masa' => $ortMasa, 'bahsis' => $bahsis,
+        'acik_masalar' => $acik->map(fn ($a) => ['masa' => $a->masa ?: ('Masa ' . $a->id), 'toplam' => (float) $a->toplam])->values()->all(),
+        'top_urun' => $topUrun->map(fn ($u) => ['ad' => $u->urun_adi, 'adet' => (float) $u->adet, 'tutar' => (float) $u->tutar])->values()->all(),
+    ];
+});
+
 // GECICI: garson dashboard'ini gostermek icin test garson hesabi (PIN 1003). Sonra silinecek.
 Route::get('/api/test-garson-kur', function () {
     $ornek = DB::table('personeller')->where('rol', 'sahip')->first() ?: DB::table('personeller')->first();
