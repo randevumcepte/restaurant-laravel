@@ -53,6 +53,12 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             return $this->cvp('Efendim, sizi saygıya davet ediyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi kapatmak zorunda kalacağım.', ['aksiyon' => 'kufur']);
         }
 
+        // 0.5) SIPARISI BITIR / ONAY (mutfaga gonder). Selam/tesekkur/kimlikten ONCE ki "tesekkurler sadece bunlar" bitir sayilsin.
+        //      Cevap FRONTEND'de ozet+onay olarak kurulur (sepet frontend'de). Haiku sart degil.
+        if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'sadece bunlar', 'bunlar kadar', 'tamam bunlar', 'yeterli bu', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'siparisi onayla', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla', 'siparisimi onayla'])) {
+            return $this->cvp('Siparişinizi özetliyorum.', ['aksiyon' => 'siparis_bitir']);
+        }
+
         // 1) Kimlik / selam / tesekkur (musteri dostu)
         if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
             return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
@@ -88,11 +94,6 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         //       niyetRouter(Haiku)'dan ONCE: "menude ne var" tek kategoriye (baslangic) saptirilmasin.
         if ($this->has($c, ['menude ne', 'menude neler', 'menu de ne', 'menuyu goster', 'menuyu tanit', 'menu tanit', 'tum menu', 'butun menu', 'komple menu', 'menuyu ac', 'menunuzde ne', 'menunuzde neler', 'nasil bir menu', 'menu nedir', 'menuye bak', 'menuyu ver', 'neler var menu', 'menude neler mevcut'])) {
             return $this->menu();
-        }
-
-        // 2.3) SIPARISI BITIR / MUTFAGA GONDER (net ifadeler; kelime-kurali da calissin, sadece Haiku degil)
-        if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla'])) {
-            return $this->cvp('Tamamdır, siparişinizi mutfağa iletiyorum. Afiyet olsun! 😊', ['aksiyon' => 'siparis_bitir']);
         }
 
         // 2.4) SIPARIS DUZENLE (deterministik, guvenilir): "kofteyi 2 olsun" (AYARLA), "kolayi istemiyorum" (CIKAR)
