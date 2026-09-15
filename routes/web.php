@@ -5348,9 +5348,9 @@ Route::get('/api/mutfak', function (Request $r) {
         if ($filtre && $filtre !== 'hepsi' && $ist !== $filtre) continue;
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
-            $dk = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal, 'dk' => $dk, 'kalemler' => []];
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal, 'dk' => $dkK, 'kalemler' => []];
         }
+        $gruplu[$aid]['dk'] = min($gruplu[$aid]['dk'], $dkK);   // grup dk = EN YENI kalem -> son siparis en ustte
         $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist];
     }
     // Istasyon ozeti (bekleyeni olmayan da gorunsun ki sekmeler sabit dursun degil -> sadece dolu olanlar + hepsi)
@@ -5364,7 +5364,9 @@ Route::get('/api/mutfak', function (Request $r) {
     foreach ($topluArr as &$t) { $t['adet'] = $t['adet']; $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
     unset($t);
 
-    return ['ok' => 1, 'siparisler' => array_values($gruplu), 'istasyonlar' => $istasyonlar,
+    $siparisler = array_values($gruplu);
+    usort($siparisler, fn ($a, $b) => $a['dk'] <=> $b['dk']);   // EN YENI siparis (kucuk dk) EN USTTE
+    return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
         'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
 });
 
