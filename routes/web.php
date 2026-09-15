@@ -6383,6 +6383,82 @@ Route::get('/api/paket', function (Request $r) {
     return ['ok' => 1, 'siparisler' => $siparisler];
 });
 
+// DEMO/FAKE paket siparisleri yukle (dolu gorunsun) — tarayicida bir kez ac
+Route::get('/paket-demo-yukle', function () {
+    $sube = DB::table('subeler')->first();
+    if (!$sube) return response('Şube yok', 200);
+    if (function_exists('_paketOdemeEnsure')) _paketOdemeEnsure();
+
+    $urunRows = DB::table('urunler')->where('sube_id', $sube->id)->where('aktif', 1)->inRandomOrder()->limit(24)->get(['ad', 'fiyat']);
+    $havuz = $urunRows->count() >= 4
+        ? $urunRows->map(fn ($u) => ['ad' => $u->ad, 'fiyat' => (float) $u->fiyat])->all()
+        : [['ad' => 'Adana Kebap', 'fiyat' => 220], ['ad' => 'Lahmacun', 'fiyat' => 70], ['ad' => 'Karışık Pizza', 'fiyat' => 285], ['ad' => 'Ayran', 'fiyat' => 30], ['ad' => 'Kola', 'fiyat' => 45], ['ad' => 'Baklava', 'fiyat' => 160], ['ad' => 'Mercimek Çorbası', 'fiyat' => 65], ['ad' => 'Tavuk Döner', 'fiyat' => 150]];
+
+    // [platform, musteri, tel, adres, odeme, teslimat_durumu, kac_dk_once]
+    $demolar = [
+        ['getir', 'Ahmet Yılmaz', '05321112233', 'Bağdat Cad. No:112 D:4, Kadıköy', 'online', 'hazirlaniyor', 6],
+        ['yemeksepeti', 'Ayşe Demir', '05334445566', 'Atatürk Mah. Gül Sok. No:7, Ataşehir', 'nakit', 'hazirlaniyor', 12],
+        ['trendyol', 'Mehmet Kaya', '05357778899', 'Barbaros Bulv. No:45 D:9, Beşiktaş', 'kredi', 'hazir', 24],
+        ['getir', 'Zeynep Şahin', '05361231212', 'Feneryolu Mah. Deniz Sok. No:3, Kadıköy', 'online', 'yolda', 41],
+        ['whatsapp', 'Can Öztürk', '05379876543', 'Caddebostan, Plaj Yolu No:22, Kadıköy', 'nakit', 'hazirlaniyor', 4],
+        ['telefon', 'Elif Arslan', '05445556677', 'Kozyatağı, İnönü Cad. No:88, Kadıköy', 'kredi', 'hazir', 18],
+        ['migros', 'Burak Çelik', '05052223344', 'Suadiye, Bağdat Cad. No:401, Kadıköy', 'online', 'hazirlaniyor', 30],
+        ['yemeksepeti', 'Selin Aydın', '05368889900', 'Erenköy, Ethem Efendi Cad. No:15, Kadıköy', 'nakit', 'yolda', 52],
+    ];
+
+    $eklenen = 0;
+    foreach ($demolar as $d) {
+        [$plat, $ad, $tel, $adres, $odeme, $durum, $dkOnce] = $d;
+        $mid = DB::table('musteriler')->insertGetId([
+            'sube_id' => $sube->id, 'ad' => $ad, 'telefon' => $tel, 'adres' => $adres,
+            'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $satir = [
+            'sube_id' => $sube->id, 'masa_id' => null, 'musteri_id' => $mid, 'kurye_id' => null,
+            'kanal' => 'paket', 'platform' => $plat,
+            'platform_siparis_no' => strtoupper(substr($plat, 0, 3)) . random_int(100000, 999999),
+            'teslimat_adres' => $adres, 'teslimat_durumu' => $durum, 'misafir_sayisi' => 1, 'durum' => 'acik',
+            'acan_personel_id' => null, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => now()->subMinutes($dkOnce), 'created_at' => now(), 'updated_at' => now(),
+        ];
+        if (Schema::hasColumn('adisyonlar', 'odeme_yontemi')) $satir['odeme_yontemi'] = $odeme;
+        $adId = DB::table('adisyonlar')->insertGetId($satir);
+
+        $ara = 0;
+        $n = random_int(2, 5);
+        for ($i = 0; $i < $n; $i++) {
+            $u = $havuz[array_rand($havuz)];
+            $adet = random_int(1, 3);
+            $tutar = $u['fiyat'] * $adet;
+            DB::table('adisyon_kalemleri')->insert([
+                'adisyon_id' => $adId, 'urun_id' => null, 'urun_adi' => $u['ad'],
+                'adet' => $adet, 'birim_fiyat' => $u['fiyat'], 'tutar' => $tutar, 'durum' => 'gonderildi',
+                'not' => null, 'gonderim_zamani' => now()->subMinutes($dkOnce), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $ara += $tutar;
+        }
+        DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $ara, 'toplam' => $ara, 'updated_at' => now()]);
+        $eklenen++;
+    }
+    return response("✅ $eklenen adet FAKE paket siparişi eklendi (Getir/Yemeksepeti/Trendyol/WhatsApp/Telefon...). Uygulamada Paket sekmesini yenile.\nSilmek icin: /paket-demo-sil", 200)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// DEMO paket siparislerini SIL (fake musterilerin acik paket adisyonlari + kalemleri)
+Route::get('/paket-demo-sil', function () {
+    $adlar = ['Ahmet Yılmaz', 'Ayşe Demir', 'Mehmet Kaya', 'Zeynep Şahin', 'Can Öztürk', 'Elif Arslan', 'Burak Çelik', 'Selin Aydın'];
+    $mids = DB::table('musteriler')->whereIn('ad', $adlar)->pluck('id')->all();
+    $silinen = 0;
+    if ($mids) {
+        $adIds = DB::table('adisyonlar')->where('kanal', 'paket')->whereIn('musteri_id', $mids)->pluck('id')->all();
+        if ($adIds) {
+            DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $adIds)->delete();
+            $silinen = DB::table('adisyonlar')->whereIn('id', $adIds)->delete();
+        }
+        DB::table('musteriler')->whereIn('id', $mids)->delete();
+    }
+    return response("🗑 $silinen demo paket siparişi silindi.", 200)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
 Route::get('/api/paket/{id}', function (Request $r, $id) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
