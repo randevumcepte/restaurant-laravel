@@ -238,19 +238,40 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
         if ($kats->isEmpty()) return $this->cvp('Menü şu an hazırlanıyor, birazdan hazır olacak.');
         $one = $this->oneCikanKolonVar();
+        // GENEL istah acici anlatim (iki yemek saymak YOK) + kategoride ONE CIKAN varsa ONU oner
+        $genel = [
+            'iştah açıcı, enfes lezzetlerimiz var',
+            'birbirinden özel seçeneklerimiz mevcut',
+            'özenle hazırlanan nefis tatlarımız var',
+            'taptaze ve doyurucu seçeneklerimiz var',
+            'damağınızda iz bırakacak lezzetlerimiz var',
+            'sizin için hazırladığımız özel lezzetler var',
+        ];
+        $oneriKalip = [
+            'özellikle {u} gönül rahatlığıyla öneririm',
+            'buradan {u} tavsiye ederim',
+            'içlerinde {u} misafirlerimizin favorisi',
+            'bilhassa {u} denemenizi tavsiye ederim',
+        ];
         $kartlar = [];
         $parcalar = [];
+        $i = 0;
         foreach ($kats as $k) {
             $kartlar[] = ['ad' => $k->ad, 'emoji' => $this->katEmoji($k->ad)];
-            // Her kategoriden 1-2 istah acici ornek (one cikan oncelikli)
-            $q = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)->where('aktif', 1)->where('tukendi', 0);
-            if ($one) $q->orderByDesc('one_cikan')->orderBy('one_sira');
-            $ornek = $q->orderBy('ad')->limit(2)->pluck('ad')->all();
-            $parcalar[] = !empty($ornek) ? ($k->ad . ' arasında ' . $this->dogalListe($ornek)) : $k->ad;
+            $cumle = $k->ad . ' bölümünde ' . $genel[$i % count($genel)];
+            // Bu kategoride ONE CIKAN (isletmenin isaretledigi) urun varsa ONU oner
+            $featured = null;
+            if ($one) {
+                $featured = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)
+                    ->where('aktif', 1)->where('tukendi', 0)->where('one_cikan', 1)->orderBy('one_sira')->value('ad');
+            }
+            if ($featured) $cumle .= '; ' . str_replace('{u}', $featured, $oneriKalip[$i % count($oneriKalip)]);
+            $parcalar[] = $cumle;
+            $i++;
         }
-        // Kibar garson edasi, istah acici — TUM kategoriler sirayla
-        $mesaj = 'Elbette efendim, menümüzü büyük bir keyifle tanıtayım. 😊 Bugün soframızda ' . implode(', ', $parcalar)
-            . ' gibi birbirinden özenli lezzetler sizi bekliyor. Hangisiyle başlamak istersiniz? Dilerseniz üzerine dokunun, dilerseniz "günün önerisi ne" diye sorun.';
+        // Kibar garson edasi — TUM kategoriler sirayla, genel + varsa one cikan onerisi
+        $mesaj = 'Elbette efendim, menümüzü büyük bir keyifle tanıtayım. 😊 ' . implode('. ', $parcalar)
+            . '. Hangisiyle başlamak istersiniz? Dilerseniz üzerine dokunun, dilerseniz "günün önerisi ne" diye sorun.';
         return $this->cvp($mesaj, ['tip' => 'kategoriler', 'kategoriler' => $kartlar]);
     }
 
