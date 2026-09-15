@@ -1311,6 +1311,37 @@ Route::get('/enrich-kayip', function () {
     return 'Kayip radari zenginlestirildi: fire + silinen urun + iptal adisyon + iskonto eklendi. ✅';
 });
 
+// Iskonto/Ikram DETAY duzeltme: dashboard adisyonlar.indirim/ikram'i toplar ama Kayip Radari detayi
+// iptal_indirim_loglari'ndan okur. Eski demo verisinde adisyona indirim/ikram yazilmis ama ESLESEN log
+// yok -> detay 0 gorunuyordu. Bu route mevcut veriyi BOZMADAN (numaralari degistirmeden) eksik loglari geri doldurur.
+// Idempotent: zaten log'u olan adisyon atlanir. Tekrar cagirmak guvenli.
+Route::get('/fix-iskonto-log', function () {
+    if (!Schema::hasTable('iptal_indirim_loglari')) return 'iptal_indirim_loglari tablosu yok.';
+    $eklenen = ['indirim' => 0, 'ikram' => 0];
+    foreach (['indirim', 'ikram'] as $tip) {
+        $sebepler = $tip === 'indirim'
+            ? ['Musteri memnuniyeti', 'Personel', 'Isletme yakini', 'Telafi']
+            : ['Ikram', 'Musteri jesti', 'Bekleme telafisi', 'Sadakat'];
+        // indirim/ikram > 0 olan ama bu tip log'u OLMAYAN odendi adisyonlar
+        $kayitlar = DB::table('adisyonlar')->where('durum', 'odendi')->where($tip, '>', 0)
+            ->whereNotExists(function ($q) use ($tip) {
+                $q->select(DB::raw(1))->from('iptal_indirim_loglari')
+                    ->whereColumn('iptal_indirim_loglari.adisyon_id', 'adisyonlar.id')
+                    ->where('iptal_indirim_loglari.tip', $tip);
+            })
+            ->get(['id', 'sube_id', $tip . ' as tutar', 'acan_personel_id', 'kapanis', 'acilis']);
+        foreach ($kayitlar as $a) {
+            DB::table('iptal_indirim_loglari')->insert([
+                'sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => (float) $a->tutar,
+                'sebep' => $sebepler[array_rand($sebepler)],
+                'personel_id' => $a->acan_personel_id, 'created_at' => $a->kapanis ?? $a->acilis,
+            ]);
+            $eklenen[$tip]++;
+        }
+    }
+    return 'Iskonto/ikram detay loglari geri dolduruldu -> indirim: ' . $eklenen['indirim'] . ', ikram: ' . $eklenen['ikram'] . ' kayit. ✅ Dashboard degismedi.';
+});
+
 // Musteri degerlendirmesi (anket/yorum) seed - tabloyu garantiye alir + doldurur (tek sefer)
 Route::get('/enrich-anket', function () {
     if (!Schema::hasTable('degerlendirmeler')) {
@@ -2471,6 +2502,20 @@ Route::get('/demo-doldur', function (Request $r) {
         }
         $toplam = max(0, $ara - $indirim - $ikram);
         DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $ara, 'indirim' => $indirim, 'ikram' => $ikram, 'toplam' => $toplam]);
+        // Kayip Radari DETAYI iptal_indirim_loglari'ndan okunur; dashboard ise adisyonlar.indirim/ikram'i toplar.
+        // Ikisi tutarli olsun diye indirim/ikram uygulanan her adisyona ESLESEN log kaydi da yaz (yoksa detay 0 gorunur).
+        if (Schema::hasTable('iptal_indirim_loglari')) {
+            if ($indirim > 0) DB::table('iptal_indirim_loglari')->insert([
+                'sube_id' => $subeId, 'adisyon_id' => $adId, 'tip' => 'indirim', 'tutar' => $indirim,
+                'sebep' => ['Musteri memnuniyeti', 'Personel', 'Isletme yakini', 'Telafi'][random_int(0, 3)],
+                'personel_id' => $garson, 'created_at' => $kap ?? $ac,
+            ]);
+            if ($ikram > 0) DB::table('iptal_indirim_loglari')->insert([
+                'sube_id' => $subeId, 'adisyon_id' => $adId, 'tip' => 'ikram', 'tutar' => $ikram,
+                'sebep' => ['Ikram', 'Musteri jesti', 'Bekleme telafisi', 'Sadakat'][random_int(0, 3)],
+                'personel_id' => $garson, 'created_at' => $kap ?? $ac,
+            ]);
+        }
         if ($durum === 'odendi') {
             DB::table('odemeler')->insert(['adisyon_id' => $adId, 'tip' => ['nakit', 'kredi', 'kredi', 'kredi', 'yemek_karti'][random_int(0, 4)],
                 'tutar' => $toplam, 'bahsis' => random_int(0, 4) === 0 ? round($toplam * 0.05, 2) : 0, 'personel_id' => $garson, 'created_at' => $kap]);
