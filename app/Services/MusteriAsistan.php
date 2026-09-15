@@ -82,6 +82,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
 
+        // 2.3) SIPARISI BITIR / MUTFAGA GONDER (net ifadeler; kelime-kurali da calissin, sadece Haiku degil)
+        if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla'])) {
+            return $this->cvp('Tamamdır, siparişinizi mutfağa iletiyorum. Afiyet olsun! 😊', ['aksiyon' => 'siparis_bitir']);
+        }
+
         // 2.4) SIPARIS DUZENLE (deterministik, guvenilir): "kofteyi 2 olsun" (AYARLA), "kolayi istemiyorum" (CIKAR)
         $duz = $this->siparisDuzenle($c, $soru, $baglam);
         if ($duz) return $duz;

@@ -902,6 +902,7 @@ async function sunucudanCevap(soru){
     if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, false);        // EKLE (topla)
     else if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)) asSepetEkle(j.eklenen, true);   // AYARLA (adedi SET yap)
     else if(j.aksiyon==='sepet_cikar' && j.cikar) asSepetCikar(j.cikar.urun_id);                     // CIKAR
+    if(j.aksiyon==='siparis_bitir'){ await asSiparisBitir(); }                                        // MUTFAGA GONDER
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
@@ -933,6 +934,16 @@ function asSepetEkle(eklenen, ayarla){ let n=0; eklenen.forEach(e=>{ const u=_ur
 // AYARLA: adedi topla DEGIL, o degere SET yap ("1 olsun 60 degil" -> 1)
 function sepetAyarla(u,adet){ adet=parseInt(adet)||0; const v=_sepet.find(s=>s.urun_id===u.urun_id); if(v){ if(adet<=0){ _sepet=_sepet.filter(s=>s.urun_id!==u.urun_id); } else { v.adet=adet; } } else if(adet>0){ _sepet.push({urun_id:u.urun_id,ad:u.ad,fiyat:u.fiyat,adet:adet}); } sepetRozet(); }
 function asSepetCikar(urunId){ _sepet=_sepet.filter(s=>s.urun_id!==urunId); sepetRozet(); }
+// AI "siparisi bitir/gonder" -> sepeti MUTFAGA ilet + temizle (odemeye kadar tekrar siparis verilebilir)
+async function asSiparisBitir(){
+  if(!_sepet.length){ toast('Sepetiniz henüz boş 🙂'); return; }
+  try{
+    const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet})))})});
+    const j=await r.json();
+    if(j.ok){ _sepet=[]; sepetRozet(); try{ sepetKapat(); }catch(_){} toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!'); }
+    else toast(j.hata||'Sipariş gönderilemedi');
+  }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); }
+}
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
 }
