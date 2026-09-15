@@ -2867,9 +2867,9 @@ Route::get('/api/patron/benim-atamam', function (Request $r) {
 Route::get('/api/sefgarson/uyarilar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    // GARSON: sadece sorumlu masalari (bolge ∪ ekstra). Atamasi yoksa hepsi. Sahip/mudur: tum salon.
-    $masaIdler = null;
-    if ($p->rol === 'garson') $masaIdler = _personelMasaIdler($p->sube_id, $p->id);
+    // ATAMASI OLAN herkes (garson ya da patron/garson) sadece sorumlu masalarini gorur.
+    // Atamasi YOKSA null -> tum salon (sef gorunumu). Rol fark etmez.
+    $masaIdler = _personelMasaIdler($p->sube_id, $p->id);
     $uyarilar = (new \App\Services\SefGarsonAI($p->sube_id))->masalariTara($masaIdler);
     return ['ok' => 1, 'uyarilar' => $uyarilar, 'sayi' => count($uyarilar)];
 });
