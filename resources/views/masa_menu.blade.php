@@ -899,14 +899,12 @@ function konus(t){ return new Promise((resolve)=>{
   _konusBit=bit; let emniyet=setTimeout(bit, Math.min(30000,4000+temiz.length*110));   // ilk tahmin (buffer basinca gercek sureye ayarlanir)
   fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
     .then(r=>r.json()).then(j=>{ if(bitti) return;
-      if(j.basarili&&j.url){ sesDurdur();
-        bufKonus(j.url, ()=>{ clearTimeout(emniyet); bit(); }).then(dur=>{ if(bitti) return;
-          if(dur===false){
-            // yedek: buffer olmadi -> <audio> ile cal
-            try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); return;
-          }
-          clearTimeout(emniyet); emniyet=setTimeout(bit, dur*1000+4000);   // GERCEK ses suresi + 4sn -> uzun anlatim kesilmez
-        });
+      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost();
+        _sesCalar.src=j.url;
+        _sesCalar.onloadedmetadata=()=>{ const d=_sesCalar.duration; if(isFinite(d)&&d>0){ clearTimeout(emniyet); emniyet=setTimeout(bit, d*1000+4000); } };  // GERCEK ses suresi -> uzun anlatim kesilmez
+        _sesCalar.onended=()=>{ clearTimeout(emniyet); bit(); };
+        _sesCalar.onerror=()=>{ clearTimeout(emniyet); bit(); };
+        const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{ clearTimeout(emniyet); bit(); });
       }
       else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
       else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
@@ -946,7 +944,7 @@ async function basla(){
   sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
-  await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
+  await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Efendim, hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){
     const c=await dinleSunucu();
