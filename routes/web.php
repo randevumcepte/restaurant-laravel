@@ -2898,6 +2898,32 @@ Route::post('/api/login', function (Request $r) {
         'sube' => DB::table('subeler')->where('id', $p->sube_id)->value('ad'),
     ];
 });
+// GECICI: garson dashboard'ini gostermek icin test garson hesabi (PIN 1003). Sonra silinecek.
+Route::get('/api/test-garson-kur', function () {
+    $ornek = DB::table('personeller')->where('rol', 'sahip')->first() ?: DB::table('personeller')->first();
+    if (!$ornek) return response('Personel yok', 200);
+    $subeId = $ornek->sube_id;
+    $mevcut = DB::table('personeller')->where('pin', '1003')->first();
+    if ($mevcut) {
+        DB::table('personeller')->where('id', $mevcut->id)->update(['ad' => 'Garson Test', 'rol' => 'garson', 'aktif' => 1, 'sube_id' => $subeId]);
+        return response('Garson Test guncellendi. PIN: 1003', 200);
+    }
+    $data = (array) $ornek;
+    unset($data['id']);
+    $data['ad'] = 'Garson Test';
+    $data['rol'] = 'garson';
+    $data['pin'] = '1003';
+    $data['aktif'] = 1;
+    foreach (['api_token', 'yetkiler', 'email', 'telefon'] as $k) { if (array_key_exists($k, $data)) $data[$k] = null; }
+    if (array_key_exists('created_at', $data)) $data['created_at'] = now();
+    if (array_key_exists('updated_at', $data)) $data['updated_at'] = now();
+    try {
+        DB::table('personeller')->insert($data);
+        return response('Garson Test olusturuldu. PIN: 1003 (sube ' . $subeId . ')', 200);
+    } catch (\Throwable $e) {
+        return response('HATA: ' . $e->getMessage(), 200);
+    }
+});
 
 // ---------------- PERSONEL MASA/BOLGE ATAMA (hibrit: bolge ∪ ekstra masa) ----------------
 if (!function_exists('_atamaTablo')) {
