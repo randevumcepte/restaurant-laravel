@@ -47,10 +47,11 @@ class SefGarsonAI
     // GOZCU — tum acik masalari tara, uyari listesi uret (BEDAVA)
     // ======================================================================
     /**
-     * @param int|null $garsonId  Verilirse sadece o garsonun actigi masalar.
+     * @param array|null $masaIdler  Verilirse sadece bu masalar (garsonun sorumlu masa kumesi:
+     *                               atanan bolgelerdeki masalar ∪ ekstra atanan masalar). null = hepsi.
      * @return array  Uyari kartlari (oncelige gore sirali).
      */
-    public function masalariTara($garsonId = null)
+    public function masalariTara($masaIdler = null)
     {
         if (!(bool) config('sefgarson.acik', true)) return [];
 
@@ -60,7 +61,7 @@ class SefGarsonAI
             ->where('a.sube_id', $this->subeId)
             ->where('a.durum', 'acik')
             ->where('a.kanal', 'salon');       // paket/qr degil, salon masalari
-        if ($garsonId) $q->where('a.acan_personel_id', (int) $garsonId);
+        if (is_array($masaIdler) && count($masaIdler)) $q->whereIn('a.masa_id', array_map('intval', $masaIdler));
         $adisyonlar = $q->get(['a.id', 'a.masa_id', 'a.acilis', 'a.created_at as a_created', 'a.misafir_sayisi', 'a.toplam', 'a.acan_personel_id', 'm.ad as masa_adi', 'p.ad as garson_adi']);
         if ($adisyonlar->isEmpty()) return [];
 

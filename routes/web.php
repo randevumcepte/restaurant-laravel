@@ -2770,14 +2770,107 @@ Route::post('/api/login', function (Request $r) {
     ];
 });
 
+// ---------------- PERSONEL MASA/BOLGE ATAMA (hibrit: bolge ∪ ekstra masa) ----------------
+if (!function_exists('_atamaTablo')) {
+    function _atamaTablo()
+    {
+        if (Schema::hasTable('personel_atama')) return;
+        try {
+            Schema::create('personel_atama', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->unsignedBigInteger('personel_id');
+                $t->string('tip', 10);              // bolge | masa
+                $t->unsignedBigInteger('hedef_id'); // bolge_id ya da masa_id
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'personel_id']);
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+// Personelin SORUMLU masa id kumesi: atanan bolgelerdeki masalar ∪ ekstra atanan masalar.
+// Hic atama yoksa null (=hepsine bakar).
+if (!function_exists('_personelMasaIdler')) {
+    function _personelMasaIdler($subeId, $personelId)
+    {
+        _atamaTablo();
+        $rows = DB::table('personel_atama')->where('sube_id', $subeId)->where('personel_id', $personelId)->get(['tip', 'hedef_id']);
+        if ($rows->isEmpty()) return null;
+        $bolgeIdler = $rows->where('tip', 'bolge')->pluck('hedef_id')->map(fn ($x) => (int) $x)->all();
+        $masaIdler  = $rows->where('tip', 'masa')->pluck('hedef_id')->map(fn ($x) => (int) $x)->all();
+        if (!empty($bolgeIdler)) {
+            $bolgeMasalari = DB::table('masalar')->where('sube_id', $subeId)->whereIn('bolge_id', $bolgeIdler)->pluck('id')->map(fn ($x) => (int) $x)->all();
+            $masaIdler = array_merge($masaIdler, $bolgeMasalari);
+        }
+        $masaIdler = array_values(array_unique($masaIdler));
+        return empty($masaIdler) ? null : $masaIdler;
+    }
+}
+
+// Atama yonetimi verisi (patron): bolgeler, masalar + her personelin bolge/masa atamalari
+Route::get('/api/patron/atama-veri', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    _atamaTablo();
+    $bolgeler = DB::table('bolgeler')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
+    $masalar = DB::table('masalar')->where('sube_id', $p->sube_id)->orderBy('bolge_id')->orderBy('ad')->get(['id', 'ad', 'bolge_id']);
+    $pers = DB::table('personeller')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
+    $atama = DB::table('personel_atama')->where('sube_id', $p->sube_id)->get(['personel_id', 'tip', 'hedef_id']);
+    $bMap = []; $mMap = [];
+    foreach ($atama as $a) {
+        if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id;
+        else $mMap[$a->personel_id][] = (int) $a->hedef_id;
+    }
+    $personeller = $pers->map(fn ($x) => [
+        'id' => $x->id, 'ad' => $x->ad, 'rol' => $x->rol,
+        'bolge_idler' => $bMap[$x->id] ?? [], 'masa_idler' => $mMap[$x->id] ?? [],
+    ]);
+    return ['ok' => 1, 'bolgeler' => $bolgeler, 'masalar' => $masalar, 'personeller' => $personeller];
+});
+
+// Atama kaydet (patron): personelin bolge + ekstra masa atamalarini degistir
+Route::post('/api/patron/atama-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    _atamaTablo();
+    $pid = (int) $r->input('personel_id');
+    if (!DB::table('personeller')->where('id', $pid)->where('sube_id', $p->sube_id)->exists()) {
+        return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+    }
+    $bolgeIdler = json_decode((string) $r->input('bolge_idler', '[]'), true) ?: [];
+    $masaIdler  = json_decode((string) $r->input('masa_idler', '[]'), true) ?: [];
+    DB::table('personel_atama')->where('sube_id', $p->sube_id)->where('personel_id', $pid)->delete();
+    foreach (array_unique(array_map('intval', $bolgeIdler)) as $bid) {
+        if ($bid > 0) { try { DB::table('personel_atama')->insert(['sube_id' => $p->sube_id, 'personel_id' => $pid, 'tip' => 'bolge', 'hedef_id' => $bid, 'created_at' => now()]); } catch (\Throwable $e) {} }
+    }
+    foreach (array_unique(array_map('intval', $masaIdler)) as $mid) {
+        if ($mid > 0) { try { DB::table('personel_atama')->insert(['sube_id' => $p->sube_id, 'personel_id' => $pid, 'tip' => 'masa', 'hedef_id' => $mid, 'created_at' => now()]); } catch (\Throwable $e) {} }
+    }
+    return ['ok' => 1];
+});
+
+// Giren personelin kendi atamasi (Masalar varsayilan sekme + kendi masalarini vurgulama)
+Route::get('/api/patron/benim-atamam', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _atamaTablo();
+    $rows = DB::table('personel_atama')->where('sube_id', $p->sube_id)->where('personel_id', $p->id)->get(['tip', 'hedef_id']);
+    $bolgeIdler = $rows->where('tip', 'bolge')->pluck('hedef_id')->map(fn ($x) => (int) $x)->values();
+    $masaIdler  = _personelMasaIdler($p->sube_id, $p->id) ?: [];
+    return ['ok' => 1, 'bolge_idler' => $bolgeIdler, 'masa_idler' => array_values($masaIdler)];
+});
+
 // ---------------- SEF GARSON AI (garsonun gozu: satis uyarilari + oneri) ----------------
 // Garson app 30 sn'de bir cagirir; kartlari gosterir. Push (arka plan) faz 2 (FCM gerekir).
 Route::get('/api/sefgarson/uyarilar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    // sadece_benim=1 -> sadece bu garsonun masalari; degilse tum salon (sef gorunumu)
-    $garsonId = ((int) $r->query('sadece_benim', 0)) ? $p->id : null;
-    $uyarilar = (new \App\Services\SefGarsonAI($p->sube_id))->masalariTara($garsonId);
+    // GARSON: sadece sorumlu masalari (bolge ∪ ekstra). Atamasi yoksa hepsi. Sahip/mudur: tum salon.
+    $masaIdler = null;
+    if ($p->rol === 'garson') $masaIdler = _personelMasaIdler($p->sube_id, $p->id);
+    $uyarilar = (new \App\Services\SefGarsonAI($p->sube_id))->masalariTara($masaIdler);
     return ['ok' => 1, 'uyarilar' => $uyarilar, 'sayi' => count($uyarilar)];
 });
 
