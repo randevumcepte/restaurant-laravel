@@ -298,6 +298,20 @@
   #menu .mk .alt{ display:flex; align-items:center; justify-content:space-between; margin-top:auto; padding-top:8px; }
   #menu .mk .fi{ color:var(--gold); font-weight:800; font-size:14.5px; }
   #menu .mk .art{ width:30px; height:30px; border-radius:10px; border:none; color:#fff; font-size:18px; background:linear-gradient(135deg,var(--mor),var(--mavi)); }
+  /* ANA KATEGORİ SAYFASI (gerçek yemek fotolu kartlar) */
+  #menu .katgrid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:8px; }
+  @media(min-width:640px){ #menu .katgrid{ grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); } }
+  #menu .katkart{ position:relative; border-radius:20px; overflow:hidden; cursor:pointer; border:1px solid var(--cizgi); box-shadow:0 14px 30px -16px rgba(0,0,0,.75); transition:transform .16s; }
+  #menu .katkart:active{ transform:scale(.98); }
+  #menu .katkart .kgi{ position:relative; height:140px; }
+  #menu .katkart .kgimg{ position:absolute; inset:0; }
+  #menu .katkart .kgimg img{ width:100%; height:100%; object-fit:cover; display:block; }
+  #menu .katkart .kgem{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:46px; }
+  #menu .katkart .kgsh{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.05) 28%,rgba(0,0,0,.74)); }
+  #menu .katkart .kgt{ position:absolute; left:12px; right:12px; bottom:10px; }
+  #menu .katkart .kga{ color:#fff; font-family:var(--serif); font-size:18px; font-weight:800; text-shadow:0 2px 8px rgba(0,0,0,.85); line-height:1.15; }
+  #menu .katkart .kgs{ color:#fff; opacity:.92; font-size:11.5px; font-weight:700; margin-top:2px; text-shadow:0 1px 5px rgba(0,0,0,.85); }
+  #menu .geri{ background:var(--card2); color:var(--ink); border:1px solid var(--cizgi); border-radius:22px; padding:9px 16px; font-size:13.5px; font-weight:800; cursor:pointer; margin-top:4px; }
 
   #toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:95; background:linear-gradient(135deg,var(--card),var(--card2)); color:var(--ink);
     border:1px solid var(--cizgi); padding:13px 18px; border-radius:16px; font-size:13.5px; font-weight:700; box-shadow:0 14px 34px rgba(0,0,0,.35); max-width:88%; text-align:center; opacity:0; transition:.25s; pointer-events:none; }
@@ -403,7 +417,7 @@
   </div>
 
   <nav id="altbar">
-    <button class="act" onclick="menuAc()"><span>📋</span>Menü</button>
+    <button class="act" onclick="menuKategoriAc()"><span>📋</span>Menü</button>
     <button id="navSiparis" onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
     <button class="qr" onclick="asistanAc()"><div class="qi"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></div></button>
     <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
@@ -1014,8 +1028,43 @@ async function menuVeriDil(dil){
   return _data;
 }
 async function asistanMenuGoster(dil){
-  const kats = await menuVeriDil(dil);
-  _menuGecici = kats; menuAc(); _menuGecici = null;
+  const kats = await menuVeriDil(dil||window.sayfaDil);
+  kategoriGridGoster(kats);   // ANA KATEGORI SAYFASI (kartlarda gerçek yemek fotosu)
+}
+/* ---- ANA KATEGORİ SAYFASI: Başlangıçlar/Salatalar… her biri gerçek yemek fotolu kart ---- */
+let _gridKats=null;
+async function menuKategoriAc(){ try{ const kats=await menuVeriDil(window.sayfaDil); kategoriGridGoster(kats); }catch(_){ kategoriGridGoster(_data); } }
+function kategoriGridGoster(kats){
+  _gridKats=(kats&&kats.length)?kats:_data;
+  const body=document.getElementById('menu-body'); if(!body) return;
+  document.getElementById('menu-bas').textContent='🍽️ Menümüz';
+  let h='<div class="katgrid">';
+  _gridKats.forEach((k,idx)=>{
+    const list=k.kartlar||[];
+    const urun=list.find(u=>u.gercek_foto&&u.gorsel)||list[0];
+    const gor=urun?gorselHtml(urun,'kgem'):'<div class="kgem" style="background:#2a2130">🍽️</div>';
+    h+=`<div class="katkart" onclick="kategoriDrill(${idx})"><div class="kgi"><div class="kgimg">${gor}</div><div class="kgsh"></div>`
+      +`<div class="kgt"><div class="kga">${esc(k.ad)}</div><div class="kgs">${list.length} çeşit</div></div></div></div>`;
+  });
+  h+='</div>';
+  body.innerHTML=h;
+  document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');
+  document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
+}
+function kategoriDrill(idx){
+  const k=_gridKats&&_gridKats[idx]; if(!k) return;
+  const urunler=(k.kartlar||[]).map(u=>(u.urun_id&&_urun[u.urun_id])?_urun[u.urun_id]:u).filter(Boolean);
+  const body=document.getElementById('menu-body'); if(!body) return;
+  document.getElementById('menu-bas').textContent=(k.emoji||'🍽️')+' '+k.ad;
+  const bul=uid=>urunler.find(x=>String(x.urun_id)===String(uid))||_urun[uid];
+  let h='<button class="geri" onclick="kategoriGridGoster(_gridKats)">‹ Kategoriler</button><div class="mgrid" style="margin-top:12px">';
+  urunler.forEach(u=>{ const tuk=u.etiket==='Tükendi';
+    h+=`<div class="mk" data-uid="${u.urun_id}"><div class="g">${gorselHtml(u,'em')}</div>`
+      +`<div class="b"><div class="ad">${esc(u.ad)}</div><div class="ac">${esc(u.aciklama||'')}</div>`
+      +`<div class="alt"><span class="fi">${esc(u.fiyat_yazi||'')}</span><button class="art" data-uid="${u.urun_id}" ${tuk?'disabled style=opacity:.4':''}>+</button></div></div></div>`; });
+  h+='</div>'; body.innerHTML=h;
+  body.querySelectorAll('.mk').forEach(el=>el.addEventListener('click',()=>{ const u=bul(el.dataset.uid); if(u) detayAc(u); }));
+  body.querySelectorAll('.mk .art').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); const u=bul(b.dataset.uid); if(u) sepeteEkle(u,1,true); }));
 }
 /* ---- Asistan panelinden gelen menü -> ANA ekranda (seçili dilde) göster ---- */
 window.addEventListener('message', async (e)=>{
