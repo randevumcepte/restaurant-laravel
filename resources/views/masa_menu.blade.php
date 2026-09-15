@@ -888,7 +888,7 @@ async function bufKonus(url, done){
     src.connect(g); g.connect(_actx.destination);
     src.onended=()=>{ if(done) done(); };
     _bufSrc=src; src.start(0);
-    return true;
+    return out.duration || 0.5;   // GERCEK ses suresi (sn) -> emniyet buna gore ayarlanir
   }catch(e){ return false; }
 }
 function konus(t){ return new Promise((resolve)=>{
@@ -896,13 +896,17 @@ function konus(t){ return new Promise((resolve)=>{
   micKapat();   // AI konusmadan ONCE mikrofonu kapat -> ses LOUD hoparlorden gelir (iOS kulaklik yonlenmesi biter)
   konusuyor=true; robotHal('ai'); asDurum(t);
   let bitti=false; const bit=()=>{ if(bitti) return; bitti=true; _konusBit=null; konusuyor=false; sesDurdur(); robotHal(sohbetAktif?'dinle':'bekle'); resolve(); };
-  _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
+  _konusBit=bit; let emniyet=setTimeout(bit, Math.min(30000,4000+temiz.length*110));   // ilk tahmin (buffer basinca gercek sureye ayarlanir)
   fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
     .then(r=>r.json()).then(j=>{ if(bitti) return;
       if(j.basarili&&j.url){ sesDurdur();
-        bufKonus(j.url, ()=>{ clearTimeout(emniyet); bit(); }).then(ok=>{ if(ok || bitti) return;
-          // yedek: buffer olmadi -> <audio> ile cal
-          try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); });
+        bufKonus(j.url, ()=>{ clearTimeout(emniyet); bit(); }).then(dur=>{ if(bitti) return;
+          if(dur===false){
+            // yedek: buffer olmadi -> <audio> ile cal
+            try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); return;
+          }
+          clearTimeout(emniyet); emniyet=setTimeout(bit, dur*1000+4000);   // GERCEK ses suresi + 4sn -> uzun anlatim kesilmez
+        });
       }
       else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
       else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
