@@ -5315,71 +5315,115 @@ if (!function_exists('_mutfakIstasyonlar')) {
 
 // MUTFAK (KDS): bekleyen siparis kalemleri (durum=gonderildi) adisyona gruplu.
 // + istasyon (urunden), + kur, + all-day toplu uretim, + istasyon dagilimi. ?istasyon=izgara ile filtre.
+// KDS yasam dongusu kolonlari: urun hedef hazirlik suresi + kalem 'basla' zamani
+if (!function_exists('_kdsKolonEnsure')) {
+    function _kdsKolonEnsure()
+    {
+        try {
+            if (!Schema::hasColumn('urunler', 'hazirlik_dk')) Schema::table('urunler', function ($t) { $t->integer('hazirlik_dk')->default(0); });
+            if (!Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) Schema::table('adisyon_kalemleri', function ($t) { $t->timestamp('basla_zamani')->nullable(); });
+        } catch (\Throwable $e) {
+        }
+    }
+    // Kalan sureye gore renk: bol->yesil, yaklasti->amber, gecti->kirmizi
+    function _kdsRenk($kalan, $hedef)
+    {
+        if ($kalan > $hedef * 0.4) return 'yesil';
+        if ($kalan > 0) return 'amber';
+        return 'kirmizi';
+    }
+}
 Route::get('/api/mutfak', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
+    _kdsKolonEnsure();
     $simdi = now();
+    $vars = 15;   // varsayilan hedef hazirlik (dk) — urune ozel girilmemisse
     $istasyonVar = Schema::hasColumn('urunler', 'istasyon');
+    $hzVar = Schema::hasColumn('urunler', 'hazirlik_dk');
     $filtre = $r->query('istasyon');
     $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
-        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'gonderildi');
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')
+        ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor']);   // Yeni + Hazirlaniyor
     $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
-        'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
+        'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.durum',
+        'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $istasyonVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon");
+    $sel[] = $hzVar ? DB::raw("COALESCE(NULLIF(urunler.hazirlik_dk,0),$vars) as hedef") : DB::raw("$vars as hedef");
     $rows = $q->select($sel)->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
 
     $etiket = _mutfakIstasyonlar();
     $gruplu = [];
-    $istSay = [];                 // istasyon -> bekleyen kalem (adet)
-    $toplu = [];                  // all-day: urun+istasyon -> toplam adet + en eski dk
+    $istSay = [];
+    $toplu = [];
     foreach ($rows as $k) {
         $ist = $k->istasyon ?: 'mutfak';
         $dkK = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
+        $hedef = max(1, (int) $k->hedef);
+        $kalan = $hedef - $dkK;
         $adet = (float) $k->adet;
-        // All-day her zaman TUM istasyonlardan toplanir (mutfak sefi butun uretimi gorsun)
         $tkey = $ist . '|' . $k->urun_adi;
         if (!isset($toplu[$tkey])) $toplu[$tkey] = ['ad' => $k->urun_adi, 'istasyon' => $ist, 'adet' => 0.0, 'dk' => $dkK];
         $toplu[$tkey]['adet'] += $adet;
         $toplu[$tkey]['dk'] = max($toplu[$tkey]['dk'], $dkK);
         $istSay[$ist] = ($istSay[$ist] ?? 0) + $adet;
-        // Istasyon filtresi (siparis kartlari icin)
         if ($filtre && $filtre !== 'hepsi' && $ist !== $filtre) continue;
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal, 'dk' => $dkK, 'kalemler' => []];
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal,
+                'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'basladi' => false, 'kalemler' => []];
         }
-        $gruplu[$aid]['dk'] = min($gruplu[$aid]['dk'], $dkK);   // grup dk = EN YENI kalem -> son siparis en ustte
-        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist];
+        $gruplu[$aid]['gecen'] = max($gruplu[$aid]['gecen'], $dkK);
+        $gruplu[$aid]['hedef'] = max($gruplu[$aid]['hedef'], $hedef);
+        $gruplu[$aid]['kalan'] = min($gruplu[$aid]['kalan'], $kalan);   // en yavas kalem = en kritik
+        if ($k->durum === 'hazirlaniyor') $gruplu[$aid]['basladi'] = true;
+        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum];
     }
-    // Istasyon ozeti (bekleyeni olmayan da gorunsun ki sekmeler sabit dursun degil -> sadece dolu olanlar + hepsi)
+    foreach ($gruplu as $aid => $g) {
+        $gruplu[$aid]['dk'] = $g['gecen'];                        // geriye donuk uyum
+        $gruplu[$aid]['renk'] = _kdsRenk($g['kalan'], $g['hedef']);
+        $gruplu[$aid]['asama'] = $g['basladi'] ? 'hazirlaniyor' : 'yeni';
+    }
     $istasyonlar = [];
     foreach ($etiket as $kod => $ad) {
         if (($istSay[$kod] ?? 0) > 0) $istasyonlar[] = ['kod' => $kod, 'ad' => $ad, 'bekleyen' => (int) round($istSay[$kod])];
     }
-    // All-day: en cok bekleyen ustte
     $topluArr = array_values($toplu);
     usort($topluArr, fn ($a, $b) => $b['dk'] <=> $a['dk']);
-    foreach ($topluArr as &$t) { $t['adet'] = $t['adet']; $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
+    foreach ($topluArr as &$t) { $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
     unset($t);
-
     $siparisler = array_values($gruplu);
-    usort($siparisler, fn ($a, $b) => $a['dk'] <=> $b['dk']);   // EN YENI siparis (kucuk dk) EN USTTE
+    usort($siparisler, fn ($a, $b) => $a['dk'] <=> $b['dk']);   // EN YENI siparis EN USTTE
     return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
         'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
 });
 
-// Mutfak: kalem/adisyon hazir isaretle (+ hazir_zamani damgasi = hazirlik suresi analitigi)
+// Mutfak: kalem/adisyon HAZIRLAMAYA BASLA (Yeni -> Hazirlaniyor)
+Route::post('/api/mutfak/basla', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _kdsKolonEnsure();
+    $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
+    if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
+    if ($r->adisyon_id) {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+    } else {
+        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
+    }
+    return ['ok' => 1];
+});
+// Mutfak: kalem/adisyon HAZIR isaretle (Yeni VEYA Hazirlaniyor -> Hazir) (+ hazir_zamani = hazirlik suresi analitigi)
 Route::post('/api/mutfak/hazir', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     $upd = ['durum' => 'hazir', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
     if ($r->adisyon_id) {
-        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     } else {
-        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
+        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     }
     return ['ok' => 1];
 });
