@@ -805,7 +805,7 @@ function asGizle(){ if(_asbar) _asbar.classList.remove('acik'); }
 let _sesCalar=new Audio(), _sesAcildi=false;
 _sesCalar.setAttribute('playsinline','');
 function sesUnlock(){ if(_sesAcildi) return; try{ _sesCalar.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; const p=_sesCalar.play(); if(p&&p.then) p.then(()=>{_sesAcildi=true;}).catch(()=>{}); }catch(_){} }
-function sesDurdur(){ try{ _sesCalar.pause(); }catch(_){} }
+function sesDurdur(){ try{ _bufStop(); }catch(_){} try{ _sesCalar.pause(); }catch(_){} }
 // Kisa sessiz WAV (data URI) — ses cikis hattini isitmak icin (ilk kelime kirpilmasin)
 function _sessizWav(ms){
   const sr=8000, n=Math.max(1,Math.floor(sr*ms/1000)), b=new Uint8Array(44+n);
@@ -871,6 +871,26 @@ function ttsBoost(){
     _ttsSrc.connect(_ttsGain); _ttsGain.connect(_actx.destination);
   }catch(e){ try{ if(_ttsSrc) _ttsSrc.connect(_actx.destination); }catch(_){} }
 }
+// Web Audio BUFFER ile cal: sesin BASINA ~0.25sn sessizlik ekler -> <audio> "soguk baslangic" ilk-kelime kirpmasi BITER + gain (yuksek).
+let _bufSrc=null;
+function _bufStop(){ try{ if(_bufSrc){ _bufSrc.onended=null; _bufSrc.stop(0); _bufSrc.disconnect(); _bufSrc=null; } }catch(_){ _bufSrc=null; } }
+async function bufKonus(url, done){
+  try{
+    if(!await actxHazir()) return false;
+    const arr = await (await fetch(url)).arrayBuffer();
+    const buf = await new Promise((res,rej)=>{ let p; try{ p=_actx.decodeAudioData(arr,res,rej); }catch(e){ rej(e); return; } if(p&&p.then) p.then(res,rej); });
+    const lead = Math.floor(buf.sampleRate*0.25);
+    const out = _actx.createBuffer(buf.numberOfChannels, buf.length+lead, buf.sampleRate);
+    for(let ch=0; ch<buf.numberOfChannels; ch++) out.getChannelData(ch).set(buf.getChannelData(ch), lead);
+    _bufStop();
+    const src=_actx.createBufferSource(); src.buffer=out;
+    const g=_actx.createGain(); g.gain.value=2.6;
+    src.connect(g); g.connect(_actx.destination);
+    src.onended=()=>{ if(done) done(); };
+    _bufSrc=src; src.start(0);
+    return true;
+  }catch(e){ return false; }
+}
 function konus(t){ return new Promise((resolve)=>{
   const temiz=seseHazirla(t); if(!temiz){ resolve(); return; }
   micKapat();   // AI konusmadan ONCE mikrofonu kapat -> ses LOUD hoparlorden gelir (iOS kulaklik yonlenmesi biter)
@@ -879,7 +899,11 @@ function konus(t){ return new Promise((resolve)=>{
   _konusBit=bit; const emniyet=setTimeout(bit, Math.min(22000,3000+temiz.length*95));
   fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
     .then(r=>r.json()).then(j=>{ if(bitti) return;
-      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); }
+      if(j.basarili&&j.url){ sesDurdur();
+        bufKonus(j.url, ()=>{ clearTimeout(emniyet); bit(); }).then(ok=>{ if(ok || bitti) return;
+          // yedek: buffer olmadi -> <audio> ile cal
+          try{ actxHazir(); }catch(_){} ttsBoost(); _sesCalar.src=j.url; _sesCalar.onended=()=>{clearTimeout(emniyet);bit();}; _sesCalar.onerror=()=>{clearTimeout(emniyet);bit();}; const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{clearTimeout(emniyet);bit();}); });
+      }
       else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
       else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
 }); }
@@ -918,8 +942,6 @@ async function basla(){
   sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
-  // ISITMA: cikis hattini/grafi kisa sessizlikle isit -> ilk kelime ("Hoş") yutulmasin
-  try{ await actxHazir(); ttsBoost(); _sesCalar.src=_sessizWav(320); const wp=_sesCalar.play(); if(wp&&wp.catch) wp.catch(()=>{}); await new Promise(r=>setTimeout(r,230)); }catch(_){}
   await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){
