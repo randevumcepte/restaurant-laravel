@@ -82,6 +82,12 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 : 'Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
 
+        // 2.25) MENU TANITIMI (genel): "menude ne var / neler var / menuyu goster / tum menu" -> TUM kategoriler kibar garson edasiyla.
+        //       niyetRouter(Haiku)'dan ONCE: "menude ne var" tek kategoriye (baslangic) saptirilmasin.
+        if ($this->has($c, ['menude ne', 'menude neler', 'menu de ne', 'menuyu goster', 'menuyu tanit', 'menu tanit', 'tum menu', 'butun menu', 'komple menu', 'menuyu ac', 'menunuzde ne', 'menunuzde neler', 'nasil bir menu', 'menu nedir', 'menuye bak', 'menuyu ver', 'neler var menu', 'menude neler mevcut'])) {
+            return $this->menu();
+        }
+
         // 2.3) SIPARISI BITIR / MUTFAGA GONDER (net ifadeler; kelime-kurali da calissin, sadece Haiku degil)
         if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla'])) {
             return $this->cvp('Tamamdır, siparişinizi mutfağa iletiyorum. Afiyet olsun! 😊', ['aksiyon' => 'siparis_bitir']);
@@ -229,11 +235,23 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     // -------- MENU HANDLERS --------
     protected function menu()
     {
-        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->pluck('ad')->all();
-        if (empty($kats)) return $this->cvp('Menü şu an hazırlanıyor, birazdan hazır olacak.');
-        $kartlar = array_map(fn ($k) => ['ad' => $k, 'emoji' => $this->katEmoji($k)], $kats);
-        return $this->cvp('Menümüzde şu bölümler var. Hangisine bakmak istersiniz? İsterseniz üzerine dokunun, isterseniz "günün yemeği ne" diye sorun. 😊',
-            ['tip' => 'kategoriler', 'kategoriler' => $kartlar]);
+        $kats = DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->orderBy('ad')->get(['id', 'ad']);
+        if ($kats->isEmpty()) return $this->cvp('Menü şu an hazırlanıyor, birazdan hazır olacak.');
+        $one = $this->oneCikanKolonVar();
+        $kartlar = [];
+        $parcalar = [];
+        foreach ($kats as $k) {
+            $kartlar[] = ['ad' => $k->ad, 'emoji' => $this->katEmoji($k->ad)];
+            // Her kategoriden 1-2 istah acici ornek (one cikan oncelikli)
+            $q = DB::table('urunler')->where('sube_id', $this->subeId)->where('kategori_id', $k->id)->where('aktif', 1)->where('tukendi', 0);
+            if ($one) $q->orderByDesc('one_cikan')->orderBy('one_sira');
+            $ornek = $q->orderBy('ad')->limit(2)->pluck('ad')->all();
+            $parcalar[] = !empty($ornek) ? ($k->ad . ' arasında ' . $this->dogalListe($ornek)) : $k->ad;
+        }
+        // Kibar garson edasi, istah acici — TUM kategoriler sirayla
+        $mesaj = 'Elbette efendim, menümüzü büyük bir keyifle tanıtayım. 😊 Bugün soframızda ' . implode(', ', $parcalar)
+            . ' gibi birbirinden özenli lezzetler sizi bekliyor. Hangisiyle başlamak istersiniz? Dilerseniz üzerine dokunun, dilerseniz "günün önerisi ne" diye sorun.';
+        return $this->cvp($mesaj, ['tip' => 'kategoriler', 'kategoriler' => $kartlar]);
     }
 
     protected function kategori(array $normAdlar, $baslik, $emoji = '')
