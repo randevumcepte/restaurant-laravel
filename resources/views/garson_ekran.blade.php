@@ -33,6 +33,16 @@
   .cag .odesor{ margin-top:4px; font-size:12px; color:#94A3B8; }
   .cag .odebtn{ display:flex; gap:8px; margin-top:12px; }
   .cag .odebtn button{ flex:1; margin-top:0; padding:13px 4px; font-size:13.5px; }
+  #odemePop{ position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; padding:24px; background:rgba(3,7,18,.72); }
+  #odemePop.acik{ display:flex; animation:opin .25s ease; }
+  @keyframes opin{ from{ opacity:0 } to{ opacity:1 } }
+  #odemePop .kutu{ width:100%; max-width:420px; border-radius:24px; padding:30px 26px; text-align:center; background:linear-gradient(160deg,#0f2417,#0a1a10); border:2px solid #22C55E; box-shadow:0 24px 60px -20px rgba(34,197,94,.6); animation:oppulse 1.2s infinite; }
+  @keyframes oppulse{ 0%,100%{ border-color:#22C55E } 50%{ border-color:#14532d } }
+  #odemePop .em{ font-size:52px }
+  #odemePop h2{ font-size:22px; font-weight:900; margin-top:10px; line-height:1.25 }
+  #odemePop .m{ font-size:15px; color:#CBD5E1; margin-top:8px; line-height:1.35 }
+  #odemePop .t{ font-size:34px; font-weight:900; color:#4ade80; margin-top:14px; font-variant-numeric:tabular-nums }
+  #odemePop button{ margin-top:22px; width:100%; border:none; border-radius:16px; padding:15px; font-size:16px; font-weight:800; color:#fff; background:linear-gradient(135deg,#16A34A,#22C55E); cursor:pointer; }
   .cag .masa{ font-size:22px; font-weight:900; }
   .cag .tip{ font-size:13.5px; color:#CBD5E1; font-weight:700; margin-top:1px; }
   .cag .sure{ margin-left:auto; text-align:right; }
@@ -53,6 +63,17 @@
     <button class="ses" id="sesBtn" onclick="sesAc()">🔇 Sesi Aç</button></div>
 </header>
 <div id="liste"><div class="bos">Bekleyen çağrı yok. Yeni çağrılar buraya anında düşer. 🔔</div></div>
+
+<!-- Kasada odeme tercihi bildirimi (titresimli, dikkat cekici) -->
+<div id="odemePop">
+  <div class="kutu">
+    <div class="em">💰</div>
+    <h2><span id="op-masa">Masa</span> kasada ödemeyi tercih etti</h2>
+    <div class="m">İşletme kuralınıza göre: masaya gidip ödemeyi alın ya da müşteriyi kasaya yönlendirin.</div>
+    <div class="t" id="op-tutar">0 TL</div>
+    <button onclick="odemePopupKapat()">Tamam, ilgileniyorum</button>
+  </div>
+</div>
 
 <script>
 const SUBE = @json($sube->id ?? 0);
@@ -77,6 +98,16 @@ function bipCal(){
     }
   }catch(e){}
 }
+function titret(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+// Kasada odeme tercihi: tam ekran dikkat popup + guclu titresim + cift bip
+function odemePopup(c){
+  bipCal(); setTimeout(bipCal,260); titret([300,120,300,120,300]);
+  const p=document.getElementById('odemePop'); if(!p) return;
+  document.getElementById('op-masa').textContent=c.masa||'Masa';
+  document.getElementById('op-tutar').textContent=(c.tutar||0).toLocaleString('tr')+' TL';
+  p.classList.add('acik');
+}
+function odemePopupKapat(){ const p=document.getElementById('odemePop'); if(p) p.classList.remove('acik'); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function tipYazi(t){ return t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')); }
 function tipIkon(t){ return t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔')); }
@@ -88,8 +119,10 @@ async function cek(){
     const j = await r.json();
     const liste = (j.ok && Array.isArray(j.cagrilar)) ? j.cagrilar : [];
     document.getElementById('dstr').textContent = 'Canlı · '+ (j.sunucu_saat||'');
-    const yeniVar = liste.some(c=> !_biliniyor.has(c.id));
-    if(yeniVar && !_ilk) bipCal();
+    const yeniler = liste.filter(c=> !_biliniyor.has(c.id));
+    if(yeniler.length && !_ilk){ bipCal(); titret([200,100,200]); }
+    const yeniOdeme = yeniler.find(c=> c.tip==='odeme');
+    if(yeniOdeme && !_ilk) odemePopup(yeniOdeme);   // kasada odeme tercihi -> dikkat cekici popup + guclu titresim
     _biliniyor = new Set(liste.map(c=>c.id));
     _ilk = false;
     ciz(liste);
