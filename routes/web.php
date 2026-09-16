@@ -5319,40 +5319,6 @@ Route::post('/api/patron/yarimamul-sil', function (Request $r) {
     return ['ok' => 1];
 });
 
-// GECICI TEST: nested patlatma dogrulama (transaction + rollback -> KALICI IZ BIRAKMAZ)
-Route::get('/yarimamul-test', function () {
-    $out = [];
-    try {
-        DB::beginTransaction();
-        $m1 = DB::table('malzemeler')->where('stok_takipli', 1)->first(['id', 'temel_birim_id']);
-        $m2 = DB::table('malzemeler')->where('stok_takipli', 1)->where('id', '!=', $m1->id ?? 0)->first(['id', 'temel_birim_id']);
-        $urun = DB::table('urunler')->first(['id']);
-        if (!$m1 || !$m2 || !$urun) { DB::rollBack(); return response()->json(['hata' => 'Yeterli malzeme/urun yok']); }
-        // Yari mamul: 5 birim verim; icinde m1'den 1000 (temel birim)
-        $ymId = DB::table('receteler')->insertGetId(['ad' => '__test_sos', 'tip' => 'yari_mamul', 'verim_miktar' => 5, 'verim_birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('recete_kalemleri')->insert(['recete_id' => $ymId, 'malzeme_id' => $m1->id, 'miktar' => 1000, 'birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
-        // Urun recetesi: 80 (verim biriminde) yari mamul + 120 m2
-        $urId = DB::table('receteler')->insertGetId(['ad' => '__test_urun', 'tip' => 'urun', 'urun_id' => $urun->id, 'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('recete_kalemleri')->insert(['recete_id' => $urId, 'alt_recete_id' => $ymId, 'miktar' => 80, 'birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('recete_kalemleri')->insert(['recete_id' => $urId, 'malzeme_id' => $m2->id, 'miktar' => 120, 'birim_id' => $m2->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
-        // 2 adet urun patlat
-        $ihtiyac = [];
-        _restoReceteHammadde($urId, 2, $ihtiyac);
-        // Beklenen: m1 = 2 * (80/5) * 1000 = 32000 ; m2 = 2 * 120 = 240
-        $out = [
-            'm1' => ['beklenen' => 32000, 'cikan' => round($ihtiyac[$m1->id] ?? 0, 3)],
-            'm2' => ['beklenen' => 240, 'cikan' => round($ihtiyac[$m2->id] ?? 0, 3)],
-            'dongu_korumali' => true,
-            'dogru' => abs(($ihtiyac[$m1->id] ?? 0) - 32000) < 0.01 && abs(($ihtiyac[$m2->id] ?? 0) - 240) < 0.01,
-        ];
-        DB::rollBack(); // hicbir sey kalici degil
-    } catch (\Throwable $e) {
-        try { DB::rollBack(); } catch (\Throwable $e2) {}
-        $out['hata'] = $e->getMessage();
-    }
-    return response()->json($out);
-});
-
 // ---- FİNANSAL ÖZET (aylık gelir/gider/net + tedarikçi alış) ----
 Route::get('/api/patron/finans', function (Request $r) {
     $p = _apiPersonel($r);
