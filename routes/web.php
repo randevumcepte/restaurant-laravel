@@ -5021,6 +5021,111 @@ Route::post('/api/patron/stok-hareket', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ============ SAYIM (fiziksel envanter) + TEORIK-GERCEK FARK (variance) ============
+// teorik = defter stogu (stok_hareketleri toplami). sayilan = fiili. fark = sayilan - teorik (kayip/fazla).
+// Kaydedince defter fiili sayima esitlenir (tip='sayim' duzeltme hareketi). Bu, "bizi bizden koruyan" kayip radari.
+function _restoSayimEnsure()
+{
+    if (!Schema::hasTable('sayimlar')) {
+        Schema::create('sayimlar', function ($t) {
+            $t->id(); $t->unsignedBigInteger('sube_id'); $t->date('tarih'); $t->string('durum')->default('acik');
+            $t->unsignedBigInteger('personel_id')->nullable(); $t->timestamps();
+        });
+    }
+    if (!Schema::hasTable('sayim_kalemleri')) {
+        Schema::create('sayim_kalemleri', function ($t) {
+            $t->id(); $t->unsignedBigInteger('sayim_id'); $t->unsignedBigInteger('malzeme_id');
+            $t->decimal('sayilan', 16, 4)->default(0); $t->decimal('teorik', 16, 4)->default(0);
+            $t->decimal('fark', 16, 4)->default(0); $t->decimal('fark_maliyet', 14, 2)->default(0); $t->timestamps();
+        });
+    }
+}
+
+// Yeni sayim sablonu: tum takipli malzemeler + teorik (defter stogu) otomatik dolu, sayilan bos
+Route::get('/api/patron/sayim-yeni', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoSayimEnsure();
+    $mevcut = _restoStokMevcut($p->sube_id);
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $kat = DB::table('malzeme_kategorileri')->pluck('ad', 'id');
+    $rows = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => [
+        'malzeme_id' => (int) $m->id, 'ad' => $m->ad, 'kategori' => $kat[$m->kategori_id] ?? '—',
+        'birim' => $birim[$m->temel_birim_id] ?? '', 'teorik' => round((float) ($mevcut[$m->id] ?? 0), 3), 'guncel_maliyet' => (float) $m->guncel_maliyet,
+    ]);
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'tarih' => today()->format('d.m.Y'), 'malzemeler' => $rows->values()];
+});
+
+// Sayim kaydet -> fark hesapla + defteri fiiliye esitle (tip='sayim')
+Route::post('/api/patron/sayim-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Sayımı sadece işletme sahibi kaydedebilir.'], 403);
+    _restoSayimEnsure();
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler) || !$kalemler) return ['ok' => 0, 'hata' => 'Sayım boş'];
+    return DB::transaction(function () use ($p, $kalemler) {
+        $sayimId = DB::table('sayimlar')->insertGetId(['sube_id' => $p->sube_id, 'tarih' => today(), 'durum' => 'kapandi', 'personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now()]);
+        $toplamFarkMaliyet = 0.0; $eksik = 0; $fazla = 0; $n = 0;
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0);
+            // Sadece sayilan girilen kalemleri isle (bos birakilan = sayilmadi, atla)
+            if ($mid <= 0 || !array_key_exists('sayilan', $k) || $k['sayilan'] === null || $k['sayilan'] === '') continue;
+            $m = DB::table('malzemeler')->where('id', $mid)->first(['guncel_maliyet']);
+            if (!$m) continue;
+            $sayilan = (float) $k['sayilan'];
+            $teorik = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $mid)->sum('miktar');
+            $fark = round($sayilan - $teorik, 4);
+            $farkMaliyet = round($fark * (float) $m->guncel_maliyet, 2);
+            DB::table('sayim_kalemleri')->insert(['sayim_id' => $sayimId, 'malzeme_id' => $mid, 'sayilan' => $sayilan, 'teorik' => $teorik, 'fark' => $fark, 'fark_maliyet' => $farkMaliyet, 'created_at' => now(), 'updated_at' => now()]);
+            if (abs($fark) > 0.0001) {
+                DB::table('stok_hareketleri')->insert(['sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'tip' => 'sayim', 'miktar' => $fark,
+                    'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'sayim', 'kaynak_id' => $sayimId, 'aciklama' => 'Sayım düzeltmesi', 'personel_id' => $p->id, 'created_at' => now()]);
+            }
+            $toplamFarkMaliyet += $farkMaliyet; $n++;
+            if ($fark < 0) $eksik++; elseif ($fark > 0) $fazla++;
+        }
+        if ($n === 0) { DB::table('sayimlar')->where('id', $sayimId)->delete(); return ['ok' => 0, 'hata' => 'Hiç sayım girilmemiş']; }
+        return ['ok' => 1, 'sayim_id' => $sayimId, 'sayilan_kalem' => $n, 'eksik' => $eksik, 'fazla' => $fazla, 'toplam_fark_maliyet' => round($toplamFarkMaliyet, 2)];
+    });
+});
+
+// Sayim gecmisi
+Route::get('/api/patron/sayim-gecmis', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoSayimEnsure();
+    $liste = DB::table('sayimlar')->where('sube_id', $p->sube_id)->orderByDesc('id')->limit(30)->get()->map(function ($s) {
+        $agg = DB::table('sayim_kalemleri')->where('sayim_id', $s->id)
+            ->selectRaw('COUNT(*) n, COALESCE(SUM(fark_maliyet),0) fm, COALESCE(SUM(CASE WHEN fark < 0 THEN 1 ELSE 0 END),0) eksik')->first();
+        return ['id' => (int) $s->id, 'tarih' => \Carbon\Carbon::parse($s->tarih)->format('d.m.Y'),
+            'kalem' => (int) $agg->n, 'eksik' => (int) $agg->eksik, 'fark_maliyet' => round((float) $agg->fm, 2)];
+    });
+    return ['ok' => 1, 'sayimlar' => $liste];
+});
+
+// Sayim detayi + AI fark yorumu
+Route::get('/api/patron/sayim-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoSayimEnsure();
+    $s = DB::table('sayimlar')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$s) return ['ok' => 0, 'hata' => 'Sayım bulunamadı'];
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $kalemler = DB::table('sayim_kalemleri')->join('malzemeler', 'sayim_kalemleri.malzeme_id', '=', 'malzemeler.id')
+        ->where('sayim_id', $s->id)->orderBy('sayim_kalemleri.fark_maliyet') // en cok kayip ustte
+        ->get(['malzemeler.ad', 'malzemeler.temel_birim_id', 'sayim_kalemleri.sayilan', 'sayim_kalemleri.teorik', 'sayim_kalemleri.fark', 'sayim_kalemleri.fark_maliyet'])
+        ->map(fn ($k) => ['malzeme' => $k->ad, 'birim' => $birim[$k->temel_birim_id] ?? '', 'sayilan' => (float) $k->sayilan,
+            'teorik' => (float) $k->teorik, 'fark' => (float) $k->fark, 'fark_maliyet' => (float) $k->fark_maliyet]);
+    $toplam = round($kalemler->sum('fark_maliyet'), 2);
+    $ai = [];
+    $enKayip = $kalemler->where('fark_maliyet', '<', 0)->sortBy('fark_maliyet')->first();
+    if ($enKayip) $ai[] = ['seviye' => 'riskli', 'mesaj' => 'En çok kayıp: ' . $enKayip['malzeme'] . ' (' . number_format(abs($enKayip['fark_maliyet']), 0, ',', '.') . 'TL açık). Fazla porsiyon, fire ya da kaçak olabilir — reçete/porsiyon standardını ve fireyi kontrol edin.'];
+    if ($toplam < 0) $ai[] = ['seviye' => 'uyari', 'mesaj' => 'Bu sayımda toplam ' . number_format(abs($toplam), 0, ',', '.') . 'TL açık (fiili stok sistemden az). İşte teorik-gerçek farkınız — kayıp radarı.'];
+    elseif ($toplam > 0) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Stok sistemden ' . number_format($toplam, 0, ',', '.') . 'TL fazla çıktı — alış girişleri veya reçeteler eksik olabilir.'];
+    else $ai[] = ['seviye' => 'iyi', 'mesaj' => 'Fark yok — defter fiili sayımla birebir. Tertemiz.'];
+    return ['ok' => 1, 'tarih' => \Carbon\Carbon::parse($s->tarih)->format('d.m.Y'), 'toplam_fark_maliyet' => $toplam, 'ai' => $ai, 'kalemler' => $kalemler->values()];
+});
+
 // ---- TEDARİKÇİLER ----
 Route::get('/api/patron/tedarikciler', function (Request $r) {
     $p = _apiPersonel($r);
