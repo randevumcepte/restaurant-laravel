@@ -3078,6 +3078,24 @@ Route::get('/api/patron/benim-atamam', function (Request $r) {
     return ['ok' => 1, 'bolge_idler' => $bolgeIdler, 'masa_idler' => array_values($masaIdler)];
 });
 
+// ---------------- GARSON PERFORMANS + ISI HARITASI ----------------
+// Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
+Route::get('/api/patron/garson-performans', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $period = (string) $r->query('period', 'gunluk');
+    $garsonId = $r->query('garson_id') ? (int) $r->query('garson_id') : null;
+    return (new \App\Services\GarsonPerformans($p->sube_id))->rapor($period, $garsonId);
+});
+
+// Giren personel (garson) telefonundan gunluk adim toplamini gonderir
+Route::post('/api/adim-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    return (new \App\Services\GarsonPerformans($p->sube_id))->adimKaydet($p->id, (int) $r->input('adim'));
+});
+
 // ---------------- SEF GARSON AI (garsonun gozu: satis uyarilari + oneri) ----------------
 // Garson app 30 sn'de bir cagirir; kartlari gosterir. Push (arka plan) faz 2 (FCM gerekir).
 Route::get('/api/sefgarson/uyarilar', function (Request $r) {
