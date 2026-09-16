@@ -3523,12 +3523,26 @@ Route::get('/api/patron/ozet', function (Request $r) {
             ['tip' => 'maliyet', 'etiket' => 'Food-Cost dökümü']);
     }
     try {
+        // Ucuz gate: kritik malzeme var mi? (yoksa agir risk hesabini hic calistirma)
         $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
             ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
             ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
-        if ($kritik > 0) $ekle('uyari', '📦', 'Kritik stok', $kritik . ' malzeme kritik stok seviyesinde.',
-            $kritik . ' malzemenin stoğu kritik eşiğin altına düştü. Bunlar tükenirse ilgili ürünleri satamazsın (mutfakta 86’ya düşer, sipariş kaçar). Stok & Satın Alma ekranından eksik malzemeleri tedarikçiye sipariş et; yoğun günlerden önce kritik kalemleri hazırda tut.',
-            null);
+        if ($kritik > 0) {
+            // ZINCIR UYARI: kritik malzeme -> (yari mamul dahil) hangi yemekler kac porsiyon cikar
+            $risk = _restoUretimRiski($p->sube_id, 999999);
+            $kritikler = $risk['kritik'];
+            $adlar = implode(', ', array_slice(array_map(fn ($k) => $k['ad'], $kritikler), 0, 4));
+            $riskliUrun = array_slice($risk['riskli'], 0, 5);
+            $satirlar = array_map(fn ($u) => $u['yapilabilir'] <= 0
+                ? "• {$u['urun']}: ÇIKMIYOR (bağlı: {$u['darbogaz']})"
+                : "• {$u['urun']}: en fazla {$u['yapilabilir']} porsiyon (bağlı: {$u['darbogaz']})", $riskliUrun);
+            $mesaj = (count($kritikler) ?: $kritik) . ' malzeme kritik' . ($adlar !== '' ? ": {$adlar}" : '') . ($riskliUrun ? ' — bazı yemekler riskte.' : '.');
+            $detay = ($adlar !== '' ? "Kritik malzemeler: {$adlar}.\n\n" : '')
+                . ($satirlar ? "Kalan stokla üretim durumu:\n" . implode("\n", $satirlar) . "\n\n" : '')
+                . 'Bu malzemeler tükenirse yukarıdaki yemekler mutfakta 86’ya düşer (sipariş kaçar). Hemen Stok & Satın Alma’dan eksikleri girin/sipariş edin; yoğun saatten önce kritik kalemleri hazırda tutun.';
+            $ekle('uyari', '📦', 'Kritik stok — üretim riski', $mesaj, $detay,
+                ['tip' => 'uretim_riski', 'etiket' => 'Üretim riskini gör']);
+        }
     } catch (\Throwable $e) {
     }
 
@@ -3607,32 +3621,38 @@ Route::get('/api/patron/detay', function (Request $r) {
         $yapilabilir = null;      // kalan stokla kac porsiyon daha cikar (darbogaz malzemeye gore)
         $darbogaz = null;         // en once biten (siniri belirleyen) malzeme
         if ($recete) {
-            $cevrimMap = DB::table('birim_cevrimleri')->get()->groupBy('malzeme_id');
+            $birimAd = DB::table('birimler')->pluck('kisaltma', 'id');
+            // 1) GORUNUM: ust kalemler (malzeme + yari mamul), maliyetle
             foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->get() as $rk) {
-                if (!$rk->malzeme_id) continue;
-                $m = DB::table('malzemeler')->find($rk->malzeme_id);
-                if (!$m) continue;
-                $birim = DB::table('birimler')->find($rk->birim_id);
-                $karsilik = 1.0;
-                if ((int) $rk->birim_id !== (int) $m->temel_birim_id) {
-                    foreach (($cevrimMap[$rk->malzeme_id] ?? []) as $c) {
-                        if ((int) $c->birim_id === (int) $rk->birim_id) $karsilik = (float) $c->temel_birim_karsiligi;
-                    }
+                if ($rk->malzeme_id) {
+                    $m = DB::table('malzemeler')->find($rk->malzeme_id);
+                    if (!$m) continue;
+                    $kars = _restoBirimKarsilik($rk->malzeme_id, $rk->birim_id, $m->temel_birim_id);
+                    $temelMiktar = (float) $rk->miktar * $kars;
+                    $satirMaliyet = $temelMiktar * (float) $m->guncel_maliyet;
+                    $receteToplam += $satirMaliyet;
+                    $stok = (float) DB::table('stok_hareketleri')->where('sube_id', $urun->sube_id)->where('malzeme_id', $rk->malzeme_id)->sum('miktar');
+                    $por = $temelMiktar > 0 ? (int) floor(max(0, $stok) / $temelMiktar) : null;
+                    $receteKalem[] = ['malzeme' => $m->ad, 'miktar' => (float) $rk->miktar, 'birim' => $birimAd[$rk->birim_id] ?? '',
+                        'maliyet' => round($satirMaliyet, 2), 'stok' => round($stok, 2), 'porsiyon' => $por];
+                } elseif ($rk->alt_recete_id) {
+                    $alt = DB::table('receteler')->find($rk->alt_recete_id);
+                    if (!$alt) continue;
+                    $verim = (float) $alt->verim_miktar > 0 ? (float) $alt->verim_miktar : 1.0;
+                    $satirMaliyet = (float) $rk->miktar * (_restoReceteToplamMaliyet($rk->alt_recete_id) / $verim);
+                    $receteToplam += $satirMaliyet;
+                    $receteKalem[] = ['malzeme' => $alt->ad . ' (yarı mamül)', 'miktar' => (float) $rk->miktar, 'birim' => $birimAd[$rk->birim_id] ?? '',
+                        'maliyet' => round($satirMaliyet, 2), 'stok' => null, 'porsiyon' => null];
                 }
-                $temelMiktar = (float) $rk->miktar * $karsilik;              // 1 porsiyon icin temel birimde miktar
-                $satirMaliyet = $temelMiktar * (float) $m->guncel_maliyet;
-                $receteToplam += $satirMaliyet;
-                // Bu malzemenin mevcut stogu (temel birimde net) + bundan kac porsiyon cikar
-                $stok = (float) DB::table('stok_hareketleri')->where('sube_id', $urun->sube_id)->where('malzeme_id', $rk->malzeme_id)->sum('miktar');
-                $por = $temelMiktar > 0 ? (int) floor(max(0, $stok) / $temelMiktar) : null;
-                if ($por !== null) {
-                    if ($yapilabilir === null || $por < $yapilabilir) { $yapilabilir = $por; $darbogaz = $m->ad; }
-                }
-                $receteKalem[] = [
-                    'malzeme' => $m->ad, 'miktar' => (float) $rk->miktar,
-                    'birim' => $birim->kisaltma ?? '', 'maliyet' => round($satirMaliyet, 2),
-                    'stok' => round($stok, 2), 'porsiyon' => $por,
-                ];
+            }
+            // 2) DARBOGAZ / YAPILABILIR: tam patlatma ile hammadde bazinda (yari mamul icindekiler DAHIL)
+            $ihtiyac = [];
+            _restoReceteHammadde($recete->id, 1, $ihtiyac); // 1 porsiyon icin hammadde ihtiyaci
+            foreach ($ihtiyac as $mid => $need) {
+                if ($need <= 0) continue;
+                $stok = (float) DB::table('stok_hareketleri')->where('sube_id', $urun->sube_id)->where('malzeme_id', $mid)->sum('miktar');
+                $por = (int) floor(max(0, $stok) / $need);
+                if ($yapilabilir === null || $por < $yapilabilir) { $yapilabilir = $por; $darbogaz = DB::table('malzemeler')->where('id', $mid)->value('ad'); }
             }
         }
         // Donem satis
@@ -4843,6 +4863,51 @@ function _restoStokTuket($adisyonId, $subeId, $personelId)
         // sessiz geç — satış akışını asla bozma
     }
 }
+
+// URETIM RISKI: kritik malzemeler + her urunun kalan stokla kac porsiyon cikacagi (NESTED/yari mamul dahil),
+// darbogaz malzemesi. "Bizi bizden koruyan" motor: hangi hammadde bitince hangi yemek cikmaz.
+function _restoUretimRiski($subeId, $esik = 15)
+{
+    $stok = DB::table('stok_hareketleri')->where('sube_id', $subeId)
+        ->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+    $birimAd = DB::table('birimler')->pluck('kisaltma', 'id');
+    $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    // 1) Kritik malzemeler (stok <= kritik esik)
+    $kritik = [];
+    foreach (DB::table('malzemeler')->where('stok_takipli', 1)->where('kritik_stok', '>', 0)->get(['id', 'ad', 'kritik_stok', 'temel_birim_id']) as $m) {
+        $mevcut = (float) ($stok[$m->id] ?? 0);
+        if ($mevcut <= (float) $m->kritik_stok) {
+            $kritik[] = ['id' => (int) $m->id, 'ad' => $m->ad, 'mevcut' => round($mevcut, 2), 'kritik' => (float) $m->kritik_stok, 'birim' => $birimAd[$m->temel_birim_id] ?? ''];
+        }
+    }
+    // 2) Her urun: kalan stokla kac porsiyon (nested patlatma) + darbogaz
+    $riskli = [];
+    foreach (DB::table('receteler')->where('tip', 'urun')->whereNotNull('urun_id')->get(['id', 'urun_id']) as $rec) {
+        $ihtiyac = [];
+        _restoReceteHammadde($rec->id, 1, $ihtiyac);
+        if (!$ihtiyac) continue;
+        $yap = null; $darbogazId = null;
+        foreach ($ihtiyac as $mid => $need) {
+            if ($need <= 0) continue;
+            $por = (int) floor(max(0, (float) ($stok[$mid] ?? 0)) / $need);
+            if ($yap === null || $por < $yap) { $yap = $por; $darbogazId = $mid; }
+        }
+        if ($yap === null) continue;
+        $riskli[] = ['urun_id' => (int) $rec->urun_id, 'urun' => $malAd[$rec->urun_id] ?? DB::table('urunler')->where('id', $rec->urun_id)->value('ad'),
+            'yapilabilir' => $yap, 'darbogaz' => $malAd[$darbogazId] ?? '—'];
+    }
+    usort($riskli, fn ($a, $b) => $a['yapilabilir'] <=> $b['yapilabilir']);
+    return ['kritik' => $kritik, 'riskli' => array_values(array_filter($riskli, fn ($x) => $x['yapilabilir'] <= $esik))];
+}
+
+// Uretim riski endpoint (ekran icin)
+Route::get('/api/patron/uretim-riski', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $esik = $r->esik !== null ? max(0, (int) $r->esik) : 15;
+    $risk = _restoUretimRiski($p->sube_id, $esik);
+    return ['ok' => 1, 'esik' => $esik, 'kritik' => $risk['kritik'], 'riskli' => $risk['riskli']];
+});
 
 // ---- META (form açılır listeleri) ----
 Route::get('/api/patron/stok-meta', function (Request $r) {
