@@ -3096,6 +3096,60 @@ Route::post('/api/adim-kaydet', function (Request $r) {
     return (new \App\Services\GarsonPerformans($p->sube_id))->adimKaydet($p->id, (int) $r->input('adim'));
 });
 
+// ---------------- SALON SEMA (dijital ikiz: parsel/bolge/sabit nokta/masa, cok katli) ----------------
+if (!function_exists('_salonSemaTablo')) {
+    function _salonSemaTablo()
+    {
+        if (Schema::hasTable('salon_sema')) return;
+        try {
+            Schema::create('salon_sema', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id')->unique();
+                $t->longText('veri')->nullable();   // JSON: katlar/parsel/bolgeler/noktalar/masalar
+                $t->timestamp('updated_at')->nullable();
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+
+// Semayi getir (+ mevcut masa listesi editorde yerlestirmek icin)
+Route::get('/api/patron/salon-sema', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _salonSemaTablo();
+    $row = DB::table('salon_sema')->where('sube_id', $p->sube_id)->first();
+    $veri = $row && $row->veri ? json_decode($row->veri, true) : null;
+    $masalar = DB::table('masalar')->where('sube_id', $p->sube_id)->orderBy('bolge_id')->orderBy('ad')
+        ->get(['id', 'ad', 'bolge_id', 'kapasite', 'sekil', 'x', 'y']);
+    $bolgeler = DB::table('bolgeler')->where('sube_id', $p->sube_id)->orderBy('sira')->get(['id', 'ad']);
+    return ['ok' => 1, 'veri' => $veri, 'masalar' => $masalar, 'bolgeler' => $bolgeler];
+});
+
+// Semayi kaydet (patron). Masalarin x,y'sini de POS uyumu icin masalar tablosuna yaz.
+Route::post('/api/patron/salon-sema-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    _salonSemaTablo();
+    $veriRaw = (string) $r->input('veri', '');
+    $veri = json_decode($veriRaw, true);
+    if (!is_array($veri)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
+    try {
+        $var = DB::table('salon_sema')->where('sube_id', $p->sube_id)->first();
+        if ($var) DB::table('salon_sema')->where('id', $var->id)->update(['veri' => $veriRaw, 'updated_at' => now()]);
+        else DB::table('salon_sema')->insert(['sube_id' => $p->sube_id, 'veri' => $veriRaw, 'updated_at' => now()]);
+        // Masa konumlarini POS masalar tablosuna da yaz (POS haritasi ayni gorunsun)
+        $mts = $veri['masalar'] ?? [];
+        if (is_array($mts)) {
+            foreach ($mts as $mid => $m) {
+                DB::table('masalar')->where('id', (int) $mid)->where('sube_id', $p->sube_id)
+                    ->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]);
+            }
+        }
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Kaydedilemedi']; }
+    return ['ok' => 1];
+});
+
 // ---------------- SEF GARSON AI (garsonun gozu: satis uyarilari + oneri) ----------------
 // Garson app 30 sn'de bir cagirir; kartlari gosterir. Push (arka plan) faz 2 (FCM gerekir).
 Route::get('/api/sefgarson/uyarilar', function (Request $r) {
