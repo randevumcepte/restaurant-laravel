@@ -1082,6 +1082,34 @@ if (!function_exists('_odemeSaglayici')) {
         return 'simulasyon';
     }
 }
+if (!function_exists('_odemeSplitEnsure')) {
+    // Kalem-bazli / parcali odeme icin ek kolonlar (idempotent) — masada herkes kendi payini odeyebilsin
+    function _odemeSplitEnsure()
+    {
+        _odemeEnsure();
+        if (!Schema::hasColumn('adisyon_kalemleri', 'odeme_durum')) {
+            Schema::table('adisyon_kalemleri', function ($t) { $t->string('odeme_durum', 10)->default('acik')->index(); }); // acik | beklemede | odendi
+        }
+        if (!Schema::hasColumn('adisyon_kalemleri', 'odeme_token')) {
+            Schema::table('adisyon_kalemleri', function ($t) { $t->string('odeme_token', 40)->nullable(); });
+        }
+        if (!Schema::hasColumn('odeme_islemleri', 'kalem_ids')) {
+            Schema::table('odeme_islemleri', function ($t) { $t->text('kalem_ids')->nullable(); }); // bu odemenin kapsadigi kalem id'leri (JSON); null = tum hesap
+        }
+    }
+}
+if (!function_exists('_odemeStaleRelease')) {
+    // Tamamlanmayan (15 dk+ 'bekliyor') odemelerin rezerve ettigi kalemleri geri ac ki takilmasin
+    function _odemeStaleRelease($adisyonId)
+    {
+        $eski = DB::table('odeme_islemleri')->where('adisyon_id', $adisyonId)->where('durum', 'bekliyor')
+            ->where('created_at', '<', now()->subMinutes(15))->pluck('token')->all();
+        if (!$eski) return;
+        DB::table('odeme_islemleri')->whereIn('token', $eski)->update(['durum' => 'iptal']);
+        DB::table('adisyon_kalemleri')->whereIn('odeme_token', $eski)->where('odeme_durum', 'beklemede')
+            ->update(['odeme_durum' => 'acik', 'odeme_token' => null]);
+    }
+}
 // Odeme baslat: takip_token VEYA adisyon_id
 Route::post('/api/odeme/baslat', function (Request $r) {
     _odemeEnsure();
@@ -1123,15 +1151,27 @@ Route::get('/ode/{token}', function ($token) {
 // Odeme tamamla (CSRF muaf: ode/*) — simulasyon basarili; gercek saglayici callback'i buraya baglanir
 Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
     _odemeEnsure();
+    _odemeSplitEnsure();
     $i = DB::table('odeme_islemleri')->where('token', $token)->first();
     if (!$i) return response()->json(['ok' => 0], 404);
     if ($i->durum === 'odendi') return ['ok' => 1, 'mesaj' => 'Zaten ödendi'];
     // === GERCEK SAGLAYICI DOGRULAMASI (Iyzico/PayTR 3D sonucu) BURAYA ===
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
-    if ($a && $a->durum !== 'odendi') {
+    if ($a) {
         DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'created_at' => now()]);
-        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
-        if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        // Bu odemenin kapsadigi kalemleri 'odendi' yap (parcali odeme). kalem_ids yoksa (mobil/eski akis) tum adisyon.
+        $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
+        if (is_array($kids) && $kids) {
+            DB::table('adisyon_kalemleri')->whereIn('id', $kids)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
+        } else {
+            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
+        }
+        // Odenmemis kalem kaldi mi? Kalmadiysa adisyonu kapat + masayi bosalt (yoksa acik kalir, digerleri oder)
+        $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
+        if ($acikKalan === 0 && $a->durum !== 'odendi') {
+            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
+            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        }
     }
     DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
     return ['ok' => 1, 'mesaj' => 'Ödeme başarılı'];
@@ -2420,12 +2460,15 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
 Route::get('/api/qr/siparislerim', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0], 404);
+    _odemeSplitEnsure();
     $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
-    if (!$adId) return ['ok' => 1, 'kalemler' => [], 'toplam' => 0];
+    if (!$adId) return ['ok' => 1, 'kalemler' => [], 'toplam' => 0, 'kalan' => 0];
+    _odemeStaleRelease($adId);
     $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')
-        ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum')->orderBy('id')->get()
-        ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar, 'durum' => $k->durum]);
-    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar')];
+        ->select('id', 'urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'odeme_durum')->orderBy('id')->get()
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'odeme_durum' => $k->odeme_durum ?? 'acik']);
+    $kalan = (float) $kalemler->where('odeme_durum', '!=', 'odendi')->sum('tutar');
+    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan];
 });
 
 // TEST: bu masanin acik hesabini/siparislerini TEMIZLE (birikmis test siparisleri gitsin) -> /masa-sifirla/37
@@ -2560,18 +2603,42 @@ Route::get('/demo-doldur', function (Request $r) {
         . "Sunum oncesi tekrar taze gorunum istersen bu adresi yeniden ac.")->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
-// QR masa: acik hesabi online odemeye baslat (masadaki "Online Ode")
+// QR masa: acik hesabi online odemeye baslat. kalemler=[id,...] verilirse SADECE o kalemler (kendi payi),
+// verilmezse TUM odenmemis kalemler (biri tum hesabi oder). Secilen kalemler rezerve edilir (ayni anda cifte odeme olmaz).
 Route::post('/api/qr/ode-baslat', function (Request $r) {
     if (function_exists('_odemeEnsure')) _odemeEnsure();
+    _odemeSplitEnsure();
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
     $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
     if (!$a) return ['ok' => 0, 'hata' => 'Açık hesabınız yok'];
-    if ((float) $a->toplam <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
+    _odemeStaleRelease($a->id); // takilan rezervasyonlari geri ac
+
+    // Secili kalemler mi (kendi payi), tum kalan mi (biri hepsini oder)?
+    $secili = null;
+    if ($r->filled('kalemler')) {
+        $dec = json_decode((string) $r->kalemler, true);
+        if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec)));
+    }
+    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)
+        ->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
+    if ($secili) $q->whereIn('id', $secili);
+    $kalemler = $q->get();
+    if ($kalemler->isEmpty()) {
+        return ['ok' => 0, 'hata' => $secili ? 'Seçtiğiniz ürünler zaten ödenmiş ya da ödeme bekliyor' : 'Ödenecek tutar yok'];
+    }
+    $tutar = (float) $kalemler->sum('tutar');
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
+    $covIds = $kalemler->pluck('id')->all();
+
     $token = \Illuminate\Support\Str::random(30);
     DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
-        'tutar' => (float) $a->toplam, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor', 'created_at' => now()]);
-    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => (float) $a->toplam];
+        'tutar' => $tutar, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor',
+        'kalem_ids' => json_encode($covIds), 'created_at' => now()]);
+    // Rezerve: bu kalemleri 'beklemede' yap ki baskasi ayni anda odeyemesin
+    DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
+
+    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => $tutar];
 });
 
 // Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
@@ -3094,6 +3161,80 @@ Route::post('/api/adim-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     return (new \App\Services\GarsonPerformans($p->sube_id))->adimKaydet($p->id, (int) $r->input('adim'));
+});
+
+// GECICI DEMO: garson performans/isi haritasi icin sahte hareket (siparis+kalem+adim). Her garsona bir bolge yogunlugu.
+Route::get('/api/patron/demo-garson-doldur', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $sube = $p->sube_id;
+    $garsonlar = DB::table('personeller')->where('sube_id', $sube)->whereIn('rol', ['garson', 'sahip', 'mudur'])->where('aktif', 1)->get(['id', 'ad']);
+    $bolgeler = DB::table('bolgeler')->where('sube_id', $sube)->orderBy('sira')->get(['id']);
+    $masalarByBolge = [];
+    foreach (DB::table('masalar')->where('sube_id', $sube)->get(['id', 'bolge_id']) as $m) $masalarByBolge[$m->bolge_id][] = $m->id;
+    $tumMasa = DB::table('masalar')->where('sube_id', $sube)->pluck('id')->all();
+    if (empty($tumMasa) || $garsonlar->isEmpty()) return ['ok' => 0, 'hata' => 'Masa ya da garson yok'];
+    $urunler = DB::table('urunler')->where('sube_id', $sube)->where('aktif', 1)->inRandomOrder()->limit(20)->get(['id', 'ad', 'fiyat']);
+    $ad = 0; $kl = 0;
+    $gi = 0;
+    foreach ($garsonlar as $g) {
+        // Bu garsonun "ev bolgesi" (yogunluk orada olsun)
+        $evMasa = [];
+        if ($bolgeler->isNotEmpty()) {
+            $b = $bolgeler[$gi % $bolgeler->count()];
+            $evMasa = $masalarByBolge[$b->id] ?? [];
+        }
+        if (empty($evMasa)) $evMasa = $tumMasa;
+        $gi++;
+        $adisyonSay = random_int(6, 10);
+        for ($i = 0; $i < $adisyonSay; $i++) {
+            // %75 ev bolgesi, %25 baska masa
+            $masaId = (random_int(1, 100) <= 75) ? $evMasa[array_rand($evMasa)] : $tumMasa[array_rand($tumMasa)];
+            $odendi = random_int(1, 100) <= 65;
+            $acilis = now()->subMinutes(random_int(10, 300));
+            $adId = DB::table('adisyonlar')->insertGetId([
+                'sube_id' => $sube, 'masa_id' => $masaId, 'kanal' => 'salon', 'misafir_sayisi' => random_int(1, 5),
+                'durum' => $odendi ? 'odendi' : 'acik', 'acan_personel_id' => $g->id,
+                'ara_toplam' => 0, 'toplam' => 0, 'acilis' => $acilis,
+                'kapanis' => $odendi ? $acilis->copy()->addMinutes(random_int(25, 90)) : null,
+                'created_at' => $acilis, 'updated_at' => now(),
+            ]);
+            $ad++;
+            $toplam = 0;
+            $kalemSay = random_int(2, 5);
+            for ($j = 0; $j < $kalemSay; $j++) {
+                $u = $urunler->isNotEmpty() ? $urunler[array_rand($urunler->all())] : null;
+                $fiyat = $u ? (float) $u->fiyat : random_int(80, 300);
+                $adet = random_int(1, 3);
+                $tutar = $fiyat * $adet;
+                $toplam += $tutar;
+                DB::table('adisyon_kalemleri')->insert([
+                    'adisyon_id' => $adId, 'urun_id' => $u->id ?? null, 'urun_adi' => $u->ad ?? 'Ürün',
+                    'adet' => $adet, 'birim_fiyat' => $fiyat, 'tutar' => $tutar, 'durum' => 'gonderildi',
+                    'kur' => null, 'personel_id' => $g->id, 'gonderim_zamani' => $acilis,
+                    'created_at' => $acilis, 'updated_at' => now(),
+                ]);
+                $kl++;
+            }
+            DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $toplam, 'toplam' => $toplam]);
+        }
+        // Adim
+        (new \App\Services\GarsonPerformans($sube))->adimKaydet($g->id, random_int(4000, 9500));
+    }
+    return ['ok' => 1, 'garson' => $garsonlar->count(), 'adisyon' => $ad, 'kalem' => $kl];
+});
+
+// GECICI DEMO temizle: bugun eklenen demo adisyonlari + adimlari sil (dikkat: bugunku TUM salon adisyonlarini siler)
+Route::get('/api/patron/demo-garson-temizle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $ids = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('kanal', 'salon')->whereDate('created_at', today())->pluck('id');
+    DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $ids)->delete();
+    $n = DB::table('adisyonlar')->whereIn('id', $ids)->delete();
+    if (Schema::hasTable('personel_adim')) DB::table('personel_adim')->where('sube_id', $p->sube_id)->whereDate('tarih', today())->delete();
+    return ['ok' => 1, 'silinen_adisyon' => $n];
 });
 
 // ---------------- SALON SEMA (dijital ikiz: parsel/bolge/sabit nokta/masa, cok katli) ----------------
