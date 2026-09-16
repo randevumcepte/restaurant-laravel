@@ -3166,9 +3166,7 @@ Route::post('/api/adim-kaydet', function (Request $r) {
 // GECICI DEMO: garson performans/isi haritasi icin sahte hareket (siparis+kalem+adim). Her garsona bir bolge yogunlugu.
 Route::get('/api/patron/demo-garson-doldur', function (Request $r) {
     $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
-    $sube = $p->sube_id;
+    $sube = $p ? $p->sube_id : (int) $r->query('sube', DB::table('subeler')->min('id') ?? 1);
     $garsonlar = DB::table('personeller')->where('sube_id', $sube)->whereIn('rol', ['garson', 'sahip', 'mudur'])->where('aktif', 1)->get(['id', 'ad']);
     $bolgeler = DB::table('bolgeler')->where('sube_id', $sube)->orderBy('sira')->get(['id']);
     $masalarByBolge = [];

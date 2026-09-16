@@ -429,7 +429,7 @@
     <button id="navSiparis" onclick="sepetAc()"><span>🧾</span>Siparişlerim</button>
     <button class="qr" onclick="asistanAc()"><div class="qi"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></div></button>
     <button onclick="cagir('garson')"><span>🔔</span>Çağır</button>
-    <button onclick="hesapOde()"><span>💳</span>Öde</button>
+    <button onclick="sepetAc()"><span>💳</span>Öde</button>
   </nav>
 </div>
 
@@ -451,7 +451,7 @@
     </div>
     <div class="sp"></div>
     <button class="sbtn cagir" onclick="cagir('garson')"><span>🔔</span><span><b>Garson Çağır</b><i>Size hemen yardımcı olalım</i></span></button>
-    <button class="sbtn hesap" onclick="hesapOde()"><span>💳</span><span><b>Hesabı Öde</b><i>Online öde ya da garsondan iste</i></span></button>
+    <button class="sbtn hesap" onclick="sepetAc()"><span>💳</span><span><b>Hesabı Öde</b><i>Tümünü ya da kendi payını öde</i></span></button>
     <button class="sbtn cagir" onclick="asistanAc()"><span><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></span><span><b>Yapay Zekâ Asistan</b><i>Ürün öner, soru sor, yardım al</i></span></button>
     <div class="dil" id="dilDesk" onclick="dilMenuAc(event)">🌐 Türkçe ▾</div>
   </aside>
@@ -515,6 +515,7 @@
     <div class="foot">
       <div class="top"><span>Toplam</span><b id="sepet-toplam">0 TL</b></div>
       <button class="gonder" id="sepet-gonder" onclick="siparisGonder()">✅ Siparişi Gönder</button>
+      <div id="sepet-ode"></div>
     </div>
   </div>
 </div>
@@ -707,7 +708,8 @@ function sepetRozet(){
   else if(r) r.remove();
   const dc=document.getElementById('deskcart'); document.getElementById('dc-n').textContent=n; dc.classList.toggle('bos',n===0);
 }
-let _gonderilen=[], _gToplam=0;
+let _gonderilen=[], _gToplam=0, _odeSecili={};
+function odeSec(id,on){ if(on) _odeSecili[id]=true; else delete _odeSecili[id]; sepetCiz(); }
 async function sepetAc(){
   document.getElementById('menu').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik diger katmanlari kapat
   document.getElementById('sepet').classList.add('acik');
@@ -719,8 +721,15 @@ function sepetCiz(){
   const l=document.getElementById('sepet-liste'); if(!l) return;
   let html='';
   if(_gonderilen.length){
-    html+='<div class="sbas">🍽️ Mutfağa iletilenler</div>';
-    html+=_gonderilen.map(k=>`<div class="sat gonderilen"><span class="sad">${esc(k.ad)} <b>×${k.adet}</b></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`).join('');
+    const acikVar=_gonderilen.some(k=>(k.odeme_durum||'acik')==='acik');
+    html+='<div class="sbas">🍽️ Mutfağa iletilenler'+(acikVar?' <i style="font-weight:600;color:var(--sessiz)">— ödeyeceklerini işaretle</i>':'')+'</div>';
+    html+=_gonderilen.map(k=>{
+      const od=(k.odeme_durum||'acik');
+      if(od==='odendi') return `<div class="sat gonderilen" style="opacity:.5"><span class="sad">✅ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#28c76f;font-weight:600">ödendi</i></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`;
+      if(od==='beklemede') return `<div class="sat gonderilen" style="opacity:.65"><span class="sad">⏳ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#f0a500;font-weight:600">ödeniyor…</i></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`;
+      const chk=_odeSecili[k.id]?'checked':'';
+      return `<label class="sat gonderilen" style="cursor:pointer"><span class="sad"><input type="checkbox" ${chk} onchange="odeSec(${k.id},this.checked)" style="margin-right:8px;transform:scale(1.3);accent-color:var(--gold);vertical-align:middle">${esc(k.ad)} <b>×${k.adet}</b></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></label>`;
+    }).join('');
   }
   if(_sepet.length){
     html+='<div class="sbas">🛒 Sepetiniz <i>(henüz gönderilmedi)</i></div>';
@@ -733,6 +742,16 @@ function sepetCiz(){
   const sepetTop=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
   document.getElementById('sepet-toplam').textContent=(_gToplam+sepetTop).toLocaleString('tr')+' TL';
   document.getElementById('sepet-gonder').disabled=!_sepet.length;
+  // ---- Odeme kutusu: acik (odenmemis) kalemler icin "tumunu ode" + "sectiklerimi ode" ----
+  const odeBox=document.getElementById('sepet-ode'); if(!odeBox) return;
+  const aciklar=_gonderilen.filter(k=>(k.odeme_durum||'acik')==='acik');
+  if(!aciklar.length){ odeBox.innerHTML=''; return; }
+  const kalanAcik=aciklar.reduce((s,k)=>s+(k.tutar||0),0);
+  const seciliTutar=aciklar.filter(k=>_odeSecili[k.id]).reduce((s,k)=>s+(k.tutar||0),0);
+  odeBox.innerHTML=
+     `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sessiz);margin:12px 0 8px"><span>Ödenmemiş kalan</span><b style="color:var(--gold)">${kalanAcik.toLocaleString('tr')} TL</b></div>`
+    +`<button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b)" onclick="hesapOde('tum')">💳 Tüm hesabı öde · ${kalanAcik.toLocaleString('tr')} TL</button>`
+    +`<button class="gonder" onclick="hesapOde('secili')" ${seciliTutar>0?'':'disabled'} style="margin-top:8px;background:transparent;border:1px solid var(--gold);color:var(--gold)${seciliTutar>0?'':';opacity:.45'}">🧾 Seçtiklerimi öde${seciliTutar>0?(' · '+seciliTutar.toLocaleString('tr')+' TL'):''}</button>`;
 }
 function sepetKapat(){ document.getElementById('sepet').classList.remove('acik'); }
 // QR yeniden okununca acik adisyon varsa "devam eden siparis" seridini goster (masaya bagli; kim okutursa okutsun ayni hesap)
@@ -1006,7 +1025,7 @@ async function basla(){
     }
     const cevap=await sunucudanCevap(c);
     if(cevap) await konus(cevap);
-    if(_odeGit){ _odeGit=false; sohbetAktif=false; try{ await hesapOde(); }catch(_){} break; }   // AI konustu -> odeme sayfasina yonlendir
+    if(_odeGit){ _odeGit=false; sohbetAktif=false; try{ sohbetKapat(); sepetAc(); }catch(_){} break; }   // AI konustu -> sepeti ac (tumunu / kendi payini sec)
   }
   sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
 }
@@ -1029,7 +1048,7 @@ async function sunucudanCevap(soru){
       return 'Şu an gönderilecek yeni bir siparişiniz görünmüyor efendim. Menüden dilediğinizi seçebilirsiniz. 😊';
     }
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
-    if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Sizi güvenli ödeme sayfasına yönlendiriyorum. 💳'; }   // konustuktan sonra odeme sayfasina git
+    if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Hesabı açıyorum: tümünü ödeyebilir ya da kendi payını seçebilirsin. 💳'; }   // konustuktan sonra sepeti/odemeyi ac
     return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
@@ -1196,9 +1215,15 @@ function asistanUrunGoster(list){
   try{ toast('🤖 Önerilenleri menüde gösterdim'); }catch(_){}
 }
 function asistanKapat(){ sohbetKapat(); }   // geriye dönük uyum
-async function hesapOde(){
+async function hesapOde(mod){
+  const body={masa:MASA};
+  if(mod==='secili'){
+    const ids=Object.keys(_odeSecili).filter(id=>_odeSecili[id]).map(Number);
+    if(!ids.length){ toast('Önce ödeyeceğin ürünleri işaretle'); return; }
+    body.kalemler=JSON.stringify(ids);
+  }
   try{
-    const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA})});
+    const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
     const j = await r.json();
     if(j.ok && j.ode_url){ location.href = j.ode_url; return; }
     await cagir('hesap'); toast(j.hata ? ('ℹ️ '+j.hata+' — garson çağrıldı.') : '💳 Hesap isteğiniz iletildi.');
