@@ -3253,6 +3253,45 @@ if (!function_exists('_restoUrunMaliyetMap')) {
     }
 }
 
+// Bir recetenin TOPLAM hammadde maliyeti (alt receteleri/yari mamulleri patlatir, dongu korumali).
+// verim'e BOLMEZ; birim (porsiyon) maliyeti isteyen sonucu verim_miktar'a boler.
+if (!function_exists('_restoReceteToplamMaliyet')) {
+    function _restoReceteToplamMaliyet($receteId, array $ziyaret = [])
+    {
+        $receteId = (int) $receteId;
+        if ($receteId <= 0 || isset($ziyaret[$receteId])) return 0.0; // dongu koruma
+        $ziyaret[$receteId] = true;
+        $toplam = 0.0;
+        foreach (DB::table('recete_kalemleri')->where('recete_id', $receteId)->get() as $k) {
+            if ($k->malzeme_id) {
+                $m = DB::table('malzemeler')->where('id', $k->malzeme_id)->first(['temel_birim_id', 'guncel_maliyet']);
+                if ($m) $toplam += (float) $k->miktar * _restoBirimKarsilik($k->malzeme_id, $k->birim_id, $m->temel_birim_id) * (float) $m->guncel_maliyet;
+            } elseif ($k->alt_recete_id) {
+                $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first(['verim_miktar']);
+                $verim = ($alt && (float) $alt->verim_miktar > 0) ? (float) $alt->verim_miktar : 1.0;
+                $toplam += (float) $k->miktar * (_restoReceteToplamMaliyet($k->alt_recete_id, $ziyaret) / $verim);
+            }
+        }
+        return $toplam;
+    }
+}
+
+// $altId (veya onun alt agacindaki bir recete) $hedefId'yi iceriyor mu? -> eklenirse dongu olur.
+if (!function_exists('_restoReceteDonguVar')) {
+    function _restoReceteDonguVar($hedefId, $altId, array $ziyaret = [])
+    {
+        $hedefId = (int) $hedefId; $altId = (int) $altId;
+        if ($altId <= 0) return false;
+        if ($altId === $hedefId) return true;
+        if (isset($ziyaret[$altId])) return false;
+        $ziyaret[$altId] = true;
+        foreach (DB::table('recete_kalemleri')->where('recete_id', $altId)->whereNotNull('alt_recete_id')->pluck('alt_recete_id') as $cid) {
+            if (_restoReceteDonguVar($hedefId, (int) $cid, $ziyaret)) return true;
+        }
+        return false;
+    }
+}
+
 // Secilen periyot icin [baslangic, bitis] ve esit uzunluktaki onceki (karsilastirma) pencere.
 if (!function_exists('_restoPeriyot')) {
     function _restoPeriyot(string $period)
@@ -5079,6 +5118,16 @@ Route::get('/api/patron/urun-recete', function (Request $r) {
             $kalemler[] = ['malzeme_id' => (int) $k->malzeme_id, 'malzeme' => $m->ad ?? '—', 'miktar' => (float) $k->miktar,
                 'birim_id' => (int) $k->birim_id, 'birim' => $birim[$k->birim_id] ?? '', 'satir_maliyet' => round($satirMal, 2)];
         }
+        // Yari mamul (alt recete) satirlari
+        foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->whereNotNull('alt_recete_id')->get() as $k) {
+            $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first(['ad', 'verim_miktar']);
+            if (!$alt) continue;
+            $verim = (float) $alt->verim_miktar > 0 ? (float) $alt->verim_miktar : 1.0;
+            $satirMal = (float) $k->miktar * (_restoReceteToplamMaliyet($k->alt_recete_id) / $verim);
+            $maliyet += $satirMal;
+            $kalemler[] = ['alt_recete_id' => (int) $k->alt_recete_id, 'malzeme' => $alt->ad, 'yarimamul' => true, 'miktar' => (float) $k->miktar,
+                'birim_id' => (int) $k->birim_id, 'birim' => $birim[$k->birim_id] ?? '', 'satir_maliyet' => round($satirMal, 2)];
+        }
     }
     $fc = (float) $urun->fiyat > 0 ? round($maliyet / (float) $urun->fiyat * 100, 1) : 0.0;
     return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'urun_ad' => $urun->ad, 'fiyat' => (float) $urun->fiyat,
@@ -5103,9 +5152,17 @@ Route::post('/api/patron/recete-kaydet', function (Request $r) {
             $receteId = DB::table('receteler')->insertGetId(['ad' => $urun->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $urunId, 'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
         }
         foreach ($kalemler as $k) {
-            $mid = (int) ($k['malzeme_id'] ?? 0);
             $miktar = (float) ($k['miktar'] ?? 0);
             $birimId = (int) ($k['birim_id'] ?? 0);
+            $altId = (int) ($k['alt_recete_id'] ?? 0);
+            if ($altId > 0) {
+                // Yari mamul satiri — dongu engeli (kendini/dolayli kendini icerme)
+                if ($miktar <= 0 || $birimId <= 0) continue;
+                if ($altId === $receteId || _restoReceteDonguVar($receteId, $altId)) continue;
+                DB::table('recete_kalemleri')->insert(['recete_id' => $receteId, 'alt_recete_id' => $altId, 'miktar' => $miktar, 'birim_id' => $birimId, 'created_at' => now(), 'updated_at' => now()]);
+                continue;
+            }
+            $mid = (int) ($k['malzeme_id'] ?? 0);
             if ($mid <= 0 || $miktar <= 0 || $birimId <= 0) continue;
             DB::table('recete_kalemleri')->insert(['recete_id' => $receteId, 'malzeme_id' => $mid, 'miktar' => $miktar, 'birim_id' => $birimId, 'created_at' => now(), 'updated_at' => now()]);
         }
@@ -5129,6 +5186,113 @@ Route::get('/api/patron/recete-urunler', function (Request $r) {
             'food_cost' => $fc, 'receteli' => isset($receteliSet[$u->id])];
     });
     return ['ok' => 1, 'urunler' => $urunler];
+});
+
+// ============ YARI MAMUL (alt recete) YONETIMI ============
+// Yari mamul = tip='yari_mamul' recete: ad + verim (kac cikar) + kalemler (malzeme veya baska yari mamul).
+// Patlatma modeli: ayri stok TUTULMAZ; urun recetesine eklenince maliyeti/hammaddesi otomatik yansir.
+
+// Liste (yonetim + urun recetesinde secim listesi icin)
+Route::get('/api/patron/yarimamuller', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $kalemSay = DB::table('recete_kalemleri')->selectRaw('recete_id, COUNT(*) c')->groupBy('recete_id')->pluck('c', 'recete_id');
+    $liste = DB::table('receteler')->where('tip', 'yari_mamul')->orderBy('ad')->get()->map(function ($rec) use ($birim, $kalemSay) {
+        $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
+        $toplam = _restoReceteToplamMaliyet($rec->id);
+        return ['id' => (int) $rec->id, 'ad' => $rec->ad, 'verim_miktar' => (float) $rec->verim_miktar,
+            'verim_birim_id' => (int) $rec->verim_birim_id, 'verim_birim' => $birim[$rec->verim_birim_id] ?? '',
+            'kalem_sayisi' => (int) ($kalemSay[$rec->id] ?? 0), 'toplam_maliyet' => round($toplam, 2), 'birim_maliyet' => round($toplam / $verim, 4)];
+    });
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'yarimamuller' => $liste->values()];
+});
+
+// Bir yari mamulun detayi (editor icin) — malzeme + alt recete kalemleri
+Route::get('/api/patron/yarimamul-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $rec = DB::table('receteler')->where('id', (int) $r->id)->where('tip', 'yari_mamul')->first();
+    if (!$rec) return ['ok' => 0, 'hata' => 'Yarı mamül bulunamadı'];
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $malz = DB::table('malzemeler')->get()->keyBy('id');
+    $kalemler = [];
+    $maliyet = 0.0;
+    foreach (DB::table('recete_kalemleri')->where('recete_id', $rec->id)->get() as $k) {
+        if ($k->malzeme_id) {
+            $m = $malz[$k->malzeme_id] ?? null;
+            $kars = _restoBirimKarsilik($k->malzeme_id, $k->birim_id, $m->temel_birim_id ?? null);
+            $satir = $m ? (float) $k->miktar * $kars * (float) $m->guncel_maliyet : 0.0;
+            $maliyet += $satir;
+            $kalemler[] = ['malzeme_id' => (int) $k->malzeme_id, 'malzeme' => $m->ad ?? '—', 'miktar' => (float) $k->miktar,
+                'birim_id' => (int) $k->birim_id, 'birim' => $birim[$k->birim_id] ?? '', 'satir_maliyet' => round($satir, 2)];
+        } elseif ($k->alt_recete_id) {
+            $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first(['ad', 'verim_miktar']);
+            if (!$alt) continue;
+            $verim = (float) $alt->verim_miktar > 0 ? (float) $alt->verim_miktar : 1.0;
+            $satir = (float) $k->miktar * (_restoReceteToplamMaliyet($k->alt_recete_id) / $verim);
+            $maliyet += $satir;
+            $kalemler[] = ['alt_recete_id' => (int) $k->alt_recete_id, 'malzeme' => $alt->ad, 'yarimamul' => true, 'miktar' => (float) $k->miktar,
+                'birim_id' => (int) $k->birim_id, 'birim' => $birim[$k->birim_id] ?? '', 'satir_maliyet' => round($satir, 2)];
+        }
+    }
+    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'ad' => $rec->ad, 'verim_miktar' => (float) $rec->verim_miktar,
+        'verim_birim_id' => (int) $rec->verim_birim_id, 'maliyet' => round($maliyet, 2), 'kalemler' => $kalemler];
+});
+
+// Yari mamul olustur/duzenle (SAHIP)
+Route::post('/api/patron/yarimamul-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yarı mamülü sadece işletme sahibi düzenleyebilir.'], 403);
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Yarı mamül adı boş olamaz'];
+    $verim = (float) $r->verim_miktar;
+    if ($verim <= 0) return ['ok' => 0, 'hata' => 'Verim (kaç çıkıyor) 0’dan büyük olmalı'];
+    $verimBirim = (int) $r->verim_birim_id;
+    if ($verimBirim <= 0) return ['ok' => 0, 'hata' => 'Verim birimi seçin (litre/kg/porsiyon…)'];
+    $kalemler = json_decode((string) $r->kalemler, true);
+    if (!is_array($kalemler)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
+    $id = (int) $r->id;
+    return DB::transaction(function () use ($ad, $verim, $verimBirim, $kalemler, $id) {
+        if ($id > 0) {
+            $rec = DB::table('receteler')->where('id', $id)->where('tip', 'yari_mamul')->first();
+            if (!$rec) return ['ok' => 0, 'hata' => 'Yarı mamül bulunamadı'];
+            DB::table('receteler')->where('id', $id)->update(['ad' => $ad, 'verim_miktar' => $verim, 'verim_birim_id' => $verimBirim, 'updated_at' => now()]);
+            DB::table('recete_kalemleri')->where('recete_id', $id)->delete();
+            $receteId = $id;
+        } else {
+            $receteId = DB::table('receteler')->insertGetId(['ad' => $ad, 'tip' => 'yari_mamul', 'urun_id' => null,
+                'verim_miktar' => $verim, 'verim_birim_id' => $verimBirim, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        foreach ($kalemler as $k) {
+            $miktar = (float) ($k['miktar'] ?? 0);
+            $birimId = (int) ($k['birim_id'] ?? 0);
+            $altId = (int) ($k['alt_recete_id'] ?? 0);
+            if ($altId > 0) {
+                if ($miktar <= 0 || $birimId <= 0) continue;
+                if ($altId === $receteId || _restoReceteDonguVar($receteId, $altId)) continue; // dongu engeli
+                DB::table('recete_kalemleri')->insert(['recete_id' => $receteId, 'alt_recete_id' => $altId, 'miktar' => $miktar, 'birim_id' => $birimId, 'created_at' => now(), 'updated_at' => now()]);
+                continue;
+            }
+            $mid = (int) ($k['malzeme_id'] ?? 0);
+            if ($mid <= 0 || $miktar <= 0 || $birimId <= 0) continue;
+            DB::table('recete_kalemleri')->insert(['recete_id' => $receteId, 'malzeme_id' => $mid, 'miktar' => $miktar, 'birim_id' => $birimId, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        return ['ok' => 1, 'id' => $receteId];
+    });
+});
+
+// Yari mamul sil (SAHIP) — baska recetede kullaniliyorsa engelle
+Route::post('/api/patron/yarimamul-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $id = (int) $r->id;
+    $kullanan = DB::table('recete_kalemleri')->where('alt_recete_id', $id)->count();
+    if ($kullanan > 0) return ['ok' => 0, 'hata' => "Bu yarı mamül $kullanan reçetede kullanılıyor; önce oralardan çıkarın."];
+    DB::table('recete_kalemleri')->where('recete_id', $id)->delete();
+    DB::table('receteler')->where('id', $id)->where('tip', 'yari_mamul')->delete();
+    return ['ok' => 1];
 });
 
 // ---- FİNANSAL ÖZET (aylık gelir/gider/net + tedarikçi alış) ----
