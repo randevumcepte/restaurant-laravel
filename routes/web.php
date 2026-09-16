@@ -4786,9 +4786,33 @@ function _restoStokMevcut($subeId)
         ->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
 }
 
+// Bir recetenin hammadde ihtiyacini PATLATARAK (yari mamul/alt recete dahil) toplar.
+// $sonuc[malzeme_id] += temel birim miktar. $carpan = kac adet. Dongu korumali.
+// Sadece stok_takipli hammaddeyi ekler; yari mamulun kendi stogu tutulmaz (patlatma modeli).
+function _restoReceteHammadde($receteId, $carpan, array &$sonuc, array $ziyaret = [])
+{
+    $receteId = (int) $receteId;
+    if ($receteId <= 0 || $carpan <= 0 || isset($ziyaret[$receteId])) return;
+    $ziyaret[$receteId] = true;
+    foreach (DB::table('recete_kalemleri')->where('recete_id', $receteId)->get() as $k) {
+        if ($k->malzeme_id) {
+            $m = DB::table('malzemeler')->where('id', $k->malzeme_id)->first(['temel_birim_id', 'stok_takipli']);
+            if (!$m || !$m->stok_takipli) continue;
+            $kars = _restoBirimKarsilik($k->malzeme_id, $k->birim_id, $m->temel_birim_id);
+            $sonuc[$k->malzeme_id] = ($sonuc[$k->malzeme_id] ?? 0) + (float) $k->miktar * $kars * $carpan;
+        } elseif ($k->alt_recete_id) {
+            $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first(['verim_miktar']);
+            $verim = ($alt && (float) $alt->verim_miktar > 0) ? (float) $alt->verim_miktar : 1.0;
+            // ust recetede alt receteden $k->miktar (verim biriminde) kullaniliyor -> alt recetenin miktar/verim kati
+            _restoReceteHammadde($k->alt_recete_id, $carpan * ((float) $k->miktar / $verim), $sonuc, $ziyaret);
+        }
+    }
+}
+
 // Adisyon kapanınca reçeteden otomatik stok düşümü (tuketim). GÜVENLİ: hata olsa
 // bile satışı bozmaz (try/catch), reçetesi/malzemesi olmayan ürünü sessiz atlar,
 // sadece stok_takipli malzemeyi düşer, aynı adisyonu iki kez düşmez (idempotent).
+// Yari mamul (alt recete) iceren urunlerde hammaddeye kadar PATLATIR (_restoReceteHammadde).
 function _restoStokTuket($adisyonId, $subeId, $personelId)
 {
     try {
@@ -4799,21 +4823,21 @@ function _restoStokTuket($adisyonId, $subeId, $personelId)
             ->where('durum', '!=', 'iptal')->whereNotNull('urun_id')
             ->selectRaw('urun_id, SUM(adet) adet')->groupBy('urun_id')->get();
         if ($kalemler->isEmpty()) return;
+        // Once tum urunlerin hammadde ihtiyacini patlatarak topla (yari mamuller dahil), sonra malzeme basina tek hareket yaz.
+        $ihtiyac = []; // malzeme_id => temel birim toplam
         foreach ($kalemler as $kal) {
             $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $kal->urun_id)->first();
             if (!$recete) continue;
-            foreach (DB::table('recete_kalemleri')->where('recete_id', $recete->id)->whereNotNull('malzeme_id')->get() as $rk) {
-                $m = DB::table('malzemeler')->where('id', $rk->malzeme_id)->first(['id', 'temel_birim_id', 'guncel_maliyet', 'stok_takipli']);
-                if (!$m || !$m->stok_takipli) continue;
-                $kars = _restoBirimKarsilik($m->id, $rk->birim_id, $m->temel_birim_id);
-                $temelMiktar = (float) $rk->miktar * $kars * (float) $kal->adet; // toplam tüketilen (temel birim)
-                if ($temelMiktar <= 0) continue;
-                DB::table('stok_hareketleri')->insert([
-                    'sube_id' => $subeId, 'malzeme_id' => $m->id, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
-                    'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'adisyon', 'kaynak_id' => $adisyonId,
-                    'aciklama' => 'Satış tüketimi', 'personel_id' => $personelId,
-                ]);
-            }
+            _restoReceteHammadde($recete->id, (float) $kal->adet, $ihtiyac);
+        }
+        foreach ($ihtiyac as $malzemeId => $temelMiktar) {
+            if ($temelMiktar <= 0) continue;
+            $m = DB::table('malzemeler')->where('id', $malzemeId)->first(['guncel_maliyet']);
+            DB::table('stok_hareketleri')->insert([
+                'sube_id' => $subeId, 'malzeme_id' => (int) $malzemeId, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
+                'birim_maliyet' => $m ? (float) $m->guncel_maliyet : 0, 'kaynak_tip' => 'adisyon', 'kaynak_id' => $adisyonId,
+                'aciklama' => 'Satış tüketimi', 'personel_id' => $personelId,
+            ]);
         }
     } catch (\Throwable $e) {
         // sessiz geç — satış akışını asla bozma
@@ -5293,6 +5317,40 @@ Route::post('/api/patron/yarimamul-sil', function (Request $r) {
     DB::table('recete_kalemleri')->where('recete_id', $id)->delete();
     DB::table('receteler')->where('id', $id)->where('tip', 'yari_mamul')->delete();
     return ['ok' => 1];
+});
+
+// GECICI TEST: nested patlatma dogrulama (transaction + rollback -> KALICI IZ BIRAKMAZ)
+Route::get('/yarimamul-test', function () {
+    $out = [];
+    try {
+        DB::beginTransaction();
+        $m1 = DB::table('malzemeler')->where('stok_takipli', 1)->first(['id', 'temel_birim_id']);
+        $m2 = DB::table('malzemeler')->where('stok_takipli', 1)->where('id', '!=', $m1->id ?? 0)->first(['id', 'temel_birim_id']);
+        $urun = DB::table('urunler')->first(['id']);
+        if (!$m1 || !$m2 || !$urun) { DB::rollBack(); return response()->json(['hata' => 'Yeterli malzeme/urun yok']); }
+        // Yari mamul: 5 birim verim; icinde m1'den 1000 (temel birim)
+        $ymId = DB::table('receteler')->insertGetId(['ad' => '__test_sos', 'tip' => 'yari_mamul', 'verim_miktar' => 5, 'verim_birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('recete_kalemleri')->insert(['recete_id' => $ymId, 'malzeme_id' => $m1->id, 'miktar' => 1000, 'birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        // Urun recetesi: 80 (verim biriminde) yari mamul + 120 m2
+        $urId = DB::table('receteler')->insertGetId(['ad' => '__test_urun', 'tip' => 'urun', 'urun_id' => $urun->id, 'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('recete_kalemleri')->insert(['recete_id' => $urId, 'alt_recete_id' => $ymId, 'miktar' => 80, 'birim_id' => $m1->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('recete_kalemleri')->insert(['recete_id' => $urId, 'malzeme_id' => $m2->id, 'miktar' => 120, 'birim_id' => $m2->temel_birim_id, 'created_at' => now(), 'updated_at' => now()]);
+        // 2 adet urun patlat
+        $ihtiyac = [];
+        _restoReceteHammadde($urId, 2, $ihtiyac);
+        // Beklenen: m1 = 2 * (80/5) * 1000 = 32000 ; m2 = 2 * 120 = 240
+        $out = [
+            'm1' => ['beklenen' => 32000, 'cikan' => round($ihtiyac[$m1->id] ?? 0, 3)],
+            'm2' => ['beklenen' => 240, 'cikan' => round($ihtiyac[$m2->id] ?? 0, 3)],
+            'dongu_korumali' => true,
+            'dogru' => abs(($ihtiyac[$m1->id] ?? 0) - 32000) < 0.01 && abs(($ihtiyac[$m2->id] ?? 0) - 240) < 0.01,
+        ];
+        DB::rollBack(); // hicbir sey kalici degil
+    } catch (\Throwable $e) {
+        try { DB::rollBack(); } catch (\Throwable $e2) {}
+        $out['hata'] = $e->getMessage();
+    }
+    return response()->json($out);
 });
 
 // ---- FİNANSAL ÖZET (aylık gelir/gider/net + tedarikçi alış) ----
