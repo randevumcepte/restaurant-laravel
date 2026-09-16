@@ -29,6 +29,7 @@
         ['/teklif', '📊', 'Teklifler'],
         ['/musteriler', '👥', 'Müşteriler'],
         ['/sadakat', '🎁', 'Sadakat'],
+        ['/indirimler', '🎫', 'İndirimler'],
         ['/cagrilar', '📞', 'Çağrı Merkezi'],
         ['/raporlar', '📈', 'Raporlar'],
         ['/muhasebe', '💰', 'Muhasebe / Cari'],

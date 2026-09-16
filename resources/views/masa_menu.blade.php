@@ -526,7 +526,12 @@
   <div class="kutu">
     <div class="bar"><b>💳 Nasıl ödemek istersiniz?</b><button class="x" onclick="odeYontemKapat()">✕</button></div>
     <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
-      <button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b);text-align:left;line-height:1.3" onclick="odemeYap('online')">💳 Kartla Online Öde<br><i style="font-weight:500;font-size:12px;opacity:.9">Kendi telefonundan, güvenli ödeme</i></button>
+      <div style="display:flex;gap:8px">
+        <input id="oy-kupon-inp" placeholder="Kupon kodu (varsa)" autocomplete="off" style="flex:1;padding:11px 12px;border-radius:12px;border:1px solid var(--cizgi);background:transparent;color:inherit;text-transform:uppercase;font-weight:700">
+        <button onclick="kuponUygula()" style="padding:0 16px;border-radius:12px;border:1px solid var(--gold);background:transparent;color:var(--gold);font-weight:700;cursor:pointer">Uygula</button>
+      </div>
+      <div id="oy-kupon-msg" style="font-size:12px;display:none;margin-top:-4px"></div>
+      <button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b);text-align:left;line-height:1.3" onclick="odemeYap('online')"><span id="oy-online-bas">💳 Kartla Online Öde</span><br><i id="oy-online-alt" style="font-weight:500;font-size:12px;opacity:.9">Kendi telefonundan, güvenli ödeme</i></button>
       <button class="gonder" style="background:transparent;border:1px solid var(--gold);color:var(--gold);text-align:left;line-height:1.3" onclick="odemeYap('kasa')">🧾 Garsona / Kasada Öde<br><i style="font-weight:500;font-size:12px;opacity:.85">Nakit ya da kart — garson gelip alır</i></button>
     </div>
   </div>
@@ -1227,21 +1232,46 @@ function asistanUrunGoster(list){
   try{ toast('🤖 Önerilenleri menüde gösterdim'); }catch(_){}
 }
 function asistanKapat(){ sohbetKapat(); }   // geriye dönük uyum
-let _odeMod='tum';
+let _odeMod='tum', _odeKupon='';
+// Secili modun kalem id listesi -> istek govdesi
+function _odeGovde(){ const b={masa:MASA}; if(_odeMod==='secili') b.kalemler=JSON.stringify(Object.keys(_odeSecili).filter(id=>_odeSecili[id]).map(Number)); return b; }
 // Odeme yontemi secim ekranini ac. mod: 'tum' (biri tum kalani oder) | 'secili' (kendi isaretledigi kalemler)
 function odeYontemAc(mod){
   if(mod==='secili'){
     const ids=Object.keys(_odeSecili).filter(id=>_odeSecili[id]);
     if(!ids.length){ toast('Önce ödeyeceğin ürünleri işaretle'); return; }
   }
-  _odeMod=mod;
+  _odeMod=mod; _odeKupon='';
+  const inp=document.getElementById('oy-kupon-inp'); if(inp) inp.value='';
+  const msg=document.getElementById('oy-kupon-msg'); if(msg) msg.style.display='none';
   const o=document.getElementById('odeYontem'); if(o) o.classList.add('acik');
+  onizleYukle();
 }
 function odeYontemKapat(){ const o=document.getElementById('odeYontem'); if(o) o.classList.remove('acik'); }
+// Online odemede uygulanacak indirimi/kuponu onizle -> butona yansit
+async function onizleYukle(){
+  const bas=document.getElementById('oy-online-bas'), alt=document.getElementById('oy-online-alt'); if(!bas) return;
+  const body=_odeGovde(); if(_odeKupon) body.kupon=_odeKupon;
+  try{
+    const r=await fetch('/api/qr/indirim-onizle',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+    const j=await r.json();
+    const msg=document.getElementById('oy-kupon-msg');
+    if(j.ok && j.indirim>0){
+      bas.innerHTML='💳 Kartla Online Öde <span style="background:#fff;color:#b8860b;border-radius:8px;padding:1px 7px;font-size:11px;font-weight:800">'+esc(j.ad||'İndirim')+'</span>';
+      alt.innerHTML='<s style="opacity:.65">'+j.brut.toLocaleString('tr')+' TL</s> → <b>'+j.net.toLocaleString('tr')+' TL</b> · '+j.indirim.toLocaleString('tr')+' TL indirim';
+      if(_odeKupon && msg){ msg.style.display='block'; msg.style.color='#28c76f'; msg.textContent='✓ İndirim uygulandı'; }
+    } else {
+      bas.textContent='💳 Kartla Online Öde';
+      alt.textContent='Kendi telefonundan, güvenli ödeme'+(j.ok?(' · '+(j.net||0).toLocaleString('tr')+' TL'):'');
+      if(_odeKupon && msg){ msg.style.display='block'; msg.style.color='#e0559a'; msg.textContent='Kupon geçersiz ya da koşulu tutmuyor'; }
+    }
+  }catch(e){}
+}
+function kuponUygula(){ const inp=document.getElementById('oy-kupon-inp'); _odeKupon=(inp&&inp.value||'').trim().toUpperCase(); onizleYukle(); }
 // yontem: 'online' (kart, kendi telefonundan) | 'kasa' (garson/kasada: nakit ya da kart)
 async function odemeYap(yontem){
-  const body={masa:MASA};
-  if(_odeMod==='secili'){ body.kalemler=JSON.stringify(Object.keys(_odeSecili).filter(id=>_odeSecili[id]).map(Number)); }
+  const body=_odeGovde();
+  if(yontem==='online' && _odeKupon) body.kupon=_odeKupon;
   odeYontemKapat();
   const url = yontem==='online' ? '/api/qr/ode-baslat' : '/api/qr/kasa-ode';
   try{

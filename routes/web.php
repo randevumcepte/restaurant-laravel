@@ -1096,6 +1096,12 @@ if (!function_exists('_odemeSplitEnsure')) {
         if (!Schema::hasColumn('odeme_islemleri', 'kalem_ids')) {
             Schema::table('odeme_islemleri', function ($t) { $t->text('kalem_ids')->nullable(); }); // bu odemenin kapsadigi kalem id'leri (JSON); null = tum hesap
         }
+        if (!Schema::hasColumn('odeme_islemleri', 'indirim')) {
+            Schema::table('odeme_islemleri', function ($t) { $t->decimal('indirim', 12, 2)->default(0); $t->integer('indirim_kural_id')->nullable(); });
+        }
+        if (!Schema::hasColumn('odemeler', 'indirim')) {
+            Schema::table('odemeler', function ($t) { $t->decimal('indirim', 12, 2)->default(0); });
+        }
     }
 }
 if (!function_exists('_odemeStaleRelease')) {
@@ -1126,6 +1132,86 @@ if (!function_exists('_masaCagriEnsure')) {
         }
         if (!Schema::hasColumn('masa_cagrilari', 'tutar')) Schema::table('masa_cagrilari', function ($t) { $t->decimal('tutar', 12, 2)->nullable(); });
         if (!Schema::hasColumn('masa_cagrilari', 'odeme_token')) Schema::table('masa_cagrilari', function ($t) { $t->string('odeme_token', 40)->nullable(); });
+    }
+}
+if (!function_exists('_indirimEnsure')) {
+    // Yonetilebilir indirim kurallari (her tur icin ayri kayit + aktif/pasif). Idempotent + ilk kurulusta ornek kurallar (hepsi PASIF).
+    function _indirimEnsure($subeId = null)
+    {
+        if (!Schema::hasTable('indirimler')) {
+            Schema::create('indirimler', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('tip', 24);              // online_odeme|uygulama|kupon|ilk_siparis|tutar_ustu|happy_hour|gun|dogum_gunu
+                $t->string('ad', 120);
+                $t->string('deger_tipi', 8)->default('yuzde'); // yuzde | tutar
+                $t->decimal('deger', 12, 2)->default(0);
+                $t->decimal('min_tutar', 12, 2)->nullable();
+                $t->decimal('max_indirim', 12, 2)->nullable(); // yuzde indiriminde tavan
+                $t->string('kupon_kodu', 40)->nullable();
+                $t->string('saat_bas', 5)->nullable();
+                $t->string('saat_bit', 5)->nullable();
+                $t->string('gun_maskesi', 20)->nullable();     // "1,2,3" (1=pzt ... 7=paz)
+                $t->date('baslangic')->nullable();
+                $t->date('bitis')->nullable();
+                $t->integer('kullanim_limiti')->nullable();
+                $t->integer('kullanim_sayisi')->default(0);
+                $t->boolean('aktif')->default(0);
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+        if ($subeId && Schema::hasTable('indirimler') && DB::table('indirimler')->where('sube_id', $subeId)->count() === 0) {
+            $ornek = [
+                ['tip' => 'online_odeme', 'ad' => 'Online Ödeme İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 10],
+                ['tip' => 'kupon', 'ad' => 'Hoş Geldin Kuponu', 'deger_tipi' => 'yuzde', 'deger' => 15, 'kupon_kodu' => 'HOSGELDIN'],
+                ['tip' => 'uygulama', 'ad' => 'Uygulamadan Sipariş İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 5],
+                ['tip' => 'ilk_siparis', 'ad' => 'İlk Sipariş İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 10],
+                ['tip' => 'tutar_ustu', 'ad' => '500 TL Üstü İndirim', 'deger_tipi' => 'tutar', 'deger' => 50, 'min_tutar' => 500],
+                ['tip' => 'happy_hour', 'ad' => 'Happy Hour (14:00-17:00)', 'deger_tipi' => 'yuzde', 'deger' => 15, 'saat_bas' => '14:00', 'saat_bit' => '17:00'],
+                ['tip' => 'gun', 'ad' => 'Salı Günü İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 10, 'gun_maskesi' => '2'],
+                ['tip' => 'dogum_gunu', 'ad' => 'Doğum Günü İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 20],
+            ];
+            foreach ($ornek as $o) {
+                DB::table('indirimler')->insert(array_merge(['sube_id' => $subeId, 'aktif' => 0, 'kullanim_sayisi' => 0, 'created_at' => now()], $o));
+            }
+        }
+    }
+}
+if (!function_exists('_indirimUygula')) {
+    // Verilen tutara uygulanabilecek AKTIF kurallardan EN YUKSEK indirimi dondurur. $baglam: yontem, kanal, kupon, ilk_siparis, dogum_gunu
+    // Doner: null | ['indirim'=>x, 'kural_id'=>, 'ad'=>, 'tip'=>]
+    function _indirimUygula($subeId, $tutar, $baglam = [])
+    {
+        _indirimEnsure();
+        if ($tutar <= 0) return null;
+        $now = now();
+        $gun = ($now->dayOfWeekIso); // 1=pzt ... 7=paz
+        $saat = $now->format('H:i');
+        $enIyi = null;
+        foreach (DB::table('indirimler')->where('sube_id', $subeId)->where('aktif', 1)->get() as $k) {
+            if ($k->baslangic && $now->lt(\Carbon\Carbon::parse($k->baslangic)->startOfDay())) continue;
+            if ($k->bitis && $now->gt(\Carbon\Carbon::parse($k->bitis)->endOfDay())) continue;
+            if ($k->kullanim_limiti && $k->kullanim_sayisi >= $k->kullanim_limiti) continue;
+            if ($k->min_tutar && $tutar < (float) $k->min_tutar) continue;
+            $uygun = false;
+            switch ($k->tip) {
+                case 'online_odeme': $uygun = (($baglam['yontem'] ?? '') === 'online'); break;
+                case 'uygulama':     $uygun = (($baglam['kanal'] ?? '') === 'app'); break;
+                case 'kupon':        $uygun = (!empty($baglam['kupon']) && strcasecmp(trim((string) $baglam['kupon']), (string) $k->kupon_kodu) === 0); break;
+                case 'ilk_siparis':  $uygun = !empty($baglam['ilk_siparis']); break;
+                case 'dogum_gunu':   $uygun = !empty($baglam['dogum_gunu']); break;
+                case 'tutar_ustu':   $uygun = true; break; // min_tutar yukarida kontrol edildi
+                case 'happy_hour':   $uygun = ($k->saat_bas && $k->saat_bit && $saat >= $k->saat_bas && $saat <= $k->saat_bit); break;
+                case 'gun':          $uygun = ($k->gun_maskesi && in_array((string) $gun, array_map('trim', explode(',', (string) $k->gun_maskesi)), true)); break;
+            }
+            if (!$uygun) continue;
+            $ind = $k->deger_tipi === 'yuzde' ? round($tutar * (float) $k->deger / 100, 2) : (float) $k->deger;
+            if ($k->max_indirim && $ind > (float) $k->max_indirim) $ind = (float) $k->max_indirim;
+            if ($ind > $tutar) $ind = $tutar;
+            if ($ind <= 0) continue;
+            if (!$enIyi || $ind > $enIyi['indirim']) $enIyi = ['indirim' => $ind, 'kural_id' => (int) $k->id, 'ad' => $k->ad, 'tip' => $k->tip];
+        }
+        return $enIyi;
     }
 }
 // Odeme baslat: takip_token VEYA adisyon_id
@@ -1176,7 +1262,16 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
     // === GERCEK SAGLAYICI DOGRULAMASI (Iyzico/PayTR 3D sonucu) BURAYA ===
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
     if ($a) {
-        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'created_at' => now()]);
+        $indirim = isset($i->indirim) ? (float) $i->indirim : 0;
+        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'indirim' => $indirim, 'created_at' => now()]);
+        // Verilen indirim adisyonun indirimine eklenir + toplam yeniden hesaplanir (tahsilat acigi gorunmesin) + kupon kullanimi sayilir
+        if ($indirim > 0) {
+            DB::table('adisyonlar')->where('id', $a->id)->increment('indirim', $indirim);
+            $a = DB::table('adisyonlar')->find($a->id);
+            $yeniToplam = max(0, (float) $a->ara_toplam - (float) $a->indirim - (float) $a->ikram);
+            DB::table('adisyonlar')->where('id', $a->id)->update(['toplam' => $yeniToplam]);
+            if (!empty($i->indirim_kural_id)) DB::table('indirimler')->where('id', $i->indirim_kural_id)->increment('kullanim_sayisi');
+        }
         // Bu odemenin kapsadigi kalemleri 'odendi' yap (parcali odeme). kalem_ids yoksa (mobil/eski akis) tum adisyon.
         $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
         if (is_array($kids) && $kids) {
@@ -2653,14 +2748,37 @@ Route::post('/api/qr/ode-baslat', function (Request $r) {
     if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
     $covIds = $kalemler->pluck('id')->all();
 
+    // ONLINE ODEME INDIRIMI (+ kupon): en yuksek uygulanabilir indirim. Cekilecek tutar = net.
+    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', '')]);
+    $indirim = $ind ? (float) $ind['indirim'] : 0;
+    $net = max(0, round($tutar - $indirim, 2));
+
     $token = \Illuminate\Support\Str::random(30);
     DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
-        'tutar' => $tutar, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor',
-        'kalem_ids' => json_encode($covIds), 'created_at' => now()]);
+        'tutar' => $net, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor',
+        'kalem_ids' => json_encode($covIds), 'indirim' => $indirim, 'indirim_kural_id' => $ind ? $ind['kural_id'] : null, 'created_at' => now()]);
     // Rezerve: bu kalemleri 'beklemede' yap ki baskasi ayni anda odeyemesin
     DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
 
-    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => $tutar];
+    return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => $net, 'brut' => $tutar,
+        'indirim' => $indirim, 'indirim_ad' => $ind ? $ind['ad'] : null];
+});
+
+// QR masa: odeme oncesi indirim onizleme (online odemede uygulanacak indirimi + kupon gecerliligini gosterir)
+Route::post('/api/qr/indirim-onizle', function (Request $r) {
+    _odemeSplitEnsure();
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return ['ok' => 0];
+    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
+    if (!$a) return ['ok' => 0];
+    $secili = null;
+    if ($r->filled('kalemler')) { $dec = json_decode((string) $r->kalemler, true); if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec))); }
+    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
+    if ($secili) $q->whereIn('id', $secili);
+    $tutar = (float) $q->sum('tutar');
+    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', '')]);
+    $indirim = $ind ? (float) $ind['indirim'] : 0;
+    return ['ok' => 1, 'brut' => $tutar, 'indirim' => $indirim, 'net' => max(0, round($tutar - $indirim, 2)), 'ad' => $ind ? $ind['ad'] : null];
 });
 
 // QR masa: KASADA/GARSONDA ODE — secili kalemleri (veya tum kalani) dondurup garsona tutarli cagri dusurur.
@@ -7277,6 +7395,55 @@ Route::post('/sadakat/toggle', function (Request $r) {
     $k = DB::table('kampanyalar')->find($r->id);
     DB::table('kampanyalar')->where('id', $r->id)->update(['aktif' => $k->aktif ? 0 : 1]);
     return ['ok' => 1, 'aktif' => $k->aktif ? 0 : 1];
+});
+
+// ============================ INDIRIMLER (yonetilebilir; her tur ayri + aktif/pasif) ============================
+Route::get('/indirimler', function () {
+    $sube = DB::table('subeler')->first();
+    if (!$sube) abort(404, 'Şube yok');
+    _indirimEnsure($sube->id);
+    $kurallar = DB::table('indirimler')->where('sube_id', $sube->id)->orderBy('tip')->orderByDesc('id')->get();
+    return view('indirimler', ['sube' => $sube, 'kurallar' => $kurallar]);
+});
+Route::post('/indirimler/kaydet', function (Request $r) {
+    $sube = DB::table('subeler')->first();
+    if (!$sube) return ['ok' => 0, 'hata' => 'Şube yok'];
+    _indirimEnsure($sube->id);
+    $tipler = ['online_odeme', 'uygulama', 'kupon', 'ilk_siparis', 'tutar_ustu', 'happy_hour', 'gun', 'dogum_gunu'];
+    $data = [
+        'sube_id' => $sube->id,
+        'tip' => in_array($r->tip, $tipler, true) ? $r->tip : 'kupon',
+        'ad' => trim((string) $r->ad) !== '' ? trim((string) $r->ad) : 'İndirim',
+        'deger_tipi' => $r->deger_tipi === 'tutar' ? 'tutar' : 'yuzde',
+        'deger' => max(0, (float) $r->deger),
+        'min_tutar' => $r->filled('min_tutar') ? (float) $r->min_tutar : null,
+        'max_indirim' => $r->filled('max_indirim') ? (float) $r->max_indirim : null,
+        'kupon_kodu' => $r->filled('kupon_kodu') ? strtoupper(trim((string) $r->kupon_kodu)) : null,
+        'saat_bas' => $r->filled('saat_bas') ? substr((string) $r->saat_bas, 0, 5) : null,
+        'saat_bit' => $r->filled('saat_bit') ? substr((string) $r->saat_bit, 0, 5) : null,
+        'gun_maskesi' => $r->filled('gun_maskesi') ? preg_replace('/[^0-9,]/', '', (string) $r->gun_maskesi) : null,
+        'baslangic' => $r->filled('baslangic') ? $r->baslangic : null,
+        'bitis' => $r->filled('bitis') ? $r->bitis : null,
+        'kullanim_limiti' => $r->filled('kullanim_limiti') ? (int) $r->kullanim_limiti : null,
+        'aktif' => $r->aktif ? 1 : 0,
+    ];
+    if ($r->filled('id')) {
+        DB::table('indirimler')->where('id', (int) $r->id)->where('sube_id', $sube->id)->update($data);
+    } else {
+        $data['created_at'] = now(); $data['kullanim_sayisi'] = 0;
+        DB::table('indirimler')->insert($data);
+    }
+    return ['ok' => 1];
+});
+Route::post('/indirimler/toggle', function (Request $r) {
+    $k = DB::table('indirimler')->find((int) $r->id);
+    if (!$k) return ['ok' => 0];
+    DB::table('indirimler')->where('id', $k->id)->update(['aktif' => $k->aktif ? 0 : 1]);
+    return ['ok' => 1, 'aktif' => $k->aktif ? 0 : 1];
+});
+Route::post('/indirimler/sil', function (Request $r) {
+    DB::table('indirimler')->where('id', (int) $r->id)->delete();
+    return ['ok' => 1];
 });
 
 // ============================ E-DONUSUM (e-arsiv/e-fatura) ============================
