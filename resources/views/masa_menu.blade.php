@@ -399,6 +399,13 @@
     </form>
   </div>
 
+  <!-- QR yeniden okununca: bu masada acik adisyon varsa kaldigi yeri gosterir (masaya bagli, oturumdan bagimsiz) -->
+  <div id="devamSerit" onclick="sepetAc()" style="display:none;cursor:pointer;margin:0 0 12px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,rgba(212,175,55,.18),rgba(139,59,234,.12));border:1px solid var(--gold-bd,var(--cizgi));align-items:center;gap:10px">
+    <span style="font-size:20px">🧾</span>
+    <span style="flex:1;font-size:13px;line-height:1.35">Bu masada <b>devam eden siparişiniz</b> var<br><span style="color:var(--sessiz)">Toplam: <b id="devamTutar" style="color:var(--gold)"></b></span></span>
+    <span style="font-size:13px;color:var(--gold);font-weight:700;white-space:nowrap">Görüntüle →</span>
+  </div>
+
   <div class="chips" id="chips"></div>
 
   <div class="bbas"><b id="popBas">Popüler Lezzetler</b><a onclick="menuAc()">Tümünü Gör →</a></div>
@@ -728,6 +735,18 @@ function sepetCiz(){
   document.getElementById('sepet-gonder').disabled=!_sepet.length;
 }
 function sepetKapat(){ document.getElementById('sepet').classList.remove('acik'); }
+// QR yeniden okununca acik adisyon varsa "devam eden siparis" seridini goster (masaya bagli; kim okutursa okutsun ayni hesap)
+async function devamKontrol(){
+  try{
+    const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json();
+    if(j && j.ok && (j.kalemler||[]).length){
+      _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0;
+      const s=document.getElementById('devamSerit'), t=document.getElementById('devamTutar');
+      if(t) t.textContent=(j.toplam||0).toLocaleString('tr')+' TL';
+      if(s) s.style.display='flex';
+    }
+  }catch(_){}
+}
 function sepetAdet(i,d){ _sepet[i].adet+=d; if(_sepet[i].adet<=0) _sepet.splice(i,1); sepetRozet(); sepetCiz(); }
 async function siparisGonder(){
   if(!_sepet.length) return;
@@ -1220,7 +1239,7 @@ window.addEventListener('load', async ()=>{
   // Parametreyi URL'den TEMIZLE ki YENILEYINCE tekrar acilmasin (yoksa hep sepet acilir)
   if(_ac){ try{ history.replaceState(null,'',location.pathname); }catch(_){} }
   if(_ac==='sepet'){ try{ sepetAc(); }catch(_){} }   // ANINDA ac: menu arkada yuklenirken sepet ustte -> flash olmaz
-  await yukle(); sayac();
+  await yukle(); sayac(); devamKontrol();
   if(window.sayfaDil && window.sayfaDil!=='tr'){ dilEtiketGuncelle(window.sayfaDil); sayfaCevir(window.sayfaDil); }
   if(_ac==='ai'){ try{ asistanAc(); }catch(_){} }
   else if(_ac==='cagir'){ try{ cagir('garson'); }catch(_){} }
