@@ -27,6 +27,12 @@
   .cag .ik{ width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:24px;
     background:rgba(244,63,94,.18); flex:0 0 auto; }
   .cag.hesap .ik{ background:rgba(245,158,11,.2); }
+  .cag.odeme{ background:linear-gradient(160deg,#0f2417,#0a1a10); border-color:#1e7a4a; }
+  .cag.odeme .ik{ background:rgba(34,197,94,.2); }
+  .cag .odetut{ margin-top:12px; font-size:26px; font-weight:900; color:#4ade80; font-variant-numeric:tabular-nums; }
+  .cag .odesor{ margin-top:4px; font-size:12px; color:#94A3B8; }
+  .cag .odebtn{ display:flex; gap:8px; margin-top:12px; }
+  .cag .odebtn button{ flex:1; margin-top:0; padding:13px 4px; font-size:13.5px; }
   .cag .masa{ font-size:22px; font-weight:900; }
   .cag .tip{ font-size:13.5px; color:#CBD5E1; font-weight:700; margin-top:1px; }
   .cag .sure{ margin-left:auto; text-align:right; }
@@ -72,8 +78,8 @@ function bipCal(){
   }catch(e){}
 }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function tipYazi(t){ return t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor'); }
-function tipIkon(t){ return t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔'); }
+function tipYazi(t){ return t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')); }
+function tipIkon(t){ return t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔')); }
 function sureYazi(sn){ sn=Math.max(0,Math.round(sn)); if(sn<60) return sn+' sn'; const d=Math.floor(sn/60); return d+' dk'; }
 
 async function cek(){
@@ -95,14 +101,39 @@ function ciz(liste){
   w.innerHTML='';
   liste.forEach(c=>{
     const el=document.createElement('div');
-    el.className='cag '+(c.tip==='hesap'?'hesap':'')+(c.saniye>=60?' geciken':'');
+    const odeme = c.tip==='odeme';
+    el.className='cag '+(odeme?'odeme':(c.tip==='hesap'?'hesap':''))+(c.saniye>=60?' geciken':'');
+    let alt;
+    if(odeme){
+      alt = `<div class="odetut">${(c.tutar||0).toLocaleString('tr')} TL</div>`
+        + `<div class="odesor">Nasıl tahsil edildi?</div>`
+        + `<div class="odebtn"><button data-t="nakit">💵 Nakit</button><button data-t="kredi">💳 Kredi</button><button data-t="yemek_karti">🍽️ Yemek K.</button></div>`;
+    } else {
+      alt = `<button>✓ Karşılandı</button>`;
+    }
     el.innerHTML = `<div class="ust"><div class="ik">${tipIkon(c.tip)}</div>`
       + `<div><div class="masa">${esc(c.masa)}</div><div class="tip">${tipYazi(c.tip)}</div></div>`
       + `<div class="sure"><b>${sureYazi(c.saniye)}</b><i>${esc(c.saat)}</i></div></div>`
-      + `<button>✓ Karşılandı</button>`;
-    el.querySelector('button').addEventListener('click', ()=> kapat(c.id, el));
+      + alt;
+    if(odeme){
+      el.querySelectorAll('.odebtn button').forEach(b=> b.addEventListener('click', ()=> tahsil(c, b.dataset.t, el)));
+    } else {
+      el.querySelector('button').addEventListener('click', ()=> kapat(c.id, el));
+    }
     w.appendChild(el);
   });
+}
+// Kasada/garsonda odemeyi secilen yontemle tahsil et (nakit/kredi/yemek karti)
+async function tahsil(c, tip, el){
+  el.style.opacity='.5'; el.querySelectorAll('button').forEach(b=> b.disabled=true);
+  try{
+    const r = await fetch('/api/qr/kasa-tahsil',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({odeme_token:c.odeme_token||'', cagri_id:c.id, odeme_tip:tip})});
+    const j = await r.json();
+    if(!j.ok){ el.style.opacity='1'; el.querySelectorAll('button').forEach(b=> b.disabled=false); document.getElementById('dstr').textContent = j.hata || 'İşlem yapılamadı'; return; }
+  }catch(e){ el.style.opacity='1'; el.querySelectorAll('button').forEach(b=> b.disabled=false); return; }
+  _biliniyor.delete(c.id);
+  cek();
 }
 async function kapat(id, el){
   el.style.opacity='.4';

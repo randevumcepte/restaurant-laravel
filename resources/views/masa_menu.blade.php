@@ -520,6 +520,18 @@
   </div>
 </div>
 
+<!-- ==================== ODEME YONTEMI SECIMI ==================== -->
+<div class="ov" id="odeYontem">
+  <div class="ov-bg" onclick="odeYontemKapat()"></div>
+  <div class="kutu">
+    <div class="bar"><b>💳 Nasıl ödemek istersiniz?</b><button class="x" onclick="odeYontemKapat()">✕</button></div>
+    <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b);text-align:left;line-height:1.3" onclick="odemeYap('online')">💳 Kartla Online Öde<br><i style="font-weight:500;font-size:12px;opacity:.9">Kendi telefonundan, güvenli ödeme</i></button>
+      <button class="gonder" style="background:transparent;border:1px solid var(--gold);color:var(--gold);text-align:left;line-height:1.3" onclick="odemeYap('kasa')">🧾 Garsona / Kasada Öde<br><i style="font-weight:500;font-size:12px;opacity:.85">Nakit ya da kart — garson gelip alır</i></button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== TAM MENU ==================== -->
 <div class="ov" id="menu">
   <div class="kutu">
@@ -750,8 +762,8 @@ function sepetCiz(){
   const seciliTutar=aciklar.filter(k=>_odeSecili[k.id]).reduce((s,k)=>s+(k.tutar||0),0);
   odeBox.innerHTML=
      `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sessiz);margin:12px 0 8px"><span>Ödenmemiş kalan</span><b style="color:var(--gold)">${kalanAcik.toLocaleString('tr')} TL</b></div>`
-    +`<button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b)" onclick="hesapOde('tum')">💳 Tüm hesabı öde · ${kalanAcik.toLocaleString('tr')} TL</button>`
-    +`<button class="gonder" onclick="hesapOde('secili')" ${seciliTutar>0?'':'disabled'} style="margin-top:8px;background:transparent;border:1px solid var(--gold);color:var(--gold)${seciliTutar>0?'':';opacity:.45'}">🧾 Seçtiklerimi öde${seciliTutar>0?(' · '+seciliTutar.toLocaleString('tr')+' TL'):''}</button>`;
+    +`<button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b)" onclick="odeYontemAc('tum')">💳 Tüm hesabı öde · ${kalanAcik.toLocaleString('tr')} TL</button>`
+    +`<button class="gonder" onclick="odeYontemAc('secili')" ${seciliTutar>0?'':'disabled'} style="margin-top:8px;background:transparent;border:1px solid var(--gold);color:var(--gold)${seciliTutar>0?'':';opacity:.45'}">🧾 Seçtiklerimi öde${seciliTutar>0?(' · '+seciliTutar.toLocaleString('tr')+' TL'):''}</button>`;
 }
 function sepetKapat(){ document.getElementById('sepet').classList.remove('acik'); }
 // QR yeniden okununca acik adisyon varsa "devam eden siparis" seridini goster (masaya bagli; kim okutursa okutsun ayni hesap)
@@ -1215,19 +1227,34 @@ function asistanUrunGoster(list){
   try{ toast('🤖 Önerilenleri menüde gösterdim'); }catch(_){}
 }
 function asistanKapat(){ sohbetKapat(); }   // geriye dönük uyum
-async function hesapOde(mod){
-  const body={masa:MASA};
+let _odeMod='tum';
+// Odeme yontemi secim ekranini ac. mod: 'tum' (biri tum kalani oder) | 'secili' (kendi isaretledigi kalemler)
+function odeYontemAc(mod){
   if(mod==='secili'){
-    const ids=Object.keys(_odeSecili).filter(id=>_odeSecili[id]).map(Number);
+    const ids=Object.keys(_odeSecili).filter(id=>_odeSecili[id]);
     if(!ids.length){ toast('Önce ödeyeceğin ürünleri işaretle'); return; }
-    body.kalemler=JSON.stringify(ids);
   }
+  _odeMod=mod;
+  const o=document.getElementById('odeYontem'); if(o) o.classList.add('acik');
+}
+function odeYontemKapat(){ const o=document.getElementById('odeYontem'); if(o) o.classList.remove('acik'); }
+// yontem: 'online' (kart, kendi telefonundan) | 'kasa' (garson/kasada: nakit ya da kart)
+async function odemeYap(yontem){
+  const body={masa:MASA};
+  if(_odeMod==='secili'){ body.kalemler=JSON.stringify(Object.keys(_odeSecili).filter(id=>_odeSecili[id]).map(Number)); }
+  odeYontemKapat();
+  const url = yontem==='online' ? '/api/qr/ode-baslat' : '/api/qr/kasa-ode';
   try{
-    const r = await fetch('/api/qr/ode-baslat',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+    const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
     const j = await r.json();
-    if(j.ok && j.ode_url){ location.href = j.ode_url; return; }
-    await cagir('hesap'); toast(j.hata ? ('ℹ️ '+j.hata+' — garson çağrıldı.') : '💳 Hesap isteğiniz iletildi.');
-  }catch(e){ cagir('hesap'); }
+    if(yontem==='online'){
+      if(j.ok && j.ode_url){ location.href = j.ode_url; return; }
+      await cagir('hesap'); toast(j.hata ? ('ℹ️ '+j.hata+' — garson çağrıldı.') : '💳 Hesap isteğiniz iletildi.');
+    } else {
+      if(j.ok){ _odeSecili={}; toast('✅ '+(j.mesaj||'Garson bilgilendirildi.')); sepetAc(); return; }
+      toast(j.hata || 'İşlem yapılamadı');
+    }
+  }catch(e){ toast('İşlem yapılamadı, tekrar deneyin'); }
 }
 
 /* ---- tablet sidebar ---- */

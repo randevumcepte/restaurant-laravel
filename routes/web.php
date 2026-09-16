@@ -1099,15 +1099,33 @@ if (!function_exists('_odemeSplitEnsure')) {
     }
 }
 if (!function_exists('_odemeStaleRelease')) {
-    // Tamamlanmayan (15 dk+ 'bekliyor') odemelerin rezerve ettigi kalemleri geri ac ki takilmasin
+    // Yarim kalan odemelerin rezerve ettigi kalemleri geri ac. Online (kart) 5 dk; kasa/garson bekleyen 45 dk (garson gelene kadar surebilir).
     function _odemeStaleRelease($adisyonId)
     {
         $eski = DB::table('odeme_islemleri')->where('adisyon_id', $adisyonId)->where('durum', 'bekliyor')
-            ->where('created_at', '<', now()->subMinutes(15))->pluck('token')->all();
+            ->where(function ($w) {
+                $w->where(function ($x) { $x->where('saglayici', '!=', 'kasa')->where('created_at', '<', now()->subMinutes(5)); })
+                  ->orWhere(function ($x) { $x->where('saglayici', 'kasa')->where('created_at', '<', now()->subMinutes(45)); });
+            })->pluck('token')->all();
         if (!$eski) return;
         DB::table('odeme_islemleri')->whereIn('token', $eski)->update(['durum' => 'iptal']);
         DB::table('adisyon_kalemleri')->whereIn('odeme_token', $eski)->where('odeme_durum', 'beklemede')
             ->update(['odeme_durum' => 'acik', 'odeme_token' => null]);
+    }
+}
+if (!function_exists('_masaCagriEnsure')) {
+    // masa_cagrilari tablosu + odeme cagrisi icin tutar/token kolonlari (idempotent)
+    function _masaCagriEnsure()
+    {
+        if (!Schema::hasTable('masa_cagrilari')) {
+            Schema::create('masa_cagrilari', function ($t) {
+                $t->increments('id'); $t->unsignedBigInteger('sube_id'); $t->unsignedBigInteger('masa_id');
+                $t->string('tip', 20)->default('garson'); $t->string('durum', 20)->default('bekliyor');
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+        if (!Schema::hasColumn('masa_cagrilari', 'tutar')) Schema::table('masa_cagrilari', function ($t) { $t->decimal('tutar', 12, 2)->nullable(); });
+        if (!Schema::hasColumn('masa_cagrilari', 'odeme_token')) Schema::table('masa_cagrilari', function ($t) { $t->string('odeme_token', 40)->nullable(); });
     }
 }
 // Odeme baslat: takip_token VEYA adisyon_id
@@ -2310,14 +2328,16 @@ Route::get('/garson-ekran/{subeId?}', function ($subeId = null) {
 Route::get('/api/garson-cagrilari', function (Request $r) {
     $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    _masaCagriEnsure();
     // Eski/unutulmus cagrilar birikmesin: 45 dk'dan eski bekleyenler otomatik kapansin
     try { DB::table('masa_cagrilari')->where('sube_id', $subeId)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $subeId)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
-        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token')
         ->limit(50)->get()
         ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+            'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
     return ['ok' => 1, 'cagrilar' => $rows, 'sunucu_saat' => now()->format('H:i:s')];
@@ -2334,13 +2354,15 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
+    _masaCagriEnsure();
     try { DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
-        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token')
         ->limit(60)->get()
         ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+            'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
     return ['ok' => 1, 'cagrilar' => $rows];
@@ -2639,6 +2661,81 @@ Route::post('/api/qr/ode-baslat', function (Request $r) {
     DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
 
     return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => $tutar];
+});
+
+// QR masa: KASADA/GARSONDA ODE — secili kalemleri (veya tum kalani) dondurup garsona tutarli cagri dusurur.
+// Garson gelince NAKIT VEYA KART ile tahsil eder (kasa-tahsil). 4 kisilik masada biri nakit digeri kart odeyebilir.
+Route::post('/api/qr/kasa-ode', function (Request $r) {
+    if (function_exists('_odemeEnsure')) _odemeEnsure();
+    _odemeSplitEnsure();
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
+    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
+    if (!$a) return ['ok' => 0, 'hata' => 'Açık hesabınız yok'];
+    _odemeStaleRelease($a->id);
+
+    $secili = null;
+    if ($r->filled('kalemler')) {
+        $dec = json_decode((string) $r->kalemler, true);
+        if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec)));
+    }
+    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)
+        ->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
+    if ($secili) $q->whereIn('id', $secili);
+    $kalemler = $q->get();
+    if ($kalemler->isEmpty()) {
+        return ['ok' => 0, 'hata' => $secili ? 'Seçtiğiniz ürünler zaten ödenmiş ya da ödeme bekliyor' : 'Ödenecek tutar yok'];
+    }
+    $tutar = (float) $kalemler->sum('tutar');
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
+    $covIds = $kalemler->pluck('id')->all();
+
+    $token = \Illuminate\Support\Str::random(30);
+    DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
+        'tutar' => $tutar, 'saglayici' => 'kasa', 'durum' => 'bekliyor', 'kalem_ids' => json_encode($covIds), 'created_at' => now()]);
+    DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
+
+    // Garsona tutarli odeme cagrisi
+    _masaCagriEnsure();
+    DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
+        'tip' => 'odeme', 'durum' => 'bekliyor', 'tutar' => $tutar, 'odeme_token' => $token, 'created_at' => now()]);
+
+    return ['ok' => 1, 'tutar' => $tutar,
+        'mesaj' => number_format($tutar, 0, ',', '.') . ' TL için garsonunuz geliyor — nakit ya da kartla ödeyebilirsiniz. 🙌'];
+});
+
+// GARSON EKRANI: kasada/garsonda odemeyi SEÇİLEN YÖNTEMLE tahsil et (nakit -> kasaya yazilir). Kalemleri odendi yapar, hepsi bitince masa kapanir.
+Route::post('/api/qr/kasa-tahsil', function (Request $r) {
+    _odemeSplitEnsure();
+    $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti'], true) ? $r->odeme_tip : 'nakit';
+    $token = (string) $r->odeme_token;
+    if ($token === '' && $r->filled('cagri_id')) $token = (string) DB::table('masa_cagrilari')->where('id', (int) $r->cagri_id)->value('odeme_token');
+    if ($token === '') return ['ok' => 0, 'hata' => 'Ödeme bulunamadı'];
+    $i = DB::table('odeme_islemleri')->where('token', $token)->first();
+    if (!$i) return ['ok' => 0, 'hata' => 'Ödeme bulunamadı'];
+    if ($i->durum === 'odendi') { DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']); return ['ok' => 1, 'mesaj' => 'Zaten tahsil edilmiş']; }
+    if ($i->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Bu ödeme talebi zaman aşımına uğramış; müşteri tekrar başlatmalı.'];
+
+    $a = DB::table('adisyonlar')->find($i->adisyon_id);
+    if ($a) {
+        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $i->tutar, 'created_at' => now()]);
+        if ($tip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $i->tutar, 'QR masa nakit tahsilat · adisyon #' . $a->id, 'adisyon', $a->id, null);
+        $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
+        if (is_array($kids) && $kids) {
+            DB::table('adisyon_kalemleri')->whereIn('id', $kids)->where('odeme_token', $token)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
+        } else {
+            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
+        }
+        $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
+        if ($acikKalan === 0 && $a->durum !== 'odendi') {
+            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
+            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+        }
+    }
+    DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
+    DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']);
+    $etiket = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı'][$tip];
+    return ['ok' => 1, 'mesaj' => number_format((float) $i->tutar, 0, ',', '.') . ' TL ' . $etiket . ' ile tahsil edildi.'];
 });
 
 // Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
