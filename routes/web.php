@@ -1294,6 +1294,7 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
         } else {
             DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
         }
+        _onOdemePromote($a, $kids); // ON ODEME: odenen 'odeme_bekliyor' kalemler simdi mutfaga dussun
         // Odenmemis kalem kaldi mi? Kalmadiysa adisyonu kapat + masayi bosalt (yoksa acik kalir, digerleri oder)
         $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
         if ($acikKalan === 0 && $a->durum !== 'odendi') {
@@ -2406,7 +2407,7 @@ Route::get('/api/qr/menu-tam', function (Request $r) {
     if ($dil !== 'tr' && is_array($res) && !empty($res['kategoriler'])) {
         $res['kategoriler'] = _qrMenuCevir($res['kategoriler'], $subeId, $dil);
     }
-    if (is_array($res)) $res['odeme_modu'] = _odemeModu($subeId);
+    if (is_array($res)) $res['odeme_modu'] = _odemeModu($subeId, $masa ? $masa->id : null);
     return $res;
 });
 
@@ -2552,6 +2553,8 @@ Route::get('/musteri-ai-ogrenilen', function (Request $r) {
 Route::post('/api/qr/siparis-gonder', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
+    _odemeSplitEnsure();
+    $onOdeme = _odemeModu($masa->sube_id, $masa->id) === 'on_odeme'; // ON ODEME (masa bolgesine gore): siparis ODENENE KADAR mutfaga DUSMEZ (kacak yok)
     $kalemler = json_decode((string) $r->kalemler, true);
     if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Sepet boş'];
     // Acik adisyon bul, yoksa olustur (kanal=qr)
@@ -2564,16 +2567,18 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     }
     $eklenen = 0;
     $tukendi = [];
+    $yeniIds = [];
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $masa->sube_id)->first();
         if (!$u) continue;
         if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
-        DB::table('adisyon_kalemleri')->insert([
+        $yeniIds[] = DB::table('adisyon_kalemleri')->insertGetId([
             'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
             'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
-            'durum' => 'gonderildi', 'not' => 'QR sipariş', 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now(),
+            'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => $onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş',
+            'gonderim_zamani' => $onOdeme ? null : now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
         $eklenen++;
     }
@@ -2583,10 +2588,13 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     $toplam = max(0, $ara - (float) $ad->indirim - (float) $ad->ikram);
     DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $ara, 'toplam' => $toplam, 'updated_at' => now()]);
     DB::table('masalar')->where('id', $masa->id)->update(['durum' => 'dolu']);
-    if (Schema::hasTable('masa_cagrilari')) {
+    // Mutfaga bildirim SADECE klasik modda; on odemede odeme tamamlanınca duser
+    if (!$onOdeme && Schema::hasTable('masa_cagrilari')) {
         DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
     }
-    return ['ok' => 1, 'mesaj' => 'Siparişiniz mutfağa iletildi', 'eklenen' => $eklenen, 'toplam' => $toplam, 'tukendi' => $tukendi];
+    return ['ok' => 1, 'on_odeme' => $onOdeme, 'kalem_idler' => $yeniIds,
+        'mesaj' => $onOdeme ? 'Ödeme alınınca mutfağa iletilecek' : 'Siparişiniz mutfağa iletildi',
+        'eklenen' => $eklenen, 'toplam' => $toplam, 'tukendi' => $tukendi];
 });
 
 // QR masa: bu masanin GONDERILMIS siparisleri (acik adisyon) -> "Siparislerim"de gorunur (odemeye kadar birikir)
@@ -2863,6 +2871,7 @@ Route::post('/api/qr/kasa-tahsil', function (Request $r) {
         } else {
             DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
         }
+        _onOdemePromote($a, $kids); // ON ODEME: garson tahsil edince de kalemler mutfaga dussun
         $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
         if ($acikKalan === 0 && $a->durum !== 'odendi') {
             DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
@@ -6074,14 +6083,38 @@ if (!function_exists('_kacakAyarEnsure')) {
         if (!Schema::hasColumn('subeler', 'odeme_modu')) Schema::table('subeler', function ($t) { $t->string('odeme_modu', 12)->default('post_pay'); }); // post_pay | on_odeme | acik_kart
         if (!Schema::hasColumn('subeler', 'kacak_uyari_dk')) Schema::table('subeler', function ($t) { $t->integer('kacak_uyari_dk')->default(90); });
         if (!Schema::hasColumn('subeler', 'kacak_aktif')) Schema::table('subeler', function ($t) { $t->boolean('kacak_aktif')->default(1); });
+        // Bolge bazli override (ör. bahce=on_odeme, salon=post_pay); null = restoran varsayilani
+        if (Schema::hasTable('bolgeler') && !Schema::hasColumn('bolgeler', 'odeme_modu')) Schema::table('bolgeler', function ($t) { $t->string('odeme_modu', 12)->nullable(); });
     }
 }
 if (!function_exists('_odemeModu')) {
-    function _odemeModu($subeId)
+    // Masa verilirse ONCE o masanin bolgesinin override'ina bakar; yoksa restoran varsayilani.
+    function _odemeModu($subeId, $masaId = null)
     {
         _kacakAyarEnsure();
+        if ($masaId && Schema::hasColumn('bolgeler', 'odeme_modu')) {
+            $bolgeId = DB::table('masalar')->where('id', $masaId)->value('bolge_id');
+            if ($bolgeId) {
+                $bm = DB::table('bolgeler')->where('id', $bolgeId)->value('odeme_modu');
+                if (in_array($bm, ['post_pay', 'on_odeme', 'acik_kart'], true)) return $bm;
+            }
+        }
         $m = DB::table('subeler')->where('id', $subeId)->value('odeme_modu');
         return in_array($m, ['post_pay', 'on_odeme', 'acik_kart'], true) ? $m : 'post_pay';
+    }
+}
+// ON ODEME: odeme tamamlanan 'odeme_bekliyor' kalemleri mutfaga gonder (durum=gonderildi + mutfak cagrisi)
+if (!function_exists('_onOdemePromote')) {
+    function _onOdemePromote($a, $kids)
+    {
+        $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', 'odeme_bekliyor');
+        if (is_array($kids) && $kids) $q->whereIn('id', $kids);
+        $ids = $q->pluck('id')->all();
+        if (!$ids) return;
+        DB::table('adisyon_kalemleri')->whereIn('id', $ids)->update(['durum' => 'gonderildi', 'gonderim_zamani' => now(), 'updated_at' => now()]);
+        if (Schema::hasTable('masa_cagrilari') && !empty($a->masa_id)) {
+            DB::table('masa_cagrilari')->insert(['sube_id' => $a->sube_id, 'masa_id' => $a->masa_id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
+        }
     }
 }
 // Kacak radari: acik + odenmemis (kalan>0) + uzun suredir acik masalar
@@ -6116,10 +6149,13 @@ Route::get('/api/patron/odeme-modu', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _kacakAyarEnsure();
     $s = DB::table('subeler')->find($p->sube_id);
+    $bolgeler = DB::table('bolgeler')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')->get(['id', 'ad', 'odeme_modu'])
+        ->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad, 'mod' => in_array($b->odeme_modu, ['post_pay', 'on_odeme', 'acik_kart'], true) ? $b->odeme_modu : ''])->values();
     return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p),
         'mod' => _odemeModu($p->sube_id),
         'kacak_aktif' => (int) ($s->kacak_aktif ?? 1) === 1,
-        'kacak_dk' => (int) ($s->kacak_uyari_dk ?? 90)];
+        'kacak_dk' => (int) ($s->kacak_uyari_dk ?? 90),
+        'bolgeler' => $bolgeler];
 });
 Route::post('/api/patron/odeme-modu-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
@@ -6132,6 +6168,17 @@ Route::post('/api/patron/odeme-modu-kaydet', function (Request $r) {
         'kacak_uyari_dk' => $dk,
         'kacak_aktif' => in_array((string) $r->kacak_aktif, ['1', 'true', 'on'], true) ? 1 : 0,
     ]);
+    // Bolge bazli override (mod bos/gecersiz -> null = restoran varsayilani)
+    $bolgeler = json_decode((string) $r->input('bolgeler', '[]'), true);
+    if (is_array($bolgeler)) {
+        foreach ($bolgeler as $b) {
+            $bid = (int) ($b['id'] ?? 0);
+            if (!$bid) continue;
+            $bm = (string) ($b['mod'] ?? '');
+            $val = in_array($bm, ['post_pay', 'on_odeme', 'acik_kart'], true) ? $bm : null;
+            DB::table('bolgeler')->where('id', $bid)->where('sube_id', $p->sube_id)->update(['odeme_modu' => $val]);
+        }
+    }
     return ['ok' => 1, 'mod' => $mod];
 });
 

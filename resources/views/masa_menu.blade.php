@@ -556,6 +556,7 @@
 
 <script>
 const MASA = @json($masa->id ?? 0);
+let ODEME_MODU = 'post_pay';   // post_pay=klasik | on_odeme=ön ödemeli (ödeme yapılmadan sipariş mutfağa gitmez) | acik_kart
 const SUBE_AD = @json($sube->ad ?? 'Restoran');
 let _data = [];            // kategoriler (Türkçe)
 let _urun = {};            // urun_id -> urun (detay/sepet icin)
@@ -569,7 +570,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 
 /* ---- veri ---- */
 async function yukle(){
-  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; }
+  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; if(j.odeme_modu) ODEME_MODU=j.odeme_modu; }
   catch(e){ _data=[]; }
   _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) _urun[u.urun_id]=u; }));
   chipleriCiz(); populerCiz('*'); dgridCiz();
@@ -758,7 +759,7 @@ function sepetCiz(){
   l.innerHTML=html;
   const sepetTop=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
   document.getElementById('sepet-toplam').textContent=(_gToplam+sepetTop).toLocaleString('tr')+' TL';
-  document.getElementById('sepet-gonder').disabled=!_sepet.length;
+  const _sg=document.getElementById('sepet-gonder'); _sg.disabled=!_sepet.length; _sg.textContent=_gonderBtnYazi();
   // ---- Odeme kutusu: acik (odenmemis) kalemler icin "tumunu ode" + "sectiklerimi ode" ----
   const odeBox=document.getElementById('sepet-ode'); if(!odeBox) return;
   const aciklar=_gonderilen.filter(k=>(k.odeme_durum||'acik')==='acik');
@@ -791,9 +792,24 @@ async function siparisGonder(){
     const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet})))})});
     const j=await r.json();
-    if(j.ok){ _sepet=[]; sepetRozet(); sepetKapat(); toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!'); }
-    else{ toast(j.hata||'Sipariş gönderilemedi'); btn.disabled=false; btn.textContent='✅ Siparişi Gönder'; }
-  }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); btn.disabled=false; btn.textContent='✅ Siparişi Gönder'; }
+    if(j.ok){
+      _sepet=[]; sepetRozet();
+      if(j.on_odeme){
+        // ON ODEMELI: siparis alindi ama ODENENE KADAR mutfaga gitmez -> hemen odemeye yonlendir
+        try{ await siparileriYukleSepet(); }catch(_){}
+        toast('💳 Ödeme sonrası siparişin mutfağa iletilecek');
+        odeYontemAc('tum');
+      } else {
+        sepetKapat(); toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!');
+      }
+    }
+    else{ toast(j.hata||'Sipariş gönderilemedi'); btn.disabled=false; btn.textContent=_gonderBtnYazi(); }
+  }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); btn.disabled=false; btn.textContent=_gonderBtnYazi(); }
+}
+function _gonderBtnYazi(){ return ODEME_MODU==='on_odeme' ? '💳 Öde ve Gönder' : '✅ Siparişi Gönder'; }
+// Sepetteki gonderilmis kalemleri tazele (odeme onizlemesi dogru tutar gostersin)
+async function siparileriYukleSepet(){
+  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0; sepetCiz(); } }catch(_){}
 }
 
 /* ---- TAM MENU ---- */
