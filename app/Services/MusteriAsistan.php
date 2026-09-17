@@ -89,6 +89,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['garson', 'biri gelsin', 'cagir', 'garsonu cagir', 'yardim istiyorum', 'yardim eder'])) {
             return $this->cvp('Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
+        // 2c) KAMPANYA / INDIRIM (aktif indirimleri GERCEK veriden soyler)
+        if ($this->has($c, ['kampanya', 'indirim', 'firsat', 'promosyon', 'kampanyaniz', 'indiriminiz', 'avantaj', 'kupon var'])) {
+            return $this->kampanyaBilgisi();
+        }
 
         // 2.25) MENU TANITIMI (genel): "menude ne var / neler var / menuyu goster / tum menu" -> TUM kategoriler kibar garson edasiyla.
         //       niyetRouter(Haiku)'dan ONCE: "menude ne var" tek kategoriye (baslangic) saptirilmasin.
@@ -433,6 +437,45 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** KAMPANYA/INDIRIM: aktif indirim kurallarini (GERCEK veri) musteriye sicak dille anlatir. */
+    protected function kampanyaBilgisi()
+    {
+        try {
+            if (!Schema::hasTable('indirimler')) {
+                return $this->cvp('Şu anda aktif bir kampanyamız görünmüyor ama sormanız çok güzel! İsterseniz en beğenilen lezzetlerimizden önereyim.');
+            }
+            $bugun = now();
+            $g = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+            $satir = [];
+            foreach (DB::table('indirimler')->where('sube_id', $this->subeId)->where('aktif', 1)->get() as $k) {
+                if ($k->bitis && $bugun->gt(\Carbon\Carbon::parse($k->bitis)->endOfDay())) continue;
+                if ($k->baslangic && $bugun->lt(\Carbon\Carbon::parse($k->baslangic)->startOfDay())) continue;
+                $dv = (float) $k->deger;
+                $d = $k->deger_tipi === 'yuzde' ? ('yüzde ' . $dv) : ($dv . ' lira');
+                switch ($k->tip) {
+                    case 'online_odeme': $satir[] = "kartla online ödemede $d indirim"; break;
+                    case 'kupon': $satir[] = $k->kupon_kodu ? (strtoupper($k->kupon_kodu) . " kuponuyla $d indirim") : "$d kupon indirimi"; break;
+                    case 'tutar_ustu': $satir[] = ($k->min_tutar ? ((float) $k->min_tutar . ' lira üstü siparişte ') : '') . "$d indirim"; break;
+                    case 'happy_hour': $satir[] = ($k->saat_bas && $k->saat_bit ? "{$k->saat_bas} ile {$k->saat_bit} arası " : '') . "$d indirim"; break;
+                    case 'gun':
+                        $gunler = $k->gun_maskesi ? implode(', ', array_filter(array_map(fn ($n) => $g[(int) trim($n)] ?? '', explode(',', $k->gun_maskesi)))) : '';
+                        $satir[] = ($gunler ? "$gunler günleri " : '') . "$d indirim";
+                        break;
+                    case 'urun': $satir[] = "seçili ürünlerde $d indirim"; break;
+                    case 'dogum_gunu': $satir[] = "doğum gününüzde $d indirim"; break;
+                    case 'ilk_siparis': $satir[] = "ilk siparişinizde $d indirim"; break;
+                    // 'uygulama' QR-web'de pasif -> anlatma
+                }
+            }
+            if (empty($satir)) {
+                return $this->cvp('Şu anda aktif bir kampanyamız görünmüyor ama sormanız çok güzel! İsterseniz en beğenilen lezzetlerimizden önereyim.');
+            }
+            return $this->cvp('Tabii, güncel fırsatlarımız şöyle: ' . implode('; ', $satir) . '. Afiyet olsun!');
+        } catch (\Throwable $e) {
+            return $this->cvp('Kampanyalarımızı garsonumuz size en doğru şekilde anlatsın, çağırayım mı?');
+        }
     }
 
     protected function oneri($c = '')
