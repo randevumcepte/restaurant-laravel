@@ -334,7 +334,19 @@ Route::post('/pos/kalem-ekle', function (Request $r) {
 
 Route::post('/pos/kalem-sil', function (Request $r) {
     $k = DB::table('adisyon_kalemleri')->find($r->kalem_id);
-    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->delete();
+    if (!$k) return ['ok' => 0];
+    // KACAK KORUMASI: mutfaga GITMIS urun IZSIZ silinemez -> 'iptal' (soft) + LOG (kayip radarinda gorunur, garson cebe atamaz).
+    // Henuz gonderilmemis ('yeni') urun normal duzenleme sayilir, fiziksel cikar.
+    if (in_array($k->durum, ['gonderildi', 'hazir', 'servis'], true)) {
+        DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['durum' => 'iptal', 'updated_at' => now()]);
+        $subeId = DB::table('adisyonlar')->where('id', $k->adisyon_id)->value('sube_id');
+        if (Schema::hasTable('iptal_indirim_loglari')) {
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $k->adisyon_id, 'adisyon_kalem_id' => $k->id,
+                'tip' => 'void', 'tutar' => (float) $k->tutar, 'sebep' => $r->sebep ?: 'POS ürün silme', 'personel_id' => $r->personel_id ?: null, 'created_at' => now()]);
+        }
+    } else {
+        DB::table('adisyon_kalemleri')->where('id', $k->id)->delete();
+    }
     return _adisyonToplamGuncelle($k->adisyon_id);
 });
 
