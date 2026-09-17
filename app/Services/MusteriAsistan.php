@@ -63,15 +63,16 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
             return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
         }
-        if ($this->has($c, ['merhaba', 'merhabalar', 'selam', 'selamlar', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'alo', 'hey', 'selamun aleykum'])) {
+        if ($this->has($c, ['merhaba', 'merhabalar', 'selam', 'selamlar', 'selamun aleykum', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'iyi sabahlar', 'alo', 'hey', 'kolay gelsin', 'orada misin', 'burada misin', 'burda misin', 'musait misin', 'bakar misin', 'yardimci olur musun', 'yardimci olabilir misin', 'yardim eder misin', 'beni duyuyor musun', 'sesimi duyuyor musun', 'hazir misin', 'baslayalim', 'bir sey soracagim', 'bir sey sorabilir miyim', 'bir sey danisacagim'])) {
             // Selamdan SONRA baska istek var mi? "merhaba bugun menude ne var" -> selami AT, asil istegi isle
             $kalan = ' ' . $c . ' ';
-            foreach (['selamun aleykum', 'merhabalar', 'merhaba', 'selamlar', 'selam', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'iyi sabahlar', 'alo', 'hey', 'nasilsin', 'naber', 'ne haber'] as $s) {
+            // UZUN ifadeleri ONCE cikar (kisa parca yanlis kalmasin)
+            foreach (['selamun aleykum', 'bir sey sorabilir miyim', 'bir sey soracagim', 'bir sey danisacagim', 'yardimci olabilir misin', 'yardimci olur musun', 'yardim eder misin', 'beni duyuyor musun', 'sesimi duyuyor musun', 'orada misin', 'burada misin', 'burda misin', 'musait misin', 'bakar misin', 'hazir misin', 'kolay gelsin', 'iyi aksamlar', 'iyi gunler', 'iyi geceler', 'iyi sabahlar', 'ne haber', 'merhabalar', 'merhaba', 'selamlar', 'selam', 'gunaydin', 'nasilsiniz', 'nasilsin', 'naber', 'baslayalim', 'alo', 'hey'] as $s) {
                 $kalan = str_replace(' ' . $this->norm($s) . ' ', ' ', $kalan);
             }
             $kalan = trim(preg_replace('/\s+/', ' ', $kalan));
             if (mb_strlen($kalan) < 3) {
-                return $this->cvp('Hoş geldiniz! 😊 Menümüzü mü tanıtayım yoksa bir önerim mi olsun?');
+                return $this->selamlamaCevap(); // 50 varyasyonlu sicak karsilama (rastgele)
             }
             // Selam + gercek istek -> selami dusur, ASIL istegi normal isle (asagida devam)
             $c = $kalan;
@@ -437,6 +438,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** SELAMLAMA: 50 farkli sicak karsilama (rastgele) — dijital garson edasi, konusmayi acik birakir. */
+    protected function selamlamaCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Merhaba, hoş geldiniz. Size yardımcı olmak için buradayım. Menü, yemekler veya restoranla ilgili merak ettiğiniz ne varsa sorabilirsiniz.',
+            'Selam, hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz menüye birlikte göz atabilir veya aklınızdaki herhangi bir şeyi sorabilirsiniz.',
+            'Merhabalar, hoş geldiniz. Size yardımcı olmaktan memnuniyet duyarım. Ne hakkında bilgi almak istersiniz?',
+            'İyi akşamlar, hoş geldiniz. Ben restoranımızın dijital asistanıyım. Menüden yemek seçmekten restoranla ilgili bilgi almaya kadar birçok konuda yardımcı olabilirim.',
+            'İyi günler, hoş geldiniz. Buradayım, sizi dinliyorum. Nasıl yardımcı olabilirim?',
+            'Günaydın, hoş geldiniz. Umarım güzel bir gün geçiriyorsunuzdur. Kahvaltıdan içeceklere kadar merak ettiğiniz her şeyi sorabilirsiniz.',
+            'Kolay gelsin, hoş geldiniz. Ben buradayım, size yardımcı olabilirim. Dilerseniz menüden bir şeyler seçmenize de yardımcı olabilirim.',
+            'Gayet iyiyim, teşekkür ederim. Sizi de dinliyorum. Yemekler, içecekler veya restoran hakkında ne öğrenmek isterseniz sorabilirsiniz.',
+            'Teşekkür ederim, iyiyim. Buradayım ve size yardımcı olmaya hazırım. Nereden başlamak istersiniz?',
+            'Buradayım, sizi duyuyorum. Merak ettiğiniz şeyi rahatça sorabilirsiniz. İsterseniz doğrudan menüden başlayabiliriz.',
+            'Evet, buradayım. Size yardımcı olabilirim. Ne hakkında konuşmak veya bilgi almak istersiniz?',
+            'Tabii ki, sizi dinliyorum. İsterseniz yemekler hakkında bilgi verebilir, isterseniz restoranla ilgili sorularınızı yanıtlayabilirim.',
+            'Elbette, sorabilirsiniz. Size yardımcı olmak için buradayım. Aklınızdaki soruyu söylemeniz yeterli.',
+            'Tabii, memnuniyetle yardımcı olurum. İsterseniz menüden seçim yaparken de size eşlik edebilirim. Ne aradığınızı söylemeniz yeterli.',
+            'Hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz sevdiğiniz yemek türünü söyleyin, menüden uygun seçeneklere birlikte bakalım.',
+            'Merhaba, hoş geldiniz. Ben dijital restoran asistanınızım. Yemekler, içecekler, restoran olanakları ve daha birçok konuda yardımcı olabilirim.',
+            'Selam, hoş geldiniz. Hazırım, sizi dinliyorum. Ne öğrenmek istiyorsanız doğrudan söyleyebilirsiniz.',
+            'Merhabalar. Buradayım. İsterseniz menüdeki seçeneklere bakabilir, isterseniz restoranla ilgili bir konuda bilgi isteyebilirsiniz.',
+            'Hoş geldiniz. Size yardımcı olabilirim. Kararsızsanız ne tarz bir yemek istediğinizi söyleyin, seçeneklere birlikte bakalım.',
+            'Merhaba. Sizi dinliyorum. Yemek seçimi, içecekler veya restoranla ilgili herhangi bir konuda yardımcı olabilirim.',
+            'Selam, hoş geldiniz. Buradayım ve hazırım. Aklınızda ne varsa sorabilirsiniz.',
+            'İyi akşamlar. Hoş geldiniz. Güzel bir yemek seçmenize yardımcı olmamı isterseniz buradayım.',
+            'Merhaba, hoş geldiniz. İsterseniz önce menüye göz atalım. Ya da doğrudan merak ettiğiniz şeyi bana sorabilirsiniz.',
+            'Selamlar, hoş geldiniz. Ben buradayım. Size yemek seçimi konusunda yardımcı olabilir veya restoranla ilgili sorularınızı yanıtlayabilirim.',
+            'Merhabalar, sizi dinliyorum. İsterseniz favori yemeklerinizi söyleyin, isterseniz menüdeki seçeneklerden birlikte ilerleyelim.',
+            'Hoş geldiniz. Buradayım ve size yardımcı olmaya hazırım. Ne istediğinizi söylemeniz yeterli.',
+            'Merhaba, hoş geldiniz. Eğer ne yiyeceğinize karar veremediyseniz, damak zevkinize göre seçim yapmanıza yardımcı olabilirim.',
+            'Selam, hoş geldiniz. Burada olduğum sürece aklınıza takılanları sorabilirsiniz. Öncelikle neye bakmak istersiniz?',
+            'İyi akşamlar, hoş geldiniz. Menüyle ilgili bir sorunuz varsa veya bir konuda öneri istiyorsanız sizi dinliyorum.',
+            'Merhaba. Buradayım. İsterseniz yemeklerden başlayabiliriz, isterseniz restoranla ilgili başka bir konuda yardımcı olabilirim.',
+            'Hoş geldiniz. Size yardımcı olmak için hazırım. Ne aradığınızı söylerseniz birlikte en uygun seçeneğe bakabiliriz.',
+            'Merhabalar, hoş geldiniz. Ben buradayım ve sizi dinliyorum. İsterseniz menüdeki yemekler hakkında konuşabiliriz.',
+            'Selam, hoş geldiniz. Yardımcı olmamı istediğiniz konuyu söyleyin, birlikte bakalım.',
+            'Merhaba. Elbette yardımcı olabilirim. Yemek, içecek, restoran hizmetleri veya başka bir konuda sorunuz varsa sorabilirsiniz.',
+            'İyi günler, hoş geldiniz. Buradayım. Size nasıl yardımcı olabileceğimi söylerseniz hemen başlayabiliriz.',
+            'Merhaba, hoş geldiniz. Eğer ilk kez geliyorsanız menüdeki seçenekleri keşfetmenize de yardımcı olabilirim. Nereden başlamak istersiniz?',
+            'Selam, hoş geldiniz. Hazırım. İsterseniz bugün ne yemek istediğinizi birlikte bulalım.',
+            'Merhabalar. Sizi dinliyorum. Aklınızda belirli bir yemek varsa onun hakkında bilgi verebilirim.',
+            'Hoş geldiniz. Buradayım ve yardımcı olmaya hazırım. İsterseniz doğrudan bir yemek adı söyleyin, size onunla ilgili bilgi vereyim.',
+            'İyi akşamlar, hoş geldiniz. Menü konusunda kafanıza takılan bir şey varsa sorabilirsiniz. Elimden geldiğince yardımcı olurum.',
+            'Merhaba. Buradayım. İsterseniz yemek seçimiyle başlayabiliriz veya restoran hakkında merak ettiğiniz başka bir şeyi konuşabiliriz.',
+            'Selamlar, hoş geldiniz. Size eşlik etmeye hazırım. Ne aradığınızı söylerseniz menüden birlikte ilerleyebiliriz.',
+            'Merhaba, hoş geldiniz. Bugün güzel bir seçim yapmanız için buradayım. Canınız ne tarz bir şey istiyor?',
+            'Hoş geldiniz. Sizi dinliyorum. Hafif bir yemek, doyurucu bir ana yemek veya tatlı gibi belirli bir tercihiniz varsa söyleyebilirsiniz.',
+            'Merhabalar, hoş geldiniz. İsterseniz bana nasıl bir yemek istediğinizi anlatın, size menüdeki uygun seçenekleri bulmanıza yardımcı olayım.',
+            'Selam, hoş geldiniz. Buradayım. Sorunuzu veya isteğinizi doğal şekilde söyleyebilirsiniz, sizi anlamaya çalışacağım.',
+            'İyi akşamlar. Hoş geldiniz. Yemek seçmekten restoranla ilgili bilgi almaya kadar birçok konuda yardımcı olabilirim. Nereden başlayalım?',
+            'Merhaba, hoş geldiniz. Ben hazırım. Siz neye ihtiyacınız olduğunu söyleyin, birlikte bakalım.',
+            'Selam, hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz menüde gezmek yerine doğrudan bana ne istediğinizi söyleyebilirsiniz.',
+            'Merhabalar, hoş geldiniz. Güzel bir yemek deneyimi geçirmeniz için buradayım. Ne merak ediyorsanız sorabilirsiniz, birlikte ilerleyelim.',
+        ]));
     }
 
     /** KAMPANYA/INDIRIM: aktif indirim kurallarini (GERCEK veri) musteriye sicak dille anlatir. */
