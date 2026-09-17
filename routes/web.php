@@ -1853,6 +1853,86 @@ Route::get('/kalip-sil', function (Request $r) {
     return 'Silindi (id=' . (int) $r->id . ').';
 });
 
+// ============================ ASISTAN EGITIMI (musteri AI) — panel ============================
+if (!function_exists('_asistanEgitimEnsure')) {
+    function _asistanEgitimEnsure()
+    {
+        if (!Schema::hasTable('asistan_kalip')) {
+            Schema::create('asistan_kalip', function ($t) {
+                $t->increments('id'); $t->text('tetikleyiciler'); $t->text('cevap'); $t->string('kategori', 40)->nullable();
+                $t->boolean('aktif')->default(1); $t->unsignedInteger('kullanim_sayisi')->default(0); $t->timestamps();
+            });
+        }
+        if (!Schema::hasTable('asistan_cozulmeyen')) {
+            Schema::create('asistan_cozulmeyen', function ($t) {
+                $t->increments('id'); $t->string('soru_norm', 191)->unique(); $t->text('ham')->nullable();
+                $t->unsignedInteger('adet')->default(1); $t->timestamp('son_tarih')->nullable(); $t->timestamps();
+            });
+        }
+    }
+}
+Route::get('/asistan-egitim', function () {
+    _asistanEgitimEnsure();
+    $kaliplar = DB::table('asistan_kalip')->orderByDesc('kullanim_sayisi')->orderByDesc('id')->get();
+    $cozulmeyenler = DB::table('asistan_cozulmeyen')->orderByDesc('adet')->orderByDesc('son_tarih')->limit(100)->get();
+    $ozet = ['kalip' => $kaliplar->count(), 'bedava' => (int) $kaliplar->sum('kullanim_sayisi'), 'bekleyen' => $cozulmeyenler->count()];
+    return view('asistan_egitim', compact('kaliplar', 'cozulmeyenler', 'ozet'));
+});
+Route::post('/asistan-egitim/kalip-kaydet', function (Request $r) {
+    _asistanEgitimEnsure();
+    $tet = trim((string) $r->tetikleyiciler);
+    $cev = trim((string) $r->cevap);
+    if ($tet === '' || $cev === '') return ['ok' => 0, 'hata' => 'Tetikleyici ve cevap gerekli'];
+    $veri = ['tetikleyiciler' => $tet, 'cevap' => $cev, 'kategori' => $r->kategori ?: 'genel', 'aktif' => $r->aktif ? 1 : 0, 'updated_at' => now()];
+    if ($r->filled('id')) {
+        DB::table('asistan_kalip')->where('id', (int) $r->id)->update($veri);
+    } else {
+        $veri['kullanim_sayisi'] = 0; $veri['created_at'] = now();
+        DB::table('asistan_kalip')->insert($veri);
+    }
+    if ($r->filled('cozulmeyen_id')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->cozulmeyen_id)->delete();
+    \Cache::forget('resto_kalip_liste_v1');
+    return ['ok' => 1];
+});
+Route::post('/asistan-egitim/kalip-sil', function (Request $r) {
+    DB::table('asistan_kalip')->where('id', (int) $r->id)->delete();
+    \Cache::forget('resto_kalip_liste_v1');
+    return ['ok' => 1];
+});
+Route::post('/asistan-egitim/cozulmeyen-sil', function (Request $r) {
+    if (Schema::hasTable('asistan_cozulmeyen')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->id)->delete();
+    return ['ok' => 1];
+});
+// PDF yukle -> Claude soru-cevap kalibi cikarir -> onizleme (session)
+Route::post('/asistan-egitim/pdf-coz', function (Request $r) {
+    if (!$r->hasFile('pdf')) return back()->with('hata', 'PDF seçilmedi.');
+    $file = $r->file('pdf');
+    if (strtolower($file->getClientOriginalExtension()) !== 'pdf' && $file->getClientMimeType() !== 'application/pdf') return back()->with('hata', 'Lütfen bir PDF yükleyin.');
+    if ($file->getSize() > 20 * 1024 * 1024) return back()->with('hata', 'PDF çok büyük (en fazla 20 MB).');
+    $b64 = base64_encode(file_get_contents($file->getRealPath()));
+    $subeId = (int) DB::table('subeler')->value('id');
+    list($ok, $veri) = (new \App\Services\MusteriAsistan($subeId))->pdftenKalipCikar($b64, 'application/pdf');
+    if (!$ok) return back()->with('hata', 'PDF işlenemedi: ' . $veri);
+    return back()->with('pdf_onizleme', $veri)->with('ok', count($veri) . ' soru-cevap çıkarıldı. Kontrol edip kaydedin.');
+});
+Route::post('/asistan-egitim/pdf-kaydet', function (Request $r) {
+    _asistanEgitimEnsure();
+    $tet = (array) $r->input('tetikleyiciler', []);
+    $cev = (array) $r->input('cevap', []);
+    $kat = (array) $r->input('kategori', []);
+    $sec = (array) $r->input('sec', []);
+    $n = 0; $now = now();
+    foreach ($sec as $i) {
+        $i = (int) $i;
+        $t = trim((string) ($tet[$i] ?? ''));
+        $c = trim((string) ($cev[$i] ?? ''));
+        if ($t === '' || $c === '') continue;
+        DB::table('asistan_kalip')->insert(['tetikleyiciler' => $t, 'cevap' => $c, 'kategori' => (trim((string) ($kat[$i] ?? '')) ?: 'pdf'), 'aktif' => 1, 'kullanim_sayisi' => 0, 'created_at' => $now, 'updated_at' => $now]);
+        $n++;
+    }
+    \Cache::forget('resto_kalip_liste_v1');
+    return back()->with('ok', $n . ' kalıp eklendi. Bu sorular artık AI’ya gitmeden bedava cevaplanır.');
+});
 // ============================ MUSTERI QR ASISTANI (public, girissiz) ============================
 // Masadaki QR -> tarayicida AI asistan sayfasi acilir.
 // Palet haritasi: config('temalar') bos ise (config cache) dosyayi DOGRUDAN yukle -> canliyi bozmaz

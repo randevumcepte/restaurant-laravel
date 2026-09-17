@@ -189,7 +189,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $kalip = $this->kalip($soru);
         if ($kalip) return $kalip;
 
-        // 7) HAIKU EMNIYET AGI: kural+kalip kacirdi -> ogrenilen onbellek -> (gerekirse) Haiku -> ogren
+        // 7) Kural+kalip KACIRDI -> egitim icin "cozulmeyen" olarak kaydet (panelde tek tikla kalibi eklenir)
+        $this->cozulmeyenKaydet($soru);
+
+        // 8) HAIKU EMNIYET AGI: ogrenilen onbellek -> (gerekirse) Haiku -> ogren
         $ai = $this->haikuEmniyet($soru);
         if ($ai !== null) return $ai;
 
@@ -751,6 +754,77 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         foreach ($data['content'] as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
         $t = trim($t);
         return $t !== '' ? $t : null;
+    }
+
+    // ============== ASISTAN EGITIMI: cozulmeyen soru kaydi + PDF'ten kalip cikarma ==============
+    protected function cozulmeyenEnsure()
+    {
+        if (Schema::hasTable('asistan_cozulmeyen')) return;
+        Schema::create('asistan_cozulmeyen', function ($t) {
+            $t->increments('id');
+            $t->string('soru_norm', 191)->unique();
+            $t->text('ham')->nullable();
+            $t->unsignedInteger('adet')->default(1);
+            $t->timestamp('son_tarih')->nullable();
+            $t->timestamps();
+        });
+    }
+
+    /** Kural+kalip bulamayinca soruyu (adet sayacli) kaydet -> panelde en cok sorulan gorunur. */
+    public function cozulmeyenKaydet($soru)
+    {
+        try {
+            $ham = trim((string) $soru);
+            if (mb_strlen($ham) < 2) return;
+            $norm = mb_substr(trim($this->normalize($ham)), 0, 191);
+            if ($norm === '') return;
+            $this->cozulmeyenEnsure();
+            $row = DB::table('asistan_cozulmeyen')->where('soru_norm', $norm)->first();
+            if ($row) {
+                DB::table('asistan_cozulmeyen')->where('id', $row->id)->update(['adet' => $row->adet + 1, 'son_tarih' => now(), 'ham' => $ham, 'updated_at' => now()]);
+            } else {
+                DB::table('asistan_cozulmeyen')->insert(['soru_norm' => $norm, 'ham' => $ham, 'adet' => 1, 'son_tarih' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    /** PDF (base64) -> Claude belgeyi okur -> SORU-CEVAP kaliplari (JSON). Doner: [ok(bool), veri(dizi|hata)]. */
+    public function pdftenKalipCikar($base64Pdf, $mediaType = 'application/pdf')
+    {
+        $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+        if ($anahtar === '') return [false, 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
+        $sistem = 'Sen bir RESTORAN icin musteri asistanina SORU-CEVAP kalibi cikaran yardimcisin. Verilen belgeden (menu, SSS, kurumsal bilgi) musterilerin soracagi olasi sorulari ve KISA cevaplari cikar. '
+            . 'KURALLAR: 1) SADECE gecerli JSON DIZI dondur, baska hicbir metin yazma. '
+            . '2) Her oge tam olarak: {"tetikleyiciler":"...","cevap":"...","kategori":"..."} . '
+            . '3) tetikleyiciler CUMLE DEGIL, virgulle ayrilmis KISA anahtar kelime kaliplari olsun (2-5 tane, es anlamli). Ornek: "wifi sifresi, internet sifresi, kablosuz". '
+            . '4) cevap kisa/net, musteriye uygun (1-2 cumle). 5) Belgede OLMAYAN bilgi UYDURMA. En fazla 40 oge.';
+        $govde = [
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'max_tokens' => 4000, 'system' => $sistem,
+            'messages' => [['role' => 'user', 'content' => [
+                ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => $mediaType, 'data' => $base64Pdf]],
+                ['type' => 'text', 'text' => 'Bu belgeden soru-cevap kaliplarini cikar ve SADECE JSON dizi dondur.'],
+            ]]],
+        ];
+        $data = $this->cagirAnthropic($anahtar, $govde);
+        if (!$data || empty($data['content'])) return [false, 'AI yanıt vermedi (anahtar/bakiye kontrol edin).'];
+        $t = '';
+        foreach ($data['content'] as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+        $t = trim($t);
+        if (preg_match('/\[.*\]/s', $t, $m)) $t = $m[0];
+        $arr = json_decode($t, true);
+        if (!is_array($arr)) return [false, 'AI çıktısı JSON olarak çözümlenemedi.'];
+        $out = [];
+        foreach ($arr as $o) {
+            if (!is_array($o)) continue;
+            $tet = trim((string) ($o['tetikleyiciler'] ?? ''));
+            $cev = trim((string) ($o['cevap'] ?? ''));
+            if ($tet === '' || $cev === '') continue;
+            $out[] = ['tetikleyiciler' => mb_substr($tet, 0, 500), 'cevap' => mb_substr($cev, 0, 2000),
+                'kategori' => mb_substr((trim((string) ($o['kategori'] ?? '')) ?: 'pdf'), 0, 40)];
+        }
+        if (empty($out)) return [false, 'Belgeden kalıp çıkarılamadı.'];
+        return [true, $out];
     }
 
     protected function cagirAnthropic($anahtar, $govde)

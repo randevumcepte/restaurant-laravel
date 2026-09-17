@@ -35,6 +35,7 @@
         ['/muhasebe', '💰', 'Muhasebe / Cari'],
         ['/edonusum', '🧾', 'E-Dönüşüm'],
         ['/copilot', '🤖', 'AI Copilot'],
+        ['/asistan-egitim', '🎓', 'Müşteri AI Eğitimi'],
         ['/fiyatlandirma', '🏷️', 'Fiyatlandırma'],
     ];
     $path = '/' . trim(request()->path(), '/');
