@@ -38,6 +38,7 @@
 
                 <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
                     <template x-if="k.kupon_kodu"><span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-mono font-bold" x-text="k.kupon_kodu"></span></template>
+                    <template x-if="k.tip==='urun'"><span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full" x-text="urunSayi(k)+' ürün'"></span></template>
                     <template x-if="+k.min_tutar"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full" x-text="'min '+para(k.min_tutar)"></span></template>
                     <template x-if="+k.max_indirim"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full" x-text="'tavan '+para(k.max_indirim)"></span></template>
                     <template x-if="k.saat_bas && k.saat_bit"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full" x-text="k.saat_bas+'–'+k.saat_bit"></span></template>
@@ -119,6 +120,22 @@
                     </div>
                 </template>
 
+                <template x-if="f.tip==='urun'">
+                    <div>
+                        <label class="text-xs font-medium text-slate-500">İndirim uygulanacak ürünler <span class="text-indigo-600" x-text="'('+((f.urun_ids&&f.urun_ids.length)||0)+' seçili)'"></span></label>
+                        <input x-model="urunAra" placeholder="Ürün ara…" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1 mb-2">
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y">
+                            <template x-for="u in urunlerFiltre()" :key="u.id">
+                                <label class="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                                    <input type="checkbox" :checked="urunSecili(u.id)" @change="urunTikla(u.id)" class="w-4 h-4 rounded">
+                                    <span x-text="u.ad"></span>
+                                </label>
+                            </template>
+                            <template x-if="!urunlerFiltre().length"><div class="px-3 py-3 text-sm text-slate-400">Ürün bulunamadı.</div></template>
+                        </div>
+                    </div>
+                </template>
+
                 <div class="grid grid-cols-2 gap-3">
                     <div><label class="text-xs font-medium text-slate-500">Min. sepet tutarı (₺)</label><input type="number" x-model="f.min_tutar" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="opsiyonel"></div>
                     <div><label class="text-xs font-medium text-slate-500">Maks. indirim (₺, %'de tavan)</label><input type="number" x-model="f.max_indirim" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="opsiyonel"></div>
@@ -160,20 +177,27 @@ const TIPLER = {
     happy_hour:{ad:'Happy Hour', ik:'🕐', ipucu:'Belirlenen saat aralığında uygulanır.'},
     gun:{ad:'Haftanın Günü', ik:'📅', ipucu:'Seçili günlerde uygulanır.'},
     dogum_gunu:{ad:'Doğum Günü', ik:'🎂', ipucu:'Müşterinin doğum gününde. (Müşteri tanınıyorsa; anonim QR’da pasif.)'},
+    urun:{ad:'Seçili Ürünler', ik:'🍽️', ipucu:'İndirim yalnızca seçtiğin ürünlere uygulanır (online ödemede). Alttan ürünleri işaretle.'},
 };
 function indirimApp(){
   return {
     TIPLER,
     kurallar: @json($kurallar),
+    urunler: @json($urunler),
+    urunAra:'',
     acik:false, kaydediyor:false,
     f:{},
     init(){},
     tipMeta(t){ return TIPLER[t] || {ad:t, ik:'🏷️', ipucu:''}; },
     para(v){ return new Intl.NumberFormat('tr-TR').format(Math.round(v||0)) + ' ₺'; },
     gunAd(mask){ const g=['','Pzt','Sal','Çar','Per','Cum','Cmt','Paz']; return String(mask).split(',').filter(Boolean).map(n=>g[+n]||'').join(', '); },
-    bosForm(){ return {id:null, tip:'online_odeme', ad:'', deger_tipi:'yuzde', deger:10, kupon_kodu:'', saat_bas:'', saat_bit:'', gun_maskesi:'', min_tutar:'', max_indirim:'', baslangic:'', bitis:'', kullanim_limiti:'', aktif:true}; },
-    yeni(){ this.f=this.bosForm(); this.acik=true; },
-    duzenle(k){ this.f={...this.bosForm(), ...k, aktif:!!k.aktif}; this.acik=true; },
+    urunSayi(k){ try{ return k.urun_ids ? (JSON.parse(k.urun_ids)||[]).length : 0; }catch(e){ return 0; } },
+    bosForm(){ return {id:null, tip:'online_odeme', ad:'', deger_tipi:'yuzde', deger:10, kupon_kodu:'', saat_bas:'', saat_bit:'', gun_maskesi:'', min_tutar:'', max_indirim:'', baslangic:'', bitis:'', kullanim_limiti:'', aktif:true, urun_ids:[]}; },
+    yeni(){ this.f=this.bosForm(); this.urunAra=''; this.acik=true; },
+    duzenle(k){ let uids=[]; try{ uids=k.urun_ids?JSON.parse(k.urun_ids):[]; }catch(e){} this.f={...this.bosForm(), ...k, aktif:!!k.aktif, urun_ids:(uids||[]).map(Number)}; this.urunAra=''; this.acik=true; },
+    urunSecili(id){ return (this.f.urun_ids||[]).includes(id); },
+    urunTikla(id){ let a=this.f.urun_ids||[]; if(a.includes(id)) a=a.filter(x=>x!==id); else a=[...a,id]; this.f.urun_ids=a; },
+    urunlerFiltre(){ const q=(this.urunAra||'').toLocaleLowerCase('tr'); return this.urunler.filter(u=> !q || String(u.ad).toLocaleLowerCase('tr').includes(q)); },
     gunSecili(n){ return String(this.f.gun_maskesi||'').split(',').filter(Boolean).includes(String(n)); },
     gunTikla(n){ let arr=String(this.f.gun_maskesi||'').split(',').filter(Boolean); n=String(n); if(arr.includes(n)) arr=arr.filter(x=>x!==n); else arr.push(n); arr.sort(); this.f.gun_maskesi=arr.join(','); },
     async toggle(k){ const r=await api('/indirimler/toggle',{id:k.id}); if(r.ok) k.aktif=r.aktif; },

@@ -1160,6 +1160,9 @@ if (!function_exists('_indirimEnsure')) {
                 $t->timestamp('created_at')->useCurrent();
             });
         }
+        if (Schema::hasTable('indirimler') && !Schema::hasColumn('indirimler', 'urun_ids')) {
+            Schema::table('indirimler', function ($t) { $t->text('urun_ids')->nullable(); }); // tip=urun icin secili urun id'leri (JSON)
+        }
         if ($subeId && Schema::hasTable('indirimler') && DB::table('indirimler')->where('sube_id', $subeId)->count() === 0) {
             $ornek = [
                 ['tip' => 'online_odeme', 'ad' => 'Online Ödeme İndirimi', 'deger_tipi' => 'yuzde', 'deger' => 10],
@@ -1178,7 +1181,8 @@ if (!function_exists('_indirimEnsure')) {
     }
 }
 if (!function_exists('_indirimUygula')) {
-    // Verilen tutara uygulanabilecek AKTIF kurallardan EN YUKSEK indirimi dondurur. $baglam: yontem, kanal, kupon, ilk_siparis, dogum_gunu
+    // Verilen tutara uygulanabilecek AKTIF kurallardan EN YUKSEK indirimi dondurur.
+    // $baglam: yontem, kanal, kupon, ilk_siparis, dogum_gunu, kalemler=[['urun_id','tutar'],...] (tip=urun icin sart)
     // Doner: null | ['indirim'=>x, 'kural_id'=>, 'ad'=>, 'tip'=>]
     function _indirimUygula($subeId, $tutar, $baglam = [])
     {
@@ -1187,6 +1191,7 @@ if (!function_exists('_indirimUygula')) {
         $now = now();
         $gun = ($now->dayOfWeekIso); // 1=pzt ... 7=paz
         $saat = $now->format('H:i');
+        $kalemler = (isset($baglam['kalemler']) && is_array($baglam['kalemler'])) ? $baglam['kalemler'] : null;
         $enIyi = null;
         foreach (DB::table('indirimler')->where('sube_id', $subeId)->where('aktif', 1)->get() as $k) {
             if ($k->baslangic && $now->lt(\Carbon\Carbon::parse($k->baslangic)->startOfDay())) continue;
@@ -1194,6 +1199,7 @@ if (!function_exists('_indirimUygula')) {
             if ($k->kullanim_limiti && $k->kullanim_sayisi >= $k->kullanim_limiti) continue;
             if ($k->min_tutar && $tutar < (float) $k->min_tutar) continue;
             $uygun = false;
+            $taban = $tutar; // indirimin uygulanacagi taban (urun bazlida sadece o urunlerin tutari)
             switch ($k->tip) {
                 case 'online_odeme': $uygun = (($baglam['yontem'] ?? '') === 'online'); break;
                 case 'uygulama':     $uygun = (($baglam['kanal'] ?? '') === 'app'); break;
@@ -1203,9 +1209,18 @@ if (!function_exists('_indirimUygula')) {
                 case 'tutar_ustu':   $uygun = true; break; // min_tutar yukarida kontrol edildi
                 case 'happy_hour':   $uygun = ($k->saat_bas && $k->saat_bit && $saat >= $k->saat_bas && $saat <= $k->saat_bit); break;
                 case 'gun':          $uygun = ($k->gun_maskesi && in_array((string) $gun, array_map('trim', explode(',', (string) $k->gun_maskesi)), true)); break;
+                case 'urun':
+                    // Indirim SADECE secili urunlerin odenmekte olan tutarina uygulanir
+                    $ids = (isset($k->urun_ids) && $k->urun_ids) ? array_map('intval', (array) json_decode($k->urun_ids, true)) : [];
+                    if ($ids && is_array($kalemler)) {
+                        $taban = 0;
+                        foreach ($kalemler as $kl) { if (in_array((int) ($kl['urun_id'] ?? 0), $ids, true)) $taban += (float) ($kl['tutar'] ?? 0); }
+                        $uygun = $taban > 0;
+                    }
+                    break;
             }
-            if (!$uygun) continue;
-            $ind = $k->deger_tipi === 'yuzde' ? round($tutar * (float) $k->deger / 100, 2) : (float) $k->deger;
+            if (!$uygun || $taban <= 0) continue;
+            $ind = $k->deger_tipi === 'yuzde' ? round($taban * (float) $k->deger / 100, 2) : min((float) $k->deger, $taban);
             if ($k->max_indirim && $ind > (float) $k->max_indirim) $ind = (float) $k->max_indirim;
             if ($ind > $tutar) $ind = $tutar;
             if ($ind <= 0) continue;
@@ -2748,8 +2763,9 @@ Route::post('/api/qr/ode-baslat', function (Request $r) {
     if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
     $covIds = $kalemler->pluck('id')->all();
 
-    // ONLINE ODEME INDIRIMI (+ kupon): en yuksek uygulanabilir indirim. Cekilecek tutar = net.
-    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', '')]);
+    // ONLINE ODEME INDIRIMI (+ kupon + urun bazli): en yuksek uygulanabilir indirim. Cekilecek tutar = net.
+    $klArr = $kalemler->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
+    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', ''), 'kalemler' => $klArr]);
     $indirim = $ind ? (float) $ind['indirim'] : 0;
     $net = max(0, round($tutar - $indirim, 2));
 
@@ -2775,8 +2791,10 @@ Route::post('/api/qr/indirim-onizle', function (Request $r) {
     if ($r->filled('kalemler')) { $dec = json_decode((string) $r->kalemler, true); if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec))); }
     $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
     if ($secili) $q->whereIn('id', $secili);
-    $tutar = (float) $q->sum('tutar');
-    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', '')]);
+    $kl = $q->get(['urun_id', 'tutar']);
+    $tutar = (float) $kl->sum('tutar');
+    $klArr = $kl->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
+    $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', ''), 'kalemler' => $klArr]);
     $indirim = $ind ? (float) $ind['indirim'] : 0;
     return ['ok' => 1, 'brut' => $tutar, 'indirim' => $indirim, 'net' => max(0, round($tutar - $indirim, 2)), 'ad' => $ind ? $ind['ad'] : null];
 });
@@ -7403,16 +7421,18 @@ Route::get('/indirimler', function () {
     if (!$sube) abort(404, 'Şube yok');
     _indirimEnsure($sube->id);
     $kurallar = DB::table('indirimler')->where('sube_id', $sube->id)->orderBy('tip')->orderByDesc('id')->get();
-    return view('indirimler', ['sube' => $sube, 'kurallar' => $kurallar]);
+    $urunler = DB::table('urunler')->where('sube_id', $sube->id)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    return view('indirimler', ['sube' => $sube, 'kurallar' => $kurallar, 'urunler' => $urunler]);
 });
 Route::post('/indirimler/kaydet', function (Request $r) {
     $sube = DB::table('subeler')->first();
     if (!$sube) return ['ok' => 0, 'hata' => 'Şube yok'];
     _indirimEnsure($sube->id);
-    $tipler = ['online_odeme', 'uygulama', 'kupon', 'ilk_siparis', 'tutar_ustu', 'happy_hour', 'gun', 'dogum_gunu'];
+    $tipler = ['online_odeme', 'uygulama', 'kupon', 'ilk_siparis', 'tutar_ustu', 'happy_hour', 'gun', 'dogum_gunu', 'urun'];
     $data = [
         'sube_id' => $sube->id,
         'tip' => in_array($r->tip, $tipler, true) ? $r->tip : 'kupon',
+        'urun_ids' => (is_array($r->urun_ids) && count($r->urun_ids)) ? json_encode(array_values(array_map('intval', $r->urun_ids))) : null,
         'ad' => trim((string) $r->ad) !== '' ? trim((string) $r->ad) : 'İndirim',
         'deger_tipi' => $r->deger_tipi === 'tutar' ? 'tutar' : 'yuzde',
         'deger' => max(0, (float) $r->deger),
