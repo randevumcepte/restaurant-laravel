@@ -5507,6 +5507,113 @@ Route::get('/api/patron/sayim-detay', function (Request $r) {
     return ['ok' => 1, 'tarih' => \Carbon\Carbon::parse($s->tarih)->format('d.m.Y'), 'toplam_fark_maliyet' => $toplam, 'ai' => $ai, 'kalemler' => $kalemler->values()];
 });
 
+// GELEN MUSTERI DETAYI (donemsel) — trafik serisi + yogun saat/gun + kanal + bolge + sadakat + AI
+Route::get('/api/patron/musteri-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $period = in_array($r->period, ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->period : 'gunluk';
+    [$from, $to, $pfrom, $pto] = _restoPeriyot($period);
+
+    $rows = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')
+        ->whereBetween('kapanis', [$from, $to])
+        ->get(['misafir_sayisi', 'acilis', 'kapanis', 'kanal', 'masa_id', 'musteri_id', 'toplam']);
+
+    $bolgeAd = DB::table('bolgeler')->pluck('ad', 'id');
+    $masaBolge = DB::table('masalar')->pluck('bolge_id', 'id');
+
+    $toplamMisafir = 0; $folyo = 0; $ciro = 0.0;
+    $saat = array_fill(0, 24, 0);
+    $gun = array_fill(0, 7, 0); // 0=Pzt .. 6=Paz
+    $kanal = []; $bolge = []; $kayitliMis = 0; $anonimMis = 0;
+
+    foreach ($rows as $a) {
+        $m = (int) $a->misafir_sayisi;
+        $toplamMisafir += $m; $folyo++; $ciro += (float) $a->toplam;
+        $ac = \Carbon\Carbon::parse($a->acilis ?: $a->kapanis);
+        $saat[(int) $ac->format('G')] += $m;
+        $wd = ((int) $ac->dayOfWeek + 6) % 7; // Carbon 0=Paz..6=Cmt -> 0=Pzt..6=Paz
+        $gun[$wd] += $m;
+        $k = $a->kanal ?: 'salon';
+        $kanal[$k] = ($kanal[$k] ?? 0) + $m;
+        if ($a->masa_id && isset($masaBolge[$a->masa_id]) && isset($bolgeAd[$masaBolge[$a->masa_id]])) {
+            $bad = $bolgeAd[$masaBolge[$a->masa_id]];
+        } else {
+            $bad = $k === 'paket' ? 'Paket' : ($k === 'qr' ? 'QR / Self' : 'Diğer');
+        }
+        $bolge[$bad] = ($bolge[$bad] ?? 0) + $m;
+        if ($a->musteri_id) $kayitliMis += $m; else $anonimMis += $m;
+    }
+
+    // Trafik zaman serisi (donem granulasyonu)
+    $seri = [];
+    if ($period === 'gunluk') {
+        for ($h = 0; $h < 24; $h++) $seri[] = ['etiket' => sprintf('%02d', $h), 'misafir' => $saat[$h]];
+    } elseif ($period === 'yillik') {
+        $aylar = [];
+        foreach ($rows as $a) { $key = \Carbon\Carbon::parse($a->kapanis)->format('Y-m'); $aylar[$key] = ($aylar[$key] ?? 0) + (int) $a->misafir_sayisi; }
+        $cur = \Carbon\Carbon::parse($from)->startOfMonth(); $end = \Carbon\Carbon::parse($to)->startOfMonth();
+        while ($cur <= $end) { $seri[] = ['etiket' => $cur->format('m/y'), 'misafir' => $aylar[$cur->format('Y-m')] ?? 0]; $cur->addMonth(); }
+    } else {
+        $gunler = [];
+        foreach ($rows as $a) { $key = \Carbon\Carbon::parse($a->kapanis)->format('Y-m-d'); $gunler[$key] = ($gunler[$key] ?? 0) + (int) $a->misafir_sayisi; }
+        $cur = \Carbon\Carbon::parse($from)->startOfDay(); $end = \Carbon\Carbon::parse($to)->startOfDay();
+        while ($cur <= $end) { $seri[] = ['etiket' => $cur->format('d/m'), 'misafir' => $gunler[$cur->format('Y-m-d')] ?? 0]; $cur->addDay(); }
+    }
+
+    $oncekiMisafir = (int) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')
+        ->whereBetween('kapanis', [$pfrom, $pto])->sum('misafir_sayisi');
+
+    $kanalAd = ['salon' => 'Masada', 'paket' => 'Paket', 'qr' => 'QR / Self'];
+    $kanalList = [];
+    foreach ($kanal as $k => $v) $kanalList[] = ['kanal' => $kanalAd[$k] ?? ucfirst($k), 'misafir' => $v, 'yuzde' => $toplamMisafir > 0 ? round($v / $toplamMisafir * 100) : 0];
+    usort($kanalList, fn ($a, $b) => $b['misafir'] <=> $a['misafir']);
+
+    $bolgeList = [];
+    foreach ($bolge as $ad => $v) $bolgeList[] = ['ad' => $ad, 'misafir' => $v, 'yuzde' => $toplamMisafir > 0 ? round($v / $toplamMisafir * 100) : 0];
+    usort($bolgeList, fn ($a, $b) => $b['misafir'] <=> $a['misafir']);
+
+    $gunAdKisa = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    $gunList = [];
+    for ($i = 0; $i < 7; $i++) $gunList[] = ['gun' => $gunAdKisa[$i], 'misafir' => $gun[$i]];
+
+    $saatList = [];
+    for ($h = 0; $h < 24; $h++) if ($saat[$h] > 0) $saatList[] = ['saat' => sprintf('%02d:00', $h), 'misafir' => $saat[$h]];
+
+    // AI koçluk
+    $ai = [];
+    if ($toplamMisafir > 0) {
+        $enSaat = array_keys($saat, max($saat))[0];
+        $sonSaat = min(23, $enSaat + 2);
+        $enGunI = array_keys($gun, max($gun))[0];
+        $gunTam = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+        $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'En yoğun saat ' . sprintf('%02d:00–%02d:00', $enSaat, $sonSaat) . ' — personel ve hazırlığı buna göre planlayın.'];
+        $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'En yoğun gün: ' . $gunTam[$enGunI] . '. En sakin günlere kampanya/menü düşünebilirsiniz.'];
+        if ($kanalList) $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Trafiğin çoğu ' . $kanalList[0]['kanal'] . ' (%' . $kanalList[0]['yuzde'] . ').'];
+        $sadakatOran = round($kayitliMis / $toplamMisafir * 100);
+        $ai[] = ['seviye' => $sadakatOran >= 30 ? 'iyi' : 'bilgi', 'mesaj' => 'Misafirin %' . $sadakatOran . '\'i kayıtlı müşteri (tekrar gelen). Sadakati artırmak en ucuz büyümedir.'];
+        if ($oncekiMisafir > 0) {
+            $d = (int) round(($toplamMisafir - $oncekiMisafir) / $oncekiMisafir * 100);
+            $ai[] = ['seviye' => $d >= 0 ? 'iyi' : 'riskli', 'mesaj' => 'Trafik önceki döneme göre %' . abs($d) . ($d >= 0 ? ' arttı 🎉' : ' azaldı — sebebini araştırın.')];
+        }
+    } else {
+        $ai[] = ['seviye' => 'bilgi', 'mesaj' => 'Bu dönemde ödenmiş misafir kaydı yok.'];
+    }
+
+    return [
+        'ok' => 1, 'period' => $period,
+        'ozet' => [
+            'misafir' => $toplamMisafir, 'folyo' => $folyo,
+            'ort_grup' => $folyo > 0 ? round($toplamMisafir / $folyo, 1) : 0,
+            'kisi_basi' => $toplamMisafir > 0 ? round($ciro / $toplamMisafir) : 0,
+            'onceki_misafir' => $oncekiMisafir,
+        ],
+        'seri' => $seri, 'saatler' => $saatList, 'gunler' => $gunList,
+        'kanallar' => $kanalList, 'bolgeler' => $bolgeList,
+        'sadakat' => ['kayitli' => $kayitliMis, 'anonim' => $anonimMis],
+        'ai' => $ai,
+    ];
+});
+
 // ---- TEDARİKÇİLER ----
 Route::get('/api/patron/tedarikciler', function (Request $r) {
     $p = _apiPersonel($r);
