@@ -1144,6 +1144,7 @@ if (!function_exists('_masaCagriEnsure')) {
         }
         if (!Schema::hasColumn('masa_cagrilari', 'tutar')) Schema::table('masa_cagrilari', function ($t) { $t->decimal('tutar', 12, 2)->nullable(); });
         if (!Schema::hasColumn('masa_cagrilari', 'odeme_token')) Schema::table('masa_cagrilari', function ($t) { $t->string('odeme_token', 40)->nullable(); });
+        if (!Schema::hasColumn('masa_cagrilari', 'hedef_masa_id')) Schema::table('masa_cagrilari', function ($t) { $t->unsignedBigInteger('hedef_masa_id')->nullable(); }); // tasima talebi: gidilecek masa
     }
 }
 if (!function_exists('_indirimEnsure')) {
@@ -2419,7 +2420,19 @@ Route::get('/api/qr/menu-tam', function (Request $r) {
     if ($dil !== 'tr' && is_array($res) && !empty($res['kategoriler'])) {
         $res['kategoriler'] = _qrMenuCevir($res['kategoriler'], $subeId, $dil);
     }
-    if (is_array($res)) $res['odeme_modu'] = _odemeModu($subeId, $masa ? $masa->id : null);
+    if (is_array($res)) {
+        $res['odeme_modu'] = _odemeModu($subeId, $masa ? $masa->id : null);
+        // "Masa X'ten taşındı" rozeti: bu masanin acik adisyonu baska masadan tasindiysa kaynagi goster
+        if ($masa && Schema::hasTable('adisyon_masa_loglari')) {
+            $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
+            if ($adId) {
+                $log = DB::table('adisyon_masa_loglari')->where('adisyon_id', $adId)->whereIn('islem', ['tasima', 'birlestirme'])->orderByDesc('id')->first();
+                if ($log && !empty($log->eski_masa_id) && (int) $log->yeni_masa_id === (int) $masa->id) {
+                    $res['tasindi_kaynak'] = DB::table('masalar')->where('id', $log->eski_masa_id)->value('ad');
+                }
+            }
+        }
+    }
     return $res;
 });
 
@@ -2442,6 +2455,31 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
     return ['ok' => 1];
 });
 
+// QR: bu subenin masalari (musteri "geldigim masa" secsin diye)
+Route::get('/api/qr/masalar', function (Request $r) {
+    $masa = DB::table('masalar')->find((int) $r->masa);
+    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    $liste = DB::table('masalar')->where('sube_id', $subeId)->orderBy('id')
+        ->get(['id', 'ad'])->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad])->values();
+    return ['ok' => 1, 'masalar' => $liste, 'masa' => $masa ? (int) $masa->id : 0];
+});
+
+// QR: MASA TASIMA TALEBI — musteri "eski masamdan (kaynak) buraya (hedef=su anki QR masasi) tasi" der; garson/kasa onaylar.
+Route::post('/api/qr/tasima-talep', function (Request $r) {
+    $hedef = DB::table('masalar')->find((int) $r->masa);          // su an oturdugu (QR) = HEDEF
+    $kaynak = DB::table('masalar')->find((int) $r->kaynak_masa);  // geldigi eski masa = KAYNAK (acik hesap burada)
+    if (!$hedef || !$kaynak) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    if ($hedef->id === $kaynak->id) return ['ok' => 0, 'hata' => 'Aynı masa seçilemez'];
+    if (!DB::table('adisyonlar')->where('masa_id', $kaynak->id)->where('durum', 'acik')->exists())
+        return ['ok' => 0, 'hata' => $kaynak->ad . ' masasında taşınacak açık hesap yok'];
+    _masaCagriEnsure();
+    // Ayni talebi tekrar tekrar yigmasin
+    DB::table('masa_cagrilari')->where('masa_id', $kaynak->id)->where('tip', 'tasima')->where('durum', 'bekliyor')->update(['durum' => 'iptal']);
+    DB::table('masa_cagrilari')->insert(['sube_id' => $hedef->sube_id, 'masa_id' => $kaynak->id, 'tip' => 'tasima',
+        'durum' => 'bekliyor', 'hedef_masa_id' => $hedef->id, 'created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => $kaynak->ad . ' → ' . $hedef->ad . ' taşınma talebiniz iletildi. Garson onaylayınca hesabınız buraya taşınır 🙌'];
+});
+
 // PERSONEL: canli garson cagri ekrani (tezgah/tablet) — masadan gelen QR cagrilarini gosterir
 Route::get('/garson-ekran/{subeId?}', function ($subeId = null) {
     $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
@@ -2458,10 +2496,12 @@ Route::get('/api/garson-cagrilari', function (Request $r) {
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $subeId)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
-        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token', 'masa_cagrilari.hedef_masa_id')
         ->limit(50)->get()
         ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
+            'hedef' => (isset($c->hedef_masa_id) && $c->hedef_masa_id) ? (DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id)) : null,
+            'hedef_masa_id' => $c->hedef_masa_id ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
     return ['ok' => 1, 'cagrilar' => $rows, 'riskli' => _kacakRiskli($subeId), 'sunucu_saat' => now()->format('H:i:s')];
@@ -2483,10 +2523,12 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
-        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token')
+        ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token', 'masa_cagrilari.hedef_masa_id')
         ->limit(60)->get()
         ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
+            'hedef' => (isset($c->hedef_masa_id) && $c->hedef_masa_id) ? (DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id)) : null,
+            'hedef_masa_id' => $c->hedef_masa_id ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
     return ['ok' => 1, 'cagrilar' => $rows, 'riskli' => _kacakRiskli($p->sube_id)];
@@ -3187,7 +3229,7 @@ Route::get('/enrich-acik-tazele', function () {
 if (!function_exists('_restoYetkiKeys')) {
     function _restoYetkiKeys()
     {
-        return ['adisyon_ac', 'adisyon_kapat', 'adisyon_iptal', 'adisyon_bol', 'adisyon_birlestir',
+        return ['adisyon_ac', 'adisyon_kapat', 'adisyon_iptal', 'adisyon_bol', 'adisyon_birlestir', 'masa_tasima',
             'iskonto', 'ikram', 'urun_sil', 'fatura_kes', 'geri_islem', 'maliyet_gor', 'rapor_gor'];
     }
 }
@@ -3201,7 +3243,7 @@ if (!function_exists('_restoYetkiVarsayilan')) {
         switch ($rol) {
             case 'sahip': foreach ($y as $k => $v) $y[$k] = true; $limit = 100; $ikramLimit = 100000; break;
             case 'mudur': foreach ($y as $k => $v) $y[$k] = true; $limit = 50; $ikramLimit = 1000; break;
-            case 'kasa': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'fatura_kes', 'maliyet_gor']); $limit = 10; $ikramLimit = 0; break;
+            case 'kasa': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'fatura_kes', 'maliyet_gor', 'masa_tasima']); $limit = 10; $ikramLimit = 0; break;
             case 'garson': $ac($y, ['adisyon_ac', 'adisyon_kapat', 'adisyon_bol']); $limit = 0; $ikramLimit = 50; break;
         }
         return ['yetkiler' => $y, 'iskonto_limit' => $limit, 'ikram_limit' => $ikramLimit];
@@ -7123,20 +7165,48 @@ Route::post('/api/patron/sebep-sil', function (Request $r) {
 Route::post('/api/patron/masa-tasi', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa taşıma yetkiniz yok.'];
-    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
-    if (!$a || $a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyon bulunamadı'];
+    // YETKI: masa_tasima. Yoksa yetkili (kasa/mudur/sahip) PIN onayi ile gecer.
+    $onaylayan = null;
+    if (!_restoYetkiVar($p, 'masa_tasima')) {
+        if ($r->onay_pin) $onaylayan = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first();
+        if (!$onaylayan || !_restoYetkiVar($onaylayan, 'masa_tasima')) {
+            return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Masa taşıma yetkiniz yok. Kasa/müdür PIN onayı gerekli.'];
+        }
+    }
+    // Kaynak adisyon: adisyon_id VEYA kaynak_masa (acik adisyon)
+    $a = $r->filled('adisyon_id')
+        ? DB::table('adisyonlar')->find((int) $r->adisyon_id)
+        : DB::table('adisyonlar')->where('masa_id', (int) $r->kaynak_masa)->where('durum', 'acik')->orderByDesc('id')->first();
+    if (!$a || $a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Kaynak masada açık hesap bulunamadı'];
     $yeni = DB::table('masalar')->where('id', (int) $r->yeni_masa_id)->where('sube_id', $p->sube_id)->first();
     if (!$yeni) return ['ok' => 0, 'hata' => 'Hedef masa bulunamadı'];
-    if (DB::table('adisyonlar')->where('masa_id', $yeni->id)->where('durum', 'acik')->exists()) {
-        return ['ok' => 0, 'hata' => $yeni->ad . ' dolu. Boş masa seçin (dolu için Birleştir kullanın).'];
-    }
+    if ($yeni->id == $a->masa_id) return ['ok' => 0, 'hata' => 'Zaten bu masada.'];
     $eski = $a->masa_id;
-    DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $yeni->id, 'updated_at' => now()]);
-    if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
-    DB::table('masalar')->where('id', $yeni->id)->update(['durum' => 'dolu']);
-    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $p->id, 'created_at' => now()]);
-    return ['ok' => 1, 'mesaj' => $yeni->ad . ' masasına taşındı.'];
+    $eskiAd = $eski ? DB::table('masalar')->where('id', $eski)->value('ad') : 'Eski masa';
+    $kimId = $onaylayan->id ?? $p->id;
+
+    $hedefAcik = DB::table('adisyonlar')->where('masa_id', $yeni->id)->where('durum', 'acik')->orderByDesc('id')->first();
+    if ($hedefAcik && $hedefAcik->id !== $a->id) {
+        // Hedef DOLU -> otomatik BIRLESTIR (siparisler SILINMEZ, hedefe tasinir)
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->update(['adisyon_id' => $hedefAcik->id, 'updated_at' => now()]);
+        $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedefAcik->id)->where('durum', '!=', 'iptal')->sum('tutar');
+        DB::table('adisyonlar')->where('id', $hedefAcik->id)->update(['ara_toplam' => $ara, 'toplam' => max(0, $ara - (float) $hedefAcik->indirim - (float) $hedefAcik->ikram), 'updated_at' => now()]);
+        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'iptal', 'ara_toplam' => 0, 'toplam' => 0, 'updated_at' => now()]);
+        if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
+        DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $hedefAcik->id, 'islem' => 'birlestirme', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
+        $mesaj = $eskiAd . ' → ' . $yeni->ad . ' birleştirildi.';
+    } else {
+        // Hedef BOS -> tasi (tum siparisler adisyonla birlikte gider)
+        DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $yeni->id, 'updated_at' => now()]);
+        if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
+        DB::table('masalar')->where('id', $yeni->id)->update(['durum' => 'dolu']);
+        DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
+        $mesaj = $eskiAd . ' → ' . $yeni->ad . ' taşındı.';
+    }
+    if ($r->filled('cagri_id') && Schema::hasTable('masa_cagrilari')) {
+        DB::table('masa_cagrilari')->where('id', (int) $r->cagri_id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
+    }
+    return ['ok' => 1, 'mesaj' => $mesaj . ($onaylayan ? ' (' . $onaylayan->ad . ' onayı)' : '')];
 });
 
 // ---- MASA BIRLESTIR ----
@@ -8016,6 +8086,17 @@ Route::post('/api/mesai/konum-ayarla', function (Request $r) {
         'mesai_yaricap' => (int) ($r->input('yaricap') ?: 150),
     ]);
     return ['ok' => 1];
+});
+
+// Mevcut isletme (geofence) konumunu getir. Yetki: sahip/mudur.
+Route::get('/api/mesai/konum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _mesaiKur();
+    $s = DB::table('subeler')->where('id', $p->sube_id)->first();
+    return ['ok' => 1, 'var' => ($s && $s->mesai_lat) ? 1 : 0,
+        'lat' => $s->mesai_lat ?? null, 'lng' => $s->mesai_lng ?? null,
+        'yaricap' => (int) ($s->mesai_yaricap ?? 150)];
 });
 
 // Personel QR okuttu -> GIRIS ya da CIKIS (TOTP + geofence dogrula).

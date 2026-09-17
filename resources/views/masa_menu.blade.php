@@ -570,7 +570,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 
 /* ---- veri ---- */
 async function yukle(){
-  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; if(j.odeme_modu) ODEME_MODU=j.odeme_modu; }
+  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; if(j.odeme_modu) ODEME_MODU=j.odeme_modu; tasindiRozet(j.tasindi_kaynak); }
   catch(e){ _data=[]; }
   _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) _urun[u.urun_id]=u; }));
   chipleriCiz(); populerCiz('*'); dgridCiz();
