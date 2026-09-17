@@ -2406,6 +2406,7 @@ Route::get('/api/qr/menu-tam', function (Request $r) {
     if ($dil !== 'tr' && is_array($res) && !empty($res['kategoriler'])) {
         $res['kategoriler'] = _qrMenuCevir($res['kategoriler'], $subeId, $dil);
     }
+    if (is_array($res)) $res['odeme_modu'] = _odemeModu($subeId);
     return $res;
 });
 
@@ -2450,7 +2451,7 @@ Route::get('/api/garson-cagrilari', function (Request $r) {
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
-    return ['ok' => 1, 'cagrilar' => $rows, 'sunucu_saat' => now()->format('H:i:s')];
+    return ['ok' => 1, 'cagrilar' => $rows, 'riskli' => _kacakRiskli($subeId), 'sunucu_saat' => now()->format('H:i:s')];
 });
 // Cagriyi karsilandi isaretle
 Route::post('/api/garson-cagri-kapat', function (Request $r) {
@@ -2475,7 +2476,7 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'),
             'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))]);
-    return ['ok' => 1, 'cagrilar' => $rows];
+    return ['ok' => 1, 'cagrilar' => $rows, 'riskli' => _kacakRiskli($p->sube_id)];
 });
 Route::post('/api/patron/garson-cagri-kapat', function (Request $r) {
     $p = _apiPersonel($r);
@@ -6066,6 +6067,74 @@ Route::get('/api/patron/tema', function (Request $r) {
         'mod' => (isset($sube->tema_mod) && $sube->tema_mod === 'acik') ? 'acik' : 'koyu',
         'temalar' => $liste];
 });
+// ---- ODEME MODU / KACAK ONLEME (sube ayari; sahip/mudur) ----
+if (!function_exists('_kacakAyarEnsure')) {
+    function _kacakAyarEnsure()
+    {
+        if (!Schema::hasColumn('subeler', 'odeme_modu')) Schema::table('subeler', function ($t) { $t->string('odeme_modu', 12)->default('post_pay'); }); // post_pay | on_odeme | acik_kart
+        if (!Schema::hasColumn('subeler', 'kacak_uyari_dk')) Schema::table('subeler', function ($t) { $t->integer('kacak_uyari_dk')->default(90); });
+        if (!Schema::hasColumn('subeler', 'kacak_aktif')) Schema::table('subeler', function ($t) { $t->boolean('kacak_aktif')->default(1); });
+    }
+}
+if (!function_exists('_odemeModu')) {
+    function _odemeModu($subeId)
+    {
+        _kacakAyarEnsure();
+        $m = DB::table('subeler')->where('id', $subeId)->value('odeme_modu');
+        return in_array($m, ['post_pay', 'on_odeme', 'acik_kart'], true) ? $m : 'post_pay';
+    }
+}
+// Kacak radari: acik + odenmemis (kalan>0) + uzun suredir acik masalar
+if (!function_exists('_kacakRiskli')) {
+    function _kacakRiskli($subeId)
+    {
+        _kacakAyarEnsure();
+        $sube = DB::table('subeler')->find($subeId);
+        if (!$sube || !($sube->kacak_aktif ?? 1)) return [];
+        $dk = (int) ($sube->kacak_uyari_dk ?? 90);
+        if ($dk < 5) $dk = 5;
+        _odemeSplitEnsure();
+        $sinir = now()->subMinutes($dk);
+        $rows = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.durum', 'acik')
+            ->whereNotNull('adisyonlar.masa_id')->where('adisyonlar.acilis', '<', $sinir)
+            ->select('adisyonlar.id', 'adisyonlar.masa_id', 'adisyonlar.acilis', 'masalar.ad as masa_ad')
+            ->orderBy('adisyonlar.acilis')->limit(40)->get();
+        $out = [];
+        foreach ($rows as $a) {
+            $kalan = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)
+                ->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->sum('tutar');
+            if ($kalan <= 0) continue; // hepsi odenmis -> risk yok
+            $out[] = ['masa_id' => (int) $a->masa_id, 'masa' => $a->masa_ad ?: ('Masa ' . $a->masa_id),
+                'kalan' => $kalan, 'dakika' => max(0, (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()))];
+        }
+        return $out;
+    }
+}
+Route::get('/api/patron/odeme-modu', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _kacakAyarEnsure();
+    $s = DB::table('subeler')->find($p->sube_id);
+    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p),
+        'mod' => _odemeModu($p->sube_id),
+        'kacak_aktif' => (int) ($s->kacak_aktif ?? 1) === 1,
+        'kacak_dk' => (int) ($s->kacak_uyari_dk ?? 90)];
+});
+Route::post('/api/patron/odeme-modu-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    _kacakAyarEnsure();
+    $mod = in_array($r->mod, ['post_pay', 'on_odeme', 'acik_kart'], true) ? $r->mod : 'post_pay';
+    $dk = max(5, min(600, (int) $r->input('kacak_dk', 90)));
+    DB::table('subeler')->where('id', $p->sube_id)->update([
+        'odeme_modu' => $mod,
+        'kacak_uyari_dk' => $dk,
+        'kacak_aktif' => in_array((string) $r->kacak_aktif, ['1', 'true', 'on'], true) ? 1 : 0,
+    ]);
+    return ['ok' => 1, 'mod' => $mod];
+});
+
 // QR menu varsayilan MODU (koyu/acik) — musteri yine kendi cihazinda cevirebilir
 Route::post('/api/patron/tema-mod', function (Request $r) {
     $p = _apiPersonel($r);

@@ -27,6 +27,9 @@
   .cag .ik{ width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:24px;
     background:rgba(244,63,94,.18); flex:0 0 auto; }
   .cag.hesap .ik{ background:rgba(245,158,11,.2); }
+  .cag.risk{ background:linear-gradient(160deg,#2a1010,#1c0a0a); border-color:#b91c1c; }
+  .cag.risk .ik{ background:rgba(239,68,68,.2); }
+  .cag.risk .sure b{ color:#f87171; }
   .cag.odeme{ background:linear-gradient(160deg,#0f2417,#0a1a10); border-color:#1e7a4a; }
   .cag.odeme .ik{ background:rgba(34,197,94,.2); }
   .cag .odetut{ margin-top:12px; font-size:26px; font-weight:900; color:#4ade80; font-variant-numeric:tabular-nums; }
@@ -125,13 +128,23 @@ async function cek(){
     if(yeniOdeme && !_ilk) odemePopup(yeniOdeme);   // kasada odeme tercihi -> dikkat cekici popup + guclu titresim
     _biliniyor = new Set(liste.map(c=>c.id));
     _ilk = false;
-    ciz(liste);
+    ciz(liste, (j.ok && Array.isArray(j.riskli)) ? j.riskli : []);
   }catch(e){ document.getElementById('dstr').textContent = 'Bağlantı bekleniyor…'; }
 }
-function ciz(liste){
+function ciz(liste, riskli){
+  riskli = riskli || [];
   const w = document.getElementById('liste');
-  if(!liste.length){ w.innerHTML='<div class="bos">Bekleyen çağrı yok. Yeni çağrılar buraya anında düşer. 🔔</div>'; return; }
+  if(!liste.length && !riskli.length){ w.innerHTML='<div class="bos">Bekleyen çağrı yok. Yeni çağrılar buraya anında düşer. 🔔</div>'; return; }
   w.innerHTML='';
+  // KACAK RADARI: uzun suredir acik + odenmemis masalar (odemeden ayrilma riski)
+  riskli.forEach(rk=>{
+    const el=document.createElement('div');
+    el.className='cag risk geciken';
+    el.innerHTML = `<div class="ust"><div class="ik">⚠️</div>`
+      + `<div><div class="masa">${esc(rk.masa)}</div><div class="tip">Ödemeden ayrılma riski · ${rk.dakika} dk açık</div></div>`
+      + `<div class="sure"><b>${(rk.kalan||0).toLocaleString('tr')} ₺</b><i>ödenmemiş</i></div></div>`;
+    w.appendChild(el);
+  });
   liste.forEach(c=>{
     const el=document.createElement('div');
     const odeme = c.tip==='odeme';
