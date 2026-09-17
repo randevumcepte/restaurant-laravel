@@ -112,8 +112,8 @@ function odemePopup(c){
 }
 function odemePopupKapat(){ const p=document.getElementById('odemePop'); if(p) p.classList.remove('acik'); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function tipYazi(t){ return t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')); }
-function tipIkon(t){ return t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔')); }
+function tipYazi(t){ return t==='tasima' ? 'Taşıma talebi' : (t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor'))); }
+function tipIkon(t){ return t==='tasima' ? '🔀' : (t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔'))); }
 function sureYazi(sn){ sn=Math.max(0,Math.round(sn)); if(sn<60) return sn+' sn'; const d=Math.floor(sn/60); return d+' dk'; }
 
 async function cek(){
@@ -158,7 +158,7 @@ function ciz(liste, riskli){
       alt = `<button>✓ Karşılandı</button>`;
     }
     el.innerHTML = `<div class="ust"><div class="ik">${tipIkon(c.tip)}</div>`
-      + `<div><div class="masa">${esc(c.masa)}</div><div class="tip">${tipYazi(c.tip)}</div></div>`
+      + `<div><div class="masa">${esc(c.masa)}${c.tip==='tasima'&&c.hedef?(' → '+esc(c.hedef)):''}</div><div class="tip">${tipYazi(c.tip)}${c.tip==='tasima'?' · uygulamadan onaylayın':''}</div></div>`
       + `<div class="sure"><b>${sureYazi(c.saniye)}</b><i>${esc(c.saat)}</i></div></div>`
       + alt;
     if(odeme){

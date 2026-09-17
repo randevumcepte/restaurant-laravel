@@ -406,6 +406,13 @@
     <span style="font-size:13px;color:var(--gold);font-weight:700;white-space:nowrap">Görüntüle →</span>
   </div>
 
+  <!-- Bu hesap baska masadan tasindiysa rozet -->
+  <div id="tasindiSerit" style="display:none;margin:0 0 10px;padding:10px 13px;border-radius:12px;background:rgba(124,108,240,.14);border:1px solid rgba(124,108,240,.4);font-size:13px;color:inherit"></div>
+  <!-- Baska masadan geldiysem hesabimi buraya tasi -->
+  <div onclick="tasimaAc()" style="cursor:pointer;margin:0 0 12px;padding:11px 13px;border-radius:12px;background:transparent;border:1px dashed var(--cizgi);font-size:12.5px;color:var(--sessiz);display:flex;align-items:center;gap:8px">
+    <span style="font-size:16px">🔀</span><span>Başka masadan mı geldiniz? <b style="color:var(--gold)">Hesabınızı buraya taşıyın</b></span>
+  </div>
+
   <div class="chips" id="chips"></div>
 
   <div class="bbas"><b id="popBas">Popüler Lezzetler</b><a onclick="menuAc()">Tümünü Gör →</a></div>
@@ -516,6 +523,18 @@
       <div class="top"><span>Toplam</span><b id="sepet-toplam">0 TL</b></div>
       <button class="gonder" id="sepet-gonder" onclick="siparisGonder()">✅ Siparişi Gönder</button>
       <div id="sepet-ode"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MASA TASIMA TALEBI ==================== -->
+<div class="ov" id="tasimaModal">
+  <div class="ov-bg" onclick="tasimaKapat()"></div>
+  <div class="kutu">
+    <div class="bar"><b>🔀 Hangi masadan geldiniz?</b><button class="x" onclick="tasimaKapat()">✕</button></div>
+    <div style="padding:14px">
+      <p style="font-size:12.5px;color:var(--sessiz);margin-bottom:10px">Önceki masanızı seçin; garson onayladıktan sonra hesabınız bu masaya taşınır.</p>
+      <div id="tasimaListe" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto"></div>
     </div>
   </div>
 </div>
@@ -807,6 +826,32 @@ async function siparisGonder(){
   }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); btn.disabled=false; btn.textContent=_gonderBtnYazi(); }
 }
 function _gonderBtnYazi(){ return ODEME_MODU==='on_odeme' ? '💳 Öde ve Gönder' : '✅ Siparişi Gönder'; }
+// Bu hesap baska masadan tasindiysa rozet goster
+function tasindiRozet(kaynak){
+  const el=document.getElementById('tasindiSerit'); if(!el) return;
+  if(kaynak){ el.innerHTML='🔀 Bu hesap <b>'+esc(kaynak)+'</b> masasından taşındı'; el.style.display='block'; }
+  else el.style.display='none';
+}
+// Masa tasima talebi: "geldigim masa"yi sec -> garsona talep
+async function tasimaAc(){
+  const o=document.getElementById('tasimaModal'); if(o) o.classList.add('acik');
+  const l=document.getElementById('tasimaListe'); l.innerHTML='<div style="color:var(--sessiz);font-size:13px">Masalar yükleniyor…</div>';
+  try{
+    const r=await fetch('/api/qr/masalar?masa='+MASA); const j=await r.json();
+    const masalar=(j.masalar||[]).filter(m=>m.id!==MASA);
+    if(!masalar.length){ l.innerHTML='<div style="color:var(--sessiz);font-size:13px">Başka masa yok.</div>'; return; }
+    l.innerHTML=masalar.map(m=>`<button onclick="tasimaTalep(${m.id})" style="text-align:left;padding:12px 14px;border-radius:10px;border:1px solid var(--cizgi);background:transparent;color:inherit;font-weight:600;cursor:pointer">${esc(m.ad)}</button>`).join('');
+  }catch(e){ l.innerHTML='<div style="color:#e0559a;font-size:13px">Masalar alınamadı.</div>'; }
+}
+function tasimaKapat(){ const o=document.getElementById('tasimaModal'); if(o) o.classList.remove('acik'); }
+async function tasimaTalep(kaynakId){
+  tasimaKapat();
+  try{
+    const r=await fetch('/api/qr/tasima-talep',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,kaynak_masa:kaynakId})});
+    const j=await r.json();
+    toast(j.ok ? ('✅ '+(j.mesaj||'Talebiniz iletildi')) : (j.hata||'Talep gönderilemedi'));
+  }catch(e){ toast('Talep gönderilemedi, tekrar deneyin'); }
+}
 // Sepetteki gonderilmis kalemleri tazele (odeme onizlemesi dogru tutar gostersin)
 async function siparileriYukleSepet(){
   try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0; sepetCiz(); } }catch(_){}
