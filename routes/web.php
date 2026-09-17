@@ -5857,6 +5857,148 @@ Route::get('/api/patron/cihazlar', function (Request $r) {
     return ['ok' => 1, 'esik_sn' => $esik, 'cihazlar' => $liste, 'yazarkasa' => $yazarkasa];
 });
 
+// ============ HAREKETLER / AKTIVITE LOG (tum kaynaklar tek zaman akisi) ============
+Route::get('/api/patron/hareketler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    \App\Http\Middleware\AktiviteLog::ensure();
+    $sube = $p->sube_id;
+    $to = $r->to ? \Carbon\Carbon::parse($r->to)->endOfDay() : now();
+    $gun = (int) ($r->gun ?: 7);
+    $from = $r->from ? \Carbon\Carbon::parse($r->from)->startOfDay() : (clone $to)->subDays($gun);
+    $kategoriF = ($r->kategori && $r->kategori !== 'hepsi') ? $r->kategori : null;
+    $kimF = $r->kim ? (int) $r->kim : null;
+    $ara = trim((string) $r->ara);
+    $limit = 800;
+
+    $pAd = DB::table('personeller')->pluck('ad', 'id');
+    $hepsi = [];
+    $ekle = function ($zaman, $kategori, $baslik, $aciklama, $personelId, $tutar, $yon, $kt, $ki) use (&$hepsi) {
+        if (!$zaman) return;
+        $hepsi[] = ['zaman' => (string) $zaman, 'kategori' => $kategori, 'baslik' => $baslik, 'aciklama' => $aciklama,
+            'personel_id' => $personelId ? (int) $personelId : null, 'tutar' => $tutar !== null ? (float) $tutar : null,
+            'yon' => $yon, 'kaynak_tip' => $kt, 'kaynak_id' => $ki ? (int) $ki : null];
+    };
+
+    // 1) Merkezi aktivite log (config/ayar/menu/recete/yetki/tema/giris...)
+    try {
+        foreach (DB::table('aktivite_loglari')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $a) {
+            $ekle($a->created_at, $a->kategori, $a->aksiyon, $a->aciklama, $a->personel_id, null, null, 'aktivite', $a->id);
+        }
+    } catch (\Throwable $e) {}
+    // 2) Odemeler
+    try {
+        foreach (DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $sube)
+            ->whereBetween('odemeler.created_at', [$from, $to])->orderByDesc('odemeler.id')->limit($limit)
+            ->get(['odemeler.id', 'odemeler.tip', 'odemeler.tutar', 'odemeler.personel_id', 'odemeler.created_at', 'odemeler.adisyon_id']) as $o) {
+            $tipAd = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı', 'acik_hesap' => 'Açık Hesap'][$o->tip] ?? $o->tip;
+            $ekle($o->created_at, 'odeme', 'Ödeme alındı (' . $tipAd . ')', null, $o->personel_id, $o->tutar, 'giris', 'adisyon', $o->adisyon_id);
+        }
+    } catch (\Throwable $e) {}
+    // 3) Iskonto/Ikram/Void
+    try {
+        foreach (DB::table('iptal_indirim_loglari')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $l) {
+            $ad = ['indirim' => 'İskonto', 'ikram' => 'İkram', 'void' => 'Ürün silme (void)'][$l->tip] ?? $l->tip;
+            $ekle($l->created_at, 'kayip', $ad, $l->sebep ?? null, $l->personel_id, $l->tutar, 'cikis', 'adisyon', $l->adisyon_id);
+        }
+    } catch (\Throwable $e) {}
+    // 4) Stok hareketleri
+    try {
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        foreach (DB::table('stok_hareketleri')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $s) {
+            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer'][$s->tip] ?? $s->tip;
+            $mik = (float) $s->miktar;
+            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.'),
+                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $mik < 0 ? 'cikis' : 'giris', 'malzeme', $s->malzeme_id);
+        }
+    } catch (\Throwable $e) {}
+    // 5) Kasa hareketleri
+    try {
+        if (Schema::hasTable('kasa_hareketleri')) {
+            foreach (DB::table('kasa_hareketleri')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $k) {
+                $yon = ($k->yon ?? '') === 'cikis' ? 'cikis' : 'giris';
+                $ekle($k->created_at, 'kasa', 'Kasa ' . ($yon === 'giris' ? 'giriş' : 'çıkış'), $k->aciklama ?? null, $k->personel_id ?? null, $k->tutar ?? null, $yon, 'kasa', $k->id);
+            }
+        }
+    } catch (\Throwable $e) {}
+    // 6) Cari hareketler
+    try {
+        if (Schema::hasTable('cari_hareketler')) {
+            $cariAd = DB::table('cari_hesaplar')->pluck('ad', 'id');
+            foreach (DB::table('cari_hareketler')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $c) {
+                $th = ($c->tip ?? '') === 'tahsilat';
+                $ekle($c->created_at, 'cari', $th ? 'Cari tahsilat' : 'Cari borç', $cariAd[$c->cari_id] ?? ($c->aciklama ?? null), $c->personel_id ?? null, $c->tutar ?? null, $th ? 'giris' : 'cikis', 'cari', $c->cari_id ?? null);
+            }
+        }
+    } catch (\Throwable $e) {}
+    // 7) Personel hareketleri (avans/prim/kesinti/odeme)
+    try {
+        if (Schema::hasTable('personel_hareketleri')) {
+            foreach (DB::table('personel_hareketleri')->where('sube_id', $sube)->whereBetween('tarih', [substr($from, 0, 10), substr($to, 0, 10)])->orderByDesc('id')->limit($limit)->get() as $ph) {
+                $ad = ['avans' => 'Personel avans', 'prim' => 'Personel prim', 'kesinti' => 'Personel kesinti', 'odeme' => 'Personel ödeme', 'maas' => 'Maaş ödemesi'][$ph->tur ?? ''] ?? ('Personel: ' . ($ph->tur ?? ''));
+                $ekle($ph->tarih, 'personel', $ad, $pAd[$ph->personel_id] ?? null, $ph->created_by ?? null, $ph->tutar ?? null, 'cikis', 'personel', $ph->personel_id);
+            }
+        }
+    } catch (\Throwable $e) {}
+    // 8) Giderler (maas haric — o personel_hareketleri'nde)
+    try {
+        foreach (DB::table('giderler')->where('sube_id', $sube)->where('kategori', '!=', 'maas')->whereBetween('tarih', [substr($from, 0, 10), substr($to, 0, 10)])->orderByDesc('id')->limit($limit)->get() as $g) {
+            $ekle($g->tarih, 'gider', 'Gider · ' . ($g->kategori ?? ''), $g->aciklama ?? null, $g->created_by ?? null, $g->tutar ?? null, 'cikis', 'gider', $g->id);
+        }
+    } catch (\Throwable $e) {}
+    // 9) Fis/fatura
+    try {
+        if (Schema::hasTable('e_faturalar')) {
+            foreach (DB::table('e_faturalar')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $f) {
+                $ad = ($f->tip === 'okc_fis' ? 'Yazarkasa fişi' : 'e-Arşiv fatura') . ' (' . $f->durum . ')';
+                $ekle($f->created_at, 'fis', $ad, $f->belge_no ?? null, null, $f->toplam ?? null, null, 'fatura', $f->id);
+            }
+        }
+    } catch (\Throwable $e) {}
+    // 10) Adisyon iptal
+    try {
+        foreach (DB::table('adisyonlar')->where('sube_id', $sube)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $a) {
+            $ekle($a->acilis, 'satis', 'Adisyon iptal edildi', null, $a->acan_personel_id ?? null, $a->toplam ?? null, 'cikis', 'adisyon', $a->id);
+        }
+    } catch (\Throwable $e) {}
+
+    // Filtre
+    $suz = array_values(array_filter($hepsi, function ($h) use ($kategoriF, $kimF, $ara) {
+        if ($kategoriF && $h['kategori'] !== $kategoriF) return false;
+        if ($kimF && (int) $h['personel_id'] !== $kimF) return false;
+        if ($ara !== '') {
+            $hay = mb_strtolower(($h['baslik'] ?? '') . ' ' . ($h['aciklama'] ?? '') . ' ' . (string) ($h['tutar'] ?? ''));
+            if (mb_strpos($hay, mb_strtolower($ara)) === false) return false;
+        }
+        return true;
+    }));
+    usort($suz, fn ($a, $b) => strcmp($b['zaman'], $a['zaman']));
+
+    // Ozet
+    $girisT = 0.0; $cikisT = 0.0; $katSay = [];
+    foreach ($suz as $h) {
+        if ($h['tutar'] !== null) { if ($h['yon'] === 'giris') $girisT += $h['tutar']; elseif ($h['yon'] === 'cikis') $cikisT += $h['tutar']; }
+        $katSay[$h['kategori']] = ($katSay[$h['kategori']] ?? 0) + 1;
+    }
+    $toplam = count($suz);
+
+    // Sayfalama + kisi adi + okunur zaman
+    $boyut = min(100, max(10, (int) ($r->boyut ?: 40)));
+    $sayfa = max(1, (int) ($r->sayfa ?: 1));
+    $dilim = array_slice($suz, ($sayfa - 1) * $boyut, $boyut);
+    foreach ($dilim as &$h) {
+        $c = \Carbon\Carbon::parse($h['zaman']);
+        $h['saat'] = $c->format('H:i'); $h['tarih'] = $c->format('d.m.Y'); $h['gun_key'] = $c->format('Y-m-d');
+        $h['personel'] = $h['personel_id'] ? ($pAd[$h['personel_id']] ?? null) : null;
+    }
+
+    return ['ok' => 1, 'toplam' => $toplam, 'sayfa' => $sayfa, 'boyut' => $boyut,
+        'ozet' => ['toplam' => $toplam, 'giris' => round($girisT), 'cikis' => round($cikisT), 'kategori' => $katSay],
+        'hareketler' => array_values($dilim),
+        'personeller' => DB::table('personeller')->where('sube_id', $sube)->orderBy('ad')->get(['id', 'ad']),
+    ];
+});
+
 // ---- TEDARİKÇİLER ----
 Route::get('/api/patron/tedarikciler', function (Request $r) {
     $p = _apiPersonel($r);
