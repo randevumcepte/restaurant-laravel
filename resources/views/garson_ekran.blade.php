@@ -80,7 +80,7 @@
 
 <script>
 const SUBE = @json($sube->id ?? 0);
-let _sesAcik = false, _biliniyor = new Set(), _ilk = true;
+let _sesAcik = false, _biliniyor = new Set(), _ilk = true, _sonZil = 0;
 let _actx = null;
 
 function sesAc(){
@@ -88,23 +88,28 @@ function sesAc(){
   document.getElementById('sesBtn').textContent = _sesAcik ? '🔔 Ses Açık' : '🔇 Sesi Aç';
   if(_sesAcik){ try{ _actx = _actx || new (window.AudioContext||window.webkitAudioContext)(); _actx.resume(); }catch(e){} bipCal(); }
 }
-function bipCal(){
+// Tek zil salvosu: YUKSEK sesli, delici (kare dalga) telefon-zili gibi 4 vurus
+function zilSalvo(gecikme){
   if(!_sesAcik || !_actx) return;
   try{
-    for(let i=0;i<2;i++){
+    const master=_actx.createGain(); master.gain.value=0.85; master.connect(_actx.destination);
+    [[988,0],[784,0.17],[988,0.34],[784,0.51]].forEach(([f,dt])=>{
       const o=_actx.createOscillator(), g=_actx.createGain();
-      o.type='sine'; o.frequency.value = i? 660:880;
-      o.connect(g); g.connect(_actx.destination);
-      const t=_actx.currentTime + i*0.22;
-      g.gain.setValueAtTime(0.001,t); g.gain.exponentialRampToValueAtTime(0.35,t+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+0.2);
-      o.start(t); o.stop(t+0.22);
-    }
+      o.type='square'; o.frequency.value=f;
+      o.connect(g); g.connect(master);
+      const t=_actx.currentTime + (gecikme||0) + dt;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.9,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.15);
+      o.start(t); o.stop(t+0.17);
+    });
   }catch(e){}
 }
+// Yuksek sesli, TEKRARLAYAN zil (yogunlukta iskalanmasin) — kez kadar salvo
+function zilCal(kez){ kez=kez||3; for(let i=0;i<kez;i++) zilSalvo(i*0.8); }
+function bipCal(){ zilSalvo(0); }  // geriye donuk uyum
 function titret(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
-// Kasada odeme tercihi: tam ekran dikkat popup + guclu titresim + cift bip
+// Kasada odeme tercihi: tam ekran dikkat popup + GUCLU titresim + yuksek zil
 function odemePopup(c){
-  bipCal(); setTimeout(bipCal,260); titret([300,120,300,120,300]);
+  zilCal(4); titret([600,200,600,200,600,200,900]);
   const p=document.getElementById('odemePop'); if(!p) return;
   document.getElementById('op-masa').textContent=c.masa||'Masa';
   document.getElementById('op-tutar').textContent=(c.tutar||0).toLocaleString('tr')+' TL';
@@ -123,7 +128,9 @@ async function cek(){
     const liste = (j.ok && Array.isArray(j.cagrilar)) ? j.cagrilar : [];
     document.getElementById('dstr').textContent = 'Canlı · '+ (j.sunucu_saat||'');
     const yeniler = liste.filter(c=> !_biliniyor.has(c.id));
-    if(yeniler.length && !_ilk){ bipCal(); titret([200,100,200]); }
+    const _now = Date.now();
+    if(yeniler.length && !_ilk){ zilCal(3); titret([500,180,500,180,700]); _sonZil=_now; }
+    else if(liste.length && !_ilk && (_now-_sonZil>18000)){ zilSalvo(0); titret([300,150,300]); _sonZil=_now; } // bekleyen cagri varken hatirlatma
     const yeniOdeme = yeniler.find(c=> c.tip==='odeme');
     if(yeniOdeme && !_ilk) odemePopup(yeniOdeme);   // kasada odeme tercihi -> dikkat cekici popup + guclu titresim
     _biliniyor = new Set(liste.map(c=>c.id));
