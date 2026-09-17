@@ -5614,6 +5614,96 @@ Route::get('/api/patron/musteri-detay', function (Request $r) {
     ];
 });
 
+// ============ BAGLI CIHAZLAR (heartbeat) + YAZARKASA durumu ============
+function _restoCihazEnsure()
+{
+    if (!Schema::hasTable('cihazlar')) {
+        Schema::create('cihazlar', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->string('kimlik', 100);           // cihaz parmak izi (uuid, prefs'te saklanir)
+            $t->string('ad')->nullable();
+            $t->string('tip')->default('bilgisayar'); // bilgisayar|tablet|telefon|kds|yazarkasa
+            $t->string('platform')->nullable();
+            $t->string('surum')->nullable();
+            $t->string('rol')->nullable();
+            $t->string('ip')->nullable();
+            $t->timestamp('son_gorulme')->nullable();
+            $t->timestamps();
+            $t->unique(['sube_id', 'kimlik']);
+        });
+    }
+}
+
+// Cihaz sinyali (heartbeat) — ResteOS acikken periyodik gonderir. Her rol cagirabilir.
+Route::post('/api/cihaz/ping', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _restoCihazEnsure();
+    $kimlik = substr(trim((string) $r->kimlik), 0, 100);
+    if ($kimlik === '') return ['ok' => 0, 'hata' => 'kimlik yok'];
+    $tip = in_array($r->tip, ['bilgisayar', 'tablet', 'telefon', 'kds', 'yazarkasa']) ? $r->tip : 'bilgisayar';
+    $veri = [
+        'ad' => substr((string) ($r->ad ?: 'ResteOS Cihazı'), 0, 80), 'tip' => $tip,
+        'platform' => substr((string) $r->platform, 0, 40), 'surum' => substr((string) $r->surum, 0, 30),
+        'rol' => $p->rol, 'ip' => $r->ip(), 'son_gorulme' => now(), 'updated_at' => now(),
+    ];
+    $row = DB::table('cihazlar')->where('sube_id', $p->sube_id)->where('kimlik', $kimlik)->first();
+    if ($row) {
+        DB::table('cihazlar')->where('id', $row->id)->update($veri);
+    } else {
+        $veri['sube_id'] = $p->sube_id; $veri['kimlik'] = $kimlik; $veri['created_at'] = now();
+        DB::table('cihazlar')->insert($veri);
+    }
+    return ['ok' => 1];
+});
+
+// Bagli cihazlar listesi + yazarkasa durumu (SAHIP/MUDUR)
+Route::get('/api/patron/cihazlar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoCihazEnsure();
+    $esik = 120; // sn — bu sure icinde sinyal geldiyse ONLINE (yesil)
+    $now = now();
+    $gecen = function ($sn) {
+        if ($sn === null) return 'hiç';
+        if ($sn < 60) return 'az önce';
+        if ($sn < 3600) return floor($sn / 60) . ' dk önce';
+        if ($sn < 86400) return floor($sn / 3600) . ' sa önce';
+        return floor($sn / 86400) . ' gün önce';
+    };
+    $liste = DB::table('cihazlar')->where('sube_id', $p->sube_id)->orderByDesc('son_gorulme')->get()->map(function ($c) use ($now, $esik, $gecen) {
+        $sg = $c->son_gorulme ? \Carbon\Carbon::parse($c->son_gorulme) : null;
+        $sn = $sg ? (int) $sg->diffInSeconds($now) : null;
+        return [
+            'id' => (int) $c->id, 'ad' => $c->ad, 'tip' => $c->tip, 'platform' => $c->platform, 'surum' => $c->surum,
+            'ip' => $c->ip, 'rol' => $c->rol, 'online' => $sn !== null && $sn <= $esik, 'son_gorulme' => $gecen($sn),
+        ];
+    })->values();
+
+    // Yazarkasa (OKC) — edonusum_ayarlari + son okc fisi
+    $yazarkasa = null;
+    $ayar = Schema::hasTable('edonusum_ayarlari') ? DB::table('edonusum_ayarlari')->where('sube_id', $p->sube_id)->first() : null;
+    if ($ayar) {
+        $aktif = (($ayar->fis_modu ?? '') === 'okc') && !empty($ayar->okc_aktif);
+        $sonFis = DB::table('e_faturalar')->where('sube_id', $p->sube_id)->where('tip', 'okc_fis')->orderByDesc('id')->first();
+        $durum = 'kapali'; $mesaj = 'Yazarkasa modu kapalı (e-Arşiv kullanılıyor).';
+        if ($aktif) {
+            if ($sonFis && $sonFis->durum === 'hata') { $durum = 'hata'; $mesaj = 'Aktif ama son fişte HATA — bağlantı/cihaz kontrol edin.'; }
+            elseif ($sonFis && $sonFis->durum === 'basildi') { $durum = 'online'; $mesaj = 'Aktif · son mali fiş başarıyla basıldı.'; }
+            elseif ($sonFis && $sonFis->durum === 'simulasyon') { $durum = 'test'; $mesaj = 'Aktif ama fiş simülasyonda basılıyor (gerçek cihaz sürücüsü bağlı değil).'; }
+            else { $durum = 'bekliyor'; $mesaj = 'Aktif · henüz mali fiş basılmadı.'; }
+        }
+        $yazarkasa = [
+            'marka' => $ayar->okc_marka, 'ip' => $ayar->okc_ip, 'port' => $ayar->okc_port, 'aktif' => $aktif,
+            'durum' => $durum, 'mesaj' => $mesaj,
+            'son_fis' => $sonFis ? \Carbon\Carbon::parse($sonFis->created_at)->format('d.m H:i') : null,
+        ];
+    }
+
+    return ['ok' => 1, 'esik_sn' => $esik, 'cihazlar' => $liste, 'yazarkasa' => $yazarkasa];
+});
+
 // ---- TEDARİKÇİLER ----
 Route::get('/api/patron/tedarikciler', function (Request $r) {
     $p = _apiPersonel($r);
