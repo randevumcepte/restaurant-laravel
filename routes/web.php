@@ -2498,7 +2498,7 @@ Route::get('/api/garson-cagrilari', function (Request $r) {
         ->orderBy('masa_cagrilari.id')
         ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token', 'masa_cagrilari.hedef_masa_id')
         ->limit(50)->get()
-        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id), 'masa_id' => (int) $c->masa_id,
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'hedef' => (isset($c->hedef_masa_id) && $c->hedef_masa_id) ? (DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id)) : null,
             'hedef_masa_id' => $c->hedef_masa_id ?? null,
@@ -2525,7 +2525,7 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
         ->orderBy('masa_cagrilari.id')
         ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token', 'masa_cagrilari.hedef_masa_id')
         ->limit(60)->get()
-        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id),
+        ->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id), 'masa_id' => (int) $c->masa_id,
             'tutar' => isset($c->tutar) ? (float) $c->tutar : null, 'odeme_token' => $c->odeme_token ?? null,
             'hedef' => (isset($c->hedef_masa_id) && $c->hedef_masa_id) ? (DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id)) : null,
             'hedef_masa_id' => $c->hedef_masa_id ?? null,
