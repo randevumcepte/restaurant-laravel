@@ -65,6 +65,14 @@
         @endif
     </div>
 
+    {{-- Toplu yapıştır (ChatGPT JSON) --}}
+    <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+        <div class="font-bold text-slate-900 mb-1">📋 Toplu Yapıştır (ChatGPT çıktısı)</div>
+        <p class="text-sm text-slate-500 mb-3">ChatGPT’den aldığın JSON listeyi buraya yapıştır → tek tıkla hepsi kalıp olur. (Format: <code class="text-xs">[{"tetikleyiciler":"...","cevap":"...","kategori":"..."}]</code>)</p>
+        <textarea x-model="topluJson" rows="5" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono" placeholder='[{"tetikleyiciler":"wifi, şifre, internet","cevap":"İnternet şifremiz LEZZET2024.","kategori":"bilgi"}]'></textarea>
+        <button @click="topluEkle()" :disabled="topluYukleniyor" class="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">İçe Aktar</button>
+    </div>
+
     {{-- Çözülemeyen sorular --}}
     <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
         <div class="font-bold text-slate-900 mb-1">❓ Çözülemeyen Sorular <span class="text-sm font-normal text-slate-400">(müşteriler sordu, cevabın yoktu)</span></div>
@@ -158,7 +166,15 @@ function egitim(){
   return {
     kaliplar: @json($kaliplar),
     acik:false, kaydediyor:false,
+    topluJson:'', topluYukleniyor:false,
     f:{},
+    async topluEkle(){
+      let arr; try{ arr=JSON.parse(this.topluJson); }catch(e){ alert('JSON hatalı. ChatGPT çıktısını (köşeli parantezle başlayan) olduğu gibi yapıştır.'); return; }
+      if(!Array.isArray(arr) || !arr.length){ alert('Boş ya da dizi değil.'); return; }
+      this.topluYukleniyor=true;
+      try{ const r=await api('/asistan-egitim/toplu-ekle',{liste:arr}); if(r.ok){ alert(r.eklendi+' kalıp eklendi 🎉'); location.reload(); return; } alert(r.hata||'Hata'); }
+      finally{ this.topluYukleniyor=false; }
+    },
     bos(){ return {id:null, tetikleyiciler:'', cevap:'', kategori:'genel', aktif:true, cozulmeyen_id:null}; },
     yeni(){ this.f=this.bos(); this.acik=true; },
     duzenle(k){ this.f={id:k.id, tetikleyiciler:k.tetikleyiciler, cevap:k.cevap, kategori:k.kategori||'genel', aktif:(k.aktif==1||k.aktif===true), cozulmeyen_id:null}; this.acik=true; },

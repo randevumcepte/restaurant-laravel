@@ -1899,6 +1899,25 @@ Route::post('/asistan-egitim/kalip-sil', function (Request $r) {
     \Cache::forget('resto_kalip_liste_v1');
     return ['ok' => 1];
 });
+// Toplu ice aktar: ChatGPT ciktisi (JSON dizi: {tetikleyiciler,cevap,kategori}) -> topluca kalip
+Route::post('/asistan-egitim/toplu-ekle', function (Request $r) {
+    _asistanEgitimEnsure();
+    $liste = $r->input('liste');
+    if (is_string($liste)) $liste = json_decode($liste, true);
+    if (!is_array($liste)) return ['ok' => 0, 'hata' => 'Geçersiz liste (JSON dizi bekleniyor).'];
+    $n = 0; $now = now();
+    foreach ($liste as $o) {
+        if (!is_array($o)) continue;
+        $t = trim((string) ($o['tetikleyiciler'] ?? ($o['tetik'] ?? '')));
+        $c = trim((string) ($o['cevap'] ?? ''));
+        if ($t === '' || $c === '') continue;
+        DB::table('asistan_kalip')->insert(['tetikleyiciler' => mb_substr($t, 0, 500), 'cevap' => mb_substr($c, 0, 2000),
+            'kategori' => mb_substr((trim((string) ($o['kategori'] ?? 'genel')) ?: 'genel'), 0, 40), 'aktif' => 1, 'kullanim_sayisi' => 0, 'created_at' => $now, 'updated_at' => $now]);
+        $n++;
+    }
+    \Cache::forget('resto_kalip_liste_v1');
+    return ['ok' => 1, 'eklendi' => $n];
+});
 Route::post('/asistan-egitim/cozulmeyen-sil', function (Request $r) {
     if (Schema::hasTable('asistan_cozulmeyen')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->id)->delete();
     return ['ok' => 1];
