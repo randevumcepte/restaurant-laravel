@@ -393,7 +393,41 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['gorusuruz', 'hosca kal', 'hoscakal', 'bay bay', 'baybay', 'kendine iyi bak', 'cikiyoruz', 'gidiyoruz artik'])) {
             return $this->cvp('Bizi tercih ettiğiniz için teşekkürler, yine bekleriz! Afiyet olsun.');
         }
+        // Panelden eklenen SOHBET/KIMLIK kaliplari (ChatGPT ile toplu yuklenebilir) — kodda yoksa buradan
+        $sk = $this->sohbetKalip($c);
+        if ($sk) return $sk;
         return null;
+    }
+
+    /** SOHBET/KIMLIK kategorisindeki kaliplari eslestir (sohbet katmaninda; genel kalip() bunlari haric tutar). */
+    protected function sohbetKalip($soru)
+    {
+        try {
+            if (!Schema::hasTable('asistan_kalip')) return null;
+            $liste = DB::table('asistan_kalip')->where('aktif', 1)
+                ->whereIn('kategori', ['sohbet', 'kimlik'])->select('id', 'tetikleyiciler', 'cevap')->get();
+            if ($liste->isEmpty()) return null;
+            $n = ' ' . $this->norm($soru) . ' ';
+            $enIyi = null;
+            $enSkor = 0;
+            foreach ($liste as $k) {
+                foreach (preg_split('/[\r\n,;]+/', (string) $k->tetikleyiciler) as $t) {
+                    $t = trim($this->norm($t));
+                    if (mb_strlen($t) < 2) continue;
+                    if ($this->tetikUyar($n, $t) && mb_strlen($t) > $enSkor) { $enSkor = mb_strlen($t); $enIyi = $k; }
+                }
+            }
+            if (!$enIyi) return null;
+            try { DB::table('asistan_kalip')->where('id', $enIyi->id)->increment('kullanim_sayisi'); } catch (\Throwable $e) {}
+            $cev = (string) $enIyi->cevap;
+            if (strpos($cev, '---') !== false) {
+                $p = array_values(array_filter(array_map('trim', preg_split('/^\s*-{3,}\s*$/m', $cev)), fn ($x) => $x !== ''));
+                $cev = empty($p) ? trim($cev) : $p[array_rand($p)];
+            }
+            return $this->cvp(trim($cev), ['kaynak' => 'kalip']);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     protected function rastgele(array $a)
