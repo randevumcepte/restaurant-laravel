@@ -100,6 +100,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $duz = $this->siparisDuzenle($c, $soru, $baglam);
         if ($duz) return $duz;
 
+        // 2.6) SOHBET MODULU (BEDAVA, Haiku'dan ONCE): nasilsin/iltifat/ilk defa/kararsizlik/vedalasma -> sicak garson yaniti
+        $sohbet = $this->sohbetCevap($c);
+        if ($sohbet) return $sohbet;
+
         // ===== HAIKU NIYET COZUCU (BEYIN) — BIRINCIL: kullanici ne dediyse Haiku niyeti coz + KESIN uygula.
         // Asagidaki kelime-kurallari yalnizca BEYIN yoksa (anahtar yok/tavan dolu/basarisiz) YEDEK calisir. =====
         $beyin = $this->niyetRouter($soru, $baglam);
@@ -338,6 +342,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $kartlar = $urunler->take(8)->map(fn ($u) => $this->kart($u->ad, $u->fiyat, $u->aciklama, null, 'Etsiz', [], $u->id))->all();
         return $this->cvp('🥗 Etsiz sevenler için birkaç güzel seçeneğimiz var. Resimlere göz atabilir, detay isteyebilirsiniz.',
             ['tip' => 'urunler', 'baslik' => 'Vejetaryen', 'kartlar' => $kartlar]);
+    }
+
+    /**
+     * SOHBET MODULU (BEDAVA, Haiku'dan ONCE): sicak garson edasiyla sosyal iletisim.
+     * Menu/siparis DEGIL; nasilsin/iltifat/ilk defa/kararsizlik/vedalasma. Eslesmezse null (akis devam).
+     */
+    protected function sohbetCevap($c)
+    {
+        // Kararsizlik / "ne yesem" -> ONERI motoruna kopru (deterministik + bedava)
+        if ($this->has($c, ['ne yesem', 'ne yiyeyim', 'ne yisem', 'karar veremiyor', 'kararsizim', 'ne istedigimi bilmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'aklima gelmiyor', 'sen sec', 'sen karar ver', 'sen bir sey soyle', 'ne alsam bilmiyor'])) {
+            return $this->oneri($c);
+        }
+        // Nasilsin / hal hatir
+        if ($this->has($c, ['nasilsin', 'naber', 'ne haber', 'iyi misin', 'keyifler', 'napiyorsun', 'ne yapiyorsun'])) {
+            return $this->cvp($this->rastgele([
+                'Çok iyiyim, sorduğunuz için teşekkürler! Bugün size güzel bir sofra kuralım mı?',
+                'Turp gibiyim, sağ olun! Canınız ne çekiyor, birlikte bakalım mı?',
+                'Harikayım, sizi ağırlamak için buradayım! Menüyü mü tanıtayım yoksa bir önerim mi olsun?',
+            ]));
+        }
+        // Iltifat (MEKANA; yemek sorusuyla karismasin diye yer-odakli tetikler)
+        if ($this->has($c, ['burasi guzel', 'burasi cok guzel', 'mekan guzel', 'mekaniniz guzel', 'ambiyans', 'ortam guzel', 'cok sik', 'begendim burayi', 'burayi begendim', 'burasi hos', 'guzel yer', 'harika yer', 'dekor', 'huzurlu yer'])) {
+            return $this->cvp($this->rastgele([
+                'Çok teşekkür ederiz, beğenmenize sevindik! Bir de lezzetlerimizi deneyin, damağınızda iz bırakır.',
+                'Ne güzel söylediniz, sağ olun! İzin verirseniz keyfinizi tamamlayacak bir öneride bulunayım.',
+                'Duymak çok hoş, teşekkürler! Size en sevilenlerimizden birini önereyim mi?',
+            ]));
+        }
+        // Ilk defa geldim
+        if ($this->has($c, ['ilk defa', 'ilk kez', 'ilk gelis', 'ilk seferim', 'yeni geldim', 'daha once gelmedim', 'ilk ziyaret'])) {
+            return $this->cvp($this->rastgele([
+                'Hoş geldiniz, aramıza katılmanıza çok sevindik! İlk kez geldiyseniz en beğenilen lezzetlerimizi önereyim mi?',
+                'Ne güzel, ilk ziyaretiniz şerefine en sevilenlerimizi göstereyim mi?',
+            ]));
+        }
+        // Kalabalik / yogun
+        if ($this->has($c, ['kalabalik', 'cok dolu', 'yogunsunuz', 'yogun bugun', 'cok musteri', 'yer yokmus'])) {
+            return $this->cvp('Evet, bugün ilginize doyamıyoruz, çok teşekkürler! Siz keyfinize bakın; ne arzu edersiniz, hemen ilgileneyim.');
+        }
+        // Sohbet edelim / sikildim
+        if ($this->has($c, ['sohbet edelim', 'muhabbet edelim', 'biraz konusalim', 'canim sikildi', 'sikildim', 'laf olsun'])) {
+            return $this->cvp('Memnuniyetle! Ben masanızın dijital garsonuyum; hem sohbet ederiz hem de canınızın çektiği bir şey olursa hemen ayarlarız. Ne dersiniz?');
+        }
+        // Guzel soz / takdir
+        if ($this->has($c, ['harikasin', 'cok iyisin', 'iyi ki varsin', 'bravo', 'helal', 'cok tatlisin', 'akillisin'])) {
+            return $this->cvp('Çok naziksiniz, teşekkür ederim! Sizi mutlu etmek için buradayım — ne arzu edersiniz?');
+        }
+        // Vedalasma
+        if ($this->has($c, ['gorusuruz', 'hosca kal', 'hoscakal', 'bay bay', 'baybay', 'kendine iyi bak', 'cikiyoruz', 'gidiyoruz artik'])) {
+            return $this->cvp('Bizi tercih ettiğiniz için teşekkürler, yine bekleriz! Afiyet olsun.');
+        }
+        return null;
+    }
+
+    protected function rastgele(array $a)
+    {
+        return $a[array_rand($a)];
     }
 
     protected function oneri($c = '')
