@@ -7466,6 +7466,69 @@ Route::post('/indirimler/sil', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ---- INDIRIMLER (Flutter patron API, token'li; sahip/mudur) ----
+if (!function_exists('_indirimKaydetData')) {
+    function _indirimKaydetData(Request $r, $subeId)
+    {
+        $tipler = ['online_odeme', 'uygulama', 'kupon', 'ilk_siparis', 'tutar_ustu', 'happy_hour', 'gun', 'dogum_gunu', 'urun'];
+        $urunIds = $r->input('urun_ids');
+        if (is_string($urunIds)) { $dec = json_decode($urunIds, true); $urunIds = is_array($dec) ? $dec : []; }
+        return [
+            'sube_id' => $subeId,
+            'tip' => in_array($r->tip, $tipler, true) ? $r->tip : 'kupon',
+            'urun_ids' => (is_array($urunIds) && count($urunIds)) ? json_encode(array_values(array_map('intval', $urunIds))) : null,
+            'ad' => trim((string) $r->ad) !== '' ? trim((string) $r->ad) : 'İndirim',
+            'deger_tipi' => $r->deger_tipi === 'tutar' ? 'tutar' : 'yuzde',
+            'deger' => max(0, (float) $r->deger),
+            'min_tutar' => $r->filled('min_tutar') ? (float) $r->min_tutar : null,
+            'max_indirim' => $r->filled('max_indirim') ? (float) $r->max_indirim : null,
+            'kupon_kodu' => $r->filled('kupon_kodu') ? strtoupper(trim((string) $r->kupon_kodu)) : null,
+            'saat_bas' => $r->filled('saat_bas') ? substr((string) $r->saat_bas, 0, 5) : null,
+            'saat_bit' => $r->filled('saat_bit') ? substr((string) $r->saat_bit, 0, 5) : null,
+            'gun_maskesi' => $r->filled('gun_maskesi') ? preg_replace('/[^0-9,]/', '', (string) $r->gun_maskesi) : null,
+            'baslangic' => $r->filled('baslangic') ? $r->baslangic : null,
+            'bitis' => $r->filled('bitis') ? $r->bitis : null,
+            'kullanim_limiti' => $r->filled('kullanim_limiti') ? (int) $r->kullanim_limiti : null,
+            'aktif' => in_array((string) $r->aktif, ['1', 'true', 'on'], true) ? 1 : 0,
+        ];
+    }
+}
+Route::get('/api/patron/indirimler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    _indirimEnsure($p->sube_id);
+    $kurallar = DB::table('indirimler')->where('sube_id', $p->sube_id)->orderBy('tip')->orderByDesc('id')->get();
+    $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    return ['ok' => 1, 'kurallar' => $kurallar, 'urunler' => $urunler];
+});
+Route::post('/api/patron/indirim-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    _indirimEnsure($p->sube_id);
+    $data = _indirimKaydetData($r, $p->sube_id);
+    if ($r->filled('id')) {
+        DB::table('indirimler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update($data);
+    } else {
+        $data['created_at'] = now(); $data['kullanim_sayisi'] = 0;
+        DB::table('indirimler')->insert($data);
+    }
+    return ['ok' => 1];
+});
+Route::post('/api/patron/indirim-toggle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    $k = DB::table('indirimler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$k) return ['ok' => 0];
+    DB::table('indirimler')->where('id', $k->id)->update(['aktif' => $k->aktif ? 0 : 1]);
+    return ['ok' => 1, 'aktif' => $k->aktif ? 0 : 1];
+});
+Route::post('/api/patron/indirim-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], $p ? 403 : 401);
+    DB::table('indirimler')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
+    return ['ok' => 1];
+});
+
 // ============================ E-DONUSUM (e-arsiv/e-fatura) ============================
 Route::get('/edonusum', function () {
     $sube = DB::table('subeler')->first();
