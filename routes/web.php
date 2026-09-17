@@ -7908,3 +7908,197 @@ Route::get('/teklif', function () {
     return view('teklif', compact('teklifler'));
 });
 
+// ============================ MESAI (QR + geofence ile giris/cikis) ============================
+if (!function_exists('_mesaiKur')) {
+    function _mesaiKur()
+    {
+        if (!Schema::hasTable('personel_mesai')) {
+            try {
+                Schema::create('personel_mesai', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->unsignedBigInteger('personel_id')->index();
+                    $t->timestamp('giris_at')->nullable();
+                    $t->timestamp('cikis_at')->nullable();
+                    $t->double('giris_lat')->nullable(); $t->double('giris_lng')->nullable();
+                    $t->double('cikis_lat')->nullable(); $t->double('cikis_lng')->nullable();
+                    $t->string('cikis_tip', 20)->nullable();   // qr|geofence|aktivite|kapanis|elle
+                    $t->string('durum', 10)->default('acik');   // acik|kapali
+                    $t->unsignedInteger('adim_bas')->default(0);
+                    $t->unsignedInteger('adim')->default(0);
+                    $t->timestamp('son_ic_at')->nullable();     // geofence: son iceride oldugu an
+                    $t->timestamp('created_at')->nullable();
+                });
+            } catch (\Throwable $e) {}
+        }
+        foreach ([['mesai_secret', 's'], ['mesai_lat', 'd'], ['mesai_lng', 'd'], ['mesai_yaricap', 'i']] as $c) {
+            if (!Schema::hasColumn('subeler', $c[0])) {
+                try {
+                    Schema::table('subeler', function ($t) use ($c) {
+                        if ($c[1] === 's') $t->string($c[0], 64)->nullable();
+                        elseif ($c[1] === 'i') $t->unsignedInteger($c[0])->nullable();
+                        else $t->double($c[0])->nullable();
+                    });
+                } catch (\Throwable $e) {}
+            }
+        }
+    }
+
+    function _mesaiSecret($subeId)
+    {
+        _mesaiKur();
+        $s = DB::table('subeler')->where('id', $subeId)->value('mesai_secret');
+        if (!$s) { $s = \Illuminate\Support\Str::random(40); DB::table('subeler')->where('id', $subeId)->update(['mesai_secret' => $s]); }
+        return $s;
+    }
+
+    // 20 sn'lik zaman penceresi (window) icin kod. Kasa ekrani AYNISINI JS'de (Web Crypto) uretir.
+    function _mesaiKod($secret, $window) { return substr(hash_hmac('sha256', (string) $window, $secret), 0, 10); }
+
+    function _mesaiMesafe($la1, $ln1, $la2, $ln2)
+    {
+        $R = 6371000; $dLa = deg2rad($la2 - $la1); $dLn = deg2rad($ln2 - $ln1);
+        $a = sin($dLa / 2) ** 2 + cos(deg2rad($la1)) * cos(deg2rad($la2)) * sin($dLn / 2) ** 2;
+        return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    function _mesaiDk($bas, $bit = null) // imzasiz sure (dk) — Carbon 3 isaret tuzagina karsi timestamp matematigi
+    {
+        $b = \Illuminate\Support\Carbon::parse($bas)->timestamp;
+        $e = $bit ? \Illuminate\Support\Carbon::parse($bit)->timestamp : now()->timestamp;
+        return (int) round(max(0, $e - $b) / 60);
+    }
+
+    // 12 saati gecen ACIK mesaileri kapat: cikis = son aktivite (son kalem) -> yoksa son_ic -> yoksa giris.
+    function _mesaiOtoKapat($subeId)
+    {
+        _mesaiKur();
+        $acik = DB::table('personel_mesai')->where('sube_id', $subeId)->where('durum', 'acik')->get();
+        foreach ($acik as $m) {
+            if (_mesaiDk($m->giris_at) < 12 * 60) continue;
+            $sonAkt = DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
+                ->where('a.sube_id', $subeId)
+                ->where(function ($q) use ($m) { $q->where('k.personel_id', $m->personel_id)->orWhere('a.acan_personel_id', $m->personel_id); })
+                ->where('k.gonderim_zamani', '>=', $m->giris_at)->max('k.gonderim_zamani');
+            $cikis = $sonAkt ?: ($m->son_ic_at ?: $m->giris_at);
+            DB::table('personel_mesai')->where('id', $m->id)->update(['cikis_at' => $cikis, 'durum' => 'kapali', 'cikis_tip' => 'kapanis']);
+        }
+    }
+}
+
+// Kasa POS: donen QR icin TOTP secret + sunucu saati (client-side uretir -> sunucu yuku YOK). Yetki: sahip/mudur.
+Route::get('/api/mesai/qr-secret', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    return ['ok' => 1, 'secret' => _mesaiSecret($p->sube_id), 'step' => 20, 'now' => time()];
+});
+
+// Kasa fiziksel olarak isletmede -> geofence referans konumunu ayarla.
+Route::post('/api/mesai/konum-ayarla', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _mesaiKur();
+    DB::table('subeler')->where('id', $p->sube_id)->update([
+        'mesai_lat' => (float) $r->input('lat'), 'mesai_lng' => (float) $r->input('lng'),
+        'mesai_yaricap' => (int) ($r->input('yaricap') ?: 150),
+    ]);
+    return ['ok' => 1];
+});
+
+// Personel QR okuttu -> GIRIS ya da CIKIS (TOTP + geofence dogrula).
+Route::post('/api/mesai/okut', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _mesaiKur(); _mesaiOtoKapat($p->sube_id);
+    $kod = (string) $r->input('kod'); $w = (int) $r->input('w');
+    $lat = $r->input('lat'); $lng = $r->input('lng');
+    $secret = _mesaiSecret($p->sube_id);
+    $cur = intdiv(time(), 20);
+    if (abs($w - $cur) > 1) return ['ok' => 0, 'hata' => 'QR süresi doldu, tekrar okut'];
+    if (!hash_equals(_mesaiKod($secret, $w), $kod)) return ['ok' => 0, 'hata' => 'QR geçersiz'];
+    $sube = DB::table('subeler')->where('id', $p->sube_id)->first();
+    if ($sube && $sube->mesai_lat && $sube->mesai_lng && $lat !== null && $lng !== null) {
+        $mes = _mesaiMesafe((float) $sube->mesai_lat, (float) $sube->mesai_lng, (float) $lat, (float) $lng);
+        if ($mes > (int) ($sube->mesai_yaricap ?: 150) + 50) return ['ok' => 0, 'hata' => 'İşletmede değilsiniz (konum uzak)'];
+    }
+    $acik = DB::table('personel_mesai')->where('sube_id', $p->sube_id)->where('personel_id', $p->id)->where('durum', 'acik')->first();
+    $adim = (int) $r->input('adim', 0);
+    if ($acik) {
+        DB::table('personel_mesai')->where('id', $acik->id)->update([
+            'cikis_at' => now(), 'cikis_lat' => $lat, 'cikis_lng' => $lng, 'cikis_tip' => 'qr', 'durum' => 'kapali',
+            'adim' => max(0, $adim - (int) $acik->adim_bas),
+        ]);
+        return ['ok' => 1, 'durum' => 'cikis', 'saat' => now()->format('H:i')];
+    }
+    DB::table('personel_mesai')->insert([
+        'sube_id' => $p->sube_id, 'personel_id' => $p->id, 'giris_at' => now(),
+        'giris_lat' => $lat, 'giris_lng' => $lng, 'durum' => 'acik', 'adim_bas' => $adim, 'adim' => 0,
+        'son_ic_at' => now(), 'created_at' => now(),
+    ]);
+    return ['ok' => 1, 'durum' => 'giris', 'saat' => now()->format('H:i')];
+});
+
+// Personel mesai durumu (app kilidi icin).
+Route::get('/api/mesai/durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _mesaiKur(); _mesaiOtoKapat($p->sube_id);
+    $acik = DB::table('personel_mesai')->where('personel_id', $p->id)->where('durum', 'acik')->first();
+    return ['ok' => 1, 'acik' => $acik ? 1 : 0, 'giris_at' => $acik->giris_at ?? null,
+            'rol' => $p->rol, 'kilit' => in_array($p->rol, ['sahip', 'mudur']) ? 0 : 1];
+});
+
+// Geofence ping (app 5 dk'da bir; disarida ise 15 dk sonra oto-cikis).
+Route::post('/api/mesai/ping', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _mesaiKur();
+    $acik = DB::table('personel_mesai')->where('personel_id', $p->id)->where('durum', 'acik')->first();
+    if (!$acik) return ['ok' => 1, 'acik' => 0];
+    $adim = (int) $r->input('adim', $acik->adim_bas);
+    $lat = $r->input('lat'); $lng = $r->input('lng');
+    $sube = DB::table('subeler')->where('id', $p->sube_id)->first();
+    $ic = true;
+    if ($sube && $sube->mesai_lat && $sube->mesai_lng && $lat !== null && $lng !== null) {
+        $mes = _mesaiMesafe((float) $sube->mesai_lat, (float) $sube->mesai_lng, (float) $lat, (float) $lng);
+        $ic = $mes <= (int) ($sube->mesai_yaricap ?: 150) + 60;
+    }
+    if ($ic) {
+        DB::table('personel_mesai')->where('id', $acik->id)->update(['son_ic_at' => now(), 'adim' => max(0, $adim - (int) $acik->adim_bas)]);
+        return ['ok' => 1, 'acik' => 1, 'ic' => 1];
+    }
+    $sonIc = $acik->son_ic_at ?: $acik->giris_at;
+    if (_mesaiDk($sonIc) >= 15) {
+        DB::table('personel_mesai')->where('id', $acik->id)->update([
+            'cikis_at' => $sonIc, 'cikis_tip' => 'geofence', 'durum' => 'kapali', 'adim' => max(0, $adim - (int) $acik->adim_bas),
+        ]);
+        return ['ok' => 1, 'acik' => 0, 'oto_cikis' => 1];
+    }
+    return ['ok' => 1, 'acik' => 1, 'ic' => 0];
+});
+
+// Puantaj: patron TUM personel, personel kendi (gun bazli).
+Route::get('/api/mesai/liste', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _mesaiKur(); _mesaiOtoKapat($p->sube_id);
+    $patron = in_array($p->rol, ['sahip', 'mudur']);
+    $gun = $r->query('gun', now()->toDateString());
+    $q = DB::table('personel_mesai as m')->leftJoin('personeller as pr', 'm.personel_id', '=', 'pr.id')
+        ->where('m.sube_id', $p->sube_id)->whereDate('m.giris_at', $gun);
+    if (!$patron) $q->where('m.personel_id', $p->id);
+    $rows = $q->orderBy('m.giris_at', 'desc')->get(['m.*', 'pr.ad as personel_ad']);
+    $out = [];
+    foreach ($rows as $m) {
+        $out[] = [
+            'id' => $m->id, 'ad' => $m->personel_ad,
+            'giris' => \Illuminate\Support\Carbon::parse($m->giris_at)->format('H:i'),
+            'cikis' => $m->cikis_at ? \Illuminate\Support\Carbon::parse($m->cikis_at)->format('H:i') : null,
+            'durum' => $m->durum, 'cikis_tip' => $m->cikis_tip,
+            'dakika' => _mesaiDk($m->giris_at, $m->cikis_at), 'adim' => (int) $m->adim,
+        ];
+    }
+    return ['ok' => 1, 'patron' => $patron ? 1 : 0, 'gun' => $gun, 'kayitlar' => $out];
+});
+
