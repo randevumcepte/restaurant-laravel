@@ -56,7 +56,7 @@ class GarsonPerformans
         $adIds = $adisyonlar->pluck('id')->all();
         $kalemler = empty($adIds) ? collect() : DB::table('adisyon_kalemleri')
             ->whereIn('adisyon_id', $adIds)->where('durum', '!=', 'iptal')
-            ->get(['adisyon_id', 'personel_id', 'tutar']);
+            ->get(['adisyon_id', 'personel_id', 'tutar', 'gonderim_zamani', 'created_at']);
 
         $adToMasa = []; $adToAcan = [];
         foreach ($adisyonlar as $a) { $adToMasa[$a->id] = $a->masa_id; $adToAcan[$a->id] = $a->acan_personel_id; }
@@ -142,7 +142,43 @@ class GarsonPerformans
             ];
         }
         $bolgeler = DB::table('bolgeler')->where('sube_id', $this->subeId)->orderBy('sira')->get(['id', 'ad']);
-        return ['masalar' => $list, 'bolgeler' => $bolgeler, 'max_agirlik' => $maxKalem, 'garson_id' => $garsonId];
+
+        // GERCEK ROTA: kalemleri (servis olaylari) garson bazinda zamana gore sirala,
+        // ardisik farkli masalar arasi gecisleri say -> masa->masa gercek gecisler (yon dahil).
+        $adToAcilis = [];
+        foreach ($adisyonlar as $a) $adToAcilis[$a->id] = $a->acilis;
+        $olaylar = []; // personel_id => [ ['t'=>ts,'m'=>masaId], ... ]
+        foreach ($kalemler as $k) {
+            $g = (int) ($k->personel_id ?: ($adToAcan[$k->adisyon_id] ?? 0));
+            if (!$g) continue;
+            if ($garsonId && $g !== $garsonId) continue;
+            $masaId = (int) ($adToMasa[$k->adisyon_id] ?? 0);
+            if (!$masaId) continue;
+            $t = $k->gonderim_zamani ?? $k->created_at ?? ($adToAcilis[$k->adisyon_id] ?? null);
+            if (!$t) continue;
+            $olaylar[$g][] = ['t' => (string) $t, 'm' => $masaId];
+        }
+        $dir = []; // "from-to" => adet
+        foreach ($olaylar as $evs) {
+            usort($evs, fn ($x, $y) => strcmp($x['t'], $y['t']));
+            $prev = null;
+            foreach ($evs as $e) {
+                if ($prev !== null && $prev !== $e['m']) {
+                    $key = $prev . '-' . $e['m'];
+                    $dir[$key] = ($dir[$key] ?? 0) + 1;
+                }
+                $prev = $e['m'];
+            }
+        }
+        $rota = []; // "min-max" => ['a','b','ab','ba']
+        foreach ($dir as $key => $n) {
+            [$a, $b] = array_map('intval', explode('-', $key));
+            $ca = min($a, $b); $cb = max($a, $b); $ck = $ca . '-' . $cb;
+            if (!isset($rota[$ck])) $rota[$ck] = ['a' => $ca, 'b' => $cb, 'ab' => 0, 'ba' => 0];
+            if ($a === $ca) $rota[$ck]['ab'] += $n; else $rota[$ck]['ba'] += $n;
+        }
+
+        return ['masalar' => $list, 'bolgeler' => $bolgeler, 'max_agirlik' => $maxKalem, 'garson_id' => $garsonId, 'rota' => array_values($rota)];
     }
 
     // ---------------- ADIM ----------------
