@@ -8589,3 +8589,24 @@ Route::post('/api/barkod/sil', function (Request $r) {
     return ['ok' => 1];
 });
 
+// İÇ BARKOD ÜRET — barkodsuz ürün/malzeme için benzersiz dahili numara (CODE128 basılır).
+Route::post('/api/barkod/ic-uret', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    _barkodKur();
+    $tur = (string) $r->input('tur', 'urun');
+    $hid = (int) $r->input('hedef_id', 0);
+    if (!$hid || !in_array($tur, ['urun', 'malzeme'])) return ['ok' => 0, 'hata' => 'Eksik bilgi'];
+    // '99' + tur(1|2) + hedef(5) + rastgele(3) -> 11 hane (gerçek EAN-13 ile çakışmaz)
+    $pre = '99' . ($tur === 'urun' ? '1' : '2') . str_pad((string) $hid, 5, '0', STR_PAD_LEFT);
+    for ($i = 0; $i < 20; $i++) {
+        $kod = $pre . random_int(100, 999);
+        if (!DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $kod)->exists()) {
+            DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $kod, 'tur' => $tur, 'hedef_id' => $hid, 'created_at' => now()]);
+            return ['ok' => 1, 'barkod' => $kod];
+        }
+    }
+    return ['ok' => 0, 'hata' => 'Üretilemedi, tekrar dene'];
+});
+
