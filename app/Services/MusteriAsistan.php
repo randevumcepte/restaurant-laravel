@@ -387,6 +387,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['bunu bilmiyor musun', 'bunun bilgisi yok', 'bu konuda bilgin yok', 'neden bilmiyorsun', 'bunun cevabini bilmiyor', 'sistemde kayitli degil', 'bu bilgiye ulasamiyor', 'bunu soyleyemiyor musun', 'tahmin et', 'yaklasik soyle', 'bilmiyorsan tahmin', 'sen bana soyle', 'garsonu cagirma sen', 'bir sekilde ogren', 'garson baska soyledi', 'garson yok dedi', 'garson bunun olmadigini', 'menude farkli yaziyor', 'az once var demistin', 'sistemde var ama garson', 'soyledigin dogru degil', 'bu bilgi yanlis', 'buradaki bilgi guncel degil', 'bu bilgi degismis'])) {
             return $this->sistemBilgiYokCevap();
         }
+        // MEMNUNIYET / OVGU (tek-anlamli, gecmis zaman/net): "guzeldi/harikaydi/bayildim/ellerinize saglik/on numara/yine gelecegim".
+        // NOT: bare "guzel/lezzetli/nefis/mukemmel" HARIC -> onlar "en lezzetli hangisi / bu guzel mi" gibi URUN sorusu olabilir (oneri motoru).
+        if ($this->has($c, ['guzeldi', 'cok guzeldi', 'guzel olmus', 'harikaydi', 'harika olmus', 'nefis olmus', 'nefisti', 'super olmus', 'lezzetliydi', 'cok lezzetliydi', 'tadi mukemmel', 'tadi harika', 'tadi cok guzel', 'lezzet muthis', 'muhtesemdi', 'mukemmeldi', 'mukemmel olmus', 'bayildim', 'cok begendim', 'gercekten begendim', 'cok hosuma gitti', 'hosuma gitti', 'memnun kaldim', 'memnun kaldik', 'cok memnunuz', 'cok memnun', 'elinize saglik', 'ellerinize saglik', 'emeginize saglik', 'sefe selam', 'sefinize selam', 'sefe tesekkur', 'asciya tesekkur', 'yine gelecegim', 'tekrar gelecegiz', 'yine gelirim', 'yine geliriz', 'tekrar gelirim', 'buraya yine gel', 'herkese tavsiye', 'arkadaslarima oner', 'tavsiye ederim', 'onerecegim', 'on numara', 'dort dortluk', 'cok basarili', 'gercekten basarili', 'cok kaliteli', 'kalite cok iyi', 'servis cok iyi', 'servis harika', 'garson cok ilgili', 'garson ilgiliydi', 'calisanlar cok iyi', 'calisanlar cok ilgili', 'her sey guzeldi', 'her sey harikaydi', 'her sey cok guzel', 'her sey mukemmel', 'beklediginden guzel', 'bekledigimden guzel', 'bekledigimden iyi', 'burayi cok sevdim', 'burayi sevdim', 'bayildim buraya', 'burasi harika', 'mekan cok guzel', 'mekan harika', 'ambiyans cok guzel', 'ambiyans guzel', 'ortam cok guzel'])) {
+            return $this->memnuniyetCevap();
+        }
         // KARARSIZ MUSTERI:
         // (a) Secimi bize DEVREDERSE ("sen sec / rastgele / fark etmez") -> dogrudan ONERI motoru (bir sey sun)
         if ($this->has($c, ['sen sec', 'sen karar ver', 'sen bir sey soyle', 'sen soyle', 'sen olsan', 'rastgele bir sey', 'rastgele oner', 'fark etmez sen', 'bana bir sey sec', 'bana guzel bir sey sec', 'karar vermeme yardim', 'bana seçim yaptir', 'bana secim yaptir', 'sen sec bir'])) {
@@ -475,6 +480,30 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** MEMNUNIYET / OVGU: sicak, cesitli karsilama (savunma/duzeltme YOK); 50 varyasyon. */
+    protected function memnuniyetCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Çok teşekkür ederiz, beğenmenize gerçekten sevindik.', 'Bunu duymak çok güzel, afiyet olsun.', 'Çok mutlu olduk, güzel vakit geçirmenizi dileriz.',
+            'Ne güzel, beğenmenize çok sevindim.', 'Çok teşekkür ederiz, afiyet olsun.', 'Beğenmenize çok sevindik, yine bekleriz.',
+            'Bunu duymak bizi gerçekten mutlu etti.', 'Çok teşekkür ederiz, güzel yorumunuz için ayrıca mutlu olduk.', 'Afiyet olsun, beğenmiş olmanız harika.',
+            'Çok sevindim, umarım gecenizin geri kalanı da güzel geçer.', 'Teşekkür ederiz, memnun kalmanız bizim için çok değerli.', 'Harika, bunu duymak gerçekten güzel.',
+            'Çok teşekkürler, afiyet olsun. Yine bekleriz.', 'Beğenmenize çok sevindik, güzel sözleriniz için teşekkür ederiz.', 'Ne mutlu bize, güzel bir deneyim yaşamanıza sevindik.',
+            'Çok teşekkür ederiz, özellikle lezzeti beğenmenize çok sevindik.', 'Afiyet olsun, damak zevkinize uyduysa ne mutlu bize.', 'Çok güzel, memnun kalmanız bizi de mutlu etti.',
+            'Teşekkür ederiz, yine geldiğinizde sizi güzel bir deneyim beklesin.', 'Çok sağ olun, güzel sözleriniz için teşekkür ederiz.', 'Bunu duymak harika, afiyet olsun.',
+            'Çok teşekkür ederiz, beğenmeniz bizim için çok kıymetli.', 'Ne güzel söylediniz, çok teşekkür ederiz.', 'Afiyet olsun, tekrar bekleriz.',
+            'Çok mutlu olduk, güzel bir akşam geçirmenizi dileriz.', 'Teşekkür ederiz, memnuniyetiniz bizim için çok önemli.', 'Çok sevindik, özellikle yemekleri beğenmiş olmanız harika.',
+            'Güzel sözleriniz için çok teşekkür ederiz.', 'Afiyet olsun, yeniden görüşmek üzere.', 'Çok teşekkürler, sizi memnun edebildiysek ne mutlu bize.',
+            'Böyle güzel bir geri dönüş almak gerçekten çok iyi geldi.', 'Çok sağ olun, yine bekleriz.', 'Beğenmenize sevindik, afiyet olsun.',
+            'Çok teşekkür ederiz, şefimiz de bunu duysa çok mutlu olur.', 'Ne güzel, lezzeti beğenmenize ayrıca sevindik.', 'Çok teşekkürler, güzel düşünceleriniz için sağ olun.',
+            'Memnun kalmanıza çok sevindik, yine bekleriz.', 'Harika, o zaman doğru bir seçim yapmışsınız.', 'Çok teşekkür ederiz, afiyet olsun. Umarım yine görüşürüz.',
+            'Bunu duymak bizi çok mutlu etti, güzel sözleriniz için teşekkürler.', 'Çok sağ olun, beğenmeniz bizim için büyük mutluluk.', 'Afiyet olsun, keyfinizin böyle devam etmesini dilerim.',
+            'Çok teşekkürler, restoranımızdan mutlu ayrılmanız bizi de mutlu ediyor.', 'Ne mutlu bize, güzel bir deneyim yaşamanıza sevindik.', 'Çok teşekkür ederiz, tekrar geldiğinizde yine bekliyor olacağız.',
+            'Beğenmenize çok sevindik, afiyet olsun.', 'Güzel yorumunuz için çok teşekkür ederiz.', 'Çok teşekkürler, memnuniyetinizi duymak gerçekten güzel.',
+            'Afiyet olsun, yine bekleriz. Güzel sözleriniz için teşekkür ederiz.', 'Ben teşekkür ederim, beğenmenize çok sevindim. Güzel vakit geçirmenizi dilerim.',
+        ]));
     }
 
     /** TESEKKUR: tekduze "rica ederim" DEGIL, 50 sicak/dogal varyasyon (rastgele). */
