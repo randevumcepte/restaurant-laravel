@@ -436,9 +436,9 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['harikasin', 'cok iyisin', 'iyi ki varsin', 'bravo', 'helal', 'cok tatlisin', 'akillisin'])) {
             return $this->cvp('Çok naziksiniz, teşekkür ederim! Sizi mutlu etmek için buradayım — ne arzu edersiniz?');
         }
-        // Vedalasma
-        if ($this->has($c, ['gorusuruz', 'hosca kal', 'hoscakal', 'bay bay', 'baybay', 'kendine iyi bak', 'cikiyoruz', 'gidiyoruz artik'])) {
-            return $this->cvp('Bizi tercih ettiğiniz için teşekkürler, yine bekleriz! Afiyet olsun.');
+        // Vedalasma (net veda ifadeleri; "iyi aksamlar/gunler" selam katmaninda, "eyvallah/tesekkurler cikiyorum" tesekkur katmaninda)
+        if ($this->has($c, ['gorusuruz', 'hosca kal', 'hoscakal', 'hosca kalin', 'bay bay', 'baybay', 'bye bye', 'ben kacayim', 'ben gideyim', 'artik gideyim', 'cikiyorum', 'gidiyorum', 'biz kalkalim', 'kalkiyoruz', 'artik kalkiyoruz', 'musaadenizle', 'musaade iste', 'ben kaciyorum', 'hadi gorusuruz', 'sonra gorusuruz', 'tekrar gorusuruz', 'baska zaman gorusuruz', 'kendine iyi bak', 'kendinize iyi bak', 'gorusmek uzere', 'yakinda gorusuruz', 'sonra konusuruz', 'ben artik cikayim', 'artik kalkmamiz', 'kalkma vaktimiz', 'biz artik gidelim', 'artik gitmemiz', 'ben cikiyorum', 'tamamdir ben gideyim', 'saglicakla kal', 'kendine dikkat et', 'kendinize dikkat', 'simdilik hosca kal', 'simdilik gorusuruz', 'ben kapatiyorum', 'cikiyoruz', 'gidiyoruz artik', 'ben gidiyorum'])) {
+            return $this->vedaCevap();
         }
         // Panelden eklenen SOHBET/KIMLIK kaliplari (ChatGPT ile toplu yuklenebilir) — kodda yoksa buradan
         $sk = $this->sohbetKalip($c);
@@ -480,6 +480,30 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** VEDALASMA: kisa/dogal ugurlama, 50 varyasyon (rastgele). */
+    protected function vedaCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Görüşmek üzere, güzel bir gün dilerim.', 'Hoşça kalın, yine bekleriz.', 'Görüşürüz, kendinize iyi bakın.',
+            'İyi akşamlar, yine bekleriz.', 'Hoşça kalın, güzel bir gününüz olsun.', 'Görüşmek üzere, afiyet olsun.',
+            'Kendinize iyi bakın, yine bekleriz.', 'Güzel bir akşam dilerim, görüşmek üzere.', 'Görüşürüz, geldiğiniz için teşekkür ederiz.',
+            'Hoşça kalın, tekrar görüşmek dileğiyle.', 'İyi günler, yine bekleriz.', 'Görüşmek üzere, kendinize dikkat edin.',
+            'Hoşça kalın, güzel vakitler dilerim.', 'Görüşürüz, bir dahaki sefere yine bekleriz.', 'İyi geceler, güzel bir uyku dilerim.',
+            'Kendinize iyi bakın, görüşmek üzere.', 'Hoşça kalın, yine bekliyoruz.', 'Güzel bir akşamınız olsun, görüşürüz.',
+            'Görüşmek üzere, geldiğiniz için biz teşekkür ederiz.', 'İyi günler dilerim, tekrar bekleriz.', 'Bay bay, yine görüşürüz.',
+            'Hadi görüşürüz, kendinize iyi bakın.', 'Görüşürüz, güzel bir gününüz olsun.', 'Hoşça kalın, yine bekleriz. Kendinize iyi bakın.',
+            'İyi akşamlar, yolunuz yine buraya düşsün.', 'Görüşmek üzere, afiyetiniz bol olsun.', 'Kendinize iyi bakın, bir dahaki sefere görüşürüz.',
+            'Hoşça kalın, sizi yine görmek isteriz.', 'Güzel bir gün geçirmenizi dilerim, görüşürüz.', 'İyi geceler, görüşmek üzere.',
+            'Görüşürüz, geldiğiniz için teşekkür ederiz.', 'Hoşça kalın, yine bekleriz. İyi akşamlar.', 'Kendinize dikkat edin, tekrar görüşmek üzere.',
+            'İyi günler, umarım yine güzel bir akşamda görüşürüz.', 'Görüşürüz, her şey gönlünüzce olsun.', 'Hoşça kalın, güzel bir akşam geçirmenizi dilerim.',
+            'Görüşmek üzere, yine bekleriz.', 'İyi geceler, kendinize iyi bakın.', 'Görüşürüz, yolunuz açık olsun.',
+            'Hoşça kalın, tekrar geldiğinizde yine burada olacağız.', 'İyi akşamlar, güzel bir gece geçirmenizi dilerim.', 'Görüşmek üzere, her şey için teşekkür ederiz.',
+            'Kendinize iyi bakın, en kısa zamanda görüşmek üzere.', 'Hoşça kalın, yine bekleriz. Güzel bir akşam olsun.', 'Görüşürüz, bir dahaki gelişinizde yine yardımcı olurum.',
+            'İyi günler, kendinize iyi bakın.', 'Hoşça kalın, tekrar görüşmek dileğiyle.', 'Görüşürüz, güzel bir gece dilerim.',
+            'Hadi görüşürüz, yine bekleriz.', 'Hoşça kalın, geldiğiniz için teşekkür ederiz. Tekrar görüşmek üzere.',
+        ]));
     }
 
     /** MEMNUNIYET / OVGU: sicak, cesitli karsilama (savunma/duzeltme YOK); 50 varyasyon. */
