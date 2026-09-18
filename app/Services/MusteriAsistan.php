@@ -349,6 +349,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['anlamadin', 'beni anlamadin', 'beni anlamiyorsun', 'yanlis anladin', 'yanlis anladin beni', 'onu demedim', 'onu soylemedim', 'oyle demedim', 'hayir oyle degil', 'ne dedigimi anlamadin', 'soylediklerimi anlamadin', 'tekrar soyle', 'tekrar eder misin', 'tekrarlar misin', 'bir daha soyle', 'yeniden soyle', 'tekrar anlat', 'bir daha anlat', 'anlayamadim', 'anlamadim', 'seni anlamadim', 'bir daha soyler misin', 'tekrar konusur musun', 'yeniden soyler misin', 'tekrar aciklar misin', 'biraz daha acik anlat', 'daha acik soyler misin', 'daha anlasilir soyle', 'ne demek istiyorsun', 'ne demek istedin', 'neyi kastettin', 'ne soyledigini anlamadim', 'soyledigini anlayamadim', 'bastan soyle', 'bastan anlat', 'yeniden baslayalim', 'farkli bir sey soyledim', 'baska bir sey demek istedim'])) {
             return $this->anlamadimCevap();
         }
+        // ILETISIM / SES-MIKROFON PROBLEMI: "beni duyuyor musun / mikrofon calismiyor / gurultulu / ne dedin / daha yavas"
+        // NOT: "sundan bir tane / bir tane daha / yanina da ondan" = BAGLAMLI SIPARIS -> buraya DAHIL DEGIL (siparis motoru isler).
+        if ($this->has($c, ['beni duyuyor musun', 'beni duyabiliyor musun', 'duyuyor musun', 'sesim geliyor mu', 'sesimi aldin', 'sesim gitmedi', 'beni duymuyorsun', 'beni duymadin', 'sesimi alamadin', 'sesimi algilamiyor', 'mikrofon calismiyor', 'mikrofon iyi cekmiyor', 'mikrofon', 'sesim kesiliyor', 'ses kesiliyor', 'baglanti gidip', 'sistem beni duymuyor', 'sesli konusamiyorum', 'ortam gurultulu', 'cok ses var', 'cok gurultu', 'gurultulu', 'daha yavas soyle', 'daha yavas soyler', 'yavas soyler misin', 'ne dedin', 'son soyledigini', 'ne soyledigini kacirdim', 'ne dedigini kacirdin'])) {
+            return $this->iletisimSorunuCevap();
+        }
         // KARARSIZ MUSTERI:
         // (a) Secimi bize DEVREDERSE ("sen sec / rastgele / fark etmez") -> dogrudan ONERI motoru (bir sey sun)
         if ($this->has($c, ['sen sec', 'sen karar ver', 'sen bir sey soyle', 'sen soyle', 'sen olsan', 'rastgele bir sey', 'rastgele oner', 'fark etmez sen', 'bana bir sey sec', 'bana guzel bir sey sec', 'karar vermeme yardim', 'bana seçim yaptir', 'bana secim yaptir', 'sen sec bir'])) {
@@ -550,6 +555,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Merhaba, hoş geldiniz. Ben hazırım. Siz neye ihtiyacınız olduğunu söyleyin, birlikte bakalım.',
             'Selam, hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz menüde gezmek yerine doğrudan bana ne istediğinizi söyleyebilirsiniz.',
             'Merhabalar, hoş geldiniz. Güzel bir yemek deneyimi geçirmeniz için buradayım. Ne merak ediyorsanız sorabilirsiniz, birlikte ilerleyelim.',
+        ]));
+    }
+
+    /** ILETISIM/SES-MIKROFON PROBLEMI: 50 varyasyonlu nazik "sizi net alamadim, tekrar/yavas soyleyin"; ses sorununda yaziliya davet. */
+    protected function iletisimSorunuCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Efendim, sanırım sizi tam olarak anlayamadım. İsteğinizi bir kez daha söyleyebilir misiniz?',
+            'Sesinizi aldım ama ne istediğinizi netleştiremedim. Bir kez daha anlatırsanız hemen yardımcı olayım.',
+            'Sanırım arada bir şeyi kaçırdım. İsterseniz son söylediğinizi tekrar edebilirsiniz.',
+            'Sizi yanlış anlamak istemiyorum. Ne istediğinizi bir kez daha söyleyebilir misiniz?',
+            'Anladım, bir iletişim karışıklığı olmuş. Baştan tekrar ederseniz dikkatlice dinleyeyim.',
+            'Sesiniz geliyor, ancak söylediğiniz kısmı net anlayamadım. Tekrar eder misiniz?',
+            'Özür dilerim, bu kısmı kaçırdım. Tekrar söylerseniz hemen devam edelim.',
+            'Sanırım sizi yanlış anladım. Ne demek istediğinizi yeniden söyleyin, ona göre ilerleyelim.',
+            'Bir kısmını anlayamadım. Sadece son söylediğinizi tekrar etmeniz yeterli.',
+            'Tabii, tekrar dinliyorum. İsteğinizi yeniden söyleyebilirsiniz.',
+            'Anladım, iletişimde küçük bir karışıklık oldu. Tekrar anlatırsanız doğru şekilde yardımcı olayım.',
+            'Söylediğiniz kısmı net alamadım. Biraz daha yavaş tekrar edebilir misiniz?',
+            'Sanırım sesinizde bir kesilme oldu. Son söylediğinizi tekrar eder misiniz?',
+            'Sizi duyuyorum fakat cümlenizin son kısmını anlayamadım. Tekrar söyleyebilir misiniz?',
+            'Yanlış işlem yapmak istemiyorum. İsteğinizi bir kez daha netleştirir misiniz?',
+            'Tam olarak ne istediğinizi kaçırdım. Tekrar söylerseniz hemen yardımcı olayım.',
+            'Bir sorun yok, tekrar deneyebiliriz. Ne istediğinizi yeniden söylemeniz yeterli.',
+            'Sizi anladığımdan emin olmak istiyorum. İsteğinizi bir kez daha ifade eder misiniz?',
+            'Sanırım bu kez bağlantıda bir sorun oldu. Tekrar deneyelim.',
+            'Sesinizi aldım ama bazı kelimeler anlaşılmadı. Bir kez daha söyleyebilir misiniz?',
+            'Tamam, tekrar dinliyorum. Bu kez söylediğiniz isteği netleştirmeye çalışacağım.',
+            'Az önceki isteğinizi doğru anlayamamış olabilirim. Yeniden söyleyin, ona göre devam edelim.',
+            'Anladım efendim, tekrar edebilirsiniz. Sizi dinliyorum.',
+            'Son söylediğiniz kısmı kaçırdım. Baştan anlatmanıza gerek yok, sadece son isteğinizi tekrar etmeniz yeterli.',
+            'Sanırım ortam biraz gürültülü. Sesinizi biraz daha yakından veya net verirseniz daha iyi anlayabilirim.',
+            'Mikrofonunuzdan gelen ses biraz kesiliyor olabilir. Bir kez daha deneyebiliriz.',
+            'Sizi tam olarak duyamadım. İsterseniz daha kısa bir cümleyle tekrar söyleyin.',
+            'Ne demek istediğinizi doğru anlamak için tekrar sormam gerekiyor. İsteğinizi yeniden söyleyebilir misiniz?',
+            'Tamam, önceki söylediklerinizi dikkate alıyorum. Şimdi son isteğinizi tekrar alayım.',
+            'Bir iletişim problemi yaşadık sanırım. Hiç sorun değil, tekrar deneyelim.',
+            'Yanlış anladıysam düzeltin lütfen. Ne istediğinizi bir kez daha söyleyebilir misiniz?',
+            'Söylediğiniz ifadeyi tam çözemedim. Biraz daha açık anlatabilir misiniz?',
+            'Bunu doğru anlamak için bir kez daha duymam gerekiyor. Tekrar eder misiniz?',
+            'Sesiniz geliyor ama kelimelerin bazıları net değil. İsterseniz biraz daha yavaş söyleyebilirsiniz.',
+            'Sanırım konuşmanın bir bölümünü kaçırdım. Son söylediğinizi tekrar alabilir miyim?',
+            'Tamam, sizi tekrar dinliyorum. Nereden devam etmek istediğinizi söyleyebilirsiniz.',
+            'Önceki cevabım istediğiniz şey değilse sorun değil. Ne istediğinizi tekrar belirtin, hemen düzeltelim.',
+            'Sizi yanlış yönlendirmek istemem. İsteğinizi tekrar söylerseniz doğru şekilde ilerleyelim.',
+            'Bir kısmı anlaşılmadı. Baştan anlatmanıza gerek yok, takıldığımız kısmı tekrar etmeniz yeterli.',
+            'Tamam, bu kez daha dikkatli dinliyorum. Tekrar söyleyebilirsiniz.',
+            'Söylediğinizi tam olarak alamadım. İsterseniz kısa kısa söyleyebilirsiniz.',
+            'Sesli iletişimde sorun yaşıyorsanız isterseniz yazılı olarak da devam edebiliriz.',
+            'Bağlantı nedeniyle bazı kelimeleri kaçırmış olabilirim. Bir kez daha deneyelim.',
+            'Ne istediğinizi yanlış anlamış olabilirim. Önceki isteği yok sayalım ve yeniden başlayalım.',
+            'Tamam, önceki söylediğinizi tekrar etmiyorum. Yeni isteğinizi dinliyorum.',
+            'Sizi anladığımdan emin olmak istiyorum. Söylediğinizi bir kez daha alabilir miyim?',
+            'Sanırım ses biraz kesildi. Son cümlenizi tekrar ederseniz devam edebiliriz.',
+            'Hiç sorun değil, tekrar söyleyebilirsiniz. Buradayım ve sizi dinliyorum.',
+            'İletişimde bir karışıklık oldu. Yanlış bir işlem yapmamak için isteğinizi yeniden netleştirelim.',
+            'Tamam, yeniden deneyelim. Ne istediğinizi söyleyin, bu kez doğru şekilde ilerleyelim.',
         ]));
     }
 
