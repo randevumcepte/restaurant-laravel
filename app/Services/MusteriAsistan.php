@@ -209,8 +209,8 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $ai = $this->haikuEmniyet($soru);
         if ($ai !== null) return $ai;
 
-        // 8) Fallback
-        return $this->cvp('Bunu tam anlayamadım 🙂 Menümüzü sorabilir, "günün yemeği ne" diyebilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
+        // 8) Fallback — cevaplayamadi: uydurmaz, sicak "garson teyit" havuzu (50 varyasyon)
+        return $this->sistemBilgiYokCevap();
     }
 
     /** TUM menu: her kategori + urun kartlari (musteri kendi basina inceler). */
@@ -353,6 +353,14 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         // NOT: "sundan bir tane / bir tane daha / yanina da ondan" = BAGLAMLI SIPARIS -> buraya DAHIL DEGIL (siparis motoru isler).
         if ($this->has($c, ['beni duyuyor musun', 'beni duyabiliyor musun', 'duyuyor musun', 'sesim geliyor mu', 'sesimi aldin', 'sesim gitmedi', 'beni duymuyorsun', 'beni duymadin', 'sesimi alamadin', 'sesimi algilamiyor', 'mikrofon calismiyor', 'mikrofon iyi cekmiyor', 'mikrofon', 'sesim kesiliyor', 'ses kesiliyor', 'baglanti gidip', 'sistem beni duymuyor', 'sesli konusamiyorum', 'ortam gurultulu', 'cok ses var', 'cok gurultu', 'gurultulu', 'daha yavas soyle', 'daha yavas soyler', 'yavas soyler misin', 'ne dedin', 'son soyledigini', 'ne soyledigini kacirdim', 'ne dedigini kacirdin'])) {
             return $this->iletisimSorunuCevap();
+        }
+        // TEKNIK HATA / ISLEM SUPHESI: "sistem calismiyor / siparisim gorunmuyor / islem gerceklesmedi" -> VARSAYMA, garson teyit
+        if ($this->has($c, ['sistem calismiyor', 'sistem hata', 'bir hata var', 'hata verdi', 'uygulama dondu', 'ekranda bir sey cikmiyor', 'siparisim gorunmuyor', 'siparis gorunmuyor', 'siparis kayboldu', 'islem gerceklesmedi', 'islem olmadi', 'sistem cevap vermiyor', 'sistem bunu gostermiyor', 'bilgi gelmedi'])) {
+            return $this->teknikHataCevap();
+        }
+        // BILGI YOK / CELISKI / ISRAR-TAHMIN -> uydurmaz, garson teyit ( URUN/MENU/FIYAT sorulari DAHIL DEGIL; onlari veri motoru cevaplar)
+        if ($this->has($c, ['bunu bilmiyor musun', 'bunun bilgisi yok', 'bu konuda bilgin yok', 'neden bilmiyorsun', 'bunun cevabini bilmiyor', 'sistemde kayitli degil', 'bu bilgiye ulasamiyor', 'bunu soyleyemiyor musun', 'tahmin et', 'yaklasik soyle', 'bilmiyorsan tahmin', 'sen bana soyle', 'garsonu cagirma sen', 'bir sekilde ogren', 'garson baska soyledi', 'garson yok dedi', 'garson bunun olmadigini', 'menude farkli yaziyor', 'az once var demistin', 'sistemde var ama garson', 'soyledigin dogru degil', 'bu bilgi yanlis', 'buradaki bilgi guncel degil', 'bu bilgi degismis'])) {
+            return $this->sistemBilgiYokCevap();
         }
         // KARARSIZ MUSTERI:
         // (a) Secimi bize DEVREDERSE ("sen sec / rastgele / fark etmez") -> dogrudan ONERI motoru (bir sey sun)
@@ -612,6 +620,75 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Hiç sorun değil, tekrar söyleyebilirsiniz. Buradayım ve sizi dinliyorum.',
             'İletişimde bir karışıklık oldu. Yanlış bir işlem yapmamak için isteğinizi yeniden netleştirelim.',
             'Tamam, yeniden deneyelim. Ne istediğinizi söyleyin, bu kez doğru şekilde ilerleyelim.',
+        ]));
+    }
+
+    /** TEKNIK HATA / ISLEM SUPHESI: islemi TAMAMLANMIS SAYMAZ; garson teyidine yonlendirir (kritik guvenlik). */
+    protected function teknikHataCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Bir teknik aksaklık olmuş olabilir efendim. İşleminizin gerçekleşip gerçekleşmediğini varsaymadan, garson arkadaşımızdan hemen teyit ettirelim. Çağırayım mı?',
+            'Özür dilerim, sistemde geçici bir sorun olabilir. Emin olmak için garson arkadaşımızı çağırayım; siparişinizi birlikte kontrol edelim.',
+            'Bunu buradan doğrulayamıyorum efendim. Yanlış bilgi vermemek için garson arkadaşımız durumu hemen kontrol etsin, ister misiniz?',
+            'Bir aksaklık yaşanmış olabilir. İşleminizi tamamlanmış saymak yerine garson arkadaşımızdan teyit almamız daha doğru olur. Çağırayım mı?',
+            'Görünüşe göre bir sorun oldu efendim. Siparişinizin durumunu garson arkadaşımızla netleştirelim, sizi mağdur etmeyelim.',
+        ]));
+    }
+
+    /** SISTEM/BILGI YOK: bilinmeyen/celiskili/israrla-istenen bilgiyi UYDURMAZ; 50 varyasyonlu "garson teyit" (rastgele). */
+    protected function sistemBilgiYokCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Efendim, bu bilgi şu anda bende görünmüyor. İsterseniz hemen garson arkadaşımızdan teyit edebiliriz.',
+            'Bu konuda kesin bir bilgim yok, yanlış yönlendirmek istemem. İsterseniz garson arkadaşımızdan öğrenelim.',
+            'Bu bilgi sistemimde kayıtlı görünmüyor. Size doğru bilgi verebilmek için garson arkadaşımızdan teyit edebiliriz.',
+            'Şu anda bu bilgiyi doğrulayamıyorum. Tahminde bulunmak yerine garson arkadaşımızdan netleştirmemiz daha doğru olur.',
+            'Bu konuda elimde doğrulanmış bir bilgi yok. İsterseniz hemen bir garson arkadaşımızı çağırabiliriz.',
+            'Bu bilgiye buradan ulaşamıyorum. Yanlış bir şey söylemek istemem, dilerseniz garson arkadaşımızdan soralım.',
+            'Sistemde bu bilgi görünmüyor. Doğru cevabı almak için restoran ekibimizden teyit edebiliriz.',
+            'Bundan emin değilim ve sizi yanlış yönlendirmek istemem. Garson arkadaşımızdan kontrol ettirebiliriz.',
+            'Bu konuda kesin cevap veremiyorum. İsterseniz sizin için garson arkadaşımızdan bilgi isteyelim.',
+            'Şu anda elimde yeterli bilgi yok. Tahmin etmek yerine restoran ekibinden teyit edelim.',
+            'Bu bilgi sistemimde bulunmuyor. Size yardımcı olması için garson arkadaşımızı çağırmamı ister misiniz?',
+            'Buradaki bilgiler arasında bu detay yer almıyor. En doğrusu garson arkadaşımızdan teyit etmek olacaktır.',
+            'Bu konuda güncel bilgiye erişemiyorum. İsterseniz garson arkadaşımızdan hemen kontrol ettirelim.',
+            'Bu bilgiyi doğrulamadan cevap vermem doğru olmaz. Garson arkadaşımızdan teyit edebiliriz.',
+            'Şu anda bunu kesin olarak söyleyemiyorum. İsterseniz restoran ekibinden öğrenelim.',
+            'Bu detay bende görünmüyor. Yanlış bilgi vermek yerine garson arkadaşımızdan teyit edelim.',
+            'Bu konuda sistemde yeterli bilgi yok. İsterseniz sizin için çalışan arkadaşlarımızdan birine soralım.',
+            'Bunu tahmin ederek söylemek istemem. Doğru bilgi için garson arkadaşımızdan teyit alabiliriz.',
+            'Bu bilgiye şu anda erişemiyorum. İsterseniz garson arkadaşımızı çağırıp öğrenelim.',
+            'Buradan bu konuda kesin bilgi veremiyorum. Size doğru cevabı verebilmek için teyit etmemiz gerekiyor.',
+            'Bu bilgi güncel olarak sistemde görünmüyor. Garson arkadaşımızdan kontrol ettirebiliriz.',
+            'Sistemimde farklı bir bilgi görünüyor olsa bile fiziksel durumu buradan doğrulayamıyorum. Garson arkadaşımızdan teyit etmek daha doğru olur.',
+            'Bu konuda elimde doğrulanmış bir veri yok. Yanlış yönlendirmemek için teyit edelim.',
+            'Şu anda bu ürünün gerçekten mevcut olup olmadığını buradan doğrulayamıyorum. Garson arkadaşımızdan kontrol ettirebiliriz.',
+            'Sistemde görünmesi, ürünün şu anda mutfakta mevcut olduğu anlamına gelmeyebilir. İsterseniz garson arkadaşımızdan teyit edelim.',
+            'Bu konuda kesin konuşmam doğru olmaz. Güncel durumu restoran ekibimizden öğrenebiliriz.',
+            'Bu bilgiyi şu anda doğrulayamıyorum. Dilerseniz garson arkadaşımızdan yardım isteyelim.',
+            'Elimdeki bilgiler bu soruyu kesin olarak cevaplamaya yetmiyor. Garson arkadaşımızdan teyit edebiliriz.',
+            'Bu detay sistemimde yer almıyor. İsterseniz hemen çalışan arkadaşlarımızdan bilgi alalım.',
+            'Size yanlış bir bilgi vermek istemem. Bu nedenle tahmin etmek yerine teyit etmeyi tercih ederim.',
+            'Bu konuda bilgim olmadığı için kesin bir cevap vermem doğru olmaz. Garson arkadaşımızdan öğrenebiliriz.',
+            'Şu an bu bilginin güncel olup olmadığını kontrol edemiyorum. İsterseniz garson arkadaşımızdan teyit edelim.',
+            'Bu bilgiye erişimim yok. Fakat isterseniz sizin için restoran ekibinden öğrenilmesini sağlayabiliriz.',
+            'Sistem tarafında bu bilgi bulunmuyor. Doğru cevabı almak için garson arkadaşımızdan destek alabiliriz.',
+            'Bu konuda tahminde bulunmayayım. Size net bilgi verebilecek bir arkadaşımızdan teyit edelim.',
+            'Bunu kesin olarak söyleyebilmem için güncel bilgiye ihtiyacım var. Şu anda bunu doğrulayamıyorum.',
+            'Bu konuda sistemde yeterli veri bulunmuyor. İsterseniz garson arkadaşımızdan yardım isteyelim.',
+            'Şu an elimde bu soruyu doğrulayacak bir bilgi yok. Yanlış yönlendirmemek adına teyit edelim.',
+            'Bu bilgiyi buradan göremiyorum. Garson arkadaşımızdan öğrenmek ister misiniz?',
+            'Bunu bilmediğim halde biliyormuş gibi cevap vermek istemem. En doğrusu restoran ekibinden teyit etmek.',
+            'Bu konuda kesin bilgi veremiyorum. İsterseniz hemen bir garson arkadaşımızdan destek alalım.',
+            'Sistemde bu bilgiye rastlamadım. Güncel durumu garson arkadaşımızdan öğrenebiliriz.',
+            'Bu detay benim erişebildiğim bilgiler arasında yok. İsterseniz restoran ekibine soralım.',
+            'Bu bilgi için size kesin bir cevap vermek isterdim ancak şu anda doğrulayamıyorum. Garson arkadaşımızdan teyit edebiliriz.',
+            'Buradan bu bilgiyi kontrol edemiyorum. Yanlış yönlendirmemek için garson arkadaşımızdan öğrenelim.',
+            'Bu konuda emin değilim. Emin olmadığım bir bilgiyi kesinmiş gibi söylemek yerine teyit etmeyi tercih ederim.',
+            'Sistemimde bu bilgi bulunmadığı için net cevap veremiyorum. İsterseniz çalışan arkadaşlarımızdan birine soralım.',
+            'Bu bilgi anlık olarak değişebileceği için buradan kesinleştiremiyorum. Garson arkadaşımızdan güncel durumu öğrenebiliriz.',
+            'Şu anda bu konuda doğrulanmış bir bilgiye sahip değilim. Dilerseniz garson arkadaşımızı çağırıp netleştirelim.',
+            'Bu bilgiyi buradan doğrulayamıyorum efendim. Yanlış yönlendirmemek için isterseniz hemen garson arkadaşımızdan teyit edelim.',
         ]));
     }
 
