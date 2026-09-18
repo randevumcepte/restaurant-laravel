@@ -391,6 +391,15 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['bunu bilmiyor musun', 'bunun bilgisi yok', 'bu konuda bilgin yok', 'neden bilmiyorsun', 'bunun cevabini bilmiyor', 'sistemde kayitli degil', 'bu bilgiye ulasamiyor', 'bunu soyleyemiyor musun', 'tahmin et', 'yaklasik soyle', 'bilmiyorsan tahmin', 'sen bana soyle', 'garsonu cagirma sen', 'bir sekilde ogren', 'garson baska soyledi', 'garson yok dedi', 'garson bunun olmadigini', 'menude farkli yaziyor', 'az once var demistin', 'sistemde var ama garson', 'soyledigin dogru degil', 'bu bilgi yanlis', 'buradaki bilgi guncel degil', 'bu bilgi degismis'])) {
             return $this->sistemBilgiYokCevap();
         }
+        // SAKA / ESPRI: "saka yaptim/dalga geciyorum/bir espri yap/haha/guldurdun beni" -> hafif, samimi karsilik.
+        // "saka bir yana bana kola" -> sakada takilma, GERCEK istegi isle (akisa birak).
+        if ($this->has($c, ['saka bir yana', 'saka maka'])) {
+            if (mb_strlen($c) > 16) return null; // gercek istek olabilir -> Haiku/siparis motoru islesin
+            return $this->sakaCevap();
+        }
+        if ($this->has($c, ['saka yaptim', 'saka yapiyorum', 'espri yaptim', 'espri yapiyorum', 'takiliyorum', 'dalga geciyorum', 'dalga gectim', 'seni deniyorum', 'seni isletiyorum', 'seni test ediyorum', 'kandirdim', 'kandiriyorum', 'yakaladim seni', 'seni gidi', 'saka yapiyorsun', 'bir espri yap', 'espri yap', 'saka yap', 'komik bir sey soyle', 'guldur beni', 'biraz guldur', 'hadi guldur', 'komik misin', 'mizah yapabiliyor', 'espri anlayisin', 'fikra anlat', 'fikra biliyor', 'komik bir hikaye', 'hahaha', 'ahaha', 'komikmis', 'cok komiksin', 'sen de komiksin', 'iyi espri', 'guzel espri', 'guldurdun beni', 'beni guldurdun', 'buna guldum', 'biraz eglenelim'])) {
+            return $this->sakaCevap();
+        }
         // MEMNUNIYET / OVGU (tek-anlamli, gecmis zaman/net): "guzeldi/harikaydi/bayildim/ellerinize saglik/on numara/yine gelecegim".
         // NOT: bare "guzel/lezzetli/nefis/mukemmel" HARIC -> onlar "en lezzetli hangisi / bu guzel mi" gibi URUN sorusu olabilir (oneri motoru).
         if ($this->has($c, ['guzeldi', 'cok guzeldi', 'guzel olmus', 'harikaydi', 'harika olmus', 'nefis olmus', 'nefisti', 'super olmus', 'lezzetliydi', 'cok lezzetliydi', 'tadi mukemmel', 'tadi harika', 'tadi cok guzel', 'lezzet muthis', 'muhtesemdi', 'mukemmeldi', 'mukemmel olmus', 'bayildim', 'cok begendim', 'gercekten begendim', 'cok hosuma gitti', 'hosuma gitti', 'memnun kaldim', 'memnun kaldik', 'cok memnunuz', 'cok memnun', 'elinize saglik', 'ellerinize saglik', 'emeginize saglik', 'sefe selam', 'sefinize selam', 'sefe tesekkur', 'asciya tesekkur', 'yine gelecegim', 'tekrar gelecegiz', 'yine gelirim', 'yine geliriz', 'tekrar gelirim', 'buraya yine gel', 'herkese tavsiye', 'arkadaslarima oner', 'tavsiye ederim', 'onerecegim', 'on numara', 'dort dortluk', 'cok basarili', 'gercekten basarili', 'cok kaliteli', 'kalite cok iyi', 'servis cok iyi', 'servis harika', 'garson cok ilgili', 'garson ilgiliydi', 'calisanlar cok iyi', 'calisanlar cok ilgili', 'her sey guzeldi', 'her sey harikaydi', 'her sey cok guzel', 'her sey mukemmel', 'beklediginden guzel', 'bekledigimden guzel', 'bekledigimden iyi', 'burayi cok sevdim', 'burayi sevdim', 'bayildim buraya', 'burasi harika', 'mekan cok guzel', 'mekan harika', 'ambiyans cok guzel', 'ambiyans guzel', 'ortam cok guzel'])) {
@@ -531,6 +540,30 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Kendinize iyi bakın, en kısa zamanda görüşmek üzere.', 'Hoşça kalın, yine bekleriz. Güzel bir akşam olsun.', 'Görüşürüz, bir dahaki gelişinizde yine yardımcı olurum.',
             'İyi günler, kendinize iyi bakın.', 'Hoşça kalın, tekrar görüşmek dileğiyle.', 'Görüşürüz, güzel bir gece dilerim.',
             'Hadi görüşürüz, yine bekleriz.', 'Hoşça kalın, geldiğiniz için teşekkür ederiz. Tekrar görüşmek üzere.',
+        ]));
+    }
+
+    /** SAKA / ESPRI: hafif, samimi, restorana uygun mizah; 50 varyasyon (rastgele). Yapay kahkaha kalibina bogmaz. */
+    protected function sakaCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Anladım, beni biraz işletiyorsunuz.', 'Tamam, bu sefer yakaladım şakayı.', 'Güzelmiş, hazırlıksız yakalandım.',
+            'İyi denemeydi, az daha inanıyordum.', 'Tamamdır, şaka olduğunu şimdi anladım.', 'Belli ki bugün masada mizah da menüde.',
+            'Güldürdünüz, devam edebiliriz.', 'İyiymiş, bunu beklemiyordum.', 'Tamam, puanınızı verdim. Fena değildi.',
+            'Beni test ettiğinizi anladım.', 'Güzel yakaladınız beni.', 'Şaka bir yana, şimdi asıl konuya geçelim.',
+            'Tamam, bu tur siz kazandınız.', 'Bunu not etmiyorum ama iyiydi.', 'Güzel espri, kabul ediyorum.',
+            'Ben de karşılık vereyim: Menüde mizah servisi de varmış demek.', 'Hazırsanız ben de bir tane bırakayım: Bugün kalorileri saymıyoruz, sadece tabakları sayıyoruz.', 'Bir tane benden: Diyet yapan müşteri menüyü açmış, menü de ona "Beni neden üzüyorsun?" demiş.',
+            'Espri istiyorsanız hazırım. Ama mutfaktan çıkan yemek kadar iddialı olacağına söz veremem.', 'Benim de mizah modum açık bugün.', 'Tamam, ortam biraz daha eğlenceli oldu.',
+            'Bunu şaka olarak kayda geçiyorum.', 'Anladım, bugün ciddi konuşmayacağız.', 'Güzel, biraz da gülelim.',
+            'Beni zorlamaya başladınız.', 'Bu sorunun ciddi bir cevabını beklemiyordunuz zaten.', 'Tamam, espri seviyesini yükseltiyoruz.',
+            'Peki, bu tur için benden de bir tebessüm.', 'Şaka konusunda iddialıyım demeyeyim ama deniyorum.', 'Güzel başladık, bakalım nereye gidecek.',
+            'Tamamdır, şaka kotamız bugün dolmadı daha.', 'Bunu beklemiyordum, güzel ters köşe oldu.', 'Yakalandım, itiraf ediyorum.',
+            'Tamam, sizi ciddiye alıp sonra şaka olduğunu öğrenmeyeyim.', 'Anladım, biraz eğleniyoruz.', 'Böyle devam ederse menüden önce espriler bitecek.',
+            'Gülümsetebildiysem ne mutlu.', 'Tamam, bu masada bugün keyif yerinde.', 'Şaka bir yana, gerçekten neye ihtiyacınız var?',
+            'Peki, şimdi sıra bende mi?', 'Bir espri daha isterseniz hazırda birkaç tane var.', 'Bunu sevdim, güzel bir şakaydı.',
+            'Tamam, bugün beni de biraz güldürdünüz.', 'İyiymiş, bunu beklemiyordum.', 'Bence bu konuşma güzel bir yere gidiyor.',
+            'Tamam, şaka moduna geçtik.', 'Güzel, biraz neşelenmek herkese iyi gelir.', 'Beni deniyorsanız, fena başlamadık.',
+            'Şaka tamam, şimdi gerçek siparişe geçebiliriz.', 'Güzel güldük, şimdi söyleyin bakalım, masanız için ne yapalım?',
         ]));
     }
 
