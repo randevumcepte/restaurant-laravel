@@ -1127,7 +1127,7 @@ async function sunucudanCevap(soru){
     }
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Hesabı açıyorum: tümünü ödeyebilir ya da kendi payını seçebilirsin. 💳'; }   // konustuktan sonra sepeti/odemeyi ac
-    return (j.seslendir===false)?'':(j.cevap||'Bir sorun oldu, tekrar dener misiniz?');
+    return (j.seslendir===false)?'':((j.seslendir_metni||j.cevap)||'Bir sorun oldu, tekrar dener misiniz?');  // seslendir_metni varsa KISA sesli okuma (ekranda kartlar/cevap zaten var)
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
 async function asKartGoster(kartlar, baslik){
