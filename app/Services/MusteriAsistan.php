@@ -53,6 +53,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             return $this->cvp('Efendim, sizi saygıya davet ediyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi kapatmak zorunda kalacağım.', ['aksiyon' => 'kufur']);
         }
 
+        // 0.4) ACIL DURUM (EN YUKSEK ONCELIK): saglik/yangin/guvenlik/cocuk -> normal akisi BIRAK, personele ACIL alarm + kisa yonlendirme
+        if ($this->acilMi($c)) {
+            return $this->acilDurumCevap();
+        }
+
         // 0.5) SIPARISI BITIR / ONAY (mutfaga gonder). Selam/tesekkur/kimlikten ONCE ki "tesekkurler sadece bunlar" bitir sayilsin.
         //      Cevap FRONTEND'de ozet+onay olarak kurulur (sepet frontend'de). Haiku sart degil.
         if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'sadece bunlar', 'bunlar kadar', 'tamam bunlar', 'yeterli bu', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'siparisi onayla', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla', 'siparisimi onayla'])) {
@@ -621,6 +626,48 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'İletişimde bir karışıklık oldu. Yanlış bir işlem yapmamak için isteğinizi yeniden netleştirelim.',
             'Tamam, yeniden deneyelim. Ne istediğinizi söyleyin, bu kez doğru şekilde ilerleyelim.',
         ]));
+    }
+
+    /** ACIL DURUM tespiti (guclu, tek anlamli sinyaller — benign yardim/oneri ile karismaz). */
+    protected function acilMi($c)
+    {
+        return $this->has($c, [
+            'acil', 'imdat', 'yardim edin', 'cabuk yardim', 'cok acil', 'acil durum', 'hemen gelin', 'hemen birini cagir', 'hemen yardim',
+            'yangin', 'duman', 'gaz kacagi', 'gaz kokusu', 'yanik kokusu', 'bir sey yaniyor', 'mutfakta yangin', 'patlama', 'patladi', 'ates cikti',
+            'fenalastim', 'fenalasti', 'kotu hissediyorum', 'cok kotu oldum', 'basim donuyor', 'bayilacak', 'bayildi', 'bayildim',
+            'nefes alamiyorum', 'nefesim kesiliyor', 'gogsum agriyor', 'kalbim agriyor', 'yere dusecegim', 'tansiyonum dustu', 'sekerim dustu', 'sekerim yukseldi',
+            'kanama', 'kanamam var', 'yaralandi', 'yaralandim', 'doktora ihtiyac', 'ambulans', '112', 'bilinci kapali',
+            'kavga', 'saldiriyor', 'tehdit ediyor', 'guvenlik cagir', 'polisi cagir', 'polis cagir', 'hirsizlik', 'calindi', 'guvende degil', 'rahatsiz ediyor',
+            'cocugum kayboldu', 'cocuk kayboldu', 'cocugumu bulamiyorum', 'cocugum dustu', 'bebegim kotu', 'yasli fenalasti', 'birisi bayildi', 'birinin yardima ihtiyaci',
+        ]);
+    }
+
+    /** ACIL DURUM: normal akisi birak, kisa/net yonlendirme + personele ACIL alarm (aksiyon). Hayati tehlikede 112. Sahte 'aradim' DEMEZ. */
+    protected function acilDurumCevap()
+    {
+        $pool = [
+            'Hemen restoran ekibimize haber veriyorum. Lütfen bulunduğunuz yerde kalın.',
+            'Anladım, bu acil bir durum. Hemen bir garson arkadaşımızı yönlendiriyorum.',
+            'Tamam, hemen yardım istiyorum. Lütfen bulunduğunuz masada kalın.',
+            'Hemen ilgileniyoruz. Bir restoran çalışanımızın yanınıza gelmesini sağlıyorum.',
+            'Acil durumunuzu anladım. Lütfen sakin kalın, restoran ekibimizden hemen yardım geliyor.',
+            'Tamam, acil olarak ilgileniyoruz. Restoran ekibimize haber verdim.',
+            'Bu acil görünüyor. Restoran ekibimize haber verdim; yakınınızdaki bir görevliye de seslenebilirsiniz.',
+            'Lütfen sakin kalın. Acil durumunuz için restoran ekibimizden yardım geliyor.',
+            'Bir sağlık sorunu varsa lütfen beklemeyin. Hayati tehlike varsa 112’yi arayın; ben de restoran ekibine acil haber verdim.',
+            'Nefes almakta zorlanıyorsanız beklemeyin, hemen 112’yi arayın. Aynı anda restoran ekibimize acil haber verdim.',
+            'Göğüs ağrısı veya ciddi nefes darlığı varsa vakit kaybetmeyin, 112’yi arayın. Restoran ekibimiz de yönlendirildi.',
+            'Birisi bayıldıysa hemen 112’yi arayın ve çevrenizden yardım isteyin. Restoran ekibimize acil haber verdim.',
+            'Yangın veya yoğun duman varsa güvenli şekilde uzaklaşın ve 112’yi arayın. Restoran ekibimizi de uyardım.',
+            'Gaz kokusu alıyorsanız güvenli bir alana geçin, hemen restoran personeline haber verildi. Gerekirse 112’yi arayın.',
+            'Bir güvenlik sorunu varsa müdahale etmeye çalışmayın, güvenli bir yere geçin. Restoran ekibimize acil haber verdim; gerekirse 112.',
+            'Çocuğunuz kaybolduysa merak etmeyin, restoran ekibimize hemen haber verdim; bulunması için destek geliyor.',
+            'Yanınızdaki kişi fenalaştıysa restoran ekibimize acil haber verdim. Durum ciddiyse lütfen 112’yi arayın.',
+            'Kanama varsa restoran ekibimize haber verdim. Ciddi kanamada 112’yi arayın.',
+            'Şu anda en önemli şey güvenliğiniz. Restoran ekibimize acil haber verdim, hemen geliyorlar.',
+            'Ciddi bir durumsa benimle konuşmaya devam etmeyin; doğrudan 112’yi arayın. Restoran ekibimize de acil haber verdim.',
+        ];
+        return $this->cvp($this->rastgele($pool), ['aksiyon' => 'garson_cagir', 'tip' => 'acil']);
     }
 
     /** TEKNIK HATA / ISLEM SUPHESI: islemi TAMAMLANMIS SAYMAZ; garson teyidine yonlendirir (kritik guvenlik). */

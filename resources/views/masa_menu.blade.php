@@ -906,7 +906,7 @@ function menuAra(q){
 /* ---- garson/hesap ---- */
 async function cagir(tip){
   try{ await fetch('/api/qr/garson-cagir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,tip})}); }catch(e){}
-  toast(tip==='hesap'?'💳 Hesap isteğiniz iletildi, birazdan geliyoruz.':'🔔 Garson çağrıldı, birazdan yanınızdayız.');
+  toast(tip==='acil'?'🚨 Acil durum ekibimize iletildi, hemen geliyoruz!':(tip==='hesap'?'💳 Hesap isteğiniz iletildi, birazdan geliyoruz.':'🔔 Garson çağrıldı, birazdan yanınızdayız.'));
 }
 
 /* ---- AI asistan: AYNI sayfada YÜZEN panel (iframe embed) — ayrı sayfaya gitmez ---- */

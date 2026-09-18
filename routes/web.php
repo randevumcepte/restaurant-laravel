@@ -2564,7 +2564,7 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
         });
     }
     DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
-        'tip' => in_array($r->tip, ['garson', 'hesap']) ? $r->tip : 'garson', 'durum' => 'bekliyor', 'created_at' => now()]);
+        'tip' => in_array($r->tip, ['garson', 'hesap', 'acil']) ? $r->tip : 'garson', 'durum' => 'bekliyor', 'created_at' => now()]);
     return ['ok' => 1];
 });
 

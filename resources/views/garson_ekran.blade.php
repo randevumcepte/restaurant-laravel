@@ -30,6 +30,17 @@
   .cag.risk{ background:linear-gradient(160deg,#2a1010,#1c0a0a); border-color:#b91c1c; }
   .cag.risk .ik{ background:rgba(239,68,68,.2); }
   .cag.risk .sure b{ color:#f87171; }
+  .cag.acilkart{ background:linear-gradient(160deg,#3a0a0a,#240404); border:2px solid #ef4444; animation:acilyan .8s infinite; }
+  .cag.acilkart .ik{ background:rgba(239,68,68,.28); }
+  .cag.acilkart .masa,.cag.acilkart .tip{ color:#fecaca; }
+  @keyframes acilyan{ 0%,100%{ border-color:#ef4444; box-shadow:0 0 0 0 rgba(239,68,68,.5);} 50%{ border-color:#7f1d1d; box-shadow:0 0 22px 2px rgba(239,68,68,.55);} }
+  #acilPop{ position:fixed; inset:0; z-index:30; display:none; align-items:center; justify-content:center; padding:24px; background:rgba(40,4,4,.82); }
+  #acilPop.acik{ display:flex; animation:opin .2s ease; }
+  #acilPop .kutu{ width:100%; max-width:440px; border-radius:24px; padding:32px 26px; text-align:center; background:linear-gradient(160deg,#3a0a0a,#1a0202); border:3px solid #ef4444; box-shadow:0 24px 70px -18px rgba(239,68,68,.7); animation:acilyan .7s infinite; }
+  #acilPop .em{ font-size:60px }
+  #acilPop h2{ font-size:26px; font-weight:900; margin-top:10px; color:#fff }
+  #acilPop .m{ font-size:16px; color:#fecaca; margin-top:8px; line-height:1.35 }
+  #acilPop button{ margin-top:22px; width:100%; border:none; border-radius:16px; padding:16px; font-size:17px; font-weight:900; color:#fff; background:linear-gradient(135deg,#dc2626,#ef4444); cursor:pointer; }
   .cag.odeme{ background:linear-gradient(160deg,#0f2417,#0a1a10); border-color:#1e7a4a; }
   .cag.odeme .ik{ background:rgba(34,197,94,.2); }
   .cag .odetut{ margin-top:12px; font-size:26px; font-weight:900; color:#4ade80; font-variant-numeric:tabular-nums; }
@@ -78,6 +89,16 @@
   </div>
 </div>
 
+<!-- ACIL DURUM alarmi (en guclu: kirmizi + surekli titresim + zil) -->
+<div id="acilPop">
+  <div class="kutu">
+    <div class="em">🚨</div>
+    <h2>ACİL DURUM — <span id="ap-masa">Masa</span></h2>
+    <div class="m">Müşteri acil yardım istedi. LÜTFEN HEMEN masaya gidin; gerekiyorsa 112’yi arayın.</div>
+    <button onclick="acilPopupKapat()">Gördüm, gidiyorum</button>
+  </div>
+</div>
+
 <script>
 const SUBE = @json($sube->id ?? 0);
 let _sesAcik = false, _biliniyor = new Set(), _ilk = true, _sonZil = 0;
@@ -116,9 +137,18 @@ function odemePopup(c){
   p.classList.add('acik');
 }
 function odemePopupKapat(){ const p=document.getElementById('odemePop'); if(p) p.classList.remove('acik'); }
+// ACIL DURUM: en guclu alarm — kirmizi popup + uzun surekli titresim + coklu zil
+function acilPopup(c){
+  try{ zilCal(6); }catch(_){}
+  titret([800,200,800,200,800,200,1000,200,1000]);
+  const p=document.getElementById('acilPop'); if(!p) return;
+  const m=document.getElementById('ap-masa'); if(m) m.textContent=c.masa||'Masa';
+  p.classList.add('acik');
+}
+function acilPopupKapat(){ const p=document.getElementById('acilPop'); if(p) p.classList.remove('acik'); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function tipYazi(t){ return t==='tasima' ? 'Taşıma talebi' : (t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor'))); }
-function tipIkon(t){ return t==='tasima' ? '🔀' : (t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔'))); }
+function tipYazi(t){ return t==='acil' ? 'ACİL DURUM' : (t==='tasima' ? 'Taşıma talebi' : (t==='odeme' ? 'Ödeme alınacak' : (t==='hesap' ? 'Hesap istiyor' : (t==='siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')))); }
+function tipIkon(t){ return t==='acil' ? '🚨' : (t==='tasima' ? '🔀' : (t==='odeme' ? '💰' : (t==='hesap' ? '💳' : (t==='siparis' ? '🧾' : '🔔')))); }
 function sureYazi(sn){ sn=Math.max(0,Math.round(sn)); if(sn<60) return sn+' sn'; const d=Math.floor(sn/60); return d+' dk'; }
 
 async function cek(){
@@ -131,8 +161,10 @@ async function cek(){
     const _now = Date.now();
     if(yeniler.length && !_ilk){ zilCal(3); titret([500,180,500,180,700]); _sonZil=_now; }
     else if(liste.length && !_ilk && (_now-_sonZil>18000)){ zilSalvo(0); titret([300,150,300]); _sonZil=_now; } // bekleyen cagri varken hatirlatma
+    const yeniAcil = yeniler.find(c=> c.tip==='acil');
+    if(yeniAcil && !_ilk) acilPopup(yeniAcil);       // ACIL DURUM -> en guclu alarm (kirmizi popup + surekli titresim + zil)
     const yeniOdeme = yeniler.find(c=> c.tip==='odeme');
-    if(yeniOdeme && !_ilk) odemePopup(yeniOdeme);   // kasada odeme tercihi -> dikkat cekici popup + guclu titresim
+    if(yeniOdeme && !_ilk && !yeniAcil) odemePopup(yeniOdeme);   // kasada odeme tercihi -> dikkat cekici popup + guclu titresim
     _biliniyor = new Set(liste.map(c=>c.id));
     _ilk = false;
     ciz(liste, (j.ok && Array.isArray(j.riskli)) ? j.riskli : []);
@@ -155,7 +187,7 @@ function ciz(liste, riskli){
   liste.forEach(c=>{
     const el=document.createElement('div');
     const odeme = c.tip==='odeme';
-    el.className='cag '+(odeme?'odeme':(c.tip==='hesap'?'hesap':''))+(c.saniye>=60?' geciken':'');
+    el.className='cag '+(c.tip==='acil'?'acilkart geciken':(odeme?'odeme':(c.tip==='hesap'?'hesap':'')))+(c.saniye>=60?' geciken':'');
     let alt;
     if(odeme){
       alt = `<div class="odetut">${(c.tutar||0).toLocaleString('tr')} TL</div>`
