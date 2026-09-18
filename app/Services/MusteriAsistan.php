@@ -83,8 +83,16 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             $c = $kalan;
             $soru = $kalan;
         }
-        if ($this->has($c, ['tesekkur', 'sagol', 'sag ol', 'eyvallah', 'minnettar'])) {
-            return $this->cvp('Rica ederim, afiyet olsun! 😊');
+        if ($this->has($c, ['tesekkur', 'sagol', 'sag ol', 'sag olun', 'eyvallah', 'minnettar', 'eline saglik', 'ellerine saglik', 'allah razi olsun', 'eksik olma', 'makbule gecti', 'cok naziksin', 'iyi ki varsin', 'iyi ki yardimci'])) {
+            // Tesekkur + GERCEK istek varsa ("tesekkurler bir de su") -> tesekkuru dusur, ASIL istegi isle
+            $kalan = ' ' . $c . ' ';
+            foreach (['cok tesekkur ederim gercekten', 'cok tesekkur ederim', 'tesekkur ederim', 'tesekkurler', 'tesekkur', 'cok sag ol gercekten', 'cok sag ol', 'sag olun', 'sag ol', 'sagol', 'eline saglik', 'ellerine saglik', 'allah razi olsun', 'eksik olma', 'makbule gecti', 'cok naziksin', 'iyi ki varsin', 'iyi ki yardimci oldun', 'eyvallah', 'minnettar', 'yardiminiz icin', 'yardimin icin', 'ilginiz icin', 'ilgin icin', 'cok yardimci oldunuz', 'cok yardimci oldun', 'bilgi icin', 'cevabin icin', 'cevabiniz icin', 'tavsiyen icin', 'onerin icin', 'gercekten', 'kardesim', 'arkadasim'] as $s) {
+                $kalan = str_replace(' ' . $this->norm($s) . ' ', ' ', $kalan);
+            }
+            $kalan = trim(preg_replace('/\s+/', ' ', $kalan));
+            if (mb_strlen($kalan) < 3) return $this->tesekkurCevap();
+            $c = $kalan;
+            $soru = $kalan;
         }
 
         // 2) ODEME / HESAP -> guvenli ONLINE odeme sayfasina yonlendir ("odeme yapmak istiyorum", "hesap", "kartla ode")
@@ -467,6 +475,30 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** TESEKKUR: tekduze "rica ederim" DEGIL, 50 sicak/dogal varyasyon (rastgele). */
+    protected function tesekkurCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Rica ederim, ne demek.', 'Ben teşekkür ederim, afiyet olsun.', 'Ne demek, her zaman yardımcı olurum.',
+            'Rica ederim, afiyetle tüketin.', 'Memnuniyetle, afiyet olsun.', 'Estağfurullah, ne demek.',
+            'Rica ederim, yardımcı olabildiysem ne mutlu.', 'Ne demek, sizin için buradayım.', 'Her zaman, afiyet olsun.',
+            'Rica ederim, şimdiden afiyet olsun.', 'Ne demek, keyifle yiyin.', 'Memnuniyetle, güzel bir yemek olsun.',
+            'Rica ederim, başka bir ihtiyacınız olursa buradayım.', 'Ne demek, yardımcı olmak benim işim.', 'Rica ederim, afiyet ve keyif olsun.',
+            'Estağfurullah, her zaman.', 'Ben teşekkür ederim, afiyet olsun.', 'Ne demek, içiniz rahat olsun.',
+            'Rica ederim, işinizi kolaylaştırabildiysem ne güzel.', 'Memnun oldum, afiyet olsun.', 'Her zaman yardımcı olmaktan memnuniyet duyarım.',
+            'Rica ederim, güzel vakit geçirmenizi dilerim.', 'Ne demek, keyfiniz yerinde olsun.', 'Rica ederim, şimdiden keyifli bir yemek dilerim.',
+            'Yardımcı olabildiysem ne mutlu, afiyet olsun.', 'Ne demek, her zaman beklerim.', 'Rica ederim, güzel bir akşam olsun.',
+            'Memnuniyetle, afiyet olsun.', 'Rica ederim, başka bir şey gerekirse seslenmeniz yeterli.', 'Ne demek, elimden geldiğince yardımcı olurum.',
+            'Sağ olun, güzel sözleriniz için teşekkür ederim.', 'Rica ederim, sizin memnuniyetiniz önemli.', 'Ne demek, yardımcı olmak benim için keyif.',
+            'Afiyet olsun, güzel bir seçim yaptınız.', 'Rica ederim, umarım yemeğiniz de en az sohbetimiz kadar güzel olur.', 'Ne demek, gönül rahatlığıyla devam edebilirsiniz.',
+            'Rica ederim, güzel vakit geçirmenizi dilerim.', 'Her zaman, afiyet olsun.', 'Ne demek, ihtiyaç duyduğunuzda buradayım.',
+            'Rica ederim, şimdiden afiyet olsun.', 'Sağ olun, ben de size keyifli bir yemek diliyorum.', 'Ne demek, yardımcı olmak güzel.',
+            'Rica ederim, umarım her şey gönlünüzce olur.', 'Memnuniyetle, afiyet olsun.', 'Ne demek, iyi ki sordunuz.',
+            'Rica ederim, başka bir konuda da yardımcı olabilirim.', 'Her zaman, güzel bir yemek ve keyifli bir sohbet olsun.', 'Ne demek, sizin için buradayım. Afiyet olsun.',
+            'Rica ederim, keyfiniz bol olsun.', 'Ben teşekkür ederim. Afiyet olsun, güzel vakit geçirmenizi dilerim.',
+        ]));
     }
 
     /** AI ANLAMADI / TEKRAR ISTEGI: 50 varyasyonlu nazik "sizi yanlis anladim, tekrar soyleyin" (rastgele). */
