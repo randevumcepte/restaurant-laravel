@@ -349,9 +349,14 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['anlamadin', 'beni anlamadin', 'beni anlamiyorsun', 'yanlis anladin', 'yanlis anladin beni', 'onu demedim', 'onu soylemedim', 'oyle demedim', 'hayir oyle degil', 'ne dedigimi anlamadin', 'soylediklerimi anlamadin', 'tekrar soyle', 'tekrar eder misin', 'tekrarlar misin', 'bir daha soyle', 'yeniden soyle', 'tekrar anlat', 'bir daha anlat', 'anlayamadim', 'anlamadim', 'seni anlamadim', 'bir daha soyler misin', 'tekrar konusur musun', 'yeniden soyler misin', 'tekrar aciklar misin', 'biraz daha acik anlat', 'daha acik soyler misin', 'daha anlasilir soyle', 'ne demek istiyorsun', 'ne demek istedin', 'neyi kastettin', 'ne soyledigini anlamadim', 'soyledigini anlayamadim', 'bastan soyle', 'bastan anlat', 'yeniden baslayalim', 'farkli bir sey soyledim', 'baska bir sey demek istedim'])) {
             return $this->anlamadimCevap();
         }
-        // Kararsizlik / "ne yesem" -> ONERI motoruna kopru (deterministik + bedava)
-        if ($this->has($c, ['ne yesem', 'ne yiyeyim', 'ne yisem', 'karar veremiyor', 'kararsizim', 'ne istedigimi bilmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'aklima gelmiyor', 'sen sec', 'sen karar ver', 'sen bir sey soyle', 'ne alsam bilmiyor'])) {
+        // KARARSIZ MUSTERI:
+        // (a) Secimi bize DEVREDERSE ("sen sec / rastgele / fark etmez") -> dogrudan ONERI motoru (bir sey sun)
+        if ($this->has($c, ['sen sec', 'sen karar ver', 'sen bir sey soyle', 'sen soyle', 'sen olsan', 'rastgele bir sey', 'rastgele oner', 'fark etmez sen', 'bana bir sey sec', 'bana guzel bir sey sec', 'karar vermeme yardim', 'bana seçim yaptir', 'bana secim yaptir', 'sen sec bir'])) {
             return $this->oneri($c);
+        }
+        // (b) Genel kararsizlik -> ONCE tercih sor (uzun liste DOKME), 50 varyasyon
+        if ($this->has($c, ['karar veremedim', 'karar veremiyor', 'kararsiz', 'ne yesem', 'ne yiyeyim', 'ne yisem', 'hangisini secsem', 'hangisini alsam', 'hangisini seceyim', 'hangisi daha iyi', 'hangisi guzel', 'ikisi arasinda kaldim', 'iki yemek arasinda', 'uc yemek arasinda', 'ucu arasinda', 'secemedim', 'secemiyorum', 'ne istedigimi bilmiyor', 'ne yiyecegimi bilmiyor', 'ne siparis edecegimi', 'aklim karisti', 'aklima gelmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'cok fazla secenek', 'hepsi guzel gorunuyor', 'ne tavsiye', 'ne onerirsin', 'ne onerirsiniz', 'favoriniz hangisi', 'burada ne yenir', 'ne yiyeyim bilmiyor', 'bir turlu secemedim', 'bir turlu karar', 'bir seyler onerir', 'bir oneride bulun'])) {
+            return $this->kararsizCevap();
         }
         // Nasilsin / hal hatir
         if ($this->has($c, ['nasilsin', 'naber', 'ne haber', 'iyi misin', 'keyifler', 'napiyorsun', 'ne yapiyorsun'])) {
@@ -545,6 +550,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Merhaba, hoş geldiniz. Ben hazırım. Siz neye ihtiyacınız olduğunu söyleyin, birlikte bakalım.',
             'Selam, hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz menüde gezmek yerine doğrudan bana ne istediğinizi söyleyebilirsiniz.',
             'Merhabalar, hoş geldiniz. Güzel bir yemek deneyimi geçirmeniz için buradayım. Ne merak ediyorsanız sorabilirsiniz, birlikte ilerleyelim.',
+        ]));
+    }
+
+    /** KARARSIZ MUSTERI: uzun liste DOKMEDEN once tercih sorar (et/tavuk, hafif/doyurucu, acili...). 50 varyasyon. */
+    protected function kararsizCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Tabii, birlikte karar verelim. Önce hafif bir şey mi yoksa doyurucu bir yemek mi istediğinizi söyleyin.',
+            'Hiç sorun değil, menüde çok seçenek olunca karar vermek zor olabiliyor. Size birkaç uygun seçenek arasından yardımcı olabilirim.',
+            'Karar vermenize yardımcı olayım. Et, tavuk, balık ya da başka bir şey mi düşünüyorsunuz?',
+            'Elbette, sizin için seçenekleri biraz daraltabiliriz. Daha çok hafif bir yemek mi arıyorsunuz, yoksa iyice doyurucu bir şey mi?',
+            'Hiç acele etmeyin. Nasıl bir şey istediğinizi biraz anlatın, size uygun seçenekleri bulalım.',
+            'Bazen menüde seçenek çok olunca seçim yapmak zorlaşıyor. İsterseniz damak zevkinize göre birkaç alternatif çıkaralım.',
+            'Ben yardımcı olayım. Acılı mı, acısız mı tercih edersiniz?',
+            'Kararsız kaldıysanız birkaç soru sorayım, cevabınıza göre seçenekleri azaltalım.',
+            'Tabii, beraber seçebiliriz. Şu anda canınız daha çok et mi, tavuk mu, yoksa farklı bir şey mi çekiyor?',
+            'Sorun değil. Önce nasıl bir yemek istediğinizi belirleyelim, sonrası daha kolay.',
+            'İki yemek arasında kaldıysanız ikisini de söyleyin, aralarındaki farkları anlatayım.',
+            'Seçmekte zorlanıyorsanız size uygun birkaç alternatif önerebilirim. Önceliğiniz lezzet mi, hafiflik mi, doyuruculuk mu?',
+            'İsterseniz seçimi bana bırakabilirsiniz. Menüdeki seçenekler arasından size uygun bir tane bulalım.',
+            'Tabii, yardımcı olabilirim. Çok aç mısınız, yoksa daha hafif bir şey mi düşünüyorsunuz?',
+            'Menüde kaybolmanıza gerek yok. Birkaç tercih sorayım, seçenekleri sizin için daraltayım.',
+            'Ne istediğinizi tam olarak bilmiyorsanız sorun değil. Önce sevdiğiniz yemek türünü bulalım.',
+            'Bana biraz nasıl bir şey aradığınızı anlatın, size uygun seçenekleri birlikte değerlendirelim.',
+            'Karar vermek zor geliyorsa seçimi adım adım yapabiliriz. Önce ana yemek türünden başlayalım.',
+            'İsterseniz size birkaç seçenek sunayım, aralarından hangisi daha çok hoşunuza giderse onunla devam ederiz.',
+            'Bugün özel olarak canınızın çektiği bir şey var mı? Ona göre seçim yapabiliriz.',
+            'İlk defa geliyorsanız karar vermeniz daha da zor olabilir. Menüdeki seçeneklere göre size uygun birkaç öneri sunabilirim.',
+            'Siz seçmekte zorlanıyorsanız ben seçenekleri azaltayım. Önce etli mi yoksa etsiz mi istediğinizi söyleyin.',
+            'Hepsi güzel görünüyorsa birkaç kriter belirleyelim. Böylece karar vermek çok daha kolay olur.',
+            'İsterseniz damak zevkinize göre seçim yapalım. Acı seviyor musunuz?',
+            'Ne yiyeceğinize karar veremediyseniz hiç sorun değil. Size birkaç alternatif çıkaralım.',
+            'Ben size yardımcı olayım. Hafif, orta veya doyurucu bir şeylerden hangisine yakınsınız?',
+            'Seçimi bana bırakmak isterseniz, menüdeki uygun seçenekler arasından bir öneride bulunabilirim.',
+            'İki seçenek arasında kaldıysanız isimlerini söyleyin, hangisinin size daha uygun olduğunu birlikte değerlendirelim.',
+            'Canınız belirli bir şey çekmiyorsa sorun değil. Nasıl bir yemek istediğinizi birkaç soruyla bulabiliriz.',
+            'Biraz seçenekleri daraltalım. Ana yemek mi düşünüyorsunuz, yoksa atıştırmalık gibi daha hafif bir şey mi?',
+            'Kararsız kalmanız çok normal. Önce doyurucu mu hafif mi istediğinizi belirleyelim.',
+            'İsterseniz size üç farklı seçenek üzerinden yardımcı olayım. Sonrasında seçmek daha kolay olur.',
+            'Ne yiyeceğinizi bilmiyorsanız bana sevdiğiniz bir iki malzeme söyleyin, ona göre seçenekleri değerlendirelim.',
+            'Bugün farklı bir şey denemek mi istiyorsunuz, yoksa garanti bir seçim mi yapmak istersiniz?',
+            'Size uygun bir seçim bulabiliriz. Öncelikle et, tavuk, balık veya sebze seçeneklerinden hangisine yakın olduğunuzu söyleyin.',
+            'Kararı hemen vermek zorunda değilsiniz. İsterseniz önce birkaç seçeneği karşılaştıralım.',
+            'Menüde çok seçenek olması bazen işi zorlaştırıyor. Ben sizin için uygun olanları öne çıkarayım.',
+            'İsterseniz en çok merak ettiğiniz iki veya üç yemeği söyleyin, aralarındaki farkları anlatayım.',
+            'Siz sadece nasıl bir tat istediğinizi söyleyin, gerisini birlikte bulalım.',
+            'Ne yiyeceğinize karar veremediyseniz size yardımcı olmaktan memnuniyet duyarım. Önce hafif mi doyurucu mu istediğinizi belirleyelim.',
+            'Bana birkaç ipucu verirseniz doğru seçeneği bulmanız çok daha kolay olur. Acı, baharatlı veya sade bir şey mi düşünüyorsunuz?',
+            'Kararı bana bırakabilirsiniz. Menüdeki seçenekler arasından size uygun bir öneri yapayım.',
+            'Eğer iki yemek arasında kaldıysanız ikisini de değerlendirebiliriz. Hangisinin daha doyurucu veya hafif olduğunu karşılaştırabilirim.',
+            'İsterseniz damak zevkinize göre ilerleyelim. Sevmediğiniz bir malzeme var mı?',
+            'Bugün klasik bir şey mi istersiniz, yoksa farklı bir lezzet denemeye açık mısınız?',
+            'Hiçbir fikriniz yoksa da sorun değil. Birkaç kısa soruyla sizin için uygun seçenekleri bulabiliriz.',
+            'Seçimi kolaylaştıralım. Bana ne istemediğinizi bile söyleseniz yeter, kalan seçeneklere bakabiliriz.',
+            'İsterseniz menüdeki seçenekleri tek tek değerlendirmek yerine size en uygun birkaç seçeneği belirleyelim.',
+            'Siz karar veremiyorsanız ben yardımcı olayım. Önce bugün ne kadar aç olduğunuzu söyleyin.',
+            'Tamam, seçimi birlikte yapalım. Bana nasıl bir yemek istediğinizi biraz anlatın, menüdeki uygun seçenekleri sizin için değerlendireyim.',
         ]));
     }
 
