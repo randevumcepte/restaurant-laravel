@@ -95,6 +95,18 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['garson', 'biri gelsin', 'cagir', 'garsonu cagir', 'yardim istiyorum', 'yardim eder'])) {
             return $this->cvp('Garsonumuzu masanıza çağırdım, birazdan geliyor. 🙋', ['aksiyon' => 'garson_cagir']);
         }
+        // 2b-2) SERVIS GECIKMESI -> yeni siparis DEGIL, durum kontrolu + garson (uzun bekleme sikayeti)
+        if ($this->has($c, ['siparisim gelmedi', 'siparis gelmedi', 'siparisimiz gelmedi', 'cok bekledik', 'ne zaman gelecek', 'yemeklerimiz nerede', 'yemekler nerede kaldi', 'nerede kaldi', 'bizi unuttunuz', 'siparisim gecikti', 'siparisimiz gecikti', 'ne kadar daha bekle', 'siparisin durumu', 'siparisimin durumu', 'siparisimizin durumu'])) {
+            return $this->servisGecikmeCevap();
+        }
+        // 2b-3) MASA DEGISIKLIGI -> uygunluk garson kontrol etsin
+        if ($this->has($c, ['masa degistir', 'baska masaya gec', 'baska masaya', 'masamizi degistir', 'sakin bir masa', 'bahceye gec', 'disariya gec', 'disaridaki masa', 'ic masaya', 'baska yere otur', 'bos bir masa varsa'])) {
+            return $this->masaDegisiklikCevap();
+        }
+        // 2b-4) GENEL SERVIS TALEBI (pecete/catal/kasik/tabak/buz/sandalye/temizlik/sos...) -> garson. NOT: 'su' menude satilan urun olabilir, siparis motoruna birakildi.
+        if ($this->has($c, ['pecete', 'catal', 'kasik', 'bicak getir', 'bicak alabilir', 'bicak lazim', 'ekstra tabak', 'bir tabak daha', 'tabak getir', 'tabak eksik', 'bos tabak', 'tabaklari kaldir', 'tabaklari al', 'ekstra bardak', 'bardak getir', 'bardak eksik', 'buz getir', 'buz rica', 'buz alabilir', 'biraz buz', 'buz lazim', 'sandalye', 'ketcap', 'mayonez', 'sos getir', 'ekstra sos', 'yanina sos', 'masayi temizle', 'masayi topla', 'masayi toparla', 'masayi alir', 'boslari al', 'bos tabaklari', 'masamiz doldu', 'masada yer kalmadi', 'servis alabilir', 'servis yapar', 'servis ac', 'servis rica', 'servis elemani', 'servisten birini', 'masamiza bak', 'masayla ilgilen', 'bize biri baksin', 'bize biri bakabilir', 'masaya biri gel', 'gorevli cagir', 'birisi bizimle ilgilen'])) {
+            return $this->servisTalepCevap();
+        }
         // 2c) KAMPANYA / INDIRIM (aktif indirimleri GERCEK veriden soyler)
         if ($this->has($c, ['kampanya', 'indirim', 'firsat', 'promosyon', 'kampanyaniz', 'indiriminiz', 'avantaj', 'kupon var'])) {
             return $this->kampanyaBilgisi();
@@ -668,6 +680,58 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Ciddi bir durumsa benimle konuşmaya devam etmeyin; doğrudan 112’yi arayın. Restoran ekibimize de acil haber verdim.',
         ];
         return $this->cvp($this->rastgele($pool), ['aksiyon' => 'garson_cagir', 'tip' => 'acil']);
+    }
+
+    /** GENEL SERVIS TALEBI (pecete/catal/buz/tabak/temizlik/sandalye/sos...): jenerik "servis ekibine iletiyorum" + garson aksiyonu. */
+    protected function servisTalepCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Tabii, garson arkadaşımızı masanıza yönlendirelim.',
+            'Elbette, hemen bir garson arkadaşımızdan destek isteyelim.',
+            'Tabii, talebinizi servis ekibimize iletiyorum, hemen ilgilenecekler.',
+            'Hemen ilgilenmeleri için servis ekibimize haber veriyorum.',
+            'Tabii, bir garson arkadaşımızın masanıza gelmesini sağlayalım.',
+            'Elbette, hemen masanızla ilgilenmeleri için haber veriyorum.',
+            'Garson arkadaşımıza isteğinizi iletiyorum, birazdan yanınızdalar.',
+            'Tabii, servis ekibine haber veriyorum.',
+            'Hemen bir arkadaşımızı masanıza yönlendirelim.',
+            'Elbette, talebinizi hemen servis ekibine aktarıyorum.',
+            'Tabii, masanızla ilgilenmeleri için arkadaşlarımızdan destek isteyelim.',
+            'Bir servis talebiniz olduğunu anladım. Hemen ekibe iletiyorum.',
+            'Masadaki ihtiyacınızı hemen ilgili arkadaşlara iletiyorum.',
+            'Birden fazla isteğiniz varsa hepsini birlikte söyleyebilirsiniz; servis ekibine aktarayım.',
+            'Garson çağırma isteğinizi aldım. Hemen servis ekibine iletiyorum.',
+            'Talebiniz alındı. Masanızla ilgilenmeleri için servis ekibimize haber veriyorum.',
+            'Elbette, servis konusunda yardımcı olalım. İhtiyacınızı söylemeniz yeterli, ekibe iletiyorum.',
+            'Tamamdır, talebinizi aldım. Hemen restoran ekibine iletiyorum.',
+            'Tabii, neye ihtiyacınız olduğunu servis ekibimize aktardım, birazdan geliyorlar.',
+            'Masanız için talebinizi ilettim; garson arkadaşımız hemen ilgilenecek.',
+        ]), ['aksiyon' => 'garson_cagir']);
+    }
+
+    /** MASA DEGISIKLIGI: uygunlugu tahmin etmez, garson kontrol etsin + garson aksiyonu. */
+    protected function masaDegisiklikCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Masa değişikliği isteğinizi anladım. Uygun bir masa var mı, garson arkadaşımız hemen kontrol etsin.',
+            'Tabii, başka bir masaya geçmek istediğinizi anladım. Uygunluğu garson arkadaşımızla kontrol edelim.',
+            'Daha sakin bir masa istediğinizi anladım. Müsait masa durumunu garson arkadaşımız baksın, hemen yönlendiriyorum.',
+            'Bahçeye/başka masaya geçmek isterseniz uygun masa durumunu garson arkadaşımız kontrol etsin; çağırdım.',
+            'Masa değişikliği talebinizi servis ekibimize ilettim; müsait masa varsa hemen yardımcı olacaklar.',
+        ]), ['aksiyon' => 'garson_cagir']);
+    }
+
+    /** SERVIS GECIKMESI: YENI SIPARIS OLUSTURMAZ; durum kontrolu + garson aksiyonu (bekleme sikayeti). */
+    protected function servisGecikmeCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Beklettiğimiz için özür dileriz. Siparişinizin durumunu hemen kontrol ettiriyorum.',
+            'Uzun süredir beklediğinizi anladım, kusura bakmayın. Sipariş durumunuza garson arkadaşımız hemen baksın.',
+            'Siparişiniz geciktiyse çok üzgünüm. Nerede kaldığını kontrol etmeleri için servis ekibimize haber verdim.',
+            'Beklediğinizi anladım. Siparişinizin durumunu kontrol ettirip hemen bilgi vermelerini sağlıyorum.',
+            'Sizi beklettiğimiz için özür dileriz. Garson arkadaşımız siparişinizin durumuna bakıp hemen yanınıza gelecek.',
+            'Haklısınız, kontrol edelim. Siparişinizin durumu için servis ekibimizi yönlendirdim.',
+        ]), ['aksiyon' => 'garson_cagir']);
     }
 
     /** TEKNIK HATA / ISLEM SUPHESI: islemi TAMAMLANMIS SAYMAZ; garson teyidine yonlendirir (kritik guvenlik). */
