@@ -8450,3 +8450,83 @@ Route::get('/api/mesai/liste', function (Request $r) {
     return ['ok' => 1, 'patron' => $patron ? 1 : 0, 'gun' => $gun, 'kayitlar' => $out];
 });
 
+// ============================ BARKOD (urun + malzeme) ============================
+if (!function_exists('_barkodKur')) {
+    function _barkodKur()
+    {
+        if (Schema::hasTable('barkodlar')) return;
+        try {
+            Schema::create('barkodlar', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('barkod', 64);
+                $t->string('tur', 12);         // urun | malzeme
+                $t->unsignedBigInteger('hedef_id');
+                $t->timestamp('created_at')->nullable();
+                $t->unique(['sube_id', 'barkod']);
+                $t->index(['tur', 'hedef_id']);
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+
+// Barkodu ÇÖZ: hangi ürün/malzeme? (POS + sayım + mal kabul ortak kullanır)
+Route::get('/api/barkod/coz', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _barkodKur();
+    $kod = trim((string) $r->query('kod', ''));
+    if ($kod === '') return ['ok' => 0, 'hata' => 'Boş kod'];
+    $b = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $kod)->first();
+    if (!$b) return ['ok' => 0, 'bulundu' => 0, 'hata' => 'Bu barkod tanımlı değil', 'barkod' => $kod];
+    if ($b->tur === 'urun') {
+        $u = DB::table('urunler')->where('id', $b->hedef_id)->first(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'aktif']);
+        if (!$u) return ['ok' => 0, 'hata' => 'Ürün silinmiş'];
+        return ['ok' => 1, 'bulundu' => 1, 'tur' => 'urun', 'id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'tukendi' => (int) $u->tukendi];
+    }
+    $m = DB::table('malzemeler')->where('id', $b->hedef_id)->first(['id', 'ad', 'temel_birim_id', 'guncel_maliyet']);
+    if (!$m) return ['ok' => 0, 'hata' => 'Malzeme silinmiş'];
+    $birim = DB::table('birimler')->where('id', $m->temel_birim_id)->value('kisaltma');
+    return ['ok' => 1, 'bulundu' => 1, 'tur' => 'malzeme', 'id' => (int) $m->id, 'ad' => $m->ad, 'birim' => $birim, 'maliyet' => (float) $m->guncel_maliyet];
+});
+
+// Bir öğenin barkodlarını listele (urun/malzeme düzenleme ekranı).
+Route::get('/api/barkod/liste', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _barkodKur();
+    $tur = (string) $r->query('tur', 'urun');
+    $hid = (int) $r->query('hedef_id', 0);
+    $rows = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('tur', $tur)->where('hedef_id', $hid)
+        ->orderBy('id')->get(['id', 'barkod']);
+    return ['ok' => 1, 'barkodlar' => $rows];
+});
+
+// Barkod ekle (bir öğeye). Aynı barkod başka öğedeyse hata.
+Route::post('/api/barkod/ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    _barkodKur();
+    $kod = trim((string) $r->input('barkod', ''));
+    $tur = (string) $r->input('tur', 'urun');
+    $hid = (int) $r->input('hedef_id', 0);
+    if ($kod === '' || !$hid || !in_array($tur, ['urun', 'malzeme'])) return ['ok' => 0, 'hata' => 'Eksik bilgi'];
+    $var = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $kod)->first();
+    if ($var) {
+        if ($var->tur === $tur && (int) $var->hedef_id === $hid) return ['ok' => 1, 'zaten' => 1];
+        return ['ok' => 0, 'hata' => 'Bu barkod başka bir öğede tanımlı'];
+    }
+    DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $kod, 'tur' => $tur, 'hedef_id' => $hid, 'created_at' => now()]);
+    return ['ok' => 1];
+});
+
+Route::post('/api/barkod/sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    _barkodKur();
+    DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('id', (int) $r->input('id'))->delete();
+    return ['ok' => 1];
+});
+
