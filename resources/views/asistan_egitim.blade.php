@@ -33,6 +33,23 @@
         </div>
     </div>
 
+    {{-- İşletme bilgileri (Wi-Fi) — asistan GERÇEK bilgiyi söyler --}}
+    <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+        <div class="font-bold text-slate-900 mb-1">📶 İşletme Bilgileri (asistan gerçek bilgiyi söyler)</div>
+        <p class="text-sm text-slate-500 mb-3">Wi-Fi şifreni girersen, müşteri “wifi şifresi ne” dediğinde asistan <b>gerçek şifreyi</b> söyler. Boş bırakırsan nazikçe “garson çağırayım mı” der (uydurmaz).</p>
+        <div class="flex flex-wrap gap-3 items-end">
+            <div>
+                <label class="text-xs text-slate-500 block mb-1">Wi-Fi Ağ Adı (opsiyonel)</label>
+                <input x-model="wifiAd" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Örn: Lezzet_Duragi">
+            </div>
+            <div>
+                <label class="text-xs text-slate-500 block mb-1">Wi-Fi Şifresi</label>
+                <input x-model="wifiSifre" class="border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Örn: lezzet2024">
+            </div>
+            <button @click="wifiKaydet()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">Kaydet</button>
+        </div>
+    </div>
+
     {{-- PDF yükle --}}
     <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
         <div class="font-bold text-slate-900 mb-1">📄 PDF’ten Otomatik Kalıp Çıkar</div>
@@ -167,6 +184,8 @@ function egitim(){
     kaliplar: @json($kaliplar),
     acik:false, kaydediyor:false,
     topluJson:'', topluYukleniyor:false,
+    wifiAd: @json($wifiAd ?? ''), wifiSifre: @json($wifiSifre ?? ''),
+    async wifiKaydet(){ const r=await api('/asistan-egitim/isletme-bilgi',{wifi_ad:this.wifiAd, wifi_sifre:this.wifiSifre}); if(r&&r.ok) alert('Kaydedildi ✓ — artık asistan wifi şifresini söyler.'); else alert('Kaydedilemedi'); },
     f:{},
     async topluEkle(){
       let arr; try{ arr=JSON.parse(this.topluJson); }catch(e){ alert('JSON hatalı. ChatGPT çıktısını (köşeli parantezle başlayan) olduğu gibi yapıştır.'); return; }

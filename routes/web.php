@@ -1876,7 +1876,21 @@ Route::get('/asistan-egitim', function () {
     $kaliplar = DB::table('asistan_kalip')->orderByDesc('kullanim_sayisi')->orderByDesc('id')->get();
     $cozulmeyenler = DB::table('asistan_cozulmeyen')->orderByDesc('adet')->orderByDesc('son_tarih')->limit(100)->get();
     $ozet = ['kalip' => $kaliplar->count(), 'bedava' => (int) $kaliplar->sum('kullanim_sayisi'), 'bekleyen' => $cozulmeyenler->count()];
-    return view('asistan_egitim', compact('kaliplar', 'cozulmeyenler', 'ozet'));
+    $wifiAd = Schema::hasColumn('subeler', 'wifi_ad') ? (string) DB::table('subeler')->orderBy('id')->value('wifi_ad') : '';
+    $wifiSifre = Schema::hasColumn('subeler', 'wifi_sifre') ? (string) DB::table('subeler')->orderBy('id')->value('wifi_sifre') : '';
+    return view('asistan_egitim', compact('kaliplar', 'cozulmeyenler', 'ozet', 'wifiAd', 'wifiSifre'));
+});
+Route::post('/asistan-egitim/isletme-bilgi', function (Request $r) {
+    if (!Schema::hasColumn('subeler', 'wifi_ad')) Schema::table('subeler', function ($t) { $t->string('wifi_ad', 120)->nullable(); });
+    if (!Schema::hasColumn('subeler', 'wifi_sifre')) Schema::table('subeler', function ($t) { $t->string('wifi_sifre', 120)->nullable(); });
+    $sube = DB::table('subeler')->orderBy('id')->first();
+    if ($sube) {
+        DB::table('subeler')->where('id', $sube->id)->update([
+            'wifi_ad' => trim((string) $r->wifi_ad) !== '' ? trim((string) $r->wifi_ad) : null,
+            'wifi_sifre' => trim((string) $r->wifi_sifre) !== '' ? trim((string) $r->wifi_sifre) : null,
+        ]);
+    }
+    return ['ok' => 1];
 });
 Route::post('/asistan-egitim/kalip-kaydet', function (Request $r) {
     _asistanEgitimEnsure();

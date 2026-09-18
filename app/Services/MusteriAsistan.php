@@ -94,6 +94,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['kampanya', 'indirim', 'firsat', 'promosyon', 'kampanyaniz', 'indiriminiz', 'avantaj', 'kupon var'])) {
             return $this->kampanyaBilgisi();
         }
+        // 2d) WIFI / INTERNET (tanimliysa GERCEK sifre; yoksa nazik yonlendirme — ASLA uydurmaz)
+        if ($this->has($c, ['wifi', 'wifii', 'internet', 'kablosuz', 'wireless', 'ag sifre', 'ag adi'])) {
+            return $this->wifiBilgisi();
+        }
 
         // 2.25) MENU TANITIMI (genel): "menude ne var / neler var / menuyu goster / tum menu" -> TUM kategoriler kibar garson edasiyla.
         //       niyetRouter(Haiku)'dan ONCE: "menude ne var" tek kategoriye (baslangic) saptirilmasin.
@@ -480,6 +484,72 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Merhaba, hoş geldiniz. Ben hazırım. Siz neye ihtiyacınız olduğunu söyleyin, birlikte bakalım.',
             'Selam, hoş geldiniz. Buradayım ve sizi dinliyorum. İsterseniz menüde gezmek yerine doğrudan bana ne istediğinizi söyleyebilirsiniz.',
             'Merhabalar, hoş geldiniz. Güzel bir yemek deneyimi geçirmeniz için buradayım. Ne merak ediyorsanız sorabilirsiniz, birlikte ilerleyelim.',
+        ]));
+    }
+
+    /** WIFI: subeler.wifi_sifre tanimliysa GERCEK sifreyi soyler; yoksa 50 varyasyonlu nazik yonlendirme (uydurmaz). */
+    protected function wifiBilgisi()
+    {
+        try {
+            if (Schema::hasColumn('subeler', 'wifi_sifre')) {
+                $w = DB::table('subeler')->where('id', $this->subeId)->value('wifi_sifre');
+                if ($w !== null && trim((string) $w) !== '') {
+                    $wad = Schema::hasColumn('subeler', 'wifi_ad') ? trim((string) DB::table('subeler')->where('id', $this->subeId)->value('wifi_ad')) : '';
+                    return $this->cvp('Tabii efendim, ' . ($wad !== '' ? ('Wi-Fi ağımız ' . $wad . ', şifremiz ') : 'Wi-Fi şifremiz ') . trim((string) $w) . '. Afiyet olsun!');
+                }
+            }
+        } catch (\Throwable $e) {}
+        return $this->cvp($this->rastgele([
+            'Efendim, Wi-Fi ile ilgili bilgiyi buradan doğrulayamıyorum. İsterseniz size yardımcı olması için hemen garson arkadaşımızı çağırayım mı?',
+            'Tabii efendim. Wi-Fi konusunda size net bilgi verebilmem için garson arkadaşımızdan destek alabiliriz. Hemen çağırmamı ister misiniz?',
+            'Efendim, internet bağlantısı ve şifre bilgisi şu anda bende görünmüyor. Dilerseniz hemen bir garson arkadaşımızı masanıza yönlendirebilirim.',
+            'Wi-Fi konusunda size yardımcı olabilirim ancak bağlantı veya şifre bilgisine buradan erişemiyorum. İsterseniz garson arkadaşımızı hemen çağırayım.',
+            'Elbette efendim. Wi-Fi ile ilgili güncel bilgiyi restoran ekibimizden öğrenebilirsiniz. İsterseniz sizin için hemen bir garson çağırabilirim.',
+            'Efendim, bu konuda yanlış bilgi vermek istemem. Wi-Fi bilgisi bende bulunmadığı için isterseniz hemen garson arkadaşımızdan öğrenmenizi sağlayabilirim.',
+            'İnternet bağlantısıyla ilgili bilgi şu anda benim tarafımda mevcut değil efendim. Size yardımcı olması için bir garson arkadaşımızı çağırayım mı?',
+            'Tabii efendim, Wi-Fi hakkında yardımcı olmak isterim. Ancak şifre veya bağlantı bilgisi bende kayıtlı değil. İsterseniz hemen görevli arkadaşımızı çağırabilirim.',
+            'Efendim, Wi-Fi şifresini buradan göremiyorum. İsterseniz vakit kaybetmeden garson arkadaşımızı masanıza çağırayım, kendisinden öğrenebilirsiniz.',
+            'İnternet konusunda size doğru bilgi vermek isterim efendim. Fakat bu bilgiye şu anda erişemiyorum. Dilerseniz hemen garson arkadaşımızdan destek isteyebilirim.',
+            'Wi-Fi bağlantısıyla ilgili bilgiyi buradan teyit edemiyorum efendim. İsterseniz sizin için bir garson çağırayım, gerekli bilgiyi kendisinden alabilirsiniz.',
+            'Efendim, internet hizmetiyle ilgili ayrıntılar bende görünmüyor. Size yardımcı olması için garson arkadaşımızı çağırmamı ister misiniz?',
+            'Tabii efendim. Wi-Fi şifresi konusunda sizi bekletmeyelim. İsterseniz hemen bir garson arkadaşımızı masanıza yönlendirebilirim.',
+            'Efendim, Wi-Fi ile ilgili kesin bir bilgiye sahip değilim. Yanlış yönlendirmek yerine isterseniz hemen garson arkadaşımızdan bilgi almanızı sağlayayım.',
+            'İnternete bağlanma konusunda yardımcı olmak isterim efendim. Ancak ağ ve şifre bilgileri benim ekranımda bulunmuyor. İsterseniz bir arkadaşımızı çağırabilirim.',
+            'Wi-Fi hakkında bilgi almak istediğinizi anladım efendim. Bu bilgi bende olmadığı için isterseniz hemen garson arkadaşımızdan destek alabiliriz.',
+            'Efendim, Wi-Fi şifresini size buradan söyleyemiyorum çünkü bu bilgi sistemimde bulunmuyor. Dilerseniz hemen garson arkadaşımızı çağırayım.',
+            'İnternet bağlantısıyla ilgili detayları restoran ekibimizden öğrenebilirsiniz efendim. İsterseniz sizin için hemen bir garson çağırabilirim.',
+            'Elbette efendim. Wi-Fi konusunda sizi doğru kişiye yönlendirebilirim. Hemen garson arkadaşımızı çağırmamı ister misiniz?',
+            'Efendim, bu konuda bende yeterli bilgi bulunmuyor. İsterseniz garson arkadaşımızı çağırayım, size Wi-Fi konusunda yardımcı olsun.',
+            'Wi-Fi kullanımıyla ilgili bilgiyi buradan doğrulayamıyorum efendim. Dilerseniz masanıza bir garson arkadaşımızı yönlendirebilirim.',
+            'İnternet şifresini öğrenmek istiyorsanız efendim, bu konuda size ekip arkadaşlarımız yardımcı olabilir. İsterseniz hemen bir garson çağırayım.',
+            'Efendim, Wi-Fi ağıyla ilgili bilgiler bana tanımlı değil. İsterseniz hemen garson arkadaşımızı çağırabilir ve bağlantı konusunda yardım alabilirsiniz.',
+            'Tabii efendim. Wi-Fi konusunda sizi doğru şekilde yönlendirmek için bir garson arkadaşımızdan destek alabiliriz. Çağırmamı ister misiniz?',
+            'Efendim, internetle ilgili bilgiyi şu anda sistemimden göremiyorum. Size yardımcı olması için hemen bir garson arkadaşımızı çağırabilirim.',
+            'Wi-Fi konusunda size kesin bilgi vermem doğru olmaz efendim. Dilerseniz hemen restoran ekibimizden bir arkadaşımızı çağırayım.',
+            'Efendim, Wi-Fi bağlantısı ve şifresiyle ilgili detaylara erişimim yok. İsterseniz garson arkadaşımızı çağırıp bu konuda yardım almanızı sağlayabilirim.',
+            'İnternet kullanımıyla ilgili bir sorunuz olduğunu anladım efendim. Bu konuda en doğru bilgiyi ekip arkadaşımız verebilir. İsterseniz hemen çağırayım.',
+            'Wi-Fi konusunda yardımcı olmak isterim efendim fakat elimde güncel bağlantı bilgisi bulunmuyor. İsterseniz bir garson arkadaşımızı masanıza çağırabilirim.',
+            'Efendim, Wi-Fi şifresi konusunda sizi yanlış yönlendirmek istemem. Bu bilgi bende olmadığı için isterseniz hemen garson arkadaşımızdan öğrenebilirsiniz.',
+            'İnternete bağlanmakla ilgili yardım gerekiyorsa efendim, size bir arkadaşımız yardımcı olabilir. İsterseniz hemen garson çağırayım.',
+            'Tabii efendim, Wi-Fi ile ilgili talebinizi anladım. Ancak bağlantı bilgileri benim tarafımda görünmüyor. İsterseniz hemen garson arkadaşımızı yönlendirebilirim.',
+            'Efendim, Wi-Fi bilgisi restoran ekibimizin kontrolünde olabilir. İsterseniz sizi bekletmeden bir garson arkadaşımızı çağırayım.',
+            'İnternet bağlantısıyla ilgili ayrıntıyı buradan göremiyorum efendim. Dilerseniz hemen garson arkadaşımızdan yardım isteyebiliriz.',
+            'Wi-Fi şifresini soruyorsanız efendim, bu bilgi bende mevcut değil. İsterseniz hemen bir garson arkadaşımızı masanıza çağırabilirim.',
+            'Efendim, bu konuda size en doğru bilgiyi garson arkadaşımız verebilir. İsterseniz hemen çağırayım ve yardımcı olsun.',
+            'Wi-Fi konusunda yardımcı olmaya hazırım efendim. Fakat bağlantı bilgileri sistemimde olmadığı için isterseniz bir garson arkadaşımızdan destek alalım.',
+            'İnternet var mı veya nasıl bağlanabileceğiniz konusunda bilgi almak istiyorsanız efendim, sizi hemen ekip arkadaşımıza yönlendirebilirim. Garson çağırmamı ister misiniz?',
+            'Efendim, Wi-Fi ile ilgili bilgiyi buradan kontrol edemiyorum. Yanlış bilgi vermek yerine isterseniz hemen garson arkadaşımızı çağırayım.',
+            'Elbette efendim. Wi-Fi konusunda size yardımcı olması için restoran ekibimizden bir arkadaşımızı çağırabilirim. Uygunsa hemen yönlendireyim.',
+            'İnternet bağlantısı konusunda desteğe ihtiyacınız olduğunu anladım efendim. Bu konuda garson arkadaşımız size yardımcı olabilir. Çağırmamı ister misiniz?',
+            'Efendim, Wi-Fi bilgileri benim erişimimde olmadığı için buradan net bir cevap veremiyorum. İsterseniz hemen garson arkadaşımızı çağırabiliriz.',
+            'Wi-Fi şifresini öğrenmek için efendim, en hızlı şekilde garson arkadaşımızdan yardım alabilirsiniz. İsterseniz ben sizin için çağırayım.',
+            'Tabii efendim. Bu konuyu restoran ekibimizle netleştirebiliriz. İsterseniz hemen bir garson arkadaşımızı masanıza yönlendireyim.',
+            'Efendim, Wi-Fi konusunda size yardımcı olmak isterim ancak gerekli bilgi sistemimde bulunmuyor. Dilerseniz hemen garson arkadaşımızı çağırabilirim.',
+            'İnternet bağlantısıyla ilgili bilgi bende olmadığı için efendim, sizi doğru kişiye yönlendirmek isterim. Garson arkadaşımızı çağırmamı ister misiniz?',
+            'Wi-Fi kullanımı veya şifresiyle ilgili sorunuz varsa efendim, bu konuda ekip arkadaşımız size yardımcı olabilir. İsterseniz hemen çağırayım.',
+            'Efendim, Wi-Fi bilgisine buradan ulaşamıyorum. Sizi uğraştırmadan bir garson arkadaşımızı çağırabilir ve gerekli bilgiyi kendisinden öğrenebilirsiniz.',
+            'Elbette efendim. İnternet konusunda size yardımcı olması için bir garson arkadaşımızı çağırabilirim. İsterseniz hemen masanıza yönlendireyim.',
+            'Efendim, Wi-Fi ile ilgili bilgiyi şu anda sistemimde göremiyorum. Yanlış bir bilgi vermek yerine size yardımcı olacak bir garson arkadaşımızı hemen çağırabilirim.',
         ]));
     }
 
