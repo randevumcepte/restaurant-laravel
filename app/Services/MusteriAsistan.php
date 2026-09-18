@@ -68,6 +68,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
             return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
         }
+        // 1.0) IYI DILEKLER (selamdan ONCE): net dilekler + "size de X" karsilikli. Bare "iyi gunler" selamda kalir.
+        if ($this->has($c, ['kolay gelsin', 'hayirli isler', 'hayirli olsun', 'bol kazanc', 'bereketli is', 'isleriniz rast', 'is rast gitsin', 'yolunuz acik', 'yolun acik', 'saglikli gunler', 'saglikla kalin', 'mutlu gunler', 'huzurlu gunler', 'huzurlu olun', 'mutlu olun', 'keyifli vakitler', 'keyifli bir aksam', 'iyi eglenceler', 'iyi calismalar', 'iyi haftalar', 'iyi hafta sonlari', 'guzel hafta sonlari', 'iyi tatiller', 'guzel tatiller', 'basarilar', 'bol sans', 'sansiniz bol', 'her sey gonlunuzce', 'afiyet olsun', 'afiyetiniz bol', 'keyfiniz bol', 'size de iyi', 'size de kolay', 'size de guzel', 'size de afiyet', 'size de bol', 'size de mutlu', 'iyi dileklerim', 'guzel gunler dilerim', 'guzel bir gun olsun', 'guzel bir aksam olsun', 'guzel geceler', 'guzel bir gece gecir'])) {
+            return $this->iyiDilekCevap();
+        }
         if ($this->has($c, ['merhaba', 'merhabalar', 'selam', 'selamlar', 'selamun aleykum', 'gunaydin', 'iyi gunler', 'iyi aksamlar', 'iyi geceler', 'iyi sabahlar', 'alo', 'hey', 'kolay gelsin', 'orada misin', 'burada misin', 'burda misin', 'musait misin', 'bakar misin', 'yardimci olur musun', 'yardimci olabilir misin', 'yardim eder misin', 'beni duyuyor musun', 'sesimi duyuyor musun', 'hazir misin', 'baslayalim', 'bir sey soracagim', 'bir sey sorabilir miyim', 'bir sey danisacagim'])) {
             // Selamdan SONRA baska istek var mi? "merhaba bugun menude ne var" -> selami AT, asil istegi isle
             $kalan = ' ' . $c . ' ';
@@ -480,6 +484,30 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** IYI DILEKLER: karsilikli/dogal dilek, 50 varyasyon (rastgele). */
+    protected function iyiDilekCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Çok teşekkür ederim, size de güzel bir gün dilerim.', 'Teşekkür ederim, sizin de gününüz güzel geçsin.', 'Size de iyi akşamlar, güzel vakit geçirmenizi dilerim.',
+            'Çok sağ olun, size de kolay gelsin.', 'Teşekkür ederim, sizin de işleriniz rast gitsin.', 'Sağ olun, size de hayırlı işler.',
+            'Çok teşekkürler, güzel bir gün geçirmenizi dilerim.', 'Size de iyi geceler, huzurlu bir gece olsun.', 'Teşekkür ederim, sizin de hafta sonunuz güzel geçsin.',
+            'Çok sağ olun, keyifli bir akşam dilerim.', 'Teşekkürler, size de bol kazançlar.', 'Size de kolay gelsin, güzel çalışmalar.',
+            'Çok teşekkür ederim, yolunuz açık olsun.', 'Sağ olun, sizin de her şey gönlünüzce olsun.', 'Teşekkür ederim, güzel bir akşam geçirmenizi dilerim.',
+            'Size de iyi günler, kendinize iyi bakın.', 'Çok teşekkürler, sizin de geceniz güzel geçsin.', 'Sağ olun, size de huzurlu ve güzel günler.',
+            'Teşekkür ederim, keyfiniz bol olsun.', 'Size de güzel bir hafta dilerim.', 'Çok sağ olun, iyi eğlenceler.',
+            'Teşekkür ederim, sizin de tatiliniz çok güzel geçsin.', 'Size de afiyet olsun, güzel bir yemek olsun.', 'Sağ olun, sizin de işleriniz bereketli olsun.',
+            'Çok teşekkürler, güzel dilekleriniz için sağ olun.', 'Size de iyi akşamlar, keyifli bir akşam olsun.', 'Teşekkür ederim, sağlıkla kalın.',
+            'Çok sağ olun, sizin de yüzünüz hep gülsün.', 'Size de güzel günler, tekrar görüşmek üzere.', 'Teşekkürler, sizin de gününüz harika geçsin.',
+            'Sağ olun, size de bol şans.', 'Çok teşekkür ederim, başarılar dilerim.', 'Size de huzurlu ve güzel bir gün dilerim.',
+            'Teşekkür ederim, sizin de yolunuz açık olsun.', 'Çok sağ olun, güzel bir hafta sonu geçirmenizi dilerim.', 'Size de kolay gelsin, iyi çalışmalar.',
+            'Teşekkürler, her şey gönlünüzce olsun.', 'Sağ olun, size de keyifli vakitler.', 'Çok teşekkür ederim, güzel bir gece dilerim.',
+            'Size de iyi tatiller, bol bol dinlenin.', 'Teşekkür ederim, sağlık ve huzur diliyorum.', 'Çok sağ olun, size de güzel bir akşam.',
+            'Size de bol kazançlı, bereketli işler dilerim.', 'Teşekkürler, umarım sizin için de güzel bir gün olur.', 'Sağ olun, sizin de keyfiniz yerinde olsun.',
+            'Çok teşekkür ederim, size de mutluluklar.', 'Size de iyi günler, güzel vakit geçirmenizi dilerim.', 'Teşekkür ederim, güzel dileğinizi aldım. Size de en güzeli olsun.',
+            'Çok sağ olun, kendinize iyi bakın.', 'Teşekkür ederim, sizin de gününüz güzel, işleriniz yolunda geçsin.',
+        ]));
     }
 
     /** VEDALASMA: kisa/dogal ugurlama, 50 varyasyon (rastgele). */
