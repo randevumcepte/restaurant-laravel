@@ -345,6 +345,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
      */
     protected function sohbetCevap($c)
     {
+        // AI ANLAMADI / TEKRAR: "anlamadin, yanlis anladin, tekrar soyle, bir daha anlat" -> nazikce yeniden ifade iste
+        if ($this->has($c, ['anlamadin', 'beni anlamadin', 'beni anlamiyorsun', 'yanlis anladin', 'yanlis anladin beni', 'onu demedim', 'onu soylemedim', 'oyle demedim', 'hayir oyle degil', 'ne dedigimi anlamadin', 'soylediklerimi anlamadin', 'tekrar soyle', 'tekrar eder misin', 'tekrarlar misin', 'bir daha soyle', 'yeniden soyle', 'tekrar anlat', 'bir daha anlat', 'anlayamadim', 'anlamadim', 'seni anlamadim', 'bir daha soyler misin', 'tekrar konusur musun', 'yeniden soyler misin', 'tekrar aciklar misin', 'biraz daha acik anlat', 'daha acik soyler misin', 'daha anlasilir soyle', 'ne demek istiyorsun', 'ne demek istedin', 'neyi kastettin', 'ne soyledigini anlamadim', 'soyledigini anlayamadim', 'bastan soyle', 'bastan anlat', 'yeniden baslayalim', 'farkli bir sey soyledim', 'baska bir sey demek istedim'])) {
+            return $this->anlamadimCevap();
+        }
         // Kararsizlik / "ne yesem" -> ONERI motoruna kopru (deterministik + bedava)
         if ($this->has($c, ['ne yesem', 'ne yiyeyim', 'ne yisem', 'karar veremiyor', 'kararsizim', 'ne istedigimi bilmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'aklima gelmiyor', 'sen sec', 'sen karar ver', 'sen bir sey soyle', 'ne alsam bilmiyor'])) {
             return $this->oneri($c);
@@ -428,6 +432,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function rastgele(array $a)
     {
         return $a[array_rand($a)];
+    }
+
+    /** AI ANLAMADI / TEKRAR ISTEGI: 50 varyasyonlu nazik "sizi yanlis anladim, tekrar soyleyin" (rastgele). */
+    protected function anlamadimCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Elbette efendim, sanırım sizi doğru anlayamadım. İsterseniz ne istediğinizi bir kez daha söyleyin, bu kez daha dikkatli dinleyeyim.',
+            'Haklısınız efendim, sizi yanlış anlamış olabilirim. İsteğinizi tekrar söylerseniz birlikte yeniden değerlendirelim.',
+            'Anladım efendim, önceki söylediğim cevap istediğiniz şeyle uyuşmamış olabilir. Ne istediğinizi tekrar anlatırsanız size daha doğru yardımcı olayım.',
+            'Tabii efendim, sorun değil. İsteğinizi bir kez daha kendi cümlelerinizle anlatabilirsiniz, sizi dikkatle dinliyorum.',
+            'Sanırım burada bir yanlış anlaşılma oldu efendim. Siz ne istediğinizi tekrar söyleyin, ben konuşmanın bu kısmını yeniden değerlendireyim.',
+            'Elbette efendim. Galiba sizi istediğiniz şekilde anlayamadım. Bir kez daha anlatırsanız doğru şekilde yardımcı olmaya çalışacağım.',
+            'Anladım efendim, demek istediğiniz farklıymış. Tekrar söyleyin lütfen, bu kez özellikle ne istediğinize odaklanayım.',
+            'Özür dilerim efendim, sizi yanlış anlamışım. İsteğinizi tekrar belirtirseniz kaldığımız yerden devam edebiliriz.',
+            'Tabii efendim, hiç sorun değil. Bir kez daha söyleyin, sizi yeniden dinliyorum.',
+            'Sanırım sizi yanlış yorumladım efendim. Ne istediğinizi tekrar anlatırsanız doğru noktadan devam edelim.',
+            'Haklısınız efendim, söylediğiniz şeyi farklı anlamış olabilirim. Tekrar açıklarsanız bu kez ona göre ilerleyelim.',
+            'Elbette, baştan alabiliriz efendim. Ne istediğinizi tekrar söylemeniz yeterli, sizi dinliyorum.',
+            'Tam olarak ne demek istediğinizi kaçırmış olabilirim efendim. Bir kez daha anlatırsanız size daha doğru yardımcı olayım.',
+            'Anladım efendim. Önceki cevabımı dikkate almayalım. Siz isteğinizi yeniden söyleyin, oradan devam edelim.',
+            'Sanırım konuşmanın bir kısmını yanlış anladım. Tekrar eder misiniz efendim? Bu kez daha dikkatli dinleyeceğim.',
+            'Tabii efendim, tekrar anlatabilirsiniz. Özellikle istediğiniz şeyin ne olduğunu söylerseniz size daha doğru şekilde yardımcı olabilirim.',
+            'Sizi doğru anlamamışım efendim. Sorun değil, yeniden başlayabiliriz. Ne yapmak istediğinizi tekrar söyleyin.',
+            'Anladım efendim, farklı bir şey söylemek istemişsiniz. Tekrar ifade ederseniz neye ihtiyacınız olduğunu doğru şekilde anlayalım.',
+            'Efendim, sanırım burada bir iletişim karışıklığı oldu. İsteğinizi tekrar söylerseniz hemen yeniden değerlendirelim.',
+            'Tabii, sizi tekrar dinliyorum efendim. Ne söylemek istediğinizi baştan anlatabilirsiniz.',
+            'Önceki cevabım aradığınız cevap değilmiş efendim. Bir kez daha anlatın, size uygun şekilde yardımcı olmaya çalışayım.',
+            'Sanırım söylediğiniz ifadeyi doğru yorumlayamadım. İsterseniz daha kısa şekilde tekrar söyleyin, birlikte ilerleyelim.',
+            'Elbette efendim. Yanlış anladıysam düzeltebilirsiniz. Ne istediğinizi tekrar belirtmeniz yeterli.',
+            'Tam olarak neyi kastettiğinizi anlayamamış olabilirim. Biraz daha açık anlatırsanız size daha doğru yardımcı olabilirim.',
+            'Anladım efendim, önceki cevabım doğru noktaya gitmemiş. İsteğinizi yeniden söyleyin, bu kez farklı şekilde değerlendirelim.',
+            'Tabii efendim. Bir kez daha deneyelim. Siz ne istediğinizi söyleyin, ben dikkatlice takip edeyim.',
+            'Galiba sizi farklı anladım efendim. Kusura bakmayın. Tekrar söylerseniz hemen doğru konuya geçebiliriz.',
+            'Efendim, söylediklerinizde farklı bir şey kastettiğinizi anlıyorum. Bir kez daha anlatırsanız sizi doğru anlamaya çalışacağım.',
+            'Sorun değil efendim, böyle durumlar olabilir. Siz isteğinizi yeniden söyleyin, birlikte çözelim.',
+            'Sizi yanlış yönlendirmek istemem efendim. Bu nedenle ne istediğinizi tekrar söylerseniz doğru şekilde yardımcı olabilirim.',
+            'Anladım efendim. Önceki söylediklerimi bir kenara bırakalım. Siz tekrar anlatın, konuşmayı oradan devam ettirelim.',
+            'Elbette efendim, tekrar edebilirsiniz. Sizi dinliyorum ve bu kez söylediğiniz ayrıntılara özellikle dikkat edeceğim.',
+            'Sanırım ne demek istediğinizi tam olarak yakalayamadım. Bir kez daha söyler misiniz efendim?',
+            'Haklısınız efendim, cevap istediğiniz konuyla örtüşmemiş. Tekrar anlatırsanız doğru şekilde devam edelim.',
+            'Tabii efendim, yeniden başlayabiliriz. Ne istediğinizi kendi cümlelerinizle anlatmanız yeterli.',
+            'Söylediğinizi farklı yorumlamışım efendim. Tekrar söylerseniz bu kez asıl talebinize göre yardımcı olayım.',
+            'Efendim, sizi yanlış anladıysam hemen düzeltebiliriz. Ne istediğinizi tekrar söyleyin, birlikte ilerleyelim.',
+            'Anladım efendim. Demek ki önceki yorumum doğru değildi. Siz tekrar anlatın, ben yeniden değerlendireyim.',
+            'Elbette efendim. Daha açık ifade etmek isterseniz sizi dinliyorum. İsterseniz kısa şekilde tekrar söylemeniz de yeterli.',
+            'Bir yanlış anlaşılma olmuş gibi görünüyor efendim. İsteğinizi tekrar söyleyin, doğru şekilde yardımcı olmaya çalışayım.',
+            'Tabii efendim, sorun değil. Bir kez daha deneyelim. Ne istediğinizi söyleyin, sizi takip ediyorum.',
+            'Sanırım konuşmanın o kısmını yanlış yorumladım. Tekrar anlatırsanız kaldığımız yerden doğru şekilde devam edebiliriz.',
+            'Efendim, sizi doğru anlayabilmem için bir kez daha anlatmanızı rica edeceğim. Sonrasında size uygun şekilde yardımcı olayım.',
+            'Önceki cevabım sizi karşılamadıysa tekrar deneyelim efendim. Ne istediğinizi yeniden söyleyin, sizi dikkatle dinliyorum.',
+            'Elbette efendim. Yanlış anlaşılmayı hemen düzeltebiliriz. Siz tekrar söyleyin, ben ona göre ilerleyeyim.',
+            'Tam olarak neyi kastettiğinizi anlayamadım efendim. Biraz daha açıklarsanız size daha iyi yardımcı olabilirim.',
+            'Anladım efendim, önceki söylediğim şey sizin talebiniz değilmiş. Baştan başlayalım, ne istediğinizi tekrar söyleyin.',
+            'Tabii efendim. Sizi yanlış anlamış olabilirim. Tekrar anlatmanız yeterli, buradayım ve sizi dinliyorum.',
+            'Sanırım bu konuşmada bir karışıklık yaşandı efendim. İsteğinizi tekrar belirtirseniz hemen doğru şekilde devam edelim.',
+            'Elbette efendim, hiç sorun değil. Bir kez daha söyleyin, sizi dikkatlice dinleyeyim ve bu kez ne istediğinizi doğru anlamaya çalışayım.',
+        ]));
     }
 
     /** SELAMLAMA: 50 farkli sicak karsilama (rastgele) — dijital garson edasi, konusmayi acik birakir. */
