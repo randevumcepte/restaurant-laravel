@@ -5800,6 +5800,20 @@ function _restoCihazEnsure()
             $t->unique(['sube_id', 'kimlik']);
         });
     }
+    // Additive kolonlar — manuel cihaz yonetimi (IP/port/marka vs. elle girilir)
+    $kolonlar = [
+        'manuel'  => function ($t) { $t->tinyInteger('manuel')->default(0); },      // 1=elle tanimlandi, 0=heartbeat
+        'port'    => function ($t) { $t->string('port', 20)->nullable(); },
+        'marka'   => function ($t) { $t->string('marka', 60)->nullable(); },
+        'seri_no' => function ($t) { $t->string('seri_no', 60)->nullable(); },
+        'aktif'   => function ($t) { $t->tinyInteger('aktif')->default(1); },
+        'notlar'  => function ($t) { $t->text('notlar')->nullable(); },
+    ];
+    foreach ($kolonlar as $kol => $ekle) {
+        if (!Schema::hasColumn('cihazlar', $kol)) {
+            Schema::table('cihazlar', function ($t) use ($ekle) { $ekle($t); });
+        }
+    }
 }
 
 // Cihaz sinyali (heartbeat) — ResteOS acikken periyodik gonderir. Her rol cagirabilir.
@@ -5845,8 +5859,10 @@ Route::get('/api/patron/cihazlar', function (Request $r) {
         return [
             'id' => (int) $c->id, 'ad' => $c->ad, 'tip' => $c->tip, 'platform' => $c->platform, 'surum' => $c->surum,
             'ip' => $c->ip, 'rol' => $c->rol, 'online' => $sn !== null && $sn <= $esik, 'son_gorulme' => $gecen($sn),
+            'manuel' => (int) ($c->manuel ?? 0) === 1, 'port' => $c->port ?? null, 'marka' => $c->marka ?? null,
+            'seri_no' => $c->seri_no ?? null, 'aktif' => (int) ($c->aktif ?? 1) === 1, 'notlar' => $c->notlar ?? null,
         ];
-    })->values();
+    })->sortByDesc('manuel')->values();
 
     // Yazarkasa (OKC) — edonusum_ayarlari + son okc fisi
     $yazarkasa = null;
@@ -5869,6 +5885,49 @@ Route::get('/api/patron/cihazlar', function (Request $r) {
     }
 
     return ['ok' => 1, 'esik_sn' => $esik, 'cihazlar' => $liste, 'yazarkasa' => $yazarkasa];
+});
+
+// Manuel cihaz ekle/guncelle (SAHIP/MUDUR) — IP/port/marka vs. elle. Simdilik sinirsiz (ileride paket limiti).
+Route::post('/api/patron/cihaz-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoCihazEnsure();
+    $tipler = ['yazici', 'yazarkasa', 'terminal', 'cekmece', 'bilgisayar', 'tablet', 'telefon', 'kds', 'barkod', 'el_terminali', 'diger'];
+    $tip = in_array($r->tip, $tipler) ? $r->tip : 'diger';
+    $ad = trim((string) $r->ad);
+    if ($ad === '') return ['ok' => 0, 'hata' => 'Cihaz adı gerekli'];
+    $veri = [
+        'ad' => mb_substr($ad, 0, 80), 'tip' => $tip,
+        'ip' => mb_substr(trim((string) $r->ip), 0, 60),
+        'port' => mb_substr(trim((string) $r->port), 0, 20),
+        'marka' => mb_substr(trim((string) $r->marka), 0, 60),
+        'seri_no' => mb_substr(trim((string) $r->seri_no), 0, 60),
+        'notlar' => mb_substr(trim((string) $r->notlar), 0, 500),
+        'aktif' => in_array((string) $r->aktif, ['0', 'false', ''], true) ? 0 : 1,
+        'manuel' => 1, 'updated_at' => now(),
+    ];
+    $id = (int) $r->id;
+    if ($id > 0) {
+        $var = DB::table('cihazlar')->where('id', $id)->where('sube_id', $p->sube_id)->first();
+        if (!$var) return ['ok' => 0, 'hata' => 'Cihaz bulunamadı'];
+        DB::table('cihazlar')->where('id', $id)->update($veri);
+    } else {
+        $veri['sube_id'] = $p->sube_id;
+        $veri['kimlik'] = 'manuel-' . \Illuminate\Support\Str::random(14);
+        $veri['rol'] = $p->rol;
+        $veri['created_at'] = now();
+        $id = DB::table('cihazlar')->insertGetId($veri);
+    }
+    return ['ok' => 1, 'id' => $id];
+});
+
+// Manuel cihaz sil (SAHIP/MUDUR). Heartbeat cihazlar da silinebilir (tekrar sinyalde geri gelir).
+Route::post('/api/patron/cihaz-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _restoCihazEnsure();
+    DB::table('cihazlar')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->delete();
+    return ['ok' => 1];
 });
 
 // ============ HAREKETLER / AKTIVITE LOG (tum kaynaklar tek zaman akisi) ============
