@@ -109,6 +109,21 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['restoran disinda', 'restoran disi bir', 'restoranla alakali olmayan', 'restoranla alakasi olmayan', 'restoranla ilgisi olmayan', 'restoranla ilgili degil', 'konuyla alakasi yok', 'bununla ilgisi yok', 'restorani bos ver', 'yemekleri bos ver', 'yemek disinda', 'yemek konusmayalim', 'konuyu degistir', 'konu degistir', 'konuyu degistirelim', 'baska konuya gec', 'baska bir konuya gec', 'baska konu acalim', 'baska bir konu acalim', 'baska konu', 'farkli konu', 'farkli bir konu', 'konumuz degissin', 'bu konuyu birakalim', 'baska bir sey konusalim', 'baska seylerden konusalim', 'baska bir sey konusabilir miyim', 'seninle baska bir sey', 'sohbet edelim', 'seninle sohbet', 'sohbet edebilir miyim', 'muhabbet edelim', 'biraz muhabbet', 'biraz sohbet', 'bir seyler konusalim', 'her konuda konusabilir misin', 'baska konularda da cevap', 'restoran disinda ne biliyorsun', 'genel kultur biliyor musun', 'bana bir sey anlat', 'bugun hava nasil', 'hava nasil', 'futbol hakkinda', 'film biliyor musun', 'muzik sever misin', 'teknoloji hakkinda', 'aklima baska bir sey geldi', 'aklima bir sey takildi', 'baska bir sey merak ediyorum', 'alakasiz bir sey', 'genel bir sey soracagim', 'sana ozel bir sey soracagim', 'baska bir konuda fikrin', 'baska bir konuda yardim', 'farkli bir sey soracagim'])) {
             return $this->konuDisiCevap();
         }
+        // 1i) SOHBETTEN IHTIYACA GECIS — "bu arada bir sey soracagim / hazir buradayken / bir ricam var" gibi ONSOZLER.
+        //     Onsozu AYIKLA: geriye gercek istek kaldiysa (or. "... tatliniz var mi") ASIL intent'e birak (fall-through); yoksa "buyurun" de.
+        //     NOT: spesifik ihtiyaclar (su/garson/oneri/siparis/hesap/urun) onsoz olmadan zaten kendi intent'lerine duser.
+        $gecisTetik = ['bu arada bir sey soracagim', 'bu arada bir sey isteyecegim', 'bu arada bize yardimci olur musun', 'hazir buradayken bir sey sorayim', 'hazir buradayken bir sey', 'hazir buradayken', 'madem buradayim', 'madem konusuyoruz', 'sana bir sey danisacagim', 'bir sey danisabilir miyim', 'sana bir sey soyleyecegim', 'aklima gelmisken sorayim', 'aklima gelmisken', 'aslinda bir sey isteyecektim', 'aslinda bir sey soracaktim', 'asil bir sey soracaktim', 'simdi senden bir ricam olacak', 'senden bir sey rica edecegim', 'bir ricam olacak', 'bir ricam var', 'bir sey rica edecegim', 'sohbeti birakip bir sey soracagim', 'sohbet guzel ama bir sey soracagim', 'sunu da sorayim', 'onu da sorayim', 'bir de sunu merak ediyorum', 'bir de bir sey isteyecegim', 'benim bir ihtiyacim var', 'masada bir seye ihtiyacimiz var', 'bir seye ihtiyacimiz var', 'suna ihtiyacim var', 'bize biraz yardim lazim', 'bize yardim lazim', 'bir konuda yardim lazim', 'bir konuda yardim eder misin', 'bana bir konuda yardimci olur musun', 'menuyle ilgili bir sey soracagim', 'su urun hakkinda bir sey soracagim', 'bir konuda bilgi verir misin', 'bir sey soracaktim', 'bir sey sorayim', 'bir sey soracagim', 'bir sey sorabilir miyim'];
+        if ($this->has($c, $gecisTetik)) {
+            $ayikla = $gecisTetik;
+            usort($ayikla, fn ($a, $b) => mb_strlen($b) - mb_strlen($a)); // uzun ifadeleri ONCE cikar
+            $kalan = ' ' . $c . ' ';
+            foreach ($ayikla as $s) $kalan = str_replace(' ' . $this->norm($s) . ' ', ' ', $kalan);
+            $kalan = trim(preg_replace('/\s+/', ' ', $kalan));
+            if (mb_strlen($kalan) < 3) return $this->gecisCevap();
+            // Geriye gercek istek kaldi -> onsozu dus, ASIL istegi normal isle (asagida devam)
+            $c = $kalan;
+            $soru = $kalan;
+        }
         // 1.0) IYI DILEKLER (selamdan ONCE): net dilekler + "size de X" karsilikli. Bare "iyi gunler" selamda kalir.
         if ($this->has($c, ['kolay gelsin', 'hayirli isler', 'hayirli olsun', 'bol kazanc', 'bereketli is', 'isleriniz rast', 'is rast gitsin', 'yolunuz acik', 'yolun acik', 'saglikli gunler', 'saglikla kalin', 'mutlu gunler', 'huzurlu gunler', 'huzurlu olun', 'mutlu olun', 'keyifli vakitler', 'keyifli bir aksam', 'iyi eglenceler', 'iyi calismalar', 'iyi haftalar', 'iyi hafta sonlari', 'guzel hafta sonlari', 'iyi tatiller', 'guzel tatiller', 'basarilar', 'bol sans', 'sansiniz bol', 'her sey gonlunuzce', 'afiyet olsun', 'afiyetiniz bol', 'keyfiniz bol', 'size de iyi', 'size de kolay', 'size de guzel', 'size de afiyet', 'size de bol', 'size de mutlu', 'iyi dileklerim', 'guzel gunler dilerim', 'guzel bir gun olsun', 'guzel bir aksam olsun', 'guzel geceler', 'guzel bir gece gecir'])) {
             return $this->iyiDilekCevap();
@@ -768,6 +783,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Ben yapay zekâ destekli bir restoran asistanıyım. İsterseniz beni hemen deneyebilirsiniz.',
             'Ben sizin dijital garsonunuzum. Ne istediğinizi söylemeniz yeterli, uygun şekilde yardımcı olmaya çalışırım.',
             'Ben restoranın yapay zekâ destekli dijital asistanıyım. Menü, sipariş ve servis konusunda buradayım.',
+        ]));
+    }
+
+    // SOHBETTEN IHTIYACA GECIS: belirsiz onsoz ("bir seyim var/ricam var") -> 50 varyasyonlu "buyurun, dinliyorum"
+    protected function gecisCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Tabii, söyleyin. Size nasıl yardımcı olabilirim?',
+            'Elbette, neye ihtiyacınız var?',
+            'Tabii, sizi dinliyorum. Ne yapmamı istersiniz?',
+            'Olur, söyleyin bakalım.',
+            'Tabii, ne konuda yardımcı olayım?',
+            'Elbette, aklınızdaki şeyi söyleyin.',
+            'Tabii, sorunuzu alayım.',
+            'Olur, neye ihtiyacınız olduğunu söylemeniz yeterli.',
+            'Tabii, hemen bakalım. Ne istiyorsunuz?',
+            'Elbette, size yardımcı olayım.',
+            'Tabii, ne yapmak istersiniz?',
+            'Olur, söyleyin. Birlikte halledelim.',
+            'Tabii, dinliyorum.',
+            'Elbette, ne konuda desteğe ihtiyacınız var?',
+            'Tabii, anlatın bakalım.',
+            'Olur, şimdi neye ihtiyacınız var?',
+            'Tabii, hemen yardımcı olmaya çalışayım.',
+            'Elbette. İstediğiniz şeyi söyleyebilirsiniz.',
+            'Tabii, sorunuzu veya isteğinizi söyleyin.',
+            'Olur, sizi dinliyorum. Ne yapalım?',
+            'Tabii, bir ihtiyacınız varsa yardımcı olabilirim.',
+            'Elbette, söyleyin bakalım ne yapabiliriz.',
+            'Tabii, aklınızdaki şeyi doğrudan söyleyin.',
+            'Olur, neye ihtiyacınız olduğunu birlikte netleştirelim.',
+            'Tabii, hemen ilgilenelim.',
+            'Elbette, isteğinizi söyleyin.',
+            'Tabii, ne istediğinizi anladığımda hemen yardımcı olayım.',
+            'Olur, söyleyin. Size uygun şekilde yardımcı olayım.',
+            'Tabii, şimdi sizi dinliyorum.',
+            'Elbette, neye ihtiyacınız olduğunu söyleyebilirsiniz.',
+            'Tabii. Bir yemek konusunda mı yardım istiyorsunuz, yoksa başka bir konuda mı?',
+            'Olur, ne istediğinizi söyleyin, oradan devam edelim.',
+            'Tabii, yardımcı olayım. Ne yapmak istiyorsunuz?',
+            'Elbette, isteğinizi alayım.',
+            'Tabii, hazır buradayken halledelim. Neye ihtiyacınız var?',
+            'Olur, aklınıza gelen şeyi söyleyin.',
+            'Tabii, hemen bakalım. Nasıl yardımcı olabilirim?',
+            'Elbette, sizi dinliyorum. İhtiyacınız nedir?',
+            'Tabii, söyleyin. Menü, sipariş veya servis konusunda yardımcı olabilirim.',
+            'Olur, restoranla ilgili bir ihtiyacınız varsa birlikte halledebiliriz.',
+            'Tabii, neye ihtiyacınız varsa söyleyin.',
+            'Elbette, şimdi ona bakalım.',
+            'Tabii, bir şey rica edecekseniz söyleyin.',
+            'Olur, yardımcı olayım. Ne gerekiyor?',
+            'Tabii, sizi dinliyorum. İsteğiniz nedir?',
+            'Elbette, hemen ilgilenelim.',
+            'Tabii, söyleyin bakalım. Ne yapabiliriz?',
+            'Olur, şimdi asıl isteğinize bakalım.',
+            'Tabii, ne istediğinizi söylemeniz yeterli.',
+            'Elbette, buradayım. İhtiyacınızı söyleyin, birlikte ilerleyelim.',
         ]));
     }
 
