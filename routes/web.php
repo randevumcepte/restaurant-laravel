@@ -6615,9 +6615,10 @@ Route::get('/api/menu', function (Request $r) {
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')->get(['id', 'ad'])
         ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad]);
     $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')
-        ->get(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi'])
+        ->get(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'gorsel', 'updated_at'])
         ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat,
-            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi]);
+            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi,
+            'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null]);
     return ['ok' => 1, 'kategoriler' => $kategoriler, 'urunler' => $urunler];
 });
 
