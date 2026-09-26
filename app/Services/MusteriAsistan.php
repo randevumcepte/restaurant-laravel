@@ -64,9 +64,40 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             return $this->cvp('Siparişinizi özetliyorum.', ['aksiyon' => 'siparis_bitir']);
         }
 
-        // 1) Kimlik / selam / tesekkur (musteri dostu)
-        if ($this->has($c, ['sen kimsin', 'kimsin', 'adin ne', 'nesin', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne'])) {
-            return $this->cvp('Ben masanızın dijital asistanıyım. Menüyü tanıtabilir, öneride bulunabilir, günün yemeğini söyleyebilir ya da garson çağırabilirim. Ne yapmak istersiniz?');
+        // 1) KIMLIK (dijital asistan) — sifir maliyet, dogal. Alt turler ONCE (gorme/duyma/teknoloji/robot/isim), sonra genel havuz.
+        // 1a) Gorme (kamera yok)
+        if ($this->has($c, ['beni goruyor musun', 'goruyor musun', 'gorebiliyor musun', 'beni gorebiliyor musun', 'kameran var mi', 'beni goruyorsun', 'gozun var mi'])) {
+            return $this->cvp('Sizi göremiyorum, kameram yok. Ama yazdıklarınızda ve söylediklerinizde size yardımcı olabilirim. Nasıl yardımcı olayım?');
+        }
+        // 1b) Duyma (sesli sistem)
+        if ($this->has($c, ['beni duyuyor musun', 'sesimi duyuyor musun', 'duyuyor musun', 'duyabiliyor musun'])) {
+            return $this->cvp('Sesli konuştuğunuzda sizi dinleyip anlayabiliyorum; dilerseniz yazarak da devam edebilirsiniz. Buyurun, nasıl yardımcı olayım?');
+        }
+        // 1c) ChatGPT / teknoloji / kim yapti (ChatGPT iddia etme; marka tanimliysa kullan)
+        if ($this->has($c, ['chatgpt', 'chat gpt', 'gpt misin'])) {
+            return $this->cvp('Hayır, ChatGPT değilim. Ben bu restorana özel, yapay zekâ destekli dijital asistanım. Menü, sipariş ve servis konularında yardımcı olabilirim.');
+        }
+        if ($this->has($c, ['seni kim yapti', 'seni kim gelistirdi', 'seni kim programladi', 'hangi yapay zeka', 'hangi sistem', 'arkanda kim', 'arkanda ne var', 'hangi teknoloji', 'nasil calisiyorsun', 'nasil calisirsin'])) {
+            $marka = trim((string) (function_exists('resto_ayar_al') ? resto_ayar_al('asistan_marka', '') : ''));
+            if ($marka !== '') return $this->cvp('Ben bu restoranın ' . $marka . ' tarafından hazırlanan dijital asistanıyım. Menü, sipariş ve serviste yardımcı olabilirim.');
+            return $this->cvp('Ben bu restoranın kendi yapay zekâ destekli dijital asistanıyım. Teknik ayrıntıları paylaşamıyorum ama menü, sipariş ve serviste size yardımcı olmak için buradayım.');
+        }
+        // 1d) Garson mu / robot mu / insan mi / gercek mi
+        if ($this->has($c, ['sen garson musun', 'garson musun', 'gercek garson', 'sanal garson', 'dijital garson musun', 'garsonun yerine'])) {
+            return $this->cvp('Gerçek bir garson değilim; masanızın dijital garsonuyum 🙂 Fiziksel olarak gelemem ama sizin için gerçek garsonu çağırabilir, siparişinizde yardımcı olabilirim. Garson çağırayım mı?');
+        }
+        if ($this->has($c, ['robot musun', 'sen bir robot', 'yapay zeka misin', 'yapay zekasin', 'insan misin', 'insan degilsin', 'gercek misin', 'gercek bir kisi', 'insan gibi konusuyorsun', 'sanal misin', 'dijital misin', 'program misin', 'uygulama misin', 'sistem misin', 'sesin gercek mi', 'senin sesin mi'])) {
+            return $this->cvp('Ben bir insan değilim; bu restoranın yapay zekâ destekli dijital asistanıyım. Masaya gelemem ama menü, sipariş ve garson çağırma gibi işlerde size yardımcı olabilirim.');
+        }
+        // 1e) Isim / hitap (tanimli ad varsa kullan)
+        if ($this->has($c, ['adin ne', 'ismin ne', 'ismin var mi', 'adin var mi', 'nasil hitap', 'sana ne diyeyim', 'nasil cagirayim', 'seni nasil cagirayim', 'sana nasil hitap', 'senin bir adin var mi'])) {
+            $ad = trim((string) (function_exists('resto_ayar_al') ? resto_ayar_al('asistan_ad', '') : ''));
+            if ($ad !== '') return $this->cvp('Bana ' . $ad . ' diyebilirsiniz. Menü, sipariş ve serviste yardımcı olmak için buradayım. Nasıl yardımcı olayım?');
+            return $this->cvp('Bana dijital asistanınız ya da dijital garsonunuz diyebilirsiniz 🙂 Menü, sipariş ve serviste yardımcı olabilirim. Ne yapmak istersiniz?');
+        }
+        // 1f) Genel kimlik -> 50 varyasyonlu dogal cevap (rastgele)
+        if ($this->has($c, ['sen kimsin', 'kimsin', 'siz kimsiniz', 'sen nesin', 'nesin', 'neyin nesi', 'kiminle konusuyorum', 'karsimda kim', 'bu konustugum kim', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne', 'burada ne yapiyor', 'burada ne isin', 'neden varsin', 'restoranin asistani', 'restoranin yapay zekasi'])) {
+            return $this->kimlikCevap();
         }
         // 1.0) IYI DILEKLER (selamdan ONCE): net dilekler + "size de X" karsilikli. Bare "iyi gunler" selamda kalir.
         if ($this->has($c, ['kolay gelsin', 'hayirli isler', 'hayirli olsun', 'bol kazanc', 'bereketli is', 'isleriniz rast', 'is rast gitsin', 'yolunuz acik', 'yolun acik', 'saglikli gunler', 'saglikla kalin', 'mutlu gunler', 'huzurlu gunler', 'huzurlu olun', 'mutlu olun', 'keyifli vakitler', 'keyifli bir aksam', 'iyi eglenceler', 'iyi calismalar', 'iyi haftalar', 'iyi hafta sonlari', 'guzel hafta sonlari', 'iyi tatiller', 'guzel tatiller', 'basarilar', 'bol sans', 'sansiniz bol', 'her sey gonlunuzce', 'afiyet olsun', 'afiyetiniz bol', 'keyfiniz bol', 'size de iyi', 'size de kolay', 'size de guzel', 'size de afiyet', 'size de bol', 'size de mutlu', 'iyi dileklerim', 'guzel gunler dilerim', 'guzel bir gun olsun', 'guzel bir aksam olsun', 'guzel geceler', 'guzel bir gece gecir'])) {
@@ -673,6 +704,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     }
 
     /** SELAMLAMA: 50 farkli sicak karsilama (rastgele) — dijital garson edasi, konusmayi acik birakir. */
+    // KIMLIK: "sen kimsin?" vb. -> 50 varyasyonlu dogal cevap (rastgele, sifir maliyet)
+    protected function kimlikCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Ben restoranınızın dijital asistanıyım. Menü, sipariş ve servis konularında size yardımcı olabilirim.',
+            'Ben yapay zekâ destekli dijital garsonunuzum. Masanızdan birçok işlemi kolayca yapmanıza yardımcı oluyorum.',
+            'Ben restoranın sanal asistanıyım. Sipariş, menü ve servis taleplerinizde size yardımcı olabilirim.',
+            'Ben fiziksel bir garson değilim; restoran içinde size yardımcı olmak için tasarlanmış yapay zekâ destekli bir asistanım.',
+            'Ben burada size yardımcı olan dijital asistanım. Ne yemek istediğinizden garson çağırmaya kadar birçok konuda destek olabilirim.',
+            'Ben restoranın yapay zekâ asistanıyım. Sorularınızı yanıtlayabilir ve sistemdeki işlemlerinizde yardımcı olabilirim.',
+            'Kısaca ben sizin dijital garsonunuzum. Masanızdan yardım almanızı kolaylaştırmak için buradayım.',
+            'Ben insan değilim, yapay zekâ tabanlı bir restoran asistanıyım.',
+            'Ben sanal bir restoran asistanıyım. Menüyle ve masa servisinizle ilgili konularda size yardımcı olabilirim.',
+            'Ben restoranın dijital yardımcısıyım. İsterseniz menüden başlayabilir, isterseniz doğrudan bir servis talebi oluşturabilirsiniz.',
+            'Ben sizin masadaki dijital asistanınızım. Sorularınızı yanıtlamak ve taleplerinizi iletmek için buradayım.',
+            'Ben yapay zekâ destekli bir asistanım. Garson çağırma, sipariş ve menü konularında yardımcı olabilirim.',
+            'Ben burada size eşlik eden dijital restoran asistanıyım.',
+            'Ben sanal garson olarak çalışan bir yapay zekâ asistanıyım.',
+            'İnsan değilim ama restoran içinde size yardımcı olmak için buradayım.',
+            'Ben restoranın dijital tarafındaki yardımcınızım. Menü ve servis işlemlerinde yanınızdayım.',
+            'Ben yapay zekâ destekli restoran asistanıyım. Ne hakkında yardım istediğinizi söylemeniz yeterli.',
+            'Ben masanızdan ulaşabildiğiniz dijital garsonum. Bir şey sormak veya işlem yapmak isterseniz yardımcı olabilirim.',
+            'Ben fiziksel olarak masaya gelemem ama birçok konuda size buradan yardımcı olabilirim.',
+            'Ben restoranın sanal asistanıyım. Sorularınızı yanıtlayabilir, uygun işlemleri sistem üzerinden başlatabilirim.',
+            'Bana dijital garson diyebilirsiniz. Menü, sipariş ve servis konusunda yardımcı olmak için buradayım.',
+            'Ben restoranın yapay zekâ destekli yardımcısıyım. Size mümkün olduğunca hızlı yardımcı olmaya çalışırım.',
+            'Ben bir insan değilim; restoran hizmetlerini kolaylaştırmak için geliştirilmiş dijital bir asistanım.',
+            'Ben burada masanızın dijital yardımcısıyım. Ne yapmak istediğinizi söyleyin, birlikte halledelim.',
+            'Ben restoranın sanal asistanıyım. Menüden ürün seçmenize veya servis talebi oluşturmanıza yardımcı olabilirim.',
+            'Ben yapay zekâ ile çalışan dijital garsonum. İsterseniz bana doğal şekilde konuşabilirsiniz.',
+            'Ben restoranın dijital asistanıyım. Sorularınızı yanıtlamak ve uygun işlemleri yapmak için buradayım.',
+            'Ben sizin için menüyü ve restoran hizmetlerini daha kolay kullanmanızı sağlayan yapay zekâ asistanıyım.',
+            'Ben sanal bir asistanım. İnsan değilim ama restoranla ilgili birçok konuda size yardımcı olabilirim.',
+            'Ben masanızdan ulaşabileceğiniz dijital restoran yardımcısıyım.',
+            'Ben restoranın yapay zekâ destekli dijital garsonuyum. Ne ihtiyacınız varsa söyleyebilirsiniz.',
+            'Ben burada işleri biraz daha kolaylaştırmak için varım. Menü, sipariş ve servis konularında yardımcı olabilirim.',
+            'Ben sizin dijital restoran asistanınızım. Sorularınızı yanıtlayabilir ve bazı işlemleri sizin için başlatabilirim.',
+            'Ben yapay zekâ tabanlı bir sanal garsonum. Fiziksel olarak burada değilim ama sistem üzerinden size yardımcı olabilirim.',
+            'Ben restoranın dijital yardımcısıyım. Bana soru sorabilir veya yapmak istediğiniz işlemi doğrudan söyleyebilirsiniz.',
+            'Ben insan bir garson değilim; restoran hizmetlerine erişmenizi kolaylaştıran yapay zekâ asistanıyım.',
+            'Ben burada size yardımcı olmak için çalışan dijital asistanım. İsterseniz hemen menüden devam edebiliriz.',
+            'Ben restoranın sanal yardımcısıyım. Yemek seçimi, sipariş ve servis taleplerinizde yanınızdayım.',
+            'Ben yapay zekâ destekli dijital garsonunuzum. Bana normal bir insanla konuşur gibi ne istediğinizi söyleyebilirsiniz.',
+            'Ben restoranın dijital asistanıyım. Sormak istediğiniz ne varsa sorabilirsiniz.',
+            'Ben masanızdan ulaşabildiğiniz sanal restoran asistanıyım.',
+            'Ben restoran hizmetlerini daha hızlı kullanabilmeniz için hazırlanmış yapay zekâ asistanıyım.',
+            'Ben dijital garsonunuzum. Menü hakkında bilgi verebilir, sipariş işlemlerinde ve servis taleplerinde yardımcı olabilirim.',
+            'Ben restoranın yapay zekâ yardımcısıyım. Burada sizin için birçok işi kolaylaştırabilirim.',
+            'Ben bir sanal asistanım ve bu restoranda size yardımcı olmak için buradayım.',
+            'Ben insan değilim, dijital bir asistanım. Ama restoranla ilgili işlemlerinizde size yardımcı olabilirim.',
+            'Ben restoranın dijital yüzüyüm diyebiliriz. Menüden servise kadar birçok konuda yardımcı olabilirim.',
+            'Ben yapay zekâ destekli bir restoran asistanıyım. İsterseniz beni hemen deneyebilirsiniz.',
+            'Ben sizin dijital garsonunuzum. Ne istediğinizi söylemeniz yeterli, uygun şekilde yardımcı olmaya çalışırım.',
+            'Ben restoranın yapay zekâ destekli dijital asistanıyım. Menü, sipariş ve servis konusunda buradayım.',
+        ]));
+    }
+
     protected function selamlamaCevap()
     {
         return $this->cvp($this->rastgele([
