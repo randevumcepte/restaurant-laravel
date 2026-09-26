@@ -96,8 +96,13 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             return $this->cvp('Bana dijital asistanınız ya da dijital garsonunuz diyebilirsiniz 🙂 Menü, sipariş ve serviste yardımcı olabilirim. Ne yapmak istersiniz?');
         }
         // 1f) Genel kimlik -> 50 varyasyonlu dogal cevap (rastgele)
-        if ($this->has($c, ['sen kimsin', 'kimsin', 'siz kimsiniz', 'sen nesin', 'nesin', 'neyin nesi', 'kiminle konusuyorum', 'karsimda kim', 'bu konustugum kim', 'ne yapabilir', 'neler yapabilir', 'ne ise yara', 'gorevin ne', 'burada ne yapiyor', 'burada ne isin', 'neden varsin', 'restoranin asistani', 'restoranin yapay zekasi'])) {
+        if ($this->has($c, ['sen kimsin', 'kimsin', 'siz kimsiniz', 'sen nesin', 'nesin', 'neyin nesi', 'kiminle konusuyorum', 'karsimda kim', 'bu konustugum kim', 'burada ne yapiyor', 'burada ne isin', 'neden varsin', 'restoranin asistani', 'restoranin yapay zekasi'])) {
             return $this->kimlikCevap();
+        }
+        // 1g) YETENEKLER — SADECE GENEL "neler yapabiliyorsun" tarzi. Spesifik yetenekler
+        //     (garson cagir / siparis / oneri / vejetaryen-alerjen / menu / wifi ...) asagidaki GERCEK intent'lere duser; burada yakalanmaz.
+        if ($this->has($c, ['ne yapabiliyorsun', 'neler yapabiliyorsun', 'ne yapabilirsin', 'neler yapabilirsin', 'ne yaparsin', 'neleri yaparsin', 'yeteneklerin ne', 'yeteneklerin neler', 'ozelliklerin ne', 'ozelliklerin neler', 'ne kadar yeteneklisin', 'hangi islemleri yapabiliyorsun', 'burada ne yapabiliyorsun', 'ne ise yariyorsun', 'ne ise yararsin', 'ne ise yara', 'senden ne isteyebilirim', 'senden neler isteyebilirim', 'sana ne yaptirabilirim', 'sana hangi sorulari', 'seninle neler konusabilirim', 'neleri biliyorsun', 'ne biliyorsun', 'her seyi yapabiliyor musun', 'gorevin ne', 'senin gorevin', 'bana nasil yardimci olabilirsin', 'bana ne konuda yardimci', 'nelerde yardimci oluyorsun', 'nasil yardimci oluyorsun', 'bana nasil yardimci olacaksin'])) {
+            return $this->yeteneklerCevap();
         }
         // 1.0) IYI DILEKLER (selamdan ONCE): net dilekler + "size de X" karsilikli. Bare "iyi gunler" selamda kalir.
         if ($this->has($c, ['kolay gelsin', 'hayirli isler', 'hayirli olsun', 'bol kazanc', 'bereketli is', 'isleriniz rast', 'is rast gitsin', 'yolunuz acik', 'yolun acik', 'saglikli gunler', 'saglikla kalin', 'mutlu gunler', 'huzurlu gunler', 'huzurlu olun', 'mutlu olun', 'keyifli vakitler', 'keyifli bir aksam', 'iyi eglenceler', 'iyi calismalar', 'iyi haftalar', 'iyi hafta sonlari', 'guzel hafta sonlari', 'iyi tatiller', 'guzel tatiller', 'basarilar', 'bol sans', 'sansiniz bol', 'her sey gonlunuzce', 'afiyet olsun', 'afiyetiniz bol', 'keyfiniz bol', 'size de iyi', 'size de kolay', 'size de guzel', 'size de afiyet', 'size de bol', 'size de mutlu', 'iyi dileklerim', 'guzel gunler dilerim', 'guzel bir gun olsun', 'guzel bir aksam olsun', 'guzel geceler', 'guzel bir gece gecir'])) {
@@ -758,6 +763,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Ben yapay zekâ destekli bir restoran asistanıyım. İsterseniz beni hemen deneyebilirsiniz.',
             'Ben sizin dijital garsonunuzum. Ne istediğinizi söylemeniz yeterli, uygun şekilde yardımcı olmaya çalışırım.',
             'Ben restoranın yapay zekâ destekli dijital asistanıyım. Menü, sipariş ve servis konusunda buradayım.',
+        ]));
+    }
+
+    // YETENEKLER: "neler yapabiliyorsun?" -> 50 varyasyonlu, SADECE desteklenen isler (rastgele, sifir maliyet)
+    protected function yeteneklerCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Menü hakkında bilgi verebilir, yemek önerebilir, sipariş işlemlerinde ve servis taleplerinizde yardımcı olabilirim.',
+            'Kısaca; menüden ürün seçmenize, sipariş vermenize, siparişinizi değiştirmenize ve garson çağırmanıza yardımcı olabilirim.',
+            'Yemekler hakkında bilgi verebilir, damak zevkinize uygun ürünler önerebilir ve sipariş konusunda yardımcı olabilirim.',
+            'Menü, yemekler, içecekler ve servis konusunda size yardımcı olabilirim. İsterseniz doğrudan ne istediğinizi söyleyebilirsiniz.',
+            'Sipariş oluşturma, sipariş değiştirme, servis isteme ve garson çağırma gibi işlemlerde yardımcı olabilirim.',
+            'Ne yemek istediğinize karar veremiyorsanız size menüdeki seçeneklerden uygun öneriler sunabilirim.',
+            'Ürünlerin içeriği, özellikleri ve menüdeki seçenekler hakkında sistemde bulunan bilgileri paylaşabilirim.',
+            'Servis talebi oluşturabilir, garson çağırabilir ve desteklenen diğer masa işlemlerinde yardımcı olabilirim.',
+            'Bana normal konuşur gibi ne istediğinizi söyleyebilirsiniz. Uygun bir işlem varsa sizin için başlatabilirim.',
+            'Yemek seçimi, sipariş, servis ve masa ihtiyaçlarınız konusunda dijital olarak yardımcı olabilirim.',
+            'Örneğin “Bana hafif bir yemek öner” diyebilirsiniz. Menüdeki uygun seçenekleri değerlendirebilirim.',
+            'Acısız, vejetaryen, vegan veya çocuklara uygun seçenek arıyorsanız menüdeki bilgilere göre yardımcı olabilirim.',
+            'Siparişinizle ilgili ürün eklemek veya çıkarmak gibi desteklenen işlemlerde yardımcı olabilirim.',
+            'Garson çağırabilir, servis talebinizi iletebilir ve menüyle ilgili sorularınızı yanıtlayabilirim.',
+            'Hesap veya ödeme gibi konularda sistemin desteklediği işlemlerde yardımcı olabilirim.',
+            'Restoranın sunduğu hizmetler ve menüdeki ürünler hakkında bilgi verebilirim.',
+            'İsterseniz size yemek önerebilirim, isterseniz doğrudan sipariş işleminize geçebiliriz.',
+            'Menüde bir ürünün ne içerdiğini merak ediyorsanız sistemdeki ürün bilgilerine göre cevap verebilirim.',
+            'Ne aradığınızı söylerseniz menüde size uygun seçenekleri bulmanıza yardımcı olabilirim.',
+            'Bir ürün seçtiyseniz sipariş sürecinde de size yardımcı olabilirim.',
+            'Garsona ihtiyacınız varsa sistem üzerinden garson çağırma talebi oluşturabilirim.',
+            'Masanız için su, peçete, çatal, tabak gibi bir servis ihtiyacınız varsa desteklenen talepleri iletebilirim.',
+            'Siparişinizle ilgili bir değişiklik yapmak istediğinizde de yardımcı olabilirim.',
+            'Menüde karar vermekte zorlanıyorsanız birkaç seçeneği karşılaştırmanıza yardımcı olabilirim.',
+            'Özel bir tercihiniz varsa, örneğin acısız veya hafif bir yemek istiyorsanız bunu belirtmeniz yeterli.',
+            'Bana “Ne önerirsin?” diye sorabilirsiniz. Menüdeki seçeneklere göre yardımcı olabilirim.',
+            'İsterseniz yemek, tatlı veya içecek konusunda seçim yapmanıza yardımcı olabilirim.',
+            'Restoranla ilgili sistemde bulunan bilgiler konusunda da sorularınızı yanıtlayabilirim.',
+            'Siparişinizin durumunu sistem destekliyorsa kontrol etmenize yardımcı olabilirim.',
+            'Birden fazla isteğiniz varsa hepsini sırayla ele alabiliriz.',
+            'Sesli kullanıyorsanız uzun uzun düşünmeden doğal şekilde konuşabilirsiniz; ne istediğinizi anlatmanız yeterli.',
+            'Benimle konuşarak menü hakkında bilgi alabilir, seçim yapabilir ve desteklenen işlemleri gerçekleştirebilirsiniz.',
+            'Yemek seçmekten servis istemeye kadar birçok konuda size dijital olarak yardımcı olabilirim.',
+            'Öncelikle neye ihtiyacınız olduğunu söyleyin, yapabildiğim bir işlemse doğrudan yardımcı olayım.',
+            'Menüdeki ürünleri karşılaştırabilir, tercihinize uygun seçenekleri bulmanıza yardımcı olabilirim.',
+            'İçerik, porsiyon, acılık gibi ürün özellikleri sistemde bulunuyorsa bunlar hakkında bilgi verebilirim.',
+            'Sipariş vermek istiyorsanız ürünleri seçmenize ve sipariş sürecini tamamlamanıza yardımcı olabilirim.',
+            'Garson çağırmak istiyorsanız bunu da sistem üzerinden yapabilirim.',
+            'Masanızla ilgili desteklenen servis ihtiyaçlarını da iletebilirim.',
+            'Kısacası menü ve masa servisinde size dijital bir yardımcı olabilirim.',
+            'Her işlemi kendim yapamam; fiziksel olarak yapılması gereken konularda ilgili restoran personeline ihtiyaç olabilir.',
+            'Sistemde bulunan bilgileri kullanarak yardımcı olurum; bilmediğim bir bilgiyi tahmin edip söylemem.',
+            'Bir konuda yardımcı olup olamayacağımı merak ediyorsanız doğrudan sorabilirsiniz.',
+            'Örneğin “Bana iki kişilik bir yemek öner” diyebilirsiniz, birlikte seçeneklere bakabiliriz.',
+            'İsterseniz önce menüdeki seçenekleri konuşalım, sonra karar verdiğiniz ürünü siparişe ekleyebiliriz.',
+            'Size sadece bilgi vermekle kalmayıp, sistemin desteklediği işlemleri de başlatabilirim.',
+            'Menüden siparişe, servis talebinden garson çağırmaya kadar desteklenen birçok konuda yanınızdayım.',
+            'Ne yapabildiğimi tek tek saymak yerine deneyebilirsiniz; neye ihtiyacınız olduğunu söylemeniz yeterli.',
+            'Bir yemek seçmek, ürün hakkında bilgi almak veya servis istemek istiyorsanız yardımcı olabilirim.',
+            'Benimle doğal şekilde konuşabilirsiniz. Ne istediğinizi söyleyin, uygun bir işlem varsa birlikte ilerleyelim.',
         ]));
     }
 
