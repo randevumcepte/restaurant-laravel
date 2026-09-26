@@ -6509,6 +6509,29 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
     if ($islem === 'ode') {
         if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma yetkiniz yok.'];
         $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti']) ? $r->odeme_tip : 'nakit';
+
+        // KALEM-BAZLI BÖL: seçili kalemleri öde (masada herkes kendi yediğini öder).
+        $kids = array_values(array_filter(array_map('intval', explode(',', (string) $r->kalem_idler))));
+        if (!empty($kids)) {
+            _odemeSplitEnsure();
+            $secili = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $kids)
+                ->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->get();
+            $tutar = (float) $secili->sum('tutar');
+            if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Seçili kalemler zaten ödenmiş veya bulunamadı.'];
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'personel_id' => $p->id, 'created_at' => now()]);
+            DB::table('adisyon_kalemleri')->whereIn('id', $secili->pluck('id')->all())->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
+            if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (kalem böl) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
+            $kalan = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->sum('tutar');
+            if ($kalan <= 0.009) {
+                DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
+                if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+                _restoStokTuket($a->id, $p->sube_id, $p->id);
+                return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Tüm kalemler ödendi, masa kapatıldı.'];
+            }
+            return ['ok' => 1, 'kapandi' => false, 'kalan' => $kalan, 'toplam' => (float) $a->toplam,
+                'mesaj' => number_format($tutar, 0, ',', '.') . 'TL alındı · kalan ' . number_format($kalan, 0, ',', '.') . 'TL'];
+        }
+
         $kalan = (float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar');
         $tutar = round((float) $r->tutar, 2);
         if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir tutar girin.'];
@@ -6585,6 +6608,19 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
     }
 
     return ['ok' => 0, 'hata' => 'Bilinmeyen işlem'];
+});
+
+// Adisyon kalemleri (kasa POS için) — id + ödeme_durum ile; kalem-bazlı böl ödeme için.
+Route::get('/api/patron/adisyon-kalemleri', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _odemeSplitEnsure();
+    $adId = (int) $r->adisyon_id;
+    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')
+        ->select('id', 'urun_adi', 'adet', 'tutar', 'odeme_durum')->orderBy('id')->get()
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar, 'odeme_durum' => $k->odeme_durum ?? 'acik']);
+    $kalan = (float) $kalemler->where('odeme_durum', '!=', 'odendi')->sum('tutar');
+    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan];
 });
 
 // MASA AC: bos masaya yeni (bos) adisyon acar. Yetki: adisyon_ac (sahip hep).
