@@ -104,6 +104,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($this->has($c, ['ne yapabiliyorsun', 'neler yapabiliyorsun', 'ne yapabilirsin', 'neler yapabilirsin', 'ne yaparsin', 'neleri yaparsin', 'yeteneklerin ne', 'yeteneklerin neler', 'ozelliklerin ne', 'ozelliklerin neler', 'ne kadar yeteneklisin', 'hangi islemleri yapabiliyorsun', 'burada ne yapabiliyorsun', 'ne ise yariyorsun', 'ne ise yararsin', 'ne ise yara', 'senden ne isteyebilirim', 'senden neler isteyebilirim', 'sana ne yaptirabilirim', 'sana hangi sorulari', 'seninle neler konusabilirim', 'neleri biliyorsun', 'ne biliyorsun', 'her seyi yapabiliyor musun', 'gorevin ne', 'senin gorevin', 'bana nasil yardimci olabilirsin', 'bana ne konuda yardimci', 'nelerde yardimci oluyorsun', 'nasil yardimci oluyorsun', 'bana nasil yardimci olacaksin'])) {
             return $this->yeteneklerCevap();
         }
+        // 1h) KONU DISI SOHBET — "konuyu degistirelim / restoran disi / biraz sohbet". Dogal karsila, satisa zorlama.
+        //     NET off-topic isaretleri; gercek yemek/siparis sorulari asagidaki intent'lere duser.
+        if ($this->has($c, ['restoran disinda', 'restoran disi bir', 'restoranla alakali olmayan', 'restoranla alakasi olmayan', 'restoranla ilgisi olmayan', 'restoranla ilgili degil', 'konuyla alakasi yok', 'bununla ilgisi yok', 'restorani bos ver', 'yemekleri bos ver', 'yemek disinda', 'yemek konusmayalim', 'konuyu degistir', 'konu degistir', 'konuyu degistirelim', 'baska konuya gec', 'baska bir konuya gec', 'baska konu acalim', 'baska bir konu acalim', 'baska konu', 'farkli konu', 'farkli bir konu', 'konumuz degissin', 'bu konuyu birakalim', 'baska bir sey konusalim', 'baska seylerden konusalim', 'baska bir sey konusabilir miyim', 'seninle baska bir sey', 'sohbet edelim', 'seninle sohbet', 'sohbet edebilir miyim', 'muhabbet edelim', 'biraz muhabbet', 'biraz sohbet', 'bir seyler konusalim', 'her konuda konusabilir misin', 'baska konularda da cevap', 'restoran disinda ne biliyorsun', 'genel kultur biliyor musun', 'bana bir sey anlat', 'bugun hava nasil', 'hava nasil', 'futbol hakkinda', 'film biliyor musun', 'muzik sever misin', 'teknoloji hakkinda', 'aklima baska bir sey geldi', 'aklima bir sey takildi', 'baska bir sey merak ediyorum', 'alakasiz bir sey', 'genel bir sey soracagim', 'sana ozel bir sey soracagim', 'baska bir konuda fikrin', 'baska bir konuda yardim', 'farkli bir sey soracagim'])) {
+            return $this->konuDisiCevap();
+        }
         // 1.0) IYI DILEKLER (selamdan ONCE): net dilekler + "size de X" karsilikli. Bare "iyi gunler" selamda kalir.
         if ($this->has($c, ['kolay gelsin', 'hayirli isler', 'hayirli olsun', 'bol kazanc', 'bereketli is', 'isleriniz rast', 'is rast gitsin', 'yolunuz acik', 'yolun acik', 'saglikli gunler', 'saglikla kalin', 'mutlu gunler', 'huzurlu gunler', 'huzurlu olun', 'mutlu olun', 'keyifli vakitler', 'keyifli bir aksam', 'iyi eglenceler', 'iyi calismalar', 'iyi haftalar', 'iyi hafta sonlari', 'guzel hafta sonlari', 'iyi tatiller', 'guzel tatiller', 'basarilar', 'bol sans', 'sansiniz bol', 'her sey gonlunuzce', 'afiyet olsun', 'afiyetiniz bol', 'keyfiniz bol', 'size de iyi', 'size de kolay', 'size de guzel', 'size de afiyet', 'size de bol', 'size de mutlu', 'iyi dileklerim', 'guzel gunler dilerim', 'guzel bir gun olsun', 'guzel bir aksam olsun', 'guzel geceler', 'guzel bir gece gecir'])) {
             return $this->iyiDilekCevap();
@@ -763,6 +768,63 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Ben yapay zekâ destekli bir restoran asistanıyım. İsterseniz beni hemen deneyebilirsiniz.',
             'Ben sizin dijital garsonunuzum. Ne istediğinizi söylemeniz yeterli, uygun şekilde yardımcı olmaya çalışırım.',
             'Ben restoranın yapay zekâ destekli dijital asistanıyım. Menü, sipariş ve servis konusunda buradayım.',
+        ]));
+    }
+
+    // KONU DISI SOHBET: "konuyu degistirelim / biraz sohbet" -> 50 varyasyonlu dogal karsilik (satisa/siparise zorlamaz)
+    protected function konuDisiCevap()
+    {
+        return $this->cvp($this->rastgele([
+            'Tabii, başka bir şey de konuşabiliriz. Ne hakkında konuşmak istersiniz?',
+            'Elbette, konuyu değiştirebiliriz. Sorunuzu söyleyin.',
+            'Olur, restoran dışındaki bir konudan da bahsedebiliriz.',
+            'Tabii, aklınızdaki diğer soruyu sorabilirsiniz.',
+            'Elbette, sizi dinliyorum. Konu ne?',
+            'Olur, biraz farklı bir konuya geçebiliriz.',
+            'Tabii, sorunuzu alayım.',
+            'Elbette. Restoranla ilgili olmak zorunda değil.',
+            'Tabii, aklınıza ne geldiyse sorabilirsiniz.',
+            'Olur, başka bir konu açalım. Ne konuşalım?',
+            'Elbette, sizi dinliyorum.',
+            'Tabii, farklı bir konuda da sohbet edebiliriz.',
+            'Olur, konu değiştirebiliriz. Neyi merak ediyorsunuz?',
+            'Tabii, sorunuzu söyleyin.',
+            'Elbette. Başka bir konuda yardımcı olabilirsem deneyelim.',
+            'Olur, yemek konusunu biraz kenara bırakalım.',
+            'Tabii, başka bir şey konuşabiliriz. Anlatın bakalım.',
+            'Elbette, konu dışına çıkabiliriz.',
+            'Tabii. Aklınızdaki soruyu sorabilirsiniz.',
+            'Olur, bugün menü dışında da konuşabiliriz.',
+            'Tabii, ne hakkında sohbet etmek istersiniz?',
+            'Elbette, farklı bir konuya geçebiliriz.',
+            'Olur, anlatın. Sizi dinliyorum.',
+            'Tabii, restoranla ilgisi olmayan bir soru da sorabilirsiniz.',
+            'Elbette, aklınızdaki başka şeyi de konuşabiliriz.',
+            'Olur, konuyu değiştirelim. Neyden bahsedelim?',
+            'Tabii, sorunuzu bekliyorum.',
+            'Elbette, başka bir konuya geçmekte sakınca yok.',
+            'Olur, bakalım bu sefer hangi konuyu konuşacağız.',
+            'Tabii, farklı bir konuda sohbet edebiliriz.',
+            'Elbette, sorabilirsiniz. Bildiğim kadarıyla yardımcı olmaya çalışırım.',
+            'Olur. Konu restoran dışındaysa da sorunuzu söyleyin.',
+            'Tabii, biraz da başka şeylerden konuşabiliriz.',
+            'Elbette. Ne merak ediyorsanız sorabilirsiniz.',
+            'Olur, yeni konuya hazırım.',
+            'Tabii, konuyu değiştirebiliriz. Söyleyin bakalım.',
+            'Elbette, başka bir şey danışabilirsiniz.',
+            'Olur, restoran konusundan çıkabiliriz.',
+            'Tabii, aklınıza takılan başka bir şey varsa sorabilirsiniz.',
+            'Elbette. Bakalım bu kez hangi konuda konuşacağız.',
+            'Olur, biraz sohbet edelim. Ne konuşmak istersiniz?',
+            'Tabii, başka bir konu açabilirsiniz.',
+            'Elbette, sizi dinliyorum. Buyurun, ne soracaktınız?',
+            'Olur, konu değişikliğine hazırım.',
+            'Tabii, restoran dışında da sohbet edebiliriz; ancak bazı konularda kapsamım sınırlı olabilir.',
+            'Elbette. Bildiğim ve yardımcı olabileceğim bir konuysa birlikte bakalım.',
+            'Olur, başka bir konuya geçelim. Sorunuzu söyleyin.',
+            'Tabii, aklınızdaki şeyi doğrudan sorabilirsiniz.',
+            'Elbette, menüyü biraz bırakıp başka bir konu konuşabiliriz.',
+            'Olur, yeni konu nedir? Sizi dinliyorum.',
         ]));
     }
 
