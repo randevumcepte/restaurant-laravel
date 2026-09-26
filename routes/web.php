@@ -6505,6 +6505,27 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         return ['ok' => 1, 'mesaj' => $mesaj];
     }
 
+    // PARCALI / BOLUNMUS ODEME — kapatmadan tutar al; kalan 0'a inince otomatik kapatir.
+    if ($islem === 'ode') {
+        if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma yetkiniz yok.'];
+        $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti']) ? $r->odeme_tip : 'nakit';
+        $kalan = (float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar');
+        $tutar = round((float) $r->tutar, 2);
+        if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir tutar girin.'];
+        if ($tutar > $kalan) $tutar = $kalan; // fazlasi alinmaz (nakit para ustu UI'da hesaplanir)
+        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'personel_id' => $p->id, 'created_at' => now()]);
+        if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (parçalı) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
+        $yeniKalan = max(0, round($kalan - $tutar, 2));
+        if ($yeniKalan <= 0.009) {
+            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
+            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+            _restoStokTuket($a->id, $p->sube_id, $p->id);
+            return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Ödeme tamamlandı, masa kapatıldı.'];
+        }
+        return ['ok' => 1, 'kapandi' => false, 'kalan' => $yeniKalan, 'toplam' => (float) $a->toplam,
+            'mesaj' => number_format($tutar, 0, ',', '.') . 'TL alındı · kalan ' . number_format($yeniKalan, 0, ',', '.') . 'TL'];
+    }
+
     if ($islem === 'iskonto') {
         if (!$yetki('iskonto')) return ['ok' => 0, 'hata' => 'İskonto uygulama yetkiniz yok.'];
         $oran = max(0, min(100, (float) $r->oran));
