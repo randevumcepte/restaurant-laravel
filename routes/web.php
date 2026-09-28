@@ -6509,6 +6509,11 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
     if ($islem === 'ode') {
         if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma yetkiniz yok.'];
         $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti']) ? $r->odeme_tip : 'nakit';
+        // Yemek kartı markası (Multinet/Sodexo/Ticket…) -> odemeler.marka'da rapor için sakla
+        if (!Schema::hasColumn('odemeler', 'marka')) {
+            Schema::table('odemeler', function ($t) { $t->string('marka', 40)->nullable(); });
+        }
+        $marka = mb_substr(trim((string) $r->marka), 0, 40) ?: null;
 
         // KALEM-BAZLI BÖL: seçili kalemleri öde (masada herkes kendi yediğini öder).
         $kids = array_values(array_filter(array_map('intval', explode(',', (string) $r->kalem_idler))));
@@ -6518,7 +6523,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
                 ->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->get();
             $tutar = (float) $secili->sum('tutar');
             if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Seçili kalemler zaten ödenmiş veya bulunamadı.'];
-            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'personel_id' => $p->id, 'created_at' => now()]);
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'marka' => $marka, 'personel_id' => $p->id, 'created_at' => now()]);
             DB::table('adisyon_kalemleri')->whereIn('id', $secili->pluck('id')->all())->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
             if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (kalem böl) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
             $kalan = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->sum('tutar');
@@ -6536,7 +6541,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         $tutar = round((float) $r->tutar, 2);
         if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Geçerli bir tutar girin.'];
         if ($tutar > $kalan) $tutar = $kalan; // fazlasi alinmaz (nakit para ustu UI'da hesaplanir)
-        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'personel_id' => $p->id, 'created_at' => now()]);
+        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'marka' => $marka, 'personel_id' => $p->id, 'created_at' => now()]);
         if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (parçalı) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
         $yeniKalan = max(0, round($kalan - $tutar, 2));
         if ($yeniKalan <= 0.009) {
