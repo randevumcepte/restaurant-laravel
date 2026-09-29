@@ -21,7 +21,15 @@ class CagriOturumu {
     this.sonSes = Date.now ? 0 : 0; // Date.now scriptte var; node runtime'da normal calisir
     this.sessizlikZ = null;
 
-    this.rtp = new RtpOturumu(rtpPort, (payload) => this.stt.yaz(payload));
+    this._sesGeldi = false; // ilk ses karesi STT'ye ulasti mi (tani icin)
+
+    this.rtp = new RtpOturumu(rtpPort, (payload) => {
+      // YARI-DUPLEKS: barge-in kapaliyken AI konusurken mikrofonu STT'ye VERME.
+      // Boylece hat yankisi (AI'nin kendi sesi) STT'ye dusup AI'yi kesmez / kendini dinlemez.
+      if (!cfg.bargeIn && this.rtp && this.rtp.sesVarMi) return;
+      if (!this._sesGeldi) { this._sesGeldi = true; log.info('ilk ses karesi STT ye ulasti (mikrofon calisiyor)'); }
+      this.stt.yaz(payload);
+    });
     this.stt = new SttOturumu(
       (final) => this._finalMetin(final),
       (interim) => this._interim(interim),
@@ -43,7 +51,8 @@ class CagriOturumu {
   }
 
   _interim(metin) {
-    // Musteri konusmaya basladi -> barge-in: AI'nin sesini kes
+    log.debug(`ara-sonuc: ${metin}`);
+    // Musteri konusmaya basladi -> barge-in: AI'nin sesini kes (sadece BARGE_IN=1 iken)
     if (cfg.bargeIn && this.rtp.sesVarMi) {
       log.debug('barge-in: AI susturuluyor');
       this.rtp.sustur();

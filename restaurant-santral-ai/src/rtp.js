@@ -57,22 +57,24 @@ class RtpOturumu {
   }
 
   _oynatmaBasla() {
+    if (this.oynatiyor) return;              // cift interval'i onle (yoksa sesler ust uste biner)
     this.oynatiyor = true;
-    const tik = () => {
-      if (!this.oynatiyor) return;
+    this.oynatmaZ = setInterval(() => {
       const kare = this.kuyruk.shift();
-      if (!kare) { this.oynatiyor = false; return; }
+      if (!kare) { this._oynatmaDur(); return; }  // kuyruk bosaldi -> interval'i KAPAT (sizinti yok)
       this._gonder(kare);
-    };
-    // Sabit 20ms aralikli akis
-    this.oynatmaZ = setInterval(tik, FRAME_MS);
+    }, FRAME_MS);
+  }
+
+  _oynatmaDur() {
+    this.oynatiyor = false;
+    if (this.oynatmaZ) { clearInterval(this.oynatmaZ); this.oynatmaZ = null; }
   }
 
   // Barge-in: musteri konusunca AI sesini aninda kes
   sustur() {
     this.kuyruk.length = 0;
-    this.oynatiyor = false;
-    clearInterval(this.oynatmaZ);
+    this._oynatmaDur();
   }
 
   _gonder(payload) {
