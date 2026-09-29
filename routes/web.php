@@ -4129,13 +4129,15 @@ Route::get('/api/patron/ozet', function (Request $r) {
     foreach ($servisMap as $ad => $tt) $servis[] = ['ad' => $ad, 'tutar' => round($tt, 2)];
 
     // Masa durumu + bekleyen masalar (acik adisyon suresine gore)
+    // DOLU = FARKLI masa sayisi (ayni masada birden fazla acik adisyon olabilir); sadece bu subenin masalari.
     $masaToplam = DB::table('masalar')->where('sube_id', $p->sube_id)->count();
-    $doluMasalar = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-        ->where('adisyonlar.durum', 'acik')->whereNotNull('adisyonlar.masa_id')
-        ->select('masalar.ad as masa_ad', 'adisyonlar.acilis')->get();
+    $doluMasalar = DB::table('adisyonlar')->join('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->where('adisyonlar.durum', 'acik')->where('masalar.sube_id', $p->sube_id)
+        ->select('masalar.id as masa_id', 'masalar.ad as masa_ad', DB::raw('MIN(adisyonlar.acilis) as acilis'))
+        ->groupBy('masalar.id', 'masalar.ad')->get();
     $masaDolu = $doluMasalar->count();
     $masaMusait = max(0, $masaToplam - $masaDolu);
-    $doluluk = $masaToplam > 0 ? (int) round($masaDolu / $masaToplam * 100) : 0;
+    $doluluk = $masaToplam > 0 ? min(100, (int) round($masaDolu / $masaToplam * 100)) : 0;
     $bekleyen = $doluMasalar->map(fn ($a) => [
         'ad' => $a->masa_ad ?: 'Masa',
         'dk' => $a->acilis ? (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes() : 0,
