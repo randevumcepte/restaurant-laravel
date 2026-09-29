@@ -7728,6 +7728,83 @@ Route::get('/api/patron/rezervasyonlar', function (Request $r) {
     return ['ok' => 1, 'tarih' => $tarih, 'rezervasyonlar' => $rows->values(), 'ozet' => $ozet, 'gunler' => $gunler];
 });
 
+// PATRON API: rezervasyon GOSTERGE PANELI (analitik) — gun kartlari + durum/saat/kaynak dagilimi + aylik ozet + performans
+Route::get('/api/patron/rezervasyon-panel', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _rezervasyonEnsure($p->sube_id);
+    $tarih = $r->query('tarih') ?: now()->format('Y-m-d');
+    $ay = $r->query('ay') ?: substr($tarih, 0, 7); // YYYY-MM
+
+    $gunRows = DB::table('rezervasyonlar')->where('sube_id', $p->sube_id)->where('tarih', $tarih)->get();
+    $aktifGun = $gunRows->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi']);
+    $gun = [
+        'toplam' => $gunRows->count(),
+        'bekleyen' => $gunRows->where('durum', 'bekliyor')->count(),
+        'onaylanan' => $gunRows->where('durum', 'onaylandi')->count(),
+        'gelen' => $gunRows->where('durum', 'geldi')->count(),
+        'iptal' => $gunRows->where('durum', 'iptal')->count(),
+        'gelmedi' => $gunRows->where('durum', 'gelmedi')->count(),
+        'toplam_misafir' => (int) $aktifGun->sum('kisi'),
+    ];
+    $tp = max(1, $gunRows->count());
+
+    // Durum dagilimi
+    $durumAd = ['bekliyor' => 'Bekliyor', 'onaylandi' => 'Onaylı', 'geldi' => 'Geldi', 'gelmedi' => 'Gelmedi', 'iptal' => 'İptal'];
+    $durumDagilim = [];
+    foreach ($durumAd as $k => $ad) {
+        $a = $gunRows->where('durum', $k)->count();
+        $durumDagilim[] = ['durum' => $k, 'ad' => $ad, 'adet' => $a, 'yuzde' => round($a / $tp * 100, 1)];
+    }
+
+    // Saat dagilimi (10:00 - 23:00)
+    $saatDagilim = [];
+    for ($h = 10; $h <= 23; $h++) {
+        $hh = str_pad((string) $h, 2, '0', STR_PAD_LEFT);
+        $saatDagilim[] = ['saat' => $hh, 'adet' => $gunRows->filter(fn ($x) => substr((string) $x->saat, 0, 2) === $hh)->count()];
+    }
+
+    // Kaynak dagilimi
+    $kaynakAd = ['web' => 'Web', 'telefon' => 'Telefon', 'qr' => 'QR', 'walk_in' => 'Walk-in', 'walkin' => 'Walk-in', 'admin' => 'Admin'];
+    $kaynakDagilim = [];
+    foreach ($gunRows->groupBy('kaynak') as $kaynak => $grp) {
+        $kaynakDagilim[] = ['kaynak' => (string) $kaynak, 'ad' => $kaynakAd[strtolower((string) $kaynak)] ?? ucfirst((string) $kaynak),
+            'adet' => $grp->count(), 'yuzde' => (int) round($grp->count() / $tp * 100)];
+    }
+    usort($kaynakDagilim, fn ($a, $b) => $b['adet'] <=> $a['adet']);
+
+    // Aylik ozet (gun bazinda adet) + performans (ay geneli)
+    $ayBasi = \Carbon\Carbon::parse($ay . '-01')->startOfMonth();
+    $ayRows = DB::table('rezervasyonlar')->where('sube_id', $p->sube_id)
+        ->whereBetween('tarih', [$ayBasi->format('Y-m-d'), (clone $ayBasi)->endOfMonth()->format('Y-m-d')])->get();
+    $aylikGunler = [];
+    for ($g = 1; $g <= (int) $ayBasi->daysInMonth; $g++) {
+        $gt = (clone $ayBasi)->day($g)->format('Y-m-d');
+        $aylikGunler[] = ['gun' => $g, 'tarih' => $gt, 'adet' => $ayRows->where('tarih', $gt)->count()];
+    }
+    $ayToplam = $ayRows->count();
+    $gelenAy = $ayRows->where('durum', 'geldi')->count();
+    $gelmediAy = $ayRows->where('durum', 'gelmedi')->count();
+    $iptalAy = $ayRows->where('durum', 'iptal')->count();
+    $cozulen = max(1, $gelenAy + $gelmediAy + $iptalAy);
+    $aylar = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    $performans = [
+        'tamamlanma' => (int) round($gelenAy / $cozulen * 100),
+        'iptal' => $ayToplam > 0 ? (int) round($iptalAy / $ayToplam * 100) : 0,
+    ];
+
+    return [
+        'ok' => 1, 'tarih' => $tarih, 'ay' => $ay,
+        'ay_adi' => $aylar[(int) $ayBasi->format('n')] . ' ' . $ayBasi->format('Y'),
+        'gun' => $gun,
+        'durum_dagilim' => $durumDagilim,
+        'saat_dagilim' => $saatDagilim,
+        'kaynak_dagilim' => array_values($kaynakDagilim),
+        'aylik' => ['gunler' => $aylikGunler, 'ilk_gun_hafta' => (int) (clone $ayBasi)->day(1)->dayOfWeekIso, 'toplam' => $ayToplam],
+        'performans' => $performans,
+    ];
+});
+
 // PATRON API: rezervasyon ekle
 Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
     $p = _apiPersonel($r);
