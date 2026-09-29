@@ -6513,6 +6513,9 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         if (!Schema::hasColumn('odemeler', 'marka')) {
             Schema::table('odemeler', function ($t) { $t->string('marka', 40)->nullable(); });
         }
+        if (!Schema::hasColumn('odemeler', 'kalem_ids')) {
+            Schema::table('odemeler', function ($t) { $t->text('kalem_ids')->nullable(); }); // geri alınca hangi kalemler açılacak
+        }
         $marka = mb_substr(trim((string) $r->marka), 0, 40) ?: null;
 
         // KALEM-BAZLI BÖL: seçili kalemleri öde (masada herkes kendi yediğini öder).
@@ -6523,7 +6526,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
                 ->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->get();
             $tutar = (float) $secili->sum('tutar');
             if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Seçili kalemler zaten ödenmiş veya bulunamadı.'];
-            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'marka' => $marka, 'personel_id' => $p->id, 'created_at' => now()]);
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'marka' => $marka, 'kalem_ids' => json_encode($secili->pluck('id')->all()), 'personel_id' => $p->id, 'created_at' => now()]);
             DB::table('adisyon_kalemleri')->whereIn('id', $secili->pluck('id')->all())->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
             if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (kalem böl) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
             $kalan = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->sum('tutar');
@@ -6626,6 +6629,57 @@ Route::get('/api/patron/adisyon-kalemleri', function (Request $r) {
         ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar, 'odeme_durum' => $k->odeme_durum ?? 'acik']);
     $kalan = (float) $kalemler->where('odeme_durum', '!=', 'odendi')->sum('tutar');
     return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan];
+});
+
+// Adisyonda ALINAN ödemeler (geri alma listesi için)
+Route::get('/api/patron/adisyon-odemeler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $markaVar = Schema::hasColumn('odemeler', 'marka');
+    $kol = array_merge(['id', 'tip', 'tutar', 'created_at'], $markaVar ? ['marka'] : []);
+    $ods = DB::table('odemeler')->where('adisyon_id', (int) $r->adisyon_id)->orderBy('id')->get($kol)
+        ->map(fn ($o) => ['id' => (int) $o->id, 'tip' => $o->tip, 'tutar' => (float) $o->tutar,
+            'marka' => $markaVar ? ($o->marka ?? null) : null, 'saat' => \Carbon\Carbon::parse($o->created_at)->format('H:i')]);
+    return ['ok' => 1, 'odemeler' => $ods];
+});
+
+// ÖDEME GERİ AL (düzeltme) — Müdür/Sahip onayı ister; kasa/ciro/kalem geri açılır, adisyon kapandıysa yeniden açılır.
+Route::post('/api/patron/odeme-geri-al', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    // Yetki: Sahip/Müdür doğrudan; değilse onay PIN'i Sahip/Müdür olmalı.
+    $onaylayanId = $p->id;
+    if (!in_array($p->rol, ['sahip', 'mudur'])) {
+        $onay = $r->onay_pin ? DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first() : null;
+        if (!$onay || !in_array($onay->rol, ['sahip', 'mudur'])) {
+            return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Ödeme geri alma için Müdür/Sahip PIN onayı gerekli.'];
+        }
+        $onaylayanId = $onay->id;
+    }
+    $ode = DB::table('odemeler')->where('id', (int) $r->odeme_id)->first();
+    if (!$ode) return ['ok' => 0, 'hata' => 'Ödeme bulunamadı.'];
+    $a = DB::table('adisyonlar')->find($ode->adisyon_id);
+    if (!$a || $a->sube_id != $p->sube_id) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı.'];
+
+    DB::table('odemeler')->where('id', $ode->id)->delete();
+    // Nakit ise kasadan telafi çıkışı
+    if ($ode->tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'cikis', (float) $ode->tutar, 'Ödeme geri alındı · adisyon #' . $a->id, 'adisyon', $a->id, $onaylayanId);
+    // Kalem-bazlı ödemeyse o kalemleri tekrar aç
+    if (Schema::hasColumn('odemeler', 'kalem_ids') && $ode->kalem_ids) {
+        $kids = json_decode($ode->kalem_ids, true);
+        if (is_array($kids) && $kids) DB::table('adisyon_kalemleri')->whereIn('id', $kids)->update(['odeme_durum' => 'acik', 'updated_at' => now()]);
+    }
+    // Adisyon kapandıysa yeniden aç
+    if ($a->durum === 'odendi') {
+        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'acik', 'kapanis' => null]);
+        if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
+    }
+    // Log (Hareketler'de görünür)
+    if (Schema::hasTable('iptal_indirim_loglari')) {
+        DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'odeme_iptal',
+            'tutar' => (float) $ode->tutar, 'sebep' => 'Ödeme geri alındı (' . $ode->tip . ')', 'personel_id' => $onaylayanId, 'created_at' => now()]);
+    }
+    return ['ok' => 1, 'mesaj' => number_format($ode->tutar, 0, ',', '.') . 'TL ' . $ode->tip . ' ödeme geri alındı.'];
 });
 
 // MASA AC: bos masaya yeni (bos) adisyon acar. Yetki: adisyon_ac (sahip hep).
