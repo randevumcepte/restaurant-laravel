@@ -84,7 +84,9 @@ class SefGarsonAI
         $facts = [];
         foreach ($adisyonlar as $a) {
             $kl = $kalemler[$a->id] ?? collect();
-            $masaAd = $a->masa_adi ?: ('#' . $a->masa_id);
+            $masaHam = $a->masa_adi ?: ('#' . $a->masa_id);
+            // Sadece sayı ise "Masa 11" göster; isimli masa (Teras, Bahçe) olduğu gibi kalsın.
+            $masaAd = ctype_digit(trim((string) $masaHam)) ? ('Masa ' . $masaHam) : $masaHam;
             $acilis = $a->acilis ?: $a->a_created;
             $acikDk = $acilis ? $this->dkGecti($acilis) : 0;
 
@@ -131,7 +133,7 @@ class SefGarsonAI
             // 1) BOS MASA: acildi ama hic siparis yok
             if ($kalemSayi === 0 && $acikDk >= $bosDk) {
                 $ekle('bos_masa', 3, $masaAd . ' hala sipariş vermedi',
-                    $masaAd . ' masası ' . $acikDk . ' dakikadır açık ama henüz sipariş yok. Git bir uğra, "bir şey almak ister misiniz" diye sor.', '🕐');
+                    $masaAd . ', ' . $acikDk . ' dakikadır açık ama henüz sipariş yok. Git bir uğra, "bir şey almak ister misiniz" diye sor.', '🕐');
             }
             // 2) TATLI/ÇAY FIRSATI: ana yemek yendi, tatli yok
             elseif ($hasAna && !$hasTatli && $sonAnaAt && $this->dkGecti($sonAnaAt) >= $tatliDk) {
@@ -141,7 +143,7 @@ class SefGarsonAI
             // 3) DURGUN MASA: bir sure yeni siparis yok
             elseif ($kalemSayi > 0 && $sonKalemAt && $this->dkGecti($sonKalemAt) >= $durgunDk) {
                 $ekle('durgun', 2, $masaAd . ' durgun',
-                    $masaAd . ' masasında ' . $this->dkGecti($sonKalemAt) . ' dakikadır yeni sipariş yok. Uğra; tatlı, içecek ya da bir şey daha ister mi diye sor.', '💤');
+                    $masaAd . ' — ' . $this->dkGecti($sonKalemAt) . ' dakikadır yeni sipariş yok. Uğra; tatlı, içecek ya da bir şey daha ister mi diye sor.', '💤');
             }
 
             // 4) ICECEK FIRSATI: yemek var, icecek yok, tatli da yok (tatli varsa rule 6 kapsar)
@@ -151,8 +153,8 @@ class SefGarsonAI
             }
             // 5) KALABALIK MASA baslangic firsati: cok kisi, hesap dusuk/erken
             if ($a->misafir_sayisi >= $kalabalik && $kalemSayi > 0 && !$hasTatli && $acikDk <= 25) {
-                $ekle('kalabalik_baslangic', 2, $masaAd . ' kalabalık masa',
-                    $masaAd . ' ' . $a->misafir_sayisi . ' kişilik. Ortaya paylaşımlık başlangıç/meze öner; masanın ortalama hesabını büyütür.', '👥');
+                $ekle('kalabalik_baslangic', 2, $masaAd . ' · kalabalık',
+                    $masaAd . ' · ' . $a->misafir_sayisi . ' kişi. Ortaya paylaşımlık başlangıç/meze öner; masanın ortalama hesabını büyütür.', '👥');
             }
             // 6) TATLI geldi ama sicak icecek yok -> cay/kahve caprazsatisi
             if ($hasTatli && !$hasIcecek) {
