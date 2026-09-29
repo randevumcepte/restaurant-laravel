@@ -7691,6 +7691,41 @@ Route::get('/rezervasyon-kur', function () {
     return ['ok' => 1, 'mesaj' => "Rezervasyon tablosu hazır + demo yüklendi. Toplam kayıt: $say"];
 });
 
+// DEMO: gosterge paneli canli gorunsun diye bugune + ay geneline rezervasyon serp (?temizle=1 ile bu ayin demosunu sil)
+Route::get('/api/patron/rezervasyon-demo-doldur', function (Request $r) {
+    $p = _apiPersonel($r);
+    $subeId = $p ? $p->sube_id : DB::table('subeler')->value('id');
+    _rezervasyonEnsure($subeId);
+    $ayBasi = now()->startOfMonth()->format('Y-m-d');
+    $aySon = now()->endOfMonth()->format('Y-m-d');
+    if ($r->query('temizle')) {
+        $sil = DB::table('rezervasyonlar')->where('sube_id', $subeId)->whereBetween('tarih', [$ayBasi, $aySon])->delete();
+        return ['ok' => 1, 'mesaj' => "Bu ayın demo rezervasyonları silindi: $sil kayıt."];
+    }
+    $adlar = ['Ahmet Yılmaz', 'Elif Kaya', 'Mehmet Demir', 'Zeynep Şahin', 'Can Öztürk', 'Selin Ak', 'Burak Aydın', 'Deniz Çelik',
+        'Merve Arslan', 'Emre Koç', 'Ayşe Yıldız', 'Mert Doğan', 'Ece Kurt', 'Ali Vural', 'Naz Aslan', 'Kaan Erdoğan', 'Sıla Taş', 'Onur Bulut'];
+    $saatler = ['12:00', '12:30', '13:00', '13:30', '18:00', '18:30', '19:00', '19:00', '19:30', '19:30', '20:00', '20:00', '20:00', '20:30', '21:00', '21:30'];
+    $kaynaklar = ['web', 'web', 'web', 'telefon', 'telefon', 'walk_in', 'walk_in', 'qr', 'admin'];
+    $durumlar = ['onaylandi', 'onaylandi', 'onaylandi', 'onaylandi', 'geldi', 'geldi', 'bekliyor', 'bekliyor', 'iptal', 'gelmedi'];
+    $bugun = now()->format('Y-m-d');
+    DB::table('rezervasyonlar')->where('sube_id', $subeId)->where('tarih', $bugun)->delete(); // tekrar calisinca birikmesin
+    $rows = [];
+    $rand = fn ($a) => $a[array_rand($a)];
+    for ($i = 0; $i < 34; $i++) {
+        $rows[] = ['sube_id' => $subeId, 'ad' => $rand($adlar), 'telefon' => '05' . rand(30, 59) . rand(1000000, 9999999),
+            'kisi' => rand(1, 8), 'tarih' => $bugun, 'saat' => $rand($saatler), 'durum' => $rand($durumlar), 'kaynak' => $rand($kaynaklar), 'not' => null, 'created_at' => now()];
+    }
+    for ($g = 1; $g < (int) now()->day; $g++) { // ay basindan dune kadar heatmap icin serp
+        $gt = now()->startOfMonth()->addDays($g - 1)->format('Y-m-d');
+        for ($j = 0, $n = rand(0, 6); $j < $n; $j++) {
+            $rows[] = ['sube_id' => $subeId, 'ad' => $rand($adlar), 'telefon' => null, 'kisi' => rand(1, 6),
+                'tarih' => $gt, 'saat' => $rand($saatler), 'durum' => $rand($durumlar), 'kaynak' => $rand($kaynaklar), 'not' => null, 'created_at' => now()];
+        }
+    }
+    foreach (array_chunk($rows, 50) as $ch) DB::table('rezervasyonlar')->insert($ch);
+    return ['ok' => 1, 'mesaj' => count($rows) . ' demo rezervasyon eklendi (bugün 34 + ay geneli). Şube: ' . $subeId];
+});
+
 if (!function_exists('_rezDurumlar')) {
     function _rezDurumlar() { return ['bekliyor', 'onaylandi', 'geldi', 'iptal', 'gelmedi']; }
 }
