@@ -7800,7 +7800,7 @@ Route::get('/api/patron/rezervasyon-panel', function (Request $r) {
     }
 
     // Kaynak dagilimi
-    $kaynakAd = ['web' => 'Web', 'telefon' => 'Telefon', 'qr' => 'QR', 'walk_in' => 'Walk-in', 'walkin' => 'Walk-in', 'admin' => 'Admin'];
+    $kaynakAd = ['web' => 'Web', 'telefon' => 'Telefon', 'qr' => 'QR', 'walk_in' => 'Kapıdan', 'walkin' => 'Kapıdan', 'admin' => 'Panel'];
     $kaynakDagilim = [];
     foreach ($gunRows->groupBy('kaynak') as $kaynak => $grp) {
         $kaynakDagilim[] = ['kaynak' => (string) $kaynak, 'ad' => $kaynakAd[strtolower((string) $kaynak)] ?? ucfirst((string) $kaynak),
