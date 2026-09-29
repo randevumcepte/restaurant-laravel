@@ -6647,15 +6647,12 @@ Route::get('/api/patron/adisyon-odemeler', function (Request $r) {
 Route::post('/api/patron/odeme-geri-al', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    // Yetki: Sahip/Müdür doğrudan; değilse onay PIN'i Sahip/Müdür olmalı.
-    $onaylayanId = $p->id;
-    if (!in_array($p->rol, ['sahip', 'mudur'])) {
-        $onay = $r->onay_pin ? DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first() : null;
-        if (!$onay || !in_array($onay->rol, ['sahip', 'mudur'])) {
-            return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Ödeme geri alma için Müdür/Sahip PIN onayı gerekli.'];
-        }
-        $onaylayanId = $onay->id;
+    // HER ZAMAN Müdür/Sahip PIN onayı iste (giriş yapan yönetici bile olsa) — açık onay + kim onayladı izi.
+    $onay = $r->onay_pin ? DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', (string) $r->onay_pin)->first() : null;
+    if (!$onay || !in_array($onay->rol, ['sahip', 'mudur'])) {
+        return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Ödeme geri alma için Müdür/Sahip PIN onayı gerekli.'];
     }
+    $onaylayanId = $onay->id;
     $ode = DB::table('odemeler')->where('id', (int) $r->odeme_id)->first();
     if (!$ode) return ['ok' => 0, 'hata' => 'Ödeme bulunamadı.'];
     $a = DB::table('adisyonlar')->find($ode->adisyon_id);
