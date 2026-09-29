@@ -131,7 +131,7 @@ Telefon sesi 8kHz dar bant → STT'de `phone_call` modeli, TTS'de 8kHz LINEAR16 
 
 - **✅ Faz 1 — Beyin:** `SantralAsistan` + `/api/santral/*` + `santral_oturumlari` + `/santral-test` ekranı. (Ses olmadan, metinle test edilebilir — YAPILDI.)
 - **✅ Faz 2 — Köprü:** `restaurant-santral-ai/` Node sidecar — **ARI externalMedia** + Google streaming STT + Google TTS + barge-in + RTP (ulaw@8k). (YAPILDI; `npm install` + gerçek çağrıyla saha testi kaldı.)
-- **Faz 3 — Asterisk:** `Stasis(santral-ai)` dialplan (ARI app adı), gelen hat, `[santral-aktar]` ile insana aktarma. (Örnek konf. `restaurant-santral-ai/asterisk/` altında hazır; sahada uygulanacak.)
+- **Faz 3 — Asterisk:** `Stasis(restaurant-santral-ai)` dialplan (ARI app adı = ARI_APP), gelen hat, `[santral-aktar]` ile insana aktarma. (Örnek konf. `restaurant-santral-ai/asterisk/` altında hazır; sahada uygulanacak.)
 - **Faz 4 — Aksiyonlar:** paket sipariş → `adisyon` dönüşümü + müşteri eşleştirme + outbound geri-arama (ARI originate). (Rezervasyon Faz 1'de bağlandı.)
 - **Faz 5 — Test & ince ayar:** gecikme, kesme, Türkçe telaffuz, gürültü; canlı pilot.
 

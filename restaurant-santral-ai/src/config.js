@@ -15,7 +15,7 @@ const cfg = {
     url: process.env.ARI_URL || 'http://127.0.0.1:8088',
     user: process.env.ARI_USER || 'santral',
     pass: process.env.ARI_PASS || '',
-    app: process.env.ARI_APP || 'santral-ai',
+    app: process.env.ARI_APP || 'restaurant-santral-ai',
   },
   rtp: {
     host: process.env.RTP_HOST || '127.0.0.1',

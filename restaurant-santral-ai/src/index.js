@@ -3,7 +3,7 @@
 // Asterisk (ARI, Asterisk 16/17) -> externalMedia (RTP) <-> bu kopru <-> Google STT/TTS + Laravel beyin.
 //
 // Akis:
-//  1) Dialplan: exten => s,1,Stasis(santral-ai)   (bkz. asterisk/extensions.conf.sample)
+//  1) Dialplan: exten => s,1,Stasis(restaurant-santral-ai)   (bkz. asterisk/extensions.conf.sample)
 //  2) StasisStart -> kanali cevapla, mixing bridge kur
 //  3) externalMedia kanali olustur (RTP'yi bu koprunun portuna yollar), bridge'e ekle
 //  4) CagriOturumu: RTP<->STT<->beyin<->TTS
@@ -57,7 +57,7 @@ async function main() {
 
 async function cagriBasla(client, channel, event) {
   const telefon = channel.caller && channel.caller.number ? channel.caller.number : null;
-  // sube_id dialplan'den arg olarak gelebilir: Stasis(santral-ai,SUBE=3)
+  // sube_id dialplan'den arg olarak gelebilir: Stasis(restaurant-santral-ai,SUBE=3)
   let subeId = cfg.laravel.defaultSubeId;
   const arg = (event.args || []).find((a) => /^SUBE=/i.test(a));
   if (arg) subeId = parseInt(arg.split('=')[1], 10) || subeId;

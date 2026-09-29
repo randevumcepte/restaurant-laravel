@@ -8,11 +8,11 @@
 ; Tek subeli:
 exten => s,1,NoOp(AI Santral cagri geldi: ${CALLERID(num)})
  same => n,Answer()
- same => n,Stasis(santral-ai)                 ; kopru bu app adini dinler (ARI_APP)
+ same => n,Stasis(restaurant-santral-ai)      ; kopru bu app adini dinler (ARI_APP ile AYNI olmali)
  same => n,Hangup()
 
 ; Coklu sube ornegi (sube_id'yi arg olarak gecir):
-; exten => s,1,Stasis(santral-ai,SUBE=3)
+; exten => s,1,Stasis(restaurant-santral-ai,SUBE=3)
 
 ; --- AI "insana aktar" dediginde kopru cagriyi buraya geri verir ---
 ; (index.js: continueInDialplan context=santral-aktar, exten=s)
@@ -26,5 +26,5 @@ exten => s,1,NoOp(AI -> gercek dahiliye aktariliyor)
 ; ARI originate ile kullanilir; buraya duserse AI karsilar:
 [santral-outbound]
 exten => s,1,Answer()
- same => n,Stasis(santral-ai,YON=outbound)
+ same => n,Stasis(restaurant-santral-ai,YON=outbound)
  same => n,Hangup()

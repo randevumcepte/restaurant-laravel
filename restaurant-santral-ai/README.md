@@ -3,7 +3,7 @@
 Asterisk (ARI **externalMedia**, Asterisk 16/17) ile Laravel beyni (`SantralAsistan`) arasindaki **canli ses koprusu**. Telefonu AI acar, Turkce konusur, rezervasyon/paket siparis alir, gerekince insana aktarir.
 
 ```
-Telefon -> Asterisk (Stasis/ARI) -> externalMedia (RTP) <-> [santral-ai] <-> Google STT
+Telefon -> Asterisk (Stasis/ARI) -> externalMedia (RTP) <-> [restaurant-santral-ai] <-> Google STT
                                                               |                    |
                                           Google TTS <--------+------> Laravel /api/santral/* (beyin)
 ```
@@ -29,12 +29,12 @@ node src/index.js       # ya da: npm start
 
 ## Asterisk ayari
 1. `asterisk/ari-http.conf.sample` -> `http.conf` + `ari.conf` (ARI'yi ac, kullanici/sifre `.env` ile ayni).
-2. `asterisk/extensions.conf.sample` -> gelen hatti `Stasis(santral-ai)` yap; `[santral-aktar]` context'inde gercek dahiliyeyi `Dial()` et.
+2. `asterisk/extensions.conf.sample` -> gelen hatti `Stasis(restaurant-santral-ai)` yap (ARI_APP ile AYNI); `[santral-aktar]` context'inde gercek dahiliyeyi `Dial()` et.
 3. `asterisk -rx "core reload"`.
 
 Kontrol:
 ```bash
-asterisk -rx "ari show apps"          # santral-ai gorunmeli (kopru calisirken)
+asterisk -rx "ari show apps"          # restaurant-santral-ai gorunmeli (kopru calisirken)
 asterisk -rx "module show like res_ari"
 ```
 
