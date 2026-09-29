@@ -9162,9 +9162,33 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
             $guncelle['sonuc'] = 'rezervasyon';
         } catch (\Throwable $e) { /* tablo/kolon farki: sessiz gec, cevap yine doner */ }
     } elseif ($res['aksiyon'] === 'siparis' && !empty($res['veri']['siparis'])) {
-        // Faz 4: adisyona donustur. Simdilik ham veriyi sakla.
-        $guncelle['siparis_veri'] = json_encode($res['veri']['siparis'], JSON_UNESCAPED_UNICODE);
+        // Faz 4: AI'nin aldigi paket siparisini GERCEK adisyona dusur (mevcut paket akisi: _paketSiparisAl).
+        $sp = $res['veri']['siparis'];
+        $guncelle['siparis_veri'] = json_encode($sp, JSON_UNESCAPED_UNICODE);
         $guncelle['sonuc'] = 'siparis';
+        if (function_exists('_paketSiparisAl')) {
+            try {
+                $sube = DB::table('subeler')->where('id', $o->sube_id)->first();
+                $kalemler = [];
+                foreach (($sp['kalemler'] ?? []) as $k) {
+                    $ad = trim((string) ($k['urun'] ?? $k['ad'] ?? ''));
+                    if ($ad === '') continue;
+                    $kalemler[] = ['ad' => $ad, 'adet' => max(1, (int) ($k['adet'] ?? 1))];
+                }
+                if ($sube && $kalemler) {
+                    $r2 = _paketSiparisAl($sube, [
+                        'platform' => 'telefon',
+                        'musteri' => [
+                            'ad' => trim((string) ($sp['ad'] ?? '')) ?: ('Telefon ' . trim((string) ($o->telefon ?? ''))),
+                            'telefon' => trim((string) ($sp['telefon'] ?? $o->telefon ?? '')),
+                            'adres' => trim((string) ($sp['adres'] ?? '')),
+                        ],
+                        'kalemler' => $kalemler,
+                    ]);
+                    if (!empty($r2['adisyon_id'])) $guncelle['adisyon_id'] = $r2['adisyon_id'];
+                }
+            } catch (\Throwable $e) { /* adisyon olusturulamadi: ham veri yine saklandi, cevap yine doner */ }
+        }
     } elseif ($res['aksiyon'] === 'aktar') {
         $guncelle['sonuc'] = 'aktar';
     }
