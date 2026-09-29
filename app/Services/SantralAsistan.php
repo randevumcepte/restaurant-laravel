@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * AI SANTRAL — telefonla arayan musteriye yanit veren yapay zeka gorevlisi.
  *
- * Akis: Asterisk -> santral-ai (Node kopru) -> STT metin -> BU BEYIN -> cevap metni (+aksiyon)
+ * Akis: Asterisk -> restaurant-santral-ai (Node kopru) -> STT metin -> BU BEYIN -> cevap metni (+aksiyon)
  *  -> TTS -> Asterisk. Bu sinif SADECE metin girer / metin+aksiyon dondurur (ses yok).
  *  Boylece Postman ile yazisarak da test edilebilir (Faz 1).
  *

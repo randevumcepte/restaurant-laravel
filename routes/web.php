@@ -8909,7 +8909,7 @@ Route::post('/api/barkod/ic-uret', function (Request $r) {
 });
 
 // ============================ AI SANTRAL (telefonla konusan yapay zeka) ============================
-// Kopru (Node santral-ai) bu uclari cagirir: STT metni gonderir, cevap+aksiyon alir.
+// Kopru (Node restaurant-santral-ai) bu uclari cagirir: STT metni gonderir, cevap+aksiyon alir.
 // Ses YOK; sadece metin. Postman ile de test edilebilir (Faz 1). Bkz: docs/ai-santral-mimari.md
 if (!function_exists('_santralEnsure')) {
     function _santralEnsure()

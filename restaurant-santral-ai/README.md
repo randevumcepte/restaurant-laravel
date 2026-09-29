@@ -1,4 +1,4 @@
-# santral-ai — ResteOS AI Santral kopru (Faz 2)
+# restaurant-santral-ai — ResteOS AI Santral kopru (Faz 2)
 
 Asterisk (ARI **externalMedia**, Asterisk 16/17) ile Laravel beyni (`SantralAsistan`) arasindaki **canli ses koprusu**. Telefonu AI acar, Turkce konusur, rezervasyon/paket siparis alir, gerekince insana aktarir.
 
@@ -19,11 +19,11 @@ Ses zinciri: **Google streaming STT + Haiku (mevcut beyin) + Google TTS** (secil
 
 ## Kurulum
 ```bash
-cd santral-ai
+cd restaurant-santral-ai
 npm install
 cp .env.example .env    # degerleri doldur
 # Google STT servis hesabi:
-#   export GOOGLE_APPLICATION_CREDENTIALS=/opt/santral-ai/google-stt.json  (veya .env)
+#   export GOOGLE_APPLICATION_CREDENTIALS=/opt/restaurant-santral-ai/google-stt.json  (veya .env)
 node src/index.js       # ya da: npm start
 ```
 

@@ -22,7 +22,7 @@ Elimizdekiler:
                                   │  ham ses (slin16, 8kHz) TCP
                                   ▼
                   ┌─────────────────────────────────────────────────────┐
-                  │        santral-ai  (yeni Node sidecar köprü)         │
+                  │   restaurant-santral-ai (yeni Node sidecar köprü)    │
                   │  1. AudioSocket sunucu (ses al/ver)                  │
                   │  2. VAD/barge-in (konuşunca AI'yı sustur)           │
                   │  3. Google STREAMING STT (tr-TR, telefon modeli 8k) │
@@ -89,9 +89,9 @@ Telefon personası kuralları (sistem promptu): kısa/net/sıcak Türkçe; TTS i
 
 ---
 
-## 4) Node köprü — santral-ai (yeni sidecar)
+## 4) Node köprü — restaurant-santral-ai (yeni sidecar)
 
-Klasör: `santral-ai/` (WhatsApp sidecar'larıyla aynı desen).
+Klasör: `restaurant-santral-ai/` (WhatsApp sidecar'larıyla aynı desen).
 Sorumluluklar:
 1. AudioSocket TCP sunucu (port 8090).
 2. Google **streaming** STT: `languageCode=tr-TR`, `model=phone_call`, `sampleRateHertz=8000`, `enableAutomaticPunctuation`, interim results.
@@ -130,8 +130,8 @@ Telefon sesi 8kHz dar bant → STT'de `phone_call` modeli, TTS'de 8kHz LINEAR16 
 > **Kullanıcı kararı (2026-09-29):** Asterisk **16/17** → ses köprüsü **ARI externalMedia** (AudioSocket değil). Köprü Asterisk ile **aynı sunucuda** (localhost RTP). Ses zinciri **A**: Google STT + Haiku + Google TTS.
 
 - **✅ Faz 1 — Beyin:** `SantralAsistan` + `/api/santral/*` + `santral_oturumlari` + `/santral-test` ekranı. (Ses olmadan, metinle test edilebilir — YAPILDI.)
-- **✅ Faz 2 — Köprü:** `santral-ai/` Node sidecar — **ARI externalMedia** + Google streaming STT + Google TTS + barge-in + RTP (ulaw@8k). (YAPILDI; `npm install` + gerçek çağrıyla saha testi kaldı.)
-- **Faz 3 — Asterisk:** `Stasis(santral-ai)` dialplan, gelen hat, `[santral-aktar]` ile insana aktarma. (Örnek konf. `santral-ai/asterisk/` altında hazır; sahada uygulanacak.)
+- **✅ Faz 2 — Köprü:** `restaurant-santral-ai/` Node sidecar — **ARI externalMedia** + Google streaming STT + Google TTS + barge-in + RTP (ulaw@8k). (YAPILDI; `npm install` + gerçek çağrıyla saha testi kaldı.)
+- **Faz 3 — Asterisk:** `Stasis(santral-ai)` dialplan (ARI app adı), gelen hat, `[santral-aktar]` ile insana aktarma. (Örnek konf. `restaurant-santral-ai/asterisk/` altında hazır; sahada uygulanacak.)
 - **Faz 4 — Aksiyonlar:** paket sipariş → `adisyon` dönüşümü + müşteri eşleştirme + outbound geri-arama (ARI originate). (Rezervasyon Faz 1'de bağlandı.)
 - **Faz 5 — Test & ince ayar:** gecikme, kesme, Türkçe telaffuz, gürültü; canlı pilot.
 
