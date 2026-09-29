@@ -1,5 +1,7 @@
 'use strict';
-require('dotenv').config();
+// .env'i HER ZAMAN proje kokunden oku (hangi dizinden calistirilirsa calistirilsin).
+// Aksi halde `node /opt/.../src/index.js` /root'tan calisinca .env bulunamaz.
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 
 function bool(v, def) {
   if (v === undefined || v === null || v === '') return def;
