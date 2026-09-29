@@ -4098,6 +4098,54 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $bugun = $ciroArasi($t0, $now);
     $dun = $ciroArasi((clone $t0)->subDay(), (clone $now)->subDay());
 
+    // === OZET PANELI (modern dashboard): 3 sabit donem karti + POS + masa durumu ===
+    $yzd = fn ($cur, $prev) => $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) : null;
+    $hafBasi = now()->startOfWeek();
+    $buHafta = $ciroArasi($hafBasi, $now);
+    $gHafta  = $ciroArasi((clone $hafBasi)->subWeek(), (clone $now)->subWeek());
+    $ayBasi  = now()->startOfMonth();
+    $buAy    = $ciroArasi($ayBasi, $now);
+    $gAy     = $ciroArasi((clone $ayBasi)->subMonthNoOverflow(), (clone $now)->subMonthNoOverflow());
+    $kartlar = [
+        'bugun' => ['ciro' => $bugun,   'yuzde' => $yzd($bugun, $dun),      'kiyas' => 'düne göre'],
+        'hafta' => ['ciro' => $buHafta, 'yuzde' => $yzd($buHafta, $gHafta), 'kiyas' => 'geçen haftaya göre'],
+        'ay'    => ['ciro' => $buAy,    'yuzde' => $yzd($buAy, $gAy),        'kiyas' => 'geçen aya göre'],
+    ];
+
+    // Toplam adisyon (acik + kapali) + ortalama
+    $toplamAdisyon = $acikAdet + $kapaliAdet;
+    $adisyonOrt = $toplamAdisyon > 0 ? round(($acikTutar + $kapaliTutar) / $toplamAdisyon) : 0;
+
+    // Servis turune gore ciro (Salon / Paket / Gel-Al)
+    $servisAd = ['salon' => 'Salon', 'masa' => 'Salon', 'qr' => 'Salon', 'paket' => 'Paket', 'kurye' => 'Paket',
+        'gelal' => 'Gel-Al', 'gel-al' => 'Gel-Al', 'tezgah' => 'Gel-Al', 'gel_al' => 'Gel-Al'];
+    $servisMap = ['Salon' => 0.0, 'Paket' => 0.0, 'Gel-Al' => 0.0];
+    foreach (DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
+        ->select('kanal', DB::raw('SUM(toplam) as tutar'))->groupBy('kanal')->get() as $s) {
+        $ad = $servisAd[strtolower((string) $s->kanal)] ?? 'Salon';
+        $servisMap[$ad] = ($servisMap[$ad] ?? 0) + (float) $s->tutar;
+    }
+    $servis = [];
+    foreach ($servisMap as $ad => $tt) $servis[] = ['ad' => $ad, 'tutar' => round($tt, 2)];
+
+    // Masa durumu + bekleyen masalar (acik adisyon suresine gore)
+    $masaToplam = DB::table('masalar')->where('sube_id', $p->sube_id)->count();
+    $doluMasalar = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->where('adisyonlar.durum', 'acik')->whereNotNull('adisyonlar.masa_id')
+        ->select('masalar.ad as masa_ad', 'adisyonlar.acilis')->get();
+    $masaDolu = $doluMasalar->count();
+    $masaMusait = max(0, $masaToplam - $masaDolu);
+    $doluluk = $masaToplam > 0 ? (int) round($masaDolu / $masaToplam * 100) : 0;
+    $bekleyen = $doluMasalar->map(fn ($a) => [
+        'ad' => $a->masa_ad ?: 'Masa',
+        'dk' => $a->acilis ? (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes() : 0,
+    ])->sortByDesc('dk')->take(6)->values();
+    $masa = [
+        'toplam' => $masaToplam, 'musait' => $masaMusait, 'dolu' => $masaDolu, 'doluluk' => $doluluk,
+        'yogunluk' => $doluluk >= 70 ? 'YOĞUN' : ($doluluk >= 35 ? 'NORMAL' : 'SAKİN'),
+        'bekleyen' => $bekleyen,
+    ];
+
     return [
         'ok' => 1,
         'patronAd' => $p->ad,
@@ -4109,6 +4157,10 @@ Route::get('/api/patron/ozet', function (Request $r) {
         'kapaliAdet' => $kapaliAdet, 'kapaliTutar' => $kapaliTutar,
         'maliyet' => round($toplamMaliyet, 2), 'maliyetYuzde' => $maliyetYuzde,
         'kayip' => $kayip,
+        // modern ozet paneli
+        'kartlar' => $kartlar,
+        'toplamAdisyon' => $toplamAdisyon, 'adisyonOrt' => $adisyonOrt,
+        'servis' => $servis, 'masa' => $masa,
         'odemeTipleri' => $odemeTipleri,
         'servisTipleri' => $servisTipleri,
         'gunluk' => $gunluk,
