@@ -36,6 +36,17 @@ async function konus(oturumId, metin) {
   return data;
 }
 
+// GET /api/santral/aktarma-hedef -> {aktif, dial, zil} (panelden yonetilen aktarma hedefi)
+async function aktarmaHedef(subeId) {
+  try {
+    const { data } = await http.get('/api/santral/aktarma-hedef', { params: { sube_id: subeId } });
+    return data;
+  } catch (e) {
+    log.warn('aktarma-hedef alinamadi:', e.message);
+    return { aktif: 0, dial: '', zil: 30 };
+  }
+}
+
 // POST /api/santral/bitir -> cagriyi cagri_loglari'na sonucla
 async function bitir(oturumId, ozet) {
   try {
@@ -47,4 +58,4 @@ async function bitir(oturumId, ozet) {
   }
 }
 
-module.exports = { baslat, konus, bitir };
+module.exports = { baslat, konus, bitir, aktarmaHedef };

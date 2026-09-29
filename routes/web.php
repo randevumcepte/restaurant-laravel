@@ -9224,6 +9224,84 @@ Route::get('/santral-test', function () {
     return response()->view('santral_test', ['subeId' => $subeId]);
 });
 
+// ---- AKTARMA AYARLARI (panelden yonetilir; Asterisk'e her seferinde dokunmadan) ----
+if (!function_exists('_santralAyarEnsure')) {
+    function _santralAyarEnsure()
+    {
+        if (!Schema::hasTable('santral_ayarlari')) {
+            Schema::create('santral_ayarlari', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->unique();
+                $t->boolean('aktarma_aktif')->default(1);
+                $t->string('hedef_tip', 10)->default('dahili');   // dahili | dis
+                $t->string('teknoloji', 10)->default('SIP');      // SIP | PJSIP
+                $t->string('numara', 40)->nullable();             // 101  veya  05xxxxxxxxx
+                $t->string('trunk', 60)->nullable();              // dis hat icin trunk adi (ops.)
+                $t->unsignedInteger('zil_sure')->default(30);
+                $t->timestamp('updated_at')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+    }
+}
+
+// Panelin girdigi ayardan Asterisk Dial hedef stringini kurar (SIP/101, PJSIP/101, SIP/trunk/05xx...)
+if (!function_exists('_santralDialKur')) {
+    function _santralDialKur($ay): string
+    {
+        if (!$ay) return '';
+        $tek = in_array($ay->teknoloji, ['SIP', 'PJSIP'], true) ? $ay->teknoloji : 'SIP';
+        $num = trim((string) ($ay->numara ?? ''));
+        if ($num === '') return '';
+        if (($ay->hedef_tip ?? 'dahili') === 'dis') {
+            $trunk = trim((string) ($ay->trunk ?? ''));
+            return $trunk !== '' ? "$tek/$trunk/$num" : "$tek/$num";
+        }
+        return "$tek/$num";
+    }
+}
+
+// Kopru bunu cagirir: "insana aktar" aninda hedefi panelden okur
+Route::match(['get', 'post'], '/api/santral/aktarma-hedef', function (Request $r) {
+    _santralAyarEnsure();
+    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
+    $dial = _santralDialKur($ay);
+    return response()->json([
+        'ok' => 1,
+        'aktif' => $ay ? (int) $ay->aktarma_aktif : 0,
+        'dial' => $dial,
+        'zil' => $ay ? (int) $ay->zil_sure : 30,
+    ], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Panel: aktarma ayar sayfasi
+Route::get('/santral-ayar', function () {
+    _santralAyarEnsure();
+    $subeId = (int) (request('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
+    return response()->view('santral_ayar', ['subeId' => $subeId, 'ay' => $ay, 'dial' => _santralDialKur($ay)]);
+});
+
+// Panel: aktarma ayar kaydet
+Route::post('/santral-ayar-kaydet', function (Request $r) {
+    _santralAyarEnsure();
+    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $veri = [
+        'aktarma_aktif' => $r->input('aktarma_aktif') ? 1 : 0,
+        'hedef_tip' => in_array($r->input('hedef_tip'), ['dahili', 'dis'], true) ? $r->input('hedef_tip') : 'dahili',
+        'teknoloji' => in_array($r->input('teknoloji'), ['SIP', 'PJSIP'], true) ? $r->input('teknoloji') : 'SIP',
+        'numara' => trim((string) $r->input('numara')) ?: null,
+        'trunk' => trim((string) $r->input('trunk')) ?: null,
+        'zil_sure' => max(5, min(120, (int) $r->input('zil_sure') ?: 30)),
+        'updated_at' => now(),
+    ];
+    $var = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
+    if ($var) DB::table('santral_ayarlari')->where('sube_id', $subeId)->update($veri);
+    else { $veri['sube_id'] = $subeId; $veri['created_at'] = now(); DB::table('santral_ayarlari')->insert($veri); }
+    return redirect('/santral-ayar?sube_id=' . $subeId . '&kaydedildi=1');
+});
+
 // ============================ TANITIM SITESI (herkese acik landing = ANA SAYFA) ============================
 // public/tanitim.html statik dosyasini sunar (Blade parse etmez; @media/@keyframes bozulmaz).
 // Dashboard artik /dashboard adresinde.

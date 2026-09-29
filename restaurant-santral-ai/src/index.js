@@ -12,6 +12,7 @@
 const ariClient = require('ari-client');
 const cfg = require('./config');
 const log = require('./log');
+const brain = require('./brain');
 const { CagriOturumu } = require('./session');
 
 // --- RTP port havuzu (cift portlar; RTP gelenegi) ---
@@ -37,7 +38,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-09-29c (menu tanitimi + aktarma kisitlandi + menu_adet teshis + cumle-cumle TTS, sessizlik ${cfg.sessizlikMs}ms)`);
+  log.info(`SURUM: 2026-09-29d (panelden aktarma hedefi + siparis->adisyon + kufur kurali + menu zekasi, sessizlik ${cfg.sessizlikMs}ms)`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
@@ -101,7 +102,7 @@ async function cagriBasla(client, channel, event) {
       telefon,
       subeId,
       rtpPort: port,
-      onAktar: (kid) => insanaAktar(client, kid),
+      onAktar: (kid) => insanaAktar(client, kid, subeId),
       onBitir: (kid) => cagriBitir(kid, 'veda'),
     });
 
@@ -114,14 +115,29 @@ async function cagriBasla(client, channel, event) {
   }
 }
 
-// "insana aktar": AI bacaklarini kapat, cagriyi dialplan'e geri ver (Dial ile dahiliye)
-async function insanaAktar(client, kanalId) {
+// "insana aktar": hedefi PANELDEN oku, Asterisk'e degisken olarak gecir, [santral-aktar]'a devret.
+// Dialplan tek satir: exten => s,1,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL}). Hedef hep panelden yonetilir.
+async function insanaAktar(client, kanalId, subeId) {
   const kayit = aktif.get(kanalId);
   log.info(`insana aktar: kanal=${kanalId}`);
   try {
+    // AI ses bacagini kapat (insan devralacak)
     if (kayit && kayit.extChan) { try { await kayit.extChan.hangup(); } catch (_) {} }
+
+    const hedef = await brain.aktarmaHedef(subeId);
     const ch = client.Channel(kanalId);
-    // Dialplan'de [santral-aktar] context'i Dial(PJSIP/101) yapar (bkz. sample)
+
+    if (!hedef || !hedef.aktif || !hedef.dial) {
+      log.warn(`aktarma hedefi panelde tanimli degil (sube ${subeId}) -> cagri kapaniyor. /santral-ayar'dan ayarlayin.`);
+      try { await ch.hangup(); } catch (_) {}
+      await temizle(kanalId, 'aktar', false);
+      return;
+    }
+
+    log.info(`aktarma hedefi: ${hedef.dial} (zil ${hedef.zil || 30}s)`);
+    // Asterisk kanal degiskenlerini panelden gelen degerlerle set et
+    try { await ch.setChannelVar({ variable: 'SANTRAL_HEDEF', value: String(hedef.dial) }); } catch (_) {}
+    try { await ch.setChannelVar({ variable: 'SANTRAL_ZIL', value: String(hedef.zil || 30) }); } catch (_) {}
     await ch.continueInDialplan({ context: 'santral-aktar', extension: 's', priority: 1 });
   } catch (e) {
     log.warn('aktarim hatasi:', e.message);

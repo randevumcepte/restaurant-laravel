@@ -15,11 +15,11 @@ exten => s,1,NoOp(AI Santral cagri geldi: ${CALLERID(num)})
 ; exten => s,1,Stasis(restaurant-santral-ai,SUBE=3)
 
 ; --- AI "insana aktar" dediginde kopru cagriyi buraya geri verir ---
-; (index.js: continueInDialplan context=santral-aktar, exten=s)
+; (index.js: SANTRAL_HEDEF + SANTRAL_ZIL degiskenlerini PANELDEN okuyup set eder, sonra buraya devreder)
+; HEDEFI DEGISTIRMEK ICIN ASTERISK'E DOKUNMA -> panel: /santral-ayar
 [santral-aktar]
-exten => s,1,NoOp(AI -> gercek dahiliye aktariliyor)
- same => n,Dial(PJSIP/101,30)                 ; restorandaki telefon/dahiliye
- same => n,VoiceMail(101@default,u)           ; cevaplanmazsa sesli mesaj (opsiyonel)
+exten => s,1,NoOp(AI -> aktarma hedefi: ${SANTRAL_HEDEF})
+ same => n,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL})   ; hedef+zil panelden gelir ( or. SIP/101 veya SIP/trunk/05xx)
  same => n,Hangup()
 
 ; --- (Opsiyonel) Kacan cagriyi AI'nin geri aramasi icin outbound ---
