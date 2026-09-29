@@ -6781,11 +6781,13 @@ Route::get('/api/patron/mesaideki-yoneticiler', function (Request $r) {
     if (Schema::hasTable('personel_mesai')) {
         $mesaide = DB::table('personeller as pe')->join('personel_mesai as m', 'm.personel_id', '=', 'pe.id')
             ->where('pe.sube_id', $p->sube_id)->whereIn('pe.rol', ['sahip', 'mudur'])->where('m.durum', 'acik')
+            ->where('pe.id', '!=', $p->id) // kendini seçemez (kendi işlemini onaylayamaz)
             ->select('pe.id', 'pe.ad', 'pe.rol')->distinct()->get();
     }
     $yedek = false;
     if ($mesaide->isEmpty()) {
-        $mesaide = DB::table('personeller')->where('sube_id', $p->sube_id)->whereIn('rol', ['sahip', 'mudur'])->get(['id', 'ad', 'rol']);
+        $mesaide = DB::table('personeller')->where('sube_id', $p->sube_id)->whereIn('rol', ['sahip', 'mudur'])
+            ->where('id', '!=', $p->id)->get(['id', 'ad', 'rol']);
         $yedek = true;
     }
     return ['ok' => 1, 'yedek' => $yedek, 'yoneticiler' => $mesaide->map(fn ($y) => ['id' => (int) $y->id, 'ad' => $y->ad, 'rol' => $y->rol])->values()];
@@ -6829,10 +6831,10 @@ Route::get('/api/patron/bekleyen-onaylar', function (Request $r) {
     if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 1, 'onaylar' => []];
     _onayEnsure();
     // Son 10 dk içindeki, bana ya da genel hedeflenen bekleyenler
+    // KENDİ isteği hariç TÜM yöneticiler görebilir (hedef tutmazsa takılmasın; ilk onaylayan geçerli).
     $liste = DB::table('onay_istekleri')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')
         ->where('created_at', '>=', now()->subMinutes(10))
-        ->where('isteyen_id', '!=', $p->id) // kişi KENDİ isteğini onaylayamaz
-        ->where(function ($q) use ($p) { $q->where('hedef_id', $p->id)->orWhereNull('hedef_id'); })
+        ->where('isteyen_id', '!=', $p->id)
         ->orderByDesc('id')->get();
     return ['ok' => 1, 'onaylar' => $liste->map(fn ($i) => [
         'id' => (int) $i->id, 'tip' => $i->tip, 'baslik' => $i->baslik, 'tutar' => $i->tutar !== null ? (float) $i->tutar : null,
