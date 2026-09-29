@@ -5945,18 +5945,20 @@ Route::get('/api/patron/hareketler', function (Request $r) {
     $limit = 800;
 
     $pAd = DB::table('personeller')->pluck('ad', 'id');
+    $pRol = DB::table('personeller')->pluck('rol', 'id');
     $hepsi = [];
-    $ekle = function ($zaman, $kategori, $baslik, $aciklama, $personelId, $tutar, $yon, $kt, $ki) use (&$hepsi) {
+    $ekle = function ($zaman, $kategori, $baslik, $aciklama, $personelId, $tutar, $yon, $kt, $ki, $ip = null, $yol = null) use (&$hepsi) {
         if (!$zaman) return;
         $hepsi[] = ['zaman' => (string) $zaman, 'kategori' => $kategori, 'baslik' => $baslik, 'aciklama' => $aciklama,
             'personel_id' => $personelId ? (int) $personelId : null, 'tutar' => $tutar !== null ? (float) $tutar : null,
-            'yon' => $yon, 'kaynak_tip' => $kt, 'kaynak_id' => $ki ? (int) $ki : null];
+            'yon' => $yon, 'kaynak_tip' => $kt, 'kaynak_id' => $ki ? (int) $ki : null,
+            'ip' => $ip ?: null, 'yol' => $yol ?: null];
     };
 
     // 1) Merkezi aktivite log (config/ayar/menu/recete/yetki/tema/giris...)
     try {
         foreach (DB::table('aktivite_loglari')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $a) {
-            $ekle($a->created_at, $a->kategori, $a->aksiyon, $a->aciklama, $a->personel_id, null, null, 'aktivite', $a->id);
+            $ekle($a->created_at, $a->kategori, $a->aksiyon, $a->aciklama, $a->personel_id, null, null, 'aktivite', $a->id, $a->ip ?? null, $a->yol ?? null);
         }
     } catch (\Throwable $e) {}
     // 2) Odemeler
@@ -6059,11 +6061,32 @@ Route::get('/api/patron/hareketler', function (Request $r) {
     $boyut = min(100, max(10, (int) ($r->boyut ?: 40)));
     $sayfa = max(1, (int) ($r->sayfa ?: 1));
     $dilim = array_slice($suz, ($sayfa - 1) * $boyut, $boyut);
+
+    // IP -> cihaz eşlemesi (kayıtlı/heartbeat cihazlar); kaynak (Kasa/Mobil) cihaz tipinden.
+    $cihazMap = [];
+    try {
+        foreach (DB::table('cihazlar')->where('sube_id', $sube)->whereNotNull('ip')->where('ip', '!=', '')->get(['ip', 'ad', 'tip', 'platform']) as $cz) {
+            if (!isset($cihazMap[$cz->ip])) $cihazMap[$cz->ip] = $cz;
+        }
+    } catch (\Throwable $e) {}
+    $kaynakAd = fn ($tip) => in_array($tip, ['bilgisayar', 'kds']) ? 'Kasa' : (in_array($tip, ['telefon', 'tablet', 'el_terminali']) ? 'Mobil' : 'Cihaz');
+    $hedefAd = ['adisyon' => 'Adisyon', 'masa' => 'Masa', 'malzeme' => 'Malzeme', 'cari' => 'Cari', 'kasa' => 'Kasa', 'personel' => 'Personel', 'gider' => 'Gider', 'fatura' => 'Fatura/Fiş'];
+
     foreach ($dilim as &$h) {
         $c = \Carbon\Carbon::parse($h['zaman']);
         $h['saat'] = $c->format('H:i'); $h['tarih'] = $c->format('d.m.Y'); $h['gun_key'] = $c->format('Y-m-d');
+        $h['zaman_tam'] = $c->format('d.m.Y H:i:s');
         $h['personel'] = $h['personel_id'] ? ($pAd[$h['personel_id']] ?? null) : null;
+        $rolK = $h['personel_id'] ? ($pRol[$h['personel_id']] ?? null) : null;
+        $h['rol'] = $rolK ? (['sahip' => 'Sahip', 'mudur' => 'Müdür', 'kasa' => 'Kasa', 'garson' => 'Garson'][$rolK] ?? ucfirst($rolK)) : null;
+        // Cihaz / kaynak (IP eşleşmesi varsa)
+        $cz = ($h['ip'] && isset($cihazMap[$h['ip']])) ? $cihazMap[$h['ip']] : null;
+        $h['cihaz'] = $cz ? $cz->ad : null;
+        $h['kaynak'] = $cz ? $kaynakAd($cz->tip) : ($h['ip'] ? 'Bilinmeyen cihaz' : null);
+        // Hedef (okunur)
+        $h['hedef'] = ($h['kaynak_tip'] && $h['kaynak_id']) ? (($hedefAd[$h['kaynak_tip']] ?? ucfirst((string) $h['kaynak_tip'])) . ' #' . $h['kaynak_id']) : null;
     }
+    unset($h);
 
     return ['ok' => 1, 'toplam' => $toplam, 'sayfa' => $sayfa, 'boyut' => $boyut,
         'ozet' => ['toplam' => $toplam, 'giris' => round($girisT), 'cikis' => round($cikisT), 'kategori' => $katSay],
