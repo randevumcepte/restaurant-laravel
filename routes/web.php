@@ -6036,6 +6036,18 @@ Route::get('/api/patron/hareketler', function (Request $r) {
             $ekle($a->acilis, 'satis', 'Adisyon iptal edildi', null, $a->acan_personel_id ?? null, $a->toplam ?? null, 'cikis', 'adisyon', $a->id);
         }
     } catch (\Throwable $e) {}
+    // 11) Masa loglari (tasi/birlestir/bol/garson devri)
+    try {
+        if (Schema::hasTable('adisyon_masa_loglari')) {
+            foreach (DB::table('adisyon_masa_loglari')->join('adisyonlar', 'adisyon_masa_loglari.adisyon_id', '=', 'adisyonlar.id')
+                ->where('adisyonlar.sube_id', $sube)->whereBetween('adisyon_masa_loglari.created_at', [$from, $to])
+                ->orderByDesc('adisyon_masa_loglari.id')->limit($limit)
+                ->get(['adisyon_masa_loglari.islem', 'adisyon_masa_loglari.created_at', 'adisyon_masa_loglari.personel_id', 'adisyon_masa_loglari.adisyon_id']) as $m) {
+                $etk = ['tasima' => 'Masa taşındı', 'birlestirme' => 'Masa birleştirildi', 'bolme' => 'Adisyon bölündü', 'garson_devri' => 'Garson devri'][$m->islem] ?? $m->islem;
+                $ekle($m->created_at, 'satis', $etk, null, $m->personel_id, null, null, 'adisyon', $m->adisyon_id);
+            }
+        }
+    } catch (\Throwable $e) {}
 
     // Filtre
     $suz = array_values(array_filter($hepsi, function ($h) use ($kategoriF, $kimF, $ara) {
@@ -8073,39 +8085,8 @@ Route::get('/api/patron/z-raporu', function (Request $r) {
     ];
 });
 
-// ---- HAREKETLER / AKTIVITE LOG (masa tasi/birlestir/bol + void/iskonto/ikram) ----
-Route::get('/api/patron/hareketler', function (Request $r) {
-    $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0], 401);
-    $out = [];
-    // Masa loglari
-    $masaLog = DB::table('adisyon_masa_loglari')->join('adisyonlar', 'adisyon_masa_loglari.adisyon_id', '=', 'adisyonlar.id')
-        ->where('adisyonlar.sube_id', $p->sube_id)
-        ->leftJoin('personeller', 'adisyon_masa_loglari.personel_id', '=', 'personeller.id')
-        ->select('adisyon_masa_loglari.islem', 'adisyon_masa_loglari.created_at', 'personeller.ad as personel',
-            'adisyon_masa_loglari.adisyon_id')
-        ->orderByDesc('adisyon_masa_loglari.created_at')->limit(60)->get();
-    foreach ($masaLog as $m) {
-        $etiket = ['tasima' => 'Masa Taşındı', 'birlestirme' => 'Masa Birleştirildi', 'bolme' => 'Adisyon Bölündü', 'garson_devri' => 'Garson Devri'][$m->islem] ?? $m->islem;
-        $out[] = ['tip' => $m->islem, 'baslik' => $etiket, 'personel' => $m->personel ?? '-', 'tutar' => null,
-            'zaman' => \Carbon\Carbon::parse($m->created_at)->format('d.m H:i'), 'ts' => $m->created_at, 'adisyon_id' => $m->adisyon_id];
-    }
-    // Void/iskonto/ikram loglari
-    $iLog = DB::table('iptal_indirim_loglari')->where('iptal_indirim_loglari.sube_id', $p->sube_id)
-        ->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
-        ->select('iptal_indirim_loglari.tip', 'iptal_indirim_loglari.tutar', 'iptal_indirim_loglari.sebep',
-            'iptal_indirim_loglari.created_at', 'personeller.ad as personel', 'iptal_indirim_loglari.adisyon_id')
-        ->orderByDesc('iptal_indirim_loglari.created_at')->limit(60)->get();
-    foreach ($iLog as $m) {
-        $etiket = ['void' => 'Ürün Silindi', 'indirim' => 'İskonto', 'ikram' => 'İkram'][$m->tip] ?? $m->tip;
-        $out[] = ['tip' => $m->tip, 'baslik' => $etiket . ($m->sebep ? ' · ' . $m->sebep : ''), 'personel' => $m->personel ?? '-',
-            'tutar' => (float) $m->tutar, 'zaman' => \Carbon\Carbon::parse($m->created_at)->format('d.m H:i'), 'ts' => $m->created_at, 'adisyon_id' => $m->adisyon_id];
-    }
-    usort($out, fn ($a, $b) => strcmp($b['ts'], $a['ts']));
-    $out = array_slice($out, 0, 80);
-    foreach ($out as &$o) unset($o['ts']);
-    return ['ok' => 1, 'hareketler' => $out];
-});
+// (Eski/basit hareketler route'u KALDIRILDI — zengin sürüm yukarıda /api/patron/hareketler @ ~5934.
+//  Çift tanım Laravel'de sonrakini aktif ediyordu; masa logları o zengin sürüme kaynak olarak eklendi.)
 
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
 // Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
