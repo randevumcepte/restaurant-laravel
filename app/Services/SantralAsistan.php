@@ -46,6 +46,24 @@ class SantralAsistan
             return ['cevap' => 'Buyurun, sizi dinliyorum.', 'aksiyon' => null, 'veri' => [], 'bitir' => false];
         }
 
+        // KUFUR / HAKARET -> once SAYGIYA DAVET; ayni cagride TEKRAR ederse gorusmeyi KAPAT.
+        // Kural motoru (bedava, LLM'siz); MusteriAsistan.kufurMu ile ayni tespit.
+        if ($this->kufurMu($ham)) {
+            $this->teshis = 'kufur';
+            $uyariVerildi = false;
+            foreach ($gecmis as $m) {
+                if (($m['role'] ?? '') === 'assistant'
+                    && mb_stripos((string) ($m['content'] ?? ''), 'saygıya davet') !== false) {
+                    $uyariVerildi = true;
+                    break;
+                }
+            }
+            if ($uyariVerildi) {
+                return ['cevap' => 'Maalesef bu şekilde devam edemeyeceğim, görüşmeyi burada sonlandırıyorum. İyi günler dilerim.', 'aksiyon' => 'veda', 'veri' => [], 'bitir' => true];
+            }
+            return ['cevap' => 'Efendim, sizi saygıya davet etmek istiyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi sonlandırmak zorunda kalacağım.', 'aksiyon' => null, 'veri' => [], 'bitir' => false];
+        }
+
         $apiKey = $this->apiKey();
         if (!$apiKey) {
             $this->teshis = 'anahtar_yok';
@@ -280,6 +298,37 @@ class SantralAsistan
         } catch (\Throwable $e) {
             return -2; // hata
         }
+    }
+
+    /** Genis kufur/hakaret tespiti (kelime sinirinda; sikayet/sikinti/malzeme gibi masum kelimeleri tetiklemez). MusteriAsistan ile ayni. */
+    protected function kufurMu($c)
+    {
+        $n = ' ' . $this->norm($c) . ' ';
+        $set = [
+            'amk', 'amq', 'aq', 'amina', 'aminako', 'amcik', 'amcigin', 'amina koyay', 'amina kodu', 'aminakoyum',
+            'anani sik', 'ananisik', 'anasini sik', 'avradini', 'avradina', 'avradinin', 'sulaleni', 'sulaleni sik', 'sikeyim seni',
+            'orospu', 'orospucocu', 'orospu cocu', 'o cocugu', 'pic ', 'picler', 'piclik', 'kahpe', 'kahpelik',
+            'surtuk', 'yavsak', 'yavsagi', 'pezevenk', 'gavat', 'godos', 'ibne', 'ibnelik', 'pust', 'kaltak', 'kevase',
+            'serefsiz', 'namussuz', 'sik tir', 'siktir', 'sikeyim', 'sikeym', 'sikik', 'sikko', 'sikici', 'siktigim', 'sikims', 'sikimde', 'sikimsonik',
+            'yarrak', 'yarrag', 'yarak', 'tasak', 'tasagi', 'gotveren', 'gotlek', 'gotunden', 'gotune koy',
+            'boktan', 'bokla', 'boklu', 'bok herif', 'bok cuval', 'sicayim', 'sicarim', 'osuruk',
+            'salak', 'aptal', 'gerizekali', 'gerzek', 'dangalak', 'denyo', 'embesil', 'ahmak', 'dallama', 'hoduk', 'mal herif', 'mal misin', 'defol', 'gebersin', 'geber',
+        ];
+        foreach ($set as $k) {
+            $kk = $this->norm($k);
+            if ($kk === '') continue;
+            if (preg_match('/(?:^| )' . preg_quote($kk, '/') . '/u', $n)) return true;
+        }
+        return false;
+    }
+
+    protected function norm($s)
+    {
+        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        $tr = ['ç' => 'c', 'ğ' => 'g', 'ı' => 'i', 'İ' => 'i', 'ö' => 'o', 'ş' => 's', 'ü' => 'u', 'â' => 'a', 'î' => 'i', 'û' => 'u'];
+        $s = strtr($s, $tr);
+        $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
+        return preg_replace('/\s+/', ' ', trim($s));
     }
 
     // -------------------- ANTHROPIC (RestoAsistan ile ayni kalip) --------------------
