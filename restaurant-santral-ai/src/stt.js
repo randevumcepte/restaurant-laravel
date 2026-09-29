@@ -26,33 +26,42 @@ class SttOturumu {
   }
 
   _istekConfig() {
-    return {
-      config: {
-        encoding: cfg.audio.sttEncoding,        // MULAW veya LINEAR16
-        sampleRateHertz: cfg.audio.sampleRate,  // 8000 / 16000
-        languageCode: cfg.stt.language,         // tr-TR
-        model: cfg.stt.model,                   // phone_call
-        useEnhanced: true,
-        enableAutomaticPunctuation: true,
-        maxAlternatives: 1,
-      },
-      interimResults: true,
+    const conf = {
+      encoding: cfg.audio.sttEncoding,        // MULAW veya LINEAR16
+      sampleRateHertz: cfg.audio.sampleRate,  // 8000 / 16000
+      languageCode: cfg.stt.language,         // tr-TR
+      enableAutomaticPunctuation: true,
+      maxAlternatives: 1,
     };
+    // ONEMLI: 'phone_call'/'video' gibi enhanced modeller cogu dilde SADECE en-* destekli.
+    // tr-TR ile model gonderirsek API hata verir -> hic sonuc donmez ("AI duymuyor").
+    // Bu yuzden modeli yalnizca en-* dillerde ekle; digerlerinde varsayilan modele birak.
+    const m = (cfg.stt.model || '').trim();
+    if (m && m !== 'default' && m !== 'auto') {
+      if (/^en/i.test(cfg.stt.language)) { conf.model = m; conf.useEnhanced = true; }
+      else if (!this._modelUyari) {
+        this._modelUyari = true;
+        log.warn(`STT model '${m}' ${cfg.stt.language} icin ATLANDI (enhanced modeller genelde en-* destekli) -> varsayilan model kullaniliyor`);
+      }
+    }
+    return { config: conf, interimResults: true };
   }
 
   _baslat() {
     if (this.kapali) return;
+    log.debug('STT akisi aciliyor…');
     this.stream = client
       .streamingRecognize(this._istekConfig())
       .on('error', (err) => {
-        // OutOfRange = sure/veri siniri -> sessizce yenile
+        // OutOfRange = sure/veri siniri -> hemen yenile (normal)
         if (String(err.message || '').includes('OUT_OF_RANGE') || err.code === 11) {
           log.debug('STT akisi yeniden baslatiliyor (sure siniri)');
-          this._yenile();
+          this._yenile(0);
           return;
         }
+        // Gercek hata (kimlik/model/kota vb.) -> GORUNUR logla, sonsuz sikilmis dongu olmasin diye bekle
         log.warn('STT hata:', err.message);
-        this._yenile();
+        this._yenile(1000);
       })
       .on('data', (data) => {
         const r = data.results && data.results[0];
@@ -64,14 +73,17 @@ class SttOturumu {
       });
 
     clearTimeout(this.yenilemeZ);
-    this.yenilemeZ = setTimeout(() => this._yenile(), AKIS_YENILEME_MS);
+    this.yenilemeZ = setTimeout(() => this._yenile(0), AKIS_YENILEME_MS);
   }
 
-  _yenile() {
+  _yenile(bekle) {
     const eski = this.stream;
     this.stream = null;
     if (eski) { try { eski.end(); } catch (_) {} }
-    if (!this.kapali) this._baslat();
+    if (this.kapali) return;
+    clearTimeout(this.yenilemeZ);
+    if (bekle && bekle > 0) this.yenilemeZ = setTimeout(() => this._baslat(), bekle);
+    else this._baslat();
   }
 
   // Asterisk'ten gelen ham ses karesi (RTP payload'i, header'siz)
