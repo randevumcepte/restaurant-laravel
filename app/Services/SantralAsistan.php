@@ -122,8 +122,11 @@ class SantralAsistan
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
         $p .= "PAKET SİPARİŞ için: ürün ve adetler (SADECE menüdeki ürünlerden, olmayan ürünü uydurma), teslimat adresi ve telefon. Tamamlanınca onay al ve santral_aksiyon aracını niyet=siparis, tamam=true ile çağır. ";
-        $p .= "Bilmediğin ya da emin olmadığın bir bilgi sorulursa (fiyat/uygunluk/özel istek) UYDURMA; 'sizi hemen yetkiliye bağlıyorum' deyip santral_aksiyon aracını niyet=aktar, tamam=true ile çağır. ";
-        $p .= "Müşteri teşekkür edip görüşme biterse kibarca veda et ve santral_aksiyon aracını niyet=veda, tamam=true ile çağır. ";
+        // Menu tanitimi: telefonda UZUN liste okuma; birkac one cikan urunu/kategoriyi kisaca soyle, sonra ne istedigini sor. ASLA aktarma.
+        $p .= "Müşteri 'neler var', 'menüde ne var', 'tanıtır mısın' gibi bir şey sorarsa: menüden EN FAZLA üç dört öne çıkan ürünü ya da ana yemek türlerini KISACA say (telefonda tüm listeyi okuma), sonra 'ne almak istersiniz?' diye sor. Bu durumda ASLA yetkiliye aktarma. ";
+        // Aktarma cok kisitli: sadece sikayet / menu disi cok ozel istek / cozemeyecegin durum. Menu, fiyat, siparis, rezervasyon icin ASLA aktarma.
+        $p .= "Yetkiliye aktarmayı SADECE şu durumlarda yap: ciddi şikayet, menüde hiç olmayan çok özel bir talep, ya da gerçekten çözemeyeceğin bir konu. Menü, fiyat, sipariş ve rezervasyon senin işin; bunlar için ASLA aktarma ve telefonu kapatma. Aktarırken santral_aksiyon niyet=aktar, tamam=true kullan. ";
+        $p .= "Müşteri açıkça vedalaşır ya da 'kapatabilirsin' derse kibarca veda et ve santral_aksiyon niyet=veda, tamam=true ile çağır. Aksi halde görüşmeyi sürdür, kendiliğinden kapatma. ";
         $p .= "'Buyurun' kelimesini tekrar tekrar kullanma. Sadece Türkçe konuş.";
 
         if ($adres) $p .= " Restoranın adresi: $adres.";
@@ -131,7 +134,7 @@ class SantralAsistan
 
         $menu = $this->menuOzeti();
         if ($menu) $p .= " Güncel menü (yalnızca bunları öner ve sat): " . $menu;
-        else $p .= " Menü bilgisi şu an sistemde yok; menü/fiyat sorulursa yetkiliye aktar.";
+        else $p .= " Menü listesi şu an elimde yok; yine de müşteriye ne yemek istediğini sor ve siparişini serbest metin olarak al, telefonu KAPATMA ve aktarma.";
 
         return $p;
     }
@@ -194,6 +197,19 @@ class SantralAsistan
             return implode('; ', $parcalar);
         } catch (\Throwable $e) {
             return '';
+        }
+    }
+
+    /** Teshis: bu sube icin kac aktif urun var (menu bos mu kontrolu). */
+    public function menuAdet(): int
+    {
+        try {
+            if (!Schema::hasTable('urunler')) return -1; // tablo yok
+            $q = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1);
+            if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
+            return (int) $q->count();
+        } catch (\Throwable $e) {
+            return -2; // hata
         }
     }
 

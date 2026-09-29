@@ -40,7 +40,8 @@ class CagriOturumu {
     try {
       const d = await brain.baslat(this.subeId, this.telefon, 'santral');
       this.oturumId = d.oturum_id;
-      log.info(`Oturum #${this.oturumId} basladi (kanal ${this.kanalId}, tel ${this.telefon || '-'})`);
+      log.info(`Oturum #${this.oturumId} basladi (kanal ${this.kanalId}, tel ${this.telefon || '-'}, sube ${d.sube_id ?? this.subeId}, menu ${d.menu_adet ?? '?'} urun)`);
+      if (d.menu_adet === 0) log.warn('DIKKAT: bu subede aktif urun YOK -> AI menuyu tanitamaz (DEFAULT_SUBE_ID dogru mu? urunler.aktif=1 mi?)');
       await this._seslendir(d.karsilama || 'Merhaba, size nasıl yardımcı olabilirim?');
     } catch (e) {
       log.error('Beyin baslat hatasi:', e.message);

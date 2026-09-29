@@ -9111,6 +9111,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
     $telefon = trim((string) $r->input('telefon'));
     $as = new \App\Services\SantralAsistan($subeId);
     $karsilama = $as->karsilama();
+    $menuAdet = $as->menuAdet(); // teshis: 0 ise bu subede aktif urun yok -> AI menuyu tanitamaz
     $oid = DB::table('santral_oturumlari')->insertGetId([
         'sube_id' => $subeId,
         'telefon' => $telefon ?: null,
@@ -9118,7 +9119,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         'durum' => 'acik',
         'created_at' => now(),
     ]);
-    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama], 200, [], JSON_UNESCAPED_UNICODE);
+    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // Musteri konustu -> cevap uret (+ tamamlanan aksiyonu isle)
