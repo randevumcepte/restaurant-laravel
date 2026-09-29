@@ -1,0 +1,21 @@
+{
+  "name": "santral-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ResteOS AI Santral — Asterisk (ARI externalMedia) <-> Google STT/TTS <-> Laravel beyin kopru",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^6.7.0",
+    "ari-client": "^2.2.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5"
+  }
+}

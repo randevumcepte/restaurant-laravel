@@ -1,0 +1,144 @@
+'use strict';
+// ResteOS AI Santral kopru — giris.
+// Asterisk (ARI, Asterisk 16/17) -> externalMedia (RTP) <-> bu kopru <-> Google STT/TTS + Laravel beyin.
+//
+// Akis:
+//  1) Dialplan: exten => s,1,Stasis(santral-ai)   (bkz. asterisk/extensions.conf.sample)
+//  2) StasisStart -> kanali cevapla, mixing bridge kur
+//  3) externalMedia kanali olustur (RTP'yi bu koprunun portuna yollar), bridge'e ekle
+//  4) CagriOturumu: RTP<->STT<->beyin<->TTS
+//  5) aksiyon 'aktar' -> kanali dialplan'e geri ver (Dial ile gercek dahiliye)
+//  6) hangup / veda -> temizle
+const ariClient = require('ari-client');
+const cfg = require('./config');
+const log = require('./log');
+const { CagriOturumu } = require('./session');
+
+// --- RTP port havuzu (cift portlar; RTP gelenegi) ---
+const kullanilan = new Set();
+function portAl() {
+  for (let i = 0; i < cfg.rtp.portCount; i++) {
+    const p = cfg.rtp.portBase + i * 2;
+    if (!kullanilan.has(p)) { kullanilan.add(p); return p; }
+  }
+  return null;
+}
+function portBirak(p) { kullanilan.delete(p); }
+
+// kanalId -> {oturum, bridge, extChan, port}
+const aktif = new Map();
+const extMediaKanallari = new Set(); // externalMedia bacaklarinin StasisStart'ini yok saymak icin
+
+async function main() {
+  if (!cfg.laravel.baseUrl) { log.error('LARAVEL_BASE_URL bos — .env ayarlayin'); process.exit(1); }
+
+  log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
+  const client = await ariClient.connect(cfg.ari.url, cfg.ari.user, cfg.ari.pass);
+
+  client.on('StasisStart', async (event, channel) => {
+    // externalMedia bacagi bize geri girer -> yok say
+    if (extMediaKanallari.has(channel.id) || /^UnicastRTP/.test(channel.name || '')) {
+      log.debug(`externalMedia bacagi StasisStart, atlaniyor: ${channel.name}`);
+      return;
+    }
+    await cagriBasla(client, channel, event);
+  });
+
+  client.on('StasisEnd', async (event, channel) => {
+    await cagriBitir(channel.id, 'kapandi');
+  });
+
+  process.on('SIGINT', async () => { log.info('kapaniyor…'); process.exit(0); });
+  process.on('SIGTERM', async () => process.exit(0));
+
+  await client.start(cfg.ari.app);
+  log.info('AI Santral kopru hazir. Cagri bekleniyor.');
+}
+
+async function cagriBasla(client, channel, event) {
+  const telefon = channel.caller && channel.caller.number ? channel.caller.number : null;
+  // sube_id dialplan'den arg olarak gelebilir: Stasis(santral-ai,SUBE=3)
+  let subeId = cfg.laravel.defaultSubeId;
+  const arg = (event.args || []).find((a) => /^SUBE=/i.test(a));
+  if (arg) subeId = parseInt(arg.split('=')[1], 10) || subeId;
+
+  const port = portAl();
+  if (port === null) {
+    log.error('Bos RTP portu yok — cagri reddediliyor');
+    try { await channel.hangup(); } catch (_) {}
+    return;
+  }
+
+  log.info(`Yeni cagri: kanal=${channel.id} tel=${telefon || '-'} sube=${subeId} rtpPort=${port}`);
+
+  try {
+    await channel.answer();
+
+    const bridge = client.Bridge();
+    await bridge.create({ type: 'mixing' });
+
+    // externalMedia kanali: sesi bu koprunun RTP portuna yollar (ve geri alir)
+    const extChan = client.Channel();
+    await extChan.externalMedia({
+      app: cfg.ari.app,
+      external_host: `${cfg.rtp.host}:${port}`,
+      format: cfg.mediaFormat === 'slin16' ? 'slin16' : 'ulaw',
+    });
+    extMediaKanallari.add(extChan.id);
+
+    await bridge.addChannel({ channel: [channel.id, extChan.id] });
+
+    const oturum = new CagriOturumu({
+      kanalId: channel.id,
+      telefon,
+      subeId,
+      rtpPort: port,
+      onAktar: (kid) => insanaAktar(client, kid),
+      onBitir: (kid) => cagriBitir(kid, 'veda'),
+    });
+
+    aktif.set(channel.id, { oturum, bridge, extChan, port });
+    await oturum.basla();
+  } catch (e) {
+    log.error('cagriBasla hatasi:', e.message);
+    portBirak(port);
+    try { await channel.hangup(); } catch (_) {}
+  }
+}
+
+// "insana aktar": AI bacaklarini kapat, cagriyi dialplan'e geri ver (Dial ile dahiliye)
+async function insanaAktar(client, kanalId) {
+  const kayit = aktif.get(kanalId);
+  log.info(`insana aktar: kanal=${kanalId}`);
+  try {
+    if (kayit && kayit.extChan) { try { await kayit.extChan.hangup(); } catch (_) {} }
+    const ch = client.Channel(kanalId);
+    // Dialplan'de [santral-aktar] context'i Dial(PJSIP/101) yapar (bkz. sample)
+    await ch.continueInDialplan({ context: 'santral-aktar', extension: 's', priority: 1 });
+  } catch (e) {
+    log.warn('aktarim hatasi:', e.message);
+  }
+  // Oturumu temizle ama kanali kapatma (insan devam edecek)
+  await temizle(kanalId, 'aktar', /*kanaliKapatma*/ true);
+}
+
+async function cagriBitir(kanalId, sonuc) {
+  const kayit = aktif.get(kanalId);
+  if (!kayit) return;
+  try {
+    const ch = kayit.oturum && kayit.oturum.kanalId;
+    // kanal hala aciksa kapat
+  } catch (_) {}
+  await temizle(kanalId, sonuc, false);
+}
+
+async function temizle(kanalId, sonuc, kanaliKapatma) {
+  const kayit = aktif.get(kanalId);
+  if (!kayit) return;
+  aktif.delete(kanalId);
+  try { if (kayit.oturum) await kayit.oturum.kapat(sonuc); } catch (_) {}
+  try { if (kayit.bridge) await kayit.bridge.destroy(); } catch (_) {}
+  portBirak(kayit.port);
+}
+
+main().catch((e) => { log.error('KRITIK:', e.message); process.exit(1); });

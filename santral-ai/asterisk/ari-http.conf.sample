@@ -1,0 +1,27 @@
+; =====================================================================
+;  Asterisk ARI acma — bu koprunun baglanabilmesi icin
+;  Iki dosyayi da duzenleyip: asterisk -rx "core reload"
+; =====================================================================
+
+; ---------- /etc/asterisk/http.conf ----------
+[general]
+enabled = yes
+bindaddr = 127.0.0.1        ; kopru ayni sunucuda -> sadece localhost (guvenli)
+bindport = 8088
+
+; ---------- /etc/asterisk/ari.conf ----------
+[general]
+enabled = yes
+pretty = yes
+; allowed_origins = *       ; gerek yoksa acmayin
+
+[santral]                   ; ARI_USER
+    type = user
+    read_only = no
+    password = degistir-bu-sifreyi   ; ARI_PASS (.env ile ayni olmali)
+
+; Not (Asterisk 16/17):
+;  - externalMedia icin modul: res_ari_channels + chan_rtp (UnicastRTP) yuklu olmali
+;    Kontrol: asterisk -rx "module show like res_ari"
+;             asterisk -rx "core show channeltypes" | grep -i rtp
+;  - externalMedia Asterisk 16.6+ ile gelir; daha eski 16.x'te yoksa 16.6+ / 17'ye guncelleyin.

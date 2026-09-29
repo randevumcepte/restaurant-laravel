@@ -192,7 +192,7 @@ if (!function_exists('_okcFisBas')) {
     }
 }
 
-Route::get('/', function () {
+Route::get('/dashboard', function () {
     // Migration/seed henuz yoksa kurulum ekrani goster (deploy sirasi patlamasin)
     if (!Schema::hasTable('adisyonlar') || DB::table('subeler')->count() === 0) {
         return view('kurulum');
@@ -8906,5 +8906,136 @@ Route::post('/api/barkod/ic-uret', function (Request $r) {
         }
     }
     return ['ok' => 0, 'hata' => 'Üretilemedi, tekrar dene'];
+});
+
+// ============================ AI SANTRAL (telefonla konusan yapay zeka) ============================
+// Kopru (Node santral-ai) bu uclari cagirir: STT metni gonderir, cevap+aksiyon alir.
+// Ses YOK; sadece metin. Postman ile de test edilebilir (Faz 1). Bkz: docs/ai-santral-mimari.md
+if (!function_exists('_santralEnsure')) {
+    function _santralEnsure()
+    {
+        if (!Schema::hasTable('santral_oturumlari')) {
+            Schema::create('santral_oturumlari', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id');
+                $t->string('telefon', 30)->nullable();
+                $t->unsignedBigInteger('musteri_id')->nullable();
+                $t->longText('gecmis')->nullable();               // JSON [{role,content},...]
+                $t->string('durum', 15)->default('acik');         // acik | kapandi
+                $t->string('sonuc', 20)->nullable();              // rezervasyon | siparis | aktar | bilgi | kacan
+                $t->unsignedBigInteger('rezervasyon_id')->nullable();
+                $t->unsignedBigInteger('adisyon_id')->nullable();
+                $t->longText('siparis_veri')->nullable();         // Faz 4: adisyona donusecek ham veri (JSON)
+                $t->timestamp('created_at')->useCurrent();
+                $t->timestamp('updated_at')->nullable();
+                $t->index(['sube_id', 'durum']);
+            });
+        }
+    }
+}
+
+// Cagri acildi -> oturum baslat + karsilama metni dondur
+Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
+    _santralEnsure();
+    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $telefon = trim((string) $r->input('telefon'));
+    $as = new \App\Services\SantralAsistan($subeId);
+    $karsilama = $as->karsilama();
+    $oid = DB::table('santral_oturumlari')->insertGetId([
+        'sube_id' => $subeId,
+        'telefon' => $telefon ?: null,
+        'gecmis' => json_encode([['role' => 'assistant', 'content' => $karsilama]], JSON_UNESCAPED_UNICODE),
+        'durum' => 'acik',
+        'created_at' => now(),
+    ]);
+    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Musteri konustu -> cevap uret (+ tamamlanan aksiyonu isle)
+Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
+    _santralEnsure();
+    $oid = (int) $r->input('oturum_id');
+    $metin = (string) $r->input('metin');
+    $o = DB::table('santral_oturumlari')->where('id', $oid)->first();
+    if (!$o) return response()->json(['ok' => 0, 'hata' => 'oturum_yok'], 404, [], JSON_UNESCAPED_UNICODE);
+
+    $gecmis = json_decode($o->gecmis ?: '[]', true) ?: [];
+    $as = new \App\Services\SantralAsistan($o->sube_id);
+    $res = $as->konus($metin, $gecmis);
+
+    // gecmise ekle
+    $gecmis[] = ['role' => 'user', 'content' => trim($metin)];
+    $gecmis[] = ['role' => 'assistant', 'content' => $res['cevap']];
+    if (count($gecmis) > 40) $gecmis = array_slice($gecmis, -40);
+
+    $guncelle = ['gecmis' => json_encode($gecmis, JSON_UNESCAPED_UNICODE), 'updated_at' => now()];
+
+    // Tamamlanan aksiyonu isle
+    if ($res['aksiyon'] === 'rezervasyon' && !empty($res['veri']['rezervasyon'])) {
+        $rz = $res['veri']['rezervasyon'];
+        if (function_exists('_rezervasyonEnsure')) _rezervasyonEnsure($o->sube_id);
+        try {
+            $rid = DB::table('rezervasyonlar')->insertGetId([
+                'sube_id' => $o->sube_id,
+                'ad' => trim((string) ($rz['ad'] ?? 'Telefon müşterisi')),
+                'telefon' => trim((string) ($rz['telefon'] ?? $o->telefon ?? '')) ?: null,
+                'kisi' => max(1, (int) ($rz['kisi'] ?? 2)),
+                'tarih' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($rz['tarih'] ?? '')) ? $rz['tarih'] : now()->format('Y-m-d'),
+                'saat' => preg_match('/^\d{1,2}:\d{2}$/', (string) ($rz['saat'] ?? '')) ? $rz['saat'] : '19:00',
+                'durum' => 'bekliyor',
+                'kaynak' => 'telefon',
+                'not' => 'AI Santral',
+                'created_at' => now(),
+            ]);
+            $guncelle['rezervasyon_id'] = $rid;
+            $guncelle['sonuc'] = 'rezervasyon';
+        } catch (\Throwable $e) { /* tablo/kolon farki: sessiz gec, cevap yine doner */ }
+    } elseif ($res['aksiyon'] === 'siparis' && !empty($res['veri']['siparis'])) {
+        // Faz 4: adisyona donustur. Simdilik ham veriyi sakla.
+        $guncelle['siparis_veri'] = json_encode($res['veri']['siparis'], JSON_UNESCAPED_UNICODE);
+        $guncelle['sonuc'] = 'siparis';
+    } elseif ($res['aksiyon'] === 'aktar') {
+        $guncelle['sonuc'] = 'aktar';
+    }
+    if ($res['bitir']) $guncelle['durum'] = 'kapandi';
+
+    DB::table('santral_oturumlari')->where('id', $oid)->update($guncelle);
+
+    return response()->json([
+        'ok' => 1,
+        'cevap' => $res['cevap'],
+        'aksiyon' => $res['aksiyon'],
+        'bitir' => $res['bitir'],
+        'teshis' => $as->teshis,
+    ], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Cagri kapandi -> oturumu kapat
+Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
+    _santralEnsure();
+    $oid = (int) $r->input('oturum_id');
+    $sonuc = trim((string) $r->input('sonuc'));
+    $upd = ['durum' => 'kapandi', 'updated_at' => now()];
+    $o = DB::table('santral_oturumlari')->where('id', $oid)->first();
+    if ($o && !$o->sonuc) $upd['sonuc'] = $sonuc ?: 'bilgi';
+    DB::table('santral_oturumlari')->where('id', $oid)->update($upd);
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// TARAYICI TEST — ses/Asterisk olmadan AI Santral ile yazisarak dene
+Route::get('/santral-test', function () {
+    _santralEnsure();
+    $subeId = (int) (request('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    return response()->view('santral_test', ['subeId' => $subeId]);
+});
+
+// ============================ TANITIM SITESI (herkese acik landing = ANA SAYFA) ============================
+// public/tanitim.html statik dosyasini sunar (Blade parse etmez; @media/@keyframes bozulmaz).
+// Dashboard artik /dashboard adresinde.
+Route::get('/', function () {
+    return response()->file(public_path('tanitim.html'));
+});
+Route::get('/tanitim', function () {
+    return response()->file(public_path('tanitim.html'));
 });
 

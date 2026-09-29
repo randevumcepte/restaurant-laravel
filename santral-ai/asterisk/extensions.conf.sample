@@ -1,0 +1,30 @@
+; =====================================================================
+;  ResteOS AI Santral — Asterisk 16/17 dialplan ornegi
+;  /etc/asterisk/extensions.conf icine uyarlayin (context adlarina dikkat)
+; =====================================================================
+
+; --- Gelen restoran hatti: cagriyi AI Santral (Stasis/ARI) uygulamasina ver ---
+[gelen-restoran]
+; Tek subeli:
+exten => s,1,NoOp(AI Santral cagri geldi: ${CALLERID(num)})
+ same => n,Answer()
+ same => n,Stasis(santral-ai)                 ; kopru bu app adini dinler (ARI_APP)
+ same => n,Hangup()
+
+; Coklu sube ornegi (sube_id'yi arg olarak gecir):
+; exten => s,1,Stasis(santral-ai,SUBE=3)
+
+; --- AI "insana aktar" dediginde kopru cagriyi buraya geri verir ---
+; (index.js: continueInDialplan context=santral-aktar, exten=s)
+[santral-aktar]
+exten => s,1,NoOp(AI -> gercek dahiliye aktariliyor)
+ same => n,Dial(PJSIP/101,30)                 ; restorandaki telefon/dahiliye
+ same => n,VoiceMail(101@default,u)           ; cevaplanmazsa sesli mesaj (opsiyonel)
+ same => n,Hangup()
+
+; --- (Opsiyonel) Kacan cagriyi AI'nin geri aramasi icin outbound ---
+; ARI originate ile kullanilir; buraya duserse AI karsilar:
+[santral-outbound]
+exten => s,1,Answer()
+ same => n,Stasis(santral-ai,YON=outbound)
+ same => n,Hangup()
