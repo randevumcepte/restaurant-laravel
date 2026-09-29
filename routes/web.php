@@ -6679,6 +6679,186 @@ Route::post('/api/patron/odeme-geri-al', function (Request $r) {
     return ['ok' => 1, 'mesaj' => number_format($ode->tutar, 0, ',', '.') . 'TL ' . $ode->tip . ' ödeme geri alındı.'];
 });
 
+// ============ YÖNETİCİ ONAY SİSTEMİ (iskonto/ikram/iptal/ödeme geri al) ============
+// Kasiyer riskli işlemi yapmak isteyince mesaideki yöneticiye onay isteği gider;
+// yönetici KENDİ cihazından onaylar (PIN kasada girilmez, ezberlenemez). PIN yedek kalır.
+if (!function_exists('_onayEnsure')) {
+    function _onayEnsure()
+    {
+        if (Schema::hasTable('onay_istekleri')) return;
+        Schema::create('onay_istekleri', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->string('tip', 30);                 // iskonto | ikram | iptal | odeme_geri_al
+            $t->unsignedBigInteger('adisyon_id')->nullable();
+            $t->unsignedBigInteger('ref_id')->nullable(); // odeme_id vb.
+            $t->decimal('tutar', 12, 2)->nullable();
+            $t->decimal('oran', 6, 2)->nullable();
+            $t->text('kalem_idler')->nullable();
+            $t->string('baslik', 220)->nullable();
+            $t->unsignedBigInteger('isteyen_id')->nullable();
+            $t->string('isteyen_ad')->nullable();
+            $t->unsignedBigInteger('hedef_id')->nullable();   // onaylaması istenen yönetici
+            $t->string('durum', 15)->default('bekliyor');     // bekliyor | onaylandi | reddedildi
+            $t->unsignedBigInteger('onaylayan_id')->nullable();
+            $t->string('onaylayan_ad')->nullable();
+            $t->text('sonuc')->nullable();
+            $t->timestamp('created_at')->nullable();
+            $t->timestamp('updated_at')->nullable();
+            $t->index(['sube_id', 'durum']);
+            $t->index(['hedef_id', 'durum']);
+        });
+    }
+}
+
+// Onaylanan isteği SUNUCUDA yürütür (yöneticinin onayı = yetki). [ok, mesaj] döner.
+if (!function_exists('_onayEylemUygula')) {
+    function _onayEylemUygula($istek, $onaylayanId, $subeId)
+    {
+        $a = $istek->adisyon_id ? DB::table('adisyonlar')->find($istek->adisyon_id) : null;
+
+        if ($istek->tip === 'odeme_geri_al') {
+            $ode = DB::table('odemeler')->where('id', (int) $istek->ref_id)->first();
+            if (!$ode) return [false, 'Ödeme bulunamadı.'];
+            $a = DB::table('adisyonlar')->find($ode->adisyon_id);
+            DB::table('odemeler')->where('id', $ode->id)->delete();
+            if ($ode->tip === 'nakit') _kasaYaz($subeId, 'satis', 'cikis', (float) $ode->tutar, 'Ödeme geri alındı · adisyon #' . ($a->id ?? ''), 'adisyon', $a->id ?? null, $onaylayanId);
+            if (Schema::hasColumn('odemeler', 'kalem_ids') && $ode->kalem_ids) {
+                $kids = json_decode($ode->kalem_ids, true);
+                if (is_array($kids) && $kids) DB::table('adisyon_kalemleri')->whereIn('id', $kids)->update(['odeme_durum' => 'acik', 'updated_at' => now()]);
+            }
+            if ($a && $a->durum === 'odendi') {
+                DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'acik', 'kapanis' => null]);
+                if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
+            }
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id ?? null, 'tip' => 'odeme_iptal', 'tutar' => (float) $ode->tutar, 'sebep' => 'Ödeme geri alındı (' . $ode->tip . ')', 'personel_id' => $onaylayanId, 'created_at' => now()]);
+            return [true, number_format($ode->tutar, 0, ',', '.') . 'TL ' . $ode->tip . ' ödeme geri alındı.'];
+        }
+
+        if (!$a || $a->durum !== 'acik') return [false, 'Adisyon uygun durumda değil.'];
+
+        if ($istek->tip === 'iskonto') {
+            $oran = max(0, min(100, (float) $istek->oran));
+            $indirim = round((float) $a->ara_toplam * $oran / 100, 2);
+            $yeni = max(0, (float) $a->ara_toplam - $indirim - (float) $a->ikram);
+            DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $indirim, 'toplam' => $yeni]);
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'indirim', 'tutar' => $indirim, 'sebep' => '%' . round($oran) . ' iskonto (yönetici onayı)', 'personel_id' => $onaylayanId, 'created_at' => now()]);
+            return [true, '%' . round($oran) . ' iskonto uygulandı (' . number_format($indirim, 0, ',', '.') . 'TL).'];
+        }
+
+        if ($istek->tip === 'ikram') {
+            $ids = array_values(array_filter(array_map('intval', explode(',', (string) $istek->kalem_idler))));
+            if (!empty($ids)) {
+                $secili = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $ids)->where('durum', '!=', 'iptal')->get(['urun_adi', 'tutar']);
+                $tutar = (float) $secili->sum('tutar');
+            } else {
+                $tutar = max(0, (float) $istek->tutar);
+            }
+            if ($tutar <= 0) return [false, 'İkram tutarı geçersiz.'];
+            if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
+            $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
+            DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'ikram', 'tutar' => $tutar, 'sebep' => 'İkram (yönetici onayı)', 'personel_id' => $onaylayanId, 'created_at' => now()]);
+            return [true, number_format($tutar, 0, ',', '.') . 'TL ikram uygulandı.'];
+        }
+
+        if ($istek->tip === 'iptal') {
+            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'iptal']);
+            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'void', 'tutar' => (float) $a->toplam, 'sebep' => 'Adisyon iptal (yönetici onayı)', 'personel_id' => $onaylayanId, 'created_at' => now()]);
+            return [true, 'Adisyon iptal edildi, masa boşaltıldı.'];
+        }
+
+        return [false, 'Bilinmeyen işlem.'];
+    }
+}
+
+// O an MESAİDEKİ yöneticiler (onay isteği göndermek için). Yoksa tüm yöneticiler (yedek).
+Route::get('/api/patron/mesaideki-yoneticiler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $mesaide = collect();
+    if (Schema::hasTable('personel_mesai')) {
+        $mesaide = DB::table('personeller as pe')->join('personel_mesai as m', 'm.personel_id', '=', 'pe.id')
+            ->where('pe.sube_id', $p->sube_id)->whereIn('pe.rol', ['sahip', 'mudur'])->where('m.durum', 'acik')
+            ->select('pe.id', 'pe.ad', 'pe.rol')->distinct()->get();
+    }
+    $yedek = false;
+    if ($mesaide->isEmpty()) {
+        $mesaide = DB::table('personeller')->where('sube_id', $p->sube_id)->whereIn('rol', ['sahip', 'mudur'])->get(['id', 'ad', 'rol']);
+        $yedek = true;
+    }
+    return ['ok' => 1, 'yedek' => $yedek, 'yoneticiler' => $mesaide->map(fn ($y) => ['id' => (int) $y->id, 'ad' => $y->ad, 'rol' => $y->rol])->values()];
+});
+
+// Onay isteği oluştur (kasiyer) — yöneticiye düşer.
+Route::post('/api/patron/onay-iste', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _onayEnsure();
+    $tip = in_array($r->tip, ['iskonto', 'ikram', 'iptal', 'odeme_geri_al']) ? $r->tip : null;
+    if (!$tip) return ['ok' => 0, 'hata' => 'Geçersiz işlem tipi.'];
+    $id = DB::table('onay_istekleri')->insertGetId([
+        'sube_id' => $p->sube_id, 'tip' => $tip,
+        'adisyon_id' => $r->adisyon_id ? (int) $r->adisyon_id : null,
+        'ref_id' => $r->ref_id ? (int) $r->ref_id : null,
+        'tutar' => $r->tutar !== null ? (float) $r->tutar : null,
+        'oran' => $r->oran !== null ? (float) $r->oran : null,
+        'kalem_idler' => $r->kalem_idler ?: null,
+        'baslik' => mb_substr((string) $r->baslik, 0, 220),
+        'isteyen_id' => $p->id, 'isteyen_ad' => $p->ad,
+        'hedef_id' => $r->hedef_id ? (int) $r->hedef_id : null,
+        'durum' => 'bekliyor', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'istek_id' => $id];
+});
+
+// Onay durumu (kasiyer yoklar).
+Route::get('/api/patron/onay-durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _onayEnsure();
+    $i = DB::table('onay_istekleri')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->first();
+    if (!$i) return ['ok' => 0, 'hata' => 'İstek bulunamadı.'];
+    return ['ok' => 1, 'durum' => $i->durum, 'sonuc' => $i->sonuc, 'onaylayan' => $i->onaylayan_ad];
+});
+
+// Bekleyen onaylar (yönetici yoklar — kendisine düşenler).
+Route::get('/api/patron/bekleyen-onaylar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 1, 'onaylar' => []];
+    _onayEnsure();
+    // Son 10 dk içindeki, bana ya da genel hedeflenen bekleyenler
+    $liste = DB::table('onay_istekleri')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')
+        ->where('created_at', '>=', now()->subMinutes(10))
+        ->where(function ($q) use ($p) { $q->where('hedef_id', $p->id)->orWhereNull('hedef_id'); })
+        ->orderByDesc('id')->get();
+    return ['ok' => 1, 'onaylar' => $liste->map(fn ($i) => [
+        'id' => (int) $i->id, 'tip' => $i->tip, 'baslik' => $i->baslik, 'tutar' => $i->tutar !== null ? (float) $i->tutar : null,
+        'isteyen' => $i->isteyen_ad, 'saat' => \Carbon\Carbon::parse($i->created_at)->format('H:i'),
+    ])->values()];
+});
+
+// Onay cevabı (yönetici onaylar/reddeder) — onaylandıysa eylemi SUNUCUDA yürütür.
+Route::post('/api/patron/onay-cevap', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 0, 'hata' => 'Yetkisiz'];
+    _onayEnsure();
+    $i = DB::table('onay_istekleri')->where('id', (int) $r->istek_id)->where('sube_id', $p->sube_id)->first();
+    if (!$i) return ['ok' => 0, 'hata' => 'İstek bulunamadı.'];
+    if ($i->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Bu istek zaten yanıtlandı.'];
+    if ($r->cevap === 'red') {
+        DB::table('onay_istekleri')->where('id', $i->id)->update(['durum' => 'reddedildi', 'onaylayan_id' => $p->id, 'onaylayan_ad' => $p->ad, 'updated_at' => now()]);
+        return ['ok' => 1, 'durum' => 'reddedildi'];
+    }
+    [$ok, $mesaj] = _onayEylemUygula($i, $p->id, $p->sube_id);
+    DB::table('onay_istekleri')->where('id', $i->id)->update([
+        'durum' => $ok ? 'onaylandi' : 'reddedildi', 'onaylayan_id' => $p->id, 'onaylayan_ad' => $p->ad,
+        'sonuc' => $mesaj, 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'durum' => $ok ? 'onaylandi' : 'reddedildi', 'mesaj' => $mesaj];
+});
+
 // MASA AC: bos masaya yeni (bos) adisyon acar. Yetki: adisyon_ac (sahip hep).
 Route::post('/api/patron/masa-ac', function (Request $r) {
     $p = _apiPersonel($r);
