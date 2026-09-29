@@ -33,15 +33,24 @@ class SttOturumu {
       enableAutomaticPunctuation: true,
       maxAlternatives: 1,
     };
-    // ONEMLI: 'phone_call'/'video' gibi enhanced modeller cogu dilde SADECE en-* destekli.
-    // tr-TR ile model gonderirsek API hata verir -> hic sonuc donmez ("AI duymuyor").
-    // Bu yuzden modeli yalnizca en-* dillerde ekle; digerlerinde varsayilan modele birak.
-    const m = (cfg.stt.model || '').trim();
-    if (m && m !== 'default' && m !== 'auto') {
-      if (/^en/i.test(cfg.stt.language)) { conf.model = m; conf.useEnhanced = true; }
-      else if (!this._modelUyari) {
-        this._modelUyari = true;
-        log.warn(`STT model '${m}' ${cfg.stt.language} icin ATLANDI (enhanced modeller genelde en-* destekli) -> varsayilan model kullaniliyor`);
+    // Model secimi:
+    //  - 'latest_long','latest_short','default','command_and_search' -> COK DILLI (tr-TR dahil), her dilde gonder
+    //  - 'phone_call','video' -> enhanced, cogu dilde SADECE en-* destekli; tr-TR'de gonderirsek API hata verir
+    //    -> hic sonuc donmez ("AI duymuyor"). Bu yuzden en-* disi dillerde ATLA.
+    const m = (cfg.stt.model || '').trim().toLowerCase();
+    const cokDilli = ['latest_long', 'latest_short', 'default', 'command_and_search'];
+    const sadeceEn = ['phone_call', 'video'];
+    if (m && m !== 'auto') {
+      if (cokDilli.includes(m)) {
+        conf.model = m;
+      } else if (sadeceEn.includes(m)) {
+        if (/^en/i.test(cfg.stt.language)) { conf.model = m; conf.useEnhanced = true; }
+        else if (!this._modelUyari) {
+          this._modelUyari = true;
+          log.warn(`STT model '${m}' ${cfg.stt.language} icin ATLANDI (enhanced modeller genelde en-* destekli). Oneri: STT_MODEL=latest_long`);
+        }
+      } else {
+        conf.model = m; // bilinmeyen -> oldugu gibi dene
       }
     }
     return { config: conf, interimResults: true };

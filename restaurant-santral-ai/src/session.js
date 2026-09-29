@@ -41,10 +41,10 @@ class CagriOturumu {
       const d = await brain.baslat(this.subeId, this.telefon, 'santral');
       this.oturumId = d.oturum_id;
       log.info(`Oturum #${this.oturumId} basladi (kanal ${this.kanalId}, tel ${this.telefon || '-'})`);
-      await this._seslendir(d.karsilama || 'Merhaba, size nasil yardimci olabilirim?');
+      await this._seslendir(d.karsilama || 'Merhaba, size nasıl yardımcı olabilirim?');
     } catch (e) {
       log.error('Beyin baslat hatasi:', e.message);
-      await this._seslendir('Sizi yetkiliye baglaniyorum, lutfen hatta kalin.');
+      await this._seslendir('Sizi yetkiliye bağlıyorum, lütfen hatta kalın.');
       this.onAktar(this.kanalId);
     }
     this._sessizlikSifirla();
@@ -77,7 +77,7 @@ class CagriOturumu {
     try {
       const d = await brain.konus(this.oturumId, metin);
       if (!d || d.ok === false) {
-        await this._seslendir('Kusura bakmayin, sizi yetkiliye aktariyorum.');
+        await this._seslendir('Kusura bakmayın, sizi yetkiliye aktarıyorum.');
         this.onAktar(this.kanalId);
         return;
       }
@@ -88,7 +88,7 @@ class CagriOturumu {
       if (d.aksiyon === 'veda' || d.bitir) { await this._kapatSirasi(); return; }
     } catch (e) {
       log.error('Beyin konus hatasi:', e.message);
-      await this._seslendir('Bir sorun olustu, sizi yetkiliye bagliyorum.');
+      await this._seslendir('Bir sorun oluştu, sizi yetkiliye bağlıyorum.');
       this.onAktar(this.kanalId);
     } finally {
       this.mesgul = false;
@@ -101,15 +101,17 @@ class CagriOturumu {
     if (ses && ses.length) this.rtp.oynat(ses);
   }
 
-  _sessizlikSifirla() {
+  _sessizlikSifirla(ikinci) {
     clearTimeout(this.sessizlikZ);
     if (this.kapali) return;
     this.sessizlikZ = setTimeout(async () => {
-      if (this.kapali || this.mesgul) return;
-      log.debug('sessizlik zaman asimi');
-      await this._seslendir('Orada misiniz? Yardimci olabilecegim baska bir sey var mi?');
-      // ikinci sessizlikte kapat
-      this.sessizlikZ = setTimeout(() => this._kapatSirasi(), cfg.sessizlikMs);
+      if (this.kapali) return;
+      // AI hala konusuyor ya da beyin dusunuyorsa: sessizlik SAYMA, pencereyi yeniden baslat
+      if (this.mesgul || this.rtp.sesVarMi) { this._sessizlikSifirla(ikinci); return; }
+      if (ikinci) { log.debug('ikinci sessizlik -> kapat'); this._kapatSirasi(); return; }
+      log.debug('sessizlik zaman asimi -> orada misiniz');
+      await this._seslendir('Orada mısınız? Yardımcı olabileceğim başka bir şey var mı?');
+      this._sessizlikSifirla(true); // ikinci pencere; yine sessizse kapat
     }, cfg.sessizlikMs);
   }
 

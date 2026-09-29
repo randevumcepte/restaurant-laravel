@@ -33,7 +33,7 @@ const cfg = {
   },
   stt: {
     language: process.env.STT_LANGUAGE || 'tr-TR',
-    model: process.env.STT_MODEL || 'phone_call',
+    model: process.env.STT_MODEL || 'latest_long', // tr-TR icin uygun; phone_call en-* disi dillerde calismaz
   },
   tts: {
     apiKey: process.env.GOOGLE_TTS_API_KEY || '',
@@ -41,7 +41,7 @@ const cfg = {
     speakingRate: parseFloat(process.env.TTS_SPEAKING_RATE || '1.05'),
   },
   bargeIn: bool(process.env.BARGE_IN, true),
-  sessizlikMs: num(process.env.SESSIZLIK_MS, 6000),
+  sessizlikMs: num(process.env.SESSIZLIK_MS, 10000),
   logLevel: process.env.LOG_LEVEL || 'info',
 };
 
