@@ -97,8 +97,28 @@ class CagriOturumu {
   }
 
   async _seslendir(metin) {
-    const ses = await tts.seslendir(metin);
-    if (ses && ses.length) this.rtp.oynat(ses);
+    // Cumle-cumle seslendir: ilk cumle hemen calar, sonrakiler o calariken uretilir (algilanan gecikme duser).
+    const cumleler = this._cumlelereBol(metin);
+    for (const c of cumleler) {
+      if (this.kapali) break;
+      const ses = await tts.seslendir(c);
+      if (ses && ses.length) this.rtp.oynat(ses);
+    }
+  }
+
+  _cumlelereBol(metin) {
+    const t = (metin || '').trim();
+    if (!t) return [];
+    // Cumle sonlarindan bol (. ! ?), noktalamayi koru; cok kisa parcalari birlestir.
+    const parcalar = t.match(/[^.!?]+[.!?]*/g) || [t];
+    const out = [];
+    let tampon = '';
+    for (const p of parcalar) {
+      tampon += p;
+      if (tampon.trim().length >= 20 || /[.!?]\s*$/.test(tampon)) { out.push(tampon.trim()); tampon = ''; }
+    }
+    if (tampon.trim()) out.push(tampon.trim());
+    return out.length ? out : [t];
   }
 
   _sessizlikSifirla(ikinci) {

@@ -11,6 +11,13 @@ const client = new speech.SpeechClient();
 // Google streaming tek akista ~305sn siniri koyar -> uzun cagrida akisi periyodik yenile.
 const AKIS_YENILEME_MS = 240000;
 
+// STT kelime ipuclari (speech context) — restoran/telefon alanina ozgu kelimeler tanima dogrulugunu artirir.
+const KELIME_IPUCLARI = [
+  'rezervasyon', 'sipariş', 'paket sipariş', 'masa', 'kişi', 'kişilik', 'saat', 'akşam', 'öğle',
+  'bu akşam', 'yarın', 'bugün', 'adres', 'teslimat', 'telefon numaram', 'porsiyon', 'adet',
+  'menü', 'hesap', 'rica ediyorum', 'istiyorum', 'ayırtmak', 'iptal', 'değiştirmek',
+];
+
 class SttOturumu {
   /**
    * @param {(metin:string)=>void} onFinal  Cumle tamamlaninca (final transcript)
@@ -32,6 +39,7 @@ class SttOturumu {
       languageCode: cfg.stt.language,         // tr-TR
       enableAutomaticPunctuation: true,
       maxAlternatives: 1,
+      speechContexts: [{ phrases: KELIME_IPUCLARI, boost: 15 }], // alan kelimeleri -> dogruluk
     };
     // Model secimi:
     //  - 'latest_long','latest_short','default','command_and_search' -> COK DILLI (tr-TR dahil), her dilde gonder

@@ -41,7 +41,7 @@ const cfg = {
     speakingRate: parseFloat(process.env.TTS_SPEAKING_RATE || '1.05'),
   },
   bargeIn: bool(process.env.BARGE_IN, true),
-  sessizlikMs: num(process.env.SESSIZLIK_MS, 10000),
+  sessizlikMs: num(process.env.SESSIZLIK_MS, 15000),
   logLevel: process.env.LOG_LEVEL || 'info',
 };
 

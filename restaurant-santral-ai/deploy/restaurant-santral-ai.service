@@ -1,0 +1,34 @@
+# ResteOS AI Santral kopru — systemd servisi
+# Kurulum:
+#   sudo cp deploy/restaurant-santral-ai.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now restaurant-santral-ai
+# Guncelleme (yeni kod cektikten sonra):
+#   cd /opt/restaurant-santral-ai && git pull && sudo systemctl restart restaurant-santral-ai
+# Log izleme (canli):
+#   journalctl -u restaurant-santral-ai -f
+
+[Unit]
+Description=ResteOS AI Santral kopru (Asterisk ARI <-> Google STT/TTS <-> Laravel)
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/restaurant-santral-ai
+ExecStart=/usr/bin/node src/index.js
+# .env dosyadan okunuyor (config.js path=__dirname/../.env); istersen buraya da ekleyebilirsin:
+# EnvironmentFile=/opt/restaurant-santral-ai/.env
+Restart=always
+RestartSec=3
+# Cokme/hata durumunda sonsuz hizli donguyu engelle
+StartLimitIntervalSec=60
+StartLimitBurst=10
+# node'u hangi kullanici calistiracak (STT json'u bu kullanici okuyabilmeli)
+User=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=santral-ai
+
+[Install]
+WantedBy=multi-user.target

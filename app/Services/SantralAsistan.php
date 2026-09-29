@@ -57,8 +57,14 @@ class SantralAsistan
 
         $govde = [
             'model' => $this->model(),
-            'max_tokens' => 320,
-            'system' => $this->sistemPromptu(),
+            'max_tokens' => 200, // telefon: kisa yanit = daha hizli
+            // system'i dizi + cache_control ile ver: menu iceren uzun prompt her turda ONBELLEKTEN okunur
+            // -> beyin daha HIZLI cevap verir ve maliyet duser (Anthropic prompt caching)
+            'system' => [[
+                'type' => 'text',
+                'text' => $this->sistemPromptu(),
+                'cache_control' => ['type' => 'ephemeral'],
+            ]],
             'tools' => [$this->aksiyonAraci()],
             'messages' => $mesajlar,
         ];
@@ -111,7 +117,7 @@ class SantralAsistan
         $tel = $this->sube->telefon ?? null;
 
         $p = "Sen $ad adlı restoranın telefonla arayan müşterilerine yanıt veren yapay zeka SANTRAL görevlisisin. ";
-        $p .= "Doğal, sıcak ve KISA Türkçe konuş; her yanıtın en fazla iki cümle olsun. ";
+        $p .= "Doğal, sıcak ve ÇOK KISA Türkçe konuş; genellikle tek cümle, en fazla iki kısa cümle. Gereksiz nezaket/uzatma yok, doğrudan konuya gir. ";
         $p .= "TTS ile seslendirileceğin için DÜZ metin yaz: emoji, madde işareti, yıldız, tırnak KULLANMA. ";
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
