@@ -6831,6 +6831,7 @@ Route::get('/api/patron/bekleyen-onaylar', function (Request $r) {
     // Son 10 dk içindeki, bana ya da genel hedeflenen bekleyenler
     $liste = DB::table('onay_istekleri')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')
         ->where('created_at', '>=', now()->subMinutes(10))
+        ->where('isteyen_id', '!=', $p->id) // kişi KENDİ isteğini onaylayamaz
         ->where(function ($q) use ($p) { $q->where('hedef_id', $p->id)->orWhereNull('hedef_id'); })
         ->orderByDesc('id')->get();
     return ['ok' => 1, 'onaylar' => $liste->map(fn ($i) => [
@@ -6847,6 +6848,7 @@ Route::post('/api/patron/onay-cevap', function (Request $r) {
     $i = DB::table('onay_istekleri')->where('id', (int) $r->istek_id)->where('sube_id', $p->sube_id)->first();
     if (!$i) return ['ok' => 0, 'hata' => 'İstek bulunamadı.'];
     if ($i->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Bu istek zaten yanıtlandı.'];
+    if ((int) $i->isteyen_id === (int) $p->id) return ['ok' => 0, 'hata' => 'Kendi isteğinizi onaylayamazsınız.'];
     if ($r->cevap === 'red') {
         DB::table('onay_istekleri')->where('id', $i->id)->update(['durum' => 'reddedildi', 'onaylayan_id' => $p->id, 'onaylayan_ad' => $p->ad, 'updated_at' => now()]);
         return ['ok' => 1, 'durum' => 'reddedildi'];
