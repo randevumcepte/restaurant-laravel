@@ -109,6 +109,14 @@ class GarsonPerformans
 
         // Isi haritasi: garson secildiyse o garson, yoksa TUM garsonlar (salonun genel yogunlugu)
         $res['isi'] = $this->isiHaritasi($adisyonlar, $kalemler, $adToMasa, $adToAcan, $garsonId ? (int) $garsonId : null);
+
+        // TUM garsonlarin isi haritasini onceden hesapla (bellekten, ucuz) -> client garson secince
+        // ANINDA gosterir, backend'e tekrar gitmez. Anahtar: 'tum' + garson id.
+        $isiler = ['tum' => $this->isiHaritasi($adisyonlar, $kalemler, $adToMasa, $adToAcan, null)];
+        foreach ($out as $g) {
+            $isiler[(string) $g['id']] = $this->isiHaritasi($adisyonlar, $kalemler, $adToMasa, $adToAcan, (int) $g['id']);
+        }
+        $res['isiler'] = $isiler;
         return $res;
     }
 
