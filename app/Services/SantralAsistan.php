@@ -122,6 +122,8 @@ class SantralAsistan
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
         $p .= "PAKET SİPARİŞ için: ürün ve adetler (SADECE menüdeki ürünlerden, olmayan ürünü uydurma), teslimat adresi ve telefon. Tamamlanınca onay al ve santral_aksiyon aracını niyet=siparis, tamam=true ile çağır. ";
+        // Garson AI koclugu: uygun bir noktada NAZIKCE tek bir ek satis onerisi (icecek/tatli), israr etme.
+        $p .= "Sipariş alırken uygun bir yerde yanına bir içecek ya da tatlı önerebilirsin (menüden, tek cümle, kibar, ısrarcı olma). Müşteri istemezse hemen geç. ";
         // Menu tanitimi: telefonda UZUN liste okuma; birkac one cikan urunu/kategoriyi kisaca soyle, sonra ne istedigini sor. ASLA aktarma.
         $p .= "Müşteri 'neler var', 'menüde ne var', 'tanıtır mısın' gibi bir şey sorarsa: menüden EN FAZLA üç dört öne çıkan ürünü ya da ana yemek türlerini KISACA say (telefonda tüm listeyi okuma), sonra 'ne almak istersiniz?' diye sor. Bu durumda ASLA yetkiliye aktarma. ";
         // Aktarma cok kisitli: sadece sikayet / menu disi cok ozel istek / cozemeyecegin durum. Menu, fiyat, siparis, rezervasyon icin ASLA aktarma.
@@ -132,9 +134,7 @@ class SantralAsistan
         if ($adres) $p .= " Restoranın adresi: $adres.";
         if ($tel) $p .= " Restoranın telefonu: $tel.";
 
-        $menu = $this->menuOzeti();
-        if ($menu) $p .= " Güncel menü (yalnızca bunları öner ve sat): " . $menu;
-        else $p .= " Menü listesi şu an elimde yok; yine de müşteriye ne yemek istediğini sor ve siparişini serbest metin olarak al, telefonu KAPATMA ve aktarma.";
+        $p .= $this->menuBaglami();
 
         return $p;
     }
@@ -180,24 +180,93 @@ class SantralAsistan
         ];
     }
 
-    /** Kompakt menu ozeti (kategori: urun (fiyat), ...). Uydurma engellemek icin gercek veriden. */
+    /**
+     * Menu -> kategori grupli kompakt metin (MusteriAsistan.menuOzetMetni ile AYNI kaynak/mantik).
+     * Boylece telefon AI'si masadaki QR asistaniyla ayni menuyu gorur.
+     */
     protected function menuOzeti(): string
     {
         try {
             if (!Schema::hasTable('urunler')) return '';
+            $kats = Schema::hasTable('menu_kategorileri')
+                ? DB::table('menu_kategorileri')->where('sube_id', $this->subeId)->where('aktif', 1)->orderBy('sira')->get(['id', 'ad'])
+                : collect();
             $q = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1);
             if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
-            $urunler = $q->orderBy('ad')->limit(60)->get(['ad', 'fiyat']);
+            $urunler = $q->get(['ad', 'fiyat', 'kategori_id']);
             if ($urunler->isEmpty()) return '';
-            $parcalar = [];
+            $byKat = [];
             foreach ($urunler as $u) {
-                $fiyat = is_numeric($u->fiyat) ? (' ' . rtrim(rtrim(number_format((float) $u->fiyat, 2, ',', '.'), '0'), ',') . ' TL') : '';
-                $parcalar[] = $u->ad . $fiyat;
+                $fiyat = is_numeric($u->fiyat) ? (' (' . number_format((float) $u->fiyat, 0, ',', '.') . ' TL)') : '';
+                $byKat[(int) $u->kategori_id][] = $u->ad . $fiyat;
             }
-            return implode('; ', $parcalar);
+            $lines = [];
+            $bilinen = [];
+            foreach ($kats as $k) {
+                $bilinen[] = (int) $k->id;
+                if (!empty($byKat[$k->id])) $lines[] = $k->ad . ': ' . implode(', ', array_slice($byKat[$k->id], 0, 20));
+            }
+            // Kategorisi tanimsiz kalan urunler
+            $kalan = [];
+            foreach ($byKat as $kid => $arr) { if (!in_array((int) $kid, $bilinen, true)) $kalan = array_merge($kalan, $arr); }
+            if ($kalan) $lines[] = 'Diğer: ' . implode(', ', array_slice($kalan, 0, 20));
+            return implode("\n", $lines);
         } catch (\Throwable $e) {
             return '';
         }
+    }
+
+    /** One cikan urunler (Sefin Onerisi) — urunler.one_cikan=1. */
+    protected function oneCikanlar(int $limit = 5): array
+    {
+        try {
+            if (!Schema::hasColumn('urunler', 'one_cikan')) return [];
+            $q = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->where('one_cikan', 1);
+            if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
+            if (Schema::hasColumn('urunler', 'one_sira')) $q->orderBy('one_sira');
+            return $q->limit($limit)->pluck('ad')->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Son 30 gunun en cok satilanlari ("bugun ne iyi / ne oneriyorsun"). */
+    protected function favoriUrunler(int $limit = 5): array
+    {
+        try {
+            if (!Schema::hasTable('adisyon_kalemleri') || !Schema::hasTable('adisyonlar')) return [];
+            $top = DB::table('adisyon_kalemleri as k')
+                ->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
+                ->where('a.sube_id', $this->subeId)
+                ->where('a.kapanis', '>=', now()->subDays(30))
+                ->where('k.durum', '!=', 'iptal')
+                ->groupBy('k.urun_adi')
+                ->orderByRaw('SUM(k.adet) DESC')
+                ->limit($limit)
+                ->pluck('k.urun_adi')->all();
+            return array_values(array_filter($top, fn ($x) => trim((string) $x) !== ''));
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Haiku'ya verilecek TAM menu baglami: gruplu menu + Sefin Onerisi + populer (bugun ne var).
+     * Menu bossa: telefonu kapatma/aktarma, serbest metin siparis al.
+     */
+    protected function menuBaglami(): string
+    {
+        $menu = $this->menuOzeti();
+        if ($menu === '') {
+            return " Menü listesi şu an elimde yok; yine de müşteriye ne yemek istediğini sor ve siparişini serbest metin olarak al, telefonu KAPATMA ve aktarma.";
+        }
+        $p = " GÜNCEL MENÜ (yalnızca bunlardan öner ve sat, kategoriye göre):\n" . $menu;
+        $sef = $this->oneCikanlar(5);
+        if ($sef) $p .= "\nŞefin önerileri (öne çıkanlar): " . implode(', ', $sef) . '.';
+        $pop = $this->favoriUrunler(5);
+        if ($pop) $p .= "\nBugünlerde en çok tercih edilenler: " . implode(', ', $pop) . '.';
+        $p .= "\n'Bugün ne var', 'ne önerirsin', 'en çok ne satıyor' gibi sorularda önce Şefin önerileri ve en çok tercih edilenlerden birkaçını KISACA söyle.";
+        return $p;
     }
 
     /** Teshis: bu sube icin kac aktif urun var (menu bos mu kontrolu). */
