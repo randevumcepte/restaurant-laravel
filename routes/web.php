@@ -9436,6 +9436,125 @@ Route::post('/api/dahili/sifre', function (Request $r) {
     return response()->json((new \App\Services\FreePbxClient())->sifre($r->input('numara'), $r->input('sifre')), 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// ============================ AI SANTRAL — EGITIM (kalip + ogrenilen + cozulemeyen + PDF) ============================
+if (!function_exists('_santralEgitimSube')) {
+    function _santralEgitimSube($r = null)
+    {
+        $v = $r ? ($r->input('sube_id')) : request('sube_id');
+        return (int) ($v ?: DB::table('subeler')->min('id') ?: 1);
+    }
+}
+
+Route::get('/santral-egitim', function () {
+    \App\Services\SantralAsistan::kalipTablo();
+    \App\Services\SantralAsistan::ogrenTablo();
+    \App\Services\SantralAsistan::cozulemeyenTablo();
+    return response()->view('santral_egitim', ['subeId' => _santralEgitimSube()]);
+});
+
+// --- KALIP / SSS ---
+Route::match(['get', 'post'], '/api/santral-egitim/kalip-liste', function (Request $r) {
+    \App\Services\SantralAsistan::kalipTablo();
+    $sube = _santralEgitimSube($r);
+    $rows = DB::table('santral_kalip')->where('sube_id', $sube)->orderByDesc('id')->get();
+    return response()->json(['ok' => 1, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/kalip-ekle', function (Request $r) {
+    \App\Services\SantralAsistan::kalipTablo();
+    $tet = trim((string) $r->input('tetikleyiciler'));
+    $cev = trim((string) $r->input('cevap'));
+    if ($tet === '' || $cev === '') return response()->json(['ok' => 0, 'hata' => 'Tetikleyici ve cevap zorunlu'], 200, [], JSON_UNESCAPED_UNICODE);
+    $id = DB::table('santral_kalip')->insertGetId([
+        'sube_id' => _santralEgitimSube($r), 'aktif' => 1,
+        'tetikleyiciler' => mb_substr($tet, 0, 500), 'cevap' => mb_substr($cev, 0, 2000),
+        'kategori' => mb_substr(trim((string) $r->input('kategori')) ?: 'genel', 0, 40),
+        'created_at' => now(),
+    ]);
+    return response()->json(['ok' => 1, 'id' => $id], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/kalip-guncelle', function (Request $r) {
+    $id = (int) $r->input('id');
+    $upd = [];
+    if ($r->has('tetikleyiciler')) $upd['tetikleyiciler'] = mb_substr(trim((string) $r->input('tetikleyiciler')), 0, 500);
+    if ($r->has('cevap')) $upd['cevap'] = mb_substr(trim((string) $r->input('cevap')), 0, 2000);
+    if ($r->has('aktif')) $upd['aktif'] = $r->input('aktif') ? 1 : 0;
+    if ($upd) DB::table('santral_kalip')->where('id', $id)->update($upd);
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/kalip-sil', function (Request $r) {
+    DB::table('santral_kalip')->where('id', (int) $r->input('id'))->delete();
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// --- OGRENILEN ONBELLEK ---
+Route::match(['get', 'post'], '/api/santral-egitim/ogrenilen-liste', function (Request $r) {
+    \App\Services\SantralAsistan::ogrenTablo();
+    $rows = DB::table('santral_ai_ogrenilen')->where('sube_id', _santralEgitimSube($r))->orderByDesc('kullanim')->limit(300)->get();
+    return response()->json(['ok' => 1, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/ogrenilen-guncelle', function (Request $r) {
+    DB::table('santral_ai_ogrenilen')->where('id', (int) $r->input('id'))->update(['cevap' => mb_substr(trim((string) $r->input('cevap')), 0, 2000)]);
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/ogrenilen-sil', function (Request $r) {
+    DB::table('santral_ai_ogrenilen')->where('id', (int) $r->input('id'))->delete();
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// --- COZULEMEYEN ---
+Route::match(['get', 'post'], '/api/santral-egitim/cozulemeyen-liste', function (Request $r) {
+    \App\Services\SantralAsistan::cozulemeyenTablo();
+    $rows = DB::table('santral_cozulemeyen')->where('sube_id', _santralEgitimSube($r))->orderByDesc('adet')->limit(300)->get();
+    return response()->json(['ok' => 1, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/cozulemeyen-kalipla', function (Request $r) {
+    // Cozulemeyeni bir kalip'a cevir (tetik = ham soru, cevap = girilen) + kaydi sil
+    \App\Services\SantralAsistan::kalipTablo();
+    $id = (int) $r->input('id');
+    $cev = trim((string) $r->input('cevap'));
+    $row = DB::table('santral_cozulemeyen')->where('id', $id)->first();
+    if (!$row || $cev === '') return response()->json(['ok' => 0, 'hata' => 'Kayıt/cevap eksik'], 200, [], JSON_UNESCAPED_UNICODE);
+    DB::table('santral_kalip')->insert([
+        'sube_id' => $row->sube_id, 'aktif' => 1,
+        'tetikleyiciler' => mb_substr((string) ($row->ham ?: $row->soru_norm), 0, 500),
+        'cevap' => mb_substr($cev, 0, 2000), 'kategori' => 'cozulemeyen', 'created_at' => now(),
+    ]);
+    DB::table('santral_cozulemeyen')->where('id', $id)->delete();
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/cozulemeyen-sil', function (Request $r) {
+    DB::table('santral_cozulemeyen')->where('id', (int) $r->input('id'))->delete();
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// --- PDF -> KALIP ---
+Route::post('/api/santral-egitim/pdf-cikar', function (Request $r) {
+    $sube = _santralEgitimSube($r);
+    $b64 = (string) $r->input('pdf_base64');
+    if ($b64 === '' && $r->hasFile('pdf')) $b64 = base64_encode(file_get_contents($r->file('pdf')->getRealPath()));
+    if ($b64 === '') return response()->json(['ok' => 0, 'hata' => 'PDF gerekli'], 200, [], JSON_UNESCAPED_UNICODE);
+    [$ok, $veri] = (new \App\Services\SantralAsistan($sube))->pdftenKalipCikar($b64);
+    return response()->json($ok ? ['ok' => 1, 'kaliplar' => $veri] : ['ok' => 0, 'hata' => $veri], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/pdf-onayla', function (Request $r) {
+    \App\Services\SantralAsistan::kalipTablo();
+    $sube = _santralEgitimSube($r);
+    $arr = json_decode((string) $r->input('kaliplar'), true);
+    $n = 0;
+    if (is_array($arr)) foreach ($arr as $k) {
+        $tet = trim((string) ($k['tetikleyiciler'] ?? ''));
+        $cev = trim((string) ($k['cevap'] ?? ''));
+        if ($tet === '' || $cev === '') continue;
+        DB::table('santral_kalip')->insert([
+            'sube_id' => $sube, 'aktif' => 1,
+            'tetikleyiciler' => mb_substr($tet, 0, 500), 'cevap' => mb_substr($cev, 0, 2000),
+            'kategori' => mb_substr(trim((string) ($k['kategori'] ?? 'pdf')) ?: 'pdf', 0, 40), 'created_at' => now(),
+        ]);
+        $n++;
+    }
+    return response()->json(['ok' => 1, 'eklendi' => $n], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ TANITIM SITESI (herkese acik landing = ANA SAYFA) ============================
 // public/tanitim.html statik dosyasini sunar (Blade parse etmez; @media/@keyframes bozulmaz).
 // Dashboard artik /dashboard adresinde.

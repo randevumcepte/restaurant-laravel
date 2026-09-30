@@ -64,6 +64,22 @@ class SantralAsistan
             return ['cevap' => 'Efendim, sizi saygıya davet etmek istiyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi sonlandırmak zorunda kalacağım.', 'aksiyon' => null, 'veri' => [], 'bitir' => false];
         }
 
+        // --- EGITIM KATMANLARI (Haiku'dan ONCE, bedava) ---
+        // 1) KALIP / SSS (sahibin girdigi tetikleyici -> hazir cevap). Her turda; sahip kontrol eder.
+        $kalip = $this->kalipCevap($ham);
+        if ($kalip !== null) {
+            $this->teshis = 'kalip';
+            return ['cevap' => $this->ttsTemizle($kalip), 'aksiyon' => null, 'veri' => [], 'bitir' => false];
+        }
+        // 2) OGRENILEN ONBELLEK — SADECE bilgi sorularinda (siparis/rezervasyon baglamini bozmasin)
+        if ($this->bilgiSorusuMu($ham)) {
+            $ogr = $this->ogrenilenCevap($this->norm($ham));
+            if ($ogr !== null && $ogr !== '') {
+                $this->teshis = 'ogrenilen';
+                return ['cevap' => $this->ttsTemizle($ogr), 'aksiyon' => null, 'veri' => [], 'bitir' => false];
+            }
+        }
+
         $apiKey = $this->apiKey();
         if (!$apiKey) {
             $this->teshis = 'anahtar_yok';
@@ -116,6 +132,14 @@ class SantralAsistan
                 ? 'Sizi yetkiliye bağlıyorum, lütfen hatta kalın.'
                 : 'Anladım, devam edelim.';
         }
+
+        // --- OGRENME: bilgi sorusuysa + aksiyon yoksa + cevap SORU degilse -> onbellege al (tekrar bedava) ---
+        if ($aksiyon === null && $cevap !== '' && $this->bilgiSorusuMu($ham)
+            && !preg_match('/\?\s*$/u', $cevap) && mb_strlen($cevap) <= 300) {
+            $this->ogren($this->norm($ham), $cevap);
+        }
+        // --- COZULEMEYEN: AI cozemeyip aktardiysa soruyu kaydet (panelde "en cok sorulan cevapsizlar") ---
+        if ($aksiyon === 'aktar') $this->cozulemeyenKaydet($ham);
 
         $this->teshis = 'ok';
         return [
@@ -329,6 +353,182 @@ class SantralAsistan
         $s = strtr($s, $tr);
         $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
         return preg_replace('/\s+/', ' ', trim($s));
+    }
+
+    // ==================== EGITIM: kalip + ogrenen onbellek + cozulemeyen ====================
+
+    /** Soru bagimsiz BILGI sorusu mu? (onbellek/ogrenme yalniz bunlarda; siparis/rezervasyon baglamini bozmaz) */
+    protected function bilgiSorusuMu($q): bool
+    {
+        $n = ' ' . $this->norm($q) . ' ';
+        $anahtarlar = [
+            'saat', 'acik', 'kapali', 'kacta', 'kacda', 'acilis', 'kapanis', 'aciksiniz', 'kapaniyor',
+            'nerede', 'neredesiniz', 'adres', 'yol', 'tarif', 'konum', 'otopark', 'park yeri',
+            'wifi', 'kablosuz', 'internet sifre', 'ne kadar', 'kaca', 'kac para', 'fiyat', 'ucret',
+            'paket var', 'paket geliyor', 'kurye', 'teslimat', 'minimum', 'sepet tutar', 'kac tl',
+            'calisiyor', 'calisma saat', 'servis var', 'rezervasyon aliyor',
+        ];
+        foreach ($anahtarlar as $a) {
+            $a = $this->norm($a);
+            if ($a !== '' && strpos($n, ' ' . $a) !== false) return true;
+        }
+        return false;
+    }
+
+    protected function _tetikVar($n, $t): bool
+    {
+        $t = trim($t);
+        if ($t === '') return false;
+        $nn = ' ' . $n . ' ';
+        if (strpos($nn, ' ' . $t . ' ') !== false) return true;
+        if (mb_strlen($t) >= 4 && strpos($nn, $t) !== false) return true;
+        // cogul toleransi
+        $tt = preg_replace('/(lar|ler)$/u', '', $t);
+        if ($tt !== $t && mb_strlen($tt) >= 3 && strpos($nn, $tt) !== false) return true;
+        return false;
+    }
+
+    // ---- KALIP / SSS (sahip tanimli tetikleyici -> hazir cevap) ----
+    public static function kalipTablo()
+    {
+        if (!Schema::hasTable('santral_kalip')) {
+            Schema::create('santral_kalip', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->boolean('aktif')->default(1);
+                $t->text('tetikleyiciler');   // virgulle ayrilmis anahtar kelimeler
+                $t->text('cevap');
+                $t->string('kategori', 40)->nullable();
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'aktif']);
+            });
+        }
+    }
+
+    protected function kalipCevap($q)
+    {
+        try {
+            self::kalipTablo();
+            $n = $this->norm($q);
+            if ($n === '') return null;
+            $rows = DB::table('santral_kalip')->where('sube_id', $this->subeId)->where('aktif', 1)->get(['tetikleyiciler', 'cevap']);
+            foreach ($rows as $r) {
+                foreach (explode(',', (string) $r->tetikleyiciler) as $tet) {
+                    $tn = $this->norm($tet);
+                    if ($tn !== '' && $this->_tetikVar($n, $tn)) return $r->cevap;
+                }
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+
+    // ---- OGRENEN ONBELLEK (soru -> Haiku cevabi; tekrar bedava) ----
+    public static function ogrenTablo()
+    {
+        if (!Schema::hasTable('santral_ai_ogrenilen')) {
+            Schema::create('santral_ai_ogrenilen', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->string('soru_key', 191);
+                $t->text('cevap');
+                $t->unsignedInteger('kullanim')->default(1);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'soru_key']);
+            });
+        }
+    }
+
+    protected function ogrenilenCevap($key)
+    {
+        try {
+            self::ogrenTablo();
+            $row = DB::table('santral_ai_ogrenilen')->where('sube_id', $this->subeId)->where('soru_key', mb_substr($key, 0, 191))->first();
+            if ($row) {
+                try { DB::table('santral_ai_ogrenilen')->where('id', $row->id)->increment('kullanim'); } catch (\Throwable $e) {}
+                return $row->cevap;
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+
+    protected function ogren($key, $cevap)
+    {
+        try {
+            self::ogrenTablo();
+            $key = mb_substr($key, 0, 191);
+            // ayni soru zaten ogrenildiyse tekrar ekleme
+            if (DB::table('santral_ai_ogrenilen')->where('sube_id', $this->subeId)->where('soru_key', $key)->exists()) return;
+            DB::table('santral_ai_ogrenilen')->insert(['sube_id' => $this->subeId, 'soru_key' => $key, 'cevap' => $cevap, 'kullanim' => 1, 'created_at' => now()]);
+        } catch (\Throwable $e) {}
+    }
+
+    // ---- COZULEMEYEN (AI cozemeyip aktardigi sorular; panelde egitim geri bildirimi) ----
+    public static function cozulemeyenTablo()
+    {
+        if (!Schema::hasTable('santral_cozulemeyen')) {
+            Schema::create('santral_cozulemeyen', function ($t) {
+                $t->increments('id');
+                $t->unsignedBigInteger('sube_id');
+                $t->string('soru_norm', 191);
+                $t->text('ham')->nullable();
+                $t->unsignedInteger('adet')->default(1);
+                $t->timestamp('son_tarih')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+                $t->index(['sube_id', 'soru_norm']);
+            });
+        }
+    }
+
+    protected function cozulemeyenKaydet($soru)
+    {
+        try {
+            $ham = trim((string) $soru);
+            if (mb_strlen($ham) < 2) return;
+            $norm = mb_substr($this->norm($ham), 0, 191);
+            if ($norm === '') return;
+            self::cozulemeyenTablo();
+            $row = DB::table('santral_cozulemeyen')->where('sube_id', $this->subeId)->where('soru_norm', $norm)->first();
+            if ($row) DB::table('santral_cozulemeyen')->where('id', $row->id)->update(['adet' => $row->adet + 1, 'son_tarih' => now(), 'ham' => $ham]);
+            else DB::table('santral_cozulemeyen')->insert(['sube_id' => $this->subeId, 'soru_norm' => $norm, 'ham' => $ham, 'adet' => 1, 'son_tarih' => now(), 'created_at' => now()]);
+        } catch (\Throwable $e) {}
+    }
+
+    /** PDF (base64) -> Claude soru-cevap kaliplari cikarir (JSON). Doner: [ok(bool), veri(dizi|hata-metni)]. */
+    public function pdftenKalipCikar($base64Pdf, $mediaType = 'application/pdf')
+    {
+        if (!$this->apiKey()) return [false, 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
+        $sistem = 'Sen bir RESTORANIN TELEFON asistani icin SORU-CEVAP kalibi cikaran yardimcisin. Verilen belgeden (menu, SSS, kurumsal bilgi) telefonla arayan musterilerin soracagi olasi sorulari ve KISA cevaplari cikar. '
+            . 'KURALLAR: 1) SADECE gecerli JSON DIZI dondur, baska hicbir metin yazma. '
+            . '2) Her oge tam olarak: {"tetikleyiciler":"...","cevap":"...","kategori":"..."} . '
+            . '3) tetikleyiciler CUMLE DEGIL, virgulle ayrilmis KISA anahtar kelimeler (2-5 tane, es anlamli). Ornek: "otopark, park yeri, arac". '
+            . '4) cevap KISA/net, telefonda seslendirilecek (duz metin, 1-2 cumle, emoji/tirnak yok). 5) Belgede OLMAYAN bilgi UYDURMA. En fazla 40 oge.';
+        $govde = [
+            'model' => $this->model(),
+            'max_tokens' => 4000,
+            'system' => $sistem,
+            'messages' => [['role' => 'user', 'content' => [
+                ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => $mediaType, 'data' => $base64Pdf]],
+                ['type' => 'text', 'text' => 'Bu belgeden telefon asistani icin soru-cevap kaliplarini cikar ve SADECE JSON dizi dondur.'],
+            ]]],
+        ];
+        $data = $this->cagir($govde);
+        if (!$data || empty($data['content'])) return [false, 'AI yanıt vermedi (anahtar/bakiye kontrol edin).'];
+        $t = '';
+        foreach ($data['content'] as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+        $t = trim($t);
+        if (preg_match('/\[.*\]/s', $t, $m)) $t = $m[0];
+        $arr = json_decode($t, true);
+        if (!is_array($arr)) return [false, 'AI çıktısı JSON olarak çözümlenemedi.'];
+        $out = [];
+        foreach ($arr as $o) {
+            if (!is_array($o)) continue;
+            $tet = trim((string) ($o['tetikleyiciler'] ?? ''));
+            $cev = trim((string) ($o['cevap'] ?? ''));
+            if ($tet === '' || $cev === '') continue;
+            $out[] = ['tetikleyiciler' => mb_substr($tet, 0, 500), 'cevap' => mb_substr($cev, 0, 2000), 'kategori' => mb_substr((trim((string) ($o['kategori'] ?? '')) ?: 'pdf'), 0, 40)];
+        }
+        if (empty($out)) return [false, 'Belgeden kalıp çıkarılamadı.'];
+        return [true, $out];
     }
 
     // -------------------- ANTHROPIC (RestoAsistan ile ayni kalip) --------------------
