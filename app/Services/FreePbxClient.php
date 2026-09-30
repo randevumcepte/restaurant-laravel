@@ -143,18 +143,31 @@ class FreePbxClient
         return $out;
     }
 
-    /** Yeni dahili ekle (numara + ad + SIP sifresi). tech varsayilan pjsip. */
+    /**
+     * Yeni dahili ekle (numara + ad + SIP sifresi). tech varsayilan pjsip.
+     * NOT: FreePBX 16 addExtension SIFRE ALMAZ -> once olustur, sonra updateExtension ile extPassword ata.
+     */
     public function ekle($numara, $ad, $sifre, $tech = 'pjsip'): array
     {
         $num = (int) $numara;
-        $ad = $this->kacar($ad);
-        $sifre = $this->kacar($sifre);
+        $adM = $this->kacar(trim((string) $ad) !== '' ? $ad : ('Dahili ' . $num));
         $tech = $this->kacar($tech);
-        $m = 'mutation { addExtension(input: { extensionId: ' . $num . ', name: "' . $ad . '", tech: "' . $tech . '", email: "", extPassword: "' . $sifre . '", vmEnable: false, umEnable: false }) { status message } }';
+        $m = 'mutation { addExtension(input: { extensionId: ' . $num . ', name: "' . $adM . '", email: "", tech: "' . $tech . '", vmEnable: false, umEnable: false }) { status message } }';
         $j = $this->gql($m);
         $st = $j['data']['addExtension']['status'] ?? null;
-        if ($st) { $this->reload(); return ['ok' => 1, 'mesaj' => $j['data']['addExtension']['message'] ?? 'Dahili eklendi']; }
-        return ['ok' => 0, 'hata' => $this->hata ?: ($j['data']['addExtension']['message'] ?? 'Eklenemedi'), 'ham' => $this->sonHam];
+        if (!$st) {
+            return ['ok' => 0, 'hata' => $this->hata ?: ($j['data']['addExtension']['message'] ?? 'Eklenemedi'), 'ham' => $this->sonHam];
+        }
+        // SIP sifresini ata (updateExtension extPassword) — sifre() zaten reload eder
+        if (trim((string) $sifre) !== '') {
+            $up = $this->sifre($num, $sifre);
+            if (empty($up['ok'])) {
+                return ['ok' => 1, 'uyari' => 1, 'mesaj' => 'Dahili eklendi ama SIP şifresi atanamadı: ' . ($up['hata'] ?? ''), 'ham' => $up['ham'] ?? null];
+            }
+            return ['ok' => 1, 'mesaj' => 'Dahili eklendi (PJSIP) ve şifre atandı'];
+        }
+        $this->reload();
+        return ['ok' => 1, 'mesaj' => 'Dahili eklendi (PJSIP)'];
     }
 
     /** Dahili sil. */
