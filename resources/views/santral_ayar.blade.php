@@ -95,10 +95,14 @@
   </form>
 
   <div class="card" style="margin-top:16px">
-    <h2>Tek seferlik Asterisk kurulumu</h2>
+    <h2>Asterisk kurulumu</h2>
     <div class="hint">
-      Asterisk'te <b>bir kez</b> şu genel kuralın olması yeterli (hedefi hep buradan yönetirsiniz). Değişkenler dialplan'de tanımlanmaz; köprü çağrı anında panelden okuyup kanala yazar:<br>
-      <div class="onizle" style="color:#334155">[santral-aktar]<br>exten =&gt; s,1,ExecIf($["${SANTRAL_HEDEF}"=""]?Hangup())<br> same =&gt; n,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL})<br> same =&gt; n,Hangup()</div>
+      ✅ Aktarma için Asterisk'e <b>hiçbir şey yazmanıza gerek yok.</b> Köprü, buraya girdiğiniz hedefi
+      okuyup çağrıyı kendisi arar ve iki hattı birleştirir (ARI). Hedefi değiştirmek için sadece bu sayfayı
+      kullanın; her restoranda ayrı ayar yok.<br><br>
+      Tek gereken (restoran başına bir kez), gelen çağrının AI'ya ulaşması için hattın şu satırla Stasis'e
+      bağlanması:<br>
+      <div class="onizle" style="color:#334155">exten =&gt; s,1,Answer()<br> same =&gt; n,Stasis(restaurant-santral-ai)<br> same =&gt; n,Hangup()</div>
     </div>
   </div>
 </div>

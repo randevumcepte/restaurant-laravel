@@ -1,6 +1,8 @@
 ; =====================================================================
 ;  ResteOS AI Santral — Asterisk 16/17 dialplan ornegi
-;  /etc/asterisk/extensions.conf icine uyarlayin (context adlarina dikkat)
+;  RESTORAN BASINA GEREKEN TEK SEY: gelen cagriyi Stasis'e vermek (asagidaki 3 satir).
+;  AKTARMA icin AYRICA BIR SEY YAZMANA GEREK YOK -> kopru ARI ile kendisi arar
+;  ve iki hatti birlestirir; hedef panelden gelir (/santral-ayar). OTOMASYON.
 ; =====================================================================
 
 ; --- Gelen restoran hatti: cagriyi AI Santral (Stasis/ARI) uygulamasina ver ---
@@ -14,22 +16,5 @@ exten => s,1,NoOp(AI Santral cagri geldi: ${CALLERID(num)})
 ; Coklu sube ornegi (sube_id'yi arg olarak gecir):
 ; exten => s,1,Stasis(restaurant-santral-ai,SUBE=3)
 
-; --- AI "insana aktar" dediginde kopru cagriyi buraya geri verir ---
-; ONEMLI: SANTRAL_HEDEF + SANTRAL_ZIL degiskenleri DIALPLAN'DE ASSIGN EDILMEZ.
-;   Kopru (index.js) ARI setChannelVar ile bu degiskenleri PANELDEN okuyup kanala YAZAR,
-;   sonra kanali buraya devreder (continueInDialplan). Yani buraya gelindiginde degiskenler DOLUDUR.
-;   Yine de guvenlik icin bos ihtimaline karsi defansif yaziyoruz.
-; HEDEFI DEGISTIRMEK ICIN ASTERISK'E DOKUNMA -> panel: /santral-ayar
-[santral-aktar]
-exten => s,1,NoOp(AI -> aktarma hedefi: ${SANTRAL_HEDEF})
- same => n,ExecIf($["${SANTRAL_HEDEF}"=""]?Hangup())              ; hedef bossa guvenli kapat
- same => n,Set(ZIL=${IF($["${SANTRAL_ZIL}"=""]?30:${SANTRAL_ZIL})})
- same => n,Dial(${SANTRAL_HEDEF},${ZIL})                          ; or. SIP/101 veya SIP/trunk/05xx (panelden)
- same => n,Hangup()
-
-; --- (Opsiyonel) Kacan cagriyi AI'nin geri aramasi icin outbound ---
-; ARI originate ile kullanilir; buraya duserse AI karsilar:
-[santral-outbound]
-exten => s,1,Answer()
- same => n,Stasis(restaurant-santral-ai,YON=outbound)
- same => n,Hangup()
+; NOT: Eski [santral-aktar] context'i ARTIK GEREKMIYOR. Aktarma tamamen ARI originate ile
+;      kopruden yapiliyor (dialplan'e dokunmadan). Onceki kurulumlarda ekli kaldiysa zarari yok.
