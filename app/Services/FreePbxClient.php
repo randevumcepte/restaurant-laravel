@@ -180,6 +180,23 @@ class FreePbxClient
         return ['ok' => 0, 'hata' => $this->hata ?: 'Güncellenemedi', 'ham' => $this->sonHam];
     }
 
+    /** TESHIS: bir input type'in kabul ettigi alanlari sema'dan (introspection) getir. */
+    public function inputAlanlari($typeName): array
+    {
+        $q = 'query { __type(name: "' . $typeName . '") { inputFields { name type { kind name ofType { kind name } } } } }';
+        $j = $this->gql($q);
+        $fields = $j['data']['__type']['inputFields'] ?? null;
+        $out = [];
+        if (is_array($fields)) {
+            foreach ($fields as $f) {
+                $kind = $f['type']['kind'] ?? '';
+                $ad = $f['type']['name'] ?? ($f['type']['ofType']['name'] ?? '');
+                $out[] = ['ad' => $f['name'], 'tip' => $ad ?: $kind, 'zorunlu' => ($kind === 'NON_NULL')];
+            }
+        }
+        return $out;
+    }
+
     /** Degisiklikleri uygula (fwconsole reload karsiligi). Hata olsa da islemi bozmaz. */
     public function reload(): void
     {

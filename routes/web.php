@@ -9414,6 +9414,16 @@ Route::match(['get', 'post'], '/api/dahili/liste', function () {
     return response()->json(['ok' => 1, 'liste' => $liste, 'hata' => $c->hata], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// TESHIS: addExtension/updateExtension hangi alanlari kabul ediyor (SIP sifre alaninin gercek adi vb.)
+Route::match(['get', 'post'], '/api/dahili/sema', function () {
+    $c = new \App\Services\FreePbxClient();
+    return response()->json([
+        'addExtensionInput' => $c->inputAlanlari('addExtensionInput'),
+        'updateExtensionInput' => $c->inputAlanlari('updateExtensionInput'),
+        'hata' => $c->hata,
+    ], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 Route::post('/api/dahili/ekle', function (Request $r) {
     return response()->json((new \App\Services\FreePbxClient())->ekle($r->input('numara'), $r->input('ad'), $r->input('sifre')), 200, [], JSON_UNESCAPED_UNICODE);
 });
