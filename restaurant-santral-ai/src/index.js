@@ -135,9 +135,22 @@ async function insanaAktar(client, kanalId, subeId) {
     }
 
     log.info(`aktarma hedefi: ${hedef.dial} (zil ${hedef.zil || 30}s)`);
-    // Asterisk kanal degiskenlerini panelden gelen degerlerle set et
-    try { await ch.setChannelVar({ variable: 'SANTRAL_HEDEF', value: String(hedef.dial) }); } catch (_) {}
-    try { await ch.setChannelVar({ variable: 'SANTRAL_ZIL', value: String(hedef.zil || 30) }); } catch (_) {}
+    // Asterisk kanal degiskenlerini panelden gelen degerlerle set et (continueInDialplan'DAN ONCE).
+    // ARI setChannelVar -> kanal dialplan'e dondugunde ${SANTRAL_HEDEF} okunabilir (standart kalip).
+    // Set BASARISIZ olursa dialplan'de Dial(,) bos kalir -> devretme, guvenli kapat.
+    let hedefSet = false;
+    try {
+      await ch.setChannelVar({ variable: 'SANTRAL_HEDEF', value: String(hedef.dial) });
+      await ch.setChannelVar({ variable: 'SANTRAL_ZIL', value: String(hedef.zil || 30) });
+      hedefSet = true;
+    } catch (e) {
+      log.warn('kanal degiskeni set edilemedi:', e.message);
+    }
+    if (!hedefSet) {
+      try { await ch.hangup(); } catch (_) {}
+      await temizle(kanalId, 'aktar', false);
+      return;
+    }
     await ch.continueInDialplan({ context: 'santral-aktar', extension: 's', priority: 1 });
   } catch (e) {
     log.warn('aktarim hatasi:', e.message);

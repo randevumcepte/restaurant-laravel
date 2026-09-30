@@ -97,8 +97,8 @@
   <div class="card" style="margin-top:16px">
     <h2>Tek seferlik Asterisk kurulumu</h2>
     <div class="hint">
-      Asterisk'te <b>bir kez</b> şu genel kuralın olması yeterli (hedefi hep buradan yönetirsiniz):<br>
-      <div class="onizle" style="color:#334155">[santral-aktar]<br>exten =&gt; s,1,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL})<br> same =&gt; n,Hangup()</div>
+      Asterisk'te <b>bir kez</b> şu genel kuralın olması yeterli (hedefi hep buradan yönetirsiniz). Değişkenler dialplan'de tanımlanmaz; köprü çağrı anında panelden okuyup kanala yazar:<br>
+      <div class="onizle" style="color:#334155">[santral-aktar]<br>exten =&gt; s,1,ExecIf($["${SANTRAL_HEDEF}"=""]?Hangup())<br> same =&gt; n,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL})<br> same =&gt; n,Hangup()</div>
     </div>
   </div>
 </div>

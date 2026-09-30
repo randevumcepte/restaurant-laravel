@@ -15,11 +15,16 @@ exten => s,1,NoOp(AI Santral cagri geldi: ${CALLERID(num)})
 ; exten => s,1,Stasis(restaurant-santral-ai,SUBE=3)
 
 ; --- AI "insana aktar" dediginde kopru cagriyi buraya geri verir ---
-; (index.js: SANTRAL_HEDEF + SANTRAL_ZIL degiskenlerini PANELDEN okuyup set eder, sonra buraya devreder)
+; ONEMLI: SANTRAL_HEDEF + SANTRAL_ZIL degiskenleri DIALPLAN'DE ASSIGN EDILMEZ.
+;   Kopru (index.js) ARI setChannelVar ile bu degiskenleri PANELDEN okuyup kanala YAZAR,
+;   sonra kanali buraya devreder (continueInDialplan). Yani buraya gelindiginde degiskenler DOLUDUR.
+;   Yine de guvenlik icin bos ihtimaline karsi defansif yaziyoruz.
 ; HEDEFI DEGISTIRMEK ICIN ASTERISK'E DOKUNMA -> panel: /santral-ayar
 [santral-aktar]
 exten => s,1,NoOp(AI -> aktarma hedefi: ${SANTRAL_HEDEF})
- same => n,Dial(${SANTRAL_HEDEF},${SANTRAL_ZIL})   ; hedef+zil panelden gelir ( or. SIP/101 veya SIP/trunk/05xx)
+ same => n,ExecIf($["${SANTRAL_HEDEF}"=""]?Hangup())              ; hedef bossa guvenli kapat
+ same => n,Set(ZIL=${IF($["${SANTRAL_ZIL}"=""]?30:${SANTRAL_ZIL})})
+ same => n,Dial(${SANTRAL_HEDEF},${ZIL})                          ; or. SIP/101 veya SIP/trunk/05xx (panelden)
  same => n,Hangup()
 
 ; --- (Opsiyonel) Kacan cagriyi AI'nin geri aramasi icin outbound ---
