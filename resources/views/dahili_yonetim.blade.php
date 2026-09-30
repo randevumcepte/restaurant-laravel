@@ -43,7 +43,7 @@
     <div class="uyari">⚠️ Önce FreePBX API bağlantısını ayarlayın. <a class="link" href="/freepbx-ayar">→ FreePBX API Ayarı</a></div>
   @else
   <div class="card">
-    <h2>Yeni dahili ekle</h2>
+    <h2>Yeni dahili ekle · Tür: PJSIP</h2>
     <div class="ekleRow">
       <div class="f" style="max-width:130px"><label>Numara</label><input type="text" id="e_num" placeholder="101"></div>
       <div class="f"><label>Ad</label><input type="text" id="e_ad" placeholder="Kasa"></div>
