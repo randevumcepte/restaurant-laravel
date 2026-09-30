@@ -65,6 +65,24 @@
       <div id="sonuc"></div>
       <a class="link" href="/dahili-yonetim">→ Dahili Yönetimi'ne git</a>
     </div>
+
+    <div class="card">
+      <div style="font-weight:800;font-size:15px;margin-bottom:4px">📞 Hat (Trunk + DID) API'si</div>
+      <div class="hint" style="margin-bottom:8px">
+        GraphQL trunk açamaz. chan_sip trunk + DID bağlama, FreePBX sunucuya konan
+        <b>santral-trunk.php</b> ucu üzerinden yapılır. Bu uç için URL + gizli anahtar:
+      </div>
+
+      <label>Trunk API URL</label>
+      <input type="text" name="trunk_api_url" value="{{ $ay->trunk_api_url ?? '' }}" placeholder="https://santral.ornek.com/monitor/api/santral-trunk.php">
+      <div class="hint">santral-trunk.php dosyasının erişilebilir tam adresi.</div>
+
+      <label>Trunk API gizli anahtarı (secret)</label>
+      <input type="password" name="trunk_api_secret" value="{{ $ay->trunk_api_secret ?? '' }}" placeholder="••••••••">
+      <div class="hint">santral-trunk.php içindeki <code>SANTRAL_SECRET</code> ile birebir AYNI olmalı.</div>
+
+      <a class="link" href="/hat-yonetim">→ Hat Yönetimi'ne git</a>
+    </div>
   </form>
 
   <div class="card">

@@ -9384,10 +9384,13 @@ Route::get('/freepbx-ayar', function () {
 
 Route::post('/freepbx-ayar-kaydet', function (Request $r) {
     \App\Services\FreePbxClient::ensure();
+    \App\Services\FreePbxTrunkClient::ensure(); // trunk_api_url / trunk_api_secret kolonlari
     $veri = [
         'base_url' => rtrim(trim((string) $r->input('base_url')), '/') ?: null,
         'client_id' => trim((string) $r->input('client_id')) ?: null,
         'client_secret' => trim((string) $r->input('client_secret')) ?: null,
+        'trunk_api_url' => rtrim(trim((string) $r->input('trunk_api_url')), '/') ?: null,
+        'trunk_api_secret' => trim((string) $r->input('trunk_api_secret')) ?: null,
         'aktif' => $r->input('aktif') ? 1 : 0,
         'updated_at' => now(),
     ];
@@ -9434,6 +9437,110 @@ Route::post('/api/dahili/sil', function (Request $r) {
 
 Route::post('/api/dahili/sifre', function (Request $r) {
     return response()->json((new \App\Services\FreePbxClient())->sifre($r->input('numara'), $r->input('sifre')), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// ============================ HAT YONETIMI (chan_sip TRUNK + DID -> gelen-restoran) ============================
+// GraphQL trunk acamaz -> FreePBX sunucudaki santral-trunk.php ucu (BMO addTrunk + did_contexts).
+// Isletme (sube) filtresi: isletme_hatlari tablosu.
+if (!function_exists('_hatEnsure')) {
+    function _hatEnsure()
+    {
+        \App\Services\FreePbxTrunkClient::ensure();
+        if (!Schema::hasTable('isletme_hatlari')) {
+            Schema::create('isletme_hatlari', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('did', 64)->index();            // gelen numara (context'e baglanan DID)
+                $t->string('trunk_adi')->nullable();
+                $t->string('username')->nullable();          // SIP hesap
+                $t->string('host')->nullable();              // SIP sunucu
+                $t->string('tech', 10)->default('sip');      // sip | pjsip
+                $t->string('context_name', 128)->default('gelen-restoran');
+                $t->integer('trunk_id')->nullable();         // FreePBX trunkid
+                $t->string('durum', 20)->default('aktif');
+                $t->timestamp('created_at')->useCurrent();
+                $t->timestamp('updated_at')->nullable();
+                $t->unique(['sube_id', 'did']);
+            });
+        }
+    }
+}
+if (!function_exists('_hatSube')) {
+    function _hatSube($r = null)
+    {
+        $v = $r ? $r->input('sube_id') : request('sube_id');
+        return (int) ($v ?: DB::table('subeler')->min('id') ?: 1);
+    }
+}
+
+Route::get('/hat-yonetim', function () {
+    _hatEnsure();
+    $subeId = _hatSube();
+    $c = new \App\Services\FreePbxTrunkClient();
+    return response()->view('hat_yonetim', [
+        'subeId' => $subeId,
+        'ayarli' => $c->ayarliMi(),
+    ]);
+});
+
+// Bir isletmenin (sube) hatlarini listele — SADECE o isletmeye ait.
+Route::match(['get', 'post'], '/api/hat/liste', function (Request $r) {
+    _hatEnsure();
+    $subeId = _hatSube($r);
+    $rows = DB::table('isletme_hatlari')->where('sube_id', $subeId)->orderByDesc('id')->get();
+    return response()->json(['ok' => 1, 'sube_id' => $subeId, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// TEK AKIS: chan_sip trunk ekle -> DID'i gelen-restoran'a bagla -> reload -> isletme_hatlari kaydet.
+Route::post('/api/hat/kur', function (Request $r) {
+    _hatEnsure();
+    $subeId = _hatSube($r);
+    $did = preg_replace('/\D/', '', (string) $r->input('did'));
+    $host = trim((string) $r->input('host'));
+    $username = trim((string) $r->input('username'));
+    $sipSecret = (string) $r->input('sip_secret');
+    $context = trim((string) $r->input('context')) ?: 'gelen-restoran';
+    $tech = $r->input('tech') === 'pjsip' ? 'pjsip' : 'sip';
+    $ad = trim((string) $r->input('ad'));
+
+    if ($did === '' || $host === '' || $username === '' || $sipSecret === '') {
+        return response()->json(['ok' => 0, 'hata' => 'DID, host, username ve SIP şifresi zorunlu.'], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    $c = new \App\Services\FreePbxTrunkClient();
+    $sonuc = $c->kur([
+        'host' => $host, 'username' => $username, 'sip_secret' => $sipSecret,
+        'did' => $did, 'context' => $context, 'tech' => $tech, 'ad' => $ad, 'register' => '1',
+    ]);
+    if (empty($sonuc['ok'])) {
+        return response()->json(['ok' => 0, 'hata' => $sonuc['hata'] ?? 'Kurulamadı', 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    // Basarili -> isletme_hatlari'na yaz (idempotent: sube_id+did unique).
+    $trunkId = $sonuc['trunk']['trunkid'] ?? null;
+    DB::table('isletme_hatlari')->updateOrInsert(
+        ['sube_id' => $subeId, 'did' => $did],
+        [
+            'trunk_adi' => $ad ?: $username, 'username' => $username, 'host' => $host,
+            'tech' => $tech, 'context_name' => $context, 'trunk_id' => $trunkId,
+            'durum' => 'aktif', 'updated_at' => now(),
+        ]
+    );
+
+    return response()->json(['ok' => 1, 'mesaj' => 'Hat kuruldu: chan_sip trunk + DID bağlandı.', 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Hat sil: DID bağlamasını kaldır + isletme_hatlari kaydını sil. (Trunk FreePBX'te kalır.)
+Route::post('/api/hat/sil', function (Request $r) {
+    _hatEnsure();
+    $subeId = _hatSube($r);
+    $did = preg_replace('/\D/', '', (string) $r->input('did'));
+    if ($did === '') return response()->json(['ok' => 0, 'hata' => 'DID zorunlu.'], 200, [], JSON_UNESCAPED_UNICODE);
+
+    $c = new \App\Services\FreePbxTrunkClient();
+    $sonuc = $c->didSil($did); // did_contexts kaydini kaldir
+    DB::table('isletme_hatlari')->where('sube_id', $subeId)->where('did', $did)->delete();
+    return response()->json(['ok' => 1, 'did' => $did, 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // ============================ AI SANTRAL — EGITIM (kalip + ogrenilen + cozulemeyen + PDF) ============================
