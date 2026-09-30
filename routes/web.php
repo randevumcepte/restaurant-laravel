@@ -9375,6 +9375,57 @@ Route::post('/santral-ayar-kaydet', function (Request $r) {
     return redirect('/santral-ayar?sube_id=' . $subeId . '&kaydedildi=1');
 });
 
+// ============================ FREEPBX API — DAHILI YONETIMI ============================
+// FreePBX'i BOZMADAN, onun GraphQL API'si uzerinden dahili ekle/sil/sifre.
+Route::get('/freepbx-ayar', function () {
+    \App\Services\FreePbxClient::ensure();
+    return response()->view('freepbx_ayar', ['ay' => \App\Services\FreePbxClient::ayar()]);
+});
+
+Route::post('/freepbx-ayar-kaydet', function (Request $r) {
+    \App\Services\FreePbxClient::ensure();
+    $veri = [
+        'base_url' => rtrim(trim((string) $r->input('base_url')), '/') ?: null,
+        'client_id' => trim((string) $r->input('client_id')) ?: null,
+        'client_secret' => trim((string) $r->input('client_secret')) ?: null,
+        'aktif' => $r->input('aktif') ? 1 : 0,
+        'updated_at' => now(),
+    ];
+    $var = DB::table('freepbx_ayarlari')->first();
+    if ($var) DB::table('freepbx_ayarlari')->where('id', $var->id)->update($veri);
+    else { $veri['created_at'] = now(); DB::table('freepbx_ayarlari')->insert($veri); }
+    return redirect('/freepbx-ayar?kaydedildi=1');
+});
+
+Route::match(['get', 'post'], '/api/freepbx/test', function () {
+    return response()->json((new \App\Services\FreePbxClient())->testBaglanti(), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+Route::get('/dahili-yonetim', function () {
+    \App\Services\FreePbxClient::ensure();
+    $ay = \App\Services\FreePbxClient::ayar();
+    return response()->view('dahili_yonetim', ['ayarli' => (bool) ($ay && $ay->base_url && $ay->client_id && $ay->client_secret)]);
+});
+
+Route::match(['get', 'post'], '/api/dahili/liste', function () {
+    $c = new \App\Services\FreePbxClient();
+    if (!$c->ayarliMi()) return response()->json(['ok' => 0, 'hata' => 'FreePBX API ayarlı değil'], 200, [], JSON_UNESCAPED_UNICODE);
+    $liste = $c->liste();
+    return response()->json(['ok' => 1, 'liste' => $liste, 'hata' => $c->hata], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+Route::post('/api/dahili/ekle', function (Request $r) {
+    return response()->json((new \App\Services\FreePbxClient())->ekle($r->input('numara'), $r->input('ad'), $r->input('sifre')), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+Route::post('/api/dahili/sil', function (Request $r) {
+    return response()->json((new \App\Services\FreePbxClient())->sil($r->input('numara')), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+Route::post('/api/dahili/sifre', function (Request $r) {
+    return response()->json((new \App\Services\FreePbxClient())->sifre($r->input('numara'), $r->input('sifre')), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ TANITIM SITESI (herkese acik landing = ANA SAYFA) ============================
 // public/tanitim.html statik dosyasini sunar (Blade parse etmez; @media/@keyframes bozulmaz).
 // Dashboard artik /dashboard adresinde.
