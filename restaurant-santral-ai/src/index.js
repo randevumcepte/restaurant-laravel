@@ -7,9 +7,9 @@
 //  2) StasisStart -> kanali cevapla, mixing bridge kur
 //  3) externalMedia kanali olustur (RTP'yi bu koprunun portuna yollar), bridge'e ekle
 //  4) CagriOturumu: RTP<->STT<->beyin<->TTS
-//  5) aksiyon 'aktar' -> hedefi PANELDEN oku, ARI originate ile ARA, ayni bridge'de BIRLESTIR
+//  5) aksiyon 'aktar' -> hedef(ler)i PANELDEN oku, ARI originate ile ARA (hepsi/sirali), ayni bridge'de BIRLESTIR
 //     (dialplan'e GEREK YOK -> her restoranda ekstra Asterisk ayari yok = otomasyon)
-//  6) hangup -> temizle (iki bacagi da)
+//  6) hangup -> temizle (tum bacaklar)
 const ariClient = require('ari-client');
 const cfg = require('./config');
 const log = require('./log');
@@ -29,9 +29,9 @@ function portAl() {
 }
 function portBirak(p) { if (p) kullanilan.delete(p); }
 
-// callerKanalId -> {oturum, bridge, extChan, port, telefon, subeId, aktarmaModu, hedefChanId, hedefBagli}
+// callerKanalId -> {oturum,bridge,extChan,port,telefon,subeId,aktarmaModu,hedefAdaylar:Set,hedefBagli,hedefChanId,aktarSira}
 const aktif = new Map();
-const extMediaKanallari = new Set(); // externalMedia bacaklarinin StasisStart'ini yok saymak icin
+const extMediaKanallari = new Set();
 
 async function main() {
   if (!cfg.laravel.baseUrl) { log.error('LARAVEL_BASE_URL bos — .env ayarlayin'); process.exit(1); }
@@ -40,19 +40,17 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-09-30e (ARI ile aktarma=dialplan'siz + panelden hedef + siparis->adisyon + kufur + menu zekasi, sessizlik ${cfg.sessizlikMs}ms)`);
+  log.info(`SURUM: 2026-09-30f (coklu hedef + strateji hepsi/sirali, ARI aktarma dialplan'siz, panelden yonetim, sessizlik ${cfg.sessizlikMs}ms)`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
   client = await ariClient.connect(cfg.ari.url, cfg.ari.user, cfg.ari.pass);
 
   client.on('StasisStart', async (event, channel) => {
-    // externalMedia bacagi bize geri girer -> yok say
     if (extMediaKanallari.has(channel.id) || /^UnicastRTP/.test(channel.name || '')) {
       log.debug(`externalMedia bacagi StasisStart, atlaniyor: ${channel.name}`);
       return;
     }
-    // Aktarma icin originate ettigimiz HEDEF bacagi cevaplayinca buraya girer (appArgs: aktarma,<callerId>)
     if (event.args && event.args[0] === 'aktarma') {
       await aktarmaHedefiCevapladi(channel, event.args[1]);
       return;
@@ -60,19 +58,8 @@ async function main() {
     await cagriBasla(channel, event);
   });
 
-  // Tek teardown sinyali: kanal yok olunca (cevapsiz/kapandi, arayan veya hedef fark etmez)
   client.on('ChannelDestroyed', async (event, channel) => {
-    // 1) Bu bir aktarma hedef bacagi mi? -> arayani da kapat
-    for (const [cid, k] of aktif) {
-      if (k.hedefChanId === channel.id) {
-        log.info(`aktarma hedefi dustu (${k.hedefBagli ? 'kapandi' : 'cevapsiz'}) -> arayan ${cid} kapaniyor`);
-        try { await client.Channel(cid).hangup(); } catch (_) {}
-        await temizle(cid, 'aktar');
-        return;
-      }
-    }
-    // 2) Arayan kapandi mi?
-    if (aktif.has(channel.id)) await temizle(channel.id, 'kapandi');
+    await kanalDustu(channel.id);
   });
 
   process.on('SIGINT', () => { log.info('kapaniyor…'); process.exit(0); });
@@ -122,7 +109,10 @@ async function cagriBasla(channel, event) {
       onBitir: (kid) => { client.Channel(kid).hangup().catch(() => {}); },
     });
 
-    aktif.set(channel.id, { oturum, bridge, extChan, port, telefon, subeId, aktarmaModu: false, hedefChanId: null, hedefBagli: false });
+    aktif.set(channel.id, {
+      oturum, bridge, extChan, port, telefon, subeId,
+      aktarmaModu: false, hedefAdaylar: null, hedefBagli: false, hedefChanId: null, aktarSira: null,
+    });
     await oturum.basla();
   } catch (e) {
     log.error('cagriBasla hatasi:', e.message);
@@ -131,14 +121,15 @@ async function cagriBasla(channel, event) {
   }
 }
 
-// "insana aktar" (dialplan'SIZ): hedefi panelden oku -> ARI originate ile ara -> ayni bridge'de birlestir.
+// "insana aktar" (dialplan'SIZ, coklu hedef + strateji)
 async function insanaAktar(kanalId, subeId) {
   const kayit = aktif.get(kanalId);
-  log.info(`insana aktar: kanal=${kanalId}`);
   if (!kayit) return;
+  log.info(`insana aktar: kanal=${kanalId}`);
 
-  const hedef = await brain.aktarmaHedef(subeId);
-  if (!hedef || !hedef.aktif || !hedef.dial) {
+  const h = await brain.aktarmaHedef(subeId);
+  const hedefler = (h && Array.isArray(h.hedefler) && h.hedefler.length) ? h.hedefler : (h && h.dial ? [h.dial] : []);
+  if (!h || !h.aktif || !hedefler.length) {
     log.warn(`aktarma hedefi panelde tanimli degil (sube ${subeId}) -> cagri kapaniyor. /santral-ayar'dan ayarlayin.`);
     try { await client.Channel(kanalId).hangup(); } catch (_) {}
     await temizle(kanalId, 'aktar');
@@ -151,25 +142,59 @@ async function insanaAktar(kanalId, subeId) {
   try { if (kayit.oturum) await kayit.oturum.kapat('aktar'); } catch (_) {}
   portBirak(kayit.port); kayit.port = null;
 
-  log.info(`aktarma originate: ${hedef.dial} (zil ${hedef.zil || 30}s)`);
-  try {
-    const hedefChan = client.Channel();
-    kayit.hedefChanId = hedefChan.id;
-    await hedefChan.originate({
-      endpoint: hedef.dial,               // or. SIP/101 veya SIP/trunk/05xx (panelden)
-      app: cfg.ari.app,
-      appArgs: `aktarma,${kanalId}`,       // cevaplayinca StasisStart'ta bunu yakalarız
-      timeout: hedef.zil || 30,
-      callerId: kayit.telefon || undefined, // personel arayanin numarasini gorsun
-    });
-  } catch (e) {
-    log.warn('originate hatasi:', e.message);
-    try { await client.Channel(kanalId).hangup(); } catch (_) {}
-    await temizle(kanalId, 'aktar');
+  kayit.hedefAdaylar = new Set();
+  kayit.hedefBagli = false;
+  kayit.hedefChanId = null;
+  const zil = h.zil || 30;
+
+  if (h.strateji === 'sirali') {
+    kayit.aktarSira = { list: hedefler, idx: 0, zil };
+    log.info(`aktarma (sirali): ${hedefler.join(' -> ')} (her biri ${zil}s)`);
+    await siraliDenemesi(kanalId);
+  } else {
+    log.info(`aktarma (hepsi ayni anda): ${hedefler.join(', ')} (zil ${zil}s)`);
+    for (const dial of hedefler) await originateHedef(kanalId, dial, zil);
   }
 }
 
-// Aktarma hedefi (dahili/cep) cevapladi -> arayanla ayni bridge'e ekle (konusmaya baslasinlar)
+// Tek bir hedefi ara (aday olarak izle)
+async function originateHedef(callerId, dial, zil) {
+  const kayit = aktif.get(callerId);
+  if (!kayit || kayit.hedefBagli) return;
+  try {
+    const hedefChan = client.Channel();
+    kayit.hedefAdaylar.add(hedefChan.id);
+    await hedefChan.originate({
+      endpoint: dial,                    // or. SIP/101 veya SIP/trunk/05xx (panelden)
+      app: cfg.ari.app,
+      appArgs: `aktarma,${callerId}`,
+      timeout: zil,
+      callerId: kayit.telefon || undefined,
+    });
+  } catch (e) {
+    log.warn(`originate hatasi (${dial}):`, e.message);
+    // aday olusmadi; sirali ise sonrakine gecmek icin kanalDustu tetiklenmez -> burada dene
+    if (kayit.aktarSira) await siraliDenemesi(callerId);
+  }
+}
+
+// Sirali strateji: siradaki hedefi dene; liste biterse arayani kapat
+async function siraliDenemesi(callerId) {
+  const kayit = aktif.get(callerId);
+  if (!kayit || kayit.hedefBagli) return;
+  const s = kayit.aktarSira;
+  if (!s || s.idx >= s.list.length) {
+    log.info('sirali aktarma: kimse acmadi -> arayan kapaniyor');
+    try { await client.Channel(callerId).hangup(); } catch (_) {}
+    await temizle(callerId, 'aktar');
+    return;
+  }
+  const dial = s.list[s.idx++];
+  log.info(`sirali deneme ${s.idx}/${s.list.length}: ${dial} (${s.zil}s)`);
+  await originateHedef(callerId, dial, s.zil);
+}
+
+// Hedef (dahili/cep) cevapladi -> arayanla birlestir; hepsi modunda digerlerini iptal et
 async function aktarmaHedefiCevapladi(hedefChan, callerId) {
   const kayit = aktif.get(callerId);
   if (!kayit || !kayit.bridge) {
@@ -177,18 +202,59 @@ async function aktarmaHedefiCevapladi(hedefChan, callerId) {
     try { await hedefChan.hangup(); } catch (_) {}
     return;
   }
-  log.info(`aktarma hedefi cevapladi -> ${callerId} ile birlestiriliyor`);
+  if (kayit.hedefBagli) { // baska hedef daha once acti -> bu fazlalik
+    try { await hedefChan.hangup(); } catch (_) {}
+    return;
+  }
   kayit.hedefBagli = true;
+  kayit.hedefChanId = hedefChan.id;
+  log.info(`aktarma hedefi cevapladi -> ${callerId} ile birlestiriliyor`);
   try { await kayit.bridge.addChannel({ channel: hedefChan.id }); }
   catch (e) { log.warn('bridge birlestirme hatasi:', e.message); }
+
+  // Diger ringing adaylari iptal et (ring group kaybedenleri)
+  for (const cid of Array.from(kayit.hedefAdaylar)) {
+    if (cid !== hedefChan.id) { try { await client.Channel(cid).hangup(); } catch (_) {} }
+  }
+  kayit.hedefAdaylar = new Set([hedefChan.id]);
+}
+
+// Herhangi bir kanal yok oldu (cevapsiz/kapandi)
+async function kanalDustu(chanId) {
+  // 1) Aktarma aday bacagi mi?
+  for (const [cid, k] of aktif) {
+    if (k.hedefAdaylar && k.hedefAdaylar.has(chanId)) {
+      k.hedefAdaylar.delete(chanId);
+      if (k.hedefBagli) {
+        // Bagli olan hedef mi dustu? -> gorusme bitti, arayani kapat
+        if (chanId === k.hedefChanId) {
+          log.info(`aktarma hedefi (bagli) kapandi -> arayan ${cid} kapaniyor`);
+          try { await client.Channel(cid).hangup(); } catch (_) {}
+          await temizle(cid, 'aktar');
+        }
+        return; // bagli degilse: iptal edilen kaybeden aday -> yok say
+      }
+      // Henuz kimse baglanmadi (cevapsiz/mesgul)
+      if (k.aktarSira) { await siraliDenemesi(cid); }        // sirali -> sonraki
+      else if (k.hedefAdaylar.size === 0) {                   // hepsi -> hepsi dustu
+        log.info(`aktarma: kimse acmadi -> arayan ${cid} kapaniyor`);
+        try { await client.Channel(cid).hangup(); } catch (_) {}
+        await temizle(cid, 'aktar');
+      }
+      return;
+    }
+  }
+  // 2) Arayan mi kapandi?
+  if (aktif.has(chanId)) await temizle(chanId, 'kapandi');
 }
 
 async function temizle(kanalId, sonuc) {
   const kayit = aktif.get(kanalId);
   if (!kayit) return;
   aktif.delete(kanalId);
-  // Aktarma hedef bacagi hala aciksa kapat
-  try { if (kayit.hedefChanId) await client.Channel(kayit.hedefChanId).hangup(); } catch (_) {}
+  if (kayit.hedefAdaylar) {
+    for (const cid of kayit.hedefAdaylar) { try { await client.Channel(cid).hangup(); } catch (_) {} }
+  }
   try { if (kayit.oturum) await kayit.oturum.kapat(sonuc); } catch (_) {}
   try { if (kayit.bridge) await kayit.bridge.destroy(); } catch (_) {}
   portBirak(kayit.port);

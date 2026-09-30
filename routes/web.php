@@ -9233,44 +9233,84 @@ if (!function_exists('_santralAyarEnsure')) {
                 $t->id();
                 $t->unsignedBigInteger('sube_id')->unique();
                 $t->boolean('aktarma_aktif')->default(1);
-                $t->string('hedef_tip', 10)->default('dahili');   // dahili | dis
-                $t->string('teknoloji', 10)->default('SIP');      // SIP | PJSIP
-                $t->string('numara', 40)->nullable();             // 101  veya  05xxxxxxxxx
-                $t->string('trunk', 60)->nullable();              // dis hat icin trunk adi (ops.)
+                $t->string('strateji', 10)->default('hepsi');     // hepsi (ayni anda) | sirali
+                $t->text('hedefler')->nullable();                 // JSON: [{tip,teknoloji,numara,trunk},...]
+                $t->string('hedef_tip', 10)->default('dahili');   // (legacy tek hedef) dahili | dis
+                $t->string('teknoloji', 10)->default('SIP');      // (legacy)
+                $t->string('numara', 40)->nullable();             // (legacy)
+                $t->string('trunk', 60)->nullable();              // (legacy)
                 $t->unsignedInteger('zil_sure')->default(30);
                 $t->timestamp('updated_at')->nullable();
                 $t->timestamp('created_at')->useCurrent();
             });
+        } else {
+            // Mevcut tabloya coklu-hedef kolonlarini ekle (geriye donuk)
+            if (!Schema::hasColumn('santral_ayarlari', 'strateji')) {
+                Schema::table('santral_ayarlari', function ($t) { $t->string('strateji', 10)->default('hepsi'); });
+            }
+            if (!Schema::hasColumn('santral_ayarlari', 'hedefler')) {
+                Schema::table('santral_ayarlari', function ($t) { $t->text('hedefler')->nullable(); });
+            }
         }
     }
 }
 
-// Panelin girdigi ayardan Asterisk Dial hedef stringini kurar (SIP/101, PJSIP/101, SIP/trunk/05xx...)
-if (!function_exists('_santralDialKur')) {
-    function _santralDialKur($ay): string
+// Tek hedef girdisinden Asterisk dial stringi kurar (SIP/101, PJSIP/101, SIP/trunk/05xx...)
+if (!function_exists('_santralDialTek')) {
+    function _santralDialTek($tip, $tek, $num, $trunk): string
     {
-        if (!$ay) return '';
-        $tek = in_array($ay->teknoloji, ['SIP', 'PJSIP'], true) ? $ay->teknoloji : 'SIP';
-        $num = trim((string) ($ay->numara ?? ''));
+        $tek = in_array($tek, ['SIP', 'PJSIP'], true) ? $tek : 'SIP';
+        $num = trim((string) $num);
         if ($num === '') return '';
-        if (($ay->hedef_tip ?? 'dahili') === 'dis') {
-            $trunk = trim((string) ($ay->trunk ?? ''));
+        if ($tip === 'dis') {
+            $trunk = trim((string) $trunk);
             return $trunk !== '' ? "$tek/$trunk/$num" : "$tek/$num";
         }
         return "$tek/$num";
     }
 }
 
-// Kopru bunu cagirir: "insana aktar" aninda hedefi panelden okur
+// Legacy tek-hedef (eski kayitlar icin)
+if (!function_exists('_santralDialKur')) {
+    function _santralDialKur($ay): string
+    {
+        if (!$ay) return '';
+        return _santralDialTek($ay->hedef_tip ?? 'dahili', $ay->teknoloji ?? 'SIP', $ay->numara ?? '', $ay->trunk ?? '');
+    }
+}
+
+// Ayar -> aranacak hedef dial listesi (coklu; yoksa legacy tek hedefe duser)
+if (!function_exists('_santralHedefListesi')) {
+    function _santralHedefListesi($ay): array
+    {
+        if (!$ay) return [];
+        $out = [];
+        $ham = !empty($ay->hedefler) ? json_decode($ay->hedefler, true) : null;
+        if (is_array($ham) && count($ham)) {
+            foreach ($ham as $h) {
+                $d = _santralDialTek($h['tip'] ?? 'dahili', $h['teknoloji'] ?? 'SIP', $h['numara'] ?? '', $h['trunk'] ?? '');
+                if ($d !== '') $out[] = $d;
+            }
+        } else {
+            $d = _santralDialKur($ay);
+            if ($d !== '') $out[] = $d;
+        }
+        return $out;
+    }
+}
+
+// Kopru bunu cagirir: "insana aktar" aninda hedefleri + stratejiyi panelden okur
 Route::match(['get', 'post'], '/api/santral/aktarma-hedef', function (Request $r) {
     _santralAyarEnsure();
     $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
     $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
-    $dial = _santralDialKur($ay);
+    $hedefler = _santralHedefListesi($ay);
     return response()->json([
         'ok' => 1,
         'aktif' => $ay ? (int) $ay->aktarma_aktif : 0,
-        'dial' => $dial,
+        'strateji' => ($ay && $ay->strateji === 'sirali') ? 'sirali' : 'hepsi',
+        'hedefler' => $hedefler,          // ["SIP/101","SIP/102",...]
+        'dial' => $hedefler[0] ?? '',     // geriye donuk
         'zil' => $ay ? (int) $ay->zil_sure : 30,
     ], 200, [], JSON_UNESCAPED_UNICODE);
 });
@@ -9280,19 +9320,52 @@ Route::get('/santral-ayar', function () {
     _santralAyarEnsure();
     $subeId = (int) (request('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
     $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
-    return response()->view('santral_ayar', ['subeId' => $subeId, 'ay' => $ay, 'dial' => _santralDialKur($ay)]);
+    // Panele hedef satirlarini ver (coklu; yoksa legacy tek hedeften uret)
+    $hedefler = [];
+    if ($ay && !empty($ay->hedefler)) {
+        $d = json_decode($ay->hedefler, true);
+        if (is_array($d)) $hedefler = $d;
+    }
+    if (!$hedefler && $ay && trim((string) ($ay->numara ?? '')) !== '') {
+        $hedefler = [['tip' => $ay->hedef_tip ?? 'dahili', 'teknoloji' => $ay->teknoloji ?? 'SIP', 'numara' => $ay->numara, 'trunk' => $ay->trunk]];
+    }
+    return response()->view('santral_ayar', [
+        'subeId' => $subeId, 'ay' => $ay,
+        'hedefler' => $hedefler,
+        'dialListesi' => _santralHedefListesi($ay),
+    ]);
 });
 
 // Panel: aktarma ayar kaydet
 Route::post('/santral-ayar-kaydet', function (Request $r) {
     _santralAyarEnsure();
     $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+
+    // hedefler: JSON string (panel JS uretir) -> normalize
+    $ham = json_decode((string) $r->input('hedefler'), true);
+    $hedefler = [];
+    if (is_array($ham)) {
+        foreach ($ham as $h) {
+            $num = trim((string) ($h['numara'] ?? ''));
+            if ($num === '') continue;
+            $hedefler[] = [
+                'tip' => in_array(($h['tip'] ?? 'dahili'), ['dahili', 'dis'], true) ? $h['tip'] : 'dahili',
+                'teknoloji' => in_array(($h['teknoloji'] ?? 'SIP'), ['SIP', 'PJSIP'], true) ? $h['teknoloji'] : 'SIP',
+                'numara' => $num,
+                'trunk' => trim((string) ($h['trunk'] ?? '')) ?: null,
+            ];
+        }
+    }
+
     $veri = [
         'aktarma_aktif' => $r->input('aktarma_aktif') ? 1 : 0,
-        'hedef_tip' => in_array($r->input('hedef_tip'), ['dahili', 'dis'], true) ? $r->input('hedef_tip') : 'dahili',
-        'teknoloji' => in_array($r->input('teknoloji'), ['SIP', 'PJSIP'], true) ? $r->input('teknoloji') : 'SIP',
-        'numara' => trim((string) $r->input('numara')) ?: null,
-        'trunk' => trim((string) $r->input('trunk')) ?: null,
+        'strateji' => $r->input('strateji') === 'sirali' ? 'sirali' : 'hepsi',
+        'hedefler' => $hedefler ? json_encode($hedefler, JSON_UNESCAPED_UNICODE) : null,
+        // legacy alanlari da ilk hedefle doldur (geriye donuk uyum)
+        'hedef_tip' => $hedefler[0]['tip'] ?? 'dahili',
+        'teknoloji' => $hedefler[0]['teknoloji'] ?? 'SIP',
+        'numara' => $hedefler[0]['numara'] ?? null,
+        'trunk' => $hedefler[0]['trunk'] ?? null,
         'zil_sure' => max(5, min(120, (int) $r->input('zil_sure') ?: 30)),
         'updated_at' => now(),
     ];
