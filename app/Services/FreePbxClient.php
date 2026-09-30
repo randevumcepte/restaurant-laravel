@@ -150,7 +150,7 @@ class FreePbxClient
         $ad = $this->kacar($ad);
         $sifre = $this->kacar($sifre);
         $tech = $this->kacar($tech);
-        $m = 'mutation { addExtension(input: { extensionId: ' . $num . ', name: "' . $ad . '", tech: "' . $tech . '", extPassword: "' . $sifre . '", vmEnable: false, umEnable: false }) { status message } }';
+        $m = 'mutation { addExtension(input: { extensionId: ' . $num . ', name: "' . $ad . '", tech: "' . $tech . '", email: "", extPassword: "' . $sifre . '", vmEnable: false, umEnable: false }) { status message } }';
         $j = $this->gql($m);
         $st = $j['data']['addExtension']['status'] ?? null;
         if ($st) { $this->reload(); return ['ok' => 1, 'mesaj' => $j['data']['addExtension']['message'] ?? 'Dahili eklendi']; }
