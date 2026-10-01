@@ -9123,7 +9123,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         if ($dolu && $dolu->sube_id) $subeId = (int) $dolu->sube_id;
     }
     $telefon = trim((string) $r->input('telefon'));
-    $as = new \App\Services\SantralAsistan($subeId);
+    $as = new \App\Services\SantralAsistan($subeId, $telefon);
     $karsilama = $as->karsilama();
     $menuAdet = $as->menuAdet(); // teshis: 0 ise bu subede aktif urun yok -> AI menuyu tanitamaz
     $oid = DB::table('santral_oturumlari')->insertGetId([
@@ -9145,7 +9145,7 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
     if (!$o) return response()->json(['ok' => 0, 'hata' => 'oturum_yok'], 404, [], JSON_UNESCAPED_UNICODE);
 
     $gecmis = json_decode($o->gecmis ?: '[]', true) ?: [];
-    $as = new \App\Services\SantralAsistan($o->sube_id);
+    $as = new \App\Services\SantralAsistan($o->sube_id, $o->telefon);
     $res = $as->konus($metin, $gecmis);
 
     // gecmise ekle
@@ -9194,18 +9194,34 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                 $odemeHam = (string) ($sp['odeme'] ?? '');
                 $odemeYon = $odemeHam === 'kapida_kart' ? 'kart_kapida' : ($odemeHam === 'online' ? 'online' : 'nakit');
                 if (Schema::hasColumn('santral_oturumlari', 'sonuc')) $guncelle['sonuc'] = 'siparis';
+                // Musteri KIMLIGI = CallerID (tanima icin); yoksa AI'nin aldigi telefon
+                $kimlikTel = trim((string) ($o->telefon ?: ($sp['telefon'] ?? '')));
+                $adSp = trim((string) ($sp['ad'] ?? ''));
+                $adrSp = trim((string) ($sp['adres'] ?? ''));
                 if ($sube && $kalemler) {
                     $r2 = _paketSiparisAl($sube, [
                         'platform' => 'telefon',
                         'odeme_yontemi' => $odemeYon,
                         'musteri' => [
-                            'ad' => trim((string) ($sp['ad'] ?? '')) ?: ('Telefon ' . trim((string) ($o->telefon ?? ''))),
-                            'telefon' => trim((string) ($sp['telefon'] ?? $o->telefon ?? '')),
-                            'adres' => trim((string) ($sp['adres'] ?? '')),
+                            'ad' => $adSp ?: ('Telefon ' . $kimlikTel),
+                            'telefon' => $kimlikTel,
+                            'adres' => $adrSp,
                         ],
                         'kalemler' => $kalemler,
                     ]);
-                    if (!empty($r2['adisyon_id'])) $guncelle['adisyon_id'] = $r2['adisyon_id'];
+                    if (!empty($r2['adisyon_id'])) {
+                        $guncelle['adisyon_id'] = $r2['adisyon_id'];
+                        // CRM: ad/adres ogrenildiyse musteri kaydini GUNCELLE (sonraki aramada tanisin)
+                        try {
+                            $mid = DB::table('adisyonlar')->where('id', $r2['adisyon_id'])->value('musteri_id');
+                            if ($mid) {
+                                $up = [];
+                                if ($adSp !== '') $up['ad'] = $adSp;
+                                if ($adrSp !== '') $up['adres'] = $adrSp;
+                                if ($up) { $up['updated_at'] = now(); DB::table('musteriler')->where('id', $mid)->update($up); }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
                 }
             } catch (\Throwable $e) { /* adisyon olusturulamadi: ham veri yine saklandi, cevap yine doner */ }
         }

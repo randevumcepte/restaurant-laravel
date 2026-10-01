@@ -19,17 +19,64 @@ class SantralAsistan
     public $teshis = null;
     protected $subeId;
     protected $sube;
+    protected $telefon;       // arayan numara (CallerID)
+    protected $musteri;       // kayitli musteri (obj|null) — tanima icin
+    protected $sonSiparis;    // gecen siparis kalemleri [{urun,adet}] — "ayni siparis" icin
 
-    public function __construct($subeId)
+    public function __construct($subeId, $telefon = null)
     {
         $this->subeId = (int) $subeId;
         $this->sube = DB::table('subeler')->where('id', $this->subeId)->first();
+        $this->telefon = $telefon ? preg_replace('/\D/', '', (string) $telefon) : null;
+        $this->musteriYukle();
     }
 
-    /** Cagri acilinca ilk karsilama (LLM'e gerek yok, sabit + sicak). */
+    /** CallerID ile kayitli musteriyi + gecen siparisini yukle (tanima/kisisellestirme). */
+    protected function musteriYukle(): void
+    {
+        $this->musteri = null;
+        $this->sonSiparis = [];
+        try {
+            if (!$this->telefon || mb_strlen($this->telefon) < 7 || !Schema::hasTable('musteriler')) return;
+            $son10 = substr($this->telefon, -10);
+            $m = DB::table('musteriler')->where('sube_id', $this->subeId)
+                ->where('telefon', 'like', '%' . $son10)->orderByDesc('id')->first();
+            if (!$m) return;
+            $this->musteri = $m;
+            if (Schema::hasTable('adisyonlar') && Schema::hasTable('adisyon_kalemleri')) {
+                $sonAd = DB::table('adisyonlar')->where('sube_id', $this->subeId)->where('musteri_id', $m->id)
+                    ->orderByDesc('id')->first(['id']);
+                if ($sonAd) {
+                    $this->sonSiparis = DB::table('adisyon_kalemleri')->where('adisyon_id', $sonAd->id)
+                        ->where('durum', '!=', 'iptal')->get(['urun_adi', 'adet'])
+                        ->map(fn ($x) => ['urun' => $x->urun_adi, 'adet' => (int) $x->adet])->all();
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->musteri = null;
+        }
+    }
+
+    protected function genelAd($ad): bool
+    {
+        $n = mb_strtolower(trim((string) $ad), 'UTF-8');
+        return $n === '' || strpos($n, 'paket') !== false || strpos($n, 'telefon') !== false || strpos($n, 'müşteri') !== false || strpos($n, 'musteri') !== false;
+    }
+
+    protected function ilkIsim($ad): string
+    {
+        $p = preg_split('/\s+/', trim((string) $ad));
+        return $p[0] ?? (string) $ad;
+    }
+
+    /** Cagri acilinca ilk karsilama — kayitli musteriyi ADIYLA karsilar. */
     public function karsilama(): string
     {
         $ad = $this->sube->ad ?? 'restoranımız';
+        if ($this->musteri && !$this->genelAd($this->musteri->ad)) {
+            $isim = $this->ilkIsim($this->musteri->ad);
+            return "Merhaba $isim, " . $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
+        }
         return $ad . "'a hoş geldiniz, ben yapay zeka asistanınızım. Size nasıl yardımcı olabilirim?";
     }
 
@@ -192,8 +239,36 @@ class SantralAsistan
         if ($adres) $p .= " Restoranın adresi: $adres.";
         if ($tel) $p .= " Restoranın telefonu: $tel.";
 
+        $p .= $this->musteriBaglami();
         $p .= $this->menuBaglami();
 
+        return $p;
+    }
+
+    /** Arayan musteri baglami: tanima + adiyla hitap + kayitli adres/telefon + gecen siparis + "ayni siparis". */
+    protected function musteriBaglami(): string
+    {
+        // YENI musteri
+        if (!$this->musteri) {
+            $p = " ARAYAN YENİ müşteri (kayıtlı değil). Sipariş alırken adını BİR KEZ nazikçe sor (kaydedilecek). ";
+            if ($this->telefon) $p .= "Telefon numarasını TEKRAR SORMA; arayan numarası ($this->telefon) kullanılacak. Teslimat adresini sor. ";
+            return $p;
+        }
+        // KAYITLI musteri
+        $m = $this->musteri;
+        $p = " ARAYAN KAYITLI MÜŞTERİ.";
+        if (!$this->genelAd($m->ad)) $p .= " Adı: " . $m->ad . " (karşılamada ve uygun yerde adıyla hitap et).";
+        if (!empty($m->adres)) $p .= " Kayıtlı teslimat adresi: " . $m->adres . ".";
+        if (!empty($m->telefon)) $p .= " Telefonu: " . $m->telefon . ".";
+        if (!empty($this->sonSiparis)) {
+            $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
+            $p .= " Geçen siparişi: " . $ozet . ".";
+        }
+        $p .= " KAYITLI MÜŞTERİ KURALLARI: Sipariş alırken teslimat adresini ve telefonunu TEKRAR SORMA; kayıtlı bilgileri kullan ve sadece ONAY al ('Teslimat yine [adres] olsun mu?'). ";
+        if (!empty($this->sonSiparis)) {
+            $p .= "Müşteri 'geçen seferki gibi', 'aynısı', 'her zamanki' derse geçen siparişindeki ürünleri sipariş kalemleri olarak al, kısaca tekrar edip onayla. Uygunsa 'Geçen sefer [ozet] almıştınız, aynısını ister misiniz?' diye hatırlatabilirsin. ";
+        }
+        $p .= "Adres değiştiyse yeni adresi al. Yeni müşteri değil, onu tanıdığını hissettir. ";
         return $p;
     }
 
