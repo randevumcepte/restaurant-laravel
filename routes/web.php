@@ -9140,6 +9140,23 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
     return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri()], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// TEST: bir telefona ait musteri kaydini sil (temiz baslangic). ?telefon=5xx&onay=1
+Route::match(['get', 'post'], '/api/santral/musteri-sil', function (Request $r) {
+    $tel = preg_replace('/\D/', '', (string) $r->input('telefon'));
+    if (strlen($tel) < 7) return response()->json(['ok' => 0, 'hata' => 'telefon gir (?telefon=5xx...&onay=1)'], 200, [], JSON_UNESCAPED_UNICODE);
+    if (!$r->input('onay')) return response()->json(['ok' => 0, 'hata' => 'onay=1 ekleyin (silme onayi)'], 200, [], JSON_UNESCAPED_UNICODE);
+    $son10 = substr($tel, -10);
+    $silinen = [];
+    foreach (DB::table('musteriler')->whereNotNull('telefon')->orderByDesc('id')->limit(5000)->get(['id', 'ad', 'telefon']) as $m) {
+        if (substr(preg_replace('/\D/', '', (string) $m->telefon), -10) === $son10) {
+            try { DB::table('adisyonlar')->where('musteri_id', $m->id)->update(['musteri_id' => null]); } catch (\Throwable $e) {}
+            DB::table('musteriler')->where('id', $m->id)->delete();
+            $silinen[] = ['id' => $m->id, 'ad' => $m->ad, 'telefon' => $m->telefon];
+        }
+    }
+    return response()->json(['ok' => 1, 'silinen' => $silinen, 'sayi' => count($silinen)], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // Teshis: bu telefon kayitli mi? (tanima sorunu icin)
 Route::match(['get', 'post'], '/api/santral/musteri-teshis', function (Request $r) {
     $tel = preg_replace('/\D/', '', (string) $r->input('telefon'));
