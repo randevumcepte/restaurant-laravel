@@ -53,6 +53,7 @@ class CagriOturumu {
   }
 
   _interim(metin) {
+    if (this.kapali || this._kapaniyor) return; // kapanis sirasinda dinleme/barge-in yok
     log.debug(`ara-sonuc: ${metin}`);
     // BARGE-IN: musteri GERCEKTEN konusunca (>=2 kelime) AI'nin sesini kes.
     // >=2 kelime sarti: tek kelimelik gurultu/eko blip'i AI'yi bosuna kesmesin.
@@ -74,14 +75,14 @@ class CagriOturumu {
   }
 
   _interimZorla() {
-    if (this.kapali || this.mesgul) return;
+    if (this.kapali || this.mesgul || this._kapaniyor) return;
     const m = (this._sonInterim || '').trim();
     this._sonInterim = '';
     if (m.length >= 2) { log.debug(`endpointing: interim->final: ${m}`); this._finalMetin(m); }
   }
 
   async _finalMetin(metin) {
-    if (this.kapali) return;
+    if (this.kapali || this._kapaniyor) return; // kapanis sirasinda yeni tur baslatma
     clearTimeout(this._interimZ); this._sonInterim = '';
     const n = (metin || '').toLowerCase().trim();
     if (n.length < 1) return;
@@ -112,10 +113,13 @@ class CagriOturumu {
         return;
       }
       log.info(`< asistan: ${d.cevap}${d.aksiyon ? '  [aksiyon: ' + d.aksiyon + ']' : ''}`);
+      // KAPANIS ise: kapanis cumlesi barge-in ile KESILMESIN + yeni tur baslamasin (askida kalmasin)
+      const kapanis = (d.aksiyon === 'veda' || d.bitir);
+      if (kapanis) this._kapaniyor = true;
       if (d.cevap) await this._seslendir(d.cevap);
 
       if (d.aksiyon === 'aktar') { this.onAktar(this.kanalId); return; }
-      if (d.aksiyon === 'veda' || d.bitir) { await this._kapatSirasi(); return; }
+      if (kapanis) { await this._kapatSirasi(); return; }
     } catch (e) {
       log.error('Beyin konus hatasi:', e.message);
       await this._seslendir('Bir sorun oluştu, sizi yetkiliye bağlıyorum.');
@@ -153,7 +157,7 @@ class CagriOturumu {
 
   _sessizlikSifirla(ikinci) {
     clearTimeout(this.sessizlikZ);
-    if (this.kapali) return;
+    if (this.kapali || this._kapaniyor) return;
     this.sessizlikZ = setTimeout(async () => {
       if (this.kapali) return;
       // AI hala konusuyor ya da beyin dusunuyorsa: sessizlik SAYMA, pencereyi yeniden baslat
