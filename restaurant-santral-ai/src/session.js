@@ -53,9 +53,11 @@ class CagriOturumu {
 
   _interim(metin) {
     log.debug(`ara-sonuc: ${metin}`);
-    // Musteri konusmaya basladi -> barge-in: AI'nin sesini kes (sadece BARGE_IN=1 iken)
-    if (cfg.bargeIn && this.rtp.sesVarMi) {
-      log.debug('barge-in: AI susturuluyor');
+    // BARGE-IN: musteri GERCEKTEN konusunca (>=2 kelime) AI'nin sesini kes.
+    // >=2 kelime sarti: tek kelimelik gurultu/eko blip'i AI'yi bosuna kesmesin.
+    const kelime = (metin || '').trim().split(/\s+/).filter(Boolean).length;
+    if (cfg.bargeIn && this.rtp.sesVarMi && kelime >= 2) {
+      log.debug('barge-in: AI susturuluyor (gercek konusma)');
       this.rtp.sustur();
     }
     this._sessizlikSifirla();

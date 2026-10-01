@@ -40,7 +40,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-09-30h (AKILLI endpointing: kisa cevap 1.2sn / uzun cumle-adres 2.4sn sabirli; CRM tanima; kapanis tam calinir, sessizlik ${cfg.sessizlikMs}ms)`);
+  log.info(`SURUM: 2026-09-30i (TAM-DUPLEKS barge-in=gercek konusma>=2kelime, ses asla dusmez; akilli endpointing; CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} , sessizlik ${cfg.sessizlikMs}ms)`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
