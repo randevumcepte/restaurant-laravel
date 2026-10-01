@@ -9143,7 +9143,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         'durum' => 'acik',
         'created_at' => now(),
     ]);
-    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri()], 200, [], JSON_UNESCAPED_UNICODE);
+    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri(), 'son_siparis' => $as->sonSiparisMetni()], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // TESHIS OZETI: son cagrilar + son musteriler + son telefon adisyonlari + ses kayitlari (tek bakista)

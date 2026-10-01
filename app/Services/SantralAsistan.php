@@ -92,6 +92,13 @@ class SantralAsistan
         return $this->genelAd($this->musteri->ad) ? '(isim yok)' : $this->ilkIsim($this->musteri->ad);
     }
 
+    /** Teshis/log: gecen siparis ozeti (yoksa ''). */
+    public function sonSiparisMetni(): string
+    {
+        if (empty($this->sonSiparis)) return '';
+        return implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
+    }
+
     /** Cagri acilinca ilk karsilama — kayitli musteriyi ADIYLA karsilar. */
     public function karsilama(): string
     {
@@ -298,7 +305,9 @@ class SantralAsistan
         }
         $p .= " KAYITLI MÜŞTERİ KURALLARI: Sipariş alırken teslimat adresini ve telefonunu TEKRAR SORMA; kayıtlı bilgileri kullan ve sadece ONAY al ('Teslimat yine [adres] olsun mu?'). ";
         if (!empty($this->sonSiparis)) {
-            $p .= "Müşteri 'geçen seferki gibi', 'aynısı', 'her zamanki' derse geçen siparişindeki ürünleri sipariş kalemleri olarak al, kısaca tekrar edip onayla. Uygunsa 'Geçen sefer [ozet] almıştınız, aynısını ister misiniz?' diye hatırlatabilirsin. ";
+            $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
+            $p .= "ÖNEMLİ — GEÇEN SİPARİŞ: Müşteri sipariş vermek isteyince (örn. 'sipariş vermek istiyorum') İLK İŞ olarak geçen siparişini PROAKTİF hatırlat ve aynısını isteyip istemediğini sor: 'Tabii, geçen sefer $ozet almıştınız; aynısını ister misiniz, yoksa farklı bir şey mi?'. ";
+            $p .= "Müşteri 'evet / aynısı / geçen seferki gibi / her zamanki' derse geçen siparişteki ürünleri ($ozet) sipariş kalemleri olarak AL, teslimat adresini kayıtlıdan onayla, ödeme yöntemini sor ve siparişi tamamla. Farklı bir şey isterse normal akışla devam et. ";
         }
         $p .= "Adres değiştiyse yeni adresi al. Yeni müşteri değil, onu tanıdığını hissettir. ";
         return $p;
