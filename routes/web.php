@@ -9550,6 +9550,38 @@ Route::post('/api/hat/sil', function (Request $r) {
     return response()->json(['ok' => 1, 'did' => $did, 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// ============================ AI SANTRAL — SES SECIMI (TTS deneme) ============================
+Route::get('/santral-ses', function () {
+    return response()->view('santral_ses', ['envVar' => env('GOOGLE_TTS_API_KEY') ? 1 : 0]);
+});
+Route::post('/api/santral-ses/dene', function (Request $r) {
+    $key = trim((string) $r->input('key')) ?: (string) env('GOOGLE_TTS_API_KEY');
+    $voice = trim((string) $r->input('voice')) ?: 'tr-TR-Wavenet-B';
+    $metin = trim((string) $r->input('metin')) ?: 'Siparişinizi ilettim, en kısa sürede hazırlayıp göndereceğiz. Afiyet olsun, iyi günler.';
+    $rate = (float) ($r->input('rate') ?: 1.0);
+    if ($key === '') return response()->json(['ok' => 0, 'hata' => 'Google TTS API anahtarı gerekli (sunucu .env boş, alana yapıştırın)'], 200, [], JSON_UNESCAPED_UNICODE);
+    $body = json_encode([
+        'input' => ['text' => $metin],
+        'voice' => ['languageCode' => 'tr-TR', 'name' => $voice],
+        'audioConfig' => ['audioEncoding' => 'MP3', 'speakingRate' => $rate],
+    ], JSON_UNESCAPED_UNICODE);
+    try {
+        $ch = curl_init('https://texttospeech.googleapis.com/v1/text:synthesize?key=' . $key);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 15]);
+        $res = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = json_decode($res, true);
+        if ($code !== 200 || empty($j['audioContent'])) {
+            $msg = $j['error']['message'] ?? substr((string) $res, 0, 300);
+            return response()->json(['ok' => 0, 'hata' => 'TTS hata: ' . $msg], 200, [], JSON_UNESCAPED_UNICODE);
+        }
+        return response()->json(['ok' => 1, 'audio' => $j['audioContent']], 200, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+});
+
 // ============================ AI SANTRAL — EGITIM (kalip + ogrenilen + cozulemeyen + PDF) ============================
 if (!function_exists('_santralEgitimSube')) {
     function _santralEgitimSube($r = null)
