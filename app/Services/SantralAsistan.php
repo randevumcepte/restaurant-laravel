@@ -231,6 +231,8 @@ class SantralAsistan
         $p = "Sen $ad adlı restoranın telefonla arayan müşterilerine yanıt veren yapay zeka SANTRAL görevlisisin. ";
         $p .= "Doğal, sıcak ve ÇOK KISA Türkçe konuş; genellikle tek cümle, en fazla iki kısa cümle. Gereksiz nezaket/uzatma yok, doğrudan konuya gir. ";
         $p .= "Müşterinin sözünü KESME; cevabını bitirmesini bekle, yarım duyduysan acele onaylama, 'tam söyleyebilir misiniz?' de. Aynı soruyu döngüye sokma. ";
+        // ILK SELAM ZATEN YAPILDI -> tekrar selamlama (en kritik: yoksa her turda 'hos geldiniz' deyip takiliyor)
+        $p .= "ÇOK ÖNEMLİ: İlk karşılama (merhaba / hoş geldiniz) ZATEN yapıldı. Bundan sonraki yanıtlarında TEKRAR selam verme, 'hoş geldiniz' DEME, kendini tekrar tanıtma. Doğrudan müşterinin söylediğine yanıt ver. Örnek: müşteri 'sipariş vermek istiyorum' derse SADECE 'Tabii, ne almak istersiniz?' de (yeniden hoş geldiniz deme). ";
         $p .= "TTS ile seslendirileceğin için DÜZ metin yaz: emoji, madde işareti, yıldız, tırnak KULLANMA. ";
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
@@ -277,7 +279,7 @@ class SantralAsistan
         // KAYITLI musteri
         $m = $this->musteri;
         $p = " ARAYAN KAYITLI MÜŞTERİ (daha önce aramış, onu tanıyorsun).";
-        if (!$this->genelAd($m->ad)) $p .= " Adı: " . $m->ad . " (karşılamada ve uygun yerde adıyla hitap et).";
+        if (!$this->genelAd($m->ad)) $p .= " Adı: " . $m->ad . " (uygun yerde adıyla hitap et, ama yeniden selam/hoş geldin deme).";
         else $p .= " Adını henüz bilmiyoruz; uygun bir yerde (ör. sipariş alırken) BİR KEZ nazikçe adını sor, kaydedilecek. ";
         if (!empty($m->adres)) $p .= " Kayıtlı teslimat adresi: " . $m->adres . ".";
         if (!empty($m->telefon)) $p .= " Telefonu: " . $m->telefon . ".";
