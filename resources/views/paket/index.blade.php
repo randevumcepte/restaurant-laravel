@@ -37,6 +37,14 @@
                         </div>
                         <div class="font-semibold text-slate-800">{{ $s->musteri_ad ?? 'Müşteri' }} · <span class="text-slate-500 text-sm">{{ $s->telefon }}</span></div>
                         <div class="text-xs text-slate-400 truncate">{{ $s->teslimat_adres }}</div>
+                        @php $oy = $s->odeme_yontemi ?? null; @endphp
+                        @if ($oy === 'kart_kapida')
+                            <div class="inline-block text-xs font-bold text-amber-700 bg-amber-100 border border-amber-300 rounded-lg px-2 py-0.5 mt-1">💳 Kapıda KART · POS götür</div>
+                        @elseif ($oy === 'nakit')
+                            <div class="inline-block text-xs font-bold text-green-700 bg-green-100 border border-green-300 rounded-lg px-2 py-0.5 mt-1">💵 Kapıda NAKİT</div>
+                        @elseif ($oy === 'online')
+                            <div class="inline-block text-xs font-bold text-indigo-700 bg-indigo-100 border border-indigo-300 rounded-lg px-2 py-0.5 mt-1">🔗 Online ödendi/ödenecek</div>
+                        @endif
                         @if ($s->kurye_ad)<div class="text-xs text-indigo-500 mt-0.5">🛵 {{ $s->kurye_ad }}</div>@endif
                     </div>
                     <div class="text-right shrink-0 ml-3">

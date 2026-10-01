@@ -795,8 +795,9 @@ Route::get('/api/app/siparis-durum/{token}', function ($token) {
     }
     $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')
         ->get(['urun_adi', 'adet', 'tutar'])->map(fn ($x) => ['ad' => $x->urun_adi, 'adet' => (float) $x->adet, 'tutar' => (float) $x->tutar]);
+    $odemeEtiket = ['nakit' => 'Kapıda Nakit', 'kart_kapida' => 'Kapıda Kart (POS)', 'online' => 'Online Ödeme'][$a->odeme_yontemi] ?? ($a->odeme_yontemi ?: 'Nakit');
     return ['ok' => 1, 'no' => (int) $a->id, 'durum' => $durum, 'adres' => $a->teslimat_adres, 'toplam' => (float) $a->toplam,
-        'odeme' => $a->odeme_yontemi, 'kurye' => $kurye, 'kalemler' => $kalemler];
+        'odeme' => $a->odeme_yontemi, 'odeme_etiket' => $odemeEtiket, 'kurye' => $kurye, 'kalemler' => $kalemler];
 });
 
 // Siparis takip sayfasi (musteri)
@@ -9176,8 +9177,9 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                     $kalemler[] = ['ad' => $ad, 'adet' => max(1, (int) ($k['adet'] ?? 1))];
                 }
                 // Odeme yontemi: AI'dan gelen (kapida_nakit|kapida_kart|online) -> adisyon.odeme_yontemi
+                // Mevcut konvansiyonla hizali: 'nakit' | 'kart_kapida' (kuryeye POS getir sinyali) | 'online'
                 $odemeHam = (string) ($sp['odeme'] ?? '');
-                $odemeYon = $odemeHam === 'kapida_kart' ? 'kapida_kart' : ($odemeHam === 'online' ? 'online' : 'nakit');
+                $odemeYon = $odemeHam === 'kapida_kart' ? 'kart_kapida' : ($odemeHam === 'online' ? 'online' : 'nakit');
                 if (Schema::hasColumn('santral_oturumlari', 'sonuc')) $guncelle['sonuc'] = 'siparis';
                 if ($sube && $kalemler) {
                     $r2 = _paketSiparisAl($sube, [
