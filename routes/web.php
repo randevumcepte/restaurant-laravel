@@ -9559,11 +9559,15 @@ Route::post('/api/santral-ses/dene', function (Request $r) {
     $voice = trim((string) $r->input('voice')) ?: 'tr-TR-Wavenet-B';
     $metin = trim((string) $r->input('metin')) ?: 'Siparişinizi ilettim, en kısa sürede hazırlayıp göndereceğiz. Afiyet olsun, iyi günler.';
     $rate = (float) ($r->input('rate') ?: 1.0);
+    $telefon = (int) $r->input('telefon') === 1; // telefon kalitesi: 8kHz (hatla ayni dar bant)
     if ($key === '') return response()->json(['ok' => 0, 'hata' => 'Google TTS API anahtarı gerekli (sunucu .env boş, alana yapıştırın)'], 200, [], JSON_UNESCAPED_UNICODE);
+    $audioConfig = $telefon
+        ? ['audioEncoding' => 'LINEAR16', 'sampleRateHertz' => 8000, 'speakingRate' => $rate] // telefon = 8kHz WAV
+        : ['audioEncoding' => 'MP3', 'speakingRate' => $rate];                                  // tam kalite
     $body = json_encode([
         'input' => ['text' => $metin],
         'voice' => ['languageCode' => 'tr-TR', 'name' => $voice],
-        'audioConfig' => ['audioEncoding' => 'MP3', 'speakingRate' => $rate],
+        'audioConfig' => $audioConfig,
     ], JSON_UNESCAPED_UNICODE);
     try {
         $ch = curl_init('https://texttospeech.googleapis.com/v1/text:synthesize?key=' . $key);
@@ -9576,7 +9580,7 @@ Route::post('/api/santral-ses/dene', function (Request $r) {
             $msg = $j['error']['message'] ?? substr((string) $res, 0, 300);
             return response()->json(['ok' => 0, 'hata' => 'TTS hata: ' . $msg], 200, [], JSON_UNESCAPED_UNICODE);
         }
-        return response()->json(['ok' => 1, 'audio' => $j['audioContent']], 200, [], JSON_UNESCAPED_UNICODE);
+        return response()->json(['ok' => 1, 'audio' => $j['audioContent'], 'mime' => $telefon ? 'audio/wav' : 'audio/mp3'], 200, [], JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         return response()->json(['ok' => 0, 'hata' => $e->getMessage()], 200, [], JSON_UNESCAPED_UNICODE);
     }

@@ -53,6 +53,12 @@
     <label>Konuşma hızı: <span id="rateV">1.0</span></label>
     <div class="rate"><input type="range" id="rate" min="0.8" max="1.3" step="0.05" value="1.0" oninput="rateV.textContent=this.value" style="width:100%"></div>
 
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:14px">
+      <input type="checkbox" id="telefon" checked style="width:18px;height:18px">
+      📞 Telefon kalitesinde dinle (8 kHz) — hatta nasıl duyulacağını gösterir
+    </label>
+    <div class="hint">Kapalı = tam kalite (24 kHz, MP3). <b>Açık = telefon kalitesi</b> (gerçekte duyacağın ses). Doğru seçim için AÇIK dinle.</div>
+
     <div id="durum"></div>
     <div class="sectilen" id="sectilen"></div>
   </div>
@@ -95,12 +101,13 @@
     if(!voice){durum.textContent='Ses adı boş';return;}
     durum.textContent='⏳ '+voice+' hazırlanıyor…'; durum.style.color='#64748b';
     try{
-      const body=form({key:document.getElementById('key').value, voice, metin:document.getElementById('metin').value, rate:document.getElementById('rate').value});
+      const tel=document.getElementById('telefon').checked?1:0;
+      const body=form({key:document.getElementById('key').value, voice, metin:document.getElementById('metin').value, rate:document.getElementById('rate').value, telefon:tel});
       const r=await fetch('/api/santral-ses/dene',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
       const d=await r.json();
       if(!d.ok){durum.textContent='❌ '+d.hata; durum.style.color='#ef4444'; return;}
-      player.src='data:audio/mp3;base64,'+d.audio; player.play();
-      durum.textContent='▶ Çalıyor: '+voice; durum.style.color='#16a34a';
+      player.src='data:'+(d.mime||'audio/mp3')+';base64,'+d.audio; player.play();
+      durum.textContent=(tel?'📞 Telefon kalitesi ▶ ':'▶ ')+'Çalıyor: '+voice; durum.style.color='#16a34a';
     }catch(e){durum.textContent='❌ '+e.message; durum.style.color='#ef4444';}
   }
   function sec(voice){
