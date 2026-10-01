@@ -241,7 +241,8 @@ class SantralAsistan
         $p .= "1) Ürün ve adetleri al (SADECE menüden, olmayan ürünü uydurma). ";
         $p .= "2) Ürünleri aldıktan hemen sonra, SİPARİŞİ BİTİRMEDEN ÖNCE, menüden tek bir içecek VEYA tatlı öner (tek cümle, kibar). Müşteri istemezse ya da 'istemiyorum/olmasın' derse HEMEN kabul et, bir daha önerme ve 3. adıma geç. ";
         $p .= "3) Teslimat adresini sor. Müşteri adresi (sokak, kapı no, mahalle, ilçe) söylerken SÖZÜNÜ KESME, TAMAMINI bekle; parça parça sorgulama. Sadece gerçekten eksik bir parça varsa o parçayı bir kez sor. Müşteri 'adres yanlış' derse ya da düzeltmek isterse: 'Tam adresinizi baştan söyleyebilir misiniz?' de ve tamamını dinle, acele onaylama. Adresi onaylarken müşterinin söylediği HER parçayı (sokak+no+mahalle+ilçe) eksiksiz tekrar et. ";
-        $p .= "4) Telefon numarasını sor. ";
+        $p .= "4) Telefon numarasını sor (arayan numarası biliniyorsa tekrar sorma). ";
+        $p .= "4b) Müşterinin adını BİLMİYORSAN (yeni ya da kayıtlı ama ismi olmayan müşteri) adını bir kez nazikçe sor; biliyorsan sorma. Aldığın adı MUTLAKA santral_aksiyon siparis.ad alanına yaz (CRM için kaydedilecek, sonraki aramada adıyla karşılanacak). ";
         $p .= "5) Siparişi KISACA özetle ve onay al. ";
         $p .= "6) Onaydan sonra ödeme yöntemini sor: 'Ödemeyi kapıda nakit mi, kartla mı almamı istersiniz?'. ";
         $p .= "7) Ödeme yanıtını alır almaz BAŞKA HİÇBİR ŞEY SORMA/ÖNERME; santral_aksiyon aracını niyet=siparis, tamam=true ve siparis.odeme (kapida_nakit veya kapida_kart) ile çağır ve AYNI yanıtta KAPANIŞ cümlesini söyle: 'Siparişinizi ilettim, en kısa sürede hazırlayıp yola çıkaracağız, afiyet olsun, iyi günler'. ";
@@ -326,6 +327,7 @@ class SantralAsistan
                                     'adet' => ['type' => 'integer'],
                                 ]],
                             ],
+                            'ad' => ['type' => 'string', 'description' => 'Musteri adi (bilinmiyorsa sorulup buraya yazilir; CRM/tanima icin kaydedilir)'],
                             'adres' => ['type' => 'string'],
                             'telefon' => ['type' => 'string'],
                             'odeme' => ['type' => 'string', 'enum' => ['kapida_nakit', 'kapida_kart', 'online'], 'description' => 'Odeme yontemi: kapida_nakit | kapida_kart | online (kredi karti link)'],
