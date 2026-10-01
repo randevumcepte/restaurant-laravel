@@ -59,11 +59,15 @@ class CagriOturumu {
       this.rtp.sustur();
     }
     this._sessizlikSifirla();
-    // ISTEMCI-TARAFI ENDPOINTING: interim ~1.2sn sabit kalirsa (yeni interim yok) zorla finalize et.
-    // Boylece kisa cevaplar ('kartla olsun','evet') Google'in gec final'ini beklemeden islenir -> 'bekleme' biter.
+    // ISTEMCI-TARAFI ENDPOINTING (AKILLI): interim sabit kalinca zorla finalize et.
+    //  - KISA cevap (<=3 kelime: 'kartla olsun','evet','margarita') -> 1.2sn (snappy)
+    //  - UZUN cumle (adres/isim, cok kelime) -> 2.4sn SABIRLI (duraklamada kesme, musteri tamamlasin)
+    // Her yeni interim timer'i sifirlar; yani sure, musteri SUSTUKTAN sonra sayilir.
     this._sonInterim = (metin || '').trim();
+    const kelimeSayisi = this._sonInterim ? this._sonInterim.split(/\s+/).length : 0;
+    const bekle = kelimeSayisi <= 3 ? 1200 : 2400;
     clearTimeout(this._interimZ);
-    this._interimZ = setTimeout(() => this._interimZorla(), 1200);
+    this._interimZ = setTimeout(() => this._interimZorla(), bekle);
   }
 
   _interimZorla() {
