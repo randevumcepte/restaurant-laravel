@@ -145,8 +145,22 @@
     chips+=`<span class="chip">Durum: ${esc(r.durum||'-')}</span>`;
     let meta=`<div class="meta">
       <div class="ln1">${IMAP[r.sonuc]||'📞'} ${esc(r.telefon||'numara yok')} ${rozet(r.sonuc)}</div>
-      <div class="ln2"><span>🕐 ${esc((r.created_at||'').replace('T',' ').slice(0,16))}</span> ${chips}</div>
-    </div>`;
+      <div class="ln2"><span>🕐 ${esc((r.created_at||'').replace('T',' ').slice(0,16))}</span> ${chips}</div>`;
+    // SES KAYITLARI
+    if(r.sesler && r.sesler.length){
+      meta+='<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">';
+      r.sesler.forEach(s=>{
+        const et=s.tur==='aktarma'?'↪️ Yetkiliye aktarılan görüşme':'🤖 AI görüşmesi';
+        const kb=s.boyut?(' · '+Math.round(s.boyut/1024)+' KB'):'';
+        meta+=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px">
+          <div style="font-size:12px;color:var(--sub);margin-bottom:5px;font-weight:700">${et}${kb}</div>
+          <audio controls preload="none" style="width:100%;height:34px" src="${s.url}"></audio></div>`;
+      });
+      meta+='</div>';
+    } else {
+      meta+='<div style="margin-top:10px;font-size:12px;color:var(--slate)">🎙️ Ses kaydı yok</div>';
+    }
+    meta+='</div>';
     let chat='';
     (r.gecmis||[]).forEach(m=>{
       const kim=(m.role==='user')?'us':'ai';

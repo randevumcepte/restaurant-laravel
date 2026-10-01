@@ -29,6 +29,29 @@ function portAl() {
 }
 function portBirak(p) { if (p) kullanilan.delete(p); }
 
+// --- SES KAYDI (ARI bridge recording) — hata olsa cagri bozulmaz ---
+async function sesKayitBasla(kayit, channelId, tur) {
+  if (!cfg.recording.aktif || !kayit || !kayit.bridge) return;
+  try {
+    const safe = String(channelId).replace(/[^a-zA-Z0-9]/g, '_');
+    const ad = `santral_${safe}_${tur}`;
+    await kayit.bridge.record({ name: ad, format: 'wav', ifExists: 'overwrite', beep: false, terminateOn: 'none', maxDurationSeconds: 3600, maxSilenceSeconds: 0 });
+    kayit.rec = { ad, tur };
+    log.info(`ses kaydi basladi (${tur}): ${ad}`);
+  } catch (e) { log.warn('ses kaydi baslamadi:', e.message); }
+}
+
+async function sesKayitBitir(kayit) {
+  if (!cfg.recording.aktif || !kayit || !kayit.rec) return;
+  const { ad, tur } = kayit.rec;
+  kayit.rec = null;
+  try { await client.recordings.stop({ recordingName: ad }); } catch (_) {}
+  await new Promise((r) => setTimeout(r, 800)); // dosya yazilsin
+  const filePath = `${cfg.recording.dir}/${ad}.wav`;
+  const oturumId = kayit.oturum ? kayit.oturum.oturumId : null;
+  await brain.sesYukle(oturumId, kayit.subeId, tur, filePath);
+}
+
 // callerKanalId -> {oturum,bridge,extChan,port,telefon,subeId,aktarmaModu,hedefAdaylar:Set,hedefBagli,hedefChanId,aktarSira}
 const aktif = new Map();
 const extMediaKanallari = new Set();
@@ -40,7 +63,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-09-30i (TAM-DUPLEKS barge-in=gercek konusma>=2kelime, ses asla dusmez; akilli endpointing; CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} , sessizlik ${cfg.sessizlikMs}ms)`);
+  log.info(`SURUM: 2026-09-30j (SES KAYDI ai+aktarma ayri -> Laravel; tam-dupleks barge-in; CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'} dir=${cfg.recording.dir})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
@@ -109,10 +132,14 @@ async function cagriBasla(channel, event) {
       onBitir: (kid) => { client.Channel(kid).hangup().catch(() => {}); },
     });
 
-    aktif.set(channel.id, {
+    const kayit = {
       oturum, bridge, extChan, port, telefon, subeId,
       aktarmaModu: false, hedefAdaylar: null, hedefBagli: false, hedefChanId: null, aktarSira: null,
-    });
+      rec: null,
+    };
+    aktif.set(channel.id, kayit);
+    // SES KAYDI (AI fazi): bridge'i kaydet (musteri + AI sesi). Hata olsa cagri bozulmaz.
+    await sesKayitBasla(kayit, channel.id, 'ai');
     await oturum.basla();
   } catch (e) {
     log.error('cagriBasla hatasi:', e.message);
@@ -135,6 +162,9 @@ async function insanaAktar(kanalId, subeId) {
     await temizle(kanalId, 'aktar');
     return;
   }
+
+  // AI fazi ses kaydini kapat+yukle (aktarma oncesi)
+  await sesKayitBitir(kayit);
 
   // AI ses bacagini + oturumu kapat AMA bridge + arayani KORU (insan devralacak)
   kayit.aktarmaModu = true;
@@ -217,6 +247,9 @@ async function aktarmaHedefiCevapladi(hedefChan, callerId) {
     if (cid !== hedefChan.id) { try { await client.Channel(cid).hangup(); } catch (_) {} }
   }
   kayit.hedefAdaylar = new Set([hedefChan.id]);
+
+  // AKTARMA fazi ses kaydini baslat (musteri + yetkili)
+  await sesKayitBasla(kayit, callerId, 'aktarma');
 }
 
 // Herhangi bir kanal yok oldu (cevapsiz/kapandi)
@@ -252,6 +285,8 @@ async function temizle(kanalId, sonuc) {
   const kayit = aktif.get(kanalId);
   if (!kayit) return;
   aktif.delete(kanalId);
+  // Aktif ses kaydini kapat+yukle (bridge destroy'dan ONCE; ai veya aktarma fazi)
+  await sesKayitBitir(kayit);
   if (kayit.hedefAdaylar) {
     for (const cid of kayit.hedefAdaylar) { try { await client.Channel(cid).hangup(); } catch (_) {} }
   }

@@ -36,6 +36,24 @@ async function konus(oturumId, metin) {
   return data;
 }
 
+// Ses kaydini Laravel'e yukler (ham wav govdesi; oturum_id/tur query ile)
+async function sesYukle(oturumId, subeId, tur, filePath) {
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(filePath)) { log.warn('ses dosyasi yok: ' + filePath); return; }
+    const buf = fs.readFileSync(filePath);
+    if (!buf || buf.length < 200) { log.warn('ses dosyasi cok kucuk/bos: ' + filePath); return; }
+    await http.post('/api/santral/kayit-yukle', buf, {
+      params: { oturum_id: oturumId || '', sube_id: subeId || '', tur: tur || 'ai', secret: cfg.laravel.secret || '' },
+      headers: { 'Content-Type': 'audio/wav' },
+      maxBodyLength: Infinity, maxContentLength: Infinity, timeout: 30000,
+    });
+    log.info(`ses kaydi yuklendi (${tur}, ${Math.round(buf.length / 1024)}KB)`);
+  } catch (e) {
+    log.warn('ses yukleme hata: ' + e.message);
+  }
+}
+
 // GET /api/santral/aktarma-hedef -> {aktif, dial, zil} (panelden yonetilen aktarma hedefi)
 async function aktarmaHedef(subeId) {
   try {
@@ -58,4 +76,4 @@ async function bitir(oturumId, ozet) {
   }
 }
 
-module.exports = { baslat, konus, bitir, aktarmaHedef };
+module.exports = { baslat, konus, bitir, aktarmaHedef, sesYukle };

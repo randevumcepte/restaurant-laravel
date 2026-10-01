@@ -43,6 +43,10 @@ const cfg = {
   bargeIn: bool(process.env.BARGE_IN, true),
   sessizlikMs: num(process.env.SESSIZLIK_MS, 15000),
   logLevel: process.env.LOG_LEVEL || 'info',
+  recording: {
+    aktif: bool(process.env.KAYIT_AKTIF, true),
+    dir: process.env.ASTERISK_RECORDING_DIR || '/var/spool/asterisk/recording',
+  },
 };
 
 // Ses parametreleri (format'a gore)

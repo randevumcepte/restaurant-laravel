@@ -9659,15 +9659,64 @@ Route::match(['get', 'post'], '/api/santral-kayit/liste', function (Request $r) 
 });
 Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) {
     if (function_exists('_santralEnsure')) _santralEnsure();
+    _santralSesEnsure();
     $o = DB::table('santral_oturumlari')->where('id', (int) $r->input('id'))->first();
     if (!$o) return response()->json(['ok' => 0, 'hata' => 'Kayıt yok'], 200, [], JSON_UNESCAPED_UNICODE);
     $g = json_decode($o->gecmis ?: '[]', true) ?: [];
     $sp = $o->siparis_veri ? json_decode($o->siparis_veri, true) : null;
+    $sesler = DB::table('santral_ses_kayit')->where('oturum_id', $o->id)->orderBy('id')
+        ->get(['id', 'tur', 'boyut', 'created_at'])
+        ->map(fn ($s) => ['id' => $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut, 'url' => '/santral-ses-dinle/' . $s->id])->all();
     return response()->json(['ok' => 1, 'kayit' => [
         'id' => $o->id, 'telefon' => $o->telefon, 'sube_id' => $o->sube_id, 'sonuc' => $o->sonuc, 'durum' => $o->durum,
         'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'siparis_veri' => $sp,
-        'created_at' => (string) $o->created_at, 'updated_at' => (string) $o->updated_at, 'gecmis' => $g,
+        'created_at' => (string) $o->created_at, 'updated_at' => (string) $o->updated_at, 'gecmis' => $g, 'sesler' => $sesler,
     ]], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// ---- SES KAYIT: tablo + yukleme (kopruden) + dinleme ----
+if (!function_exists('_santralSesEnsure')) {
+    function _santralSesEnsure()
+    {
+        if (!Schema::hasTable('santral_ses_kayit')) {
+            Schema::create('santral_ses_kayit', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('oturum_id')->nullable();
+                $t->unsignedBigInteger('sube_id')->nullable();
+                $t->string('tur', 12)->default('ai');   // ai | aktarma
+                $t->string('dosya', 255);
+                $t->unsignedInteger('boyut')->default(0);
+                $t->timestamp('created_at')->useCurrent();
+                $t->index('oturum_id');
+            });
+        }
+    }
+}
+
+// Kopru ses kaydini yukler (ham wav govdesi; oturum_id/tur/sube_id QUERY ile)
+Route::post('/api/santral/kayit-yukle', function (Request $r) {
+    _santralSesEnsure();
+    $oturum = (int) $r->input('oturum_id');
+    $tur = in_array($r->input('tur'), ['ai', 'aktarma'], true) ? $r->input('tur') : 'ai';
+    $raw = file_get_contents('php://input');
+    if (!$raw || strlen($raw) < 200) return response()->json(['ok' => 0, 'hata' => 'bos ses'], 200, [], JSON_UNESCAPED_UNICODE);
+    $dir = storage_path('app/santral_ses');
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $ad = 'santral_' . ($oturum ?: 'x') . '_' . $tur . '_' . date('YmdHis') . '_' . substr(md5((string) mt_rand()), 0, 6) . '.wav';
+    @file_put_contents($dir . '/' . $ad, $raw);
+    $sube = (int) $r->input('sube_id') ?: (DB::table('santral_oturumlari')->where('id', $oturum)->value('sube_id') ?: null);
+    DB::table('santral_ses_kayit')->insert(['oturum_id' => $oturum ?: null, 'sube_id' => $sube, 'tur' => $tur, 'dosya' => $ad, 'boyut' => strlen($raw), 'created_at' => now()]);
+    return response()->json(['ok' => 1, 'dosya' => $ad], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Ses kaydini dinle (panel player)
+Route::get('/santral-ses-dinle/{id}', function ($id) {
+    _santralSesEnsure();
+    $k = DB::table('santral_ses_kayit')->where('id', (int) $id)->first();
+    if (!$k) abort(404);
+    $path = storage_path('app/santral_ses/' . $k->dosya);
+    if (!is_file($path)) abort(404);
+    return response()->file($path, ['Content-Type' => 'audio/wav']);
 });
 
 // ============================ AI SANTRAL — SES SECIMI (TTS deneme) ============================
