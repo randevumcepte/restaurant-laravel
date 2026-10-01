@@ -165,7 +165,7 @@ class SantralAsistan
 
         $govde = [
             'model' => $this->model(),
-            'max_tokens' => 200, // telefon: kisa yanit = daha hizli
+            'max_tokens' => 600, // kapanis METNI + santral_aksiyon ARAC cagrisi birlikte sigsin (200 cok dusuktu -> arac kesiliyordu, siparis kaydolmuyordu)
             // system'i dizi + cache_control ile ver: menu iceren uzun prompt her turda ONBELLEKTEN okunur
             // -> beyin daha HIZLI cevap verir ve maliyet duser (Anthropic prompt caching)
             'system' => [[
