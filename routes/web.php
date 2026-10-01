@@ -4435,10 +4435,37 @@ Route::get('/api/patron/detay', function (Request $r) {
         $sureStr = $sureDk < 60 ? ($sureDk . ' dk')
             : ($sureDk < 1440 ? (intdiv($sureDk, 60) . ' sa ' . ($sureDk % 60) . ' dk')
                 : (intdiv($sureDk, 1440) . ' gün ' . intdiv($sureDk % 1440, 60) . ' sa'));
-        $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $id)
-            ->select('id', 'urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'not')->orderBy('id')->get()
-            ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
-                'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'not' => $k->not]);
+        // Kalemler + MUTFAK SURELERI (gonderim->basla->hazir): bekleme / hazirlik / toplam / gecikme
+        _kdsKolonEnsure();
+        $hzVar2 = Schema::hasColumn('urunler', 'hazirlik_dk');
+        $varsHedef = 15;
+        $kalemRows = DB::table('adisyon_kalemleri as ak')->leftJoin('urunler as u', 'ak.urun_id', '=', 'u.id')
+            ->where('ak.adisyon_id', $id)
+            ->select('ak.id', 'ak.urun_adi', 'ak.adet', 'ak.birim_fiyat', 'ak.tutar', 'ak.durum', 'ak.not',
+                'ak.gonderim_zamani', 'ak.basla_zamani', 'ak.hazir_zamani',
+                $hzVar2 ? DB::raw("COALESCE(NULLIF(u.hazirlik_dk,0),$varsHedef) as hedef") : DB::raw("$varsHedef as hedef"))
+            ->orderBy('ak.id')->get();
+        $dk2 = fn ($a, $b) => ($a && $b) ? (int) round(\Carbon\Carbon::parse($a)->diffInMinutes(\Carbon\Carbon::parse($b))) : null;
+        $topBek = 0; $topHaz = 0; $topTop = 0; $hazirSay = 0; $topGec = 0; $enYavas = null;
+        $kalemler = $kalemRows->map(function ($k) use ($dk2, &$topBek, &$topHaz, &$topTop, &$hazirSay, &$topGec, &$enYavas) {
+            $bekleme = $dk2($k->gonderim_zamani, $k->basla_zamani);
+            $hazirlik = $dk2($k->basla_zamani, $k->hazir_zamani);
+            $toplam = $dk2($k->gonderim_zamani, $k->hazir_zamani);
+            $hedef = (int) $k->hedef;
+            $gecikme = $toplam !== null ? max(0, $toplam - $hedef) : null;
+            if ($toplam !== null) {
+                $hazirSay++; $topBek += ($bekleme ?? 0); $topHaz += ($hazirlik ?? 0); $topTop += $toplam; $topGec += ($gecikme ?? 0);
+                if ($enYavas === null || $toplam > $enYavas['dk']) $enYavas = ['ad' => $k->urun_adi, 'dk' => $toplam];
+            }
+            return ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat,
+                'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'not' => $k->not,
+                'bekleme_dk' => $bekleme, 'hazirlik_dk' => $hazirlik, 'toplam_dk' => $toplam, 'hedef_dk' => $hedef, 'gecikme_dk' => $gecikme];
+        });
+        $mutfak = $hazirSay > 0
+            ? ['bekleme_ort' => (int) round($topBek / $hazirSay), 'hazirlik_ort' => (int) round($topHaz / $hazirSay),
+               'toplam_ort' => (int) round($topTop / $hazirSay), 'gecikme_top' => $topGec, 'en_yavas' => $enYavas,
+               'hazir_kalem' => $hazirSay, 'toplam_kalem' => $kalemRows->count()]
+            : ['hazir_kalem' => 0, 'toplam_kalem' => $kalemRows->count()];
         $odemeler = DB::table('odemeler')->where('adisyon_id', $id)->select('tip', 'tutar')->get()
             ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
         $deg = null;
@@ -4475,7 +4502,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             'acilis' => $a->acilis ? \Carbon\Carbon::parse($a->acilis)->format('d.m H:i') : '-',
             'kapanis' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : null,
             'araToplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
-            'kalemler' => $kalemler, 'odemeler' => $odemeler,
+            'kalemler' => $kalemler, 'odemeler' => $odemeler, 'mutfak' => $mutfak,
             'musteri' => $musteri ? ['id' => $a->musteri_id, 'ad' => _kvkkAd($musteri->ad, $tamGor), 'telefon' => _kvkkTel($musteri->telefon, $tamGor)] : null,
             'degerlendirme' => $deg,
         ];
@@ -7576,21 +7603,31 @@ Route::get('/api/mutfak/analiz', function (Request $r) {
     $bugun = now()->startOfDay();
     $simdi = now();
 
-    // 1) Ortalama hazirlik suresi (bugun, gonderim->hazir olan kalemler)
-    $ortDk = null; $olcum = 0;
+    // 1) Mutfak sureleri (bugun, hazir olan kalemler): BEKLEME / HAZIRLIK / TOPLAM ort + GECIKME + en yavas
+    $ortDk = null; $ortBek = null; $ortHaz = null; $ortGec = null; $olcum = 0;
     $enYavas = [];
     if ($bekVar) {
-        $done = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.sube_id', $p->sube_id)->whereNotNull('adisyon_kalemleri.hazir_zamani')
-            ->whereNotNull('adisyon_kalemleri.gonderim_zamani')->where('adisyon_kalemleri.hazir_zamani', '>=', $bugun)
-            ->select('adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.hazir_zamani')->get();
-        $topla = 0; $urunSure = [];
+        $hzVar3 = Schema::hasColumn('urunler', 'hazirlik_dk');
+        $done = DB::table('adisyon_kalemleri as ak')->join('adisyonlar as a', 'ak.adisyon_id', '=', 'a.id')
+            ->leftJoin('urunler as u', 'ak.urun_id', '=', 'u.id')
+            ->where('a.sube_id', $p->sube_id)->whereNotNull('ak.hazir_zamani')
+            ->whereNotNull('ak.gonderim_zamani')->where('ak.hazir_zamani', '>=', $bugun)
+            ->select('ak.urun_adi', 'ak.gonderim_zamani', 'ak.basla_zamani', 'ak.hazir_zamani',
+                $hzVar3 ? DB::raw('COALESCE(NULLIF(u.hazirlik_dk,0),15) as hedef') : DB::raw('15 as hedef'))->get();
+        $topTop = 0; $topBek = 0; $topHaz = 0; $topGec = 0; $urunSure = [];
         foreach ($done as $d) {
-            $dk = (int) \Carbon\Carbon::parse($d->gonderim_zamani)->diffInMinutes(\Carbon\Carbon::parse($d->hazir_zamani));
-            $topla += $dk; $olcum++;
-            $urunSure[$d->urun_adi][] = $dk;
+            $toplam = (int) \Carbon\Carbon::parse($d->gonderim_zamani)->diffInMinutes(\Carbon\Carbon::parse($d->hazir_zamani));
+            $bekleme = $d->basla_zamani ? (int) \Carbon\Carbon::parse($d->gonderim_zamani)->diffInMinutes(\Carbon\Carbon::parse($d->basla_zamani)) : null;
+            $hazirlik = $d->basla_zamani ? (int) \Carbon\Carbon::parse($d->basla_zamani)->diffInMinutes(\Carbon\Carbon::parse($d->hazir_zamani)) : null;
+            $gecikme = max(0, $toplam - (int) $d->hedef);
+            $topTop += $toplam; $topGec += $gecikme; $olcum++;
+            $topBek += ($bekleme ?? 0); $topHaz += ($hazirlik ?? 0);
+            $urunSure[$d->urun_adi][] = $toplam;
         }
-        if ($olcum > 0) $ortDk = round($topla / $olcum, 1);
+        if ($olcum > 0) {
+            $ortDk = round($topTop / $olcum, 1); $ortBek = round($topBek / $olcum, 1);
+            $ortHaz = round($topHaz / $olcum, 1); $ortGec = round($topGec / $olcum, 1);
+        }
         foreach ($urunSure as $ad => $arr) $enYavas[] = ['ad' => $ad, 'dk' => round(array_sum($arr) / count($arr), 1), 'adet' => count($arr)];
         usort($enYavas, fn ($a, $b) => $b['dk'] <=> $a['dk']);
         $enYavas = array_slice($enYavas, 0, 6);
@@ -7652,7 +7689,8 @@ Route::get('/api/mutfak/analiz', function (Request $r) {
     if (empty($oneriler)) $oneriler[] = ['tip' => 'ok', 'ikon' => '✅', 'metin' => 'Mutfak akışı sağlıklı görünüyor. Bekleyen gecikmiş sipariş yok.'];
 
     return ['ok' => 1,
-        'ozet' => ['ort_dk' => $ortDk, 'olcum' => $olcum, 'bekleyen' => (int) round(array_sum($istYuk)), 'geciken' => $geciken, 'en_eski_dk' => $enEskiDk],
+        'ozet' => ['ort_dk' => $ortDk, 'ort_bekleme' => $ortBek, 'ort_hazirlik' => $ortHaz, 'ort_gecikme' => $ortGec,
+            'olcum' => $olcum, 'bekleyen' => (int) round(array_sum($istYuk)), 'geciken' => $geciken, 'en_eski_dk' => $enEskiDk],
         'en_yavas' => $enYavas, 'istasyon_yuku' => $istasyonYuku, 'saatlik' => $saatDizi, 'oneriler' => $oneriler];
 });
 
