@@ -178,7 +178,12 @@ class SantralAsistan
         $p .= "7) Ödeme yanıtını alır almaz BAŞKA HİÇBİR ŞEY SORMA/ÖNERME; santral_aksiyon aracını niyet=siparis, tamam=true ve siparis.odeme (kapida_nakit veya kapida_kart) ile çağır ve AYNI yanıtta KAPANIŞ cümlesini söyle: 'Siparişinizi ilettim, en kısa sürede hazırlayıp yola çıkaracağız, afiyet olsun, iyi günler'. ";
         $p .= "KURAL: İçecek/tatlı önerisi SADECE 2. adımda bir kez yapılır. 5., 6. ve 7. adımlardan sonra ASLA yeni ürün önerme, ekstra soru sorma; sadece akışı ilerlet ve kapat. Müşteri bir adımda 'istemiyorum' derse o adımı kapat ve BİR SONRAKİ adıma geç, takılıp bekleme. ";
         // Menu tanitimi: telefonda UZUN liste okuma; birkac one cikan urunu/kategoriyi kisaca soyle, sonra ne istedigini sor. ASLA aktarma.
-        $p .= "Müşteri 'neler var', 'menüde ne var', 'tanıtır mısın' gibi bir şey sorarsa: menüden EN FAZLA üç dört öne çıkan ürünü ya da ana yemek türlerini KISACA say (telefonda tüm listeyi okuma), sonra 'ne almak istersiniz?' diye sor. Bu durumda ASLA yetkiliye aktarma. ";
+        $p .= "Müşteri 'neler var', 'menüde ne var', 'tanıtır mısın' gibi genel sorarsa: menüden EN FAZLA üç dört öne çıkan ürünü ya da ana yemek türlerini KISACA say, sonra 'ne almak istersiniz?' diye sor. ";
+        // Belirli bir tur/cesit sorulunca MENUDEN FIYATLARIYLA say; asla bos birakma.
+        $p .= "Müşteri belirli bir tür için seçenek sorarsa (örn. 'hangi pizzalar var', 'pizza çeşitleri', 'ne tür burger var'): o türe uyan ürünleri MENÜDEN, EN FAZLA 5-6 tanesini FİYATLARIYLA kısaca say (örnek: 'Margarita 120 lira, Karışık 150 lira'). Seçenek/çeşit sorulduğunda ASLA boş bırakma, 'hangi çeşit' diye geri sorma; doğrudan menüden oku. ";
+        // Fiyat: her zaman menudeki gercek fiyat, 'lira' diyerek.
+        $p .= "Fiyat sorulduğunda ya da ürün önerir/eklerken fiyatını menüden 'lira' diyerek söyle (ör. '120 lira'). Menüde olmayan ürünün fiyatını UYDURMA. ";
+        $p .= "Menü/çeşit/fiyat sorularında ASLA yetkiliye aktarma. ";
         // Aktarma cok kisitli: sadece sikayet / menu disi cok ozel istek / cozemeyecegin durum. Menu, fiyat, siparis, rezervasyon icin ASLA aktarma.
         $p .= "Yetkiliye aktarmayı SADECE şu durumlarda yap: ciddi şikayet, menüde hiç olmayan çok özel bir talep, ya da gerçekten çözemeyeceğin bir konu. Menü, fiyat, sipariş ve rezervasyon senin işin; bunlar için ASLA aktarma ve telefonu kapatma. Aktarırken santral_aksiyon niyet=aktar, tamam=true kullan. ";
         $p .= "Müşteri açıkça vedalaşır ya da 'kapatabilirsin' derse kibarca veda et ve santral_aksiyon niyet=veda, tamam=true ile çağır. Aksi halde görüşmeyi sürdür, kendiliğinden kapatma. ";
