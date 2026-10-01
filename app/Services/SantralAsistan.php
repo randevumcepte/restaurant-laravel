@@ -128,9 +128,12 @@ class SantralAsistan
 
         $cevap = $this->ttsTemizle($cevap);
         if ($cevap === '') {
-            $cevap = $aksiyon === 'aktar'
-                ? 'Sizi yetkiliye bağlıyorum, lütfen hatta kalın.'
-                : 'Anladım, devam edelim.';
+            // Model sadece arac cagirip metin dondurmediyse: aksiyona gore GARANTI kapanis/metin
+            if ($aksiyon === 'aktar') $cevap = 'Sizi yetkiliye bağlıyorum, lütfen hatta kalın.';
+            elseif ($aksiyon === 'siparis') $cevap = 'Siparişinizi aldım, en kısa sürede hazırlayıp göndereceğiz. Afiyet olsun, iyi günler.';
+            elseif ($aksiyon === 'rezervasyon') $cevap = 'Rezervasyonunuzu aldım, sizi bekliyor olacağız. İyi günler.';
+            elseif ($aksiyon === 'veda') $cevap = 'Teşekkür ederiz, iyi günler dileriz.';
+            else $cevap = 'Anladım, devam edelim.';
         }
 
         // --- OGRENME: bilgi sorusuysa + aksiyon yoksa + cevap SORU degilse -> onbellege al (tekrar bedava) ---
@@ -146,7 +149,8 @@ class SantralAsistan
             'cevap' => $cevap,
             'aksiyon' => $aksiyon,
             'veri' => $veri,
-            'bitir' => $aksiyon === 'veda',
+            // Siparis/rezervasyon tamamlaninca da gorusme kapanis'a gecer (kapanis cumlesi calinip hat kapanir)
+            'bitir' => in_array($aksiyon, ['veda', 'siparis', 'rezervasyon'], true),
         ];
     }
 

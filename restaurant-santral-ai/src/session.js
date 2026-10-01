@@ -137,14 +137,23 @@ class CagriOturumu {
   }
 
   async _kapatSirasi() {
-    // Son sesin akmasini kisa bir sure bekle, sonra kanali kapat
-    setTimeout(() => this.onBitir(this.kanalId), 1500);
+    // Kapanis cumlesi TAM calinip bitene kadar bekle (yarida kesme), sonra hatti kapat. Max ~18sn guvenlik.
+    let gecen = 0;
+    const tik = () => {
+      if (this.kapali) return;
+      gecen += 300;
+      if (this.rtp && this.rtp.sesVarMi && gecen < 18000) { this._kapatZ = setTimeout(tik, 300); return; }
+      this._kapatZ = setTimeout(() => this.onBitir(this.kanalId), 600); // son kareler de gitsin
+    };
+    // once seslendirmenin kuyruga girmesine firsat ver, sonra beklemeye basla
+    this._kapatZ = setTimeout(tik, 700);
   }
 
   async kapat(sonuc) {
     if (this.kapali) return;
     this.kapali = true;
     clearTimeout(this.sessizlikZ);
+    clearTimeout(this._kapatZ);
     this.stt.kapat();
     this.rtp.kapat();
     if (this.oturumId) await brain.bitir(this.oturumId, sonuc || 'kapandi');
