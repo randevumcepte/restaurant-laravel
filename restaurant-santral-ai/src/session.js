@@ -59,10 +59,32 @@ class CagriOturumu {
       this.rtp.sustur();
     }
     this._sessizlikSifirla();
+    // ISTEMCI-TARAFI ENDPOINTING: interim ~1.2sn sabit kalirsa (yeni interim yok) zorla finalize et.
+    // Boylece kisa cevaplar ('kartla olsun','evet') Google'in gec final'ini beklemeden islenir -> 'bekleme' biter.
+    this._sonInterim = (metin || '').trim();
+    clearTimeout(this._interimZ);
+    this._interimZ = setTimeout(() => this._interimZorla(), 1200);
+  }
+
+  _interimZorla() {
+    if (this.kapali || this.mesgul) return;
+    const m = (this._sonInterim || '').trim();
+    this._sonInterim = '';
+    if (m.length >= 2) { log.debug(`endpointing: interim->final: ${m}`); this._finalMetin(m); }
   }
 
   async _finalMetin(metin) {
     if (this.kapali) return;
+    clearTimeout(this._interimZ); this._sonInterim = '';
+    const n = (metin || '').toLowerCase().trim();
+    if (n.length < 1) return;
+    // Yineleme onle: zorla-final ile islenen cumle, Google'in gercek final'iyle ikinci kez gelmesin
+    const simdi = Date.now();
+    if (this._sonIslenen && this._sonIslenen.n === n && (simdi - this._sonIslenen.t) < 5000) {
+      log.debug('yinelenen final atlandi');
+      return;
+    }
+    this._sonIslenen = { n, t: simdi };
     log.info(`> musteri: ${metin}`);
     // Ust uste final gelirse sirala (beyin tek tur)
     if (this.mesgul) { this._bekleyen = metin; return; }
@@ -154,6 +176,7 @@ class CagriOturumu {
     this.kapali = true;
     clearTimeout(this.sessizlikZ);
     clearTimeout(this._kapatZ);
+    clearTimeout(this._interimZ);
     this.stt.kapat();
     this.rtp.kapat();
     if (this.oturumId) await brain.bitir(this.oturumId, sonuc || 'kapandi');
