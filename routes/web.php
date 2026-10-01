@@ -9109,6 +9109,19 @@ if (!function_exists('_santralEnsure')) {
 Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
     _santralEnsure();
     $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    // MENU BOS SUBE TUZAGI: istenen subede aktif urun yoksa, urunu olan subeye otomatik gec.
+    // (Tek-restoran kurulumu; yanlis DEFAULT_SUBE_ID yuzunden "menu elimde yok" olmasin.)
+    $santralUrunSay = function ($sid) {
+        if (!Schema::hasTable('urunler')) return 0;
+        $q = DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1);
+        if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
+        return (int) $q->count();
+    };
+    if ($santralUrunSay($subeId) === 0) {
+        $dolu = DB::table('urunler')->where('aktif', 1)
+            ->select('sube_id', DB::raw('COUNT(*) as n'))->groupBy('sube_id')->orderByDesc('n')->first();
+        if ($dolu && $dolu->sube_id) $subeId = (int) $dolu->sube_id;
+    }
     $telefon = trim((string) $r->input('telefon'));
     $as = new \App\Services\SantralAsistan($subeId);
     $karsilama = $as->karsilama();
