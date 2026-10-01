@@ -9277,6 +9277,26 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
 });
 
 // Cagri kapandi -> oturumu kapat
+// CallerID ile musteri kaydini bul; yoksa minimal olustur (tanima icin). Doner: musteri_id|null
+if (!function_exists('_santralMusteriEnsure')) {
+    function _santralMusteriEnsure($subeId, $telefon)
+    {
+        try {
+            if (!Schema::hasTable('musteriler')) return null;
+            $clean = preg_replace('/\D/', '', (string) $telefon);
+            if (strlen($clean) < 7) return null;
+            $son10 = substr($clean, -10);
+            foreach (DB::table('musteriler')->where('sube_id', $subeId)->whereNotNull('telefon')->orderByDesc('id')->limit(5000)->get(['id', 'telefon']) as $m) {
+                if (substr(preg_replace('/\D/', '', (string) $m->telefon), -10) === $son10) return $m->id;
+            }
+            return DB::table('musteriler')->insertGetId([
+                'sube_id' => $subeId, 'ad' => 'Telefon ' . $clean, 'telefon' => $clean,
+                'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) { return null; }
+    }
+}
+
 Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
     _santralEnsure();
     $oid = (int) $r->input('oturum_id');
@@ -9285,6 +9305,8 @@ Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
     $o = DB::table('santral_oturumlari')->where('id', $oid)->first();
     if ($o && !$o->sonuc) $upd['sonuc'] = $sonuc ?: 'bilgi';
     DB::table('santral_oturumlari')->where('id', $oid)->update($upd);
+    // TANIMA: cagri biterken CallerID ile musteri kaydini garantile (siparis tamamlanmasa da sonraki aramada taninir)
+    if ($o && $o->telefon) _santralMusteriEnsure((int) $o->sube_id, $o->telefon);
     return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
