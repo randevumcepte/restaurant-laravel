@@ -9146,6 +9146,31 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
     return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri()], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// TESHIS OZETI: son cagrilar + son musteriler + son telefon adisyonlari + ses kayitlari (tek bakista)
+Route::match(['get', 'post'], '/api/santral/teshis-ozet', function (Request $r) {
+    if (function_exists('_santralEnsure')) _santralEnsure();
+    if (function_exists('_santralSesEnsure')) _santralSesEnsure();
+    $out = [];
+    try {
+        $out['son_cagrilar'] = DB::table('santral_oturumlari')->orderByDesc('id')->limit(6)
+            ->get(['id', 'sube_id', 'telefon', 'sonuc', 'durum', 'adisyon_id', 'rezervasyon_id', 'created_at']);
+    } catch (\Throwable $e) { $out['son_cagrilar'] = 'hata: ' . $e->getMessage(); }
+    try {
+        $out['son_musteriler'] = DB::table('musteriler')->orderByDesc('id')->limit(6)
+            ->get(['id', 'sube_id', 'ad', 'telefon', 'adres', 'siparis_sayisi', 'created_at']);
+    } catch (\Throwable $e) { $out['son_musteriler'] = 'hata: ' . $e->getMessage(); }
+    try {
+        $out['son_telefon_adisyon'] = DB::table('adisyonlar')->where('kanal', 'paket')->where('platform', 'telefon')
+            ->orderByDesc('id')->limit(6)->get(['id', 'sube_id', 'musteri_id', 'toplam', 'odeme_yontemi', 'teslimat_adres', 'durum', 'acilis']);
+    } catch (\Throwable $e) { $out['son_telefon_adisyon'] = 'hata: ' . $e->getMessage(); }
+    try {
+        $out['son_ses_kayit'] = Schema::hasTable('santral_ses_kayit')
+            ? DB::table('santral_ses_kayit')->orderByDesc('id')->limit(6)->get(['id', 'oturum_id', 'tur', 'boyut', 'created_at'])
+            : 'tablo yok';
+    } catch (\Throwable $e) { $out['son_ses_kayit'] = 'hata: ' . $e->getMessage(); }
+    return response()->json(['ok' => 1, 'ozet' => $out], 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+});
+
 // TEST: bir telefona ait musteri kaydini sil (temiz baslangic). ?telefon=5xx&onay=1
 Route::match(['get', 'post'], '/api/santral/musteri-sil', function (Request $r) {
     $tel = preg_replace('/\D/', '', (string) $r->input('telefon'));
