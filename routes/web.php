@@ -7474,7 +7474,8 @@ Route::get('/api/mutfak', function (Request $r) {
         $gruplu[$aid]['kalan'] = min($gruplu[$aid]['kalan'], $kalan);   // en yavas kalem = en kritik
         $gruplu[$aid]['hazirlik_gecen'] = max($gruplu[$aid]['hazirlik_gecen'], $hzG);
         if ($k->durum === 'hazirlaniyor') $gruplu[$aid]['basladi'] = true;
-        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum];
+        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum,
+            'gz' => $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->format('Y-m-d H:i') : null];
     }
     foreach ($gruplu as $aid => $g) {
         $gruplu[$aid]['dk'] = $g['gecen'];                        // geriye donuk uyum
@@ -7482,6 +7483,32 @@ Route::get('/api/mutfak', function (Request $r) {
         $gruplu[$aid]['asama'] = $g['basladi'] ? 'hazirlaniyor' : 'yeni';
         // Basladiktan SONRA hazirlik hedefini de astiysa -> KRITIK (frontend: tam kirmizi yanip soner)
         $gruplu[$aid]['hazirlik_asti'] = $g['basladi'] && (($g['hazirlik_gecen'] ?? 0) >= $g['hedef']);
+    }
+    // ===== TUR (coursing): her adisyonun kacinci gonderim turu oldugunu belirle (HAZIR olanlar DAHIL) =====
+    // Boylece 1. tur servis olup gitse bile sonraki fis "2. Tur" der; ayni kartta turlar ayracla gorunur.
+    $aidler = array_keys($gruplu);
+    if ($aidler) {
+        $turRows = DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->whereNotNull('gonderim_zamani')
+            ->select('adisyon_id', DB::raw("DATE_FORMAT(gonderim_zamani,'%Y-%m-%d %H:%i') as gz"))->distinct()->get();
+        $byAid = [];
+        foreach ($turRows as $tr) $byAid[$tr->adisyon_id][$tr->gz] = true;
+        $turMap = [];
+        foreach ($byAid as $aid => $gzSet) {
+            $gzler = array_keys($gzSet);
+            sort($gzler); // kronolojik -> 1. tur en eski
+            foreach ($gzler as $i => $gz) $turMap[$aid][$gz] = $i + 1;
+        }
+        foreach ($gruplu as $aid => &$g) {
+            $g['tur_sayisi'] = isset($turMap[$aid]) ? count($turMap[$aid]) : 1;
+            $minTur = null;
+            foreach ($g['kalemler'] as &$k) {
+                $k['tur'] = ($k['gz'] !== null && isset($turMap[$aid][$k['gz']])) ? $turMap[$aid][$k['gz']] : 1;
+                $minTur = $minTur === null ? $k['tur'] : min($minTur, $k['tur']);
+            }
+            unset($k);
+            $g['min_tur'] = $minTur ?? 1; // karttaki en dusuk tur (>1 ise bu fis bir "ek tur" = follow-up)
+        }
+        unset($g);
     }
     $istasyonlar = [];
     foreach ($etiket as $kod => $ad) {
