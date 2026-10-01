@@ -88,9 +88,13 @@ class SantralAsistan
     public function karsilama(): string
     {
         $ad = $this->sube->ad ?? 'restoranımız';
-        if ($this->musteri && !$this->genelAd($this->musteri->ad)) {
-            $isim = $this->ilkIsim($this->musteri->ad);
-            return "Merhaba $isim, " . $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
+        if ($this->musteri) {
+            if (!$this->genelAd($this->musteri->ad)) {
+                $isim = $this->ilkIsim($this->musteri->ad);
+                return "Merhaba $isim, " . $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
+            }
+            // Taninan ama ismi kayitli degil -> yine de "tekrar hos geldiniz"
+            return $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
         }
         return $ad . "'a hoş geldiniz, ben yapay zeka asistanınızım. Size nasıl yardımcı olabilirim?";
     }
@@ -272,8 +276,9 @@ class SantralAsistan
         }
         // KAYITLI musteri
         $m = $this->musteri;
-        $p = " ARAYAN KAYITLI MÜŞTERİ.";
+        $p = " ARAYAN KAYITLI MÜŞTERİ (daha önce aramış, onu tanıyorsun).";
         if (!$this->genelAd($m->ad)) $p .= " Adı: " . $m->ad . " (karşılamada ve uygun yerde adıyla hitap et).";
+        else $p .= " Adını henüz bilmiyoruz; uygun bir yerde (ör. sipariş alırken) BİR KEZ nazikçe adını sor, kaydedilecek. ";
         if (!empty($m->adres)) $p .= " Kayıtlı teslimat adresi: " . $m->adres . ".";
         if (!empty($m->telefon)) $p .= " Telefonu: " . $m->telefon . ".";
         if (!empty($this->sonSiparis)) {
