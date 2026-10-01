@@ -39,8 +39,16 @@ class SantralAsistan
         try {
             if (!$this->telefon || mb_strlen($this->telefon) < 7 || !Schema::hasTable('musteriler')) return;
             $son10 = substr($this->telefon, -10);
+            // 1) Hizli: like son-10 hane
             $m = DB::table('musteriler')->where('sube_id', $this->subeId)
                 ->where('telefon', 'like', '%' . $son10)->orderByDesc('id')->first();
+            // 2) Format-bagimsiz: kayitli telefonu normalize edip son-10 hane karsilastir (bosluk/tire/+90 farki)
+            if (!$m) {
+                foreach (DB::table('musteriler')->where('sube_id', $this->subeId)->whereNotNull('telefon')
+                    ->orderByDesc('id')->limit(5000)->get(['id', 'ad', 'telefon', 'adres']) as $cand) {
+                    if (substr(preg_replace('/\D/', '', (string) $cand->telefon), -10) === $son10) { $m = $cand; break; }
+                }
+            }
             if (!$m) return;
             $this->musteri = $m;
             if (Schema::hasTable('adisyonlar') && Schema::hasTable('adisyon_kalemleri')) {
@@ -67,6 +75,13 @@ class SantralAsistan
     {
         $p = preg_split('/\s+/', trim((string) $ad));
         return $p[0] ?? (string) $ad;
+    }
+
+    /** Teshis/log: taninan musteri adi (yoksa null, kayitli ama isim genelse '(isim yok)'). */
+    public function taninanMusteri(): ?string
+    {
+        if (!$this->musteri) return null;
+        return $this->genelAd($this->musteri->ad) ? '(isim yok)' : $this->ilkIsim($this->musteri->ad);
     }
 
     /** Cagri acilinca ilk karsilama — kayitli musteriyi ADIYLA karsilar. */

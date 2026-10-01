@@ -9133,7 +9133,21 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         'durum' => 'acik',
         'created_at' => now(),
     ]);
-    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet], 200, [], JSON_UNESCAPED_UNICODE);
+    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri()], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Teshis: bu telefon kayitli mi? (tanima sorunu icin)
+Route::match(['get', 'post'], '/api/santral/musteri-teshis', function (Request $r) {
+    $tel = preg_replace('/\D/', '', (string) $r->input('telefon'));
+    if (strlen($tel) < 7) return response()->json(['ok' => 0, 'hata' => 'telefon gir (?telefon=5xx...)'], 200, [], JSON_UNESCAPED_UNICODE);
+    $son10 = substr($tel, -10);
+    $bulunan = [];
+    foreach (DB::table('musteriler')->whereNotNull('telefon')->orderByDesc('id')->limit(5000)->get(['id', 'sube_id', 'ad', 'telefon', 'adres', 'siparis_sayisi']) as $m) {
+        if (substr(preg_replace('/\D/', '', (string) $m->telefon), -10) === $son10) {
+            $bulunan[] = ['id' => $m->id, 'sube_id' => $m->sube_id, 'ad' => $m->ad, 'telefon' => $m->telefon, 'adres' => $m->adres, 'siparis_sayisi' => $m->siparis_sayisi ?? null];
+        }
+    }
+    return response()->json(['ok' => 1, 'aranan_son10' => $son10, 'bulunan' => $bulunan, 'sayi' => count($bulunan)], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // Musteri konustu -> cevap uret (+ tamamlanan aksiyonu isle)
