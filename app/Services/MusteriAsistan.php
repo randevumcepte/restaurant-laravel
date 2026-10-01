@@ -2216,7 +2216,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     }
 
     /** Kategori/urun adina gore uygun emoji (foto yuklenemezse kartin gorseli). */
-    protected function katEmoji($kat, $ad = '')
+    public function katEmoji($kat, $ad = '')
     {
         $t = $this->norm($kat . ' ' . $ad);
         $harita = [
