@@ -9550,6 +9550,40 @@ Route::post('/api/hat/sil', function (Request $r) {
     return response()->json(['ok' => 1, 'did' => $did, 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// ============================ AI SANTRAL — CAGRI KAYITLARI ============================
+Route::get('/santral-kayitlar', function () {
+    \App\Services\SantralAsistan::class; // autoload
+    if (function_exists('_santralEnsure')) _santralEnsure();
+    return response()->view('santral_kayitlar', []);
+});
+Route::match(['get', 'post'], '/api/santral-kayit/liste', function (Request $r) {
+    if (function_exists('_santralEnsure')) _santralEnsure();
+    $rows = DB::table('santral_oturumlari')->orderByDesc('id')->limit(80)->get(['id', 'telefon', 'sonuc', 'durum', 'adisyon_id', 'rezervasyon_id', 'created_at', 'gecmis']);
+    $out = [];
+    foreach ($rows as $o) {
+        $g = json_decode($o->gecmis ?: '[]', true) ?: [];
+        $tur = count($g);
+        $son = '';
+        for ($i = count($g) - 1; $i >= 0; $i--) { if (($g[$i]['role'] ?? '') === 'user') { $son = $g[$i]['content'] ?? ''; break; } }
+        $out[] = ['id' => $o->id, 'telefon' => $o->telefon, 'sonuc' => $o->sonuc, 'durum' => $o->durum,
+            'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'created_at' => (string) $o->created_at,
+            'tur' => $tur, 'son_musteri' => mb_substr($son, 0, 60)];
+    }
+    return response()->json(['ok' => 1, 'liste' => $out], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) {
+    if (function_exists('_santralEnsure')) _santralEnsure();
+    $o = DB::table('santral_oturumlari')->where('id', (int) $r->input('id'))->first();
+    if (!$o) return response()->json(['ok' => 0, 'hata' => 'Kayıt yok'], 200, [], JSON_UNESCAPED_UNICODE);
+    $g = json_decode($o->gecmis ?: '[]', true) ?: [];
+    $sp = $o->siparis_veri ? json_decode($o->siparis_veri, true) : null;
+    return response()->json(['ok' => 1, 'kayit' => [
+        'id' => $o->id, 'telefon' => $o->telefon, 'sube_id' => $o->sube_id, 'sonuc' => $o->sonuc, 'durum' => $o->durum,
+        'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'siparis_veri' => $sp,
+        'created_at' => (string) $o->created_at, 'updated_at' => (string) $o->updated_at, 'gecmis' => $g,
+    ]], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ AI SANTRAL — SES SECIMI (TTS deneme) ============================
 Route::get('/santral-ses', function () {
     return response()->view('santral_ses', ['envVar' => env('GOOGLE_TTS_API_KEY') ? 1 : 0]);
