@@ -42,9 +42,16 @@ class SantralAsistan
             // 1) Hizli: like son-10 hane
             $m = DB::table('musteriler')->where('sube_id', $this->subeId)
                 ->where('telefon', 'like', '%' . $son10)->orderByDesc('id')->first();
-            // 2) Format-bagimsiz: kayitli telefonu normalize edip son-10 hane karsilastir (bosluk/tire/+90 farki)
+            // 2) Format-bagimsiz (bu sube): kayitli telefonu normalize edip son-10 hane karsilastir
             if (!$m) {
                 foreach (DB::table('musteriler')->where('sube_id', $this->subeId)->whereNotNull('telefon')
+                    ->orderByDesc('id')->limit(5000)->get(['id', 'ad', 'telefon', 'adres']) as $cand) {
+                    if (substr(preg_replace('/\D/', '', (string) $cand->telefon), -10) === $son10) { $m = $cand; break; }
+                }
+            }
+            // 3) SUBE-BAGIMSIZ son care (tek restoran; siparis farkli sube_id'ye yazildiysa yine tani)
+            if (!$m) {
+                foreach (DB::table('musteriler')->whereNotNull('telefon')
                     ->orderByDesc('id')->limit(5000)->get(['id', 'ad', 'telefon', 'adres']) as $cand) {
                     if (substr(preg_replace('/\D/', '', (string) $cand->telefon), -10) === $son10) { $m = $cand; break; }
                 }
@@ -52,7 +59,8 @@ class SantralAsistan
             if (!$m) return;
             $this->musteri = $m;
             if (Schema::hasTable('adisyonlar') && Schema::hasTable('adisyon_kalemleri')) {
-                $sonAd = DB::table('adisyonlar')->where('sube_id', $this->subeId)->where('musteri_id', $m->id)
+                // son siparis: musteri_id yeterli (sube filtresi yok -> kacirmasin)
+                $sonAd = DB::table('adisyonlar')->where('musteri_id', $m->id)
                     ->orderByDesc('id')->first(['id']);
                 if ($sonAd) {
                     $this->sonSiparis = DB::table('adisyon_kalemleri')->where('adisyon_id', $sonAd->id)
