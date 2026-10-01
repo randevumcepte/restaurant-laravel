@@ -39,10 +39,21 @@
                 <div x-show="kategori === {{ $k->id }}" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     @forelse ($urunler[$k->id] ?? [] as $u)
                         <button @click="ekle({{ $u->id }})" {{ $u->tukendi ? 'disabled' : '' }}
-                            class="text-left p-3 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition {{ $u->tukendi ? 'opacity-40 cursor-not-allowed' : '' }}">
-                            <div class="font-semibold text-slate-800 text-sm">{{ $u->ad }}</div>
-                            <div class="text-indigo-600 font-bold text-sm mt-1">{{ number_format((float) $u->fiyat, 0, ',', '.') }} ₺</div>
-                            @if ($u->tukendi)<div class="text-[10px] text-rose-500 font-semibold">TÜKENDİ</div>@endif
+                            class="text-left rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition overflow-hidden {{ $u->tukendi ? 'opacity-40 cursor-not-allowed' : '' }}">
+                            <div class="relative w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden">
+                                @if (!empty($u->gorsel))
+                                    <img src="{{ $u->gorsel }}" alt="{{ $u->ad }}" loading="lazy"
+                                         class="w-full h-full object-cover"
+                                         onerror="this.onerror=null;this.parentNode.innerHTML='<span class=&quot;text-3xl&quot;>🍽️</span>'">
+                                @else
+                                    <span class="text-3xl">🍽️</span>
+                                @endif
+                                @if ($u->tukendi)<span class="absolute top-1 right-1 text-[9px] bg-rose-500 text-white px-1.5 py-0.5 rounded font-semibold">TÜKENDİ</span>@endif
+                            </div>
+                            <div class="p-2.5">
+                                <div class="font-semibold text-slate-800 text-sm leading-tight">{{ $u->ad }}</div>
+                                <div class="text-indigo-600 font-bold text-sm mt-1">{{ number_format((float) $u->fiyat, 0, ',', '.') }} ₺</div>
+                            </div>
                         </button>
                     @empty
                         <p class="text-sm text-slate-400 col-span-full">Bu kategoride ürün yok.</p>
