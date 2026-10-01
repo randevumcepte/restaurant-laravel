@@ -3147,8 +3147,9 @@ if (!function_exists('_restoWaGonder')) {
             $ch = curl_init($base . '/session/' . (int) $subeId . '/send');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-Service-Token: ' . $token],
-                CURLOPT_POSTFIELDS => json_encode(['to' => $jid, 'text' => (string) $mesaj], JSON_UNESCAPED_UNICODE),
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'X-Service-Token: ' . $token],
+                // whatsmeow bridge send sozlesmesi: {to, message, logId, urgent}
+                CURLOPT_POSTFIELDS => json_encode(['to' => $jid, 'message' => (string) $mesaj, 'logId' => 0, 'urgent' => false], JSON_UNESCAPED_UNICODE),
             ]);
             curl_exec($ch);
             $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -3173,6 +3174,192 @@ if (!function_exists('_waDurumMetni')) {
     }
 }
 
+// -------- FAZ 2: WhatsApp İÇİNDE sohbet-sipariş (durum makinesi + ürün eşleştirme + konum) --------
+if (!function_exists('_waNorm')) {
+    function _waNorm($s)
+    {
+        $s = mb_strtolower((string) $s, 'UTF-8');
+        $s = str_replace(['ı', 'ğ', 'ü', 'ş', 'ö', 'ç', 'İ', 'â', 'î', 'û'], ['i', 'g', 'u', 's', 'o', 'c', 'i', 'a', 'i', 'u'], $s);
+        $s = preg_replace('/[^a-z0-9 ]+/', ' ', $s);
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+}
+if (!function_exists('_waOturumTablo')) {
+    function _waOturumTablo()
+    {
+        if (!Schema::hasTable('wa_oturumlari')) {
+            try {
+                Schema::create('wa_oturumlari', function ($t) {
+                    $t->increments('id');
+                    $t->integer('sube_id')->index();
+                    $t->string('tel', 24)->index();
+                    $t->string('durum', 16)->default('idle');
+                    $t->text('sepet')->nullable();
+                    $t->string('ad', 80)->nullable();
+                    $t->text('adres')->nullable();
+                    $t->string('odeme', 16)->nullable();
+                    $t->timestamp('updated_at')->nullable();
+                });
+            } catch (\Throwable $e) {}
+        }
+    }
+    function _waOturumAl($sube, $tel) { _waOturumTablo(); return DB::table('wa_oturumlari')->where('sube_id', $sube)->where('tel', $tel)->first(); }
+    function _waOturumYaz($sube, $tel, array $alanlar) { _waOturumTablo(); $alanlar['updated_at'] = now(); DB::table('wa_oturumlari')->updateOrInsert(['sube_id' => $sube, 'tel' => $tel], $alanlar); }
+    function _waOturumSil($sube, $tel) { _waOturumTablo(); DB::table('wa_oturumlari')->where('sube_id', $sube)->where('tel', $tel)->delete(); }
+}
+if (!function_exists('_waUrunBul')) {
+    // Metin parcasini sube urunlerinden en spesifik (en uzun ad) eslesme ile bul.
+    function _waUrunBul($subeId, $parca)
+    {
+        $p = _waNorm($parca);
+        if ($p === '') return null;
+        $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get(['id', 'ad', 'fiyat', 'tukendi']);
+        $best = null; $bestLen = 0;
+        foreach ($urunler as $u) {
+            $n = _waNorm($u->ad);
+            if ($n === '') continue;
+            if (mb_strpos($p, $n) !== false || mb_strpos($n, $p) !== false) {
+                if (mb_strlen($n) > $bestLen) { $best = $u; $bestLen = mb_strlen($n); }
+            }
+        }
+        return $best;
+    }
+}
+if (!function_exists('_waSepetParse')) {
+    // "2 adana, 1 ayran" / "köfte x2" -> [items[], bulunamayan[]]
+    function _waSepetParse($subeId, $text)
+    {
+        $parts = preg_split('/[\n,;]+|\bve\b|\+/u', (string) $text);
+        $items = []; $bulunamayan = [];
+        foreach ((array) $parts as $frag) {
+            $frag = trim((string) $frag);
+            if ($frag === '') continue;
+            $adet = 1;
+            if (preg_match('/^\s*(\d{1,2})\s*(?:adet|tane|x|\*|porsiyon)?\s+(.+)$/iu', $frag, $m)) { $adet = max(1, min(50, (int) $m[1])); $frag = $m[2]; }
+            elseif (preg_match('/^(.+?)\s*[x\*]\s*(\d{1,2})$/iu', $frag, $m)) { $frag = $m[1]; $adet = max(1, min(50, (int) $m[2])); }
+            $u = _waUrunBul($subeId, $frag);
+            if ($u) {
+                if ($u->tukendi) { $bulunamayan[] = $u->ad . ' (tükendi)'; continue; }
+                $items[] = ['urun_id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'adet' => $adet];
+            } elseif (mb_strlen(_waNorm($frag)) >= 3) {
+                $bulunamayan[] = $frag;
+            }
+        }
+        return ['items' => $items, 'bulunamayan' => $bulunamayan];
+    }
+}
+if (!function_exists('_waSepetMetni')) {
+    function _waSepetMetni($sepet)
+    {
+        if (empty($sepet)) return 'Sepetiniz boş.';
+        $l = "🛒 Sepetiniz:\n"; $top = 0;
+        foreach ($sepet as $it) { $tut = (float) $it['fiyat'] * (int) $it['adet']; $top += $tut; $l .= '• ' . $it['adet'] . '× ' . $it['ad'] . ' — ' . number_format($tut, 0, ',', '.') . " ₺\n"; }
+        return $l . '━━━\nToplam: ' . number_format($top, 0, ',', '.') . ' ₺';
+    }
+    function _waSepetBirlestir($sepet, $yeni)
+    {
+        $map = [];
+        foreach ((array) $sepet as $it) { $map[$it['urun_id']] = $it; }
+        foreach ($yeni as $it) { if (isset($map[$it['urun_id']])) { $map[$it['urun_id']]['adet'] += $it['adet']; } else { $map[$it['urun_id']] = $it; } }
+        return array_values($map);
+    }
+}
+if (!function_exists('_waSiparisOlustur')) {
+    // WhatsApp sepetinden paket adisyonu olustur (app_siparis ile ayni semayi kullanir, platform=whatsapp).
+    function _waSiparisOlustur($s, $ad, $tel, $adres, $sepet, $odeme)
+    {
+        if (empty($sepet)) return null;
+        _appEnsure(); _calleridEnsure();
+        $norm = _telNorm($tel);
+        $m = $norm ? DB::table('musteriler')->where('sube_id', $s->id)->where('telefon_norm', $norm)->first() : null;
+        if ($m) { DB::table('musteriler')->where('id', $m->id)->update(['ad' => $ad ?: $m->ad, 'adres' => $adres ?: $m->adres, 'updated_at' => now()]); $mid = $m->id; }
+        else { $mid = DB::table('musteriler')->insertGetId(['sube_id' => $s->id, 'ad' => $ad, 'telefon' => $tel, 'telefon_norm' => $norm, 'adres' => $adres ?: null, 'created_at' => now(), 'updated_at' => now()]); }
+        $token = \Illuminate\Support\Str::random(28);
+        $adId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $s->id, 'masa_id' => null, 'musteri_id' => $mid, 'kanal' => 'paket', 'platform' => 'whatsapp',
+            'teslimat_adres' => $adres ?: 'WhatsApp', 'teslimat_durumu' => 'hazirlaniyor', 'takip_token' => $token,
+            'odeme_yontemi' => ($odeme === 'nakit' ? 'nakit' : 'kart_kapida'), 'misafir_sayisi' => 1, 'durum' => 'acik',
+            'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0, 'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $top = 0;
+        foreach ($sepet as $it) {
+            $u = DB::table('urunler')->where('id', $it['urun_id'])->where('sube_id', $s->id)->first();
+            if (!$u || $u->tukendi) continue;
+            $adet = max(1, min(50, (int) $it['adet'])); $tut = (float) $u->fiyat * $adet;
+            DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
+                'birim_fiyat' => (float) $u->fiyat, 'tutar' => $tut, 'durum' => 'gonderildi', 'not' => 'WhatsApp', 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            $top += $tut;
+        }
+        if ($top <= 0) { DB::table('adisyonlar')->where('id', $adId)->delete(); return null; }
+        DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $top, 'toplam' => $top, 'updated_at' => now()]);
+        return ['id' => $adId, 'token' => $token, 'toplam' => $top];
+    }
+}
+if (!function_exists('_waSohbetIsle')) {
+    // Durum makinesi. Siparis akisiyla ilgiliyse cevap metni doner; degilse null (cagiran AI/karsilamaya birakir).
+    function _waSohbetIsle($s, $tel, $text, $konum = null)
+    {
+        $sube = (int) $s->id;
+        $tl = _waNorm($text);
+        $o = _waOturumAl($sube, $tel);
+        $durum = $o->durum ?? 'idle';
+        $sepet = ($o && $o->sepet) ? (json_decode($o->sepet, true) ?: []) : [];
+        $link = url('/app/' . $sube . '?wa=' . _waTelNorm($tel));
+
+        if (in_array($tl, ['iptal', 'vazgec', 'sil', 'temizle', 'bastan', 'bastan basla'])) {
+            _waOturumSil($sube, $tel);
+            return "🗑️ Sipariş iptal edildi. Yeniden başlamak için ürün yazın (örn. \"1 Adana Kebap, 1 Ayran\").";
+        }
+
+        if ($durum === 'adres') {
+            $adres = null;
+            if ($konum && !empty($konum['lat'])) $adres = '📍 Konum: https://maps.google.com/?q=' . $konum['lat'] . ',' . $konum['lng'];
+            elseif (mb_strlen(trim((string) $text)) >= 5) $adres = trim((string) $text);
+            if (!$adres) return "Lütfen teslimat adresinizi yazın ya da 📍 *konum gönderin*.";
+            _waOturumYaz($sube, $tel, ['durum' => 'odeme', 'adres' => $adres, 'sepet' => json_encode($sepet)]);
+            return "Adres alındı. 💳 Ödeme nasıl olsun?\n• *nakit* (kapıda nakit)\n• *kart* (kapıda kart)";
+        }
+        if ($durum === 'odeme') {
+            $odeme = null;
+            if (mb_strpos($tl, 'nakit') !== false) $odeme = 'nakit';
+            elseif (mb_strpos($tl, 'kart') !== false || mb_strpos($tl, 'kredi') !== false) $odeme = 'kart_kapida';
+            if (!$odeme) return "Lütfen *nakit* ya da *kart* yazın.";
+            _waOturumYaz($sube, $tel, ['durum' => 'onay', 'odeme' => $odeme]);
+            return _waSepetMetni($sepet) . "\n📍 Adres: " . $o->adres . "\n💳 Ödeme: " . ($odeme === 'nakit' ? 'Kapıda nakit' : 'Kapıda kart') . "\n\n✅ Onaylıyorsanız *ONAYLA* yazın (iptal için *iptal*).";
+        }
+        if ($durum === 'onay' && (mb_strpos($tl, 'onayla') !== false || $tl === 'evet' || $tl === 'tamam' || mb_strpos($tl, 'onaylıyorum') !== false)) {
+            $ad = $o->ad ?: 'WhatsApp Müşteri';
+            $res = _waSiparisOlustur($s, $ad, $tel, $o->adres, $sepet, $o->odeme);
+            _waOturumSil($sube, $tel);
+            if (!$res) return "⚠️ Sipariş oluşturulamadı. Lütfen tekrar deneyin ya da " . $link . " üzerinden verin.";
+            return "✅ *Siparişiniz alındı!* (#" . $res['id'] . ")\nToplam: " . number_format($res['toplam'], 0, ',', '.') . " ₺\n👨‍🍳 Hazırlanıyor.\n📍 Canlı takip: " . url('/siparisim/' . $res['token']);
+        }
+
+        // Her durumda: urun ekleme dene
+        $parse = _waSepetParse($sube, $text);
+        if (!empty($parse['items'])) {
+            $sepet = _waSepetBirlestir($sepet, $parse['items']);
+            _waOturumYaz($sube, $tel, ['durum' => 'idle', 'sepet' => json_encode($sepet)]);
+            $msg = _waSepetMetni($sepet);
+            if (!empty($parse['bulunamayan'])) $msg .= "\n⚠️ Bulunamadı: " . implode(', ', $parse['bulunamayan']);
+            return $msg . "\n\n➕ Başka eklemek için ürün yazın · bitince *TAMAM* yazın.";
+        }
+        // "tamam/bitir" -> adres adimina gec
+        if (in_array($tl, ['tamam', 'bitti', 'bitir', 'devam', 'siparisi tamamla', 'tamamla', 'onay'])) {
+            if (empty($sepet)) return null; // sepet bos -> AI/karsilamaya birak
+            _waOturumYaz($sube, $tel, ['durum' => 'adres', 'sepet' => json_encode($sepet)]);
+            return "Sepetiniz hazır:\n" . _waSepetMetni($sepet) . "\n\n📍 Teslimat adresinizi yazın ya da *konum gönderin*.";
+        }
+        // Sadece konum geldi ve sepet dolu ama adres asamasinda degil -> adres olarak al, odemeye gec
+        if ($konum && !empty($konum['lat']) && !empty($sepet)) {
+            $adres = '📍 Konum: https://maps.google.com/?q=' . $konum['lat'] . ',' . $konum['lng'];
+            _waOturumYaz($sube, $tel, ['durum' => 'odeme', 'adres' => $adres, 'sepet' => json_encode($sepet)]);
+            return "Konum alındı. 💳 Ödeme: *nakit* mi *kart* mı?";
+        }
+        return null; // siparisle ilgili degil
+    }
+}
+
 // INBOUND: bridge gelen WA mesajini buraya POST eder (sube_id, from, text). Hibrit yonlendirme.
 Route::post('/api/wa/gelen', function (Request $r) {
     // Abuse koruması: token ayarliysa eslesmeli
@@ -3186,14 +3373,28 @@ Route::post('/api/wa/gelen', function (Request $r) {
     $s = DB::table('subeler')->find($subeId);
     if (!$s || $from === '') return response()->json(['ok' => 0], 200);
     $siparisLink = url('/app/' . $subeId . '?wa=' . _waTelNorm($from));
+    // Konum mesaji?
+    $konum = null;
+    $tip = _waNorm((string) ($r->input('type') ?: $r->input('tip')));
+    $lat = $r->input('lat') ?: $r->input('latitude');
+    $lng = $r->input('lng') ?: $r->input('longitude');
+    if ($lat && $lng && ($tip === 'location' || $tip === 'konum' || $tip === '')) $konum = ['lat' => (float) $lat, 'lng' => (float) $lng];
+    // FAZ 2: once sohbet-siparis durum makinesi (ilgiliyse buradan doner)
+    try {
+        $cevap = _waSohbetIsle($s, $from, $text, $konum);
+        if ($cevap !== null) { _restoWaGonder($subeId, $from, $cevap); return response()->json(['ok' => 1, 'tip' => 'sohbet']); }
+    } catch (\Throwable $e) { /* duser -> AI/karsilama */ }
     $t = mb_strtolower($text, 'UTF-8');
     $anahtarlar = ['merhaba', 'selam', 'mrb', 'slm', 'iyi gun', 'iyi aksam', 'gunayd', 'hello', 'hi', 'menu', 'menü', 'siparis', 'sipariş', 'yemek', 'baslat', 'başlat'];
     $karsilama = $text === '';
     foreach ($anahtarlar as $k) { if (mb_strpos($t, $k) !== false) { $karsilama = true; break; } }
     if ($karsilama) {
-        $msg = "Merhaba! 👋 " . $s->ad . " sipariş hattına hoş geldiniz.\n\n"
-            . "📋 Menüyü görmek ve sipariş vermek için:\n" . $siparisLink . "\n\n"
-            . "Dilerseniz buraya yazarak da sorabilirsiniz (örn. \"bugün ne önerirsin?\").";
+        $ozel = trim((string) resto_ayar_al('wa_karsilama', ''));
+        $msg = $ozel !== ''
+            ? $ozel . "\n\n📋 Menü ve sipariş: " . $siparisLink
+            : "Merhaba! 👋 " . $s->ad . " sipariş hattına hoş geldiniz.\n\n"
+                . "📋 Menüyü görmek ve sipariş vermek için:\n" . $siparisLink . "\n\n"
+                . "Dilerseniz doğrudan buraya da yazabilirsiniz — örn. \"1 Adana Kebap, 1 Ayran\" ya da \"ne önerirsin?\".";
         _restoWaGonder($subeId, $from, $msg);
         return response()->json(['ok' => 1, 'tip' => 'karsilama']);
     }
@@ -3240,6 +3441,39 @@ Route::get('/wa-ayar', function (Request $r) {
 Route::get('/wa-test', function (Request $r) {
     $ok = _restoWaGonder((int) ($r->query('sube') ?: 1), (string) $r->query('tel'), '✅ ResteOS WhatsApp testi: bağlantı çalışıyor.');
     return response($ok ? 'Gönderildi (bridge 2xx).' : 'Gönderilemedi — ayar/sidecar/QR kontrol et (/wa-kur).')->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+// -------- FAZ 3: WhatsApp Yönetimi (QR bağla / durum / ayar) --------
+if (!function_exists('_waBridge')) {
+    // Bridge'e sunucudan proxy (servis token tarayiciya sizmaz).
+    function _waBridge($method, $path, $body = null)
+    {
+        $base = rtrim((string) resto_ayar_al('wa_sidecar_url', ''), '/');
+        $token = (string) resto_ayar_al('wa_servis_token', '');
+        if ($base === '') return ['ok' => false, 'status' => 0, 'body' => ['error' => 'sidecar-ayarlanmadi']];
+        $ch = curl_init($base . $path);
+        $headers = ['X-Service-Token: ' . $token, 'Accept: application/json'];
+        $opt = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_CONNECTTIMEOUT => 5];
+        if ($body !== null) { $opt[CURLOPT_POSTFIELDS] = json_encode($body); $headers[] = 'Content-Type: application/json'; }
+        $opt[CURLOPT_HTTPHEADER] = $headers;
+        curl_setopt_array($ch, $opt);
+        $raw = curl_exec($ch); $st = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        return ['ok' => $st >= 200 && $st < 300, 'status' => $st, 'body' => json_decode((string) $raw, true)];
+    }
+}
+Route::get('/api/wa/durum', fn (Request $r) => _waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/status'));
+Route::post('/api/wa/baglan', fn (Request $r) => _waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'));
+Route::get('/api/wa/qr', fn (Request $r) => _waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'));
+Route::post('/api/wa/cikis', fn (Request $r) => _waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'));
+Route::get('/wa-yonetim', function () {
+    $subeler = DB::table('subeler')->select('id', 'ad')->orderBy('id')->get();
+    return view('wa_yonetim', [
+        'subeler' => $subeler,
+        'sidecar' => (string) resto_ayar_al('wa_sidecar_url', ''),
+        'tokenVar' => ((string) resto_ayar_al('wa_servis_token', '')) !== '',
+        'karsilama' => (string) resto_ayar_al('wa_karsilama', ''),
+        'webhook' => url('/api/wa/gelen'),
+    ]);
 });
 
 // Secilebilir ERKEK Turkce sesler (dinle + sec)
