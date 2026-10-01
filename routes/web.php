@@ -9550,6 +9550,28 @@ Route::post('/api/hat/sil', function (Request $r) {
     return response()->json(['ok' => 1, 'did' => $did, 'ayrinti' => $sonuc], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// ============================ AI SANTRAL — SUBE/MENU TESHIS ============================
+// Hangi sube_id'de kac aktif urun var? (menu bos sorununu teshis + dogru DEFAULT_SUBE_ID)
+Route::match(['get', 'post'], '/api/santral/sube-teshis', function () {
+    $out = [];
+    foreach (DB::table('subeler')->get() as $s) {
+        $adet = 0;
+        if (Schema::hasTable('urunler')) {
+            $q = DB::table('urunler')->where('sube_id', $s->id)->where('aktif', 1);
+            if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
+            $adet = (int) $q->count();
+        }
+        $out[] = ['sube_id' => $s->id, 'ad' => $s->ad ?? null, 'aktif_urun' => $adet];
+    }
+    $oneri = collect($out)->sortByDesc('aktif_urun')->first();
+    return response()->json([
+        'ok' => 1,
+        'subeler' => $out,
+        'oneri_DEFAULT_SUBE_ID' => $oneri['sube_id'] ?? 1,
+        'aciklama' => 'Koprunun .env DEFAULT_SUBE_ID degeri, aktif_urun sayisi en yuksek sube_id olmali.',
+    ], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ AI SANTRAL — CAGRI KAYITLARI ============================
 Route::get('/santral-kayitlar', function () {
     \App\Services\SantralAsistan::class; // autoload
