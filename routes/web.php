@@ -448,6 +448,15 @@ Route::post('/paket/durum', function (Request $r) {
     $upd = ['teslimat_durumu' => $yeni];
     if ($yeni === 'teslim') { $upd['durum'] = 'odendi'; $upd['kapanis'] = now(); $upd['teslim_zamani'] = now(); }
     DB::table('adisyonlar')->where('id', $r->adisyon_id)->update($upd);
+    // WhatsApp durum bildirimi (guard + try/catch: WA kapaliysa paket akisi etkilenmez)
+    try {
+        $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+        if ($a && $a->musteri_id) {
+            $tel = DB::table('musteriler')->where('id', $a->musteri_id)->value('telefon');
+            $takip = (isset($a->takip_token) && $a->takip_token) ? url('/siparisim/' . $a->takip_token) : null;
+            if ($tel) _restoWaGonder($a->sube_id, $tel, _waDurumMetni($yeni, $takip));
+        }
+    } catch (\Throwable $e) {}
     return ['ok' => 1];
 });
 
@@ -779,6 +788,14 @@ Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
     if ($eklenen === 0) { DB::table('adisyonlar')->where('id', $adId)->delete(); return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Ürün eklenemedi']; }
     $araTop = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->sum('tutar');
     DB::table('adisyonlar')->where('id', $adId)->update(['ara_toplam' => $araTop, 'toplam' => $araTop, 'updated_at' => now()]);
+    // WhatsApp siparis onayi + canli takip (wa param varsa onu, yoksa girilen telefonu kullan; guard'li)
+    try {
+        $waTel = trim((string) $r->input('wa')) ?: $tel;
+        $onay = "✅ Siparişiniz alındı! (#$adId)\n"
+            . "Toplam: " . number_format($araTop, 0, ',', '.') . " ₺\n"
+            . "👨‍🍳 Hazırlanıyor.\n📍 Canlı takip: " . url('/siparisim/' . $token);
+        _restoWaGonder($s->id, $waTel, $onay);
+    } catch (\Throwable $e) {}
     return ['ok' => 1, 'adisyon_id' => $adId, 'takip_token' => $token, 'toplam' => $araTop, 'takip_url' => url('/siparisim/' . $token), 'tukendi' => $tukendi];
 });
 
@@ -3101,6 +3118,129 @@ if (!function_exists('resto_ayar_al')) {
         DB::table('ayarlar')->updateOrInsert(['anahtar' => $anahtar], ['deger' => $deger]);
     }
 }
+
+// ==================== WHATSAPP SİPARİŞ (whatsmeow sidecar · HİBRİT) ====================
+// Mevcut paket + app_siparis + MusteriAsistan beynini WhatsApp kanalina baglar.
+// Hibrit: selam/anahtar -> siparis linki (app_siparis); serbest metin -> MusteriAsistan (kural motoru bedava, Haiku kaçakta).
+// Siparis olusunca onay + durum degisince canli takip bildirimi musteriye WA'dan gider.
+// GUARD: sidecar/ayar yoksa _restoWaGonder sessizce false doner; tum cagirici noktalar try/catch -> mevcut akis ASLA kirilmaz.
+if (!function_exists('_waTelNorm')) {
+    // Telefon -> 905xxxxxxxxx (bridge formati). Gecersizse ''.
+    function _waTelNorm($tel)
+    {
+        $d = preg_replace('/\D+/', '', (string) $tel);
+        if ($d === '') return '';
+        if (strlen($d) === 10 && $d[0] === '5') $d = '90' . $d;              // 5xxxxxxxxx
+        elseif (strlen($d) === 11 && $d[0] === '0') $d = '90' . substr($d, 1); // 05xxxxxxxxx
+        return $d;
+    }
+}
+if (!function_exists('_restoWaGonder')) {
+    // Outbound: musteriye WA mesaji (whatsmeow bridge). Konfig yoksa / hata -> false (sessiz).
+    function _restoWaGonder($subeId, $tel, $mesaj)
+    {
+        $base = rtrim((string) resto_ayar_al('wa_sidecar_url', ''), '/');
+        $token = (string) resto_ayar_al('wa_servis_token', '');
+        $jid = _waTelNorm($tel);
+        if ($base === '' || $jid === '' || trim((string) $mesaj) === '') return false;
+        try {
+            $ch = curl_init($base . '/session/' . (int) $subeId . '/send');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-Service-Token: ' . $token],
+                CURLOPT_POSTFIELDS => json_encode(['to' => $jid, 'text' => (string) $mesaj], JSON_UNESCAPED_UNICODE),
+            ]);
+            curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return $kod >= 200 && $kod < 300;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+if (!function_exists('_waDurumMetni')) {
+    function _waDurumMetni($durum, $takipUrl = null)
+    {
+        $map = [
+            'alindi' => '✅ Siparişiniz alındı!',
+            'hazirlaniyor' => '👨‍🍳 Siparişiniz hazırlanıyor.',
+            'hazir' => '📦 Siparişiniz hazır, kuryeye veriliyor.',
+            'yolda' => '🛵 Siparişiniz yola çıktı!',
+            'teslim' => '🎉 Siparişiniz teslim edildi. Afiyet olsun!',
+        ];
+        $b = $map[$durum] ?? ('Sipariş durumu: ' . $durum);
+        if ($takipUrl) $b .= "\n📍 Canlı takip: " . $takipUrl;
+        return $b;
+    }
+}
+
+// INBOUND: bridge gelen WA mesajini buraya POST eder (sube_id, from, text). Hibrit yonlendirme.
+Route::post('/api/wa/gelen', function (Request $r) {
+    // Abuse koruması: token ayarliysa eslesmeli
+    $gizli = (string) resto_ayar_al('wa_servis_token', '');
+    if ($gizli !== '' && (string) ($r->header('X-Service-Token') ?: $r->input('token')) !== $gizli) {
+        return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
+    }
+    $subeId = (int) ($r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
+    $from = (string) ($r->input('from') ?: $r->input('tel') ?: $r->input('gonderen'));
+    $text = trim((string) ($r->input('text') ?: $r->input('mesaj') ?: $r->input('body')));
+    $s = DB::table('subeler')->find($subeId);
+    if (!$s || $from === '') return response()->json(['ok' => 0], 200);
+    $siparisLink = url('/app/' . $subeId . '?wa=' . _waTelNorm($from));
+    $t = mb_strtolower($text, 'UTF-8');
+    $anahtarlar = ['merhaba', 'selam', 'mrb', 'slm', 'iyi gun', 'iyi aksam', 'gunayd', 'hello', 'hi', 'menu', 'menü', 'siparis', 'sipariş', 'yemek', 'baslat', 'başlat'];
+    $karsilama = $text === '';
+    foreach ($anahtarlar as $k) { if (mb_strpos($t, $k) !== false) { $karsilama = true; break; } }
+    if ($karsilama) {
+        $msg = "Merhaba! 👋 " . $s->ad . " sipariş hattına hoş geldiniz.\n\n"
+            . "📋 Menüyü görmek ve sipariş vermek için:\n" . $siparisLink . "\n\n"
+            . "Dilerseniz buraya yazarak da sorabilirsiniz (örn. \"bugün ne önerirsin?\").";
+        _restoWaGonder($subeId, $from, $msg);
+        return response()->json(['ok' => 1, 'tip' => 'karsilama']);
+    }
+    // AI yarisi (hibrit): MusteriAsistan (kural motoru bedava -> Haiku sadece kaçakta)
+    try {
+        $asistan = new \App\Services\MusteriAsistan($subeId);
+        $cevap = $asistan->cevapla($text, null);
+        $metin = is_array($cevap) ? (string) ($cevap['metin'] ?? $cevap['cevap'] ?? $cevap['mesaj'] ?? '') : (string) $cevap;
+        $metin = trim($metin);
+        if ($metin === '') $metin = "📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink;
+        else $metin .= "\n\n📋 Sipariş vermek için: " . $siparisLink;
+        _restoWaGonder($subeId, $from, $metin);
+    } catch (\Throwable $e) {
+        _restoWaGonder($subeId, $from, "📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink);
+    }
+    return response()->json(['ok' => 1, 'tip' => 'ai']);
+});
+
+// Kurulum/yardim + ayar yazici (internal)
+Route::get('/wa-kur', function () {
+    $base = resto_ayar_al('wa_sidecar_url', '(ayarlanmadı)');
+    $tokenVar = ((string) resto_ayar_al('wa_servis_token', '')) !== '' ? 'VAR' : 'YOK';
+    $s = DB::table('subeler')->first();
+    $out = "WHATSAPP SİPARİŞ (whatsmeow) — KURULUM\n"
+        . str_repeat('=', 42) . "\n\n"
+        . "1) whatsmeow bridge'i restoran icin calistir (Randevumcepte ile ayni binary).\n"
+        . "   Gelen mesaj webhook'unu su adrese ayarla:\n   " . url('/api/wa/gelen') . "\n"
+        . "   (bridge POST govdesi: sube_id, from, text; header: X-Service-Token)\n\n"
+        . "2) Ayarlari gir:\n"
+        . "   /wa-ayar?anahtar=wa_sidecar_url&deger=http://127.0.0.1:3002\n"
+        . "   /wa-ayar?anahtar=wa_servis_token&deger=BRIDGE_TOKEN\n"
+        . "   (su an: wa_sidecar_url=" . $base . " · token=" . $tokenVar . ")\n\n"
+        . "3) QR bagla: bridge /session/" . ($s->id ?? '{sube_id}') . "/start -> telefonla QR tarat.\n\n"
+        . "Test siparis sayfasi: " . ($s ? url('/app/' . $s->id) : '-') . "\n"
+        . "Giden test: /wa-test?tel=5xxxxxxxxx&sube=" . ($s->id ?? 1) . "\n";
+    return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+Route::get('/wa-ayar', function (Request $r) {
+    $a = (string) $r->query('anahtar');
+    if (!in_array($a, ['wa_sidecar_url', 'wa_servis_token', 'wa_karsilama'])) return response('Geçersiz anahtar', 400);
+    resto_ayar_yaz($a, (string) $r->query('deger'));
+    return response("OK: $a kaydedildi.")->header('Content-Type', 'text/plain; charset=utf-8');
+});
+Route::get('/wa-test', function (Request $r) {
+    $ok = _restoWaGonder((int) ($r->query('sube') ?: 1), (string) $r->query('tel'), '✅ ResteOS WhatsApp testi: bağlantı çalışıyor.');
+    return response($ok ? 'Gönderildi (bridge 2xx).' : 'Gönderilemedi — ayar/sidecar/QR kontrol et (/wa-kur).')->header('Content-Type', 'text/plain; charset=utf-8');
+});
 
 // Secilebilir ERKEK Turkce sesler (dinle + sec)
 if (!function_exists('resto_erkek_sesler')) {
