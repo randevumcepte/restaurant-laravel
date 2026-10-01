@@ -7414,7 +7414,7 @@ Route::get('/api/mutfak', function (Request $r) {
         ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')
         ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor']);   // Yeni + Hazirlaniyor
     $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
-        'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.durum',
+        'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.durum', 'adisyon_kalemleri.basla_zamani',
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $istasyonVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon");
     $sel[] = $hzVar ? DB::raw("COALESCE(NULLIF(urunler.hazirlik_dk,0),$vars) as hedef") : DB::raw("$vars as hedef");
@@ -7427,6 +7427,7 @@ Route::get('/api/mutfak', function (Request $r) {
     foreach ($rows as $k) {
         $ist = $k->istasyon ?: 'mutfak';
         $dkK = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
+        $hzG = $k->basla_zamani ? (int) \Carbon\Carbon::parse($k->basla_zamani)->diffInMinutes($simdi) : 0; // BASLADIKTAN beri gecen dk
         $hedef = max(1, (int) $k->hedef);
         $kalan = $hedef - $dkK;
         $adet = (float) $k->adet;
@@ -7439,11 +7440,12 @@ Route::get('/api/mutfak', function (Request $r) {
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
             $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal,
-                'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'basladi' => false, 'kalemler' => []];
+                'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'hazirlik_gecen' => 0, 'basladi' => false, 'kalemler' => []];
         }
         $gruplu[$aid]['gecen'] = max($gruplu[$aid]['gecen'], $dkK);
         $gruplu[$aid]['hedef'] = max($gruplu[$aid]['hedef'], $hedef);
         $gruplu[$aid]['kalan'] = min($gruplu[$aid]['kalan'], $kalan);   // en yavas kalem = en kritik
+        $gruplu[$aid]['hazirlik_gecen'] = max($gruplu[$aid]['hazirlik_gecen'], $hzG);
         if ($k->durum === 'hazirlaniyor') $gruplu[$aid]['basladi'] = true;
         $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum];
     }
@@ -7451,6 +7453,8 @@ Route::get('/api/mutfak', function (Request $r) {
         $gruplu[$aid]['dk'] = $g['gecen'];                        // geriye donuk uyum
         $gruplu[$aid]['renk'] = _kdsRenk($g['kalan'], $g['hedef']);
         $gruplu[$aid]['asama'] = $g['basladi'] ? 'hazirlaniyor' : 'yeni';
+        // Basladiktan SONRA hazirlik hedefini de astiysa -> KRITIK (frontend: tam kirmizi yanip soner)
+        $gruplu[$aid]['hazirlik_asti'] = $g['basladi'] && (($g['hazirlik_gecen'] ?? 0) >= $g['hedef']);
     }
     $istasyonlar = [];
     foreach ($etiket as $kod => $ad) {
