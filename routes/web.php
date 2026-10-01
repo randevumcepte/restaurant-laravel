@@ -7606,7 +7606,8 @@ Route::get('/api/mutfak', function (Request $r) {
         if ($filtre && $filtre !== 'hepsi' && $ist !== $filtre) continue;
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'kanal' => $k->kanal,
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst((string) $k->kanal), 'kanal' => (string) $k->kanal,
+                'masali' => ($k->masa !== null),   // gercek masa mi, yoksa paket/gel-al/online mi
                 'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'hazirlik_gecen' => 0, 'basladi' => false, 'kalemler' => []];
         }
         $gruplu[$aid]['gecen'] = max($gruplu[$aid]['gecen'], $dkK);
@@ -7696,6 +7697,25 @@ Route::post('/api/mutfak/hazir', function (Request $r) {
         DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     }
     return ['ok' => 1];
+});
+
+// GECICI (demo): mutfaktaki acik kalemlere ornek not bas -> not alani gorunsun. Sahip/Mudur, bir kez calistir.
+Route::get('/api/mutfak/demo-not', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $notlar = ['az pişmiş olsun', 'acısız', 'soğansız', 'ekstra peynir', '⚠️ fıstık alerjisi var',
+        'buzsuz', 'ketçap ayrı gelsin', 'çok sıcak olmasın', 'servisi geç gönderin', 'sosu bol'];
+    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')
+        ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor'])
+        ->select('adisyon_kalemleri.id')->get();
+    $say = 0;
+    foreach ($rows as $i => $row) {
+        if ($i % 2 !== 0) continue; // her ikinci kaleme not -> bazi kalemler notlu bazi notsuz (gercekci)
+        DB::table('adisyon_kalemleri')->where('id', $row->id)->update(['not' => $notlar[$say % count($notlar)]]);
+        $say++;
+    }
+    return ['ok' => 1, 'notlanan' => $say, 'toplam_kalem' => count($rows)];
 });
 
 // SERVISE HAZIR: durum=hazir kalemler (mutfak bitirdi, garson alsin) adisyona gruplu.

@@ -15,7 +15,7 @@
 <body class="bg-slate-100 text-slate-800">
 @php
     $nav = [
-        ['/', '📊', 'Dashboard'],
+        ['/dashboard', '📊', 'Dashboard'],
         ['/patron', '👑', 'Patron Özet'],
         ['/pos', '🍽️', 'POS / Adisyon'],
         ['/paket', '🛵', 'Paket Siparişler'],

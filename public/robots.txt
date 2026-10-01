@@ -1,2 +1,17 @@
 User-agent: *
-Disallow:
+Allow: /
+
+# Uygulama/panel sayfalari indekslenmesin (SEO degeri yok)
+Disallow: /dashboard
+Disallow: /patron
+Disallow: /pos
+Disallow: /paket
+Disallow: /mutfak
+Disallow: /kiosk
+Disallow: /entegrasyon
+Disallow: /kurye
+Disallow: /cagri-ekran
+Disallow: /santral-test
+Disallow: /api/
+
+Sitemap: https://restaurant.webfirmam.com.tr/sitemap.xml
