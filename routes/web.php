@@ -7465,7 +7465,9 @@ Route::get('/api/mutfak', function (Request $r) {
     foreach ($topluArr as &$t) { $t['dk'] = (int) $t['dk']; $t['istasyon_ad'] = $etiket[$t['istasyon']] ?? $t['istasyon']; }
     unset($t);
     $siparisler = array_values($gruplu);
-    usort($siparisler, fn ($a, $b) => $a['dk'] <=> $b['dk']);   // EN YENI siparis EN USTTE
+    // EN ESKI (en cok bekleyen) EN SOLDA; yeni gelenler saga eklenir. Esit sureliler icin
+    // adisyon_id tiebreaker -> PHP 7.4 kararsiz usort'ta sira her yenilemede OYNAMASIN (sabit).
+    usort($siparisler, fn ($a, $b) => ($b['dk'] <=> $a['dk']) ?: ($a['adisyon_id'] <=> $b['adisyon_id']));
     return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
         'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
 });
