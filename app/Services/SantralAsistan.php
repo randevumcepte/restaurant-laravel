@@ -163,7 +163,10 @@ class SantralAsistan
         $p .= "TTS ile seslendirileceğin için DÜZ metin yaz: emoji, madde işareti, yıldız, tırnak KULLANMA. ";
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
-        $p .= "PAKET SİPARİŞ için: ürün ve adetler (SADECE menüdeki ürünlerden, olmayan ürünü uydurma), teslimat adresi ve telefon. Tamamlanınca onay al ve santral_aksiyon aracını niyet=siparis, tamam=true ile çağır. ";
+        $p .= "PAKET SİPARİŞ akışı: önce ürün ve adetleri (SADECE menüden, olmayanı uydurma), sonra teslimat adresi ve telefonu TEK TEK sor. Hepsi tamam olunca siparişi KISACA özetleyip onay al. ";
+        // Odeme adimi: onaydan SONRA odeme yontemini sor, sonra araci cagir + KAPANIS yap.
+        $p .= "Onaydan SONRA ödeme yöntemini sor: 'Ödemeyi kapıda nakit mi, kapıda kartla mı almamı istersiniz?'. Yanıtı alınca santral_aksiyon aracını niyet=siparis, tamam=true ve siparis.odeme alanını (kapida_nakit veya kapida_kart) ile çağır. ";
+        $p .= "Bu araç çağrısıyla BİRLİKTE kısa bir KAPANIŞ cümlesi söyle: siparişi mutfağa ilettiğini belirt ve afiyet dile (örnek: 'Siparişinizi ilettim, en kısa sürede hazırlayıp yola çıkaracağız, afiyet olsun'). Siparişten sonra boş bekleme; kapanışı yap. ";
         // Garson AI koclugu: uygun bir noktada NAZIKCE tek bir ek satis onerisi (icecek/tatli), israr etme.
         $p .= "Sipariş alırken uygun bir yerde yanına bir içecek ya da tatlı önerebilirsin (menüden, tek cümle, kibar, ısrarcı olma). Müşteri istemezse hemen geç. ";
         // Menu tanitimi: telefonda UZUN liste okuma; birkac one cikan urunu/kategoriyi kisaca soyle, sonra ne istedigini sor. ASLA aktarma.
@@ -214,6 +217,7 @@ class SantralAsistan
                             ],
                             'adres' => ['type' => 'string'],
                             'telefon' => ['type' => 'string'],
+                            'odeme' => ['type' => 'string', 'enum' => ['kapida_nakit', 'kapida_kart', 'online'], 'description' => 'Odeme yontemi: kapida_nakit | kapida_kart | online (kredi karti link)'],
                         ],
                     ],
                 ],

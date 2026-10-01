@@ -9175,9 +9175,14 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                     if ($ad === '') continue;
                     $kalemler[] = ['ad' => $ad, 'adet' => max(1, (int) ($k['adet'] ?? 1))];
                 }
+                // Odeme yontemi: AI'dan gelen (kapida_nakit|kapida_kart|online) -> adisyon.odeme_yontemi
+                $odemeHam = (string) ($sp['odeme'] ?? '');
+                $odemeYon = $odemeHam === 'kapida_kart' ? 'kapida_kart' : ($odemeHam === 'online' ? 'online' : 'nakit');
+                if (Schema::hasColumn('santral_oturumlari', 'sonuc')) $guncelle['sonuc'] = 'siparis';
                 if ($sube && $kalemler) {
                     $r2 = _paketSiparisAl($sube, [
                         'platform' => 'telefon',
+                        'odeme_yontemi' => $odemeYon,
                         'musteri' => [
                             'ad' => trim((string) ($sp['ad'] ?? '')) ?: ('Telefon ' . trim((string) ($o->telefon ?? ''))),
                             'telefon' => trim((string) ($sp['telefon'] ?? $o->telefon ?? '')),
