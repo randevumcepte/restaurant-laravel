@@ -7970,7 +7970,8 @@ Route::get('/api/mutfak/servise-hazir', function (Request $r) {
         $aid = $k->adisyon_id;
         if (!isset($gruplu[$aid])) {
             $dk = $k->hazir_zamani ? (int) \Carbon\Carbon::parse($k->hazir_zamani)->diffInMinutes($simdi) : 0;
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst($k->kanal), 'dk' => $dk, 'kalemler' => []];
+            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst((string) $k->kanal), 'kanal' => (string) $k->kanal,
+                'masali' => ($k->masa !== null), 'dk' => $dk, 'kalemler' => []];
         }
         $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $k->not];
     }
