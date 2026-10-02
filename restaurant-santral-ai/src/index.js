@@ -42,11 +42,20 @@ async function sesKayitBasla(kayit, channelId, tur) {
 }
 
 async function sesKayitBitir(kayit) {
-  if (!cfg.recording.aktif || !kayit || !kayit.rec) return;
+  if (!cfg.recording.aktif) return;
+  if (!kayit || !kayit.rec) { log.debug('sesKayitBitir: aktif kayit yok'); return; }
   const { ad, tur } = kayit.rec;
   kayit.rec = null;
-  try { await client.recordings.stop({ recordingName: ad }); } catch (_) {}
-  await new Promise((r) => setTimeout(r, 800)); // dosya yazilsin
+  log.info(`ses kaydi bitiriliyor (${tur}): ${ad}`);
+  // recordings.stop HANG'a karsi 3sn timeout (bazi durumlarda cozulmeyebilir -> yuklemeyi bloklamasin)
+  try {
+    await Promise.race([
+      client.recordings.stop({ recordingName: ad }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('stop timeout')), 3000)),
+    ]);
+    log.debug('kayit durduruldu');
+  } catch (e) { log.debug('kayit stop atlandi: ' + e.message); }
+  await new Promise((r) => setTimeout(r, 1000)); // dosya finalize olsun
   const filePath = `${cfg.recording.dir}/${ad}.wav`;
   const oturumId = kayit.oturum ? kayit.oturum.oturumId : null;
   await brain.sesYukle(oturumId, kayit.subeId, tur, filePath);
@@ -63,7 +72,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-10-02a (kapanis kilidi _kapaniyor + ses kaydi + tam-dupleks + endpointing + CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'} dir=${cfg.recording.dir})`);
+  log.info(`SURUM: 2026-10-02b (ses kaydi yukleme log+timeout; kapanis kilidi; tam-dupleks; CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'} dir=${cfg.recording.dir})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
