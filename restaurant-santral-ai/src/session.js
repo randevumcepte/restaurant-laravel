@@ -28,6 +28,14 @@ class CagriOturumu {
       // Boylece hat yankisi (AI'nin kendi sesi) STT'ye dusup AI'yi kesmez / kendini dinlemez.
       if (!cfg.bargeIn && this.rtp && this.rtp.sesVarMi) return;
       if (!this._sesGeldi) { this._sesGeldi = true; log.info('ilk ses karesi STT ye ulasti (mikrofon calisiyor)'); }
+      // ENERJI TESHISI: giden ses gercek mi sessizlik mi? (ulaw sessizlik ~0xFF/0x7F)
+      this._ornek = (this._ornek || 0) + 1;
+      if (this._ornek <= 250) {
+        let dolu = 0;
+        for (let i = 0; i < payload.length; i++) { const b = payload[i]; if (b !== 0xFF && b !== 0x7F && b !== 0xFE && b !== 0x7E && b !== 0x00) dolu++; }
+        this._enerjiTop = (this._enerjiTop || 0) + (payload.length ? dolu / payload.length : 0);
+        if (this._ornek === 250) log.info(`SES ENERJI: ort dolu-oran ${(this._enerjiTop / 250).toFixed(2)} (0'a yakin=SESSIZLIK/sesin gelmiyor, >0.3=gercek ses var)`);
+      }
       this.stt.yaz(payload);
     });
     this.stt = new SttOturumu(
