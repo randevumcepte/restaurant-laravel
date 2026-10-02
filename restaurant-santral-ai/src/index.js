@@ -72,7 +72,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-10-02b (ses kaydi yukleme log+timeout; kapanis kilidi; tam-dupleks; CRM; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'} dir=${cfg.recording.dir})`);
+  log.info(`SURUM: 2026-10-02c (temizle+kayit izleme logu; stop timeout; kapanis kilidi; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'} dir=${cfg.recording.dir})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
@@ -292,7 +292,8 @@ async function kanalDustu(chanId) {
 
 async function temizle(kanalId, sonuc) {
   const kayit = aktif.get(kanalId);
-  if (!kayit) return;
+  if (!kayit) { log.debug(`temizle: kayit yok (${kanalId})`); return; }
+  log.info(`temizle: kanal=${kanalId} sonuc=${sonuc} rec=${kayit.rec ? kayit.rec.ad : 'YOK'}`);
   aktif.delete(kanalId);
   // Aktif ses kaydini kapat+yukle (bridge destroy'dan ONCE; ai veya aktarma fazi)
   await sesKayitBitir(kayit);
