@@ -112,6 +112,64 @@ if (!function_exists('_ryEnsure')) {
                 $t->timestamp('created_at')->nullable();
             });
         }
+        // 6) AI / Santral kredi (tek satır ayar)
+        if (!Schema::hasTable('resteos_ai_kredi')) {
+            Schema::create('resteos_ai_kredi', function ($t) {
+                $t->increments('id');
+                $t->decimal('toplam', 12, 2)->default(0);   // yüklenen toplam kredi (TL)
+                $t->decimal('harcanan', 12, 2)->default(0);  // harcanan (TL)
+                $t->decimal('kur', 8, 2)->default(34);       // USD->TRY kur
+                $t->decimal('esik', 12, 2)->default(100);    // düşük kredi alarm eşiği
+                $t->timestamp('updated_at')->nullable();
+            });
+            DB::table('resteos_ai_kredi')->insert(['toplam' => 0, 'harcanan' => 0, 'kur' => 34, 'esik' => 100, 'updated_at' => now()]);
+        }
+        // 7) SMS / bildirim paketleri
+        if (!Schema::hasTable('resteos_sms_paket')) {
+            Schema::create('resteos_sms_paket', function ($t) {
+                $t->increments('id');
+                $t->string('ad', 80);
+                $t->integer('adet');
+                $t->decimal('ucret', 10, 2);
+                $t->string('renk', 12)->default('mor');
+                $t->boolean('aktif')->default(true);
+            });
+        }
+        // 8) Duyurular (restoranlara sistem mesajı)
+        if (!Schema::hasTable('resteos_duyuru')) {
+            Schema::create('resteos_duyuru', function ($t) {
+                $t->increments('id');
+                $t->string('baslik', 160);
+                $t->text('icerik');
+                $t->string('tip', 16)->default('bilgi'); // bilgi|uyari|kampanya
+                $t->string('hedef', 16)->default('hepsi'); // hepsi|sube
+                $t->integer('sube_id')->nullable();
+                $t->boolean('aktif')->default(true);
+                $t->timestamp('created_at')->nullable();
+            });
+        }
+        // 9) Güvenlik IP kuralları
+        if (!Schema::hasTable('resteos_guvenlik_ip')) {
+            Schema::create('resteos_guvenlik_ip', function ($t) {
+                $t->increments('id');
+                $t->string('ip', 45)->index();
+                $t->string('tip', 10)->default('blacklist'); // whitelist|blacklist
+                $t->string('sebep', 160)->nullable();
+                $t->timestamp('created_at')->nullable();
+            });
+        }
+        // 10) Manuel ödeme talepleri
+        if (!Schema::hasTable('resteos_odeme_talep')) {
+            Schema::create('resteos_odeme_talep', function ($t) {
+                $t->increments('id');
+                $t->integer('sube_id')->nullable();
+                $t->string('aciklama', 200);
+                $t->decimal('tutar', 10, 2);
+                $t->string('token', 40)->unique();
+                $t->string('durum', 12)->default('bekliyor'); // bekliyor|odendi
+                $t->timestamp('created_at')->nullable();
+            });
+        }
     }
 }
 
@@ -497,4 +555,186 @@ Route::post('/resteos-yonetim/profil', function (Request $r) {
     DB::table('resteos_yoneticiler')->where('id', $a->id)->update($upd);
     _ryLog('profil', 'Profil güncellendi');
     return back()->with('ok', 'Profil güncellendi.');
+});
+
+// ===========================================================================
+// RESTORAN EKLE (yeni demo restoran)
+// ===========================================================================
+Route::get('/resteos-yonetim/restoran-ekle', function () {
+    if ($x = _ryKapi()) return $x;
+    return view('resteos_yonetim.restoran-ekle');
+});
+Route::post('/resteos-yonetim/restoran-ekle', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    if (trim((string) $r->ad) === '') return back()->with('hata', 'Restoran adı gerekli.');
+    $gun = (int) ($r->demo_gun ?: 14);
+    $id = DB::table('subeler')->insertGetId([
+        'ad' => $r->ad, 'adres' => $r->adres, 'telefon' => $r->telefon,
+        'yetkili_ad' => $r->yetkili_ad, 'yetkili_tel' => $r->yetkili_tel, 'sehir' => $r->sehir,
+        'aktif' => 1, 'demo_hesabi' => 1, 'uyelik_turu' => 'demo',
+        'uyelik_bitis' => now()->addDays($gun)->toDateString(),
+        'webhook_token' => \Illuminate\Support\Str::random(40),
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    _ryLog('restoran_ekle', 'Yeni demo restoran: ' . $r->ad, $id);
+    return redirect('/resteos-yonetim/restoran/' . $id)->with('ok', 'Restoran oluşturuldu (' . $gun . ' gün demo).');
+});
+
+// ===========================================================================
+// AI / SANTRAL KREDİ
+// ===========================================================================
+Route::get('/resteos-yonetim/ai-kredi', function () {
+    if ($x = _ryKapi()) return $x;
+    $k = DB::table('resteos_ai_kredi')->first();
+    $kalan = $k ? ((float) $k->toplam - (float) $k->harcanan) : 0;
+    // Gerçek kullanım (varsa) — santral/asistan log tablosu ileride
+    $dusuk = $k && $kalan <= (float) $k->esik;
+    return view('resteos_yonetim.ai-kredi', compact('k', 'kalan', 'dusuk'));
+});
+Route::post('/resteos-yonetim/ai-kredi', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    $k = DB::table('resteos_ai_kredi')->first();
+    if ($r->islem === 'ekle') {
+        DB::table('resteos_ai_kredi')->where('id', $k->id)->update(['toplam' => (float) $k->toplam + (float) $r->tutar, 'updated_at' => now()]);
+        _ryLog('ai_kredi_ekle', $r->tutar . ' TL eklendi');
+    } else {
+        DB::table('resteos_ai_kredi')->where('id', $k->id)->update([
+            'toplam' => (float) ($r->toplam ?? $k->toplam), 'kur' => (float) ($r->kur ?? $k->kur),
+            'esik' => (float) ($r->esik ?? $k->esik), 'updated_at' => now(),
+        ]);
+        _ryLog('ai_kredi_ayar', 'Kredi ayarı güncellendi');
+    }
+    return back()->with('ok', 'AI kredi güncellendi.');
+});
+
+// ===========================================================================
+// SMS / BİLDİRİM PAKETLERİ
+// ===========================================================================
+Route::get('/resteos-yonetim/sms-paket', function () {
+    if ($x = _ryKapi()) return $x;
+    $paketler = DB::table('resteos_sms_paket')->orderBy('adet')->get();
+    return view('resteos_yonetim.sms-paket', compact('paketler'));
+});
+Route::post('/resteos-yonetim/sms-paket', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    $veri = ['ad' => $r->ad ?: 'Paket', 'adet' => (int) $r->adet, 'ucret' => (float) $r->ucret, 'renk' => $r->renk ?: 'mor', 'aktif' => 1];
+    if ($r->id) DB::table('resteos_sms_paket')->where('id', $r->id)->update($veri);
+    else DB::table('resteos_sms_paket')->insert($veri);
+    _ryLog('sms_paket', $r->ad);
+    return back()->with('ok', 'Paket kaydedildi.');
+});
+Route::post('/resteos-yonetim/sms-paket/{id}/sil', function ($id) {
+    if ($x = _ryKapi()) return $x;
+    DB::table('resteos_sms_paket')->where('id', $id)->delete();
+    return back()->with('ok', 'Paket silindi.');
+});
+
+// ===========================================================================
+// DUYURULAR
+// ===========================================================================
+Route::get('/resteos-yonetim/duyurular', function () {
+    if ($x = _ryKapi()) return $x;
+    $duyurular = DB::table('resteos_duyuru')->orderByDesc('id')->get();
+    $restoranlar = DB::table('subeler')->orderBy('ad')->get(['id', 'ad']);
+    return view('resteos_yonetim.duyurular', compact('duyurular', 'restoranlar'));
+});
+Route::post('/resteos-yonetim/duyurular', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    DB::table('resteos_duyuru')->insert([
+        'baslik' => $r->baslik ?: 'Duyuru', 'icerik' => $r->icerik, 'tip' => $r->tip ?: 'bilgi',
+        'hedef' => $r->hedef ?: 'hepsi', 'sube_id' => $r->hedef === 'sube' ? $r->sube_id : null,
+        'aktif' => 1, 'created_at' => now(),
+    ]);
+    _ryLog('duyuru', $r->baslik);
+    return back()->with('ok', 'Duyuru yayınlandı.');
+});
+Route::post('/resteos-yonetim/duyurular/{id}/sil', function ($id) {
+    if ($x = _ryKapi()) return $x;
+    DB::table('resteos_duyuru')->where('id', $id)->delete();
+    return back()->with('ok', 'Duyuru silindi.');
+});
+
+// ===========================================================================
+// RİSKLİ RESTORANLAR (sağlık skoru düşük)
+// ===========================================================================
+Route::get('/resteos-yonetim/riskli', function () {
+    if ($x = _ryKapi()) return $x;
+    $riskli = [];
+    foreach (DB::table('subeler')->get() as $s) {
+        $sg = _rySaglik($s->id);
+        if ($sg['skor'] < 70) { $s->saglik = $sg; $riskli[] = $s; }
+    }
+    usort($riskli, fn ($a, $b) => $a->saglik['skor'] <=> $b->saglik['skor']);
+    return view('resteos_yonetim.riskli', compact('riskli'));
+});
+
+// ===========================================================================
+// GÜVENLİK DUVARI
+// ===========================================================================
+Route::get('/resteos-yonetim/guvenlik', function () {
+    if ($x = _ryKapi()) return $x;
+    $kurallar = DB::table('resteos_guvenlik_ip')->orderByDesc('id')->get();
+    // Son başarısız girişler (IP bazlı)
+    $basarisiz = DB::table('resteos_giris_log')->where('basarili', 0)->where('created_at', '>=', now()->subDays(7))
+        ->select('ip', DB::raw('count(*) as adet'))->groupBy('ip')->orderByDesc('adet')->limit(15)->get();
+    return view('resteos_yonetim.guvenlik', compact('kurallar', 'basarisiz'));
+});
+Route::post('/resteos-yonetim/guvenlik', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    if (trim((string) $r->ip) !== '') {
+        DB::table('resteos_guvenlik_ip')->insert(['ip' => $r->ip, 'tip' => $r->tip ?: 'blacklist', 'sebep' => $r->sebep, 'created_at' => now()]);
+        _ryLog('guvenlik_ip', ($r->tip ?: 'blacklist') . ': ' . $r->ip);
+    }
+    return back()->with('ok', 'Kural eklendi.');
+});
+Route::post('/resteos-yonetim/guvenlik/{id}/sil', function ($id) {
+    if ($x = _ryKapi()) return $x;
+    DB::table('resteos_guvenlik_ip')->where('id', $id)->delete();
+    return back()->with('ok', 'Kural silindi.');
+});
+
+// ===========================================================================
+// SİSTEM SAĞLIK
+// ===========================================================================
+Route::get('/resteos-yonetim/sistem-saglik', function () {
+    if ($x = _ryKapi()) return $x;
+    $bilgi = [];
+    try { $bilgi['db'] = DB::selectOne('select version() as v')->v ?? '—'; } catch (\Throwable $e) { $bilgi['db'] = '—'; }
+    $bilgi['php'] = PHP_VERSION;
+    $bilgi['laravel'] = app()->version();
+    $bilgi['restoran'] = DB::table('subeler')->count();
+    $bilgi['adisyon'] = DB::table('adisyonlar')->count();
+    $bilgi['urun'] = DB::table('urunler')->count();
+    try {
+        $disk = disk_free_space('/'); $diskT = disk_total_space('/');
+        $bilgi['disk'] = $disk && $diskT ? round(($diskT - $disk) / $diskT * 100) . '% dolu (' . round($disk / 1073741824, 1) . ' GB boş)' : '—';
+    } catch (\Throwable $e) { $bilgi['disk'] = '—'; }
+    $bilgi['zaman'] = now()->format('d.m.Y H:i:s');
+    return view('resteos_yonetim.sistem-saglik', compact('bilgi'));
+});
+
+// ===========================================================================
+// MANUEL ÖDEME LİNKİ
+// ===========================================================================
+Route::get('/resteos-yonetim/odeme-linki', function () {
+    if ($x = _ryKapi()) return $x;
+    $talepler = DB::table('resteos_odeme_talep')->leftJoin('subeler', 'resteos_odeme_talep.sube_id', '=', 'subeler.id')
+        ->select('resteos_odeme_talep.*', 'subeler.ad as restoran')->orderByDesc('resteos_odeme_talep.id')->limit(30)->get();
+    $restoranlar = DB::table('subeler')->orderBy('ad')->get(['id', 'ad']);
+    return view('resteos_yonetim.odeme-linki', compact('talepler', 'restoranlar'));
+});
+Route::post('/resteos-yonetim/odeme-linki', function (Request $r) {
+    if ($x = _ryKapi()) return $x;
+    $token = \Illuminate\Support\Str::random(40);
+    DB::table('resteos_odeme_talep')->insert([
+        'sube_id' => $r->sube_id ?: null, 'aciklama' => $r->aciklama ?: 'Ödeme', 'tutar' => (float) $r->tutar,
+        'token' => $token, 'durum' => 'bekliyor', 'created_at' => now(),
+    ]);
+    _ryLog('odeme_linki', ($r->aciklama ?? '') . ' / ' . $r->tutar . ' TL');
+    return back()->with('ok', 'Ödeme linki oluşturuldu: ' . url('/odeme-talep/' . $token));
+});
+Route::post('/resteos-yonetim/odeme-linki/{id}/odendi', function ($id) {
+    if ($x = _ryKapi()) return $x;
+    DB::table('resteos_odeme_talep')->where('id', $id)->update(['durum' => 'odendi']);
+    return back()->with('ok', 'Ödendi olarak işaretlendi.');
 });

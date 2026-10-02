@@ -23,9 +23,23 @@
       <div class="ry-grp">Genel</div>
       <a href="/resteos-yonetim" class="{{ _ryAktif('resteos-yonetim') }}"><span class="ic">📊</span> Dashboard</a>
       <a href="/resteos-yonetim/restoranlar" class="{{ _ryAktif('resteos-yonetim/restoranlar') }}"><span class="ic">🏪</span> Restoranlar</a>
+      <a href="/resteos-yonetim/restoran-ekle" class="{{ _ryAktif('resteos-yonetim/restoran-ekle') }}"><span class="ic">➕</span> Restoran Ekle</a>
+      <a href="/resteos-yonetim/riskli" class="{{ _ryAktif('resteos-yonetim/riskli') }}"><span class="ic">⚠️</span> Riskli Restoranlar</a>
+
+      <div class="ry-grp">Destek & İletişim</div>
       <a href="/resteos-yonetim/ticket" class="{{ _ryAktif('resteos-yonetim/ticket') }}"><span class="ic">🎫</span> Destek Talepleri @if($acikTicket)<span class="ry-rozet">{{ $acikTicket }}</span>@endif</a>
+      <a href="/resteos-yonetim/duyurular" class="{{ _ryAktif('resteos-yonetim/duyurular') }}"><span class="ic">📢</span> Duyurular</a>
+
+      <div class="ry-grp">Finans</div>
+      <a href="/resteos-yonetim/ai-kredi" class="{{ _ryAktif('resteos-yonetim/ai-kredi') }}"><span class="ic">🤖</span> AI / Santral Kredi</a>
+      <a href="/resteos-yonetim/sms-paket" class="{{ _ryAktif('resteos-yonetim/sms-paket') }}"><span class="ic">💬</span> SMS Paketleri</a>
+      <a href="/resteos-yonetim/odeme-linki" class="{{ _ryAktif('resteos-yonetim/odeme-linki') }}"><span class="ic">💳</span> Manuel Ödeme Linki</a>
+
       <div class="ry-grp">Sistem</div>
       <a href="/resteos-yonetim/ekip" class="{{ _ryAktif('resteos-yonetim/ekip') }}"><span class="ic">👥</span> Ekip & Roller</a>
+      <a href="/resteos-yonetim/guvenlik" class="{{ _ryAktif('resteos-yonetim/guvenlik') }}"><span class="ic">🛡️</span> Güvenlik Duvarı</a>
+      <a href="/wa-yonetim" target="_blank"><span class="ic">🟢</span> Sistem WhatsApp</a>
+      <a href="/resteos-yonetim/sistem-saglik" class="{{ _ryAktif('resteos-yonetim/sistem-saglik') }}"><span class="ic">💚</span> Sistem Sağlık</a>
       <a href="/resteos-yonetim/loglar" class="{{ _ryAktif('resteos-yonetim/loglar') }}"><span class="ic">📜</span> Loglar</a>
       <a href="/resteos-yonetim/profil" class="{{ _ryAktif('resteos-yonetim/profil') }}"><span class="ic">⚙️</span> Profil</a>
     </nav>
