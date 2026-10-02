@@ -106,7 +106,7 @@
             <div class="font-semibold text-slate-800 mb-3">Hesap Planı Eşlemesi</div>
             <div class="space-y-2 text-sm">
                 @foreach ([
-                    'kasa' => 'Kasa (Nakit)', 'pos' => 'Kredi Kartı (POS)', 'banka' => 'Banka / Online',
+                    'kasa' => 'Kasa (Nakit)', 'pos' => 'Kredi Kartı (POS)', 'banka' => 'Banka / Online', 'alici' => 'Alıcılar (Açık Hesap)',
                     'satis' => 'Yurtiçi Satışlar', 'hesaplanan_kdv' => 'Hesaplanan KDV',
                     'mal' => 'İlk Madde / Mal', 'tedarikci' => 'Satıcılar (Tedarikçi)',
                 ] as $k => $ad)
@@ -188,7 +188,7 @@
 
             <div class="font-semibold text-slate-600 text-sm mb-2 mt-5">Hesap Planı Eşlemesi</div>
             <div class="grid grid-cols-2 gap-3 mb-4">
-                <template x-for="hk in [['kasa','Kasa (Nakit)'],['pos','Kredi Kartı (POS)'],['banka','Banka / Online'],['satis','Yurtiçi Satışlar'],['hesaplanan_kdv','Hesaplanan KDV'],['mal','İlk Madde / Mal'],['tedarikci','Satıcılar']]" :key="hk[0]">
+                <template x-for="hk in [['kasa','Kasa (Nakit)'],['pos','Kredi Kartı (POS)'],['banka','Banka / Online'],['alici','Alıcılar (Açık Hesap)'],['satis','Yurtiçi Satışlar'],['hesaplanan_kdv','Hesaplanan KDV'],['mal','İlk Madde / Mal'],['tedarikci','Satıcılar']]" :key="hk[0]">
                     <div>
                         <label class="block text-xs text-slate-400 font-semibold mb-1" x-text="hk[1]"></label>
                         <input x-model="f.hesap_plani[hk[0]]" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">

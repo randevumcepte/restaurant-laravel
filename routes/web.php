@@ -9254,7 +9254,7 @@ if (!function_exists('_muhasebeVarsayilanHesapPlani')) {
     function _muhasebeVarsayilanHesapPlani()
     {
         return [
-            'kasa' => '100', 'pos' => '108', 'banka' => '102',
+            'kasa' => '100', 'pos' => '108', 'banka' => '102', 'alici' => '120',
             'satis' => '600', 'hesaplanan_kdv' => '391',
             'mal' => '153', 'tedarikci' => '320',
         ];
@@ -9267,6 +9267,7 @@ if (!function_exists('_muhasebeOdemeHesap')) {
     {
         $t = mb_strtolower((string) $tip, 'UTF-8');
         if (strpos($t, 'nakit') !== false) return [$hp['kasa'], 'Kasa (Nakit)'];
+        if (strpos($t, 'acik') !== false || strpos($t, 'veresiye') !== false) return [$hp['alici'] ?? '120', 'Alicilar (Acik Hesap)'];
         if (strpos($t, 'online') !== false || strpos($t, 'havale') !== false || strpos($t, 'eft') !== false) return [$hp['banka'], 'Banka / Online'];
         if (strpos($t, 'yemek') !== false) return [$hp['pos'], 'Yemek Karti'];
         return [$hp['pos'], 'Kredi Karti (POS)']; // kredi/kart/pos/diger
