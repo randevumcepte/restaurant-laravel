@@ -9966,6 +9966,69 @@ Route::post('/santral-ayar-kaydet', function (Request $r) {
     return redirect('/santral-ayar?sube_id=' . $subeId . '&kaydedildi=1');
 });
 
+// --- NATIVE (Flutter masaustu) icin JSON ayar uclari ---
+// Tam ayar JSON (aktif/strateji/hedefler[detayli]/zil/teslimat_bolge)
+Route::match(['get', 'post'], '/api/santral/ayar', function (Request $r) {
+    _santralAyarEnsure();
+    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
+    $hedefler = [];
+    if ($ay && !empty($ay->hedefler)) {
+        $d = json_decode($ay->hedefler, true);
+        if (is_array($d)) $hedefler = $d;
+    }
+    if (!$hedefler && $ay && trim((string) ($ay->numara ?? '')) !== '') {
+        $hedefler = [['tip' => $ay->hedef_tip ?? 'dahili', 'teknoloji' => $ay->teknoloji ?? 'SIP', 'numara' => $ay->numara, 'trunk' => $ay->trunk]];
+    }
+    return response()->json(['ok' => 1, 'ayar' => [
+        'sube_id' => $subeId,
+        'aktif' => $ay ? (int) $ay->aktarma_aktif : 0,
+        'strateji' => ($ay && $ay->strateji === 'sirali') ? 'sirali' : 'hepsi',
+        'hedefler' => $hedefler,
+        'zil_sure' => $ay ? (int) $ay->zil_sure : 30,
+        'teslimat_bolge' => $ay->teslimat_bolge ?? null,
+    ]], 200, ['Cache-Control' => 'no-store'], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral/ayar-kaydet', function (Request $r) {
+    _santralAyarEnsure();
+    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $ham = $r->input('hedefler');
+    if (is_string($ham)) $ham = json_decode($ham, true);
+    $hedefler = [];
+    if (is_array($ham)) foreach ($ham as $h) {
+        $num = trim((string) ($h['numara'] ?? ''));
+        if ($num === '') continue;
+        $hedefler[] = [
+            'tip' => in_array(($h['tip'] ?? 'dahili'), ['dahili', 'dis'], true) ? $h['tip'] : 'dahili',
+            'teknoloji' => in_array(($h['teknoloji'] ?? 'SIP'), ['SIP', 'PJSIP'], true) ? $h['teknoloji'] : 'SIP',
+            'numara' => $num,
+            'trunk' => trim((string) ($h['trunk'] ?? '')) ?: null,
+        ];
+    }
+    $veri = [
+        'aktarma_aktif' => $r->input('aktarma_aktif') ? 1 : 0,
+        'strateji' => $r->input('strateji') === 'sirali' ? 'sirali' : 'hepsi',
+        'hedefler' => $hedefler ? json_encode($hedefler, JSON_UNESCAPED_UNICODE) : null,
+        'hedef_tip' => $hedefler[0]['tip'] ?? 'dahili',
+        'teknoloji' => $hedefler[0]['teknoloji'] ?? 'SIP',
+        'numara' => $hedefler[0]['numara'] ?? null,
+        'trunk' => $hedefler[0]['trunk'] ?? null,
+        'zil_sure' => max(5, min(120, (int) $r->input('zil_sure') ?: 30)),
+        'teslimat_bolge' => trim((string) $r->input('teslimat_bolge')) ?: null,
+        'updated_at' => now(),
+    ];
+    $var = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
+    if ($var) DB::table('santral_ayarlari')->where('sube_id', $subeId)->update($veri);
+    else { $veri['sube_id'] = $subeId; $veri['created_at'] = now(); DB::table('santral_ayarlari')->insert($veri); }
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// Subeler listesi (native ekranlarda sube secici icin)
+Route::match(['get', 'post'], '/api/santral/subeler', function () {
+    $rows = DB::table('subeler')->orderBy('id')->get(['id', 'ad']);
+    return response()->json(['ok' => 1, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ FREEPBX API — DAHILI YONETIMI ============================
 // FreePBX'i BOZMADAN, onun GraphQL API'si uzerinden dahili ekle/sil/sifre.
 Route::get('/freepbx-ayar', function () {
@@ -9993,6 +10056,38 @@ Route::post('/freepbx-ayar-kaydet', function (Request $r) {
 
 Route::match(['get', 'post'], '/api/freepbx/test', function () {
     return response()->json((new \App\Services\FreePbxClient())->testBaglanti(), 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// --- NATIVE (Flutter) icin FreePBX ayar JSON get/kaydet ---
+Route::match(['get', 'post'], '/api/freepbx/ayar', function () {
+    \App\Services\FreePbxClient::ensure();
+    \App\Services\FreePbxTrunkClient::ensure();
+    $ay = \App\Services\FreePbxClient::ayar();
+    return response()->json(['ok' => 1, 'ayar' => [
+        'base_url' => $ay->base_url ?? null,
+        'client_id' => $ay->client_id ?? null,
+        'client_secret' => $ay->client_secret ?? null,
+        'trunk_api_url' => $ay->trunk_api_url ?? null,
+        'trunk_api_secret' => $ay->trunk_api_secret ?? null,
+        'aktif' => $ay ? (int) $ay->aktif : 0,
+    ]], 200, ['Cache-Control' => 'no-store'], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/freepbx/ayar-kaydet', function (Request $r) {
+    \App\Services\FreePbxClient::ensure();
+    \App\Services\FreePbxTrunkClient::ensure();
+    $veri = [
+        'base_url' => rtrim(trim((string) $r->input('base_url')), '/') ?: null,
+        'client_id' => trim((string) $r->input('client_id')) ?: null,
+        'client_secret' => trim((string) $r->input('client_secret')) ?: null,
+        'trunk_api_url' => rtrim(trim((string) $r->input('trunk_api_url')), '/') ?: null,
+        'trunk_api_secret' => trim((string) $r->input('trunk_api_secret')) ?: null,
+        'aktif' => $r->input('aktif') ? 1 : 0,
+        'updated_at' => now(),
+    ];
+    $var = DB::table('freepbx_ayarlari')->first();
+    if ($var) DB::table('freepbx_ayarlari')->where('id', $var->id)->update($veri);
+    else { $veri['created_at'] = now(); DB::table('freepbx_ayarlari')->insert($veri); }
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 Route::get('/dahili-yonetim', function () {
