@@ -30,14 +30,24 @@
             aktif: {{ ($ayar->aktif ?? false) ? 'true' : 'false' }},
             hesap_plani: @js($hp)
         },
-        period: 'ay', bas: '', bit: '',
+        period: 'ay', bas: '', bit: '', smm: false, gonderiliyor: false,
         get isApi() { return this.f.baglanti_tipi.endsWith('_api'); },
+        get donemQS() {
+            let q = (this.bas && this.bit) ? ('bas=' + this.bas + '&bit=' + this.bit) : ('period=' + this.period);
+            return q + '&smm=' + (this.smm ? 1 : 0);
+        },
         kaydet() { api('/muhasebe-entegrasyon/ayar-kaydet', this.f).then(() => location.reload()); },
-        indir() {
-            let u = '/muhasebe-entegrasyon/disa-aktar?';
-            if (this.bas && this.bit) u += 'bas=' + this.bas + '&bit=' + this.bit;
-            else u += 'period=' + this.period;
-            window.location.href = u;
+        indir() { window.location.href = '/muhasebe-entegrasyon/disa-aktar?' + this.donemQS; },
+        cariEkstre() { window.location.href = '/muhasebe-entegrasyon/cari-ekstre?' + this.donemQS; },
+        gonder() {
+            if (this.gonderiliyor) return;
+            this.gonderiliyor = true;
+            let p = { period: this.period, bas: this.bas, bit: this.bit, smm: this.smm ? 1 : 0 };
+            api('/muhasebe-entegrasyon/gonder', p).then(res => {
+                this.gonderiliyor = false;
+                if (res.ok) { alert('✅ ' + res.mesaj); location.reload(); }
+                else { alert('⚠️ Gönderilemedi: ' + (res.hata || '') + (res.yanit ? '\n\n' + res.yanit : '')); }
+            }).catch(() => { this.gonderiliyor = false; alert('⚠️ Bağlantı hatası.'); });
         }
     }">
 
@@ -85,19 +95,33 @@
                 </div>
             </div>
 
-            <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 text-sm text-slate-600 mb-4 select-none">
+                <input type="checkbox" x-model="smm" class="rounded">
+                SMM (Satılan Malın Maliyeti) fişini dahil et — reçete maliyetinden {{ $hp['smm'] ?? '621' }} / {{ $hp['mal'] }}
+            </label>
+
+            <div class="flex flex-wrap items-center gap-3">
                 <button @click="indir()" class="bg-emerald-600 text-white text-sm font-semibold rounded-xl px-5 py-3 hover:bg-emerald-700">
                     ⬇️ Aktarım Dosyası İndir (CSV)
                 </button>
-                <span x-show="isApi" class="text-xs text-amber-600 font-medium">
-                    REST API ile otomatik gönderim <b>Faz 2</b>'de; şimdilik dosyayı indirip aktarabilirsiniz.
-                </span>
+                <button @click="cariEkstre()" class="bg-white text-slate-600 text-sm font-semibold rounded-xl px-4 py-3 border border-slate-200 hover:border-indigo-300">
+                    📄 Cari Ekstre (CSV)
+                </button>
+                <button x-show="isApi" @click="gonder()" :disabled="gonderiliyor"
+                        class="bg-indigo-600 text-white text-sm font-semibold rounded-xl px-5 py-3 hover:bg-indigo-700 disabled:opacity-60">
+                    <span x-show="!gonderiliyor">🚀 ERP'ye Gönder (API)</span>
+                    <span x-show="gonderiliyor">Gönderiliyor…</span>
+                </button>
+            </div>
+
+            <div x-show="isApi" class="mt-3 text-xs text-amber-600">
+                REST API gönderimi, <b>müşterinin lisanslı Logo/Netsis sunucusuna</b> bağlanır; API adresi + kimlik bilgisi girilmeli (Bağlantı Ayarları).
             </div>
 
             <div class="mt-5 text-xs text-slate-400 leading-relaxed">
-                Fiş çift taraflıdır (Borç = Alacak): satış tahsilatı ödeme tipine göre Kasa/POS/Banka'ya,
+                Fiş çift taraflıdır (Borç = Alacak): satış tahsilatı ödeme tipine göre Kasa/POS/Banka/Alıcılar'a,
                 matrah {{ $hp['satis'] }} Yurtiçi Satışlar + {{ $hp['hesaplanan_kdv'] }} Hesaplanan KDV'ye;
-                alışlar {{ $hp['mal'] }} Mal / {{ $hp['tedarikci'] }} Satıcılar hesaplarına yazılır.
+                alışlar {{ $hp['mal'] }} Mal / {{ $hp['tedarikci'] }} Satıcılar; SMM açıksa {{ $hp['smm'] ?? '621' }} Satılan Malın Maliyeti / {{ $hp['mal'] }} Stok çıkışına yazılır.
             </div>
         </div>
 
@@ -108,7 +132,7 @@
                 @foreach ([
                     'kasa' => 'Kasa (Nakit)', 'pos' => 'Kredi Kartı (POS)', 'banka' => 'Banka / Online', 'alici' => 'Alıcılar (Açık Hesap)',
                     'satis' => 'Yurtiçi Satışlar', 'hesaplanan_kdv' => 'Hesaplanan KDV',
-                    'mal' => 'İlk Madde / Mal', 'tedarikci' => 'Satıcılar (Tedarikçi)',
+                    'mal' => 'İlk Madde / Mal', 'tedarikci' => 'Satıcılar (Tedarikçi)', 'smm' => 'Satılan Malın Maliyeti',
                 ] as $k => $ad)
                     <div class="flex items-center justify-between">
                         <span class="text-slate-500">{{ $ad }}</span>
@@ -188,7 +212,7 @@
 
             <div class="font-semibold text-slate-600 text-sm mb-2 mt-5">Hesap Planı Eşlemesi</div>
             <div class="grid grid-cols-2 gap-3 mb-4">
-                <template x-for="hk in [['kasa','Kasa (Nakit)'],['pos','Kredi Kartı (POS)'],['banka','Banka / Online'],['alici','Alıcılar (Açık Hesap)'],['satis','Yurtiçi Satışlar'],['hesaplanan_kdv','Hesaplanan KDV'],['mal','İlk Madde / Mal'],['tedarikci','Satıcılar']]" :key="hk[0]">
+                <template x-for="hk in [['kasa','Kasa (Nakit)'],['pos','Kredi Kartı (POS)'],['banka','Banka / Online'],['alici','Alıcılar (Açık Hesap)'],['satis','Yurtiçi Satışlar'],['hesaplanan_kdv','Hesaplanan KDV'],['mal','İlk Madde / Mal'],['tedarikci','Satıcılar'],['smm','Satılan Malın Maliyeti']]" :key="hk[0]">
                     <div>
                         <label class="block text-xs text-slate-400 font-semibold mb-1" x-text="hk[1]"></label>
                         <input x-model="f.hesap_plani[hk[0]]" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">

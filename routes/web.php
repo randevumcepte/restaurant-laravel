@@ -9256,7 +9256,7 @@ if (!function_exists('_muhasebeVarsayilanHesapPlani')) {
         return [
             'kasa' => '100', 'pos' => '108', 'banka' => '102', 'alici' => '120',
             'satis' => '600', 'hesaplanan_kdv' => '391',
-            'mal' => '153', 'tedarikci' => '320',
+            'mal' => '153', 'tedarikci' => '320', 'smm' => '621',
         ];
     }
 }
@@ -9271,6 +9271,132 @@ if (!function_exists('_muhasebeOdemeHesap')) {
         if (strpos($t, 'online') !== false || strpos($t, 'havale') !== false || strpos($t, 'eft') !== false) return [$hp['banka'], 'Banka / Online'];
         if (strpos($t, 'yemek') !== false) return [$hp['pos'], 'Yemek Karti'];
         return [$hp['pos'], 'Kredi Karti (POS)']; // kredi/kart/pos/diger
+    }
+}
+
+if (!function_exists('_muhasebeDonem')) {
+    // Istekten donem araligini coz: ?bas&bit veya ?period=gun|hafta|ay (vars: ay)
+    function _muhasebeDonem($r)
+    {
+        if ($r->bas && $r->bit) {
+            return [\Carbon\Carbon::parse($r->bas)->startOfDay(), \Carbon\Carbon::parse($r->bit)->endOfDay()];
+        }
+        $period = in_array($r->period, ['gun', 'hafta', 'ay'], true) ? $r->period : 'ay';
+        $to = now()->endOfDay();
+        $from = $period === 'gun' ? now()->startOfDay() : ($period === 'hafta' ? now()->subDays(6)->startOfDay() : now()->subDays(29)->startOfDay());
+        return [$from, $to];
+    }
+}
+
+if (!function_exists('_muhasebeFisUret')) {
+    // Donem icin cift tarafli DENGELI mahsup fisi satirlari uretir (CSV + REST ortak kullanir).
+    // return: ['rows'=>[[tarih,fisNo,hesapKodu,hesapAdi,borc,alacak,aciklama],...], 'borc','alacak','fisNo','tarih']
+    function _muhasebeFisUret($from, $to, $hp, $kdvOran, $smmDahil = false)
+    {
+        $tarih = $to->format('d.m.Y');
+        $fisNo = 'RST-' . $from->format('Ymd') . '-' . $to->format('Ymd');
+        $kdvCarpan = 1 + ($kdvOran / 100);
+        $rows = []; $borcT = 0.0; $alacakT = 0.0;
+
+        // --- SATIS: Borc kasa/pos/banka/alici = brut; Alacak 600 matrah + 391 KDV ---
+        $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
+            ->select('tip', DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->get();
+        $satisMatrah = 0.0; $satisKdv = 0.0;
+        foreach ($odeme as $o) {
+            $brut = round((float) $o->tutar, 2);
+            if ($brut <= 0) continue;
+            $matrah = round($brut / $kdvCarpan, 2);
+            $kdv = round($brut - $matrah, 2);
+            $satisMatrah += $matrah; $satisKdv += $kdv;
+            [$hk, $ha] = _muhasebeOdemeHesap($o->tip, $hp);
+            $rows[] = [$tarih, $fisNo, $hk, $ha, $brut, 0.0, 'Satis tahsilat (' . $o->tip . ')'];
+            $borcT += $brut;
+        }
+        if ($satisMatrah > 0) {
+            $rows[] = [$tarih, $fisNo, $hp['satis'], 'Yurtici Satislar', 0.0, round($satisMatrah, 2), 'Donem satis matrahi'];
+            $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV %' . $kdvOran, 0.0, round($satisKdv, 2), 'Satis KDV'];
+            $alacakT += round($satisMatrah, 2) + round($satisKdv, 2);
+        }
+
+        // --- ALIS: Borc 153 mal = brut; Alacak 320 tedarikci = brut ---
+        $alis = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+            ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
+            ->select('tedarikciler.ad as tedarikci', DB::raw('SUM(alis_faturalari.toplam) as toplam'), DB::raw('COUNT(*) as adet'))
+            ->groupBy('tedarikciler.id', 'tedarikciler.ad')->get();
+        foreach ($alis as $a) {
+            $brut = round((float) $a->toplam, 2);
+            if ($brut <= 0) continue;
+            $ted = $a->tedarikci ?: 'Tedarikci';
+            $rows[] = [$tarih, $fisNo, $hp['mal'], 'Ilk Madde / Mal Alimi', $brut, 0.0, 'Alis: ' . $ted . ' (' . (int) $a->adet . ' fatura)'];
+            $rows[] = [$tarih, $fisNo, $hp['tedarikci'], 'Saticilar', 0.0, $brut, 'Tedarikci: ' . $ted];
+            $borcT += $brut; $alacakT += $brut;
+        }
+
+        // --- SMM (opsiyonel): satilan urunlerin recete maliyeti -> Borc 621 / Alacak 153 ---
+        if ($smmDahil && function_exists('_restoUrunMaliyetMap')) {
+            $maliyetMap = _restoUrunMaliyetMap();
+            $satisSatir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+                ->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi',
+                    DB::raw('SUM(adisyon_kalemleri.adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
+                ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')->get();
+            $smm = 0.0;
+            foreach ($satisSatir as $s) {
+                $birim = $maliyetMap['id'][(int) $s->urun_id] ?? ($maliyetMap['ad'][$s->urun_adi] ?? 0);
+                $mal = (float) $s->adet * (float) $birim;
+                if ($mal <= 0 && $s->satis > 0) $mal = (float) $s->satis * 0.30;
+                $smm += $mal;
+            }
+            $smm = round($smm, 2);
+            if ($smm > 0) {
+                $rows[] = [$tarih, $fisNo, $hp['smm'] ?? '621', 'Satilan Malin Maliyeti', $smm, 0.0, 'Donem SMM (recete maliyeti)'];
+                $rows[] = [$tarih, $fisNo, $hp['mal'], 'Stok Cikis (SMM mahsup)', 0.0, $smm, 'SMM karsiligi stok cikisi'];
+                $borcT += $smm; $alacakT += $smm;
+            }
+        }
+
+        return ['rows' => $rows, 'borc' => round($borcT, 2), 'alacak' => round($alacakT, 2), 'fisNo' => $fisNo, 'tarih' => $tarih];
+    }
+}
+
+if (!function_exists('_muhasebeErpGonder')) {
+    // REST API ile ERP'ye (Logo/Netsis veya ara katman) mahsup fisi gonderir. Standart voucher JSON;
+    // Logo REST / Netsis NetOpenX alan semalari kuruluma gore degistiginden eslemenin netlesmesi onboarding'de.
+    // Kimlik: api_kullanici dolu ise Basic (kullanici:sifre), degilse Bearer token (api_sifre).
+    function _muhasebeErpGonder($ayar, $fis, $donemStr)
+    {
+        $url = rtrim((string) ($ayar->api_url ?? ''), '/');
+        if ($url === '') return ['ok' => 0, 'hata' => 'API adresi girilmemis (Baglanti Ayarlari).'];
+        $payload = [
+            'kaynak' => 'ResteOS', 'tip' => 'mahsup_fisi', 'firma_kodu' => $ayar->firma_kodu,
+            'fis_no' => $fis['fisNo'], 'tarih' => $fis['tarih'], 'donem' => $donemStr,
+            'borc_toplam' => $fis['borc'], 'alacak_toplam' => $fis['alacak'],
+            'satirlar' => array_map(function ($r) {
+                return ['tarih' => $r[0], 'fis_no' => $r[1], 'hesap_kodu' => $r[2], 'hesap_adi' => $r[3],
+                    'borc' => (float) $r[4], 'alacak' => (float) $r[5], 'aciklama' => $r[6]];
+            }, $fis['rows']),
+        ];
+        try {
+            $ch = curl_init($url);
+            $headers = ['Content-Type: application/json', 'Accept: application/json'];
+            if (!empty($ayar->api_sifre) && empty($ayar->api_kullanici)) $headers[] = 'Authorization: Bearer ' . $ayar->api_sifre;
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            ]);
+            if (!empty($ayar->api_kullanici)) curl_setopt($ch, CURLOPT_USERPWD, $ayar->api_kullanici . ':' . ($ayar->api_sifre ?? ''));
+            $resp = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+            if ($err !== '') return ['ok' => 0, 'hata' => 'Baglanti hatasi: ' . $err];
+            if ($code >= 200 && $code < 300) return ['ok' => 1, 'code' => $code, 'yanit' => mb_substr((string) $resp, 0, 500)];
+            return ['ok' => 0, 'hata' => 'ERP yanit kodu ' . $code, 'yanit' => mb_substr((string) $resp, 0, 500)];
+        } catch (\Throwable $e) {
+            return ['ok' => 0, 'hata' => $e->getMessage()];
+        }
     }
 }
 
@@ -9322,64 +9448,17 @@ Route::get('/muhasebe-entegrasyon/disa-aktar', function (Request $r) {
     $kdvOran = $ayar->kdv_orani ?? 10;
     $baglanti = $ayar->baglanti_tipi ?? 'excel';
 
-    // Donem araligi
-    if ($r->bas && $r->bit) {
-        $from = \Carbon\Carbon::parse($r->bas)->startOfDay();
-        $to = \Carbon\Carbon::parse($r->bit)->endOfDay();
-    } else {
-        $period = in_array($r->period, ['gun', 'hafta', 'ay'], true) ? $r->period : 'ay';
-        $to = now()->endOfDay();
-        $from = $period === 'gun' ? now()->startOfDay() : ($period === 'hafta' ? now()->subDays(6)->startOfDay() : now()->subDays(29)->startOfDay());
-    }
-
-    // SATIS (odeme tipine gore brut tahsilat) + ALIS (tedarikci bazinda)
-    $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
-        ->select('tip', DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->get();
-    $alis = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
-        ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
-        ->select('tedarikciler.ad as tedarikci', DB::raw('SUM(alis_faturalari.toplam) as toplam'), DB::raw('COUNT(*) as adet'))
-        ->groupBy('tedarikciler.id', 'tedarikciler.ad')->get();
-
-    $tarih = $to->format('d.m.Y');
-    $fisNo = 'RST-' . $from->format('Ymd') . '-' . $to->format('Ymd');
-    $kdvCarpan = 1 + ($kdvOran / 100);
-    $rows = [];        // [tarih, fisNo, hesapKodu, hesapAdi, borc, alacak, aciklama]
-    $borcT = 0.0; $alacakT = 0.0;
-
-    // --- SATIS: Borc kasa/pos/banka = brut; Alacak 600 matrah + 391 KDV ---
-    $satisMatrah = 0.0; $satisKdv = 0.0;
-    foreach ($odeme as $o) {
-        $brut = round((float) $o->tutar, 2);
-        if ($brut <= 0) continue;
-        $matrah = round($brut / $kdvCarpan, 2);
-        $kdv = round($brut - $matrah, 2);
-        $satisMatrah += $matrah; $satisKdv += $kdv;
-        [$hk, $ha] = _muhasebeOdemeHesap($o->tip, $hp);
-        $rows[] = [$tarih, $fisNo, $hk, $ha, $brut, 0.0, 'Satis tahsilat (' . $o->tip . ')'];
-        $borcT += $brut;
-    }
-    if ($satisMatrah > 0) {
-        $rows[] = [$tarih, $fisNo, $hp['satis'], 'Yurtici Satislar', 0.0, round($satisMatrah, 2), 'Donem satis matrahi'];
-        $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV %' . $kdvOran, 0.0, round($satisKdv, 2), 'Satis KDV'];
-        $alacakT += round($satisMatrah, 2) + round($satisKdv, 2);
-    }
-
-    // --- ALIS: Borc 153 mal = brut; Alacak 320 tedarikci = brut (KDV ayrimi muhasebecide) ---
-    foreach ($alis as $a) {
-        $brut = round((float) $a->toplam, 2);
-        if ($brut <= 0) continue;
-        $ted = $a->tedarikci ?: 'Tedarikci';
-        $rows[] = [$tarih, $fisNo, $hp['mal'], 'Ilk Madde / Mal Alimi', $brut, 0.0, 'Alis: ' . $ted . ' (' . (int) $a->adet . ' fatura)'];
-        $rows[] = [$tarih, $fisNo, $hp['tedarikci'], 'Saticilar', 0.0, $brut, 'Tedarikci: ' . $ted];
-        $borcT += $brut; $alacakT += $brut;
-    }
+    [$from, $to] = _muhasebeDonem($r);
+    $smmDahil = (bool) $r->smm;
+    $fis = _muhasebeFisUret($from, $to, $hp, $kdvOran, $smmDahil);
+    $rows = $fis['rows']; $borcT = $fis['borc']; $alacakT = $fis['alacak'];
 
     // Aktarim gecmisine logla
     DB::table('muhasebe_aktarimlari')->insert([
         'sube_id' => $sube->id, 'baglanti_tipi' => $baglanti,
-        'donem' => $from->format('d.m.Y') . ' - ' . $to->format('d.m.Y'),
+        'donem' => $from->format('d.m.Y') . ' - ' . $to->format('d.m.Y') . ($smmDahil ? ' +SMM' : ''),
         'bas' => $from->toDateString(), 'bit' => $to->toDateString(),
-        'satir' => count($rows), 'borc_toplam' => round($borcT, 2), 'alacak_toplam' => round($alacakT, 2),
+        'satir' => count($rows), 'borc_toplam' => $borcT, 'alacak_toplam' => $alacakT,
         'durum' => 'olusturuldu', 'created_at' => now(), 'updated_at' => now(),
     ]);
 
@@ -9396,6 +9475,61 @@ Route::get('/muhasebe-entegrasyon/disa-aktar', function (Request $r) {
     $out .= ';;;"TOPLAM";' . number_format($borcT, 2, ',', '') . ';' . number_format($alacakT, 2, ',', '') . ";\r\n";
 
     $dosya = 'muhasebe-' . $baglanti . '-' . $from->format('Ymd') . '_' . $to->format('Ymd') . '.csv';
+    return response($out, 200, [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+        'Content-Disposition' => 'attachment; filename="' . $dosya . '"',
+    ]);
+});
+
+// Faz 2: REST API ile ERP'ye otomatik gonder (logo_api / netsis_api). Lisans + API bilgisi musteride.
+Route::post('/muhasebe-entegrasyon/gonder', function (Request $r) {
+    _muhasebeEntegrasyonKur();
+    $sube = DB::table('subeler')->first();
+    $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
+    if (!$ayar) return ['ok' => 0, 'hata' => 'Once baglanti ayarlarini kaydedin.'];
+    $hp = _muhasebeVarsayilanHesapPlani();
+    if ($ayar->hesap_plani) {
+        $k = json_decode($ayar->hesap_plani, true);
+        if (is_array($k)) $hp = array_merge($hp, $k);
+    }
+    [$from, $to] = _muhasebeDonem($r);
+    $fis = _muhasebeFisUret($from, $to, $hp, $ayar->kdv_orani ?? 10, (bool) $r->smm);
+    if (empty($fis['rows'])) return ['ok' => 0, 'hata' => 'Bu donemde aktarilacak kayit yok.'];
+    $donemStr = $from->format('d.m.Y') . ' - ' . $to->format('d.m.Y');
+    $sonuc = _muhasebeErpGonder($ayar, $fis, $donemStr);
+    DB::table('muhasebe_aktarimlari')->insert([
+        'sube_id' => $sube->id, 'baglanti_tipi' => $ayar->baglanti_tipi,
+        'donem' => $donemStr . ' (API)', 'bas' => $from->toDateString(), 'bit' => $to->toDateString(),
+        'satir' => count($fis['rows']), 'borc_toplam' => $fis['borc'], 'alacak_toplam' => $fis['alacak'],
+        'durum' => $sonuc['ok'] ? 'gonderildi' : 'hata', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return $sonuc['ok']
+        ? ['ok' => 1, 'mesaj' => 'ERP\'ye gonderildi (' . count($fis['rows']) . ' satir, HTTP ' . ($sonuc['code'] ?? 200) . ').']
+        : ['ok' => 0, 'hata' => $sonuc['hata'] ?? 'Gonderilemedi', 'yanit' => $sonuc['yanit'] ?? ''];
+});
+
+// Faz 3: Cari ekstre (tedarikci bazinda alis faturalari + yuruyen bakiye) — CSV
+Route::get('/muhasebe-entegrasyon/cari-ekstre', function (Request $r) {
+    _muhasebeEntegrasyonKur();
+    $sube = DB::table('subeler')->first();
+    [$from, $to] = _muhasebeDonem($r);
+    $fatura = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
+        ->select('tedarikciler.ad as tedarikci', 'alis_faturalari.tarih', 'alis_faturalari.toplam')
+        ->orderBy('tedarikciler.ad')->orderBy('alis_faturalari.tarih')->get();
+    $ac = function ($c) {
+        return is_float($c) || is_int($c) ? number_format((float) $c, 2, ',', '') : '"' . str_replace('"', '""', (string) $c) . '"';
+    };
+    $out = "\xEF\xBB\xBF" . "Cari;Tarih;Belge;Borc (Alis);Alacak (Odeme);Bakiye\r\n";
+    $suan = null; $bakiye = 0.0;
+    foreach ($fatura as $f) {
+        $ted = $f->tedarikci ?: 'Tedarikci';
+        if ($ted !== $suan) { $suan = $ted; $bakiye = 0.0; }
+        $tutar = round((float) $f->toplam, 2);
+        $bakiye += $tutar;
+        $out .= implode(';', [$ac($ted), $ac(\Carbon\Carbon::parse($f->tarih)->format('d.m.Y')), '"Alis Faturasi"', $ac($tutar), $ac(0.0), $ac(round($bakiye, 2))]) . "\r\n";
+    }
+    $dosya = 'cari-ekstre-' . $from->format('Ymd') . '_' . $to->format('Ymd') . '.csv';
     return response($out, 200, [
         'Content-Type' => 'text/csv; charset=UTF-8',
         'Content-Disposition' => 'attachment; filename="' . $dosya . '"',
