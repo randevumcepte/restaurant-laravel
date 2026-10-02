@@ -9826,6 +9826,7 @@ if (!function_exists('_santralAyarEnsure')) {
                 $t->string('numara', 40)->nullable();             // (legacy)
                 $t->string('trunk', 60)->nullable();              // (legacy)
                 $t->unsignedInteger('zil_sure')->default(30);
+                $t->text('teslimat_bolge')->nullable();            // AI'nin uyguladigi teslimat bolgesi kurali (serbest metin)
                 $t->timestamp('updated_at')->nullable();
                 $t->timestamp('created_at')->useCurrent();
             });
@@ -9836,6 +9837,9 @@ if (!function_exists('_santralAyarEnsure')) {
             }
             if (!Schema::hasColumn('santral_ayarlari', 'hedefler')) {
                 Schema::table('santral_ayarlari', function ($t) { $t->text('hedefler')->nullable(); });
+            }
+            if (!Schema::hasColumn('santral_ayarlari', 'teslimat_bolge')) {
+                Schema::table('santral_ayarlari', function ($t) { $t->text('teslimat_bolge')->nullable(); });
             }
         }
     }
@@ -9953,6 +9957,7 @@ Route::post('/santral-ayar-kaydet', function (Request $r) {
         'numara' => $hedefler[0]['numara'] ?? null,
         'trunk' => $hedefler[0]['trunk'] ?? null,
         'zil_sure' => max(5, min(120, (int) $r->input('zil_sure') ?: 30)),
+        'teslimat_bolge' => trim((string) $r->input('teslimat_bolge')) ?: null,
         'updated_at' => now(),
     ];
     $var = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();

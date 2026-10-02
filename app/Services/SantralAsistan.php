@@ -278,8 +278,26 @@ class SantralAsistan
         if ($tel) $p .= " Restoranın telefonu: $tel.";
 
         $p .= $this->musteriBaglami();
+        $p .= $this->teslimatBaglami();
         $p .= $this->menuBaglami();
 
+        return $p;
+    }
+
+    /** Teslimat bolgesi kurali (panelden): AI adres alinca bolge disini nazikce reddeder. */
+    protected function teslimatBaglami(): string
+    {
+        $bolge = '';
+        try {
+            if (Schema::hasTable('santral_ayarlari') && Schema::hasColumn('santral_ayarlari', 'teslimat_bolge')) {
+                $bolge = trim((string) DB::table('santral_ayarlari')->where('sube_id', $this->subeId)->value('teslimat_bolge'));
+            }
+        } catch (\Throwable $e) {}
+        if ($bolge === '') return '';
+        $p = " TESLİMAT BÖLGESİ (paket sipariş için ZORUNLU kural): " . $bolge . " ";
+        $p .= "Paket siparişte teslimat adresini aldıktan HEMEN SONRA, siparişi tamamlamadan ÖNCE adresin bu bölge içinde olup olmadığını değerlendir. ";
+        $p .= "Adres bölge DIŞINDAYSA (örn. başka il/ilçe, çok uzak) siparişi ALMA; nazikçe söyle: 'Maalesef o adrese teslimat yapamıyoruz, teslimat bölgemiz: " . mb_substr($bolge, 0, 160) . ". Dilerseniz gel-al olarak hazırlayabiliriz.' ";
+        $p .= "Bölge içindeyse normal devam et. Sınırda/emin olamadığın adreste kibarca 'adresinizi tam söyler misiniz, teslimat alanımızda mı teyit edeyim' de. İstanbul gibi apaçık uzak bir adres verilirse kesinlikle kabul etme. ";
         return $p;
     }
 

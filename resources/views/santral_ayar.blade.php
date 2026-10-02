@@ -89,6 +89,13 @@
       <div class="onizle" id="onizle">—</div>
     </div>
 
+    <div class="card">
+      <h2>🛵 Teslimat Bölgesi</h2>
+      <label>Nereye teslimat yapıyorsunuz? (AI bunu uygular)</label>
+      <textarea name="teslimat_bolge" rows="3" placeholder="Örn: Sadece Bayraklı, Karşıyaka ve Çiğli'ye teslimat yapıyoruz. Bu ilçeler dışına gönderim yok. Minimum sepet 150 TL." style="width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;background:#f8fafc;font-family:inherit;resize:vertical">{{ $ay->teslimat_bolge ?? '' }}</textarea>
+      <div class="hint">Burayı kendi dilinizle doldurun (ilçeler/mahalleler/mesafe kuralı). AI, sipariş adresini buna göre değerlendirir; bölge dışına (ör. başka il, çok uzak) <b>nazikçe reddeder</b> ve gel-al önerir. Boş bırakırsanız her adrese sipariş alır.</div>
+    </div>
+
     <button class="kaydet" type="submit">Kaydet</button>
   </form>
 
