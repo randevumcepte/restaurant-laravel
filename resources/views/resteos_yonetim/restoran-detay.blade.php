@@ -9,9 +9,12 @@
 
 <div class="ry-between" style="margin-bottom:16px">
   <a href="/resteos-yonetim/restoranlar" class="ry-btn ry-btn-soft ry-btn-sm">← Restoranlar</a>
-  <form method="post" action="/resteos-yonetim/restoran/{{ $sube->id }}/hesabina-gir" onsubmit="return confirm('Bu restoranın paneline giriş yapılsın mı?')">
-    @csrf <button class="ry-btn ry-btn-primary ry-btn-sm" type="submit">🔓 Restoran Paneline Gir</button>
-  </form>
+  <div class="ry-flex">
+    <a href="/resteos-yonetim/restoran/{{ $sube->id }}/santral" class="ry-btn ry-btn-soft ry-btn-sm">📞 Santral Kurulumu</a>
+    <form method="post" action="/resteos-yonetim/restoran/{{ $sube->id }}/hesabina-gir" onsubmit="return confirm('Bu restoranın paneline giriş yapılsın mı?')">
+      @csrf <button class="ry-btn ry-btn-primary ry-btn-sm" type="submit">🔓 Restoran Paneline Gir</button>
+    </form>
+  </div>
 </div>
 
 <!-- ÖZET METRİK -->

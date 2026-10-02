@@ -738,3 +738,36 @@ Route::post('/resteos-yonetim/odeme-linki/{id}/odendi', function ($id) {
     DB::table('resteos_odeme_talep')->where('id', $id)->update(['durum' => 'odendi']);
     return back()->with('ok', 'Ödendi olarak işaretlendi.');
 });
+
+// ===========================================================================
+// SANTRAL — her yeni restorana santral bağlantısını panelden kur
+//  • FreePBX API bağlantısı (global tek ayar)         -> /resteos-yonetim/santral
+//  • Dahili (SIP extension) yönetimi (global)         -> /resteos-yonetim/santral/dahili
+//  • Hat/DID bağlama + AI aktarma hedefleri (restoran) -> /resteos-yonetim/restoran/{id}/santral
+//  Mevcut /api/freepbx/*, /api/dahili/*, /api/hat/*, /api/santral/ayar* uçlarını
+//  yeniden kullanır (api/* CSRF muaf). Ana restoran panelindeki ekranlar bozulmaz.
+// ===========================================================================
+Route::get('/resteos-yonetim/santral', function () {
+    if ($x = _ryKapi()) return $x;
+    \App\Services\FreePbxClient::ensure();
+    \App\Services\FreePbxTrunkClient::ensure();
+    $ay = \App\Services\FreePbxClient::ayar();
+    return view('resteos_yonetim.santral', compact('ay'));
+});
+
+Route::get('/resteos-yonetim/santral/dahili', function () {
+    if ($x = _ryKapi()) return $x;
+    \App\Services\FreePbxClient::ensure();
+    $ayarli = (new \App\Services\FreePbxClient())->ayarliMi();
+    return view('resteos_yonetim.santral-dahili', compact('ayarli'));
+});
+
+Route::get('/resteos-yonetim/restoran/{id}/santral', function ($id) {
+    if ($x = _ryKapi()) return $x;
+    $sube = DB::table('subeler')->where('id', $id)->first();
+    if (!$sube) return redirect('/resteos-yonetim/restoranlar')->with('hata', 'Restoran bulunamadı.');
+    \App\Services\FreePbxClient::ensure();
+    \App\Services\FreePbxTrunkClient::ensure();
+    $trunkAyarli = (new \App\Services\FreePbxTrunkClient())->ayarliMi();
+    return view('resteos_yonetim.restoran-santral', compact('sube', 'trunkAyarli'));
+});

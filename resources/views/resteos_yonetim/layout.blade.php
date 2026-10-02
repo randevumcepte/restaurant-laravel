@@ -30,6 +30,10 @@
       <a href="/resteos-yonetim/ticket" class="{{ _ryAktif('resteos-yonetim/ticket') }}"><span class="ic">🎫</span> Destek Talepleri @if($acikTicket)<span class="ry-rozet">{{ $acikTicket }}</span>@endif</a>
       <a href="/resteos-yonetim/duyurular" class="{{ _ryAktif('resteos-yonetim/duyurular') }}"><span class="ic">📢</span> Duyurular</a>
 
+      <div class="ry-grp">Santral</div>
+      <a href="/resteos-yonetim/santral" class="{{ _ryAktif('resteos-yonetim/santral') }}"><span class="ic">🔌</span> Santral Bağlantısı</a>
+      <a href="/resteos-yonetim/santral/dahili" class="{{ _ryAktif('resteos-yonetim/santral/dahili') }}"><span class="ic">☎️</span> Dahili Yönetimi</a>
+
       <div class="ry-grp">Finans</div>
       <a href="/resteos-yonetim/ai-kredi" class="{{ _ryAktif('resteos-yonetim/ai-kredi') }}"><span class="ic">🤖</span> AI / Santral Kredi</a>
       <a href="/resteos-yonetim/sms-paket" class="{{ _ryAktif('resteos-yonetim/sms-paket') }}"><span class="ic">💬</span> SMS Paketleri</a>
