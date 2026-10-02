@@ -7819,7 +7819,8 @@ Route::get('/api/mutfak', function (Request $r) {
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $istasyonVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon");
     $sel[] = $hzVar ? DB::raw("COALESCE(NULLIF(urunler.hazirlik_dk,0),$vars) as hedef") : DB::raw("$vars as hedef");
-    $rows = $q->select($sel)->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
+    // Ikincil 'id' sirasi -> ayni gonderim_zamani'ndaki kalemler her yenilemede AYNI sirada (yer degistirmez)
+    $rows = $q->select($sel)->orderBy('adisyon_kalemleri.gonderim_zamani')->orderBy('adisyon_kalemleri.id')->get();
 
     $etiket = _mutfakIstasyonlar();
     $gruplu = [];
@@ -7964,7 +7965,8 @@ Route::get('/api/mutfak/servise-hazir', function (Request $r) {
     $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
-        ->select($sel)->orderBy('adisyon_kalemleri.hazir_zamani')->get();
+        // Ikincil 'id' sirasi -> kalemler her yenilemede AYNI sirada kalir (yer degistirmez)
+        ->select($sel)->orderBy('adisyon_kalemleri.hazir_zamani')->orderBy('adisyon_kalemleri.id')->get();
     $gruplu = [];
     foreach ($rows as $k) {
         $aid = $k->adisyon_id;
