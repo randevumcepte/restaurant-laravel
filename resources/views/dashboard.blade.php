@@ -32,7 +32,7 @@
 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6">
     <div class="flex items-center justify-between mb-4">
         <h2 class="font-semibold text-slate-800">Ciro Trendi <span class="text-slate-400 font-normal text-sm">(son 14 gün)</span></h2>
-        <span class="text-sm text-slate-500">Açık masa tutarı: <b class="text-amber-600">{{ $para($acikTutar) }}</b></span>
+        <span class="text-sm text-slate-500">Açık masa tutarı: <b class="text-amber-600">{{ $para($acikTutar) }}</b>@if ($paketAcikSayisi > 0) <span class="ml-2">· Paket/açık sipariş: <b class="text-sky-600">{{ $paketAcikSayisi }}</b> ({{ $para($paketAcikTutar) }})</span>@endif</span>
     </div>
     <div class="flex items-end gap-2 h-40">
         @foreach ($trend as $t)

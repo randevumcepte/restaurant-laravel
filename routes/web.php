@@ -208,9 +208,14 @@ Route::get('/dashboard', function () {
     $son30Adisyon = DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', $son30)->count();
     $ortAdisyon = $son30Adisyon > 0 ? $son30Ciro / $son30Adisyon : 0;
 
-    $acikMasaSayisi = DB::table('adisyonlar')->where('durum', 'acik')->count();
-    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam');
+    // Acik MASA = fiziksel masa dolulugu (paket/gel-al/online masasiz siparisler HARIC).
+    // Onceden tum acik adisyonlar sayiliyordu -> "77/36" gibi masa sayisini asan sacma deger cikiyordu.
+    $acikMasaSayisi = (int) DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->distinct()->count('masa_id');
+    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
     $masaSayisi = DB::table('masalar')->count();
+    // Masasiz acik siparisler (paket / gel-al / online) ayri gosterilir
+    $paketAcikSayisi = (int) DB::table('adisyonlar')->where('durum', 'acik')->whereNull('masa_id')->count();
+    $paketAcikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->whereNull('masa_id')->sum('toplam');
 
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
 
@@ -229,7 +234,7 @@ Route::get('/dashboard', function () {
     $acikAdisyonlar = DB::table('adisyonlar')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
-        ->where('adisyonlar.durum', 'acik')
+        ->where('adisyonlar.durum', 'acik')->whereNotNull('adisyonlar.masa_id')
         ->select('masalar.ad as masa', 'personeller.ad as garson', 'adisyonlar.toplam',
             'adisyonlar.acilis', 'adisyonlar.misafir_sayisi')
         ->orderByDesc('adisyonlar.acilis')->get();
@@ -282,7 +287,7 @@ Route::get('/dashboard', function () {
 
     return view('dashboard', compact(
         'sube', 'bugunCiro', 'dunCiro', 'son30Ciro', 'son30Adisyon', 'ortAdisyon',
-        'acikMasaSayisi', 'acikTutar', 'masaSayisi', 'kritikStoklar', 'kritikSayisi',
+        'acikMasaSayisi', 'acikTutar', 'masaSayisi', 'paketAcikSayisi', 'paketAcikTutar', 'kritikStoklar', 'kritikSayisi',
         'acikAdisyonlar', 'fiyatUyarilari', 'enCokSatan', 'personelSatis', 'sonLoglar',
         'trend', 'birimler'
     ));
