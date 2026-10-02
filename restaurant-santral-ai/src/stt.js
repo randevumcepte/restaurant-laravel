@@ -76,11 +76,13 @@ class SttOturumu {
           this._yenile(0);
           return;
         }
-        // Gercek hata (kimlik/model/kota vb.) -> GORUNUR logla, sonsuz sikilmis dongu olmasin diye bekle
-        log.warn('STT hata:', err.message);
+        // Gercek hata (kimlik/model/kota vb.) -> TAM GORUNUR logla (kod+detay)
+        log.warn(`STT HATA: code=${err.code} msg=${err.message}${err.details ? ' details=' + err.details : ''}`);
         this._yenile(1000);
       })
       .on('data', (data) => {
+        this._dataGeldi = (this._dataGeldi || 0) + 1;
+        if (this._dataGeldi <= 3) log.info(`STT data geldi (#${this._dataGeldi}, results=${(data.results || []).length})`);
         const r = data.results && data.results[0];
         if (!r || !r.alternatives || !r.alternatives[0]) return;
         const metin = (r.alternatives[0].transcript || '').trim();
@@ -105,8 +107,15 @@ class SttOturumu {
 
   // Asterisk'ten gelen ham ses karesi (RTP payload'i, header'siz)
   yaz(buf) {
-    if (this.kapali || !this.stream) return;
-    try { this.stream.write(buf); } catch (e) { log.debug('STT yaz hatasi:', e.message); }
+    if (this.kapali || !this.stream) { this._yazDus = (this._yazDus || 0) + 1; return; }
+    try {
+      this.stream.write(buf);
+      this._yazSay = (this._yazSay || 0) + 1;
+      if (this._yazSay === 1 || this._yazSay === 150) log.info(`STT'ye ${this._yazSay} kare yazildi (ses akiyor)`);
+    } catch (e) {
+      this._yazHata = (this._yazHata || 0) + 1;
+      if (this._yazHata <= 2) log.warn('STT yaz hatasi (ses Google\'a gitmiyor): ' + e.message);
+    }
   }
 
   kapat() {
