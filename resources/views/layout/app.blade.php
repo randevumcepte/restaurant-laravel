@@ -40,6 +40,7 @@
         ['/raporlar', '📈', 'Raporlar'],
         ['/muhasebe', '💰', 'Muhasebe / Cari'],
         ['/edonusum', '🧾', 'E-Dönüşüm'],
+        ['/muhasebe-entegrasyon', '📑', 'ERP / Muhasebe Aktarım'],
         ['/copilot', '🤖', 'AI Copilot'],
         ['/asistan-egitim', '🎓', 'Müşteri AI Eğitimi'],
         ['/fiyatlandirma', '🏷️', 'Fiyatlandırma'],

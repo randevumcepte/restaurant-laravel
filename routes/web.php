@@ -9203,6 +9203,204 @@ Route::post('/edonusum/ayar-kaydet', function (Request $r) {
     return ['ok' => 1];
 });
 
+// ============================ ERP / MUHASEBE ENTEGRASYONU (aktarim) ============================
+// Her restoranin bir muhasebecisi var: satis + alis verisini Logo/Netsis/genel muhasebe sistemine
+// MAHSUP FISI (CSV, cift tarafli, dengeli) olarak aktarir. Restoran kendi baglanti tipini secer.
+// Faz 1: dosya aktarimi (lisanssiz; her muhasebeci Logo/Netsis'e tek tikla alir). REST API = Faz 2 slot.
+if (!function_exists('_muhasebeEntegrasyonKur')) {
+    function _muhasebeEntegrasyonKur()
+    {
+        if (!Schema::hasTable('muhasebe_ayarlari')) {
+            try {
+                Schema::create('muhasebe_ayarlari', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('baglanti_tipi', 32)->default('excel'); // logo_dosya|logo_api|netsis_dosya|netsis_api|excel|entegrator
+                    $t->string('firma_kodu', 40)->nullable();          // ERP firma/sube kodu
+                    $t->string('api_url', 255)->nullable();
+                    $t->string('api_kullanici', 120)->nullable();
+                    $t->string('api_sifre', 255)->nullable();
+                    $t->integer('kdv_orani')->default(10);             // satis varsayilan KDV
+                    $t->text('hesap_plani')->nullable();               // JSON hesap kodu eslemesi
+                    $t->tinyInteger('aktif')->default(0);
+                    $t->timestamps();
+                });
+            } catch (\Throwable $e) {
+            }
+        }
+        if (!Schema::hasTable('muhasebe_aktarimlari')) {
+            try {
+                Schema::create('muhasebe_aktarimlari', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('baglanti_tipi', 32);
+                    $t->string('donem', 48);
+                    $t->date('bas')->nullable();
+                    $t->date('bit')->nullable();
+                    $t->integer('satir')->default(0);
+                    $t->double('borc_toplam')->default(0);
+                    $t->double('alacak_toplam')->default(0);
+                    $t->string('durum', 20)->default('olusturuldu'); // olusturuldu|gonderildi|hata
+                    $t->timestamps();
+                });
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+}
+
+if (!function_exists('_muhasebeVarsayilanHesapPlani')) {
+    // Tek-duzen hesap plani varsayilan eslemesi (restoran muhasebecisiyle duzenlenebilir)
+    function _muhasebeVarsayilanHesapPlani()
+    {
+        return [
+            'kasa' => '100', 'pos' => '108', 'banka' => '102',
+            'satis' => '600', 'hesaplanan_kdv' => '391',
+            'mal' => '153', 'tedarikci' => '320',
+        ];
+    }
+}
+
+if (!function_exists('_muhasebeOdemeHesap')) {
+    // Odeme tipini tahsilat (borc) hesabina esle
+    function _muhasebeOdemeHesap($tip, $hp)
+    {
+        $t = mb_strtolower((string) $tip, 'UTF-8');
+        if (strpos($t, 'nakit') !== false) return [$hp['kasa'], 'Kasa (Nakit)'];
+        if (strpos($t, 'online') !== false || strpos($t, 'havale') !== false || strpos($t, 'eft') !== false) return [$hp['banka'], 'Banka / Online'];
+        if (strpos($t, 'yemek') !== false) return [$hp['pos'], 'Yemek Karti'];
+        return [$hp['pos'], 'Kredi Karti (POS)']; // kredi/kart/pos/diger
+    }
+}
+
+Route::get('/muhasebe-entegrasyon', function () {
+    _muhasebeEntegrasyonKur();
+    $sube = DB::table('subeler')->first();
+    $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
+    $hp = _muhasebeVarsayilanHesapPlani();
+    if ($ayar && $ayar->hesap_plani) {
+        $kayitli = json_decode($ayar->hesap_plani, true);
+        if (is_array($kayitli)) $hp = array_merge($hp, $kayitli);
+    }
+    $gecmis = DB::table('muhasebe_aktarimlari')->where('sube_id', $sube->id)->orderByDesc('id')->limit(20)->get();
+    return view('muhasebe_entegrasyon', compact('sube', 'ayar', 'hp', 'gecmis'));
+});
+
+Route::post('/muhasebe-entegrasyon/ayar-kaydet', function (Request $r) {
+    _muhasebeEntegrasyonKur();
+    $sube = DB::table('subeler')->first();
+    $hpGelen = is_array($r->hesap_plani) ? $r->hesap_plani : [];
+    $hp = _muhasebeVarsayilanHesapPlani();
+    foreach ($hp as $k => $v) {
+        if (isset($hpGelen[$k]) && trim((string) $hpGelen[$k]) !== '') $hp[$k] = preg_replace('/[^0-9]/', '', (string) $hpGelen[$k]) ?: $v;
+    }
+    $gecerli = ['logo_dosya', 'logo_api', 'netsis_dosya', 'netsis_api', 'excel', 'entegrator'];
+    $bt = in_array($r->baglanti_tipi, $gecerli, true) ? $r->baglanti_tipi : 'excel';
+    DB::table('muhasebe_ayarlari')->updateOrInsert(
+        ['sube_id' => $sube->id],
+        [
+            'baglanti_tipi' => $bt, 'firma_kodu' => $r->firma_kodu,
+            'api_url' => $r->api_url, 'api_kullanici' => $r->api_kullanici, 'api_sifre' => $r->api_sifre,
+            'kdv_orani' => max(0, min(99, (int) ($r->kdv_orani ?: 10))),
+            'hesap_plani' => json_encode($hp), 'aktif' => $r->aktif ? 1 : 0, 'updated_at' => now(),
+        ]
+    );
+    return ['ok' => 1];
+});
+
+// Mahsup fisi uret (CSV, UTF-8 BOM, ; ayrac — Logo/Netsis/Excel uyumlu) + aktarim gecmisine logla
+Route::get('/muhasebe-entegrasyon/disa-aktar', function (Request $r) {
+    _muhasebeEntegrasyonKur();
+    $sube = DB::table('subeler')->first();
+    $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
+    $hp = _muhasebeVarsayilanHesapPlani();
+    if ($ayar && $ayar->hesap_plani) {
+        $kayitli = json_decode($ayar->hesap_plani, true);
+        if (is_array($kayitli)) $hp = array_merge($hp, $kayitli);
+    }
+    $kdvOran = $ayar->kdv_orani ?? 10;
+    $baglanti = $ayar->baglanti_tipi ?? 'excel';
+
+    // Donem araligi
+    if ($r->bas && $r->bit) {
+        $from = \Carbon\Carbon::parse($r->bas)->startOfDay();
+        $to = \Carbon\Carbon::parse($r->bit)->endOfDay();
+    } else {
+        $period = in_array($r->period, ['gun', 'hafta', 'ay'], true) ? $r->period : 'ay';
+        $to = now()->endOfDay();
+        $from = $period === 'gun' ? now()->startOfDay() : ($period === 'hafta' ? now()->subDays(6)->startOfDay() : now()->subDays(29)->startOfDay());
+    }
+
+    // SATIS (odeme tipine gore brut tahsilat) + ALIS (tedarikci bazinda)
+    $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
+        ->select('tip', DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->get();
+    $alis = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
+        ->select('tedarikciler.ad as tedarikci', DB::raw('SUM(alis_faturalari.toplam) as toplam'), DB::raw('COUNT(*) as adet'))
+        ->groupBy('tedarikciler.id', 'tedarikciler.ad')->get();
+
+    $tarih = $to->format('d.m.Y');
+    $fisNo = 'RST-' . $from->format('Ymd') . '-' . $to->format('Ymd');
+    $kdvCarpan = 1 + ($kdvOran / 100);
+    $rows = [];        // [tarih, fisNo, hesapKodu, hesapAdi, borc, alacak, aciklama]
+    $borcT = 0.0; $alacakT = 0.0;
+
+    // --- SATIS: Borc kasa/pos/banka = brut; Alacak 600 matrah + 391 KDV ---
+    $satisMatrah = 0.0; $satisKdv = 0.0;
+    foreach ($odeme as $o) {
+        $brut = round((float) $o->tutar, 2);
+        if ($brut <= 0) continue;
+        $matrah = round($brut / $kdvCarpan, 2);
+        $kdv = round($brut - $matrah, 2);
+        $satisMatrah += $matrah; $satisKdv += $kdv;
+        [$hk, $ha] = _muhasebeOdemeHesap($o->tip, $hp);
+        $rows[] = [$tarih, $fisNo, $hk, $ha, $brut, 0.0, 'Satis tahsilat (' . $o->tip . ')'];
+        $borcT += $brut;
+    }
+    if ($satisMatrah > 0) {
+        $rows[] = [$tarih, $fisNo, $hp['satis'], 'Yurtici Satislar', 0.0, round($satisMatrah, 2), 'Donem satis matrahi'];
+        $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV %' . $kdvOran, 0.0, round($satisKdv, 2), 'Satis KDV'];
+        $alacakT += round($satisMatrah, 2) + round($satisKdv, 2);
+    }
+
+    // --- ALIS: Borc 153 mal = brut; Alacak 320 tedarikci = brut (KDV ayrimi muhasebecide) ---
+    foreach ($alis as $a) {
+        $brut = round((float) $a->toplam, 2);
+        if ($brut <= 0) continue;
+        $ted = $a->tedarikci ?: 'Tedarikci';
+        $rows[] = [$tarih, $fisNo, $hp['mal'], 'Ilk Madde / Mal Alimi', $brut, 0.0, 'Alis: ' . $ted . ' (' . (int) $a->adet . ' fatura)'];
+        $rows[] = [$tarih, $fisNo, $hp['tedarikci'], 'Saticilar', 0.0, $brut, 'Tedarikci: ' . $ted];
+        $borcT += $brut; $alacakT += $brut;
+    }
+
+    // Aktarim gecmisine logla
+    DB::table('muhasebe_aktarimlari')->insert([
+        'sube_id' => $sube->id, 'baglanti_tipi' => $baglanti,
+        'donem' => $from->format('d.m.Y') . ' - ' . $to->format('d.m.Y'),
+        'bas' => $from->toDateString(), 'bit' => $to->toDateString(),
+        'satir' => count($rows), 'borc_toplam' => round($borcT, 2), 'alacak_toplam' => round($alacakT, 2),
+        'durum' => 'olusturuldu', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    // CSV uret
+    $out = "\xEF\xBB\xBF"; // UTF-8 BOM (Excel Turkce icin)
+    $out .= "Tarih;Fis No;Hesap Kodu;Hesap Adi;Borc;Alacak;Aciklama\r\n";
+    $ac = function ($c) {
+        if (is_float($c) || is_int($c)) return number_format((float) $c, 2, ',', '');
+        return '"' . str_replace('"', '""', (string) $c) . '"';
+    };
+    foreach ($rows as $row) {
+        $out .= implode(';', array_map($ac, $row)) . "\r\n";
+    }
+    $out .= ';;;"TOPLAM";' . number_format($borcT, 2, ',', '') . ';' . number_format($alacakT, 2, ',', '') . ";\r\n";
+
+    $dosya = 'muhasebe-' . $baglanti . '-' . $from->format('Ymd') . '_' . $to->format('Ymd') . '.csv';
+    return response($out, 200, [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+        'Content-Disposition' => 'attachment; filename="' . $dosya . '"',
+    ]);
+});
+
 // Yazdirilabilir hesap fisi (bilgi fisi) — herhangi bir termal yaziciyla
 Route::get('/pos/fis/{adisyon}', function ($id) {
     $a = DB::table('adisyonlar')->find($id);
