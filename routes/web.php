@@ -10400,3 +10400,6 @@ Route::get('/tanitim', function () {
     return response()->file(public_path('tanitim.html'));
 });
 
+// ============================ ResteOS SİSTEM YÖNETİMİ (çok-restoranlı admin) ============================
+require __DIR__ . '/resteos_yonetim.php';
+

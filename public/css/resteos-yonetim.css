@@ -1,0 +1,128 @@
+/* ResteOS Sistem Yönetimi — mor tema admin paneli */
+:root{
+  --ry-mor:#6d3aaa; --ry-mor2:#8b5cf6; --ry-mor-dark:#4c2a78;
+  --ry-yesil:#2cae71; --ry-turuncu:#d99a1f; --ry-kirmizi:#d04d5e; --ry-mavi:#4a8bdc;
+  --ry-bg:#f4f2fb; --ry-card:#ffffff; --ry-ink:#2a2140; --ry-sub:#7a7390; --ry-line:#ebe7f5;
+  --ry-sidebar:248px; --ry-topbar:62px;
+  --ry-r:14px; --ry-r-sm:10px;
+  --ry-golge:0 2px 10px rgba(80,50,140,.06);
+  --ry-golge-lg:0 10px 30px rgba(80,50,140,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',Roboto,system-ui,-apple-system,sans-serif;background:var(--ry-bg);color:var(--ry-ink);font-size:14px}
+a{text-decoration:none;color:inherit}
+
+/* ---- Layout ---- */
+.ry-shell{display:flex;min-height:100vh}
+.ry-sidebar{width:var(--ry-sidebar);background:linear-gradient(180deg,#3a2560,#28183f);color:#e8e2f5;position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:30}
+.ry-brand{padding:18px 20px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;border-bottom:1px solid rgba(255,255,255,.08)}
+.ry-brand .ry-logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--ry-mor2),var(--ry-mor));display:grid;place-items:center;font-size:18px}
+.ry-brand small{display:block;font-size:10.5px;font-weight:600;opacity:.6;letter-spacing:.5px}
+.ry-nav{flex:1;overflow-y:auto;padding:12px 10px}
+.ry-nav .ry-grp{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;opacity:.45;margin:14px 12px 6px}
+.ry-nav a{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:10px;color:#cfc6e6;font-weight:600;font-size:13.5px;margin-bottom:2px;transition:.15s}
+.ry-nav a .ic{width:20px;text-align:center;font-size:15px}
+.ry-nav a:hover{background:rgba(255,255,255,.07);color:#fff}
+.ry-nav a.aktif{background:linear-gradient(90deg,var(--ry-mor),var(--ry-mor2));color:#fff;box-shadow:0 4px 14px rgba(139,92,246,.4)}
+.ry-nav a .ry-rozet{margin-left:auto;background:var(--ry-kirmizi);color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px}
+
+.ry-main{flex:1;margin-left:var(--ry-sidebar);display:flex;flex-direction:column;min-width:0}
+.ry-topbar{height:var(--ry-topbar);background:var(--ry-card);border-bottom:1px solid var(--ry-line);display:flex;align-items:center;gap:16px;padding:0 24px;position:sticky;top:0;z-index:20}
+.ry-topbar h1{font-size:18px;font-weight:800;margin:0}
+.ry-topbar .ry-sag{margin-left:auto;display:flex;align-items:center;gap:12px}
+.ry-user{display:flex;align-items:center;gap:9px;padding:6px 12px;border-radius:30px;background:var(--ry-bg);font-weight:700;font-size:13px}
+.ry-user .ry-ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--ry-mor2),var(--ry-mor));color:#fff;display:grid;place-items:center;font-size:13px}
+.ry-content{padding:24px;max-width:1360px;width:100%}
+
+/* ---- Impersonation banner ---- */
+.ry-imp-bar{background:linear-gradient(90deg,var(--ry-turuncu),#e0a93a);color:#fff;padding:9px 24px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:12px}
+.ry-imp-bar a{margin-left:auto;background:rgba(0,0,0,.2);padding:5px 14px;border-radius:8px;color:#fff;font-weight:700}
+
+/* ---- Kartlar ---- */
+.ry-card{background:var(--ry-card);border:1px solid var(--ry-line);border-radius:var(--ry-r);box-shadow:var(--ry-golge);padding:20px;margin-bottom:18px}
+.ry-card h3{margin:0 0 14px;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
+.ry-grid{display:grid;gap:16px}
+.ry-g4{grid-template-columns:repeat(4,1fr)}
+.ry-g3{grid-template-columns:repeat(3,1fr)}
+.ry-g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:1100px){.ry-g4{grid-template-columns:repeat(2,1fr)}.ry-g3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.ry-g4,.ry-g3,.ry-g2{grid-template-columns:1fr}.ry-sidebar{display:none}.ry-main{margin-left:0}}
+
+/* ---- Metrik kutuları ---- */
+.ry-metric{background:var(--ry-card);border:1px solid var(--ry-line);border-radius:var(--ry-r);padding:18px 20px;box-shadow:var(--ry-golge);position:relative;overflow:hidden}
+.ry-metric .ry-mic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:21px;margin-bottom:12px}
+.ry-metric .ry-mval{font-size:26px;font-weight:900;line-height:1}
+.ry-metric .ry-mlbl{color:var(--ry-sub);font-size:12.5px;font-weight:600;margin-top:5px}
+.ry-mic.mor{background:rgba(139,92,246,.14);color:var(--ry-mor)}
+.ry-mic.yesil{background:rgba(44,174,113,.14);color:var(--ry-yesil)}
+.ry-mic.turuncu{background:rgba(217,154,31,.16);color:var(--ry-turuncu)}
+.ry-mic.kirmizi{background:rgba(208,77,94,.14);color:var(--ry-kirmizi)}
+.ry-mic.mavi{background:rgba(74,139,220,.14);color:var(--ry-mavi)}
+
+/* ---- Badge ---- */
+.ry-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 11px;border-radius:30px;font-size:11.5px;font-weight:800}
+.ry-badge.success{background:rgba(44,174,113,.15);color:#1d8a56}
+.ry-badge.warning{background:rgba(217,154,31,.18);color:#a9760f}
+.ry-badge.danger{background:rgba(208,77,94,.15);color:#b23649}
+.ry-badge.info{background:rgba(74,139,220,.15);color:#3570bd}
+.ry-badge.mor{background:rgba(139,92,246,.15);color:var(--ry-mor)}
+
+/* ---- Tablo ---- */
+.ry-table{width:100%;border-collapse:collapse;font-size:13.5px}
+.ry-table th{text-align:left;padding:11px 14px;color:var(--ry-sub);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--ry-line)}
+.ry-table td{padding:12px 14px;border-bottom:1px solid var(--ry-line)}
+.ry-table tr:hover td{background:#faf8ff}
+.ry-table .ry-restoran{font-weight:800}
+.ry-table a.ry-satir{color:var(--ry-mor);font-weight:700}
+
+/* ---- Buton ---- */
+.ry-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--ry-r-sm);font-weight:700;font-size:13px;border:none;cursor:pointer;transition:.15s}
+.ry-btn-primary{background:linear-gradient(135deg,var(--ry-mor),var(--ry-mor2));color:#fff;box-shadow:0 4px 14px rgba(139,92,246,.35)}
+.ry-btn-primary:hover{filter:brightness(1.06)}
+.ry-btn-soft{background:rgba(139,92,246,.1);color:var(--ry-mor)}
+.ry-btn-soft:hover{background:rgba(139,92,246,.18)}
+.ry-btn-ok{background:var(--ry-yesil);color:#fff}
+.ry-btn-danger{background:rgba(208,77,94,.12);color:var(--ry-kirmizi)}
+.ry-btn-danger:hover{background:var(--ry-kirmizi);color:#fff}
+.ry-btn-sm{padding:6px 12px;font-size:12px}
+.ry-btn-blok{width:100%;justify-content:center}
+
+/* ---- Form ---- */
+.ry-field{margin-bottom:14px}
+.ry-field label{display:block;font-size:12.5px;font-weight:700;color:var(--ry-sub);margin-bottom:6px}
+.ry-input,.ry-select,textarea.ry-input{width:100%;padding:10px 13px;border:1.5px solid var(--ry-line);border-radius:var(--ry-r-sm);font-size:13.5px;font-family:inherit;background:#fff;color:var(--ry-ink);transition:.15s}
+.ry-input:focus,.ry-select:focus,textarea.ry-input:focus{outline:none;border-color:var(--ry-mor2);box-shadow:0 0 0 3px rgba(139,92,246,.12)}
+.ry-row{display:flex;gap:12px;flex-wrap:wrap}
+.ry-row>*{flex:1;min-width:140px}
+
+/* ---- Alert ---- */
+.ry-alert{padding:12px 16px;border-radius:var(--ry-r-sm);font-weight:700;font-size:13.5px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.ry-alert.ok{background:rgba(44,174,113,.12);color:#1d8a56;border:1px solid rgba(44,174,113,.3)}
+.ry-alert.hata{background:rgba(208,77,94,.1);color:#b23649;border:1px solid rgba(208,77,94,.3)}
+
+/* ---- Sağlık çubuğu ---- */
+.ry-health{height:12px;border-radius:8px;background:var(--ry-line);overflow:hidden}
+.ry-health>span{display:block;height:100%;border-radius:8px}
+
+/* ---- Timeline / log ---- */
+.ry-timeline{list-style:none;margin:0;padding:0}
+.ry-timeline li{padding:10px 0 10px 20px;border-left:2px solid var(--ry-line);position:relative}
+.ry-timeline li:before{content:'';position:absolute;left:-6px;top:14px;width:10px;height:10px;border-radius:50%;background:var(--ry-mor2)}
+.ry-timeline .zt{font-size:11.5px;color:var(--ry-sub)}
+
+/* ---- Mini bar chart ---- */
+.ry-chart{display:flex;align-items:flex-end;gap:6px;height:130px;padding-top:10px}
+.ry-chart .bar{flex:1;background:linear-gradient(180deg,var(--ry-mor2),var(--ry-mor));border-radius:5px 5px 0 0;min-height:3px;position:relative}
+.ry-chart .bar span{position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:9.5px;color:var(--ry-sub)}
+
+/* ---- Giriş sayfası ---- */
+.ry-login{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#3a2560,#28183f)}
+.ry-login-card{background:#fff;border-radius:20px;padding:40px;width:380px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.ry-login-card .ry-logo-big{width:62px;height:62px;border-radius:16px;background:linear-gradient(135deg,var(--ry-mor2),var(--ry-mor));display:grid;place-items:center;font-size:32px;margin:0 auto 16px}
+.ry-login-card h2{text-align:center;margin:0 0 4px;font-size:21px}
+.ry-login-card p.alt{text-align:center;color:var(--ry-sub);margin:0 0 24px;font-size:13px}
+
+.ry-mut{color:var(--ry-sub);font-size:12.5px}
+.ry-flex{display:flex;align-items:center;gap:10px}
+.ry-between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+hr.ry-hr{border:none;border-top:1px solid var(--ry-line);margin:16px 0}
