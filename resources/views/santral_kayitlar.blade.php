@@ -90,7 +90,7 @@
   const IMAP={siparis:'🛒',rezervasyon:'📅',aktar:'↪️',kufur:'🚫',bilgi:'ℹ️'};
   let hepsi=[];
 
-  async function get(u){const r=await fetch(u);return r.json();}
+  async function get(u){const r=await fetch(u+(u.includes('?')?'&':'?')+'_t='+Date.now(),{cache:'no-store'});return r.json();}
   async function post(u,o){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:Object.entries(o).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&')});return r.json();}
   function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
   function cls(s){return s&&SMAP[s]?s:'none';}

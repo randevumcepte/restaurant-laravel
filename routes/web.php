@@ -10170,7 +10170,8 @@ Route::match(['get', 'post'], '/api/santral-kayit/liste', function (Request $r) 
             'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'created_at' => (string) $o->created_at,
             'tur' => $tur, 'son_musteri' => mb_substr($son, 0, 60)];
     }
-    return response()->json(['ok' => 1, 'liste' => $out], 200, [], JSON_UNESCAPED_UNICODE);
+    // Tarayici/proxy onbellegi ESKI listeyi gostermesin (gizli sekmede gelip normal sekmede gelmeme sorunu)
+    return response()->json(['ok' => 1, 'liste' => $out], 200, ['Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0'], JSON_UNESCAPED_UNICODE);
 });
 Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) {
     if (function_exists('_santralEnsure')) _santralEnsure();
@@ -10186,7 +10187,7 @@ Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) 
         'id' => $o->id, 'telefon' => $o->telefon, 'sube_id' => $o->sube_id, 'sonuc' => $o->sonuc, 'durum' => $o->durum,
         'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'siparis_veri' => $sp,
         'created_at' => (string) $o->created_at, 'updated_at' => (string) $o->updated_at, 'gecmis' => $g, 'sesler' => $sesler,
-    ]], 200, [], JSON_UNESCAPED_UNICODE);
+    ]], 200, ['Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0'], JSON_UNESCAPED_UNICODE);
 });
 
 // ---- SES KAYIT: tablo + yukleme (kopruden) + dinleme ----

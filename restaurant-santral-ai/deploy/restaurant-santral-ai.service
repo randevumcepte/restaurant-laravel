@@ -16,6 +16,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/restaurant-santral-ai
+# KRITIK: IPv6 yolu kirik sunucuda Google'a IPv4 ile git (STT/TTS 'EHOSTUNREACH ...:443' cozumu)
+Environment=NODE_OPTIONS=--dns-result-order=ipv4first
 ExecStart=/usr/bin/node src/index.js
 # .env dosyadan okunuyor (config.js path=__dirname/../.env); istersen buraya da ekleyebilirsin:
 # EnvironmentFile=/opt/restaurant-santral-ai/.env

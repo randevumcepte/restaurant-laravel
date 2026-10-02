@@ -1,4 +1,10 @@
 'use strict';
+// KRITIK: Bazi sunucularda IPv6 ADRESI tanimli ama YOLU kirik. Google (STT gRPC + TTS REST)
+// hostname'i once AAAA (IPv6) cozup ona baglanmaya calisir -> 'EHOSTUNREACH 2001:4860:...'
+// -> ses Google'a gider ama cevap GELMEZ (STT sessiz) ve TTS hata verir (AI sessiz kalir).
+// Cozum: tum DNS cozumlemesinde IPv4'u ONCE dene. (Node 18+; dns.lookup kullanan axios dahil.)
+require('dns').setDefaultResultOrder('ipv4first');
+
 // ResteOS AI Santral kopru — giris.
 // Asterisk (ARI, Asterisk 16/17) -> externalMedia (RTP) <-> bu kopru <-> Google STT/TTS + Laravel beyin.
 //
