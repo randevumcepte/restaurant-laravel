@@ -87,8 +87,12 @@ class RtpOturumu {
     this.surekliZ = setInterval(() => {
       if (!this.uzak) return;
       try {
-        const amb = this.amb.kare(this.spf);           // Int16Array (gain uygulanmis)
         const tts = this.kuyruk.shift();               // Buffer | undefined
+        // GUVENLIK: Ambiyansi SADECE AI konusurken (TTS karesi varken) gonder.
+        // AI dinlerken (kuyruk bos) HIC ses gonderme -> dinleme penceresi temiz kalir,
+        // ambiyans karsinin mikrofonuna sizip STT'yi (AI'nin kulagini) bozmaz.
+        if (!tts) return;
+        const amb = this.amb.kare(this.spf);           // Int16Array (gain uygulanmis)
         this._gonder(this._karistir(amb, tts));
       } catch (e) {
         log.debug('ambiyans kare hatasi:', e.message);
