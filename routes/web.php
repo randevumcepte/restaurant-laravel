@@ -8621,38 +8621,28 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
 // TEMIZLIK: rezervasyonlari + ACIK adisyonlari sifirla -> tertemiz test zemini.
 // ?hepsi=1 TUM acik adisyonlari iptal eder (masalar bosalir, birlesmeler cozulur). Menu/urun/satis gecmisi KORUNUR.
 Route::get('/rezervasyon-sifirla', function (Request $r) {
-    $subeId = (int) DB::table('subeler')->value('id');
+    // TUM subeler uzerinde calisir (tek-restoran demo; sube uyusmazligindan etkilenmez)
     $rapor = [];
 
-    // 1) Rezervasyonlara bagli ACIK adisyonlari iptal et + ilgili masalari bosalt
-    $rezAdisyon = DB::table('rezervasyonlar')->where('sube_id', $subeId)->whereNotNull('adisyon_id')->pluck('adisyon_id')->all();
-    if ($rezAdisyon) {
-        DB::table('adisyonlar')->whereIn('id', $rezAdisyon)->where('durum', 'acik')->update(['durum' => 'iptal', 'updated_at' => now()]);
-    }
+    // 1) Rezervasyon verisini KOMPLE sil (kalemler + rezervasyonlar)
+    if (Schema::hasTable('rezervasyon_kalemleri')) $rapor['silinen_kalem'] = DB::table('rezervasyon_kalemleri')->delete();
+    $rapor['silinen_rezervasyon'] = Schema::hasTable('rezervasyonlar') ? DB::table('rezervasyonlar')->delete() : 0;
 
-    // 2) Rezervasyon verisini KOMPLE sil (kalemler + rezervasyonlar)
-    $rezIds = DB::table('rezervasyonlar')->where('sube_id', $subeId)->pluck('id')->all();
-    if ($rezIds && Schema::hasTable('rezervasyon_kalemleri')) {
-        DB::table('rezervasyon_kalemleri')->whereIn('rezervasyon_id', $rezIds)->delete();
-    }
-    $rapor['silinen_rezervasyon'] = DB::table('rezervasyonlar')->where('sube_id', $subeId)->delete();
-
-    // 3) Test musterilerimi sil (bu akista olusturduklarim)
+    // 2) Test musterilerimi sil (bu akista olusturduklarim, siparissiz)
     $testTel = ['05551234567', '05324401122', '05335512233', '02167703344', '05346624455'];
     if (Schema::hasColumn('musteriler', 'telefon_norm')) {
-        $rapor['silinen_test_musteri'] = DB::table('musteriler')->where('sube_id', $subeId)
-            ->whereIn('telefon_norm', $testTel)->where('siparis_sayisi', 0)->delete();
+        $rapor['silinen_test_musteri'] = DB::table('musteriler')->whereIn('telefon_norm', $testTel)->where('siparis_sayisi', 0)->delete();
     }
 
-    // 4) ?hepsi=1 -> TUM acik adisyonlari iptal, masalari bosalt, birlesmeleri coz
+    // 3) ?hepsi=1 -> TUM acik adisyonlari iptal, masalari bosalt, birlesmeleri coz
     if ($r->input('hepsi')) {
-        $rapor['iptal_acik_adisyon'] = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->update(['durum' => 'iptal', 'updated_at' => now()]);
-        DB::table('masalar')->where('sube_id', $subeId)->update(['durum' => 'bos']);
+        $rapor['iptal_acik_adisyon'] = DB::table('adisyonlar')->where('durum', 'acik')->update(['durum' => 'iptal', 'updated_at' => now()]);
+        DB::table('masalar')->update(['durum' => 'bos']);
         $rapor['masalar'] = 'tumu bos';
     } else {
-        // Sadece bosta kalan rezerve/dolu masa durumlarini normalize et (acik adisyonu olmayan masa -> bos)
-        $acikMasaIds = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->pluck('masa_id')->all();
-        DB::table('masalar')->where('sube_id', $subeId)->whereNotIn('id', $acikMasaIds ?: [0])->where('durum', '!=', 'bos')->update(['durum' => 'bos']);
+        $acikMasaIds = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->pluck('masa_id')->all();
+        DB::table('masalar')->whereNotIn('id', $acikMasaIds ?: [0])->where('durum', '!=', 'bos')->update(['durum' => 'bos']);
+        $rapor['masalar'] = 'acik olmayan masalar bos';
     }
 
     return response()->json(['ok' => 1, 'rapor' => $rapor], 200, [], JSON_UNESCAPED_UNICODE);
