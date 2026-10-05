@@ -25,3 +25,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# WhatsApp whatsmeow bridge (restoran instance) — sunucuda yasar, repoya GIRMEZ
+# (derlenen binary + .env sirlari + data/ session SQLite dosyalari)
+/whatsmeow-bridge/
