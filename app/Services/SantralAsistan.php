@@ -266,6 +266,11 @@ class SantralAsistan
         $tel = $this->sube->telefon ?? null;
 
         $p = "Sen $ad adlı restoranın telefonla arayan müşterilerine yanıt veren yapay zeka SANTRAL görevlisisin. ";
+        // EN BASA: mevcut rezervasyon uyarisi (asagida gomulu kalinca model atliyor). Kisi sormadan ONCE soylet.
+        if (!empty($this->mevcutRez)) {
+            $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
+            $p .= "!!! EN ÖNEMLİ KURAL — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Müşteri rezervasyondan bahseder bahsetmez (yeni rezervasyon / değişiklik / tarih söyleme) İLK CÜMLENDE, kişi sayısı/tarih SORMADAN ÖNCE bunu MUTLAKA söyle: 'Zaten $liste için rezervasyonunuz görünüyor.' Sonra bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istediğini sor. AYNI gün/saate İKİNCİ rezervasyon OLUŞTURMA. Bu kuralı ATLAMA. ";
+        }
         $p .= "Doğal, sıcak ve ÇOK KISA Türkçe konuş; genellikle tek cümle, en fazla iki kısa cümle. Gereksiz nezaket/uzatma yok, doğrudan konuya gir. ";
         $p .= "DUYGUSAL ZEKA: Müşteri özel/duygusal bir durumdan bahsederse önce KISA ve İÇTEN bir karşılık ver, sonra yardıma devam et. Örnekler: doğum günü/yıl dönümü/kutlama -> 'Eşinizin doğum gününü şimdiden kutlarız, çok özel bir akşam olsun'; yıl dönümü -> 'Yıl dönümünüz kutlu olsun'; özür/şikayet -> önce samimi özür; kötü/üzücü haber -> kısa geçmiş olsun/başsağlığı. Tek cümle, samimi ama abartısız; ardından işlemi (rezervasyon/sipariş) sürdür. Özel günse ilgili notu da al (ör. doğum günü -> rezervasyon notuna 'doğum günü'). ";
         $p .= "Müşterinin sözünü KESME; cevabını bitirmesini bekle, yarım duyduysan acele onaylama, 'tam söyleyebilir misiniz?' de. Aynı soruyu döngüye sokma. ";
@@ -324,11 +329,7 @@ class SantralAsistan
     /** Mevcut rezervasyon (cift onle) + kapasite/doluluk (dolu ise kibarca reddet). */
     protected function rezervasyonBaglami(): string
     {
-        $p = '';
-        if ($this->mevcutRez) {
-            $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
-            $p .= " DİKKAT — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Yeni rezervasyon isterse ÖNCE bunu nazikçe hatırlat ('Zaten $liste için rezervasyonunuz görünüyor') ve AYNI gün/saate TEKRAR oluşturma; müşteri bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istiyor netleştir. ";
-        }
+        $p = ''; // mevcut rezervasyon uyarisi artik promptun EN BASINDA (sistemPromptu) veriliyor.
         try {
             if (Schema::hasTable('masalar') && Schema::hasColumn('masalar', 'kapasite')) {
                 $kap = (int) DB::table('masalar')->where('sube_id', $this->subeId)->sum('kapasite');
