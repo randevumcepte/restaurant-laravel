@@ -3146,7 +3146,8 @@ if (!function_exists('_restoWaGonder')) {
     {
         $base = rtrim((string) resto_ayar_al('wa_sidecar_url', ''), '/');
         $token = (string) resto_ayar_al('wa_servis_token', '');
-        $jid = _waTelNorm($tel);
+        // Tam JID geldiyse (or. LID "<lid>@lid") dokunma; degilse numarayi normalize et
+        $jid = (strpos((string) $tel, '@') !== false) ? (string) $tel : _waTelNorm($tel);
         if ($base === '' || $jid === '' || trim((string) $mesaj) === '') return false;
         try {
             $ch = curl_init($base . '/session/' . (int) $subeId . '/send');
@@ -3384,6 +3385,8 @@ Route::post('/api/wa/gelen', function (Request $r) {
     // Oturum id = salonId (bridge alan adi) = bizim sube_id
     $subeId = (int) ($r->input('salonId') ?: $r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
     $from = (string) ($r->input('from') ?: $r->input('tel') ?: $r->input('gonderen'));
+    $fromJid = (string) $r->input('fromJid');           // cevap hedefi (LID ise "<lid>@lid")
+    $yanitHedef = $fromJid !== '' ? $fromJid : $from;   // _restoWaGonder tam JID'i oldugu gibi yollar
     $text = trim((string) ($r->input('text') ?: $r->input('mesaj') ?: $r->input('body')));
     $s = DB::table('subeler')->find($subeId);
     if (!$s || $from === '') return response()->json(['ok' => 0], 200);
@@ -3397,7 +3400,7 @@ Route::post('/api/wa/gelen', function (Request $r) {
     // FAZ 2: once sohbet-siparis durum makinesi (ilgiliyse buradan doner)
     try {
         $cevap = _waSohbetIsle($s, $from, $text, $konum);
-        if ($cevap !== null) { _restoWaGonder($subeId, $from, $cevap); return response()->json(['ok' => 1, 'tip' => 'sohbet']); }
+        if ($cevap !== null) { _restoWaGonder($subeId, $yanitHedef,$cevap); return response()->json(['ok' => 1, 'tip' => 'sohbet']); }
     } catch (\Throwable $e) { /* duser -> AI/karsilama */ }
     $t = mb_strtolower($text, 'UTF-8');
     $anahtarlar = ['merhaba', 'selam', 'mrb', 'slm', 'iyi gun', 'iyi aksam', 'gunayd', 'hello', 'hi', 'menu', 'menü', 'siparis', 'sipariş', 'yemek', 'baslat', 'başlat'];
@@ -3410,7 +3413,7 @@ Route::post('/api/wa/gelen', function (Request $r) {
             : "Merhaba! 👋 " . $s->ad . " sipariş hattına hoş geldiniz.\n\n"
                 . "📋 Menüyü görmek ve sipariş vermek için:\n" . $siparisLink . "\n\n"
                 . "Dilerseniz doğrudan buraya da yazabilirsiniz — örn. \"1 Adana Kebap, 1 Ayran\" ya da \"ne önerirsin?\".";
-        _restoWaGonder($subeId, $from, $msg);
+        _restoWaGonder($subeId, $yanitHedef,$msg);
         return response()->json(['ok' => 1, 'tip' => 'karsilama']);
     }
     // AI yarisi (hibrit): MusteriAsistan (kural motoru bedava -> Haiku sadece kaçakta)
@@ -3421,9 +3424,9 @@ Route::post('/api/wa/gelen', function (Request $r) {
         $metin = trim($metin);
         if ($metin === '') $metin = "📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink;
         else $metin .= "\n\n📋 Sipariş vermek için: " . $siparisLink;
-        _restoWaGonder($subeId, $from, $metin);
+        _restoWaGonder($subeId, $yanitHedef,$metin);
     } catch (\Throwable $e) {
-        _restoWaGonder($subeId, $from, "📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink);
+        _restoWaGonder($subeId, $yanitHedef,"📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink);
     }
     return response()->json(['ok' => 1, 'tip' => 'ai']);
 });

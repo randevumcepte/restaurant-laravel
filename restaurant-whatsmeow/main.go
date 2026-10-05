@@ -380,6 +380,7 @@ func buildEventHandler(sess *Session, hooks *WebhookPoster) func(interface{}) {
 			payload := map[string]interface{}{
 				"salonId":   sess.SalonID,
 				"from":      evt.Info.Sender.User,
+				"fromJid":   evt.Info.Chat.String(), // cevap hedefi (LID ise "<lid>@lid")
 				"text":      text,
 				"pushName":  evt.Info.PushName,
 				"messageId": evt.Info.ID,
@@ -506,6 +507,11 @@ func doSend(sess *Session, job SendJob, hooks *WebhookPoster) {
 var nonDigit = regexp.MustCompile(`\D+`)
 
 func parseJID(raw string) (types.JID, error) {
+	// Tam JID verildiyse ("<lid>@lid" veya "<pn>@s.whatsapp.net") oldugu gibi coz.
+	// WhatsApp LID (gizli numara) gonderenlere cevap verebilmek icin sart.
+	if strings.Contains(raw, "@") {
+		return types.ParseJID(raw)
+	}
 	n := nonDigit.ReplaceAllString(raw, "")
 	if strings.HasPrefix(n, "00") {
 		n = n[2:]
