@@ -8731,12 +8731,22 @@ Route::get('/api/patron/fis', function (Request $r) {
         ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar]);
     $odemeler = DB::table('odemeler')->where('adisyon_id', $a->id)->select('tip', 'tutar')->get()
         ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
+    // Birleşik masa grubu (bu adisyon hedefse): kendisi + birleşmiş kaynak masalar -> "4 + 5"
+    $birlesik = [];
+    if ($masa) {
+        $kaynakIds = DB::table('adisyon_masa_loglari')->where('adisyon_id', $a->id)->where('islem', 'birlestirme')
+            ->pluck('eski_masa_id')->filter()->unique()->all();
+        if ($kaynakIds) {
+            $adMap = DB::table('masalar')->whereIn('id', $kaynakIds)->pluck('ad');
+            $birlesik = array_values(array_unique(array_merge([$masa], $adMap->all())));
+        }
+    }
     return [
         'ok' => 1,
         'isletme' => $sube->ad ?? 'ResteOS', 'adres' => $sube->adres ?? '', 'telefon' => $sube->telefon ?? '',
         'masa' => $masa ?? ucfirst($a->kanal), 'garson' => $garson ?? '-',
         'tarih' => now()->format('d.m.Y H:i'), 'adisyon_no' => $a->id,
-        'kalemler' => $kalemler,
+        'kalemler' => $kalemler, 'birlesik_masalar' => $birlesik,
         'ara_toplam' => (float) $a->ara_toplam, 'indirim' => (float) $a->indirim, 'ikram' => (float) $a->ikram, 'toplam' => (float) $a->toplam,
         'odemeler' => $odemeler,
     ];
