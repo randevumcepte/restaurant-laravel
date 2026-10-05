@@ -3155,7 +3155,8 @@ if (!function_exists('_restoWaGonder')) {
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'X-Service-Token: ' . $token],
                 // whatsmeow bridge send sozlesmesi: {to, message, logId, urgent}
-                CURLOPT_POSTFIELDS => json_encode(['to' => $jid, 'message' => (string) $mesaj, 'logId' => 0, 'urgent' => false], JSON_UNESCAPED_UNICODE),
+                // urgent=true -> bridge'in 12-30sn anti-burst beklemesini ATLAR (interaktif cevap, aninda gider)
+                CURLOPT_POSTFIELDS => json_encode(['to' => $jid, 'message' => (string) $mesaj, 'logId' => 0, 'urgent' => true], JSON_UNESCAPED_UNICODE),
             ]);
             curl_exec($ch);
             $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -3255,12 +3256,24 @@ if (!function_exists('_waSepetParse')) {
     }
 }
 if (!function_exists('_waSepetMetni')) {
+    // Modern/temiz sepet karti (WhatsApp *kalin* + hizalı)
     function _waSepetMetni($sepet)
     {
-        if (empty($sepet)) return 'Sepetiniz boş.';
-        $l = "🛒 Sepetiniz:\n"; $top = 0;
-        foreach ($sepet as $it) { $tut = (float) $it['fiyat'] * (int) $it['adet']; $top += $tut; $l .= '• ' . $it['adet'] . '× ' . $it['ad'] . ' — ' . number_format($tut, 0, ',', '.') . " ₺\n"; }
-        return $l . '━━━\nToplam: ' . number_format($top, 0, ',', '.') . ' ₺';
+        if (empty($sepet)) return "🛒 Sepetiniz henüz boş.";
+        $l = "🧾 *SİPARİŞİNİZ*\n"; $top = 0;
+        foreach ($sepet as $it) {
+            $tut = (float) $it['fiyat'] * (int) $it['adet']; $top += $tut;
+            $l .= "\n*" . $it['adet'] . '×* ' . $it['ad'] . "\n" . '       ' . number_format($tut, 0, ',', '.') . " ₺\n";
+        }
+        $l .= "\n━━━━━━━━━━━━━\n*Toplam:  " . number_format($top, 0, ',', '.') . " ₺*";
+        return $l;
+    }
+    // Onay oncesi tam ozet
+    function _waOzetMetni($sepet, $adres, $odeme)
+    {
+        return _waSepetMetni($sepet)
+            . "\n\n📍 *Adres:*  " . $adres
+            . "\n💳 *Ödeme:*  " . ($odeme === 'nakit' ? 'Kapıda nakit' : 'Kapıda kart');
     }
     function _waSepetBirlestir($sepet, $yeni)
     {
@@ -3268,6 +3281,22 @@ if (!function_exists('_waSepetMetni')) {
         foreach ((array) $sepet as $it) { $map[$it['urun_id']] = $it; }
         foreach ($yeni as $it) { if (isset($map[$it['urun_id']])) { $map[$it['urun_id']]['adet'] += $it['adet']; } else { $map[$it['urun_id']] = $it; } }
         return array_values($map);
+    }
+    // ---- Dogal dil niyet tespiti (yanlis/degisik yazilsa da anla; "soyle yazin" demeyiz) ----
+    function _waIcerirMi($tl, array $anahtarlar)
+    {
+        foreach ($anahtarlar as $k) { if ($tl === $k || mb_strpos($tl, $k) !== false) return true; }
+        return false;
+    }
+    function _waIptalMi($tl) { return _waIcerirMi($tl, ['iptal', 'vazgec', 'vazgectim', 'siparisi iptal', 'iptal et']); }
+    function _waOnayMi($tl)  { return _waIcerirMi($tl, ['onayla', 'onayliyorum', 'onaylyorum', 'onaylarim', 'onaydir', 'evet', 'evt', 'olur', 'oldu', 'tamam', 'tamamdir', 'ok', 'okey', 'okay', 'tabi', 'tabii', 'kesinlikle', 'elbette', 'uygun', 'gonder', 'ver', 'gecelim', 'devam', 'onaylyoruz', 'onaylyoz', 'hadi', 'bastan al']); }
+    function _waOlumsuzMu($tl) { return _waIcerirMi($tl, ['hayir', 'yok', 'istemiyorum', 'olmaz', 'vazgectim', 'gerek yok', 'bosver', 'yanlis']); }
+    function _waBittiMi($tl) { return _waIcerirMi($tl, ['tamam', 'bu kadar', 'bukadar', 'yeter', 'yeterli', 'bitti', 'bitir', 'devam', 'tamamla', 'hepsi bu', 'baska yok', 'yok baska', 'siparisi tamamla', 'gecelim', 'hazir', 'hazirim', 'odeme', 'adres']); }
+    function _waOdemeTipi($tl)
+    {
+        if (_waIcerirMi($tl, ['nakit', 'cash', 'pesin'])) return 'nakit';
+        if (_waIcerirMi($tl, ['kart', 'kredi', 'pos', 'banka'])) return 'kart_kapida';
+        return null;
     }
 }
 if (!function_exists('_waSiparisOlustur')) {
@@ -3310,59 +3339,68 @@ if (!function_exists('_waSohbetIsle')) {
         $o = _waOturumAl($sube, $tel);
         $durum = $o->durum ?? 'idle';
         $sepet = ($o && $o->sepet) ? (json_decode($o->sepet, true) ?: []) : [];
-        $link = url('/app/' . $sube . '?wa=' . _waTelNorm($tel));
+        $konumAdres = ($konum && !empty($konum['lat']))
+            ? ('https://maps.google.com/?q=' . $konum['lat'] . ',' . $konum['lng'])
+            : null;
 
-        if (in_array($tl, ['iptal', 'vazgec', 'sil', 'temizle', 'bastan', 'bastan basla'])) {
-            _waOturumSil($sube, $tel);
-            return "🗑️ Sipariş iptal edildi. Yeniden başlamak için ürün yazın (örn. \"1 Adana Kebap, 1 Ayran\").";
+        // Net iptal — her asamada
+        if (_waIptalMi($tl)) {
+            if (!empty($sepet) || $durum !== 'idle') { _waOturumSil($sube, $tel); return "Siparişinizi iptal ettim. 🙂 Dilediğiniz an yeniden başlayabilirsiniz."; }
+            return null;
         }
 
+        // ADRES asamasi
         if ($durum === 'adres') {
-            $adres = null;
-            if ($konum && !empty($konum['lat'])) $adres = '📍 Konum: https://maps.google.com/?q=' . $konum['lat'] . ',' . $konum['lng'];
-            elseif (mb_strlen(trim((string) $text)) >= 5) $adres = trim((string) $text);
-            if (!$adres) return "Lütfen teslimat adresinizi yazın ya da 📍 *konum gönderin*.";
+            $adres = $konumAdres ?: (mb_strlen(trim((string) $text)) >= 6 ? trim((string) $text) : null);
+            if (!$adres) return "Siparişi nereye getirelim? 🛵\nAçık adresinizi yazabilir ya da 📍 *konumunuzu* paylaşabilirsiniz.";
             _waOturumYaz($sube, $tel, ['durum' => 'odeme', 'adres' => $adres, 'sepet' => json_encode($sepet)]);
-            return "Adres alındı. 💳 Ödeme nasıl olsun?\n• *nakit* (kapıda nakit)\n• *kart* (kapıda kart)";
-        }
-        if ($durum === 'odeme') {
-            $odeme = null;
-            if (mb_strpos($tl, 'nakit') !== false) $odeme = 'nakit';
-            elseif (mb_strpos($tl, 'kart') !== false || mb_strpos($tl, 'kredi') !== false) $odeme = 'kart_kapida';
-            if (!$odeme) return "Lütfen *nakit* ya da *kart* yazın.";
-            _waOturumYaz($sube, $tel, ['durum' => 'onay', 'odeme' => $odeme]);
-            return _waSepetMetni($sepet) . "\n📍 Adres: " . $o->adres . "\n💳 Ödeme: " . ($odeme === 'nakit' ? 'Kapıda nakit' : 'Kapıda kart') . "\n\n✅ Onaylıyorsanız *ONAYLA* yazın (iptal için *iptal*).";
-        }
-        if ($durum === 'onay' && (mb_strpos($tl, 'onayla') !== false || $tl === 'evet' || $tl === 'tamam' || mb_strpos($tl, 'onaylıyorum') !== false)) {
-            $ad = $o->ad ?: 'WhatsApp Müşteri';
-            $res = _waSiparisOlustur($s, $ad, $tel, $o->adres, $sepet, $o->odeme);
-            _waOturumSil($sube, $tel);
-            if (!$res) return "⚠️ Sipariş oluşturulamadı. Lütfen tekrar deneyin ya da " . $link . " üzerinden verin.";
-            return "✅ *Siparişiniz alındı!* (#" . $res['id'] . ")\nToplam: " . number_format($res['toplam'], 0, ',', '.') . " ₺\n👨‍🍳 Hazırlanıyor.\n📍 Canlı takip: " . url('/siparisim/' . $res['token']);
+            return "Harika, aldım. 🙏\nSon olarak ödemeyi nasıl yapmak istersiniz?\n\n💵  Nakit\n💳  Kart (kapıda)";
         }
 
-        // Her durumda: urun ekleme dene
+        // ODEME asamasi
+        if ($durum === 'odeme') {
+            $odeme = _waOdemeTipi($tl);
+            if (!$odeme) return "Ödemeyi nakit mi yoksa kartla mı yapmak istersiniz? 🙂";
+            _waOturumYaz($sube, $tel, ['durum' => 'onay', 'odeme' => $odeme]);
+            return _waOzetMetni($sepet, $o->adres, $odeme) . "\n\nSiparişinizi onaylıyor musunuz? 😊";
+        }
+
+        // ONAY asamasi
+        if ($durum === 'onay') {
+            if (_waOnayMi($tl) || mb_strpos((string) $text, '👍') !== false || mb_strpos((string) $text, '✅') !== false || mb_strpos((string) $text, '👌') !== false) {
+                $ad = $o->ad ?: 'WhatsApp Müşteri';
+                $res = _waSiparisOlustur($s, $ad, $tel, $o->adres, $sepet, $o->odeme);
+                _waOturumSil($sube, $tel);
+                if (!$res) return "Bir aksilik oldu, siparişi oluşturamadım. 🙏 Birazdan tekrar dener misiniz?";
+                return "🎉 *Siparişiniz alındı!*\n\nSipariş No:  *#" . $res['id'] . "*\nToplam:  *" . number_format($res['toplam'], 0, ',', '.') . " ₺*\n\n👨‍🍳 Hemen hazırlamaya başlıyoruz.\n📍 Canlı takip:\n" . url('/siparisim/' . $res['token']) . "\n\nAfiyet olsun! 😊";
+            }
+            if (_waOlumsuzMu($tl)) { _waOturumSil($sube, $tel); return "Tamamdır, siparişi iptal ettim. 🙂 İsterseniz baştan oluşturabiliriz."; }
+            return _waOzetMetni($sepet, $o->adres, $o->odeme) . "\n\nOnaylıyor musunuz? 😊";
+        }
+
+        // Urun ekleme (idle / sepet dolu)
         $parse = _waSepetParse($sube, $text);
         if (!empty($parse['items'])) {
             $sepet = _waSepetBirlestir($sepet, $parse['items']);
             _waOturumYaz($sube, $tel, ['durum' => 'idle', 'sepet' => json_encode($sepet)]);
             $msg = _waSepetMetni($sepet);
-            if (!empty($parse['bulunamayan'])) $msg .= "\n⚠️ Bulunamadı: " . implode(', ', $parse['bulunamayan']);
-            return $msg . "\n\n➕ Başka eklemek için ürün yazın · bitince *TAMAM* yazın.";
+            if (!empty($parse['bulunamayan'])) $msg .= "\n\n_Menüde bulamadığım: " . implode(', ', $parse['bulunamayan']) . "_";
+            return $msg . "\n\nBaşka eklemek istediğiniz var mı? 😊";
         }
-        // "tamam/bitir" -> adres adimina gec
-        if (in_array($tl, ['tamam', 'bitti', 'bitir', 'devam', 'siparisi tamamla', 'tamamla', 'onay'])) {
-            if (empty($sepet)) return null; // sepet bos -> AI/karsilamaya birak
+
+        // Sepet dolu + "bitti/yeter/yok" -> adrese gec
+        if (!empty($sepet) && _waBittiMi($tl)) {
             _waOturumYaz($sube, $tel, ['durum' => 'adres', 'sepet' => json_encode($sepet)]);
-            return "Sepetiniz hazır:\n" . _waSepetMetni($sepet) . "\n\n📍 Teslimat adresinizi yazın ya da *konum gönderin*.";
+            return _waSepetMetni($sepet) . "\n\nSiparişi nereye getirelim? 🛵\nAdresinizi yazın ya da 📍 konumunuzu paylaşın.";
         }
-        // Sadece konum geldi ve sepet dolu ama adres asamasinda degil -> adres olarak al, odemeye gec
-        if ($konum && !empty($konum['lat']) && !empty($sepet)) {
-            $adres = '📍 Konum: https://maps.google.com/?q=' . $konum['lat'] . ',' . $konum['lng'];
-            _waOturumYaz($sube, $tel, ['durum' => 'odeme', 'adres' => $adres, 'sepet' => json_encode($sepet)]);
-            return "Konum alındı. 💳 Ödeme: *nakit* mi *kart* mı?";
+
+        // Sadece konum geldi + sepet dolu -> adresi al, odemeye gec
+        if ($konumAdres && !empty($sepet)) {
+            _waOturumYaz($sube, $tel, ['durum' => 'odeme', 'adres' => $konumAdres, 'sepet' => json_encode($sepet)]);
+            return "Konumunuzu aldım 📍\nÖdemeyi nakit mi, kartla mı yapalım? 🙂";
         }
-        return null; // siparisle ilgili degil
+
+        return null; // siparisle ilgili degil -> AI/karsilama
     }
 }
 
