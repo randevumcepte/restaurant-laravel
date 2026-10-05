@@ -166,6 +166,21 @@ class SantralAsistan
             return ['cevap' => 'Efendim, sizi saygıya davet etmek istiyorum. Eğer böyle konuşmaya devam ederseniz maalesef görüşmeyi sonlandırmak zorunda kalacağım.', 'aksiyon' => null, 'veri' => [], 'bitir' => false];
         }
 
+        // MEVCUT REZERVASYON — GARANTI UYARI (Haiku'ya birakma; model gomulu kurali atliyor).
+        // Arayanin aktif rezervasyonu varsa + rezervasyon niyeti varsa + daha once uyarilmadiysa:
+        // deterministik olarak hatirlat (cift rezervasyonu/karisikligi onler).
+        if (!empty($this->mevcutRez) && $this->rezervasyonNiyeti($ham)) {
+            $uyarildi = false;
+            foreach ($gecmis as $m) {
+                if (($m['role'] ?? '') === 'assistant' && mb_stripos((string) ($m['content'] ?? ''), 'rezervasyonunuz görünüyor') !== false) { $uyarildi = true; break; }
+            }
+            if (!$uyarildi) {
+                $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' ' . $r['kisi'] . ' kişi', $this->mevcutRez));
+                $this->teshis = 'mevcut_rez';
+                return ['cevap' => "Zaten $liste için rezervasyonunuz görünüyor. Bunu mu değiştirmek istersiniz, iptal mi, yoksa farklı bir gün için ek bir rezervasyon mu?", 'aksiyon' => null, 'veri' => [], 'bitir' => false];
+            }
+        }
+
         // --- EGITIM KATMANLARI (Haiku'dan ONCE, bedava) ---
         // 1) KALIP / SSS (sahibin girdigi tetikleyici -> hazir cevap). Her turda; sahip kontrol eder.
         $kalip = $this->kalipCevap($ham);
@@ -586,6 +601,16 @@ class SantralAsistan
         if ($haftaFark === 1) return 'haftaya ' . $gun;
         $aylar = [1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan', 5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos', 9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık'];
         return (int) date('j', $hedefTs) . ' ' . ($aylar[(int) date('n', $hedefTs)] ?? '');
+    }
+
+    /** Mesaj rezervasyon niyeti tasiyor mu? (mevcut rezervasyon garanti-uyarisi icin) */
+    protected function rezervasyonNiyeti($q): bool
+    {
+        $n = ' ' . $this->norm($q) . ' ';
+        foreach (['rezervasyon', 'rezerve', 'yer ayirt', 'yer ayir', 'masa ayirt', 'masa ayir', 'yer bakt', 'masa bakt'] as $a) {
+            if (strpos($n, ' ' . $this->norm($a)) !== false) return true;
+        }
+        return false;
     }
 
     protected function norm($s)
