@@ -8578,6 +8578,11 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
     if (!$masaId) return ['ok' => 0, 'hata' => 'Önce masa seçin.'];
     $masa = DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->first();
     if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    // GUARD: masa baska masayla BIRLESIK (kaynak) ise hayalet adisyon acma -> reddet
+    $birlesik = DB::table('adisyon_masa_loglari as l')->join('adisyonlar as a', 'l.adisyon_id', '=', 'a.id')
+        ->where('l.islem', 'birlestirme')->where('a.durum', 'acik')->whereNotNull('a.masa_id')
+        ->where('l.eski_masa_id', $masaId)->exists();
+    if ($birlesik) return ['ok' => 0, 'hata' => $masa->ad . ' başka masayla birleşik. Önce ayırın ya da başka masa seçin.'];
 
     $adId = DB::table('adisyonlar')->where('masa_id', $masaId)->where('durum', 'acik')->value('id');
     if (!$adId) {
@@ -8611,6 +8616,46 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
     DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]);
     return ['ok' => 1, 'adisyon_id' => $adId, 'kalem' => $eklenen,
         'mesaj' => $masa->ad . ' açıldı' . ($eklenen ? ", $eklenen ön sipariş mutfağa gönderildi." : '.')];
+});
+
+// TEMIZLIK: rezervasyonlari + ACIK adisyonlari sifirla -> tertemiz test zemini.
+// ?hepsi=1 TUM acik adisyonlari iptal eder (masalar bosalir, birlesmeler cozulur). Menu/urun/satis gecmisi KORUNUR.
+Route::get('/rezervasyon-sifirla', function (Request $r) {
+    $subeId = (int) DB::table('subeler')->value('id');
+    $rapor = [];
+
+    // 1) Rezervasyonlara bagli ACIK adisyonlari iptal et + ilgili masalari bosalt
+    $rezAdisyon = DB::table('rezervasyonlar')->where('sube_id', $subeId)->whereNotNull('adisyon_id')->pluck('adisyon_id')->all();
+    if ($rezAdisyon) {
+        DB::table('adisyonlar')->whereIn('id', $rezAdisyon)->where('durum', 'acik')->update(['durum' => 'iptal', 'updated_at' => now()]);
+    }
+
+    // 2) Rezervasyon verisini KOMPLE sil (kalemler + rezervasyonlar)
+    $rezIds = DB::table('rezervasyonlar')->where('sube_id', $subeId)->pluck('id')->all();
+    if ($rezIds && Schema::hasTable('rezervasyon_kalemleri')) {
+        DB::table('rezervasyon_kalemleri')->whereIn('rezervasyon_id', $rezIds)->delete();
+    }
+    $rapor['silinen_rezervasyon'] = DB::table('rezervasyonlar')->where('sube_id', $subeId)->delete();
+
+    // 3) Test musterilerimi sil (bu akista olusturduklarim)
+    $testTel = ['05551234567', '05324401122', '05335512233', '02167703344', '05346624455'];
+    if (Schema::hasColumn('musteriler', 'telefon_norm')) {
+        $rapor['silinen_test_musteri'] = DB::table('musteriler')->where('sube_id', $subeId)
+            ->whereIn('telefon_norm', $testTel)->where('siparis_sayisi', 0)->delete();
+    }
+
+    // 4) ?hepsi=1 -> TUM acik adisyonlari iptal, masalari bosalt, birlesmeleri coz
+    if ($r->input('hepsi')) {
+        $rapor['iptal_acik_adisyon'] = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->update(['durum' => 'iptal', 'updated_at' => now()]);
+        DB::table('masalar')->where('sube_id', $subeId)->update(['durum' => 'bos']);
+        $rapor['masalar'] = 'tumu bos';
+    } else {
+        // Sadece bosta kalan rezerve/dolu masa durumlarini normalize et (acik adisyonu olmayan masa -> bos)
+        $acikMasaIds = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->pluck('masa_id')->all();
+        DB::table('masalar')->where('sube_id', $subeId)->whereNotIn('id', $acikMasaIds ?: [0])->where('durum', '!=', 'bos')->update(['durum' => 'bos']);
+    }
+
+    return response()->json(['ok' => 1, 'rapor' => $rapor], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // PATRON API: rezervasyon durum guncelle (+ masa atama opsiyonel)
