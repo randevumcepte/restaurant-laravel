@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhatsApp Yönetimi · ResteOS</title>
-<script src="/js/qrcode.min.js"></script>
+<script src="/js/qrcode-gen.js?v=3"></script>
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --bg:#0B1020; --card:#161C2E; --line:#2D3752; --ink:#F1F5F9; --sub:#94A3B8; --yesil:#10B981; --kirmizi:#F43F5E; }
   *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
@@ -130,11 +130,16 @@ async function durumYenile(){
 function drawQR(text){
   const box = $('#qr');
   if(!text){ box.innerHTML='<div style="color:#111;font-size:13px">QR hazırlanıyor…</div>'; return; }
-  box.innerHTML='';
-  // data: ise dogrudan goster; ham string ise YEREL kutuphaneyle ciz (QR disariya CIKMAZ)
+  // data: ise dogrudan goster; ham string ise YEREL lib ile ciz (QR disariya CIKMAZ, uzun stringi kaldirir)
   if(String(text).startsWith('data:')){ box.innerHTML = '<img src="'+text+'" alt="QR">'; return; }
-  try{ new QRCode(box, { text:String(text), width:220, height:220, correctLevel: QRCode.CorrectLevel.L }); }
-  catch(e){ box.innerHTML='<div style="color:#b00;font-size:12px">QR çizilemedi (sayfayı yenileyin)</div>'; }
+  try{
+    const qr = qrcode(0, 'L');               // typeNumber=0 oto-boyut, level L (uzun WA stringi)
+    qr.addData(String(text));
+    qr.make();
+    box.innerHTML = qr.createImgTag(4, 4);    // <img data-url> (CSS ile %100 olceklenir)
+  }catch(e){
+    box.innerHTML='<div style="color:#b00;font-size:12px">QR çizilemedi: '+e+'</div>';
+  }
 }
 async function baglan(){
   toast('QR üretiliyor…');
