@@ -5286,15 +5286,30 @@ Route::get('/api/masalar', function (Request $r) {
         ];
     }
 
+    // Bugunun aktif rezervasyonlari (masaya atanmis) -> masa haritasinda "Rezerve" rozeti
+    $rezMap = [];
+    if (Schema::hasTable('rezervasyonlar')) {
+        foreach (DB::table('rezervasyonlar')->where('sube_id', $p->sube_id)->where('tarih', now()->format('Y-m-d'))
+            ->whereIn('durum', ['onaylandi', 'geldi'])->whereNotNull('masa_id')
+            ->orderBy('saat')->get(['masa_id', 'ad', 'saat', 'kisi', 'durum']) as $rz) {
+            // Bir masada birden fazla -> 'geldi' oncelikli, sonra en erken saat
+            $onc = $rezMap[$rz->masa_id] ?? null;
+            if ($onc === null || ($rz->durum === 'geldi' && $onc['durum'] !== 'geldi')) {
+                $rezMap[$rz->masa_id] = ['ad' => $rz->ad, 'saat' => substr((string) $rz->saat, 0, 5), 'kisi' => (int) $rz->kisi, 'durum' => $rz->durum];
+            }
+        }
+    }
+
     $masalar = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')
         ->where('masalar.sube_id', $p->sube_id)
         ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
         ->orderBy('bolgeler.sira')->orderBy('masalar.id')->get()
-        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak, $kalemStat, $odemeStat, $hesapSet) {
+        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak, $kalemStat, $odemeStat, $hesapSet, $rezMap) {
             $a = $acik[$m->id] ?? null;
             $row = ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
                 'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0,
                 'adisyon_id' => $a ? $a->id : null];
+            if (isset($rezMap[$m->id])) $row['rezervasyon'] = $rezMap[$m->id];
             // Renk-durumu sinyalleri
             if ($a) {
                 $row['acilis_dk'] = $a->acilis ? (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0;
