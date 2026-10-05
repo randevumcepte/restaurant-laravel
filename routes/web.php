@@ -4253,14 +4253,21 @@ if (!function_exists('_restoUrunMaliyetMap')) {
             $cevrim = DB::table('birim_cevrimleri')->get()->groupBy('malzeme_id');
             $receteler = DB::table('receteler')->get()->keyBy('id');
             $kalemler = DB::table('recete_kalemleri')->get()->groupBy('recete_id');
+            $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
 
-            $karsilik = function ($malzemeId, $birimId) use ($malz, $cevrim) {
+            $karsilik = function ($malzemeId, $birimId) use ($malz, $cevrim, $birimKis) {
                 $m = $malz[$malzemeId] ?? null;
                 if (!$m) return 0.0;
                 if ((int) $birimId === (int) $m->temel_birim_id) return 1.0;
                 foreach (($cevrim[$malzemeId] ?? []) as $c) {
                     if ((int) $c->birim_id === (int) $birimId) return (float) $c->temel_birim_karsiligi;
                 }
+                // Genel çevrim (kg<->g, lt<->ml) — malzeme çevrimi tanımlı değilse.
+                // _restoBirimKarsilik ile AYNI mantık: food-cost/SMM, stok düşümüyle tutarlı olsun (1000x hata önlenir).
+                $b = $birimKis[$birimId] ?? null;
+                $t = $birimKis[$m->temel_birim_id] ?? null;
+                $genel = ['kg' => ['g' => 1000], 'lt' => ['ml' => 1000], 'g' => ['kg' => 0.001], 'ml' => ['lt' => 0.001]];
+                if ($b !== null && $t !== null && isset($genel[$b][$t])) return (float) $genel[$b][$t];
                 return 1.0;
             };
 
@@ -5363,8 +5370,10 @@ Route::get('/api/patron/duzelt-turkce', function (Request $r) {
 Route::get('/api/masalar', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
-        ->select('id', 'masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
+    $acikTum = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
+        ->select('id', 'masa_id', 'toplam', 'acilis')->get();
+    $acik = $acikTum->keyBy('masa_id');       // birincil adisyon (geriye uyum)
+    $acikGrup = $acikTum->groupBy('masa_id'); // bölme sonrası aynı masada birden fazla açık adisyon olabilir
 
     // ---- Masa renk-durumu için ek sinyaller (acik adisyonlar) ----
     $aidler = $acik->pluck('id')->all();
@@ -5424,12 +5433,21 @@ Route::get('/api/masalar', function (Request $r) {
         ->where('masalar.sube_id', $p->sube_id)
         ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
         ->orderBy('bolgeler.sira')->orderBy('masalar.id')->get()
-        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak, $kalemStat, $odemeStat, $hesapSet, $rezMap) {
+        ->map(function ($m) use ($acik, $acikGrup, $birlesmeGrup, $birlesmeKaynak, $kalemStat, $odemeStat, $hesapSet, $rezMap) {
             $a = $acik[$m->id] ?? null;
-            $row = ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
+            // SELF-HEAL durum: kolon drift olabilir -> açık adisyon gerçeğinden türet (birleşik hariç)
+            $durum = $m->durum;
+            if ($durum !== 'birlesik') $durum = $a ? 'dolu' : (($durum === 'rezerve' || $durum === 'kirli') ? $durum : 'bos');
+            $row = ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $durum,
                 'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0,
                 'adisyon_id' => $a ? $a->id : null];
             if (isset($rezMap[$m->id])) $row['rezervasyon'] = $rezMap[$m->id];
+            // Bölme sonrası aynı masada birden fazla açık adisyon -> ekstraları expose et (hayalet olmasın)
+            $cokAdisyon = $acikGrup[$m->id] ?? null;
+            if ($a && $cokAdisyon && count($cokAdisyon) > 1) {
+                $row['ekstra_adisyonlar'] = collect($cokAdisyon)->filter(fn ($x) => (int) $x->id !== (int) $a->id)
+                    ->map(fn ($x) => ['adisyon_id' => (int) $x->id, 'tutar' => (float) $x->toplam])->values()->all();
+            }
             // Renk-durumu sinyalleri
             if ($a) {
                 $row['acilis_dk'] = $a->acilis ? (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0;
@@ -7977,6 +7995,28 @@ Route::post('/api/patron/kalem-void', function (Request $r) {
     DB::table('adisyon_kalemleri')->where('id', $kalem->id)->update(['durum' => 'iptal', 'updated_at' => now()]);
     DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'adisyon_kalem_id' => $kalem->id,
         'tip' => 'void', 'tutar' => (float) $kalem->tutar, 'sebep' => $r->sebep ?: 'Ürün silindi', 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+    // VOID edilen kalem MUTFAĞA GİTMİŞSE (fiziksel üretilmiş) -> hammaddeyi FIRE olarak düş.
+    // (Ekrana düşmeden iptal edilen 'yeni' kalemde fire yok.) Kapanışta _restoStokTuket iptal kalemi atladığı
+    // için çift düşüm olmaz; variance artık kaybı değil fireyi gösterir.
+    try {
+        if (in_array($kalem->durum, ['gonderildi', 'hazirlaniyor', 'hazir', 'servis'], true) && $kalem->urun_id) {
+            $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $kalem->urun_id)->first(['id']);
+            if ($recete) {
+                $ihtiyac = [];
+                _restoReceteHammadde($recete->id, (float) $kalem->adet, $ihtiyac);
+                foreach ($ihtiyac as $malzemeId => $temelMiktar) {
+                    if ($temelMiktar <= 0) continue;
+                    $m = DB::table('malzemeler')->where('id', $malzemeId)->first(['guncel_maliyet']);
+                    DB::table('stok_hareketleri')->insert([
+                        'sube_id' => $p->sube_id, 'malzeme_id' => (int) $malzemeId, 'tip' => 'fire', 'miktar' => -$temelMiktar,
+                        'birim_maliyet' => $m ? (float) $m->guncel_maliyet : 0, 'kaynak_tip' => 'void', 'kaynak_id' => $kalem->id,
+                        'aciklama' => 'Void/fire: ' . $kalem->urun_adi, 'personel_id' => ($onaylayan->id ?? $p->id),
+                    ]);
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+    }
     $araToplam = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->sum('tutar');
     $toplam = max(0, $araToplam - (float) $a->indirim - (float) $a->ikram);
     DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => $araToplam, 'toplam' => $toplam, 'updated_at' => now()]);
@@ -8497,15 +8537,33 @@ Route::get('/api/patron/rezervasyonlar', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0], 401);
     _rezervasyonEnsure($p->sube_id);
     $tarih = $r->query('tarih') ?: now()->format('Y-m-d');
-    $rows = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
+    $baseRows = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
         ->where('rezervasyonlar.sube_id', $p->sube_id)->where('rezervasyonlar.tarih', $tarih)
         ->orderBy('rezervasyonlar.saat')
         ->select('rezervasyonlar.*', 'masalar.ad as masa_ad')
-        ->get()->map(fn ($x) => [
-            'id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'kisi' => (int) $x->kisi,
-            'tarih' => $x->tarih, 'saat' => substr($x->saat, 0, 5), 'durum' => $x->durum, 'kaynak' => $x->kaynak,
-            'not' => $x->not, 'masa_id' => $x->masa_id ? (int) $x->masa_id : null, 'masa_ad' => $x->masa_ad,
-        ]);
+        ->get();
+    // AI Santral cagri ses kayitlarini rezervasyonlara bagla (yonetici dinleyebilsin). TOPLU sorgu.
+    $sesMap = []; $oturumMap = [];
+    $rezIds = $baseRows->pluck('id')->all();
+    if ($rezIds && Schema::hasTable('santral_oturumlari')) {
+        $otIds = []; // oturum_id -> rez_id
+        foreach (DB::table('santral_oturumlari')->whereIn('rezervasyon_id', $rezIds)->get(['id', 'rezervasyon_id']) as $o) {
+            $oturumMap[$o->rezervasyon_id] = (int) $o->id; $otIds[$o->id] = $o->rezervasyon_id;
+        }
+        if ($otIds && Schema::hasTable('santral_ses_kayit')) {
+            foreach (DB::table('santral_ses_kayit')->whereIn('oturum_id', array_keys($otIds))->orderBy('id')->get(['id', 'oturum_id', 'tur', 'boyut']) as $s) {
+                $rid = $otIds[$s->oturum_id] ?? null;
+                if ($rid) $sesMap[$rid][] = ['url' => '/santral-ses-dinle/' . $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut];
+            }
+        }
+    }
+    $rows = $baseRows->map(fn ($x) => [
+        'id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'kisi' => (int) $x->kisi,
+        'tarih' => $x->tarih, 'saat' => substr($x->saat, 0, 5), 'durum' => $x->durum, 'kaynak' => $x->kaynak,
+        'not' => $x->not, 'masa_id' => $x->masa_id ? (int) $x->masa_id : null, 'masa_ad' => $x->masa_ad,
+        'cagri_oturum_id' => $oturumMap[$x->id] ?? null,
+        'sesler' => $sesMap[$x->id] ?? [],
+    ]);
     // Gunluk ozet
     $aktif = $rows->whereIn('durum', ['bekliyor', 'onaylandi']);
     $ozet = [
