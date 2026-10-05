@@ -54,7 +54,7 @@ function ulawEncode(samples) {
 class Ambiyans {
   constructor(sampleRate, seviye) {
     this.sr = sampleRate;
-    this.gain = Math.max(0, Math.min(0.5, seviye || 0.12)); // guvenlik: en fazla 0.5
+    this.gain = Math.max(0, Math.min(1.5, seviye || 0.12)); // tavan 1.5 (telefonda belirgin icin yukseltilebilir)
     this.pos = 0;
     this.kaynak = null; // Int16Array (tam olcek)
   }
