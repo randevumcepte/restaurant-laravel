@@ -212,8 +212,8 @@ class SantralAsistan
         if ($cevap === '') {
             // Model sadece arac cagirip metin dondurmediyse: aksiyona gore GARANTI kapanis/metin
             if ($aksiyon === 'aktar') $cevap = 'Sizi yetkiliye bağlıyorum, lütfen hatta kalın.';
-            elseif ($aksiyon === 'siparis') $cevap = 'Siparişinizi aldım, en kısa sürede hazırlayıp göndereceğiz. Afiyet olsun, iyi günler.';
-            elseif ($aksiyon === 'rezervasyon') $cevap = 'Rezervasyonunuzu aldım, sizi bekliyor olacağız. İyi günler.';
+            elseif ($aksiyon === 'siparis') $cevap = 'Siparişinizi aldım. Başka bir arzunuz var mı?';
+            elseif ($aksiyon === 'rezervasyon') $cevap = 'Rezervasyonunuzu aldım. Başka bir arzunuz var mı?';
             elseif ($aksiyon === 'veda') $cevap = 'Teşekkür ederiz, iyi günler dileriz.';
             else $cevap = 'Anladım, devam edelim.';
         }
@@ -231,8 +231,9 @@ class SantralAsistan
             'cevap' => $cevap,
             'aksiyon' => $aksiyon,
             'veri' => $veri,
-            // Siparis/rezervasyon tamamlaninca da gorusme kapanis'a gecer (kapanis cumlesi calinip hat kapanir)
-            'bitir' => in_array($aksiyon, ['veda', 'siparis', 'rezervasyon'], true),
+            // Hatti SADECE 'veda'da kapat. Siparis/rezervasyon KAYDOLUR ama kapatMAZ ->
+            // AI "baska bir arzunuz var mi?" deyip insani sekilde devam eder; musteri bitirince veda.
+            'bitir' => $aksiyon === 'veda',
         ];
     }
 
@@ -262,7 +263,8 @@ class SantralAsistan
         $dilim = $saatN < 6 ? 'gece' : ($saatN < 11 ? 'sabah' : ($saatN < 17 ? 'gündüz' : ($saatN < 22 ? 'akşam' : 'gece')));
         $p .= "ZAMAN: Bugün $gunAd, " . $ist->format('Y-m-d') . " (Türkiye, şu an $dilim). 'Bugün' = " . $ist->format('Y-m-d') . ", 'yarın' = " . $ist->copy()->addDay()->format('Y-m-d') . ". Müşteri 'bugün / yarın / bu akşam / hafta sonu / cumartesi' gibi derse tarihi SEN hesapla ve YYYY-MM-DD'ye çevir; müşteriye ASLA 'ayın kaçı' diye SORMA. Saati de HH:MM yap ('akşam 8' = 20:00, 'öğlen' = 12:00). ";
         $p .= "REZERVASYON için gereken bilgiler: kişi sayısı, tarih ve saat. TELEFON numarasını arayan hattan biliyorsun; SORMA ve sesli OKUMA/tekrar etme. ADINI: kayıtlı müşteriyse zaten biliyorsun, TEKRAR SORMA; kayıtlı değilse adını yalnızca BİR KEZ nazikçe sor. Göreceli tarih ifadelerini (yarın, bu akşam) kendin çöz, müşteriye tarih/ayın kaçı diye sorma. Eksik olanları (kişi/tarih/saat) TEK TEK, kısa sorularla iste; tamamlanınca müşteriye SADECE kişi sayısı/tarih/saat'i tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon, tarih=YYYY-MM-DD, saat=HH:MM ve tamam=true ile çağır. ";
-        $p .= "EN KRİTİK KAYIT KURALI: Müşteri onay verdiği an (tamam / olur / onaylıyorum / evet) AYNI yanıtında MUTLAKA santral_aksiyon aracını çağır — rezervasyonda niyet=rezervasyon + kisi + tarih=YYYY-MM-DD + saat=HH:MM + varsa not; siparişte niyet=siparis + kalemler + odeme; her ikisinde tamam=true. Sadece 'rezervasyonunuzu/siparişinizi aldım, onaylıyorum' DEMEK YETMEZ; aracı çağırmazsan sisteme HİÇBİR ŞEY KAYDEDİLMEZ. Onay anında kapanış cümleni KISA tut ki araç çağrısı da sığsın. ";
+        $p .= "EN KRİTİK KAYIT KURALI: Müşteri onay verdiği an (tamam / olur / onaylıyorum / evet) AYNI yanıtında MUTLAKA santral_aksiyon aracını çağır — rezervasyonda niyet=rezervasyon + kisi + tarih=YYYY-MM-DD + saat=HH:MM + varsa not; siparişte niyet=siparis + kalemler + odeme; her ikisinde tamam=true. Sadece 'rezervasyonunuzu/siparişinizi aldım, onaylıyorum' DEMEK YETMEZ; aracı çağırmazsan sisteme HİÇBİR ŞEY KAYDEDİLMEZ. Onay anındaki metnini kısa tut ki araç çağrısı da sığsın. ";
+        $p .= "KAPANIŞ (insani): Rezervasyon/sipariş aracını çağırdıktan sonra görüşmeyi HEMEN KAPATMA ve 'iyi günler' deyip bitirme. Kısaca teyit et ve 'Başka bir arzunuz var mı?' / 'Yardımcı olabileceğim başka bir şey var mı?' diye sor. Müşteri 'yok / hayır / teşekkürler / sağ olun' gibi bitirdiğinde SICAK bir veda et (ör. 'Rica ederiz, iyi günler, görüşmek üzere') ve santral_aksiyon niyet=veda, tamam=true çağır — hat ANCAK o zaman kapanır. Müşteri başka bir şey isterse yardıma devam et. ";
         $p .= "ÖZEL NOT/İSTEK: Müşteri rezervasyona özel bir not/istek eklemek isterse (ör. 'özel bir şey isteyeceğim', 'not alır mısınız', pencere kenarı, doğum günü, pasta, bebek sandalyesi, alerji, sessiz köşe) bunu YETKİLİYE AKTARMA; SEN al. 'Tabii, notunuzu alıyorum, buyurun' de, dinle, sonra kısaca teyit et ('... diye not düştüm') ve bu metni santral_aksiyon rezervasyon.not alanına yaz. Not, rezervasyon onayından önce alınır. ";
         // PAKET SIPARIS: KESIN SIRALI script. Adimlari ATLAMA, KARISTIRMA, geri donme.
         $p .= "PAKET SİPARİŞ tam olarak bu SIRAYLA ilerler, adımları karıştırma: ";
