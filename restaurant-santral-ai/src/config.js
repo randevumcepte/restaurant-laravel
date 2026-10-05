@@ -47,6 +47,12 @@ const cfg = {
     aktif: bool(process.env.KAYIT_AKTIF, true),
     dir: process.env.ASTERISK_RECORDING_DIR || '/var/spool/asterisk/recording',
   },
+  // Ofis ambiyansi (comfort noise): TTS altinda kisik surekli arka ses (UCRETSIZ).
+  ambiyans: {
+    aktif: bool(process.env.AMBIYANS, true),
+    seviye: parseFloat(process.env.AMBIYANS_SEVIYE || '0.12'), // 0..0.5 (yuksek=sesi bastirir)
+    dosya: process.env.AMBIYANS_DOSYA || require('path').resolve(__dirname, '..', 'assets', 'ofis-ambiyans.sln'),
+  },
 };
 
 // Ses parametreleri (format'a gore)
