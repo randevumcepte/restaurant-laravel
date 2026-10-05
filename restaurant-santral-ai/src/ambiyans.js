@@ -63,8 +63,13 @@ class Ambiyans {
     try {
       if (dosya && fs.existsSync(dosya)) {
         const b = fs.readFileSync(dosya);
-        // s16le -> Int16Array
-        this.kaynak = new Int16Array(b.buffer, b.byteOffset, Math.floor(b.length / 2));
+        // s16le -> Int16Array. NOT: readFileSync Buffer'i havuzdan gelebilir ve byteOffset
+        // 2'nin kati olmayabilir -> new Int16Array(b.buffer, byteOffset) RangeError atar.
+        // Guvenli yol: baytlari TEK TEK oku (hizalama sorunu olmaz).
+        const len = Math.floor(b.length / 2);
+        const arr = new Int16Array(len);
+        for (let i = 0; i < len; i++) arr[i] = b.readInt16LE(i * 2);
+        this.kaynak = arr;
         log.info(`Ambiyans dosyasi yuklendi: ${dosya} (${(this.kaynak.length / this.sr).toFixed(1)}sn)`);
         return;
       }
