@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WhatsApp Yönetimi · ResteOS</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="/js/qrcode.min.js"></script>
 <style>
   :root{ --mor:#7C3AED; --mavi:#4F46E5; --bg:#0B1020; --card:#161C2E; --line:#2D3752; --ink:#F1F5F9; --sub:#94A3B8; --yesil:#10B981; --kirmizi:#F43F5E; }
   *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
@@ -117,12 +117,26 @@ async function durumYenile(){
   }catch(e){ $('#durumYazi').textContent='sidecar erişilemedi'; }
 }
 
+function drawQR(text){
+  const box = $('#qr');
+  if(!text){ box.innerHTML='<div style="color:#111;font-size:13px">QR hazırlanıyor…</div>'; return; }
+  box.innerHTML='';
+  // data: ise dogrudan goster; ham string ise YEREL kutuphaneyle ciz (QR disariya CIKMAZ)
+  if(String(text).startsWith('data:')){ box.innerHTML = '<img src="'+text+'" alt="QR">'; return; }
+  try{ new QRCode(box, { text:String(text), width:220, height:220, correctLevel: QRCode.CorrectLevel.L }); }
+  catch(e){ box.innerHTML='<div style="color:#b00;font-size:12px">QR çizilemedi (sayfayı yenileyin)</div>'; }
+}
 async function baglan(){
   toast('QR üretiliyor…');
-  try{ await fetch('/api/wa/baglan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); }catch(e){}
   $('#qrbox').style.display='block';
+  drawQR('');
+  try{
+    const r = await fetch('/api/wa/baglan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
+    const j = await r.json(); const b = j.body || {};
+    if(b.qr) drawQR(b.qr);          // start cevabi QR'i dogrudan dondurebilir
+  }catch(e){}
   if(qrTimer) clearInterval(qrTimer);
-  qrGetir();
+  setTimeout(qrGetir, 1000);
   qrTimer = setInterval(qrGetir, 2500);
 }
 async function qrGetir(){
@@ -130,10 +144,7 @@ async function qrGetir(){
     const r = await fetch('/api/wa/qr?sube='+sube()); const j = await r.json();
     const b = j.body || j || {};
     const val = b.qr || b.qrcode || b.code || b.image || '';
-    const box = $('#qr');
-    if(!val){ box.innerHTML='<div style="color:#111;font-size:13px">QR hazırlanıyor…</div>'; return; }
-    if(String(val).startsWith('data:')){ box.innerHTML = '<img src="'+val+'">'; }
-    else { box.innerHTML=''; QRCode.toCanvas(val, {width:220, margin:1}, (err,cv)=>{ if(!err) box.appendChild(cv); }); }
+    if(val) drawQR(val);
     durumYenile();
   }catch(e){}
 }
