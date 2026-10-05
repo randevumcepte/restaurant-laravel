@@ -260,6 +260,7 @@ class SantralAsistan
         $dilim = $saatN < 6 ? 'gece' : ($saatN < 11 ? 'sabah' : ($saatN < 17 ? 'gündüz' : ($saatN < 22 ? 'akşam' : 'gece')));
         $p .= "ZAMAN: Bugün $gunAd, " . $ist->format('Y-m-d') . " (Türkiye, şu an $dilim). 'Bugün' = " . $ist->format('Y-m-d') . ", 'yarın' = " . $ist->copy()->addDay()->format('Y-m-d') . ". Müşteri 'bugün / yarın / bu akşam / hafta sonu / cumartesi' gibi derse tarihi SEN hesapla ve YYYY-MM-DD'ye çevir; müşteriye ASLA 'ayın kaçı' diye SORMA. Saati de HH:MM yap ('akşam 8' = 20:00, 'öğlen' = 12:00). ";
         $p .= "REZERVASYON için gereken bilgiler: kişi sayısı, tarih ve saat. TELEFON numarasını arayan hattan biliyorsun; SORMA ve sesli OKUMA/tekrar etme. ADINI: kayıtlı müşteriyse zaten biliyorsun, TEKRAR SORMA; kayıtlı değilse adını yalnızca BİR KEZ nazikçe sor. Göreceli tarih ifadelerini (yarın, bu akşam) kendin çöz, müşteriye tarih/ayın kaçı diye sorma. Eksik olanları (kişi/tarih/saat) TEK TEK, kısa sorularla iste; tamamlanınca müşteriye SADECE kişi sayısı/tarih/saat'i tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon, tarih=YYYY-MM-DD, saat=HH:MM ve tamam=true ile çağır. ";
+        $p .= "ÖZEL NOT/İSTEK: Müşteri rezervasyona özel bir not/istek eklemek isterse (ör. 'özel bir şey isteyeceğim', 'not alır mısınız', pencere kenarı, doğum günü, pasta, bebek sandalyesi, alerji, sessiz köşe) bunu YETKİLİYE AKTARMA; SEN al. 'Tabii, notunuzu alıyorum, buyurun' de, dinle, sonra kısaca teyit et ('... diye not düştüm') ve bu metni santral_aksiyon rezervasyon.not alanına yaz. Not, rezervasyon onayından önce alınır. ";
         // PAKET SIPARIS: KESIN SIRALI script. Adimlari ATLAMA, KARISTIRMA, geri donme.
         $p .= "PAKET SİPARİŞ tam olarak bu SIRAYLA ilerler, adımları karıştırma: ";
         $p .= "1) Ürün ve adetleri al (SADECE menüden, olmayan ürünü uydurma). ";
@@ -279,7 +280,7 @@ class SantralAsistan
         $p .= "Fiyat sorulduğunda ya da ürün önerir/eklerken fiyatını menüden 'lira' diyerek söyle (ör. '120 lira'). Menüde olmayan ürünün fiyatını UYDURMA. ";
         $p .= "Menü/çeşit/fiyat sorularında ASLA yetkiliye aktarma. ";
         // Aktarma cok kisitli: sadece sikayet / menu disi cok ozel istek / cozemeyecegin durum. Menu, fiyat, siparis, rezervasyon icin ASLA aktarma.
-        $p .= "Yetkiliye aktarmayı SADECE şu durumlarda yap: ciddi şikayet, menüde hiç olmayan çok özel bir talep, ya da gerçekten çözemeyeceğin bir konu. Menü, fiyat, sipariş ve rezervasyon senin işin; bunlar için ASLA aktarma ve telefonu kapatma. Aktarırken santral_aksiyon niyet=aktar, tamam=true kullan. ";
+        $p .= "Yetkiliye aktarmayı SADECE şu durumlarda yap: ciddi şikayet ya da gerçekten çözemeyeceğin bir konu. Menü, fiyat, sipariş, rezervasyon ve rezervasyon/sipariş NOTLARI senin işin; bunlar için ASLA aktarma ve telefonu kapatma. Müşterinin özel isteği/notu AKTARMA SEBEBİ DEĞİLDİR — notu sen al, ilgili aksiyonun not alanına yaz. Aktarırken santral_aksiyon niyet=aktar, tamam=true kullan. ";
         $p .= "Müşteri açıkça vedalaşır ya da 'kapatabilirsin' derse kibarca veda et ve santral_aksiyon niyet=veda, tamam=true ile çağır. Aksi halde görüşmeyi sürdür, kendiliğinden kapatma. ";
         $p .= "'Buyurun' kelimesini tekrar tekrar kullanma. Sadece Türkçe konuş.";
 
@@ -359,6 +360,7 @@ class SantralAsistan
                             'kisi' => ['type' => 'integer'],
                             'tarih' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                             'saat' => ['type' => 'string', 'description' => 'HH:MM'],
+                            'not' => ['type' => 'string', 'description' => 'Musterinin ozel istegi/notu ( or. pencere kenari, dogum gunu, bebek sandalyesi, alerji). Varsa buraya yaz.'],
                         ],
                     ],
                     'siparis' => [

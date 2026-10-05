@@ -10399,7 +10399,7 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                 'saat' => preg_match('/^\d{1,2}:\d{2}$/', (string) ($rz['saat'] ?? '')) ? $rz['saat'] : '19:00',
                 'durum' => 'bekliyor',
                 'kaynak' => 'telefon',
-                'not' => 'AI Santral',
+                'not' => trim((string) ($rz['not'] ?? '')) !== '' ? ('AI Santral — ' . trim((string) $rz['not'])) : 'AI Santral',
                 'created_at' => now(),
             ]);
             $guncelle['rezervasyon_id'] = $rid;
