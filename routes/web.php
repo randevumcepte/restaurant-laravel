@@ -114,13 +114,32 @@ if (!function_exists('_paketSiparisAl')) {
         foreach (($data['kalemler'] ?? []) as $k) {
             $ad = $k['ad'] ?? 'Ürün';
             $adet = (int) ($k['adet'] ?? 1);
-            $urun = DB::table('urunler')->where('sube_id', $sube->id)->where('ad', $ad)->first();
-            $fiyat = $k['fiyat'] ?? ($urun->fiyat ?? 0);
+            // 1) Tam ad eşleşmesi
+            $urun = DB::table('urunler')->where('sube_id', $sube->id)->where('aktif', 1)->where('ad', $ad)->first(['id', 'ad', 'fiyat']);
+            // 2) Gevşek eşleşme (STT yanlış duyabilir): normalize + LIKE, sonra ters-substring
+            if (!$urun) {
+                $norm = mb_strtolower(trim($ad), 'UTF-8');
+                if ($norm !== '') {
+                    $urun = DB::table('urunler')->where('sube_id', $sube->id)->where('aktif', 1)
+                        ->whereRaw('LOWER(ad) LIKE ?', ['%' . $norm . '%'])->first(['id', 'ad', 'fiyat']);
+                    if (!$urun) {
+                        foreach (DB::table('urunler')->where('sube_id', $sube->id)->where('aktif', 1)->get(['id', 'ad', 'fiyat']) as $cand) {
+                            $cn = mb_strtolower((string) $cand->ad, 'UTF-8');
+                            if ($cn !== '' && mb_strlen($cn) >= 3 && mb_stripos($norm, $cn) !== false) { $urun = $cand; break; }
+                        }
+                    }
+                }
+            }
+            $eslesmedi = !$urun;
+            // Fiyatta MENÜYE güven (müşterinin/STT'nin söylediğine değil)
+            $fiyat = $urun->fiyat ?? ($k['fiyat'] ?? 0);
             $tutar = $fiyat * $adet;
             DB::table('adisyon_kalemleri')->insert([
-                'adisyon_id' => $adisyonId, 'urun_id' => $urun->id ?? null, 'urun_adi' => $ad,
+                'adisyon_id' => $adisyonId, 'urun_id' => $urun->id ?? null,
+                'urun_adi' => $eslesmedi ? ($ad . ' ⚠️') : $urun->ad,
                 'adet' => $adet, 'birim_fiyat' => $fiyat, 'tutar' => $tutar, 'durum' => 'gonderildi',
-                'not' => $k['not'] ?? null, 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now(),
+                'not' => $eslesmedi ? ('⚠️ MENÜDE EŞLEŞMEDİ - DOĞRULA' . (!empty($k['not']) ? ' · ' . $k['not'] : '')) : ($k['not'] ?? null),
+                'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             $ara += $tutar;
         }
@@ -390,6 +409,41 @@ Route::post('/pos/ode', function (Request $r) {
     }
     return ['ok' => 1];
 });
+
+// Adisyon kapaninca (odendi) ORTAK isler: SADAKAT (musteri puan/harcama) + NORMAL MALI FIS (e-Arsiv/OKC).
+// adisyon-islem'deki 3 kapanis noktasi (kapat / kalem-bol / parcali) bunu cagirir -> CRM istatistik + mali belge
+// artik GERCEK odeme yolunda da uretilir. Idempotent: mali belge zatenBelge ile tek sefer; kapanis zaten tek kez olur.
+if (!function_exists('_adisyonKapanisIsle')) {
+    function _adisyonKapanisIsle($adisyonId)
+    {
+        $a = DB::table('adisyonlar')->find($adisyonId);
+        if (!$a) return;
+        if (!empty($a->musteri_id)) {
+            try {
+                DB::table('musteriler')->where('id', $a->musteri_id)->update([
+                    'siparis_sayisi' => DB::raw('siparis_sayisi + 1'),
+                    'toplam_harcama' => DB::raw('toplam_harcama + ' . (float) $a->toplam),
+                    'puan' => DB::raw('puan + ' . (int) floor(((float) $a->toplam) / 10)),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+            }
+        }
+        try {
+            $zatenBelge = Schema::hasTable('e_faturalar') && DB::table('e_faturalar')->where('adisyon_id', $a->id)->exists();
+            if (!$zatenBelge && function_exists('_eFaturaKes')) {
+                $ayar = Schema::hasTable('edonusum_ayarlari') ? DB::table('edonusum_ayarlari')->where('sube_id', $a->sube_id)->first() : null;
+                $sube = DB::table('subeler')->find($a->sube_id);
+                if ($ayar && ($ayar->fis_modu ?? 'earsiv') === 'okc' && function_exists('_okcFisBas')) {
+                    _okcFisBas($sube, $a);
+                } else {
+                    _eFaturaKes($sube, $a, []);
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+}
 
 // --- Musteri: ekle / guncelle / ara / adisyona bagla ---
 Route::post('/musteriler/ekle', function (Request $r) {
@@ -2656,8 +2710,12 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
     _masaCagriEnsure();
     try { DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
-    $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
-        ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor')
+    // Garson ataması varsa SADECE kendi masalarının çağrıları (atama yoksa/müdür-sahip -> tümü)
+    $cagriMasaIdler = function_exists('_personelMasaIdler') ? _personelMasaIdler($p->sube_id, $p->id) : null;
+    $cagriQ = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
+        ->where('masa_cagrilari.sube_id', $p->sube_id)->where('masa_cagrilari.durum', 'bekliyor');
+    if (is_array($cagriMasaIdler)) $cagriQ->whereIn('masa_cagrilari.masa_id', $cagriMasaIdler ?: [0]);
+    $rows = $cagriQ
         ->orderBy('masa_cagrilari.id')
         ->select('masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad', 'masa_cagrilari.tutar', 'masa_cagrilari.odeme_token', 'masa_cagrilari.hedef_masa_id')
         ->limit(60)->get()
@@ -4395,8 +4453,10 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $comp = $folyoMetrik($pfrom, $pto);
 
     // --- Acik / Kapali folio ---
-    $acikAdet = DB::table('adisyonlar')->where('durum', 'acik')->count();
-    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam');
+    // Acik "masa" = fiziksel masa dolulugu (paket/gel-al masasiz + ayni masada coklu adisyon sismesin).
+    // Eskiden tum acik adisyonlar sayiliyordu -> 77/36 gibi masayi asan sacma deger. Sube filtreli.
+    $acikAdet = (int) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->whereNotNull('masa_id')->distinct()->count('masa_id');
+    $acikTutar = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
     $kapaliAdet = $info['folyo'];
     $kapaliTutar = $ciro;
 
@@ -7141,6 +7201,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
         if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
         _restoStokTuket($a->id, $p->sube_id, $p->id); // reçeteden otomatik stok düşümü (güvenli, bozmaz)
+        _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
         return ['ok' => 1, 'mesaj' => $mesaj];
     }
 
@@ -7173,6 +7234,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
                 DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
                 if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
                 _restoStokTuket($a->id, $p->sube_id, $p->id);
+                _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
                 return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Tüm kalemler ödendi, masa kapatıldı.'];
             }
             return ['ok' => 1, 'kapandi' => false, 'kalan' => $kalan, 'toplam' => (float) $a->toplam,
@@ -7190,6 +7252,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
             DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
             if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
             _restoStokTuket($a->id, $p->sube_id, $p->id);
+            _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
             return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Ödeme tamamlandı, masa kapatıldı.'];
         }
         return ['ok' => 1, 'kapandi' => false, 'kalan' => $yeniKalan, 'toplam' => (float) $a->toplam,
@@ -10280,7 +10343,21 @@ if (!function_exists('_santralEnsure')) {
 }
 
 // Cagri acildi -> oturum baslat + karsilama metni dondur
+// Santral beyin uçları: köprü X-Santral-Secret gönderir. env SANTRAL_SECRET tanımlıysa ZORUNLU doğrula
+// (maliyet + sahte sipariş/rezervasyon koruması). Boşsa (tanımsız) geriye uyum için serbest.
+if (!function_exists('_santralAuthGuard')) {
+    function _santralAuthGuard($r)
+    {
+        $beklenen = (string) env('SANTRAL_SECRET', '');
+        if ($beklenen === '') return null;
+        $gelen = (string) ($r->header('X-Santral-Secret') ?: $r->input('santral_secret') ?: '');
+        if (!hash_equals($beklenen, $gelen)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz santral isteği'], 401);
+        return null;
+    }
+}
+
 Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
     _santralEnsure();
     $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
     // MENU BOS SUBE TUZAGI: istenen subede aktif urun yoksa, urunu olan subeye otomatik gec.
@@ -10368,6 +10445,7 @@ Route::match(['get', 'post'], '/api/santral/musteri-teshis', function (Request $
 
 // Musteri konustu -> cevap uret (+ tamamlanan aksiyonu isle)
 Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
     _santralEnsure();
     $oid = (int) $r->input('oturum_id');
     $metin = (string) $r->input('metin');
@@ -10390,8 +10468,20 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
         $rz = $res['veri']['rezervasyon'];
         if (function_exists('_rezervasyonEnsure')) _rezervasyonEnsure($o->sube_id);
         try {
+            // CRM: ÖNCE müşteriyi çöz ki musteri_id rezervasyona BAĞLANSIN (eskiden insert'te eksikti -> CRM kopuk).
+            $kimlikTel = trim((string) ($o->telefon ?: ($rz['telefon'] ?? '')));
+            $adRz = trim((string) ($rz['ad'] ?? ''));
+            $mid = null;
+            if ($kimlikTel !== '' && function_exists('_santralMusteriEnsure')) {
+                try {
+                    $mid = _santralMusteriEnsure((int) $o->sube_id, $kimlikTel);
+                    if ($mid && $adRz !== '') DB::table('musteriler')->where('id', $mid)->update(['ad' => $adRz, 'updated_at' => now()]);
+                } catch (\Throwable $e) {
+                }
+            }
             $rid = DB::table('rezervasyonlar')->insertGetId([
                 'sube_id' => $o->sube_id,
+                'musteri_id' => $mid,
                 'ad' => trim((string) ($rz['ad'] ?? 'Telefon müşterisi')),
                 'telefon' => trim((string) ($rz['telefon'] ?? $o->telefon ?? '')) ?: null,
                 'kisi' => max(1, (int) ($rz['kisi'] ?? 2)),
@@ -10404,18 +10494,6 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
             ]);
             $guncelle['rezervasyon_id'] = $rid;
             $guncelle['sonuc'] = 'rezervasyon';
-            // CRM: rezervasyondaki adi musteri kaydina YAZ (sonraki aramada ADIYLA tanisin).
-            // Siparis akisi bunu yapiyordu; rezervasyonda eksikti -> "beni tanimadi" sebebi.
-            try {
-                $kimlikTel = trim((string) ($o->telefon ?: ($rz['telefon'] ?? '')));
-                $adRz = trim((string) ($rz['ad'] ?? ''));
-                if ($kimlikTel !== '' && function_exists('_santralMusteriEnsure')) {
-                    $mid = _santralMusteriEnsure((int) $o->sube_id, $kimlikTel);
-                    if ($mid && $adRz !== '') {
-                        DB::table('musteriler')->where('id', $mid)->update(['ad' => $adRz, 'updated_at' => now()]);
-                    }
-                }
-            } catch (\Throwable $e) {}
         } catch (\Throwable $e) { /* tablo/kolon farki: sessiz gec, cevap yine doner */ }
     } elseif ($res['aksiyon'] === 'siparis' && !empty($res['veri']['siparis'])) {
         // Faz 4: AI'nin aldigi paket siparisini GERCEK adisyona dusur (mevcut paket akisi: _paketSiparisAl).
@@ -10505,6 +10583,7 @@ if (!function_exists('_santralMusteriEnsure')) {
 }
 
 Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
     _santralEnsure();
     $oid = (int) $r->input('oturum_id');
     $sonuc = trim((string) $r->input('sonuc'));
@@ -11025,6 +11104,7 @@ if (!function_exists('_santralSesEnsure')) {
 
 // Kopru ses kaydini yukler (ham wav govdesi; oturum_id/tur/sube_id QUERY ile)
 Route::post('/api/santral/kayit-yukle', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
     _santralSesEnsure();
     $oturum = (int) $r->input('oturum_id');
     $tur = in_array($r->input('tur'), ['ai', 'aktarma'], true) ? $r->input('tur') : 'ai';
