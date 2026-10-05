@@ -3476,20 +3476,28 @@ if (!function_exists('_waBridge')) {
         return ['ok' => $st >= 200 && $st < 300, 'status' => $st, 'body' => json_decode((string) $raw, true)];
     }
 }
-Route::get('/api/wa/durum', fn (Request $r) => _waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/status'));
-Route::post('/api/wa/baglan', fn (Request $r) => _waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'));
-Route::get('/api/wa/qr', fn (Request $r) => _waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'));
-Route::post('/api/wa/cikis', fn (Request $r) => _waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'));
+if (!function_exists('_waNoCache')) {
+    // Tarayici ASLA cache'lemesin (durum/qr hep taze, sayfa eski JS'e yapismasin)
+    function _waNoCache($resp)
+    {
+        return $resp->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')->header('Expires', '0');
+    }
+}
+Route::get('/api/wa/durum', fn (Request $r) => _waNoCache(response()->json(_waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/status'))));
+Route::post('/api/wa/baglan', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'))));
+Route::get('/api/wa/qr', fn (Request $r) => _waNoCache(response()->json(_waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'))));
+Route::post('/api/wa/cikis', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'))));
 Route::get('/wa-yonetim', function () {
     $subeler = DB::table('subeler')->select('id', 'ad')->orderBy('id')->get();
-    return view('wa_yonetim', [
+    return _waNoCache(response()->view('wa_yonetim', [
         'subeler' => $subeler,
         'sidecar' => (string) resto_ayar_al('wa_sidecar_url', ''),
         'tokenVar' => ((string) resto_ayar_al('wa_servis_token', '')) !== '',
         'whSecretVar' => ((string) resto_ayar_al('wa_webhook_secret', '')) !== '',
         'karsilama' => (string) resto_ayar_al('wa_karsilama', ''),
         'webhook' => url('/api/wa/gelen'),
-    ]);
+    ]));
 });
 
 // Secilebilir ERKEK Turkce sesler (dinle + sec)

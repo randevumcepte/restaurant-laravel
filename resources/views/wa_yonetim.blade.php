@@ -110,7 +110,7 @@ function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show')
 
 async function durumYenile(){
   try{
-    const r = await fetch('/api/wa/durum?sube='+sube()); const j = await r.json();
+    const r = await fetch('/api/wa/durum?sube='+sube()+'&_='+Date.now(), {cache:'no-store'}); const j = await r.json();
     const b = j.body || j || {};
     const phone = b.phone || b.number || b.jid || '';
     // GERCEK eslesme = connected VE numara geldi. whatsmeow'da 'connected' cogu zaman
@@ -156,7 +156,7 @@ async function baglan(){
 }
 async function qrGetir(){
   try{
-    const r = await fetch('/api/wa/qr?sube='+sube()); const j = await r.json();
+    const r = await fetch('/api/wa/qr?sube='+sube()+'&_='+Date.now(), {cache:'no-store'}); const j = await r.json();
     const b = j.body || j || {};
     const val = b.qr || b.qrcode || b.code || b.image || '';
     if(val) drawQR(val);
