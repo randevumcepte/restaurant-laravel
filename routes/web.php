@@ -5304,13 +5304,17 @@ Route::get('/api/masalar', function (Request $r) {
                 $row['odenen'] = $odemeStat[$a->id] ?? 0;
                 $row['hesap_istendi'] = isset($hesapSet[$m->id]);
             }
-            // Hedef masa: hangi masalar birlesmis (kendisi + kaynaklar)
-            if ($a && isset($birlesmeGrup[$m->id])) {
+            // Hedef masa: hangi masalar birlesmis (kendisi + kaynaklar). Kaynak masa DEGILSE.
+            if ($a && isset($birlesmeGrup[$m->id]) && !isset($birlesmeKaynak[$m->id])) {
                 $row['birlesik_masalar'] = array_values(array_unique(array_merge([$m->ad], $birlesmeGrup[$m->id])));
             }
-            // Kaynak masa: artik bos ama acik hedefe bagli -> 'birlesik' sanal durumu
-            if (!$a && isset($birlesmeKaynak[$m->id])) {
+            // Kaynak masa: acik hedefe birlesmis -> 'birlesik' goster.
+            // Kendi acik adisyonu olsa BILE (tutarsiz/eski veri) cift gorunmesin: kendi karti gizlenir.
+            if (isset($birlesmeKaynak[$m->id])) {
                 $row['durum'] = 'birlesik';
+                $row['adisyon_id'] = null;   // kendi acik karti acilmasin
+                $row['tutar'] = 0;
+                unset($row['birlesik_masalar']);
                 $row['birlesik_hedef_ad'] = $birlesmeKaynak[$m->id]['hedef_ad'];
                 $row['birlesik_hedef_adisyon_id'] = $birlesmeKaynak[$m->id]['hedef_adisyon_id'];
             }
