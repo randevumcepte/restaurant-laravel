@@ -22,6 +22,7 @@ class SantralAsistan
     protected $telefon;       // arayan numara (CallerID)
     protected $musteri;       // kayitli musteri (obj|null) — tanima icin
     protected $sonSiparis;    // gecen siparis kalemleri [{urun,adet}] — "ayni siparis" icin
+    protected $_telaffuzMap = null; // TTS telaffuz sozlugu onbellegi (kelime=>okunus)
 
     public function __construct($subeId, $telefon = null)
     {
@@ -760,7 +761,63 @@ class SantralAsistan
             if (strlen($d) < 10) return $m[0]; // telefon degil -> dokunma
             return implode(' ', str_split($d));
         }, $t);
+        // TELAFFUZ: TTS'in yanlis okudugu yabanci kelimeleri net Turkce karsiligiyla degistir
+        // (or. burger -> hamburger). Varsayilan liste + panelden eklenen (santral_telaffuz).
+        $t = $this->telaffuz($t);
         $t = preg_replace('/\s+/u', ' ', $t);
         return trim($t);
+    }
+
+    /** TTS'in yanlis/tuhaf okudugu kelimelerin net Turkce karsiligi (kullanicinin kulagiyla duzenlenebilir). */
+    public const VARSAYILAN_TELAFFUZ = [
+        'burger' => 'hamburger',
+        'cheeseburger' => 'çizburger',
+        'sandwich' => 'sandviç',
+        'nugget' => 'naget',
+        'nuggets' => 'naget',
+        'wrap' => 'dürüm',
+        'barbecue' => 'barbekü',
+        'bbq' => 'barbekü',
+        'ketchup' => 'keçap',
+    ];
+
+    public static function telaffuzTablo()
+    {
+        if (!Schema::hasTable('santral_telaffuz')) {
+            Schema::create('santral_telaffuz', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->default(0)->index(); // 0 = tum subeler
+                $t->string('kelime', 120);
+                $t->string('okunus', 200);
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+    }
+
+    /** kelime(kucuk) => okunus — varsayilanlar + bu subenin (ve global) ozel kayitlari (ozel ezer). */
+    protected function telaffuzMap(): array
+    {
+        if ($this->_telaffuzMap !== null) return $this->_telaffuzMap;
+        $map = [];
+        foreach (static::VARSAYILAN_TELAFFUZ as $k => $v) $map[mb_strtolower($k, 'UTF-8')] = $v;
+        try {
+            self::telaffuzTablo();
+            foreach (DB::table('santral_telaffuz')->whereIn('sube_id', [0, $this->subeId])->get(['kelime', 'okunus']) as $r) {
+                $k = mb_strtolower(trim((string) $r->kelime), 'UTF-8');
+                if ($k !== '') $map[$k] = (string) $r->okunus;
+            }
+        } catch (\Throwable $e) {}
+        return $this->_telaffuzMap = $map;
+    }
+
+    protected function telaffuz($t)
+    {
+        $map = $this->telaffuzMap();
+        if (!$map) return $t;
+        // TAM KELIME degistir (buyuk/kucuk duyarsiz), Turkce harfler dahil.
+        return preg_replace_callback('/[\p{L}]+/u', function ($m) use ($map) {
+            $k = mb_strtolower($m[0], 'UTF-8');
+            return $map[$k] ?? $m[0];
+        }, $t);
     }
 }

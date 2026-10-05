@@ -11372,6 +11372,31 @@ Route::post('/api/santral-egitim/pdf-onayla', function (Request $r) {
     return response()->json(['ok' => 1, 'eklendi' => $n], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// --- TELAFFUZ SOZLUGU (TTS yanlis okuyan kelime -> net Turkce karsilik; or. burger->hamburger) ---
+Route::match(['get', 'post'], '/api/santral-egitim/telaffuz-liste', function (Request $r) {
+    \App\Services\SantralAsistan::telaffuzTablo();
+    $sube = _santralEgitimSube($r);
+    $ozel = DB::table('santral_telaffuz')->whereIn('sube_id', [0, $sube])->orderByDesc('id')->get(['id', 'kelime', 'okunus', 'sube_id']);
+    $vars = [];
+    foreach (\App\Services\SantralAsistan::VARSAYILAN_TELAFFUZ as $k => $v) $vars[] = ['kelime' => $k, 'okunus' => $v];
+    return response()->json(['ok' => 1, 'liste' => $ozel, 'varsayilan' => $vars], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/telaffuz-ekle', function (Request $r) {
+    \App\Services\SantralAsistan::telaffuzTablo();
+    $kelime = trim((string) $r->input('kelime'));
+    $okunus = trim((string) $r->input('okunus'));
+    if ($kelime === '' || $okunus === '') return response()->json(['ok' => 0, 'hata' => 'Kelime ve okunuş zorunlu'], 200, [], JSON_UNESCAPED_UNICODE);
+    $id = DB::table('santral_telaffuz')->insertGetId([
+        'sube_id' => _santralEgitimSube($r), 'kelime' => mb_substr($kelime, 0, 120), 'okunus' => mb_substr($okunus, 0, 200), 'created_at' => now(),
+    ]);
+    return response()->json(['ok' => 1, 'id' => $id], 200, [], JSON_UNESCAPED_UNICODE);
+});
+Route::post('/api/santral-egitim/telaffuz-sil', function (Request $r) {
+    \App\Services\SantralAsistan::telaffuzTablo();
+    DB::table('santral_telaffuz')->where('id', (int) $r->input('id'))->delete();
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // ============================ TANITIM SITESI (herkese acik landing = ANA SAYFA) ============================
 // public/tanitim.html statik dosyasini sunar (Blade parse etmez; @media/@keyframes bozulmaz).
 // Dashboard artik /dashboard adresinde.
