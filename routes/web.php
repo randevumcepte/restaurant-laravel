@@ -3367,12 +3367,22 @@ if (!function_exists('_waSohbetIsle')) {
 
 // INBOUND: bridge gelen WA mesajini buraya POST eder (sube_id, from, text). Hibrit yonlendirme.
 Route::post('/api/wa/gelen', function (Request $r) {
-    // Abuse koruması: token ayarliysa eslesmeli
-    $gizli = (string) resto_ayar_al('wa_servis_token', '');
-    if ($gizli !== '' && (string) ($r->header('X-Service-Token') ?: $r->input('token')) !== $gizli) {
+    // Dogrulama: bridge 'X-Webhook-Secret' yollar. wa_webhook_secret ayarliysa onu, yoksa wa_servis_token'i bekle.
+    $whSec = (string) resto_ayar_al('wa_webhook_secret', '');
+    $svcTok = (string) resto_ayar_al('wa_servis_token', '');
+    $beklenen = $whSec !== '' ? $whSec : $svcTok;
+    $gelenSec = (string) ($r->header('X-Webhook-Secret') ?: $r->header('X-Service-Token') ?: $r->input('token'));
+    if ($beklenen !== '' && $gelenSec !== $beklenen) {
         return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
     }
-    $subeId = (int) ($r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
+    // Bridge TUM event'leri ayni URL'e POST eder (connected/qr.ready/message.sent/delivered/read...).
+    // Sadece GELEN mesaji isle; digerlerini sessizce yoksay.
+    $event = (string) $r->input('event', '');
+    if ($event !== '' && $event !== 'message.received') {
+        return response()->json(['ok' => 1, 'tip' => 'ignored', 'event' => $event]);
+    }
+    // Oturum id = salonId (bridge alan adi) = bizim sube_id
+    $subeId = (int) ($r->input('salonId') ?: $r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
     $from = (string) ($r->input('from') ?: $r->input('tel') ?: $r->input('gonderen'));
     $text = trim((string) ($r->input('text') ?: $r->input('mesaj') ?: $r->input('body')));
     $s = DB::table('subeler')->find($subeId);
@@ -3439,7 +3449,7 @@ Route::get('/wa-kur', function () {
 });
 Route::get('/wa-ayar', function (Request $r) {
     $a = (string) $r->query('anahtar');
-    if (!in_array($a, ['wa_sidecar_url', 'wa_servis_token', 'wa_karsilama'])) return response('Geçersiz anahtar', 400);
+    if (!in_array($a, ['wa_sidecar_url', 'wa_servis_token', 'wa_webhook_secret', 'wa_karsilama'])) return response('Geçersiz anahtar', 400);
     resto_ayar_yaz($a, (string) $r->query('deger'));
     return response("OK: $a kaydedildi.")->header('Content-Type', 'text/plain; charset=utf-8');
 });
@@ -3476,6 +3486,7 @@ Route::get('/wa-yonetim', function () {
         'subeler' => $subeler,
         'sidecar' => (string) resto_ayar_al('wa_sidecar_url', ''),
         'tokenVar' => ((string) resto_ayar_al('wa_servis_token', '')) !== '',
+        'whSecretVar' => ((string) resto_ayar_al('wa_webhook_secret', '')) !== '',
         'karsilama' => (string) resto_ayar_al('wa_karsilama', ''),
         'webhook' => url('/api/wa/gelen'),
     ]);

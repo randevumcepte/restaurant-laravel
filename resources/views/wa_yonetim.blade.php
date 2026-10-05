@@ -70,7 +70,9 @@
       <label>Sidecar URL (whatsmeow bridge)</label>
       <input id="sidecar" value="{{ $sidecar }}" placeholder="http://127.0.0.1:3002">
       <label>Servis Token {!! $tokenVar ? '<span style=\'color:#6EE7B7\'>(kayıtlı)</span>' : '' !!}</label>
-      <input id="token" type="password" placeholder="{{ $tokenVar ? '•••••• (değiştirmek için yaz)' : 'bridge X-Service-Token' }}">
+      <input id="token" type="password" placeholder="{{ $tokenVar ? '•••••• (değiştirmek için yaz)' : 'bridge SERVICE_TOKEN / SHARED_SECRET' }}">
+      <label>Webhook Secret {!! $whSecretVar ? '<span style=\'color:#6EE7B7\'>(kayıtlı)</span>' : '' !!}</label>
+      <input id="whsecret" type="password" placeholder="{{ $whSecretVar ? '•••••• (değiştirmek için yaz)' : 'bridge .env WEBHOOK_SECRET (gelen mesaj doğrulaması)' }}">
       <label>Karşılama mesajı (opsiyonel)</label>
       <textarea id="karsilama" placeholder="Boşsa varsayılan karşılama kullanılır">{{ $karsilama }}</textarea>
       <div style="margin-top:12px"><button class="btn" onclick="ayarKaydet()">Kaydet</button></div>
@@ -165,11 +167,13 @@ async function cikis(){
 async function ayarKaydet(){
   const sc = $('#sidecar').value.trim();
   const tk = $('#token').value.trim();
+  const ws = $('#whsecret').value.trim();
   const ka = $('#karsilama').value;
   await fetch('/wa-ayar?anahtar=wa_sidecar_url&deger='+encodeURIComponent(sc));
   if(tk) await fetch('/wa-ayar?anahtar=wa_servis_token&deger='+encodeURIComponent(tk));
+  if(ws) await fetch('/wa-ayar?anahtar=wa_webhook_secret&deger='+encodeURIComponent(ws));
   await fetch('/wa-ayar?anahtar=wa_karsilama&deger='+encodeURIComponent(ka));
-  toast('Ayarlar kaydedildi'); $('#token').value=''; durumYenile();
+  toast('Ayarlar kaydedildi'); $('#token').value=''; $('#whsecret').value=''; durumYenile();
 }
 async function testGonder(){
   const tel = $('#testTel').value.trim();
