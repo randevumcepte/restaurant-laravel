@@ -8213,6 +8213,28 @@ if (!function_exists('_rezervasyonEnsure')) {
                 $t->index(['sube_id', 'tarih']);
             });
         }
+        // Sonradan eklenen alanlar (mevcut tabloya defansif) — musteri CRM baglama + ozel istek etiketleri
+        if (!Schema::hasColumn('rezervasyonlar', 'musteri_id')) {
+            Schema::table('rezervasyonlar', fn ($t) => $t->unsignedBigInteger('musteri_id')->nullable()->after('sube_id'));
+        }
+        if (!Schema::hasColumn('rezervasyonlar', 'etiketler')) {
+            Schema::table('rezervasyonlar', fn ($t) => $t->string('etiketler', 255)->nullable());
+        }
+        if (!Schema::hasColumn('rezervasyonlar', 'adisyon_id')) {
+            Schema::table('rezervasyonlar', fn ($t) => $t->unsignedBigInteger('adisyon_id')->nullable()); // oturtulunca acilan adisyon
+        }
+        // On siparis kalemleri (ne yiyecek) — misafir gelince adisyona otomatik dusurulur
+        if (!Schema::hasTable('rezervasyon_kalemleri')) {
+            Schema::create('rezervasyon_kalemleri', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('rezervasyon_id')->index();
+                $t->unsignedBigInteger('urun_id')->nullable();
+                $t->string('urun_adi');
+                $t->unsignedInteger('adet')->default(1);
+                $t->decimal('fiyat', 10, 2)->default(0);
+                $t->string('not')->nullable();
+            });
+        }
         if (DB::table('rezervasyonlar')->where('sube_id', $subeId)->count() > 0) return;
         $bugun = now()->format('Y-m-d');
         $yarin = now()->addDay()->format('Y-m-d');
@@ -8274,6 +8296,72 @@ Route::get('/api/patron/rezervasyon-demo-doldur', function (Request $r) {
 
 if (!function_exists('_rezDurumlar')) {
     function _rezDurumlar() { return ['bekliyor', 'onaylandi', 'geldi', 'iptal', 'gelmedi']; }
+}
+
+// Rezervasyon musterisini telefondan coz (CRM): bul, yoksa olustur; alerji/not musteriye yaz. musteri_id doner.
+if (!function_exists('_rezMusteriCozumle')) {
+    function _rezMusteriCozumle($subeId, $ad, $tel, $not = '')
+    {
+        $tel = trim((string) $tel);
+        if ($tel === '') return null;
+        if (!Schema::hasColumn('musteriler', 'telefon_norm')) {
+            Schema::table('musteriler', fn ($t) => $t->string('telefon_norm', 12)->nullable()->index());
+        }
+        $norm = _telNorm($tel);
+        $m = $norm ? DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first() : null;
+        if (!$m) $m = DB::table('musteriler')->where('sube_id', $subeId)->where('telefon', $tel)->first();
+        if ($m) {
+            $upd = [];
+            if ((trim((string) $m->ad) === '') && $ad !== '') $upd['ad'] = $ad;
+            if (trim((string) $not) !== '') $upd['notlar'] = mb_substr($not, 0, 240); // alerji/tercih
+            if ($upd) { $upd['updated_at'] = now(); DB::table('musteriler')->where('id', $m->id)->update($upd); }
+            return (int) $m->id;
+        }
+        return (int) DB::table('musteriler')->insertGetId([
+            'sube_id' => $subeId, 'ad' => $ad ?: 'Misafir', 'telefon' => $tel, 'telefon_norm' => $norm,
+            'notlar' => trim((string) $not) !== '' ? mb_substr($not, 0, 240) : null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+}
+
+// Ozel istek etiketlerini temizle (dizi veya CSV -> guvenli CSV)
+if (!function_exists('_rezEtiketTemizle')) {
+    function _rezEtiketTemizle($raw)
+    {
+        if (is_string($raw)) $raw = explode(',', $raw);
+        if (!is_array($raw)) return '';
+        $temiz = [];
+        foreach ($raw as $e) {
+            $e = trim(mb_substr((string) $e, 0, 30));
+            if ($e !== '') $temiz[] = $e;
+        }
+        return implode(',', array_slice(array_values(array_unique($temiz)), 0, 12));
+    }
+}
+
+// On siparis kalemlerini kaydet (JSON/dizi: [{urun_id, adet, not}]) -> eklenen adet
+if (!function_exists('_rezKalemKaydet')) {
+    function _rezKalemKaydet($subeId, $rezId, $raw)
+    {
+        if (is_string($raw)) $raw = json_decode($raw, true);
+        if (!is_array($raw)) return 0;
+        $n = 0;
+        foreach ($raw as $k) {
+            if (!is_array($k)) continue;
+            $uid = (int) ($k['urun_id'] ?? 0);
+            $adet = max(1, min(99, (int) ($k['adet'] ?? 1)));
+            if ($uid <= 0) continue;
+            $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $subeId)->first(['id', 'ad', 'fiyat']);
+            if (!$u) continue;
+            DB::table('rezervasyon_kalemleri')->insert([
+                'rezervasyon_id' => $rezId, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
+                'adet' => $adet, 'fiyat' => (float) $u->fiyat, 'not' => trim((string) ($k['not'] ?? '')) ?: null,
+            ]);
+            $n++;
+        }
+        return $n;
+    }
 }
 
 // PATRON API: gune gore rezervasyon listesi (varsayilan bugun)
@@ -8395,15 +8483,108 @@ Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
     if ($ad === '') return ['ok' => 0, 'hata' => 'İsim gerekli'];
     $tarih = $r->input('tarih') ?: now()->format('Y-m-d');
     $saat = substr(trim((string) $r->input('saat', '19:00')), 0, 5);
+    $tel = trim((string) $r->input('telefon'));
     $masaId = (int) $r->input('masa_id');
     if ($masaId && !DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->exists()) $masaId = 0;
+
+    // Musteri CRM: telefondan bul/olustur (alerji-not musteriye yazilir) + ozel istek etiketleri
+    $musteriId = _rezMusteriCozumle($p->sube_id, $ad, $tel, (string) $r->input('musteri_not'));
+    $etiketler = _rezEtiketTemizle($r->input('etiketler'));
+
     $id = DB::table('rezervasyonlar')->insertGetId([
-        'sube_id' => $p->sube_id, 'masa_id' => $masaId ?: null, 'ad' => $ad,
-        'telefon' => trim((string) $r->input('telefon')) ?: null, 'kisi' => max(1, (int) $r->input('kisi', 2)),
+        'sube_id' => $p->sube_id, 'musteri_id' => $musteriId, 'masa_id' => $masaId ?: null, 'ad' => $ad,
+        'telefon' => $tel ?: null, 'kisi' => max(1, (int) $r->input('kisi', 2)),
         'tarih' => $tarih, 'saat' => $saat, 'durum' => 'onaylandi', 'kaynak' => 'telefon',
-        'not' => trim((string) $r->input('not')) ?: null, 'personel_id' => $p->id, 'created_at' => now(),
+        'not' => trim((string) $r->input('not')) ?: null, 'etiketler' => $etiketler ?: null,
+        'personel_id' => $p->id, 'created_at' => now(),
     ]);
-    return ['ok' => 1, 'id' => $id, 'mesaj' => "$ad · $tarih $saat rezervasyonu eklendi."];
+
+    // On siparis (ne yiyecek) kalemleri
+    $kalem = _rezKalemKaydet($p->sube_id, $id, $r->input('on_siparis'));
+
+    return ['ok' => 1, 'id' => $id, 'musteri_id' => $musteriId, 'kalem' => $kalem,
+        'mesaj' => "$ad · $tarih $saat rezervasyonu eklendi." . ($kalem ? " ($kalem ön sipariş)" : '')];
+});
+
+// PATRON API: telefondan musteri bul (CRM kart: gecmis + alerji/not)
+Route::get('/api/patron/musteri-bul', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $tel = trim((string) $r->input('telefon'));
+    if ($tel === '' || !Schema::hasTable('musteriler')) return ['ok' => 1, 'bulundu' => false];
+    if (!Schema::hasColumn('musteriler', 'telefon_norm')) return ['ok' => 1, 'bulundu' => false];
+    $norm = _telNorm($tel);
+    $m = $norm ? DB::table('musteriler')->where('sube_id', $p->sube_id)->where('telefon_norm', $norm)->first() : null;
+    if (!$m) $m = DB::table('musteriler')->where('sube_id', $p->sube_id)->where('telefon', $tel)->first();
+    if (!$m) return ['ok' => 1, 'bulundu' => false];
+    $sonZiyaret = DB::table('adisyonlar')->where('musteri_id', $m->id)->where('durum', 'odendi')->max('kapanis');
+    return ['ok' => 1, 'bulundu' => true, 'musteri' => _musteriKart($m),
+        'son_ziyaret' => $sonZiyaret ? \Carbon\Carbon::parse($sonZiyaret)->format('d.m.Y') : null];
+});
+
+// PATRON API: rezervasyon detay (musteri karti + on siparis kalemleri + etiketler)
+Route::get('/api/patron/rezervasyon-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _rezervasyonEnsure($p->sube_id);
+    $rez = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
+        ->where('rezervasyonlar.id', (int) $r->input('id'))->where('rezervasyonlar.sube_id', $p->sube_id)
+        ->select('rezervasyonlar.*', 'masalar.ad as masa_ad')->first();
+    if (!$rez) return ['ok' => 0, 'hata' => 'Rezervasyon bulunamadı'];
+    $kalemler = DB::table('rezervasyon_kalemleri')->where('rezervasyon_id', $rez->id)->get()
+        ->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'urun_adi' => $k->urun_adi, 'adet' => (int) $k->adet,
+            'fiyat' => (float) $k->fiyat, 'not' => $k->not]);
+    $musteri = $rez->musteri_id ? _musteriKart(DB::table('musteriler')->find($rez->musteri_id)) : null;
+    return ['ok' => 1, 'rezervasyon' => $rez, 'kalemler' => $kalemler->values(),
+        'etiketler' => $rez->etiketler ? array_values(array_filter(array_map('trim', explode(',', $rez->etiketler)))) : [],
+        'musteri' => $musteri];
+});
+
+// PATRON API: rezervasyonu OTURT -> adisyon ac (yoksa) + on siparisi mutfaga dus + durum 'geldi'
+Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa / adisyon açma yetkiniz yok.'];
+    _rezervasyonEnsure($p->sube_id);
+    $rez = DB::table('rezervasyonlar')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->first();
+    if (!$rez) return ['ok' => 0, 'hata' => 'Rezervasyon bulunamadı'];
+    $masaId = (int) ($r->input('masa_id') ?: $rez->masa_id);
+    if (!$masaId) return ['ok' => 0, 'hata' => 'Önce masa seçin.'];
+    $masa = DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->first();
+    if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+
+    $adId = DB::table('adisyonlar')->where('masa_id', $masaId)->where('durum', 'acik')->value('id');
+    if (!$adId) {
+        $adId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $p->sube_id, 'masa_id' => $masaId, 'kanal' => 'salon', 'musteri_id' => $rez->musteri_id,
+            'misafir_sayisi' => max(1, (int) $rez->kisi), 'durum' => 'acik', 'acan_personel_id' => $p->id,
+            'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    } elseif ($rez->musteri_id) {
+        DB::table('adisyonlar')->where('id', $adId)->update(['musteri_id' => $rez->musteri_id]);
+    }
+    DB::table('masalar')->where('id', $masaId)->update(['durum' => 'dolu']);
+
+    // On siparisi adisyona dus (mutfaga gitsin: durum 'yeni')
+    $eklenen = 0; $ekTutar = 0.0;
+    foreach (DB::table('rezervasyon_kalemleri')->where('rezervasyon_id', $rez->id)->get() as $k) {
+        $tutar = (float) $k->fiyat * (int) $k->adet;
+        DB::table('adisyon_kalemleri')->insert([
+            'adisyon_id' => $adId, 'urun_id' => $k->urun_id, 'urun_adi' => $k->urun_adi, 'adet' => (int) $k->adet,
+            'birim_fiyat' => (float) $k->fiyat, 'tutar' => $tutar, 'durum' => 'yeni', 'gonderim_zamani' => null,
+            'not' => $k->not ?: 'Ön sipariş', 'personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $eklenen++; $ekTutar += $tutar;
+    }
+    if ($ekTutar > 0) {
+        DB::table('adisyonlar')->where('id', $adId)->update([
+            'ara_toplam' => DB::raw('ara_toplam + ' . $ekTutar), 'toplam' => DB::raw('toplam + ' . $ekTutar), 'updated_at' => now(),
+        ]);
+    }
+    DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]);
+    return ['ok' => 1, 'adisyon_id' => $adId, 'kalem' => $eklenen,
+        'mesaj' => $masa->ad . ' açıldı' . ($eklenen ? ", $eklenen ön sipariş mutfağa gönderildi." : '.')];
 });
 
 // PATRON API: rezervasyon durum guncelle (+ masa atama opsiyonel)
