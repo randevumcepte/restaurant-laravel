@@ -34,3 +34,8 @@ Thumbs.db
 /whatsmeow-bridge/data/
 /whatsmeow-bridge/whatsmeow-bridge
 /whatsmeow-bridge/*.log
+/restaurant-whatsmeow/.env
+/restaurant-whatsmeow/data/
+/restaurant-whatsmeow/whatsmeow-bridge
+/restaurant-whatsmeow/restaurant-whatsmeow
+/restaurant-whatsmeow/*.log
