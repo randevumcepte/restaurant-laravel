@@ -5323,6 +5323,37 @@ Route::get('/api/masalar', function (Request $r) {
     return ['ok' => 1, 'masalar' => $masalar];
 });
 
+// GEÇİCİ (demo): acik adisyonlari cesitli TAZE durumlara cek -> masalar renkli/gercekci gorunsun.
+Route::get('/api/masalar/demo-tazele', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $aciklar = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->whereNotNull('masa_id')->orderBy('id')->get();
+    $acilisSet = [5, 25, 8, 60, 90, 15, 40, 3, 55, 20]; // dk once (cesitlilik)
+    $i = 0;
+    foreach ($aciklar as $a) {
+        $acilisDk = $acilisSet[$i % count($acilisSet)];
+        DB::table('adisyonlar')->where('id', $a->id)->update(['acilis' => now()->subMinutes($acilisDk)]);
+        if ($i % 7 == 3) {
+            // SİPARİŞ YOK (yeni/bekliyor): kalemleri sil
+            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->delete();
+            DB::table('adisyonlar')->where('id', $a->id)->update(['ara_toplam' => 0, 'toplam' => 0]);
+        } else {
+            // Son sipariş zamanı: bazıları serviste (yakın), bazıları durgun (eski)
+            $sonDk = ($i % 3 == 0) ? 55 : 8;
+            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->update(['gonderim_zamani' => now()->subMinutes($sonDk)]);
+        }
+        if ($i % 5 == 2) { // ÖDENDİ (yeşil)
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'nakit', 'tutar' => (float) $a->toplam, 'bahsis' => 0, 'personel_id' => $a->acan_personel_id, 'created_at' => now()]);
+        }
+        if ($i % 6 == 4 && Schema::hasTable('masa_cagrilari')) { // HESAP İSTEDİ (mor)
+            DB::table('masa_cagrilari')->where('masa_id', $a->masa_id)->where('tip', 'hesap')->where('durum', 'bekliyor')->delete();
+            DB::table('masa_cagrilari')->insert(['sube_id' => $p->sube_id, 'masa_id' => $a->masa_id, 'tip' => 'hesap', 'durum' => 'bekliyor', 'created_at' => now()]);
+        }
+        $i++;
+    }
+    return ['ok' => 1, 'tazelenen' => $aciklar->count()];
+});
+
 // Personel yetkileri: listele (sahip/mudur gorur) + kaydet (SADECE sahip)
 Route::get('/api/patron/personeller', function (Request $r) {
     $p = _apiPersonel($r);
@@ -8547,6 +8578,8 @@ Route::post('/api/patron/masa-birlestir', function (Request $r) {
     $kaynak = DB::table('adisyonlar')->find((int) $r->kaynak_adisyon_id);
     if (!$hedef || !$kaynak || $hedef->durum !== 'acik' || $kaynak->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyonlar bulunamadı'];
     if ($hedef->id === $kaynak->id) return ['ok' => 0, 'hata' => 'Aynı adisyon seçilemez'];
+    // KURAL: iki ayrı AÇIK hesap birleştirilmez (hesap karışmasın). Önce biri kapatılsın/ödensin.
+    return ['ok' => 0, 'hata' => 'İki masada da açık hesap var. Önce birinin hesabını kapatın/ödeyin, sonra birleştirin.'];
     DB::table('adisyon_kalemleri')->where('adisyon_id', $kaynak->id)->update(['adisyon_id' => $hedef->id, 'updated_at' => now()]);
     // Zincir: kaynaga daha once birlesmis masalarin loglari da hedefe tasinsin (Masa1->Masa2->Masa3)
     DB::table('adisyon_masa_loglari')->where('adisyon_id', $kaynak->id)->where('islem', 'birlestirme')->update(['adisyon_id' => $hedef->id]);
@@ -8570,6 +8603,10 @@ Route::post('/api/patron/masa-grupla', function (Request $r) {
     $kaynakMasa = DB::table('masalar')->where('id', (int) $r->kaynak_masa_id)->where('sube_id', $p->sube_id)->first();
     if (!$hedefMasa || !$kaynakMasa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
     if ($hedefMasa->id === $kaynakMasa->id) return ['ok' => 0, 'hata' => 'Aynı masa seçilemez'];
+    // KURAL: iki masada da AÇIK hesap varsa birleştirme (hesap karışmasın). Boş masayla ekstra oturma serbest.
+    $hedefAcikVar = DB::table('adisyonlar')->where('masa_id', $hedefMasa->id)->where('durum', 'acik')->exists();
+    $kaynakAcikVar = DB::table('adisyonlar')->where('masa_id', $kaynakMasa->id)->where('durum', 'acik')->exists();
+    if ($hedefAcikVar && $kaynakAcikVar) return ['ok' => 0, 'hata' => 'İki masada da açık hesap var. Önce birinin hesabını kapatın/ödeyin, sonra birleştirin.'];
     $misafir = max(1, (int) ($r->misafir ?? 1));
 
     // Hedef adisyonu: yoksa YENI ac (birlesik masa acilis)
