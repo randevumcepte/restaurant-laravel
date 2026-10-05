@@ -10363,6 +10363,18 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
             ]);
             $guncelle['rezervasyon_id'] = $rid;
             $guncelle['sonuc'] = 'rezervasyon';
+            // CRM: rezervasyondaki adi musteri kaydina YAZ (sonraki aramada ADIYLA tanisin).
+            // Siparis akisi bunu yapiyordu; rezervasyonda eksikti -> "beni tanimadi" sebebi.
+            try {
+                $kimlikTel = trim((string) ($o->telefon ?: ($rz['telefon'] ?? '')));
+                $adRz = trim((string) ($rz['ad'] ?? ''));
+                if ($kimlikTel !== '' && function_exists('_santralMusteriEnsure')) {
+                    $mid = _santralMusteriEnsure((int) $o->sube_id, $kimlikTel);
+                    if ($mid && $adRz !== '') {
+                        DB::table('musteriler')->where('id', $mid)->update(['ad' => $adRz, 'updated_at' => now()]);
+                    }
+                }
+            } catch (\Throwable $e) {}
         } catch (\Throwable $e) { /* tablo/kolon farki: sessiz gec, cevap yine doner */ }
     } elseif ($res['aksiyon'] === 'siparis' && !empty($res['veri']['siparis'])) {
         // Faz 4: AI'nin aldigi paket siparisini GERCEK adisyona dusur (mevcut paket akisi: _paketSiparisAl).
