@@ -33,6 +33,9 @@ class RtpOturumu {
 
     // Ambiyans (opsiyonel). slin16=16bit ornek, ulaw=8bit ornek/kare.
     this.ambAktif = !!(cfg.ambiyans && cfg.ambiyans.aktif);
+    // AI dinlerken ambiyans carpani (ducking): 0=dinlerken sustur, 0.3=kisik, 1=ayni.
+    this.dinlemeOran = (cfg.ambiyans && typeof cfg.ambiyans.dinleme === 'number')
+      ? Math.max(0, Math.min(1, cfg.ambiyans.dinleme)) : 0.3;
     this.slin = cfg.mediaFormat === 'slin16';
     this.spf = this.slin ? (cfg.audio.bytesPerFrame / 2) : cfg.audio.bytesPerFrame; // ornek/kare
     this.amb = null;
@@ -88,12 +91,16 @@ class RtpOturumu {
       if (!this.uzak) return;
       try {
         const tts = this.kuyruk.shift();               // Buffer | undefined
-        // GUVENLIK: Ambiyansi SADECE AI konusurken (TTS karesi varken) gonder.
-        // AI dinlerken (kuyruk bos) HIC ses gonderme -> dinleme penceresi temiz kalir,
-        // ambiyans karsinin mikrofonuna sizip STT'yi (AI'nin kulagini) bozmaz.
-        if (!tts) return;
         const amb = this.amb.kare(this.spf);           // Int16Array (gain uygulanmis)
-        this._gonder(this._karistir(amb, tts));
+        if (tts) {
+          // AI KONUSUYOR: tam ambiyans + TTS karisimi (ses zaten ambiyansi bastirir)
+          this._gonder(this._karistir(amb, tts));
+        } else if (this.dinlemeOran > 0) {
+          // AI DINLIYOR: ambiyansi KIS (ducking) -> olu sessizlik olmaz ama STT'yi minimum etkiler.
+          // dinlemeOran=0 ise hic gonderme (en temiz STT).
+          for (let i = 0; i < amb.length; i++) amb[i] = Math.round(amb[i] * this.dinlemeOran);
+          this._gonder(this._karistir(amb, null));
+        }
       } catch (e) {
         log.debug('ambiyans kare hatasi:', e.message);
       }
