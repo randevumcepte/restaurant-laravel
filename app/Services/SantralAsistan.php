@@ -249,6 +249,7 @@ class SantralAsistan
         // ILK SELAM ZATEN YAPILDI -> tekrar selamlama (en kritik: yoksa her turda 'hos geldiniz' deyip takiliyor)
         $p .= "ÇOK ÖNEMLİ: İlk karşılama (merhaba / hoş geldiniz) ZATEN yapıldı. Bundan sonraki yanıtlarında TEKRAR selam verme, 'hoş geldiniz' DEME, kendini tekrar tanıtma. Doğrudan müşterinin söylediğine yanıt ver. Örnek: müşteri 'sipariş vermek istiyorum' derse SADECE 'Tabii, ne almak istersiniz?' de (yeniden hoş geldiniz deme). ";
         $p .= "TTS ile seslendirileceğin için DÜZ metin yaz: emoji, madde işareti, yıldız, tırnak KULLANMA. ";
+        $p .= "Görüşmeyi kapatırken DOĞAL ve kısa veda et: 'İyi günler', 'Afiyet olsun, iyi günler' veya 'Görüşmek üzere, iyi günler'. 'Hoş kalın' / 'hoşça kalın' DEME (telefonda tuhaf/samimiyetsiz duruyor). ";
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
         // ZAMAN BAGLAMI: AI bugunun tarihini bilmezse "yarin" deyince "ayin kaci" diye sorar -> tarihi enjekte et.
         // NOT: dakika/saat KOYMA (her turda degisir -> prompt cache bozulur). Tarih + kaba dilim (cagri boyunca sabit).
