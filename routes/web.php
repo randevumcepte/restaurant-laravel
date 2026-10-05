@@ -5246,6 +5246,30 @@ Route::get('/api/masalar', function (Request $r) {
     $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
         ->select('id', 'masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
 
+    // ---- Masa renk-durumu için ek sinyaller (acik adisyonlar) ----
+    $aidler = $acik->pluck('id')->all();
+    $kalemStat = []; $odemeStat = []; $hesapSet = [];
+    if ($aidler) {
+        // kalem sayisi + son gonderim zamani
+        foreach (DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->where('durum', '!=', 'iptal')
+            ->select('adisyon_id', DB::raw('count(*) as adet'), DB::raw('max(gonderim_zamani) as son'))
+            ->groupBy('adisyon_id')->get() as $k) {
+            $kalemStat[$k->adisyon_id] = ['adet' => (int) $k->adet, 'son' => $k->son];
+        }
+        // odenen tutar (acik adisyonda kismi/tam odeme = "odendi" yesil sinyali)
+        foreach (DB::table('odemeler')->whereIn('adisyon_id', $aidler)
+            ->select('adisyon_id', DB::raw('sum(tutar) as t'))->groupBy('adisyon_id')->get() as $o) {
+            $odemeStat[$o->adisyon_id] = (float) $o->t;
+        }
+        // hesap istendi (masa_cagrilari tip=hesap, bekliyor)
+        if (Schema::hasTable('masa_cagrilari')) {
+            foreach (DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)
+                ->where('tip', 'hesap')->where('durum', 'bekliyor')->pluck('masa_id') as $mid) {
+                $hesapSet[$mid] = true;
+            }
+        }
+    }
+
     // Aktif birlesmeler: HALA acik hedef adisyona birlesmis kaynak masalar (log tabanli, kendi kendini temizler)
     $masaAdlari = DB::table('masalar')->where('sube_id', $p->sube_id)->pluck('ad', 'id');
     $birlesmeGrup = [];   // hedef_masa_id => [kaynak masa adlari]
@@ -5266,11 +5290,20 @@ Route::get('/api/masalar', function (Request $r) {
         ->where('masalar.sube_id', $p->sube_id)
         ->select('masalar.id', 'masalar.ad', 'masalar.durum', 'masalar.kapasite', 'bolgeler.ad as bolge')
         ->orderBy('bolgeler.sira')->orderBy('masalar.id')->get()
-        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak) {
+        ->map(function ($m) use ($acik, $birlesmeGrup, $birlesmeKaynak, $kalemStat, $odemeStat, $hesapSet) {
             $a = $acik[$m->id] ?? null;
             $row = ['id' => $m->id, 'ad' => $m->ad, 'bolge' => $m->bolge, 'durum' => $m->durum,
                 'kapasite' => $m->kapasite, 'tutar' => $a ? (float) $a->toplam : 0,
                 'adisyon_id' => $a ? $a->id : null];
+            // Renk-durumu sinyalleri
+            if ($a) {
+                $row['acilis_dk'] = $a->acilis ? (int) \Carbon\Carbon::parse($a->acilis)->diffInMinutes(now()) : 0;
+                $ks = $kalemStat[$a->id] ?? null;
+                $row['kalem_say'] = $ks['adet'] ?? 0;
+                $row['son_siparis_dk'] = ($ks && $ks['son']) ? (int) \Carbon\Carbon::parse($ks['son'])->diffInMinutes(now()) : -1;
+                $row['odenen'] = $odemeStat[$a->id] ?? 0;
+                $row['hesap_istendi'] = isset($hesapSet[$m->id]);
+            }
             // Hedef masa: hangi masalar birlesmis (kendisi + kaynaklar)
             if ($a && isset($birlesmeGrup[$m->id])) {
                 $row['birlesik_masalar'] = array_values(array_unique(array_merge([$m->ad], $birlesmeGrup[$m->id])));
