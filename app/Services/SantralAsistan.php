@@ -250,7 +250,7 @@ class SantralAsistan
         $p .= "ÇOK ÖNEMLİ: İlk karşılama (merhaba / hoş geldiniz) ZATEN yapıldı. Bundan sonraki yanıtlarında TEKRAR selam verme, 'hoş geldiniz' DEME, kendini tekrar tanıtma. Doğrudan müşterinin söylediğine yanıt ver. Örnek: müşteri 'sipariş vermek istiyorum' derse SADECE 'Tabii, ne almak istersiniz?' de (yeniden hoş geldiniz deme). ";
         $p .= "TTS ile seslendirileceğin için DÜZ metin yaz: emoji, madde işareti, yıldız, tırnak KULLANMA. ";
         $p .= "Görevlerin: karşılama; çalışma saati, adres ve menü hakkında bilgi vermek; REZERVASYON almak; PAKET SİPARİŞ almak; gerektiğinde yetkiliye aktarmak. ";
-        $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
+        $p .= "REZERVASYON için gereken bilgiler: ad, kişi sayısı, tarih ve saat. Kayıtlı müşteriyse adını ZATEN biliyorsun, TEKRAR SORMA (aşağıdaki müşteri bilgilerine bak). Telefon numarası arayan hattan OTOMATİK alınır; telefon numarasını SORMA ve sesli olarak OKUMA/tekrar etme. Eksik olanları TEK TEK, kısa sorularla iste; hepsi tamamlanınca müşteriye kişi sayısı/tarih/saat'i tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon ve tamam=true ile çağır. ";
         // PAKET SIPARIS: KESIN SIRALI script. Adimlari ATLAMA, KARISTIRMA, geri donme.
         $p .= "PAKET SİPARİŞ tam olarak bu SIRAYLA ilerler, adımları karıştırma: ";
         $p .= "1) Ürün ve adetleri al (SADECE menüden, olmayan ürünü uydurma). ";
@@ -321,7 +321,7 @@ class SantralAsistan
             $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
             $p .= " Geçen siparişi: " . $ozet . ".";
         }
-        $p .= " KAYITLI MÜŞTERİ KURALLARI: Sipariş alırken teslimat adresini ve telefonunu TEKRAR SORMA; kayıtlı bilgileri kullan ve sadece ONAY al ('Teslimat yine [adres] olsun mu?'). ";
+        $p .= " KAYITLI MÜŞTERİ KURALLARI: Sipariş VEYA rezervasyon alırken adını, teslimat adresini ve telefonunu TEKRAR SORMA; kayıtlı bilgileri kullan ve sadece gerekiyorsa ONAY al ('Teslimat yine [adres] olsun mu?'). Rezervasyonda sadece kişi sayısı, tarih ve saati sor. Telefon numarasını sesli OKUMA. ";
         if (!empty($this->sonSiparis)) {
             $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
             $p .= "ÖNEMLİ — GEÇEN SİPARİŞ: Müşteri sipariş vermek isteyince (örn. 'sipariş vermek istiyorum') İLK İŞ olarak geçen siparişini PROAKTİF hatırlat ve aynısını isteyip istemediğini sor: 'Tabii, geçen sefer $ozet almıştınız; aynısını ister misiniz, yoksa farklı bir şey mi?'. ";
@@ -739,6 +739,14 @@ class SantralAsistan
         $t = trim((string) $t);
         if ($t === '') return '';
         $t = str_replace(['*', '_', '`', '"', '“', '”', '•', '- ', '\n'], ['', '', '', '', '', '', '', '', ' '], $t);
+        // TELEFON NUMARASI: TTS "beş yüz kırk bir milyar..." diye OKUMASIN -> 10+ haneli
+        // numarayi (araya bosluk/tire/parantez girebilir) rakam rakam okut. Tarih(8)/fiyat/saat/yil
+        // etkilenmez (esik 10 hane = telefon). Ornek: "5412948144" -> "5 4 1 2 9 4 8 1 4 4".
+        $t = preg_replace_callback('/\d[\d \-\.\(\)]{6,}\d/u', function ($m) {
+            $d = preg_replace('/\D/', '', $m[0]);
+            if (strlen($d) < 10) return $m[0]; // telefon degil -> dokunma
+            return implode(' ', str_split($d));
+        }, $t);
         $t = preg_replace('/\s+/u', ' ', $t);
         return trim($t);
     }
