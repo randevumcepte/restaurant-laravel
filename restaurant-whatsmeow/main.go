@@ -365,6 +365,36 @@ func buildEventHandler(sess *Session, hooks *WebhookPoster) func(interface{}) {
 					"messageId": msgID,
 				})
 			}
+
+		case *events.Message:
+			// GELEN musteri mesaji (1:1 metin/konum). Kendi mesajlarimiz ve gruplar haric.
+			if evt.Info.IsFromMe || evt.Info.IsGroup {
+				return
+			}
+			text := evt.Message.GetConversation()
+			if text == "" {
+				if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
+					text = ext.GetText()
+				}
+			}
+			payload := map[string]interface{}{
+				"salonId":   sess.SalonID,
+				"from":      evt.Info.Sender.User,
+				"text":      text,
+				"pushName":  evt.Info.PushName,
+				"messageId": evt.Info.ID,
+				"type":      "text",
+			}
+			if loc := evt.Message.GetLocationMessage(); loc != nil {
+				payload["type"] = "location"
+				payload["lat"] = loc.GetDegreesLatitude()
+				payload["lng"] = loc.GetDegreesLongitude()
+			}
+			if text == "" && payload["type"] != "location" {
+				return // medya/sticker vb. -> atla
+			}
+			log.Printf("[%s] gelen mesaj from=%s type=%v", sess.SalonID, evt.Info.Sender.User, payload["type"])
+			hooks.Post("message.received", payload)
 		}
 	}
 }
