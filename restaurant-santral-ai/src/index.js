@@ -78,13 +78,27 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-10-06b (ambiyans ducking: konusurken tam, dinlerken kisik -> STT korunur; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
+  log.info(`SURUM: 2026-10-06c (ARI keepalive+otomatik yeniden baglan -> 'ilk cagri dusuyor' giderildi; ambiyans ducking; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
   client = await ariClient.connect(cfg.ari.url, cfg.ari.user, cfg.ari.pass);
+  ariHandlerKur(client);
 
-  client.on('StasisStart', async (event, channel) => {
+  process.on('SIGINT', () => { log.info('kapaniyor…'); process.exit(0); });
+  process.on('SIGTERM', () => process.exit(0));
+
+  await client.start(cfg.ari.app);
+  log.info('AI Santral kopru hazir. Cagri bekleniyor.');
+
+  // BAGLANTIYI SICAK TUT + koptuysa yeniden baglan: idle'da WS bayatlayip ILK CAGRIYI
+  // dusurmesini onler ("ilk arama kapaniyor, ikinci aciliyor" sorunu). 25sn'de bir saglik kontrolu.
+  setInterval(ariSaglikKontrol, 25000);
+}
+
+// StasisStart/End + ChannelDestroyed handlerlarini bir client'a bagla (yeniden baglanmada tekrar kullanilir).
+function ariHandlerKur(c) {
+  c.on('StasisStart', async (event, channel) => {
     if (extMediaKanallari.has(channel.id) || /^UnicastRTP/.test(channel.name || '')) {
       log.debug(`externalMedia bacagi StasisStart, atlaniyor: ${channel.name}`);
       return;
@@ -95,23 +109,30 @@ async function main() {
     }
     await cagriBasla(channel, event);
   });
+  c.on('ChannelDestroyed', async (event, channel) => { await kanalDustu(channel.id); });
+  // Kanal Stasis'ten cikinca (hangup) StasisEnd gelir; ChannelDestroyed ULASMAYABILIR -> ikisini de dinle.
+  c.on('StasisEnd', async (event, channel) => { log.debug(`StasisEnd: ${channel.id}`); await kanalDustu(channel.id); });
+  c.on('WebSocketError', (err) => log.warn('ARI WS hata:', err && err.message));
+}
 
-  client.on('ChannelDestroyed', async (event, channel) => {
-    await kanalDustu(channel.id);
-  });
-
-  // ONEMLI: Kanal Stasis'ten cikinca (hangup) StasisEnd gelir; ChannelDestroyed uygulamaya
-  // ULASMAYABILIR. Bu yuzden StasisEnd'i de dinle -> temizle garanti calissin (ses yuklensin, oturum kapansin).
-  client.on('StasisEnd', async (event, channel) => {
-    log.debug(`StasisEnd: ${channel.id}`);
-    await kanalDustu(channel.id);
-  });
-
-  process.on('SIGINT', () => { log.info('kapaniyor…'); process.exit(0); });
-  process.on('SIGTERM', () => process.exit(0));
-
-  await client.start(cfg.ari.app);
-  log.info('AI Santral kopru hazir. Cagri bekleniyor.');
+let _ariYenileniyor = false;
+async function ariSaglikKontrol() {
+  try {
+    await client.asterisk.getInfo(); // hafif ping: baglanti canli mi + WS'i sicak tutar
+  } catch (e) {
+    if (_ariYenileniyor) return;
+    _ariYenileniyor = true;
+    log.warn('ARI baglantisi kopuk olabilir, yeniden baglaniliyor:', e && e.message);
+    try {
+      client = await ariClient.connect(cfg.ari.url, cfg.ari.user, cfg.ari.pass);
+      ariHandlerKur(client);
+      await client.start(cfg.ari.app);
+      log.info('ARI yeniden baglandi (kopru tekrar hazir).');
+    } catch (e2) {
+      log.error('ARI yeniden baglanamadi:', e2 && e2.message);
+    }
+    _ariYenileniyor = false;
+  }
 }
 
 async function cagriBasla(channel, event) {
