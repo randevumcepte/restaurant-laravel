@@ -10567,19 +10567,34 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                 } catch (\Throwable $e) {
                 }
             }
-            $rid = DB::table('rezervasyonlar')->insertGetId([
-                'sube_id' => $o->sube_id,
-                'musteri_id' => $mid,
-                'ad' => trim((string) ($rz['ad'] ?? 'Telefon müşterisi')),
-                'telefon' => trim((string) ($rz['telefon'] ?? $o->telefon ?? '')) ?: null,
-                'kisi' => max(1, (int) ($rz['kisi'] ?? 2)),
-                'tarih' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($rz['tarih'] ?? '')) ? $rz['tarih'] : now()->format('Y-m-d'),
-                'saat' => preg_match('/^\d{1,2}:\d{2}$/', (string) ($rz['saat'] ?? '')) ? $rz['saat'] : '19:00',
-                'durum' => 'bekliyor',
-                'kaynak' => 'telefon',
-                'not' => trim((string) ($rz['not'] ?? '')) !== '' ? ('AI Santral — ' . trim((string) $rz['not'])) : 'AI Santral',
-                'created_at' => now(),
-            ]);
+            $tarihV = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($rz['tarih'] ?? '')) ? $rz['tarih'] : now()->format('Y-m-d');
+            $saatV = preg_match('/^\d{1,2}:\d{2}$/', (string) ($rz['saat'] ?? '')) ? substr((string) $rz['saat'], 0, 5) : '19:00';
+            // CIFT REZERVASYON GUARD: ayni telefon + tarih + saat aktif rezervasyon varsa YENISINI OLUSTURMA (model kacirsa bile).
+            $rid = null;
+            $son10g = substr(preg_replace('/\D/', '', $kimlikTel), -10);
+            if (strlen($son10g) >= 7) {
+                foreach (DB::table('rezervasyonlar')->where('sube_id', $o->sube_id)->where('tarih', $tarihV)
+                    ->whereIn('durum', ['bekliyor', 'onaylandi'])->get(['id', 'telefon', 'saat']) as $er) {
+                    if (substr(preg_replace('/\D/', '', (string) $er->telefon), -10) === $son10g && substr((string) $er->saat, 0, 5) === $saatV) {
+                        $rid = (int) $er->id; break; // mevcut rezervasyona bagla, duplikat olusturma
+                    }
+                }
+            }
+            if (!$rid) {
+                $rid = DB::table('rezervasyonlar')->insertGetId([
+                    'sube_id' => $o->sube_id,
+                    'musteri_id' => $mid,
+                    'ad' => trim((string) ($rz['ad'] ?? 'Telefon müşterisi')),
+                    'telefon' => trim((string) ($rz['telefon'] ?? $o->telefon ?? '')) ?: null,
+                    'kisi' => max(1, (int) ($rz['kisi'] ?? 2)),
+                    'tarih' => $tarihV,
+                    'saat' => $saatV,
+                    'durum' => 'bekliyor',
+                    'kaynak' => 'telefon',
+                    'not' => trim((string) ($rz['not'] ?? '')) !== '' ? ('AI Santral — ' . trim((string) $rz['not'])) : 'AI Santral',
+                    'created_at' => now(),
+                ]);
+            }
             $guncelle['rezervasyon_id'] = $rid;
             $guncelle['sonuc'] = 'rezervasyon';
         } catch (\Throwable $e) { /* tablo/kolon farki: sessiz gec, cevap yine doner */ }
