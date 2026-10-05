@@ -23,6 +23,7 @@ class SantralAsistan
     protected $musteri;       // kayitli musteri (obj|null) — tanima icin
     protected $sonSiparis;    // gecen siparis kalemleri [{urun,adet}] — "ayni siparis" icin
     protected $_telaffuzMap = null; // TTS telaffuz sozlugu onbellegi (kelime=>okunus)
+    protected $mevcutRez = [];      // arayanin yaklasan rezervasyonlari (cift rezervasyonu onle)
 
     public function __construct($subeId, $telefon = null)
     {
@@ -30,6 +31,25 @@ class SantralAsistan
         $this->sube = DB::table('subeler')->where('id', $this->subeId)->first();
         $this->telefon = $telefon ? preg_replace('/\D/', '', (string) $telefon) : null;
         $this->musteriYukle();
+        $this->mevcutRezYukle();
+    }
+
+    /** Arayanin (telefonuna gore) yaklasan aktif rezervasyonlari -> cift rezervasyonu onlemek + hatirlatmak. */
+    protected function mevcutRezYukle(): void
+    {
+        $this->mevcutRez = [];
+        try {
+            if (!$this->telefon || !Schema::hasTable('rezervasyonlar')) return;
+            $son10 = substr($this->telefon, -10);
+            $bugun = now()->setTimezone('Europe/Istanbul')->format('Y-m-d');
+            foreach (DB::table('rezervasyonlar')->where('sube_id', $this->subeId)
+                ->whereIn('durum', ['bekliyor', 'onaylandi'])->where('tarih', '>=', $bugun)
+                ->orderBy('tarih')->orderBy('saat')->limit(200)->get(['tarih', 'saat', 'kisi', 'telefon']) as $r) {
+                if (substr(preg_replace('/\D/', '', (string) $r->telefon), -10) === $son10) {
+                    $this->mevcutRez[] = ['tarih' => $r->tarih, 'saat' => substr($r->saat, 0, 5), 'kisi' => (int) $r->kisi];
+                }
+            }
+        } catch (\Throwable $e) {}
     }
 
     /** CallerID ile kayitli musteriyi + gecen siparisini yukle (tanima/kisisellestirme). */
@@ -293,9 +313,39 @@ class SantralAsistan
         if ($tel) $p .= " Restoranın telefonu: $tel.";
 
         $p .= $this->musteriBaglami();
+        $p .= $this->rezervasyonBaglami();
         $p .= $this->teslimatBaglami();
         $p .= $this->menuBaglami();
 
+        return $p;
+    }
+
+    /** Mevcut rezervasyon (cift onle) + kapasite/doluluk (dolu ise kibarca reddet). */
+    protected function rezervasyonBaglami(): string
+    {
+        $p = '';
+        if ($this->mevcutRez) {
+            $liste = implode('; ', array_map(fn ($r) => $r['tarih'] . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
+            $p .= " DİKKAT — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Yeni rezervasyon isterse ÖNCE bunu nazikçe hatırlat ('Zaten $liste için rezervasyonunuz görünüyor') ve AYNI gün/saate TEKRAR oluşturma; müşteri bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istiyor netleştir. ";
+        }
+        try {
+            if (Schema::hasTable('masalar') && Schema::hasColumn('masalar', 'kapasite')) {
+                $kap = (int) DB::table('masalar')->where('sube_id', $this->subeId)->sum('kapasite');
+                if ($kap > 0) {
+                    $ist = now()->setTimezone('Europe/Istanbul');
+                    $bugun = $ist->format('Y-m-d');
+                    $son = $ist->copy()->addDays(7)->format('Y-m-d');
+                    $satir = [];
+                    foreach (DB::table('rezervasyonlar')->where('sube_id', $this->subeId)
+                        ->whereIn('durum', ['bekliyor', 'onaylandi'])->where('tarih', '>=', $bugun)->where('tarih', '<=', $son)
+                        ->select('tarih', DB::raw('SUM(kisi) as kisi'))->groupBy('tarih')->orderBy('tarih')->get() as $y) {
+                        $satir[] = $y->tarih . ': ' . (int) $y->kisi . '/' . $kap;
+                    }
+                    $p .= " RESTORAN KAPASİTESİ yaklaşık $kap kişi. Yaklaşan günlerin doluluğu (rezerve kişi/kapasite): " . ($satir ? implode(', ', $satir) : 'tüm günler boş') . ". ";
+                    $p .= "Rezervasyon alırken: istenen gün+kişi sayısı kapasiteyi aşıyorsa ya da gün doluysa, KAYDETME; kibarca o günün/saatin dolu olduğunu söyle ve en yakın uygun gün/saati öner. Uygunsa normal devam et. (Doluluk yaklaşıktır, emin değilsen kibarca teyit ederek ilerle.) ";
+                }
+            }
+        } catch (\Throwable $e) {}
         return $p;
     }
 
