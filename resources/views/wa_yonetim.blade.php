@@ -110,10 +110,18 @@ async function durumYenile(){
   try{
     const r = await fetch('/api/wa/durum?sube='+sube()); const j = await r.json();
     const b = j.body || j || {};
-    const bagli = b.connected === true;
+    const phone = b.phone || b.number || b.jid || '';
+    // GERCEK eslesme = connected VE numara geldi. whatsmeow'da 'connected' cogu zaman
+    // sadece sokete baglandi demek (henuz giris yok) -> numara gelmeden QR'i GIZLEME.
+    const bagli = b.connected === true && !!phone;
     const pill = $('#durumPill'), yazi = $('#durumYazi');
-    if(bagli){ pill.className='pill ok'; yazi.textContent='Bağlı'+(b.phone?(' · '+b.phone):''); $('#qrbox').style.display='none'; if(qrTimer){clearInterval(qrTimer); qrTimer=null;} }
-    else { pill.className='pill no'; yazi.textContent = (b.status||'bağlı değil'); }
+    if(bagli){
+      pill.className='pill ok'; yazi.textContent='Bağlı · '+phone;
+      $('#qrbox').style.display='none'; if(qrTimer){clearInterval(qrTimer); qrTimer=null;}
+    } else {
+      pill.className='pill no';
+      yazi.textContent = b.status ? b.status : (b.connected ? 'bağlanıyor — QR’ı tarayın' : 'bağlı değil');
+    }
   }catch(e){ $('#durumYazi').textContent='sidecar erişilemedi'; }
 }
 
