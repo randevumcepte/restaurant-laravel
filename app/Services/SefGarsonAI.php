@@ -30,14 +30,14 @@ class SefGarsonAI
     public function esik($k)
     {
         static $t = [
-            'bos_masa_dk'     => 1,   // normal 12
-            'durgun_dk'       => 2,   // normal 18
-            'tatli_dk'        => 1,   // normal 22
-            'kalabalik_kisi'  => 3,   // normal 4
-            'hatirlatma_dk'   => 1,   // normal 3
-            'eskalasyon_esik' => 3,   // normal 3
-            'soz_suresi_dk'   => 1,   // normal 4
-            'soz_esik'        => 2,   // normal 2
+            'bos_masa_dk'     => 12,  // prod (test 1)
+            'durgun_dk'       => 18,  // prod (test 2)
+            'tatli_dk'        => 22,  // prod (test 1)
+            'kalabalik_kisi'  => 4,   // prod (test 3)
+            'hatirlatma_dk'   => 3,   // prod (test 1)
+            'eskalasyon_esik' => 3,
+            'soz_suresi_dk'   => 4,   // prod (test 1)
+            'soz_esik'        => 2,
         ];
         $c = config('sefgarson.' . $k);
         return $c !== null ? (int) $c : ($t[$k] ?? 0);

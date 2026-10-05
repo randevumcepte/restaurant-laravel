@@ -8182,6 +8182,17 @@ Route::post('/api/mutfak/hazir', function (Request $r) {
     } else {
         DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     }
+    // SERVİSE HAZIR -> garsona bildirim (masa_cagrilari). Pull-only değil artık; çağrı listesinde görünür.
+    try {
+        if (Schema::hasTable('masa_cagrilari')) {
+            $adId = (int) ($r->adisyon_id ?: (DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->value('adisyon_id') ?: 0));
+            $masaId = $adId ? DB::table('adisyonlar')->where('id', $adId)->value('masa_id') : null;
+            if ($masaId && !DB::table('masa_cagrilari')->where('masa_id', $masaId)->where('tip', 'servise_hazir')->where('durum', 'bekliyor')->exists()) {
+                DB::table('masa_cagrilari')->insert(['sube_id' => $p->sube_id, 'masa_id' => $masaId, 'tip' => 'servise_hazir', 'durum' => 'bekliyor', 'created_at' => now()]);
+            }
+        }
+    } catch (\Throwable $e) {
+    }
     return ['ok' => 1];
 });
 
@@ -8671,6 +8682,20 @@ Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
     $tel = trim((string) $r->input('telefon'));
     $masaId = (int) $r->input('masa_id');
     if ($masaId && !DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->exists()) $masaId = 0;
+    // GUARD: geçmiş tarih/saat reddi
+    if ($tarih < now()->format('Y-m-d')) return ['ok' => 0, 'hata' => 'Geçmiş tarihe rezervasyon alınamaz.'];
+    if ($tarih === now()->format('Y-m-d') && $saat < now()->format('H:i')) return ['ok' => 0, 'hata' => 'Geçmiş saate rezervasyon alınamaz.'];
+    // GUARD: aynı masa + tarih + ±90 dk pencerede aktif rezervasyon varsa çift-rezervasyonu reddet
+    if ($masaId) {
+        $dk = fn ($s) => ((int) substr((string) $s, 0, 2)) * 60 + (int) substr((string) $s, 3, 2);
+        $yeniDk = $dk($saat);
+        foreach (DB::table('rezervasyonlar')->where('sube_id', $p->sube_id)->where('masa_id', $masaId)
+            ->where('tarih', $tarih)->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi'])->pluck('saat') as $cs) {
+            if (abs($dk(substr((string) $cs, 0, 5)) - $yeniDk) < 90) {
+                return ['ok' => 0, 'hata' => 'Bu masa ' . substr((string) $cs, 0, 5) . ' civarında zaten rezerve. Başka masa/saat seçin.'];
+            }
+        }
+    }
 
     // Musteri CRM: telefondan bul/olustur (alerji-not musteriye yazilir) + ozel istek etiketleri
     $musteriId = _rezMusteriCozumle($p->sube_id, $ad, $tel, (string) $r->input('musteri_not'));
@@ -9520,6 +9545,7 @@ Route::get('/api/raporlar', function (Request $r) {
     $son30 = now()->subDays(30);
     $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', $son30)
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyon_kalemleri.durum', '!=', 'iptal') // iptal kalem ciroya girmesin + şube
         ->select('urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as ciro'))
         ->groupBy('urun_adi')->orderByDesc('ciro')->limit(10)->get();
     $personel = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
