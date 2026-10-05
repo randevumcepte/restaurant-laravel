@@ -8261,19 +8261,8 @@ if (!function_exists('_rezervasyonEnsure')) {
                 $t->string('not')->nullable();
             });
         }
-        if (DB::table('rezervasyonlar')->where('sube_id', $subeId)->count() > 0) return;
-        $bugun = now()->format('Y-m-d');
-        $yarin = now()->addDay()->format('Y-m-d');
-        $demo = [
-            ['ad' => 'Ahmet Yılmaz', 'telefon' => '0532 111 22 33', 'kisi' => 4, 'tarih' => $bugun, 'saat' => '19:30', 'durum' => 'onaylandi', 'kaynak' => 'telefon', 'not' => 'Pencere kenarı isteği'],
-            ['ad' => 'Elif Kaya', 'telefon' => '0533 999 88 77', 'kisi' => 2, 'tarih' => $bugun, 'saat' => '20:00', 'durum' => 'bekliyor', 'kaynak' => 'web', 'not' => null],
-            ['ad' => 'Berk İnşaat (kurumsal)', 'telefon' => '0216 555 44 33', 'kisi' => 8, 'tarih' => $bugun, 'saat' => '21:00', 'durum' => 'onaylandi', 'kaynak' => 'telefon', 'not' => 'Doğum günü pastası'],
-            ['ad' => 'Deniz Demir', 'telefon' => '0534 222 11 00', 'kisi' => 3, 'tarih' => $yarin, 'saat' => '13:00', 'durum' => 'bekliyor', 'kaynak' => 'web', 'not' => 'Bebek sandalyesi'],
-            ['ad' => 'Selin Ak', 'telefon' => '0535 333 22 11', 'kisi' => 6, 'tarih' => $yarin, 'saat' => '20:30', 'durum' => 'onaylandi', 'kaynak' => 'qr', 'not' => null],
-        ];
-        foreach ($demo as $d) {
-            DB::table('rezervasyonlar')->insert(array_merge($d, ['sube_id' => $subeId, 'created_at' => now()]));
-        }
+        // Otomatik demo tohumlama KALDIRILDI (tertemiz başlangıç — sayı 0 olunca demo geri gelmesin).
+        // Demo gerekirse: /api/patron/rezervasyon-demo-doldur
     }
 }
 
