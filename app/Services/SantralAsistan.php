@@ -282,6 +282,7 @@ class SantralAsistan
         $saatN = (int) $ist->format('H');
         $dilim = $saatN < 6 ? 'gece' : ($saatN < 11 ? 'sabah' : ($saatN < 17 ? 'gündüz' : ($saatN < 22 ? 'akşam' : 'gece')));
         $p .= "ZAMAN: Bugün $gunAd, " . $ist->format('Y-m-d') . " (Türkiye, şu an $dilim). 'Bugün' = " . $ist->format('Y-m-d') . ", 'yarın' = " . $ist->copy()->addDay()->format('Y-m-d') . ". Müşteri 'bugün / yarın / bu akşam / hafta sonu / cumartesi' gibi derse tarihi SEN hesapla ve YYYY-MM-DD'ye çevir; müşteriye ASLA 'ayın kaçı' diye SORMA. Saati de HH:MM yap ('akşam 8' = 20:00, 'öğlen' = 12:00). ";
+        $p .= "Müşteriye tarihi SÖYLERKEN doğal/Türkçe konuş, ham tarih (2026-10-07 gibi) ya da robotik ifade KULLANMA: bugünse 'bugün', yarınsa 'yarın', bu haftaysa gün adı ('bu çarşamba' / 'çarşamba'), gelecek haftaysa 'haftaya çarşamba'; yalnızca 2+ hafta ilerideyse '21 Ekim' gibi gün+ay söyle. (santral_aksiyon aracına ise HER ZAMAN YYYY-MM-DD ver.) ";
         $p .= "REZERVASYON için gereken bilgiler: kişi sayısı, tarih ve saat. TELEFON numarasını arayan hattan biliyorsun; SORMA ve sesli OKUMA/tekrar etme. ADINI: kayıtlı müşteriyse zaten biliyorsun, TEKRAR SORMA; kayıtlı değilse adını yalnızca BİR KEZ nazikçe sor. Göreceli tarih ifadelerini (yarın, bu akşam) kendin çöz, müşteriye tarih/ayın kaçı diye sorma. Eksik olanları (kişi/tarih/saat) TEK TEK, kısa sorularla iste; tamamlanınca müşteriye SADECE kişi sayısı/tarih/saat'i tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon, tarih=YYYY-MM-DD, saat=HH:MM ve tamam=true ile çağır. ";
         $p .= "EN KRİTİK KAYIT KURALI: Müşteri onay verdiği an (tamam / olur / onaylıyorum / evet) AYNI yanıtında MUTLAKA santral_aksiyon aracını çağır — rezervasyonda niyet=rezervasyon + kisi + tarih=YYYY-MM-DD + saat=HH:MM + varsa not; siparişte niyet=siparis + kalemler + odeme; her ikisinde tamam=true. Sadece 'rezervasyonunuzu/siparişinizi aldım, onaylıyorum' DEMEK YETMEZ; aracı çağırmazsan sisteme HİÇBİR ŞEY KAYDEDİLMEZ. Onay anındaki metnini kısa tut ki araç çağrısı da sığsın. ";
         $p .= "KAPANIŞ (insani): Rezervasyon/sipariş aracını çağırdıktan sonra görüşmeyi HEMEN KAPATMA ve 'iyi günler' deyip bitirme. Kısaca teyit et ve 'Başka bir arzunuz var mı?' / 'Yardımcı olabileceğim başka bir şey var mı?' diye sor. Müşteri 'yok / hayır / teşekkürler / sağ olun' gibi bitirdiğinde SICAK bir veda et (ör. 'Rica ederiz, iyi günler, görüşmek üzere') ve santral_aksiyon niyet=veda, tamam=true çağır — hat ANCAK o zaman kapanır. Müşteri başka bir şey isterse yardıma devam et. ";
@@ -325,7 +326,7 @@ class SantralAsistan
     {
         $p = '';
         if ($this->mevcutRez) {
-            $liste = implode('; ', array_map(fn ($r) => $r['tarih'] . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
+            $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
             $p .= " DİKKAT — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Yeni rezervasyon isterse ÖNCE bunu nazikçe hatırlat ('Zaten $liste için rezervasyonunuz görünüyor') ve AYNI gün/saate TEKRAR oluşturma; müşteri bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istiyor netleştir. ";
         }
         try {
@@ -562,6 +563,28 @@ class SantralAsistan
             if (preg_match('/(?:^| )' . preg_quote($kk, '/') . '/u', $n)) return true;
         }
         return false;
+    }
+
+    /** YYYY-MM-DD -> dogal Turkce ifade: bugün / yarın / bu çarşamba / haftaya çarşamba / '21 Ekim'. */
+    protected function dogalTarih($ymd): string
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $ymd)) return (string) $ymd;
+        $hedefTs = strtotime($ymd . ' 00:00:00');
+        $bugunTs = strtotime(now()->setTimezone('Europe/Istanbul')->format('Y-m-d') . ' 00:00:00');
+        if (!$hedefTs) return (string) $ymd;
+        $fark = (int) round(($hedefTs - $bugunTs) / 86400);
+        if ($fark === 0) return 'bugün';
+        if ($fark === 1) return 'yarın';
+        if ($fark === -1) return 'dün';
+        $gunAd = [1 => 'pazartesi', 2 => 'salı', 3 => 'çarşamba', 4 => 'perşembe', 5 => 'cuma', 6 => 'cumartesi', 7 => 'pazar'];
+        $gun = $gunAd[(int) date('N', $hedefTs)] ?? '';
+        $hbBugun = $bugunTs - ((int) date('N', $bugunTs) - 1) * 86400; // haftanin pazartesisi
+        $hbHedef = $hedefTs - ((int) date('N', $hedefTs) - 1) * 86400;
+        $haftaFark = (int) round(($hbHedef - $hbBugun) / (7 * 86400));
+        if ($fark > 1 && $haftaFark === 0) return 'bu ' . $gun;
+        if ($haftaFark === 1) return 'haftaya ' . $gun;
+        $aylar = [1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan', 5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos', 9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık'];
+        return (int) date('j', $hedefTs) . ' ' . ($aylar[(int) date('n', $hedefTs)] ?? '');
     }
 
     protected function norm($s)
