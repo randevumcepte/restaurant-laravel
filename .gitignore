@@ -26,6 +26,11 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
-# WhatsApp whatsmeow bridge (restoran instance) — sunucuda yasar, repoya GIRMEZ
-# (derlenen binary + .env sirlari + data/ session SQLite dosyalari)
-/whatsmeow-bridge/
+# WhatsApp whatsmeow bridge: KAYNAK repoda tutulur, ama ASLA sunlar girmez:
+#  - .env  (WEBHOOK_SECRET/SHARED_SECRET sirlari)
+#  - data/ (WhatsApp session SQLite = hesap kimligi! sizarsa hesap ele gecirilir)
+#  - derlenen binary + loglar
+/whatsmeow-bridge/.env
+/whatsmeow-bridge/data/
+/whatsmeow-bridge/whatsmeow-bridge
+/whatsmeow-bridge/*.log
