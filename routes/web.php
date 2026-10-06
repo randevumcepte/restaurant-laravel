@@ -3223,8 +3223,44 @@ if (!function_exists('_restoWaGonder')) {
             curl_close($ch);
             $ok = $kod >= 200 && $kod < 300;
             if ($ok) { try { \App\Services\KontorServisi::dus($subeId, 1, 'whatsapp-mesaj'); } catch (\Throwable $e) {} } // 1 mesaj = 1 kontör
+            try { _waLog($subeId, $jid, (string) $mesaj, $ok ? 1 : 2, $ok ? null : ('http ' . $kod)); } catch (\Throwable $e) {} // istatistik logu
             return $ok;
         } catch (\Throwable $e) { return false; }
+    }
+}
+// WhatsApp mesaj logu (istatistik: başarılı/başarısız + günlük hacim grafiği)
+if (!function_exists('_waLogEnsure')) {
+    function _waLogEnsure()
+    {
+        if (!Schema::hasTable('wa_mesaj_loglari')) {
+            try {
+                Schema::create('wa_mesaj_loglari', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('telefon', 40)->nullable()->index();
+                    $t->string('yon', 8)->default('giden'); // giden|gelen
+                    $t->tinyInteger('durum')->default(1);    // 1 gönderildi · 2 başarısız · 3 SMS'e düştü · 0 kuyrukta
+                    $t->text('mesaj')->nullable();
+                    $t->string('hata', 160)->nullable();
+                    $t->timestamp('created_at')->nullable()->index();
+                });
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+}
+if (!function_exists('_waLog')) {
+    function _waLog($subeId, $tel, $mesaj, $durum = 1, $hata = null, $yon = 'giden')
+    {
+        _waLogEnsure();
+        try {
+            DB::table('wa_mesaj_loglari')->insert([
+                'sube_id' => (int) $subeId, 'telefon' => mb_substr((string) $tel, 0, 40), 'yon' => $yon,
+                'durum' => (int) $durum, 'mesaj' => mb_substr((string) $mesaj, 0, 2000),
+                'hata' => $hata ? mb_substr((string) $hata, 0, 160) : null, 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+        }
     }
 }
 if (!function_exists('_waDurumMetni')) {
@@ -3591,9 +3627,19 @@ Route::get('/api/wa/durum', fn (Request $r) => _waNoCache(response()->json(_waBr
 Route::post('/api/wa/baglan', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'))));
 Route::get('/api/wa/qr', fn (Request $r) => _waNoCache(response()->json(_waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'))));
 Route::post('/api/wa/cikis', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'))));
-// WhatsApp Yönetimi — SİSTEM İÇİNDE (panel layout + sidebar) aç; /wa-yonetim sayfasını gömer.
+// WhatsApp Yönetimi — SİSTEM İÇİNDE (panel layout + sidebar). Randevumcepte tasarımının birebir uyarlaması.
 Route::get('/whatsapp', function () {
-    return view('whatsapp_panel');
+    \App\Services\KontorServisi::selfHeal();
+    return view('whatsapp_panel', [
+        'subeId' => (int) (DB::table('subeler')->min('id') ?: 1),
+        'bg' => [
+            'konum' => (string) resto_ayar_al('wa_konum_linki', ''),
+            'igBaslik' => (string) (resto_ayar_al('wa_instagram_baslik', '') ?: 'Instagram'),
+            'igLink' => (string) resto_ayar_al('wa_instagram_linki', ''),
+            'webBaslik' => (string) (resto_ayar_al('wa_web_baslik', '') ?: 'Web Sitesi'),
+            'webLink' => (string) resto_ayar_al('wa_web_linki', ''),
+        ],
+    ]);
 });
 
 Route::get('/wa-yonetim', function () {
@@ -3696,6 +3742,71 @@ Route::post('/api/wa/kontor-yukle', function (Request $r) {
         DB::table('wa_kontor_talepleri')->where('id', (int) $r->input('talep_id'))->update(['durum' => 'yuklendi', 'updated_at' => now()]);
     }
     return response()->json($res);
+});
+
+// ===================== WhatsApp İSTATİSTİK (İstatistik / Mesajlarım / Alıcılarım) =====================
+Route::get('/api/wa/ozet-data', function (Request $r) {
+    _waLogEnsure();
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->min('id'));
+    $gq = fn () => DB::table('wa_mesaj_loglari')->where('sube_id', $subeId)->where('yon', 'giden');
+    $say = fn ($from, $durum = null) => (clone $gq())->when($from, fn ($q) => $q->where('created_at', '>=', $from))->when($durum !== null, fn ($q) => $q->where('durum', $durum))->count();
+    $bugun0 = today();
+    $bugun = (clone $gq())->whereDate('created_at', $bugun0)->count();
+    $bugunOk = (clone $gq())->whereDate('created_at', $bugun0)->where('durum', 1)->count();
+    $bugunFail = (clone $gq())->whereDate('created_at', $bugun0)->where('durum', 2)->count();
+    $bugunSms = (clone $gq())->whereDate('created_at', $bugun0)->where('durum', 3)->count();
+    $son7 = $say(now()->subDays(7)); $son7Ok = $say(now()->subDays(7), 1);
+    $son30 = $say(now()->subDays(30)); $son30Ok = $say(now()->subDays(30), 1);
+    $basari = $son7 > 0 ? round($son7Ok / $son7 * 100) : 100;
+    // Günlük hacim (son 30 gün) — tek grup sorgu
+    $harita = [];
+    foreach ((clone $gq())->where('created_at', '>=', now()->subDays(29)->startOfDay())
+        ->selectRaw('DATE(created_at) d, durum, COUNT(*) c')->groupBy('d', 'durum')->get() as $x) {
+        $harita[$x->d][(int) $x->durum] = (int) $x->c;
+    }
+    $gunler = [];
+    for ($i = 29; $i >= 0; $i--) {
+        $g = today()->subDays($i); $k = $g->format('Y-m-d');
+        $gunler[] = ['gun' => $g->format('d.m'),
+            'basarili' => $harita[$k][1] ?? 0, 'basarisiz' => $harita[$k][2] ?? 0, 'sms' => $harita[$k][3] ?? 0];
+    }
+    $durum = _waBridge('GET', '/session/' . $subeId . '/status');
+    $numara = $durum['phone'] ?? $durum['number'] ?? $durum['jid'] ?? '';
+    return _waNoCache(response()->json(['ok' => 1, 'numara' => $numara, 'gunluk_limit' => 200,
+        'bugun' => $bugun, 'bugun_ok' => $bugunOk, 'bugun_fail' => $bugunFail, 'bugun_sms' => $bugunSms,
+        'son7' => $son7, 'son7_ok' => $son7Ok, 'son30' => $son30, 'son30_ok' => $son30Ok, 'basari' => $basari, 'gunler' => $gunler]));
+});
+
+Route::get('/api/wa/loglar-data', function (Request $r) {
+    _waLogEnsure();
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->min('id'));
+    $q = DB::table('wa_mesaj_loglari')->where('sube_id', $subeId);
+    if ($r->query('durum') !== null && $r->query('durum') !== '') $q->where('durum', (int) $r->query('durum'));
+    if ($r->query('telefon')) $q->where('telefon', 'like', '%' . $r->query('telefon') . '%');
+    if ($r->query('baslangic')) $q->whereDate('created_at', '>=', $r->query('baslangic'));
+    if ($r->query('bitis')) $q->whereDate('created_at', '<=', $r->query('bitis'));
+    if ($r->query('arama')) $q->where('mesaj', 'like', '%' . $r->query('arama') . '%');
+    $sayfa = max(1, (int) $r->query('sayfa', 1)); $boyut = 20;
+    $toplam = (clone $q)->count();
+    $rows = $q->orderByDesc('id')->offset(($sayfa - 1) * $boyut)->limit($boyut)->get();
+    return _waNoCache(response()->json(['ok' => 1, 'toplam' => $toplam, 'sayfa' => $sayfa, 'boyut' => $boyut, 'kayitlar' => $rows]));
+});
+
+Route::get('/api/wa/aliciler-data', function (Request $r) {
+    _waLogEnsure();
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->min('id'));
+    $rows = DB::table('wa_mesaj_loglari')->where('sube_id', $subeId)
+        ->selectRaw('telefon, COUNT(*) toplam, SUM(CASE WHEN durum=1 THEN 1 ELSE 0 END) basarili, MIN(created_at) ilk, MAX(created_at) son')
+        ->groupBy('telefon')->orderByDesc('son')->limit(300)->get();
+    return _waNoCache(response()->json(['ok' => 1, 'aliciler' => $rows]));
+});
+
+// İşletme bağlantıları (konum/instagram/web) kaydet — mesaj ekranında kullanılır
+Route::post('/api/wa/baglantilar-kaydet', function (Request $r) {
+    foreach (['wa_konum_linki' => 'konum_linki', 'wa_instagram_baslik' => 'instagram_baslik', 'wa_instagram_linki' => 'instagram_linki', 'wa_web_baslik' => 'web_baslik', 'wa_web_linki' => 'web_linki'] as $ayar => $inp) {
+        resto_ayar_yaz($ayar, mb_substr((string) $r->input($inp, ''), 0, 400));
+    }
+    return response()->json(['ok' => 1]);
 });
 
 // Secilebilir ERKEK Turkce sesler (dinle + sec)
