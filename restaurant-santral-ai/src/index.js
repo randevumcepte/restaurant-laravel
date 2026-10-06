@@ -80,7 +80,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-10-06d (terk edilen cagri kurtarma/otomatik geri arama: ${cfg.geriArama.aktif ? 'ACIK' : 'KAPALI'}; ARI keepalive; ambiyans ducking; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
+  log.info(`SURUM: 2026-10-06e (STT isim ipuclari) (terk edilen cagri kurtarma/otomatik geri arama: ${cfg.geriArama.aktif ? 'ACIK' : 'KAPALI'}; ARI keepalive; ambiyans ducking; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);

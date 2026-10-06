@@ -16,6 +16,23 @@ const KELIME_IPUCLARI = [
   'rezervasyon', 'sipariş', 'paket sipariş', 'masa', 'kişi', 'kişilik', 'saat', 'akşam', 'öğle',
   'bu akşam', 'yarın', 'bugün', 'adres', 'teslimat', 'telefon numaram', 'porsiyon', 'adet',
   'menü', 'hesap', 'rica ediyorum', 'istiyorum', 'ayırtmak', 'iptal', 'değiştirmek',
+  'adım', 'ismim', 'benim adım',
+];
+
+// Yaygin Turkce isim/soyadlari -> STT ismi tanisin ("Ferdi"yi "saati" diye duymasin). Ayri context, yuksek boost.
+const ISIM_IPUCLARI = [
+  'Ferdi', 'Emir', 'Ahmet', 'Mehmet', 'Mustafa', 'Ali', 'Hüseyin', 'Hasan', 'İbrahim', 'Osman', 'Yusuf',
+  'Murat', 'Emre', 'Burak', 'Serkan', 'Kerem', 'Kaan', 'Can', 'Deniz', 'Barış', 'Berk', 'Cem', 'Çağrı',
+  'Efe', 'Ege', 'Eren', 'Fatih', 'Furkan', 'Gökhan', 'Halil', 'İsmail', 'Kadir', 'Levent', 'Metin',
+  'Onur', 'Ozan', 'Salih', 'Selim', 'Serhat', 'Sinan', 'Tolga', 'Uğur', 'Ümit', 'Volkan', 'Yiğit',
+  'Yılmaz', 'Zeki', 'Taner', 'Tuncay', 'Hakan', 'Okan', 'Sefa', 'Arda', 'Mert', 'Enes', 'Buğra',
+  'Ayşe', 'Fatma', 'Emine', 'Hatice', 'Zeynep', 'Elif', 'Meryem', 'Zehra', 'Sultan', 'Merve', 'Esra',
+  'Büşra', 'Melike', 'Gül', 'Gülşah', 'Kübra', 'Selin', 'Ceren', 'Damla', 'Dilara', 'Ebru', 'Ece',
+  'Eda', 'Gamze', 'İrem', 'Nur', 'Özge', 'Pınar', 'Sude', 'Tuğçe', 'Yasemin', 'Aslı', 'Aylin', 'Beyza',
+  'Cansu', 'Derya', 'Duygu', 'Gizem', 'Hande', 'Nazlı', 'Özlem', 'Sibel', 'Şeyma', 'Betül', 'Nihan',
+  'Korkmaz', 'Kabataş', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Yıldırım', 'Öztürk', 'Aydın',
+  'Özdemir', 'Arslan', 'Doğan', 'Kılıç', 'Aslan', 'Çetin', 'Kara', 'Koç', 'Kurt', 'Özkan', 'Şimşek',
+  'Erdoğan', 'Güneş', 'Aksoy', 'Polat', 'Bulut', 'Erdem', 'Turan', 'Avcı', 'Tekin', 'Acar',
 ];
 
 class SttOturumu {
@@ -39,7 +56,10 @@ class SttOturumu {
       languageCode: cfg.stt.language,         // tr-TR
       enableAutomaticPunctuation: true,
       maxAlternatives: 1,
-      speechContexts: [{ phrases: KELIME_IPUCLARI, boost: 15 }], // alan kelimeleri -> dogruluk
+      speechContexts: [
+        { phrases: KELIME_IPUCLARI, boost: 15 },   // alan kelimeleri -> dogruluk
+        { phrases: ISIM_IPUCLARI, boost: 20 },      // isimler -> 'Ferdi' 'saati' olmasin (daha yuksek boost)
+      ],
     };
     // Model secimi:
     //  - 'latest_long','latest_short','default','command_and_search' -> COK DILLI (tr-TR dahil), her dilde gonder
