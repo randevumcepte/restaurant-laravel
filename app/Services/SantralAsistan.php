@@ -24,12 +24,14 @@ class SantralAsistan
     protected $sonSiparis;    // gecen siparis kalemleri [{urun,adet}] — "ayni siparis" icin
     protected $_telaffuzMap = null; // TTS telaffuz sozlugu onbellegi (kelime=>okunus)
     protected $mevcutRez = [];      // arayanin yaklasan rezervasyonlari (cift rezervasyonu onle)
+    protected $haricRezId = 0;      // BU cagride olusturulan rezervasyon (mevcut-rez sayilmasin -> "zaten var" demesin)
 
-    public function __construct($subeId, $telefon = null)
+    public function __construct($subeId, $telefon = null, $haricRezId = 0)
     {
         $this->subeId = (int) $subeId;
         $this->sube = DB::table('subeler')->where('id', $this->subeId)->first();
         $this->telefon = $telefon ? preg_replace('/\D/', '', (string) $telefon) : null;
+        $this->haricRezId = (int) $haricRezId;
         $this->musteriYukle();
         $this->mevcutRezYukle();
     }
@@ -42,9 +44,10 @@ class SantralAsistan
             if (!$this->telefon || !Schema::hasTable('rezervasyonlar')) return;
             $son10 = substr($this->telefon, -10);
             $bugun = now()->setTimezone('Europe/Istanbul')->format('Y-m-d');
-            foreach (DB::table('rezervasyonlar')->where('sube_id', $this->subeId)
-                ->whereIn('durum', ['bekliyor', 'onaylandi'])->where('tarih', '>=', $bugun)
-                ->orderBy('tarih')->orderBy('saat')->limit(200)->get(['tarih', 'saat', 'kisi', 'telefon']) as $r) {
+            $q = DB::table('rezervasyonlar')->where('sube_id', $this->subeId)
+                ->whereIn('durum', ['bekliyor', 'onaylandi'])->where('tarih', '>=', $bugun);
+            if ($this->haricRezId) $q->where('id', '!=', $this->haricRezId); // bu cagride olusani hariç tut
+            foreach ($q->orderBy('tarih')->orderBy('saat')->limit(200)->get(['id', 'tarih', 'saat', 'kisi', 'telefon']) as $r) {
                 if (substr(preg_replace('/\D/', '', (string) $r->telefon), -10) === $son10) {
                     $this->mevcutRez[] = ['tarih' => $r->tarih, 'saat' => substr($r->saat, 0, 5), 'kisi' => (int) $r->kisi];
                 }

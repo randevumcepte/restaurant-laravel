@@ -11052,7 +11052,8 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
     if (!$o) return response()->json(['ok' => 0, 'hata' => 'oturum_yok'], 404, [], JSON_UNESCAPED_UNICODE);
 
     $gecmis = json_decode($o->gecmis ?: '[]', true) ?: [];
-    $as = new \App\Services\SantralAsistan($o->sube_id, $o->telefon);
+    // haricRezId: bu cagride olusturulan rezervasyon mevcut-rez sayilmasin (musteriye "zaten var" demesin)
+    $as = new \App\Services\SantralAsistan($o->sube_id, $o->telefon, (int) ($o->rezervasyon_id ?? 0));
     $res = $as->konus($metin, $gecmis);
 
     // gecmise ekle
