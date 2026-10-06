@@ -47,6 +47,15 @@ const cfg = {
     aktif: bool(process.env.KAYIT_AKTIF, true),
     dir: process.env.ASTERISK_RECORDING_DIR || '/var/spool/asterisk/recording',
   },
+  // Terk edilen cagri kurtarma (otomatik geri arama). Outbound GEREKIR -> varsayilan KAPALI.
+  geriArama: {
+    aktif: bool(process.env.GERI_ARAMA, false),
+    dial: process.env.GERI_ARAMA_DIAL || '',          // or. "SIP/trunkadi/{num}" veya "PJSIP/{num}@trunkadi"
+    callerId: process.env.GERI_ARAMA_CALLERID || '',
+    prefix: process.env.GERI_ARAMA_PREFIX || '0',     // 90532... -> son10 basina: 0 (ulusal) / 90 / +90 / bos
+    timeout: num(process.env.GERI_ARAMA_TIMEOUT, 30), // callee cevap suresi (sn)
+    pollSn: num(process.env.GERI_ARAMA_POLL_SN, 20),  // kuyruk yoklama araligi (sn)
+  },
   // Ofis ambiyansi (comfort noise): TTS altinda kisik surekli arka ses (UCRETSIZ).
   ambiyans: {
     aktif: bool(process.env.AMBIYANS, true),

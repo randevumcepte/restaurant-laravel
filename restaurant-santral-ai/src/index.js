@@ -70,6 +70,8 @@ async function sesKayitBitir(kayit) {
 // callerKanalId -> {oturum,bridge,extChan,port,telefon,subeId,aktarmaModu,hedefAdaylar:Set,hedefBagli,hedefChanId,aktarSira}
 const aktif = new Map();
 const extMediaKanallari = new Set();
+const geriBasarili = new Set();     // callee acip oturum baslayan geri-arama id'leri (cevapsiz yanlis raporlanmasin)
+let _geriDongudeMi = false;
 
 async function main() {
   if (!cfg.laravel.baseUrl) { log.error('LARAVEL_BASE_URL bos — .env ayarlayin'); process.exit(1); }
@@ -78,7 +80,7 @@ async function main() {
   if (!sttKey) log.warn('GOOGLE_APPLICATION_CREDENTIALS bos — STT (kulak) calismaz, musteri duyulmaz');
   else if (!require('fs').existsSync(sttKey)) log.warn(`STT kimlik dosyasi YOK: ${sttKey} — STT calismaz`);
   if (!cfg.tts.apiKey) log.warn('GOOGLE_TTS_API_KEY bos — TTS (agiz) calismaz, AI sessiz kalir');
-  log.info(`SURUM: 2026-10-06c (ARI keepalive+otomatik yeniden baglan -> 'ilk cagri dusuyor' giderildi; ambiyans ducking; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
+  log.info(`SURUM: 2026-10-06d (terk edilen cagri kurtarma/otomatik geri arama: ${cfg.geriArama.aktif ? 'ACIK' : 'KAPALI'}; ARI keepalive; ambiyans ducking; ofis ambiyansi: ${cfg.ambiyans.aktif ? 'ACIK sev=' + cfg.ambiyans.seviye + ' dinleme=' + cfg.ambiyans.dinleme : 'KAPALI'}; StasisEnd temizle; bargeIn=${cfg.bargeIn ? 'ACIK' : 'KAPALI(!)'} kayit=${cfg.recording.aktif ? 'ACIK' : 'KAPALI'})`);
   log.info(`Ayar: format=${cfg.mediaFormat} bargeIn=${cfg.bargeIn ? 'acik(tam-dupleks)' : 'kapali(yari-dupleks)'} model=${cfg.stt.model} sube=${cfg.laravel.defaultSubeId}`);
 
   log.info(`ARI baglantisi: ${cfg.ari.url} (app=${cfg.ari.app})`);
@@ -94,6 +96,14 @@ async function main() {
   // BAGLANTIYI SICAK TUT + koptuysa yeniden baglan: idle'da WS bayatlayip ILK CAGRIYI
   // dusurmesini onler ("ilk arama kapaniyor, ikinci aciliyor" sorunu). 25sn'de bir saglik kontrolu.
   setInterval(ariSaglikKontrol, 25000);
+
+  // TERK EDILEN CAGRI KURTARMA: kuyrugu periyodik yokla -> musteriyi otomatik geri ara.
+  if (cfg.geriArama.aktif && cfg.geriArama.dial) {
+    setInterval(geriAramaDongu, Math.max(10, cfg.geriArama.pollSn) * 1000);
+    log.info(`Geri arama AKTIF (dial=${cfg.geriArama.dial}, poll=${cfg.geriArama.pollSn}sn, timeout=${cfg.geriArama.timeout}sn)`);
+  } else {
+    log.info('Geri arama KAPALI (GERI_ARAMA=1 + GERI_ARAMA_DIAL ile acilir).');
+  }
 }
 
 // StasisStart/End + ChannelDestroyed handlerlarini bir client'a bagla (yeniden baglanmada tekrar kullanilir).
@@ -105,6 +115,14 @@ function ariHandlerKur(c) {
     }
     if (event.args && event.args[0] === 'aktarma') {
       await aktarmaHedefiCevapladi(channel, event.args[1]);
+      return;
+    }
+    // GERI ARAMA: disari aradigimiz musteri ACTI -> yarida kalan oturumla devam.
+    if (event.args && event.args[0] === 'geri_arama') {
+      const geriId = parseInt(event.args[1], 10) || 0;
+      const geriAramaOturum = parseInt(event.args[2], 10) || 0;
+      const num = event.args[3] || null;
+      await cagriBasla(channel, event, { geriAramaId: geriId, geriAramaOturum, telefon: num });
       return;
     }
     await cagriBasla(channel, event);
@@ -135,9 +153,52 @@ async function ariSaglikKontrol() {
   }
 }
 
-async function cagriBasla(channel, event) {
-  const telefon = channel.caller && channel.caller.number ? channel.caller.number : null;
-  let subeId = cfg.laravel.defaultSubeId;
+// ============================ GERI ARAMA (terk edilen cagri kurtarma) ============================
+function geriNumFormat(tel) {
+  const d = String(tel || '').replace(/\D/g, '');
+  const son10 = d.slice(-10);
+  return (cfg.geriArama.prefix || '') + son10;
+}
+async function geriAramaDongu() {
+  if (!cfg.geriArama.aktif || !cfg.geriArama.dial) return;
+  if (_geriDongudeMi || _ariYenileniyor) return;
+  _geriDongudeMi = true;
+  try {
+    const r = await brain.geriAramaBekleyen();
+    for (const row of ((r && r.liste) || [])) { await originateGeriArama(row); }
+  } catch (e) { log.debug('geri arama dongu hatasi:', e.message); }
+  _geriDongudeMi = false;
+}
+async function originateGeriArama(row) {
+  const num = geriNumFormat(row.telefon);
+  if (!num || num.length < 6) { await brain.geriAramaDurum(row.id, 'cevapsiz'); return; }
+  const dial = cfg.geriArama.dial.replace('{num}', num);
+  await brain.geriAramaDurum(row.id, 'araniyor');
+  log.info(`GERI ARAMA baslatiliyor: ${row.telefon} -> ${dial} (id=${row.id}, oturum=${row.oturum_id})`);
+  try {
+    const ch = client.Channel();
+    await ch.originate({
+      endpoint: dial,
+      app: cfg.ari.app,
+      appArgs: `geri_arama,${row.id},${row.oturum_id},${num}`,
+      callerId: cfg.geriArama.callerId || num,
+      timeout: cfg.geriArama.timeout,
+    });
+  } catch (e) {
+    log.warn('geri arama originate hatasi:', e.message);
+    await brain.geriAramaDurum(row.id, 'cevapsiz');
+    return;
+  }
+  // CEVAPSIZ yakalama: timeout+10sn icinde "basarili" raporlanmadiysa cevapsiz say.
+  setTimeout(async () => {
+    if (!geriBasarili.has(row.id)) { await brain.geriAramaDurum(row.id, 'cevapsiz'); }
+    else { geriBasarili.delete(row.id); }
+  }, (cfg.geriArama.timeout + 10) * 1000);
+}
+
+async function cagriBasla(channel, event, opts = {}) {
+  const telefon = opts.telefon || (channel.caller && channel.caller.number ? channel.caller.number : null);
+  let subeId = opts.subeId || cfg.laravel.defaultSubeId;
   const arg = (event.args || []).find((a) => /^SUBE=/i.test(a));
   if (arg) subeId = parseInt(arg.split('=')[1], 10) || subeId;
 
@@ -148,7 +209,7 @@ async function cagriBasla(channel, event) {
     return;
   }
 
-  log.info(`Yeni cagri: kanal=${channel.id} tel=${telefon || '-'} sube=${subeId} rtpPort=${port}`);
+  log.info(`${opts.geriAramaId ? 'GERI ARAMA (musteriye)' : 'Yeni cagri'}: kanal=${channel.id} tel=${telefon || '-'} sube=${subeId} rtpPort=${port}`);
 
   try {
     await channel.answer();
@@ -171,6 +232,7 @@ async function cagriBasla(channel, event) {
       telefon,
       subeId,
       rtpPort: port,
+      geriAramaOturum: opts.geriAramaOturum || 0, // >0: yarida kalan oturumla devam
       onAktar: (kid) => insanaAktar(kid, subeId),
       onBitir: (kid) => { client.Channel(kid).hangup().catch(() => {}); },
     });
@@ -184,6 +246,8 @@ async function cagriBasla(channel, event) {
     // SES KAYDI (AI fazi): bridge'i kaydet (musteri + AI sesi). Hata olsa cagri bozulmaz.
     await sesKayitBasla(kayit, channel.id, 'ai');
     await oturum.basla();
+    // GERI ARAMA basarili: callee acti + oturum basladi -> kuyruga bildir.
+    if (opts.geriAramaId) { geriBasarili.add(opts.geriAramaId); brain.geriAramaDurum(opts.geriAramaId, 'basarili'); }
   } catch (e) {
     log.error('cagriBasla hatasi:', e.message);
     portBirak(port);

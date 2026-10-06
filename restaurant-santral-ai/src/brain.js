@@ -24,10 +24,19 @@ function form(obj) {
   return p.toString();
 }
 
-// POST /api/santral/baslat -> {oturum_id, karsilama}
-async function baslat(subeId, telefon, hat) {
-  const { data } = await http.post('/api/santral/baslat', form({ sube_id: subeId, telefon, hat }));
+// POST /api/santral/baslat -> {oturum_id, karsilama}. geriAramaOturum>0 ise: yarida kalan oturumla devam.
+async function baslat(subeId, telefon, hat, geriAramaOturum) {
+  const { data } = await http.post('/api/santral/baslat', form({ sube_id: subeId, telefon, hat, geri_arama_oturum: geriAramaOturum || 0 }));
   return data;
+}
+
+// GERI ARAMA kuyrugu: bekleyenleri al + sonuc bildir (araniyor|basarili|cevapsiz).
+async function geriAramaBekleyen() {
+  try { const { data } = await http.get('/api/santral/geri-arama-bekleyen'); return data; }
+  catch (e) { log.debug('geri-arama-bekleyen hata:', e.message); return { ok: 0, liste: [] }; }
+}
+async function geriAramaDurum(id, durum) {
+  try { await http.post('/api/santral/geri-arama-durum', form({ id, durum })); } catch (_) {}
 }
 
 // POST /api/santral/konus -> {ok, cevap, aksiyon, veri, bitir}
@@ -76,4 +85,4 @@ async function bitir(oturumId, ozet) {
   }
 }
 
-module.exports = { baslat, konus, bitir, aktarmaHedef, sesYukle };
+module.exports = { baslat, konus, bitir, aktarmaHedef, sesYukle, geriAramaBekleyen, geriAramaDurum };

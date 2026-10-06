@@ -9,10 +9,11 @@ const { SttOturumu } = require('./stt');
 const { RtpOturumu } = require('./rtp');
 
 class CagriOturumu {
-  constructor({ kanalId, telefon, subeId, rtpPort, onAktar, onBitir }) {
+  constructor({ kanalId, telefon, subeId, rtpPort, onAktar, onBitir, geriAramaOturum }) {
     this.kanalId = kanalId;
     this.telefon = telefon || null;
     this.subeId = subeId || cfg.laravel.defaultSubeId;
+    this.geriAramaOturum = geriAramaOturum || 0; // >0 ise: yarida kalan oturumla devam (geri arama)
     this.onAktar = onAktar || (() => {});   // "insana aktar" -> index.js Asterisk transferi yapar
     this.onBitir = onBitir || (() => {});   // gorusme bitti -> index.js kanali kapatir
     this.oturumId = null;
@@ -46,7 +47,7 @@ class CagriOturumu {
 
   async basla() {
     try {
-      const d = await brain.baslat(this.subeId, this.telefon, 'santral');
+      const d = await brain.baslat(this.subeId, this.telefon, 'santral', this.geriAramaOturum);
       this.oturumId = d.oturum_id;
       log.info(`Oturum #${this.oturumId} basladi (kanal ${this.kanalId}, tel ${this.telefon || '-'}, sube ${d.sube_id ?? this.subeId}, menu ${d.menu_adet ?? '?'} urun, musteri ${d.musteri || 'YENI'})`);
       if (d.menu_adet === 0) log.warn('DIKKAT: bu subede aktif urun YOK -> AI menuyu tanitamaz (DEFAULT_SUBE_ID dogru mu? urunler.aktif=1 mi?)');
