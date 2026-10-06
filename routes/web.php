@@ -10561,17 +10561,41 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         if ($dolu && $dolu->sube_id) $subeId = (int) $dolu->sube_id;
     }
     $telefon = trim((string) $r->input('telefon'));
+    $geriOturum = (int) $r->input('geri_arama_oturum'); // >0 ise: yarida kalan oturumu baglamla devam ettir
+    if (function_exists('_santralGeriAramaEnsure')) _santralGeriAramaEnsure();
     $as = new \App\Services\SantralAsistan($subeId, $telefon);
-    $karsilama = $as->karsilama();
-    $menuAdet = $as->menuAdet(); // teshis: 0 ise bu subede aktif urun yok -> AI menuyu tanitamaz
-    $oid = DB::table('santral_oturumlari')->insertGetId([
-        'sube_id' => $subeId,
-        'telefon' => $telefon ?: null,
-        'gecmis' => json_encode([['role' => 'assistant', 'content' => $karsilama]], JSON_UNESCAPED_UNICODE),
-        'durum' => 'acik',
-        'created_at' => now(),
-    ]);
-    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'musteri' => $as->taninanMusteri(), 'son_siparis' => $as->sonSiparisMetni()], 200, [], JSON_UNESCAPED_UNICODE);
+    $menuAdet = $as->menuAdet();
+
+    if ($geriOturum > 0) {
+        // GERI ARAMA MODU: onceki gorusmeyi yukle + dogal "yarida kaldi" karsilamasi + kaldigi yerden devam.
+        $onceki = DB::table('santral_oturumlari')->where('id', $geriOturum)->first();
+        $oncekiG = $onceki ? (json_decode($onceki->gecmis ?: '[]', true) ?: []) : [];
+        $isim = $as->taninanMusteri();
+        $ad = ($isim && $isim !== '(isim yok)') ? ' ' . $isim : '';
+        $karsilama = 'Merhaba' . $ad . ', az önce görüşmemiz yarıda kalmıştı, sizi geri aramak istedim.'
+            . (count($oncekiG) ? ' İsterseniz kaldığımız yerden devam edelim.' : ' Size nasıl yardımcı olabilirim?');
+        $seed = $oncekiG;
+        $seed[] = ['role' => 'assistant', 'content' => $karsilama];
+        if (count($seed) > 40) $seed = array_slice($seed, -40);
+        $oid = DB::table('santral_oturumlari')->insertGetId([
+            'sube_id' => $subeId, 'telefon' => $telefon ?: null,
+            'gecmis' => json_encode($seed, JSON_UNESCAPED_UNICODE),
+            'durum' => 'acik', 'geri_arama' => 1, 'created_at' => now(),
+        ]);
+    } else {
+        // NORMAL gelen cagri. Musteri KENDI geri aradiysa bekleyen otomatik geri-aramayi iptal et.
+        $tl = preg_replace('/\D/', '', $telefon);
+        if (strlen($tl) >= 10) {
+            try { DB::table('santral_geri_arama')->where('telefon', $tl)->whereIn('durum', ['bekliyor', 'araniyor'])->update(['durum' => 'vazgecildi', 'son_deneme_at' => now()]); } catch (\Throwable $e) {}
+        }
+        $karsilama = $as->karsilama();
+        $oid = DB::table('santral_oturumlari')->insertGetId([
+            'sube_id' => $subeId, 'telefon' => $telefon ?: null,
+            'gecmis' => json_encode([['role' => 'assistant', 'content' => $karsilama]], JSON_UNESCAPED_UNICODE),
+            'durum' => 'acik', 'created_at' => now(),
+        ]);
+    }
+    return response()->json(['ok' => 1, 'oturum_id' => $oid, 'karsilama' => $karsilama, 'sube_id' => $subeId, 'menu_adet' => $menuAdet, 'geri_arama' => $geriOturum > 0 ? 1 : 0, 'musteri' => $as->taninanMusteri(), 'son_siparis' => $as->sonSiparisMetni()], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
 // TESHIS OZETI: son cagrilar + son musteriler + son telefon adisyonlari + ses kayitlari (tek bakista)
@@ -10787,6 +10811,7 @@ if (!function_exists('_santralMusteriEnsure')) {
 Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
     if ($rr = _santralAuthGuard($r)) return $rr;
     _santralEnsure();
+    _santralGeriAramaEnsure();
     $oid = (int) $r->input('oturum_id');
     $sonuc = trim((string) $r->input('sonuc'));
     $upd = ['durum' => 'kapandi', 'updated_at' => now()];
@@ -10795,6 +10820,88 @@ Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
     DB::table('santral_oturumlari')->where('id', $oid)->update($upd);
     // TANIMA: cagri biterken CallerID ile musteri kaydini garantile (siparis tamamlanmasa da sonraki aramada taninir)
     if ($o && $o->telefon) _santralMusteriEnsure((int) $o->sube_id, $o->telefon);
+    // TERK TESPITI: gorusme yarida kaldiysa (tamamlanmamis + gercek konusma + callback degil) -> geri arama kuyruguna.
+    if ($o) _santralTerkTespit($o, $sonuc ?: ($o->sonuc ?? 'bilgi'));
+    return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// ============================ TERK EDILEN CAGRI KURTARMA (geri arama) ============================
+if (!function_exists('_santralGeriAramaEnsure')) {
+    function _santralGeriAramaEnsure()
+    {
+        if (!Schema::hasTable('santral_geri_arama')) {
+            Schema::create('santral_geri_arama', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('oturum_id')->index();  // yarida kalan oturum (baglam icin)
+                $t->unsignedBigInteger('sube_id')->nullable();
+                $t->string('telefon', 32)->index();
+                $t->string('durum', 16)->default('bekliyor');  // bekliyor|araniyor|basarili|cevapsiz|vazgecildi
+                $t->unsignedTinyInteger('deneme')->default(0);
+                $t->timestamp('son_deneme_at')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+            });
+        }
+        // oturumun KENDISI bir geri-arama mi? (callback dongusunu onlemek icin)
+        if (Schema::hasTable('santral_oturumlari') && !Schema::hasColumn('santral_oturumlari', 'geri_arama')) {
+            try { Schema::table('santral_oturumlari', fn ($t) => $t->boolean('geri_arama')->default(0)); } catch (\Throwable $e) {}
+        }
+    }
+}
+// Bir oturum yarida mi kaldi? Kosullar saglaniyorsa geri arama kuyruguna ekle.
+if (!function_exists('_santralTerkTespit')) {
+    function _santralTerkTespit($o, $sonuc)
+    {
+        try {
+            _santralGeriAramaEnsure();
+            // 1) callback'in kendisi yarida kalirsa TEKRAR kuyruga alma (dongu).
+            if (!empty($o->geri_arama)) return;
+            // 2) tamamlanan/aktarilan cagri terk degildir.
+            if (in_array($sonuc, ['siparis', 'rezervasyon', 'aktar'], true)) return;
+            // 3) gecerli telefon + GERCEK konusma (en az 2 musteri turu) olmali (yanlis arama/selam degil).
+            $tel = preg_replace('/\D/', '', (string) ($o->telefon ?? ''));
+            if (strlen($tel) < 10) return;
+            $g = json_decode($o->gecmis ?: '[]', true) ?: [];
+            $musteriTuru = 0;
+            foreach ($g as $m) if (($m['role'] ?? '') === 'user') $musteriTuru++;
+            if ($musteriTuru < 2) return;
+            // 4) bu telefon icin zaten aktif (bekliyor/araniyor) geri arama varsa tekrarlama.
+            $varMi = DB::table('santral_geri_arama')->where('telefon', $tel)->whereIn('durum', ['bekliyor', 'araniyor'])->exists();
+            if ($varMi) return;
+            DB::table('santral_geri_arama')->insert([
+                'oturum_id' => $o->id, 'sube_id' => $o->sube_id, 'telefon' => $tel,
+                'durum' => 'bekliyor', 'deneme' => 0, 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+}
+// KOPRU YOKLAR: geri aranacaklar (grace suresi gecmis + deneme < 2). Kopru bunlari disari arar.
+Route::match(['get', 'post'], '/api/santral/geri-arama-bekleyen', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
+    _santralGeriAramaEnsure();
+    $graceSn = 45; // musteri kendi geri arasin diye kisa bekleme
+    $rows = DB::table('santral_geri_arama')->where('durum', 'bekliyor')->where('deneme', '<', 2)
+        ->where('created_at', '<=', now()->subSeconds($graceSn))
+        ->orderBy('id')->limit(5)->get(['id', 'oturum_id', 'sube_id', 'telefon']);
+    return response()->json(['ok' => 1, 'liste' => $rows], 200, ['Cache-Control' => 'no-store'], JSON_UNESCAPED_UNICODE);
+});
+// KOPRU BILDIRIR: arama sonucu (araniyor|basarili|cevapsiz). cevapsizsa deneme++ (2'de vazgecilir).
+Route::post('/api/santral/geri-arama-durum', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
+    _santralGeriAramaEnsure();
+    $id = (int) $r->input('id');
+    $durum = (string) $r->input('durum');
+    $row = DB::table('santral_geri_arama')->where('id', $id)->first();
+    if (!$row) return response()->json(['ok' => 0], 200, [], JSON_UNESCAPED_UNICODE);
+    if ($durum === 'araniyor') {
+        DB::table('santral_geri_arama')->where('id', $id)->update(['durum' => 'araniyor', 'son_deneme_at' => now()]);
+    } elseif ($durum === 'basarili') {
+        DB::table('santral_geri_arama')->where('id', $id)->update(['durum' => 'basarili', 'son_deneme_at' => now()]);
+    } else { // cevapsiz/hata
+        $deneme = (int) $row->deneme + 1;
+        DB::table('santral_geri_arama')->where('id', $id)->update([
+            'durum' => $deneme >= 2 ? 'vazgecildi' : 'bekliyor', 'deneme' => $deneme, 'son_deneme_at' => now(),
+        ]);
+    }
     return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
