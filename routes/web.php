@@ -10958,8 +10958,10 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         $oncekiG = $onceki ? (json_decode($onceki->gecmis ?: '[]', true) ?: []) : [];
         $isim = $as->taninanMusteri();
         $ad = ($isim && $isim !== '(isim yok)') ? ' ' . $isim : '';
+        $mevcutRez = $as->mevcutRezMetni();
         $karsilama = 'Merhaba' . $ad . ', az önce görüşmemiz yarıda kalmıştı, sizi geri aramak istedim.'
-            . (count($oncekiG) ? ' İsterseniz kaldığımız yerden devam edelim.' : ' Size nasıl yardımcı olabilirim?');
+            . ($mevcutRez !== '' ? ' Bu arada zaten ' . $mevcutRez . ' rezervasyonunuz görünüyor.' : '')
+            . (count($oncekiG) ? ' Kaldığımız yerden devam edelim mi?' : ' Size nasıl yardımcı olabilirim?');
         $seed = $oncekiG;
         $seed[] = ['role' => 'assistant', 'content' => $karsilama];
         if (count($seed) > 40) $seed = array_slice($seed, -40);

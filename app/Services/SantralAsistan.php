@@ -169,7 +169,7 @@ class SantralAsistan
         // MEVCUT REZERVASYON — GARANTI UYARI (Haiku'ya birakma; model gomulu kurali atliyor).
         // Arayanin aktif rezervasyonu varsa + rezervasyon niyeti varsa + daha once uyarilmadiysa:
         // deterministik olarak hatirlat (cift rezervasyonu/karisikligi onler).
-        if (!empty($this->mevcutRez) && $this->rezervasyonNiyeti($ham)) {
+        if (!empty($this->mevcutRez) && ($this->rezervasyonNiyeti($ham) || $this->gecmisteRezervasyonKonusu($gecmis))) {
             $uyarildi = false;
             foreach ($gecmis as $m) {
                 if (($m['role'] ?? '') === 'assistant' && mb_stripos((string) ($m['content'] ?? ''), 'rezervasyonunuz görünüyor') !== false) { $uyarildi = true; break; }
@@ -612,6 +612,22 @@ class SantralAsistan
             if (strpos($n, ' ' . $this->norm($a)) !== false) return true;
         }
         return false;
+    }
+
+    /** Gecmiste rezervasyon konusu gecti mi? (callback'te "olur" deyince de mevcut-rez uyarisi tetiklensin) */
+    protected function gecmisteRezervasyonKonusu(array $gecmis): bool
+    {
+        foreach ($gecmis as $m) {
+            if (strpos($this->norm((string) ($m['content'] ?? '')), 'rezervasyon') !== false) return true;
+        }
+        return false;
+    }
+
+    /** Arayanin mevcut aktif rezervasyonlari — DOGAL metin (karsilama/uyari icin). Bossa ''. */
+    public function mevcutRezMetni(): string
+    {
+        if (empty($this->mevcutRez)) return '';
+        return implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . "'de, " . $r['kisi'] . ' kişilik', $this->mevcutRez));
     }
 
     protected function norm($s)
