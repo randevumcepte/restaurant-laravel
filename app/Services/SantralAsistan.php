@@ -292,7 +292,7 @@ class SantralAsistan
         // EN BASA: mevcut rezervasyon uyarisi (asagida gomulu kalinca model atliyor). Kisi sormadan ONCE soylet.
         if (!empty($this->mevcutRez)) {
             $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . "'de, " . $r['kisi'] . ' kişilik', $this->mevcutRez));
-            $p .= "!!! EN ÖNEMLİ KURAL — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Müşteri rezervasyondan bahseder bahsetmez (yeni rezervasyon / değişiklik / tarih söyleme) İLK CÜMLENDE, kişi sayısı/tarih SORMADAN ÖNCE bunu MUTLAKA söyle: 'Zaten $liste için rezervasyonunuz görünüyor.' Sonra bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istediğini sor. AYNI gün/saate İKİNCİ rezervasyon OLUŞTURMA. Bu kuralı ATLAMA. ";
+            $p .= "!!! EN ÖNEMLİ KURAL — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Müşteri rezervasyondan bahseder bahsetmez (yeni rezervasyon / değişiklik / tarih söyleme) İLK CÜMLENDE, kişi sayısı/tarih SORMADAN ÖNCE bunu MUTLAKA söyle: 'Zaten $liste için rezervasyonunuz görünüyor.' Sonra bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istediğini sor. AYNI gün/saate İKİNCİ rezervasyon OLUŞTURMA. Müşteri bu rezervasyona NOT/istek EKLEMEK isterse: santral_aksiyon'u niyet=rezervasyon, o rezervasyonun AYNI tarih (YYYY-MM-DD) ve AYNI saati (HH:MM) ve not=<yeni not> ile tamam=true çağır — sistem yeni rezervasyon OLUŞTURMAZ, notu mevcut rezervasyona EKLER. Bu kuralı ATLAMA. ";
         }
         // YENI musteri: adini MUTLAKA al (ilk aramada musteri kaydi olussun, sonra adiyla taninsin).
         if (empty($this->musteri) || $this->genelAd($this->musteri->ad ?? '')) {

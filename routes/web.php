@@ -9047,9 +9047,9 @@ Route::get('/api/patron/rezervasyonlar', function (Request $r) {
             $oturumMap[$o->rezervasyon_id] = (int) $o->id; $otIds[$o->id] = $o->rezervasyon_id;
         }
         if ($otIds && Schema::hasTable('santral_ses_kayit')) {
-            foreach (DB::table('santral_ses_kayit')->whereIn('oturum_id', array_keys($otIds))->orderBy('id')->get(['id', 'oturum_id', 'tur', 'boyut']) as $s) {
+            foreach (DB::table('santral_ses_kayit')->whereIn('oturum_id', array_keys($otIds))->orderBy('id')->get(['id', 'oturum_id', 'tur', 'boyut', 'created_at']) as $s) {
                 $rid = $otIds[$s->oturum_id] ?? null;
-                if ($rid) $sesMap[$rid][] = ['url' => '/santral-ses-dinle/' . $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut];
+                if ($rid) $sesMap[$rid][] = ['url' => '/santral-ses-dinle/' . $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut, 'tarih' => (string) $s->created_at];
             }
         }
     }
@@ -11092,6 +11092,7 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                     }
                 }
             }
+            $yeniKayit = false;
             if (!$rid) {
                 $rid = DB::table('rezervasyonlar')->insertGetId([
                     'sube_id' => $o->sube_id,
@@ -11106,6 +11107,28 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
                     'not' => trim((string) ($rz['not'] ?? '')) !== '' ? ('AI Santral — ' . trim((string) $rz['not'])) : 'AI Santral',
                     'created_at' => now(),
                 ]);
+                $yeniKayit = true;
+            } else {
+                // NOT BIRIKME: mevcut rezervasyona YENI not geldiyse ekle (musteri sonraki aramada not ekletebilir).
+                $yeniNot = trim((string) ($rz['not'] ?? ''));
+                if ($yeniNot !== '') {
+                    try {
+                        $mevcutNot = (string) DB::table('rezervasyonlar')->where('id', $rid)->value('not');
+                        if (mb_stripos($mevcutNot, $yeniNot) === false) { // ayni notu tekrarlama
+                            $birlesik = trim($mevcutNot) !== '' ? ($mevcutNot . ' | ' . $yeniNot) : ('AI Santral — ' . $yeniNot);
+                            DB::table('rezervasyonlar')->where('id', $rid)->update(['not' => mb_substr($birlesik, 0, 250)]);
+                        }
+                    } catch (\Throwable $e) {}
+                }
+            }
+            // Ad bos/generic kaldiysa ve bu aramada gercek ad geldiyse guncelle
+            if (!$yeniKayit && $adRz !== '') {
+                try {
+                    $mevcutAd = (string) DB::table('rezervasyonlar')->where('id', $rid)->value('ad');
+                    if ($mevcutAd === '' || mb_stripos($mevcutAd, 'telefon') !== false) {
+                        DB::table('rezervasyonlar')->where('id', $rid)->update(['ad' => $adRz]);
+                    }
+                } catch (\Throwable $e) {}
             }
             $guncelle['rezervasyon_id'] = $rid;
             $guncelle['sonuc'] = 'rezervasyon';
@@ -11211,8 +11234,38 @@ Route::match(['get', 'post'], '/api/santral/bitir', function (Request $r) {
     if ($o && $o->telefon) _santralMusteriEnsure((int) $o->sube_id, $o->telefon);
     // TERK TESPITI: gorusme yarida kaldiysa (tamamlanmamis + gercek konusma + callback degil) -> geri arama kuyruguna.
     if ($o) _santralTerkTespit($o, $sonuc ?: ($o->sonuc ?? 'bilgi'));
+    // REZERVASYON TAKIBI: cagri rezervasyon KONUSTUYSA + musterinin TEK aktif rezervasyonu varsa, bu oturumu
+    // o rezervasyona BAGLA (tum aramalar+ses kayitlari rezervasyonda gorunsun). Siparis cagrilarini (adisyonu olan) baglamaz.
+    if ($o) _santralRezervasyonBagla($o);
     return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
 });
+
+if (!function_exists('_santralRezervasyonBagla')) {
+    function _santralRezervasyonBagla($o)
+    {
+        try {
+            if (!empty($o->rezervasyon_id) || !empty($o->adisyon_id)) return; // zaten bagli / siparis cagrisi
+            $tel = preg_replace('/\D/', '', (string) ($o->telefon ?? ''));
+            if (strlen($tel) < 10) return;
+            // Bu cagri rezervasyon konustu mu?
+            $g = json_decode($o->gecmis ?: '[]', true) ?: [];
+            $rezKonusu = false;
+            foreach ($g as $m) { if (mb_stripos((string) ($m['content'] ?? ''), 'rezervasyon') !== false) { $rezKonusu = true; break; } }
+            if (!$rezKonusu) return;
+            // Musterinin aktif yaklasan rezervasyonu (TEK ise bagla; birden fazlaysa belirsiz, dokunma)
+            $son10 = substr($tel, -10);
+            $bugun = now()->setTimezone('Europe/Istanbul')->format('Y-m-d');
+            $bulunan = null; $adet = 0;
+            foreach (DB::table('rezervasyonlar')->where('sube_id', $o->sube_id)->whereIn('durum', ['bekliyor', 'onaylandi'])
+                ->where('tarih', '>=', $bugun)->orderByDesc('id')->limit(50)->get(['id', 'telefon']) as $rr) {
+                if (substr(preg_replace('/\D/', '', (string) $rr->telefon), -10) === $son10) { $bulunan = $bulunan ?? (int) $rr->id; $adet++; }
+            }
+            if ($bulunan && $adet === 1) {
+                DB::table('santral_oturumlari')->where('id', $o->id)->update(['rezervasyon_id' => $bulunan]);
+            }
+        } catch (\Throwable $e) {}
+    }
+}
 
 // ============================ TERK EDILEN CAGRI KURTARMA (geri arama) ============================
 if (!function_exists('_santralGeriAramaEnsure')) {
