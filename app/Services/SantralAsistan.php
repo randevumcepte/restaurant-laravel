@@ -246,6 +246,13 @@ class SantralAsistan
             }
         }
 
+        // GUVENLIK AGI: model rezervasyon/siparisi SOZEL tamamladi ("...aldim/olusturdum") ama araci CAGIRMADIYSA
+        // -> tool_choice ile ZORLA cikar + kaydet (model araci atlasa bile kayit garanti olsun).
+        if ($aksiyon === null && $this->tamamlamaMetni($cevap)) {
+            [$za, $zv] = $this->zorlaAksiyonCikar($mesajlar, $cevap);
+            if ($za) { $aksiyon = $za; $veri = $zv; $this->teshis = 'zorla_aksiyon'; }
+        }
+
         $cevap = $this->ttsTemizle($cevap);
         if ($cevap === '') {
             // Model sadece arac cagirip metin dondurmediyse: aksiyona gore GARANTI kapanis/metin
@@ -856,6 +863,51 @@ class SantralAsistan
             $this->teshis = 'exception: ' . $e->getMessage();
             return null;
         }
+    }
+
+    /** Cevap metni rezervasyon/siparisin SOZEL tamamlandigini gosteriyor mu? (guvenlik agi tetigi) */
+    protected function tamamlamaMetni($cevap): bool
+    {
+        $n = $this->norm($cevap);
+        foreach (['rezervasyonunuzu aldim', 'rezervasyonunuz alindi', 'rezervasyonu aldim', 'rezervasyonunuzu olusturdum',
+                  'siparisinizi aldim', 'siparisiniz alindi', 'siparisi aldim',
+                  'olusturdum', 'kaydettim', 'ayirttim', 'onayliyorum', 'onayladim', 'yola cikacak', 'hazirlayip'] as $k) {
+            if (strpos($n, $this->norm($k)) !== false) return true;
+        }
+        return false;
+    }
+
+    /** Model araci cagirmayi atladiysa: tool_choice ile ZORLA rezervasyon/siparis cikar (kayit garanti). */
+    protected function zorlaAksiyonCikar(array $mesajlar, $sonCevap): array
+    {
+        try {
+            $m = $mesajlar;
+            $m[] = ['role' => 'assistant', 'content' => (string) $sonCevap];
+            $bugun = now()->setTimezone('Europe/Istanbul')->format('Y-m-d');
+            $govde = [
+                'model' => $this->model(),
+                'max_tokens' => 500,
+                'system' => [['type' => 'text', 'text' =>
+                    'Yukarıdaki görüşmede TAMAMLANMIŞ bir rezervasyon veya paket sipariş var. santral_aksiyon aracını DOLDURUP çağır: '
+                    . 'niyet=rezervasyon ya da siparis, tamam=true. Görüşmeden çıkardığın TÜM alanları yaz '
+                    . '(rezervasyonda ad/kisi/tarih/saat/not; siparişte kalemler/ad/adres/odeme). '
+                    . 'Göreceli tarihleri (yarın, cumartesi, önümüzdeki cumartesi) bugüne göre YYYY-MM-DD çevir; saat HH:MM. Bugün: ' . $bugun . '.']],
+                'tools' => [$this->aksiyonAraci()],
+                'tool_choice' => ['type' => 'tool', 'name' => 'santral_aksiyon'],
+                'messages' => $m,
+            ];
+            $data = $this->cagir($govde);
+            if ($data && !empty($data['content'])) {
+                foreach ($data['content'] as $b) {
+                    if (($b['type'] ?? '') === 'tool_use' && ($b['name'] ?? '') === 'santral_aksiyon') {
+                        $in = $b['input'] ?? [];
+                        $niyet = $in['niyet'] ?? null;
+                        if (in_array($niyet, ['rezervasyon', 'siparis'], true)) return [$niyet, $in];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+        return [null, []];
     }
 
     protected function gecmisMesajlari($gecmis)
