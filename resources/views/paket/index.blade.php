@@ -27,7 +27,10 @@
         <h2 class="font-semibold text-slate-700 mb-3">Aktif Siparişler (tüm platformlar tek ekranda)</h2>
         <div class="space-y-3">
             @forelse ($aktif as $s)
-                <div x-data="{ ilerle() { api('/paket/durum', { adisyon_id: {{ $s->id }}, durum: '{{ $sonraki[$s->teslimat_durumu] ?? 'teslim' }}' }).then(() => location.reload()); } }"
+                <div x-data="{ ilerle() { api('/paket/durum', { adisyon_id: {{ $s->id }}, durum: '{{ $sonraki[$s->teslimat_durumu] ?? 'teslim' }}' }).then(() => location.reload()); },
+                               tahsil() { api('/paket/durum', { adisyon_id: {{ $s->id }}, durum: 'tahsil' }).then(() => location.reload()); },
+                               yeniden() { api('/paket/durum', { adisyon_id: {{ $s->id }}, durum: 'hazir' }).then(() => location.reload()); },
+                               iptal() { if(confirm('Sipariş iptal edilsin mi?')) api('/paket/durum', { adisyon_id: {{ $s->id }}, durum: 'iptal' }).then(() => location.reload()); } }"
                      class="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 mb-1">
@@ -49,7 +52,19 @@
                     </div>
                     <div class="text-right shrink-0 ml-3">
                         <div class="font-bold text-slate-900">{{ number_format((float) $s->toplam, 0, ',', '.') }} ₺</div>
-                        @if (isset($sonraki[$s->teslimat_durumu]))
+                        @php $th = $s->tahsilat_durumu ?? null; @endphp
+                        @if ($th === 'kuryede')
+                            {{-- Kurye teslim etti, para kuryede -> kasa tahsil edecek --}}
+                            <div class="text-[11px] font-bold text-emerald-600 mt-1">✅ Teslim edildi · para kuryede</div>
+                            <button @click="tahsil()" class="mt-1 bg-emerald-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 hover:bg-emerald-700">💰 Tahsil Et (kasaya al)</button>
+                        @elseif ($th === 'iade')
+                            <div class="text-[11px] font-bold text-rose-600 mt-1">⚠️ Teslim edilemedi</div>
+                            @if (!empty($s->teslim_notu))<div class="text-[11px] text-slate-500 max-w-[180px]">{{ $s->teslim_notu }}</div>@endif
+                            <div class="flex gap-1 mt-1 justify-end">
+                                <button @click="yeniden()" class="bg-indigo-600 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 hover:bg-indigo-700">Yeniden Gönder</button>
+                                <button @click="iptal()" class="bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg px-2.5 py-1.5 hover:bg-slate-300">İptal</button>
+                            </div>
+                        @elseif (isset($sonraki[$s->teslimat_durumu]))
                             <button @click="ilerle()" class="mt-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg px-3 py-1.5 hover:bg-indigo-700">{{ $sonrakiEtiket[$s->teslimat_durumu] }} →</button>
                         @endif
                     </div>

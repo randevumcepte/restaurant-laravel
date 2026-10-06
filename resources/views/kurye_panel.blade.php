@@ -31,6 +31,11 @@
   .yol{background:var(--amber);color:#3a2600}
   .tes{background:var(--yesil);color:#04231a}
   .harita{background:rgba(79,70,229,.15);color:#C7D2FE;border:1px solid rgba(79,70,229,.4)}
+  .olmadi{background:rgba(244,63,94,.15);color:#fda4af;border:1px solid rgba(244,63,94,.4)}
+  .tahsil{font-size:13.5px;padding:9px 12px;border-radius:10px;margin-bottom:12px;font-weight:600}
+  .tahsil-nakit{background:rgba(16,185,129,.14);color:#6ee7b7;border:1px solid rgba(16,185,129,.35)}
+  .tahsil-kart{background:rgba(245,158,11,.14);color:#fcd34d;border:1px solid rgba(245,158,11,.35)}
+  .tahsil-yok{background:rgba(148,163,184,.14);color:#cbd5e1;border:1px solid rgba(148,163,184,.3)}
   .bos{text-align:center;color:var(--sessiz);padding:50px 20px}
 </style>
 </head>
@@ -56,6 +61,13 @@
         </div>
         <div class="adr">📍 {{ $t->teslimat_adres ?? 'Adres girilmemiş' }}</div>
         <div class="mus">{{ $t->musteri ?? 'Müşteri' }} @if($t->telefon) · {{ $t->telefon }} @endif · <b>#{{ $t->id }}</b> · {{ $t->teslimat_durumu === 'yolda' ? '🛵 Yolda' : '📦 Hazır' }}</div>
+        @php $oy = $t->odeme_yontemi ?? 'nakit'; $tut = number_format($t->toplam, 0, ',', '.'); @endphp
+        <div class="tahsil {{ $oy==='online' ? 'tahsil-yok' : ($oy==='kart_kapida' ? 'tahsil-kart' : 'tahsil-nakit') }}">
+          @if($oy==='online') 🔗 Online ödendi · <b>tahsilat YOK</b>
+          @elseif($oy==='kart_kapida') 💳 Kapıda <b>KART</b> (POS götür) · <b>{{ $tut }} TL</b>
+          @else 💵 Kapıda <b>NAKİT</b> al · <b>{{ $tut }} TL</b>
+          @endif
+        </div>
         <div class="btns">
           <a class="harita" href="https://www.google.com/maps/search/?api=1&query={{ urlencode($t->teslimat_adres ?? '') }}" target="_blank">🗺️ Yol Tarifi</a>
           @if($t->telefon)<a class="ara" href="tel:{{ $t->telefon }}">📞 Ara</a>@endif
@@ -65,6 +77,11 @@
             <button class="tes" onclick="durum({{ $t->id }},'teslim',this)">Teslim Ettim ✅</button>
           @endif
         </div>
+        @if($t->teslimat_durumu === 'yolda')
+        <div class="btns" style="margin-top:8px">
+          <button class="olmadi" onclick="teslimEdemedim({{ $t->id }},this)">Teslim Edemedim ✖</button>
+        </div>
+        @endif
       </div>
     @empty
       <div class="bos">🎉 Şu an aktif teslimatın yok.</div>
@@ -95,6 +112,16 @@
     btn.disabled = true; btn.textContent = '…';
     fetch('/kurye/'+TOKEN+'/durum', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:'adisyon_id='+id+'&durum='+d})
+      .then(function(r){return r.json();})
+      .then(function(j){ if(j.ok){ if(j.mesaj) alert(j.mesaj); location.reload(); } else { btn.disabled=false; alert(j.hata||'Hata'); } })
+      .catch(function(){ btn.disabled=false; });
+  }
+  function teslimEdemedim(id, btn){
+    var sebep = prompt('Teslim edilemedi sebebi nedir?\n(ör. adreste bulunamadı, müşteri ulaşılamadı, müşteri vazgeçti)');
+    if (sebep === null) return;
+    btn.disabled = true; btn.textContent = '…';
+    fetch('/kurye/'+TOKEN+'/durum', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'adisyon_id='+id+'&durum=teslim_edilemedi&sebep='+encodeURIComponent(sebep||'')})
       .then(function(r){return r.json();})
       .then(function(j){ if(j.ok){ location.reload(); } else { btn.disabled=false; alert(j.hata||'Hata'); } })
       .catch(function(){ btn.disabled=false; });

@@ -447,6 +447,48 @@ if (!function_exists('_adisyonKapanisIsle')) {
     }
 }
 
+// ============ PAKET TESLİMAT + TAHSİLAT (İKİ AŞAMALI) ============
+// Kurye TESLİM eder (teslimat_durumu), KASA TAHSİL eder (para kasaya girer).
+// tahsilat_durumu: bekliyor -> kuryede (teslim edildi, para kuryede) -> kasada (kasa tahsil etti) ; iade (teslim edilemedi)
+if (!function_exists('_paketTahsilatEnsure')) {
+    function _paketTahsilatEnsure()
+    {
+        try {
+            if (!Schema::hasColumn('adisyonlar', 'tahsilat_durumu')) {
+                Schema::table('adisyonlar', fn ($t) => $t->string('tahsilat_durumu', 16)->nullable()->after('teslimat_durumu'));
+            }
+            if (!Schema::hasColumn('adisyonlar', 'teslim_notu')) {
+                Schema::table('adisyonlar', fn ($t) => $t->string('teslim_notu', 255)->nullable());
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_paketSettle')) {
+    // KASA TAHSİLATI: parayı kasaya işle + ödeme kaydı + adisyonu kapat + mali fiş/CRM. tahsilat_durumu='kasada'.
+    // Akşam sayımı için ödeme TİPİ doğru yazılır (nakit->nakit, kapıda kart->kredi/fiş, online->online).
+    function _paketSettle($a, $personelId = null)
+    {
+        if (!$a) return false;
+        if (($a->durum ?? '') === 'odendi') return true; // zaten kapalı/tahsil edilmiş
+        _paketTahsilatEnsure();
+        $tip = ['nakit' => 'nakit', 'kart_kapida' => 'kredi', 'online' => 'online'][$a->odeme_yontemi ?? 'nakit'] ?? 'nakit';
+        $tutar = (float) $a->toplam;
+        try {
+            DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar,
+                'bahsis' => 0, 'personel_id' => $personelId ?: ($a->acan_personel_id ?? null), 'created_at' => now()]);
+        } catch (\Throwable $e) {}
+        // Nakit tahsilat kasaya giriş olarak işlensin (kart/online kasada nakit yaratmaz)
+        if ($tip === 'nakit' && function_exists('_kasaYaz')) {
+            try { _kasaYaz($a->sube_id, 'satis', 'giris', $tutar, 'Paket tahsilat · #' . $a->id, 'adisyon', $a->id, $personelId); } catch (\Throwable $e) {}
+        }
+        DB::table('adisyonlar')->where('id', $a->id)->update([
+            'durum' => 'odendi', 'kapanis' => now(), 'tahsilat_durumu' => 'kasada', 'updated_at' => now(),
+        ]);
+        try { _adisyonKapanisIsle($a->id); } catch (\Throwable $e) {}
+        return true;
+    }
+}
+
 // --- Musteri: ekle / guncelle / ara / adisyona bagla ---
 Route::post('/musteriler/ekle', function (Request $r) {
     $subeId = DB::table('subeler')->value('id');
@@ -495,6 +537,7 @@ Route::post('/pos/tasi', function (Request $r) {
 
 // ============================ PAKET SIPARIS MERKEZI ============================
 Route::get('/paket', function () {
+    _paketTahsilatEnsure();
     $aktif = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
@@ -508,13 +551,19 @@ Route::get('/paket', function () {
 
 Route::post('/paket/durum', function (Request $r) {
     $yeni = $r->durum;
-    $upd = ['teslimat_durumu' => $yeni];
-    if ($yeni === 'teslim') { $upd['durum'] = 'odendi'; $upd['kapanis'] = now(); $upd['teslim_zamani'] = now(); }
-    DB::table('adisyonlar')->where('id', $r->adisyon_id)->update($upd);
+    $aid = (int) $r->adisyon_id;
+    _paketTahsilatEnsure();
+    $a = DB::table('adisyonlar')->find($aid);
+    if (!$a) return ['ok' => 0];
+    // İKİ AŞAMA: 'tahsil' = kasa parayı aldı -> kasaya işle+kapat. 'teslim' = kasa elden teslim+tahsil.
+    if ($yeni === 'tahsil') { _paketSettle($a, $a->acan_personel_id ?? null); return ['ok' => 1, 'mesaj' => 'Tahsil edildi']; }
+    $upd = ['teslimat_durumu' => $yeni, 'updated_at' => now()];
+    if ($yeni === 'teslim') $upd['teslim_zamani'] = now();
+    DB::table('adisyonlar')->where('id', $aid)->update($upd);
+    if ($yeni === 'teslim') { _paketSettle(DB::table('adisyonlar')->find($aid), $a->acan_personel_id ?? null); }
     // WhatsApp durum bildirimi (guard + try/catch: WA kapaliysa paket akisi etkilenmez)
     try {
-        $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
-        if ($a && $a->musteri_id) {
+        if ($a->musteri_id) {
             $tel = DB::table('musteriler')->where('id', $a->musteri_id)->value('telefon');
             $takip = (isset($a->takip_token) && $a->takip_token) ? url('/siparisim/' . $a->takip_token) : null;
             if ($tel) _restoWaGonder($a->sube_id, $tel, _waDurumMetni($yeni, $takip));
@@ -594,7 +643,7 @@ Route::get('/kurye/{token}', function ($token) {
     if (!$k) abort(404);
     $teslimatlar = DB::table('adisyonlar')->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->where('adisyonlar.kurye_id', $k->id)->whereIn('adisyonlar.teslimat_durumu', ['hazir', 'yolda'])
-        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'adisyonlar.teslimat_durumu', 'adisyonlar.platform', 'musteriler.ad as musteri', 'musteriler.telefon')
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'adisyonlar.teslimat_durumu', 'adisyonlar.platform', 'adisyonlar.odeme_yontemi', 'musteriler.ad as musteri', 'musteriler.telefon')
         ->orderBy('adisyonlar.id')->get();
     return view('kurye_panel', ['k' => $k, 'teslimatlar' => $teslimatlar]);
 });
@@ -616,14 +665,62 @@ Route::post('/kurye/{token}/durum', function (Request $r, $token) {
     $aid = (int) $r->input('adisyon_id'); $durum = (string) $r->input('durum');
     $a = DB::table('adisyonlar')->where('id', $aid)->where('kurye_id', $k->id)->first();
     if (!$a) return ['ok' => 0, 'hata' => 'Sipariş bulunamadı'];
-    if (!in_array($durum, ['yolda', 'teslim'])) return ['ok' => 0];
+    if (!in_array($durum, ['yolda', 'teslim', 'teslim_edilemedi'])) return ['ok' => 0];
+    _paketTahsilatEnsure();
     $upd = ['teslimat_durumu' => $durum, 'updated_at' => now()];
-    if ($durum === 'teslim') $upd['teslim_zamani'] = now();
-    DB::table('adisyonlar')->where('id', $aid)->update($upd);
-    // Kurye durumu: yolda ise teslimatta, kalan teslimat yoksa musait
+    $mesaj = '';
+    if ($durum === 'yolda') {
+        DB::table('adisyonlar')->where('id', $aid)->update($upd);
+        $mesaj = 'Yola çıkıldı 🛵';
+    } elseif ($durum === 'teslim') {
+        $upd['teslim_zamani'] = now();
+        $oy = $a->odeme_yontemi ?? 'nakit';
+        if ($oy === 'online') {
+            // Online zaten ödendi -> direkt kasaya işle + kapat
+            DB::table('adisyonlar')->where('id', $aid)->update($upd);
+            _paketSettle(DB::table('adisyonlar')->find($aid), $a->acan_personel_id ?? null);
+            $mesaj = 'Teslim edildi ✅ (online ödeme)';
+        } else {
+            // Para KURYEDE -> kasa tahsil edene kadar açık kalır
+            $upd['tahsilat_durumu'] = 'kuryede';
+            DB::table('adisyonlar')->where('id', $aid)->update($upd);
+            $mesaj = 'Teslim edildi ✅ · Parayı kasaya teslim edin';
+        }
+        // Müşteriye WA bildirimi (guard'lı)
+        try {
+            if ($a->musteri_id) {
+                $tel = DB::table('musteriler')->where('id', $a->musteri_id)->value('telefon');
+                if ($tel && function_exists('_restoWaGonder')) _restoWaGonder($a->sube_id, $tel, '🎉 Siparişiniz teslim edildi. Afiyet olsun!');
+            }
+        } catch (\Throwable $e) {}
+    } elseif ($durum === 'teslim_edilemedi') {
+        $upd['tahsilat_durumu'] = 'iade';
+        $upd['teslim_notu'] = mb_substr(trim((string) $r->input('sebep')), 0, 255) ?: 'Teslim edilemedi';
+        DB::table('adisyonlar')->where('id', $aid)->update($upd);
+        $mesaj = 'Teslim edilemedi olarak işaretlendi. Kasa karar verecek.';
+    }
+    // Kurye durumu: aktif teslimatı kaldı mı
     $kalan = DB::table('adisyonlar')->where('kurye_id', $k->id)->whereIn('teslimat_durumu', ['hazir', 'yolda'])->count();
     DB::table('kuryeler')->where('id', $k->id)->update(['durum' => $kalan > 0 ? 'teslimatta' : 'musait']);
-    return ['ok' => 1, 'mesaj' => $durum === 'teslim' ? 'Teslim edildi ✅' : 'Yola çıkıldı 🛵'];
+    return ['ok' => 1, 'mesaj' => $mesaj];
+});
+
+// Kurye Flutter uygulaması: token ile teslimat listesi (JSON)
+Route::get('/api/kurye/{token}/teslimatlar', function ($token) {
+    $k = DB::table('kuryeler')->where('token', $token)->first();
+    if (!$k) return response()->json(['ok' => 0, 'hata' => 'Geçersiz kurye'], 404);
+    _paketTahsilatEnsure();
+    $list = DB::table('adisyonlar')->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
+        ->where('adisyonlar.kurye_id', $k->id)->whereIn('adisyonlar.teslimat_durumu', ['hazir', 'yolda'])
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'adisyonlar.teslimat_durumu',
+            'adisyonlar.odeme_yontemi', 'adisyonlar.platform', 'musteriler.ad as musteri', 'musteriler.telefon')
+        ->orderBy('adisyonlar.id')->get()->map(function ($s) {
+            $s->odeme_etiket = ['nakit' => '💵 Kapıda Nakit', 'kart_kapida' => '💳 Kapıda Kart (POS)', 'online' => '🔗 Online ödendi'][$s->odeme_yontemi ?? 'nakit'] ?? 'Nakit';
+            $s->urunler = DB::table('adisyon_kalemleri')->where('adisyon_id', $s->id)->where('durum', '!=', 'iptal')
+                ->get(['urun_adi', 'adet'])->map(fn ($x) => ['ad' => $x->urun_adi, 'adet' => (float) $x->adet]);
+            return $s;
+        });
+    return ['ok' => 1, 'kurye' => ['id' => (int) $k->id, 'ad' => $k->ad, 'durum' => $k->durum], 'teslimatlar' => $list];
 });
 
 // Patron canli harita sayfasi
@@ -9897,11 +9994,13 @@ Route::get('/api/paket', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     _paketOdemeEnsure();
+    _paketTahsilatEnsure();
     $simdi = now();
     $siparisler = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.platform_siparis_no', 'adisyonlar.teslimat_durumu',
+            'adisyonlar.tahsilat_durumu', 'adisyonlar.teslim_notu',
             'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.teslimat_adres', 'adisyonlar.odeme_yontemi',
             'musteriler.ad as musteri', 'musteriler.telefon', 'kuryeler.ad as kurye')
         ->orderByDesc('adisyonlar.acilis')->get()
@@ -9911,6 +10010,11 @@ Route::get('/api/paket', function (Request $r) {
             $s->gecen_metin = $dk < 60 ? ($dk . ' dk') : (intdiv($dk, 60) . ' sa ' . ($dk % 60) . ' dk');
             $s->urun_adet = (int) DB::table('adisyon_kalemleri')->where('adisyon_id', $s->id)->sum('adet');
             $s->odeme_yontemi = $s->odeme_yontemi ?: _paketOdemeVarsayilan($s->platform, $s->id);
+            // Kasa-yüzlü aşama etiketi: kurye teslim etti mi, tahsil bekliyor mu
+            $th = $s->tahsilat_durumu ?? null;
+            if ($th === 'kuryede') { $s->asama = 'tahsil_bekliyor'; $s->asama_etiket = '💰 Teslim edildi · Kasa tahsil edecek'; }
+            elseif ($th === 'iade') { $s->asama = 'iade'; $s->asama_etiket = '⚠️ Teslim edilemedi' . ($s->teslim_notu ? (': ' . $s->teslim_notu) : ''); }
+            else { $s->asama = $s->teslimat_durumu ?? 'hazirlaniyor'; $s->asama_etiket = null; }
             return $s;
         });
     return ['ok' => 1, 'siparisler' => $siparisler];
@@ -10035,6 +10139,7 @@ Route::post('/api/paket/durum', function (Request $r) {
     $aksiyon = (string) $r->input('aksiyon');
     $a = DB::table('adisyonlar')->where('id', $id)->where('kanal', 'paket')->first();
     if (!$a) return response()->json(['ok' => 0, 'mesaj' => 'Sipariş bulunamadı'], 404);
+    _paketTahsilatEnsure();
     $upd = ['updated_at' => now()];
     switch ($aksiyon) {
         case 'kabul':
@@ -10044,10 +10149,21 @@ Route::post('/api/paket/durum', function (Request $r) {
             $upd['teslimat_durumu'] = 'yolda';
             break;
         case 'teslim':
+            // Kasa DOĞRUDAN teslim+tahsil (gel-al / kuryesiz / kasa elden teslim aldı)
             $upd['teslimat_durumu'] = 'teslim';
-            $upd['durum'] = 'odendi';
-            $upd['kapanis'] = now();
             if (Schema::hasColumn('adisyonlar', 'teslim_zamani')) $upd['teslim_zamani'] = now();
+            DB::table('adisyonlar')->where('id', $id)->update($upd);
+            _paketSettle(DB::table('adisyonlar')->find($id), $p->id);
+            return ['ok' => 1, 'mesaj' => 'Teslim edildi ve kasaya işlendi'];
+        case 'tahsil':
+            // İKİ AŞAMA 2: kurye teslim etti (tahsilat=kuryede), kasa parayı/fişi aldı -> kasaya işle
+            _paketSettle($a, $p->id);
+            return ['ok' => 1, 'mesaj' => 'Tahsil edildi, kasaya işlendi'];
+        case 'yeniden':
+            // Teslim edilemeyeni tekrar gönderime al
+            $upd['teslimat_durumu'] = 'hazir';
+            $upd['tahsilat_durumu'] = null;
+            $upd['teslim_notu'] = null;
             break;
         case 'iptal':
             $upd['teslimat_durumu'] = 'iptal';
