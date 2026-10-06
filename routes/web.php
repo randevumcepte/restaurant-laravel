@@ -3257,14 +3257,18 @@ if (!function_exists('_waLogEnsure')) {
 if (!function_exists('_waLog')) {
     function _waLog($subeId, $tel, $mesaj, $durum = 1, $hata = null, $yon = 'giden')
     {
-        _waLogEnsure();
+        // HIZ: her mesajda hasTable (information_schema) sorgusu YAPMA; direkt insert dene,
+        // sadece tablo yoksa (ilk sefer) oluştur + tekrar dene.
+        $row = [
+            'sube_id' => (int) $subeId, 'telefon' => mb_substr((string) $tel, 0, 40), 'yon' => $yon,
+            'durum' => (int) $durum, 'mesaj' => mb_substr((string) $mesaj, 0, 2000),
+            'hata' => $hata ? mb_substr((string) $hata, 0, 160) : null, 'created_at' => now(),
+        ];
         try {
-            DB::table('wa_mesaj_loglari')->insert([
-                'sube_id' => (int) $subeId, 'telefon' => mb_substr((string) $tel, 0, 40), 'yon' => $yon,
-                'durum' => (int) $durum, 'mesaj' => mb_substr((string) $mesaj, 0, 2000),
-                'hata' => $hata ? mb_substr((string) $hata, 0, 160) : null, 'created_at' => now(),
-            ]);
+            DB::table('wa_mesaj_loglari')->insert($row);
         } catch (\Throwable $e) {
+            _waLogEnsure();
+            try { DB::table('wa_mesaj_loglari')->insert($row); } catch (\Throwable $e2) {}
         }
     }
 }
@@ -3322,15 +3326,18 @@ if (!function_exists('_waUrunBul')) {
     function _waUrunBul($subeId, $parca)
     {
         $p = _waNorm($parca);
-        if ($p === '') return null;
+        if ($p === '' || mb_strlen($p) < 2) return null;
         $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get(['id', 'ad', 'fiyat', 'tukendi']);
         $best = null; $bestLen = 0;
         foreach ($urunler as $u) {
             $n = _waNorm($u->ad);
             if ($n === '') continue;
-            if (mb_strpos($p, $n) !== false || mb_strpos($n, $p) !== false) {
-                if (mb_strlen($n) > $bestLen) { $best = $u; $bestLen = mb_strlen($n); }
-            }
+            // KELİME SINIRLI eşleşme — "su" artık "yapıyorSUnuz" içinde eşleşmez
+            $eslesti = false;
+            if ($p === $n) $eslesti = true;                                                              // birebir
+            elseif (mb_strlen($n) >= 3 && preg_match('/\b' . preg_quote($n, '/') . '\b/u', $p)) $eslesti = true; // ürün adı metinde TAM kelime
+            elseif (mb_strlen($p) >= 4 && preg_match('/\b' . preg_quote($p, '/') . '/u', $n)) $eslesti = true;   // kullanıcı kısa yazdı, ürün adının kelime başı
+            if ($eslesti && mb_strlen($n) > $bestLen) { $best = $u; $bestLen = mb_strlen($n); }
         }
         return $best;
     }
@@ -3479,6 +3486,11 @@ if (!function_exists('_waSohbetIsle')) {
             }
             if (_waOlumsuzMu($tl)) { _waOturumSil($sube, $tel); return "Tamamdır, siparişi iptal ettim. 🙂 İsterseniz baştan oluşturabiliriz."; }
             return _waOzetMetni($sepet, $o->adres, $o->odeme) . "\n\nOnaylıyor musunuz? 😊";
+        }
+
+        // Soru/bilgi amaçlı mesaj (sipariş DEĞİL) -> AI/karşılama yanıtlasın (ör. "adana nasıl yapıyorsunuz")
+        if (_waIcerirMi($tl, ['nasil', 'ne kadar', 'kacta', 'kac para', 'kac tl', 'var mi', 'nerede', 'nerde', 'acik mi', 'kapali mi', 'neler', 'hangi', 'onerir', 'tavsiye', 'yapiyor', 'yapiliyor', 'musunuz', 'misiniz', 'nedir', 'ne zaman', 'kac saat', 'calisiyor']) || mb_strpos((string) $text, '?') !== false) {
+            return null;
         }
 
         // Urun ekleme (idle / sepet dolu)

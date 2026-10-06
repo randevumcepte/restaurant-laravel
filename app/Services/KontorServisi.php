@@ -27,12 +27,14 @@ class KontorServisi
         if ($sube) {
             $bitis = is_object($sube) ? ($sube->whatsapp_deneme_bitis ?? null) : null;
             if (empty($bitis)) {
+                // HIZ: hasColumn (information_schema) YAPMA; direkt value() dene, kolon yoksa catch.
                 try {
                     $id = is_object($sube) ? ($sube->id ?? null) : (int) $sube;
-                    if ($id && Schema::hasColumn('subeler', 'whatsapp_deneme_bitis')) {
+                    if ($id) {
                         $bitis = DB::table('subeler')->where('id', (int) $id)->value('whatsapp_deneme_bitis');
                     }
                 } catch (\Throwable $e) {
+                    $bitis = null;
                 }
             }
             if (!empty($bitis)) {
