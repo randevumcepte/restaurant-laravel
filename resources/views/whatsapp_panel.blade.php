@@ -59,6 +59,7 @@
 .wsi-modal-content { background:#fff; border-radius:12px; padding:22px; max-width:520px; width:92%; max-height:90vh; overflow:auto; }
 .wsi-modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; } .wsi-modal-close{ cursor:pointer; font-size:22px; color:#999; }
 </style>
+<script src="/js/qrcode-gen.js?v=3"></script>
 
 <input type="hidden" id="sube" value="{{ $subeId }}">
 
@@ -224,31 +225,56 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;
 function fmt(s){ if(!s) return '—'; try{ return new Date(s.replace(' ','T')).toLocaleString('tr-TR'); }catch(e){ return s; } }
 
 /* ---- Bağlantı ---- */
+let qrTimer=null;
+// QR'ı YEREL çiz (uzun WA linking string'i dışarı çıkmaz) — eski çalışan sayfanın mantığı
+function drawQR(text){
+  const box=$('#qrImgBox');
+  if(!text){ box.innerHTML='<div style="color:#111;font-size:13px;padding:30px 0">QR hazırlanıyor…</div>'; return; }
+  if(String(text).startsWith('data:')){ box.innerHTML='<img src="'+text+'" alt="QR">'; return; }
+  try{ const qr=qrcode(0,'L'); qr.addData(String(text)); qr.make(); box.innerHTML=qr.createImgTag(4,4); }
+  catch(e){ box.innerHTML='<div style="color:#b00;font-size:12px">QR çizilemedi</div>'; }
+}
 async function durumYenile(){
   try{
     const r = await fetch('/api/wa/durum?sube='+sube()+'&_='+Date.now(),{cache:'no-store'}); const j = await r.json();
     const b = j.body||j||{}; const phone = b.phone||b.number||b.jid||''; const bagli = b.connected===true && !!phone;
+    const st = String(b.status||b.state||'');
+    // whatsmeow: connected=true ama numara YOK => hâlâ QR bekliyor (status 'qr-pending')
+    const qrBekliyor = !bagli && (!!b.qr || /qr/i.test(st) || b.connected===true);
     const badge=$('#durumBadge'), yazi=$('#durumYazi');
-    badge.className='wa-status '+(bagli?'connected':(b.qr||b.state==='qr'?'qr-pending':'disconnected'));
-    yazi.textContent = bagli?'Bağlı':(b.qr||b.state==='qr'?'QR Bekleniyor':'Bağlı Değil');
+    badge.className='wa-status '+(bagli?'connected':(qrBekliyor?'qr-pending':'disconnected'));
+    yazi.textContent = bagli?'Bağlı':(qrBekliyor?'QR Bekleniyor':'Bağlı Değil');
     $('#connWrap').style.display = bagli?'block':'none';
     $('#baglıNo').textContent = phone||'-';
-    $('#qrWrap').style.display = (!bagli && (b.qr||b.state==='qr'))?'block':'none';
-    $('#offWrap').style.display = (!bagli && !(b.qr||b.state==='qr'))?'block':'none';
+    $('#qrWrap').style.display = qrBekliyor?'block':'none';
+    $('#offWrap').style.display = (!bagli && !qrBekliyor)?'block':'none';
     $('#cikisBtn').style.display = bagli?'inline-block':'none';
     $('#baglanBtn').style.display = bagli?'none':'inline-block';
-    if(!bagli && (b.qr||b.state==='qr')) loadQr();
+    if(bagli && qrTimer){ clearInterval(qrTimer); qrTimer=null; }
+    if(qrBekliyor){ loadQr(); if(!qrTimer) qrTimer=setInterval(loadQr,2500); }
   }catch(e){}
 }
 async function loadQr(){
   try{
     const r = await fetch('/api/wa/qr?sube='+sube()+'&_='+Date.now(),{cache:'no-store'}); const j = await r.json();
-    const q = (j.body&&j.body.qr)||j.qr||'';
-    if(q){ const src = q.startsWith('data:')?q:('https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=1&data='+encodeURIComponent(q)); $('#qrImgBox').innerHTML='<img class="" src="'+src+'" alt="QR">'; }
+    const b = j.body||j||{}; const q = b.qr||b.qrcode||b.code||b.image||'';
+    if(q) drawQR(q);
   }catch(e){}
 }
-async function baglan(){ await fetch('/api/wa/baglan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); toast('Başlatılıyor, QR üretiliyor…'); setTimeout(durumYenile,1500); }
-async function cikis(){ if(!confirm('Oturumu kapat?'))return; await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); toast('Oturum kapatıldı'); setTimeout(durumYenile,1000); }
+async function baglan(){
+  $('#qrWrap').style.display='block'; $('#offWrap').style.display='none'; drawQR('');
+  try{ const r=await fetch('/api/wa/baglan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); const j=await r.json(); const b=j.body||{}; if(b.qr) drawQR(b.qr); }catch(e){}
+  toast('Başlatılıyor, QR üretiliyor…');
+  if(qrTimer){ clearInterval(qrTimer); qrTimer=null; }
+  setTimeout(loadQr,1000); qrTimer=setInterval(loadQr,2500);
+  setTimeout(durumYenile,1500);
+}
+async function cikis(){
+  if(!confirm('Oturumu kapat?'))return;
+  await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
+  if(qrTimer){ clearInterval(qrTimer); qrTimer=null; }
+  toast('Oturum kapatıldı'); setTimeout(durumYenile,1000);
+}
 
 /* ---- İşletme Bağlantıları ---- */
 async function baglantiKaydet(){
