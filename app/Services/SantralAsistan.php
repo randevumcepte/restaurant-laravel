@@ -127,14 +127,12 @@ class SantralAsistan
     public function karsilama(): string
     {
         $ad = $this->sube->ad ?? 'restoranımız';
-        if ($this->musteri) {
-            if (!$this->genelAd($this->musteri->ad)) {
-                $isim = $this->ilkIsim($this->musteri->ad);
-                return "Merhaba $isim, " . $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
-            }
-            // Taninan ama ismi kayitli degil -> yine de "tekrar hos geldiniz"
-            return $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
+        // SADECE gercek adi olan kayitli musteriyi ADIYLA + "tekrar" karsila.
+        if ($this->musteri && !$this->genelAd($this->musteri->ad)) {
+            $isim = $this->ilkIsim($this->musteri->ad);
+            return "Merhaba $isim, " . $ad . "'a tekrar hoş geldiniz. Size nasıl yardımcı olabilirim?";
         }
+        // Adi olmayan (generic 'Telefon...') ya da hic kayitsiz -> YENI musteri gibi karsila (yoksa AI 'sizi taniyorum' diye yanlis tanir).
         return $ad . "'a hoş geldiniz, ben yapay zeka asistanınızım. Size nasıl yardımcı olabilirim?";
     }
 
@@ -409,6 +407,13 @@ class SantralAsistan
         }
         // KAYITLI musteri
         $m = $this->musteri;
+        // Adsiz (generic 'Telefon...') + gecmis siparis/adres YOK -> aslinda TANINMIYOR (onceki yarim cagriden kalan
+        // telefon kaydi). "Sizi taniyorum" dememeli; YENI musteri gibi davranip adini sormali.
+        if ($this->genelAd($m->ad) && empty($this->sonSiparis) && empty($m->adres)) {
+            $p = " ARAYAN YENİ müşteri gibi (numara sistemde var ama adı/geçmişi YOK). ÖNEMLİ: 'Sizi tanıyorum' DEME, önceki görüşmeye atıf YAPMA. Rezervasyon veya sipariş alırken ADINI MUTLAKA sor ('Adınızı alabilir miyim?') ve santral_aksiyon 'ad' alanına yaz; AD ALMADAN tamam=true yapma. ";
+            if ($this->telefon) $p .= "Telefon numarasını arayan hattan biliyorsun; SORMA. Pakette teslimat adresini sor. ";
+            return $p;
+        }
         $p = " ARAYAN KAYITLI MÜŞTERİ (daha önce aramış, onu tanıyorsun).";
         if (!$this->genelAd($m->ad)) $p .= " Adı: " . $m->ad . " (uygun yerde adıyla hitap et, ama yeniden selam/hoş geldin deme).";
         else $p .= " Adını henüz bilmiyoruz; uygun bir yerde (ör. sipariş alırken) BİR KEZ nazikçe adını sor, kaydedilecek. ";
