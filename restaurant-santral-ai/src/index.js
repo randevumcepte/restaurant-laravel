@@ -211,12 +211,22 @@ async function cagriBasla(channel, event, opts = {}) {
 
   log.info(`${opts.geriAramaId ? 'GERI ARAMA (musteriye)' : 'Yeni cagri'}: kanal=${channel.id} tel=${telefon || '-'} sube=${subeId} rtpPort=${port}`);
 
+  let adim = 'answer';
   try {
+    if (aktif.has(channel.id)) { log.warn('cift StasisStart, atlandi: ' + channel.id); portBirak(port); return; }
     await channel.answer();
 
+    adim = 'bridge.create';
     const bridge = client.Bridge();
     await bridge.create({ type: 'mixing' });
 
+    // ONEMLI: Arayani HEMEN ekle (o kesin Stasis'te). externalMedia (UnicastRTP) bacagi
+    // Stasis'e ASENKRON girer; hemen addChannel yaparsak "Channel not in Stasis application"
+    // yarisi olusur -> cagri 1sn'de duser. O yuzden externalMedia bacagini AYRI + retry'li ekle.
+    adim = 'addChannel(arayan)';
+    await bridge.addChannel({ channel: channel.id });
+
+    adim = 'externalMedia';
     const extChan = client.Channel();
     await extChan.externalMedia({
       app: cfg.ari.app,
@@ -225,7 +235,8 @@ async function cagriBasla(channel, event, opts = {}) {
     });
     extMediaKanallari.add(extChan.id);
 
-    await bridge.addChannel({ channel: [channel.id, extChan.id] });
+    adim = 'addChannel(externalMedia)';
+    await bridgeKanalEkleRetry(bridge, extChan.id);
 
     const oturum = new CagriOturumu({
       kanalId: channel.id,
@@ -249,10 +260,25 @@ async function cagriBasla(channel, event, opts = {}) {
     // GERI ARAMA basarili: callee acti + oturum basladi -> kuyruga bildir.
     if (opts.geriAramaId) { geriBasarili.add(opts.geriAramaId); brain.geriAramaDurum(opts.geriAramaId, 'basarili'); }
   } catch (e) {
-    log.error('cagriBasla hatasi:', e.message);
+    log.error(`cagriBasla hatasi [adim=${adim}]:`, e.message);
     portBirak(port);
     try { await channel.hangup(); } catch (_) {}
   }
+}
+
+// externalMedia (UnicastRTP) bacagi Stasis'e asenkron girer; hemen addChannel yaparsak
+// "Channel not in Stasis application" olur -> cagri duser. Kanal Stasis'e girene kadar kisa retry.
+async function bridgeKanalEkleRetry(bridge, chanId, deneme = 10, bekleMs = 100) {
+  let sonHata = null;
+  for (let i = 0; i < deneme; i++) {
+    try { await bridge.addChannel({ channel: chanId }); if (i > 0) log.debug(`addChannel ${i + 1}. denemede oldu`); return; }
+    catch (e) {
+      sonHata = e;
+      if (!/not in Stasis/i.test(e.message || '')) throw e; // baska hata -> hemen firlat
+      await new Promise((r) => setTimeout(r, bekleMs));
+    }
+  }
+  throw sonHata || new Error('bridge.addChannel basarisiz (retry bitti)');
 }
 
 // "insana aktar" (dialplan'SIZ, coklu hedef + strateji)
