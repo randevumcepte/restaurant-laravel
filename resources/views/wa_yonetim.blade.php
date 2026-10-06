@@ -64,6 +64,18 @@
       <div class="note">Sidecar ayarlı değilse önce sağdaki ayarları kaydet. Numara bağlandıktan sonra QR gerekmez.</div>
     </div>
 
+    <!-- Kontör / Paketler -->
+    <div class="card" style="grid-column:1/-1">
+      <h2>💰 WhatsApp Kontör &amp; Paketler</h2>
+      <div class="row" style="align-items:center; gap:14px; flex-wrap:wrap">
+        <div id="kontorBakiye" style="font-size:28px; font-weight:800; color:var(--yesil)">—</div>
+        <div id="kontorDurum" class="note" style="margin:0">yükleniyor…</div>
+        <button class="btn sm sec" onclick="kontorYukle()" style="margin-left:auto">Yenile</button>
+      </div>
+      <div class="note" style="margin-top:4px">1 WhatsApp mesajı = 1 kontör. Deneme döneminde düşüm olmaz. Paket için "Talep Et" → ekibimiz sizinle iletişime geçer.</div>
+      <div id="paketGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:10px; margin-top:14px"></div>
+    </div>
+
     <!-- Ayarlar -->
     <div class="card">
       <h2>⚙️ Ayarlar</h2>
@@ -188,8 +200,41 @@ async function testGonder(){
 }
 function kopyala(){ navigator.clipboard.writeText($('#wh').textContent).then(()=>toast('Kopyalandı')); }
 
-$('#sube') && $('#sube').addEventListener && $('#sube').addEventListener('change', durumYenile);
+// ===== Kontör / Paketler =====
+async function kontorYukle(){
+  try{
+    const r = await fetch('/api/wa/paket-durum?sube='+sube()+'&_='+Date.now(), {cache:'no-store'});
+    const j = await r.json();
+    $('#kontorBakiye').textContent = (Number(j.bakiye)||0).toLocaleString('tr-TR')+' kontör';
+    $('#kontorDurum').textContent = j.kontorlu
+      ? 'Kontörlü dönem — her mesaj 1 kontör düşer.'
+      : ('Ücretsiz/deneme dönemi — düşüm yok'+(j.deneme_bitis?(' (bitiş: '+j.deneme_bitis+')'):'')+'.');
+    const g = $('#paketGrid'); if(!g) return; g.innerHTML='';
+    const pk = j.paketler||{};
+    Object.keys(pk).forEach(k=>{
+      const p = pk[k];
+      const d = document.createElement('div');
+      d.style.cssText='border:1px solid var(--line); border-radius:12px; padding:14px; text-align:center; background:#0F1424';
+      d.innerHTML = '<div style="font-size:16px; font-weight:800; color:var(--ink)">'+p.ad+'</div>'
+        + '<div style="color:var(--sub); font-size:12px; margin:4px 0 10px">'+p.fiyat+'</div>'
+        + '<button class="btn sm" style="width:100%">Talep Et</button>';
+      d.querySelector('button').onclick=()=>kontorTalep(k);
+      g.appendChild(d);
+    });
+  }catch(e){}
+}
+async function kontorTalep(key){
+  const iletisim = (prompt('İletişim / not (telefon, uygun saat vb.) — opsiyonel:', '')||'');
+  try{
+    const r = await fetch('/api/wa/kontor-talep', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sube:sube(), paket:key, iletisim})});
+    const j = await r.json();
+    toast(j.mesaj || (j.ok?'Talep alındı 🙌':'Hata'));
+  }catch(e){ toast('Talep gönderilemedi'); }
+}
+
+$('#sube') && $('#sube').addEventListener && $('#sube').addEventListener('change', ()=>{ durumYenile(); kontorYukle(); });
 durumYenile();
+kontorYukle();
 durumTimer = setInterval(durumYenile, 8000);
 </script>
 </body>

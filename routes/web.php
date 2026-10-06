@@ -3682,6 +3682,10 @@ Route::get('/api/wa/kontor-talepler', function (Request $r) {
         ->select('wa_kontor_talepleri.*', 'subeler.ad as sube_ad')->get();
     return response()->json(['ok' => 1, 'talepler' => $rows]);
 });
+// ADMIN sayfası: kontör talepleri + yükleme (anahtarla)
+Route::get('/wa-kontor-admin', function (Request $r) {
+    return _waNoCache(response()->view('wa_kontor_admin', ['key' => (string) $r->query('key', '')]));
+});
 Route::post('/api/wa/kontor-yukle', function (Request $r) {
     if ((string) $r->input('admin_key') !== (string) env('RESTEOS_ADMIN_KEY', 'resteos2026')) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz'], 403);
     $subeId = (int) $r->input('sube');
