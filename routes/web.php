@@ -3719,14 +3719,16 @@ if (!function_exists('_waAnketGonder')) {
 
 // Anket sayfası (müşteri) — token'lı, giriş gerektirmez
 Route::get('/anket/{token}', function ($token) {
-    $d = Schema::hasTable('degerlendirmeler') ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
+    if (function_exists('_waAnketTokenEnsure')) _waAnketTokenEnsure();
+    $d = (Schema::hasTable('degerlendirmeler') && Schema::hasColumn('degerlendirmeler', 'token')) ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
     if (!$d) abort(404);
     $sube = DB::table('subeler')->find($d->sube_id);
     $googleUrl = (string) resto_ayar_al('google_yorum_url', '');
     return view('anket', ['d' => $d, 'sube' => $sube, 'token' => $token, 'dolduruldu' => (($d->durum ?? '') === 'dolduruldu' || (int) $d->puan > 0), 'googleUrl' => $googleUrl]);
 });
 Route::post('/anket/{token}', function (Request $r, $token) {
-    $d = Schema::hasTable('degerlendirmeler') ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
+    if (function_exists('_waAnketTokenEnsure')) _waAnketTokenEnsure();
+    $d = (Schema::hasTable('degerlendirmeler') && Schema::hasColumn('degerlendirmeler', 'token')) ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
     if (!$d) return response()->json(['ok' => 0], 404);
     $puan = max(1, min(5, (int) $r->input('puan', 5)));
     DB::table('degerlendirmeler')->where('id', $d->id)->update([
