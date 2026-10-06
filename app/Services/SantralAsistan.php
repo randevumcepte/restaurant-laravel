@@ -299,6 +299,7 @@ class SantralAsistan
             $p .= "!!! ÖNEMLİ — ARAYAN YENİ/İSİMSİZ MÜŞTERİ: Rezervasyon veya sipariş alırken ADINI MUTLAKA sor ('Adınızı alabilir miyim?') ve santral_aksiyon'un 'ad' alanına yaz. AD ALMADAN rezervasyon/siparişi tamam=true ile TAMAMLAMA. Böylece ilk aramada müşteri kaydı oluşur, sonraki aramalarda adıyla tanınır. ";
         }
         $p .= "Doğal, sıcak ve ÇOK KISA Türkçe konuş; genellikle tek cümle, en fazla iki kısa cümle. Gereksiz nezaket/uzatma yok, doğrudan konuya gir. ";
+        $p .= "ASLA BİLGİ UYDURMA: adres, isim, fiyat, menüde olmayan ürün, geçmiş sipariş/rezervasyon detayı — emin değilsen ya da kayıtlı değilse MÜŞTERİYE SOR. Kayıtlı olmayan bir adresi 'yine şuraya mı' diye VARSAYMA. ";
         $p .= "DUYGUSAL ZEKA: Müşteri özel/duygusal bir durumdan bahsederse önce KISA ve İÇTEN bir karşılık ver, sonra yardıma devam et. Örnekler: doğum günü/yıl dönümü/kutlama -> 'Eşinizin doğum gününü şimdiden kutlarız, çok özel bir akşam olsun'; yıl dönümü -> 'Yıl dönümünüz kutlu olsun'; özür/şikayet -> önce samimi özür; kötü/üzücü haber -> kısa geçmiş olsun/başsağlığı. Tek cümle, samimi ama abartısız; ardından işlemi (rezervasyon/sipariş) sürdür. Özel günse ilgili notu da al (ör. doğum günü -> rezervasyon notuna 'doğum günü'). ";
         $p .= "Müşterinin sözünü KESME; cevabını bitirmesini bekle, yarım duyduysan acele onaylama, 'tam söyleyebilir misiniz?' de. Aynı soruyu döngüye sokma. ";
         // ILK SELAM ZATEN YAPILDI -> tekrar selamlama (en kritik: yoksa her turda 'hos geldiniz' deyip takiliyor)
@@ -423,7 +424,14 @@ class SantralAsistan
             $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
             $p .= " Geçen siparişi: " . $ozet . ".";
         }
-        $p .= " KAYITLI MÜŞTERİ KURALLARI: Sipariş VEYA rezervasyon alırken adını, teslimat adresini ve telefonunu TEKRAR SORMA; kayıtlı bilgileri kullan ve sadece gerekiyorsa ONAY al ('Teslimat yine [adres] olsun mu?'). Rezervasyonda sadece kişi sayısı, tarih ve saati sor. Telefon numarasını sesli OKUMA. ";
+        $p .= " KAYITLI MÜŞTERİ KURALLARI: Adını ve telefonunu TEKRAR SORMA. ";
+        if (!empty($m->adres)) {
+            $p .= "Teslimat adresi KAYITLI (" . $m->adres . "): paket siparişte tekrar sorma, sadece 'Teslimat yine $m->adres olsun mu?' diye ONAYLA. ";
+        } else {
+            // KRITIK: kayitli adres YOKSA adres UYDURMA -> MUTLAKA sor (halüsinasyon kacagi).
+            $p .= "Teslimat adresi KAYITLI DEĞİL. Paket siparişte teslimat adresini MUTLAKA müşteriye sor; ASLA bir adres UYDURMA, varsayma veya 'yine şuraya mı' deme. ";
+        }
+        $p .= "Rezervasyonda sadece kişi sayısı, tarih ve saati sor. Telefon numarasını sesli OKUMA. ";
         if (!empty($this->sonSiparis)) {
             $ozet = implode(', ', array_map(fn ($k) => $k['adet'] . ' ' . $k['urun'], $this->sonSiparis));
             $p .= "ÖNEMLİ — GEÇEN SİPARİŞ: Müşteri sipariş vermek isteyince (örn. 'sipariş vermek istiyorum') İLK İŞ olarak geçen siparişini PROAKTİF hatırlat ve aynısını isteyip istemediğini sor: 'Tabii, geçen sefer $ozet almıştınız; aynısını ister misiniz, yoksa farklı bir şey mi?'. ";
