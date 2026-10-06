@@ -11294,6 +11294,43 @@ Route::post('/api/santral/geri-arama-durum', function (Request $r) {
     return response()->json(['ok' => 1], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
+// ============================ TEST VERISI TEMIZLE (en bastan test icin) ============================
+// Arama + ses + geri-arama + musteri + rezervasyon + siparis siler. Egitim/kalip/telaffuz KALIR.
+// GERI ALINAMAZ -> onay=HEPSINI-SIL zorunlu.
+Route::match(['get', 'post'], '/api/santral/test-temizle', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
+    if ((string) $r->input('onay') !== 'HEPSINI-SIL') {
+        return response()->json(['ok' => 0, 'hata' => 'Onay gerekli: ?onay=HEPSINI-SIL (GERI ALINAMAZ!)'], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+    $tablolar = [
+        'santral_oturumlari', 'santral_ses_kayit', 'santral_geri_arama', 'cagri_loglari',
+        'rezervasyonlar', 'rezervasyon_kalemleri',
+        'adisyonlar', 'adisyon_kalemleri',
+        'musteriler',
+    ];
+    $silinen = [];
+    try { DB::statement('SET FOREIGN_KEY_CHECKS=0'); } catch (\Throwable $e) {}
+    foreach ($tablolar as $t) {
+        if (!Schema::hasTable($t)) { $silinen[$t] = 'tablo yok'; continue; }
+        try {
+            $n = (int) DB::table($t)->count();
+            DB::table($t)->truncate();
+            $silinen[$t] = $n;
+        } catch (\Throwable $e) {
+            try { $n = (int) DB::table($t)->count(); DB::table($t)->delete(); $silinen[$t] = $n; }
+            catch (\Throwable $e2) { $silinen[$t] = 'hata: ' . $e2->getMessage(); }
+        }
+    }
+    try { DB::statement('SET FOREIGN_KEY_CHECKS=1'); } catch (\Throwable $e) {}
+    // Fiziksel ses kayit dosyalari
+    $sesSilindi = 0;
+    try {
+        $dir = storage_path('app/santral_ses');
+        if (is_dir($dir)) foreach (glob($dir . '/*') as $f) { if (@unlink($f)) $sesSilindi++; }
+    } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'silinen' => $silinen, 'ses_dosya_silindi' => $sesSilindi, 'not' => 'Egitim/kalip/telaffuz KORUNDU.'], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
 // TARAYICI TEST — ses/Asterisk olmadan AI Santral ile yazisarak dene
 Route::get('/santral-test', function () {
     _santralEnsure();
