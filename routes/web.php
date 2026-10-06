@@ -3587,6 +3587,11 @@ Route::get('/api/wa/durum', fn (Request $r) => _waNoCache(response()->json(_waBr
 Route::post('/api/wa/baglan', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'))));
 Route::get('/api/wa/qr', fn (Request $r) => _waNoCache(response()->json(_waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'))));
 Route::post('/api/wa/cikis', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'))));
+// WhatsApp Yönetimi — SİSTEM İÇİNDE (panel layout + sidebar) aç; /wa-yonetim sayfasını gömer.
+Route::get('/whatsapp', function () {
+    return view('whatsapp_panel');
+});
+
 Route::get('/wa-yonetim', function () {
     $subeler = DB::table('subeler')->select('id', 'ad')->orderBy('id')->get();
     return _waNoCache(response()->view('wa_yonetim', [

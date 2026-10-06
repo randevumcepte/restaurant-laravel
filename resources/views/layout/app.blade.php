@@ -20,6 +20,7 @@
         ['/pos', '🍽️', 'POS / Adisyon'],
         ['/paket', '🛵', 'Paket Siparişler'],
         ['/entegrasyon', '🔌', 'Entegrasyonlar'],
+        ['/whatsapp', '🟢', 'WhatsApp Yönetimi'],
         ['/kurye', '🗺️', 'Kurye Takip'],
         ['/mutfak', '👨‍🍳', 'Mutfak (KDS)'],
         ['/kiosk', '🖥️', 'Kiosk (Self-Servis)'],
