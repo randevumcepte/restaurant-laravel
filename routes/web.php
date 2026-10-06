@@ -11243,13 +11243,13 @@ if (!function_exists('_santralTerkTespit')) {
             if (!empty($o->geri_arama)) return;
             // 2) tamamlanan/aktarilan cagri terk degildir.
             if (in_array($sonuc, ['siparis', 'rezervasyon', 'aktar'], true)) return;
-            // 3) gecerli telefon + GERCEK konusma (en az 2 musteri turu) olmali (yanlis arama/selam degil).
+            // 3) gecerli telefon + EN AZ 1 musteri turu olmali (sadece karsilamayi duyup kapatan/yanlis arama degil).
             $tel = preg_replace('/\D/', '', (string) ($o->telefon ?? ''));
             if (strlen($tel) < 10) return;
             $g = json_decode($o->gecmis ?: '[]', true) ?: [];
             $musteriTuru = 0;
             foreach ($g as $m) if (($m['role'] ?? '') === 'user') $musteriTuru++;
-            if ($musteriTuru < 2) return;
+            if ($musteriTuru < 1) return;
             // 4) bu telefon icin zaten aktif (bekliyor/araniyor) geri arama varsa tekrarlama.
             $varMi = DB::table('santral_geri_arama')->where('telefon', $tel)->whereIn('durum', ['bekliyor', 'araniyor'])->exists();
             if ($varMi) return;
