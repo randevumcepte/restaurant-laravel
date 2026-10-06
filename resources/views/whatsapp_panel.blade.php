@@ -225,7 +225,6 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;
 function fmt(s){ if(!s) return '—'; try{ return new Date(s.replace(' ','T')).toLocaleString('tr-TR'); }catch(e){ return s; } }
 
 /* ---- Bağlantı ---- */
-let qrTimer=null;
 // QR'ı YEREL çiz (uzun WA linking string'i dışarı çıkmaz) — eski çalışan sayfanın mantığı
 function drawQR(text){
   const box=$('#qrImgBox');
