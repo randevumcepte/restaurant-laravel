@@ -513,7 +513,15 @@ section{padding:92px 0;position:relative}
 @media(max-width:700px){.twin .frame-browser{transform:none}.twin-chip{display:none}}
 
 /* Food-cost gorselini belirgin buyut (masaustu) */
-@media(min-width:961px){#maliyet .split{grid-template-columns:.68fr 1.32fr;gap:48px}}
+@media(min-width:961px){#maliyet .split{grid-template-columns:.62fr 1.38fr;gap:48px}}
+/* Kasa (POS) terminali cercevesi */
+.pos-term{display:flex;flex-direction:column;align-items:center;position:relative;z-index:2;animation:float 7s ease-in-out infinite}
+.pos-screen{width:100%;background:linear-gradient(160deg,#20202a,#131319);border-radius:28px;padding:16px 16px 42px;box-shadow:0 50px 110px -30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08);position:relative}
+.pos-screen img{display:block;width:100%;border-radius:13px}
+.pos-chin{position:absolute;left:0;right:0;bottom:13px;text-align:center;font-family:'Sora';font-weight:800;font-size:15px;color:#ECEAF6;letter-spacing:.03em}
+.pos-chin .dotp{display:inline-block;width:7px;height:7px;border-radius:50%;background:#9D5DC8;margin-right:7px;vertical-align:middle;box-shadow:0 0 8px #9D5DC8}
+.pos-neck{width:118px;height:72px;margin-top:-6px;background:linear-gradient(100deg,#8f95a3 0%,#dfe3ea 42%,#a7adba 100%);transform:perspective(340px) rotateX(15deg);transform-origin:top center;border-radius:7px 7px 12px 12px;box-shadow:inset 0 2px 3px rgba(255,255,255,.5),0 6px 10px rgba(0,0,0,.2)}
+.pos-base{width:330px;max-width:84%;height:50px;margin-top:-16px;background:radial-gradient(ellipse at 50% 32%,#dfe3ea 0%,#b4bac6 55%,#878d9b 100%);border-radius:50%;transform:perspective(520px) rotateX(60deg);box-shadow:0 32px 46px -14px rgba(0,0,0,.45)}
 @media(max-width:900px){
   .brandapp .split .txt{text-align:center}
   .ba-fan{height:auto;padding:20px 0}
@@ -927,9 +935,10 @@ footer .brand small{color:#7C769B}
         </ul>
       </div>
       <div class="shot-wrap reveal">
-        <div class="frame-browser">
-          <div class="frame-top"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="url">app.resteos.com/food-cost</span></div>
-          <img src="food-cost.png" alt="ResteOS food-cost / reçete maliyeti detay ekranı" style="display:block;width:100%;height:auto" loading="lazy" />
+        <div class="pos-term">
+          <div class="pos-screen"><img src="food-cost.png" alt="ResteOS food-cost / reçete maliyeti detay ekranı" style="display:block;width:100%" loading="lazy" /><div class="pos-chin"><span class="dotp"></span>ResteOS</div></div>
+          <div class="pos-neck"></div>
+          <div class="pos-base"></div>
         </div>
       </div>
     </div>

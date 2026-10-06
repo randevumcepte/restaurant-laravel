@@ -92,6 +92,7 @@
     <div class="seg" id="tipSeg"><div class="s act" data-t="paket" onclick="tipSec('paket',this)">🛵 Adrese Paket</div><div class="s" data-t="gelal" onclick="tipSec('gelal',this)">🏃 Gel-Al</div></div>
     <label>Ad Soyad</label><input id="i-ad" placeholder="Adınız">
     <label>Telefon</label><input id="i-tel" type="tel" inputmode="tel" placeholder="05__ ___ __ __">
+    <label>🎂 Doğum Günü <span style="opacity:.6;font-weight:400">(opsiyonel — size özel sürprizler için)</span></label><input id="i-dogum" type="date" placeholder="GG.AA.YYYY">
     <div id="adresWrap"><label>Teslimat Adresi</label><textarea id="i-adres" placeholder="Mahalle, cadde, no, daire, tarif…"></textarea></div>
     <label>Ödeme</label>
     <div class="seg" id="odemeSeg"><div class="s act" data-o="nakit" onclick="odemeSec('nakit',this)">💵 Kapıda Nakit</div><div class="s" data-o="kart_kapida" onclick="odemeSec('kart_kapida',this)">💳 Kapıda Kart</div></div>
@@ -169,7 +170,7 @@
     if(tip==='paket'&&!adres){ hata.textContent='Teslimat adresi gerekli.'; hata.style.display='block'; return; }
     hata.style.display='none'; btn.disabled=true; btn.textContent='Gönderiliyor…';
     var kalemler=[]; for(var k in sepet)kalemler.push({urun_id:parseInt(k),adet:sepet[k].adet});
-    var body=new URLSearchParams({ad:ad,telefon:tel,tip:tip,adres:adres,odeme:odeme,not:document.getElementById('i-not').value.trim(),kalemler:JSON.stringify(kalemler)});
+    var body=new URLSearchParams({ad:ad,telefon:tel,tip:tip,adres:adres,odeme:odeme,dogum_tarihi:(document.getElementById('i-dogum')?document.getElementById('i-dogum').value:''),not:document.getElementById('i-not').value.trim(),kalemler:JSON.stringify(kalemler)});
     fetch('/api/app/'+SUBE+'/siparis',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:body})
       .then(function(r){return r.json();})
       .then(function(j){ if(j.ok){ location.href=j.takip_url; } else { hata.textContent=j.hata||'Gönderilemedi'; hata.style.display='block'; btn.disabled=false; btn.textContent='Siparişi Onayla'; } })

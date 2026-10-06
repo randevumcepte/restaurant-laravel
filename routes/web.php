@@ -442,6 +442,8 @@ if (!function_exists('_adisyonKapanisIsle')) {
             }
         } catch (\Throwable $e) {
         }
+        // Memnuniyet anketi (müşteri + telefon varsa WA'dan token'lı link) — guard'lı, akışı bozmaz
+        try { if (function_exists('_waAnketGonder')) _waAnketGonder($a->id); } catch (\Throwable $e) {}
     }
 }
 
@@ -452,10 +454,12 @@ Route::post('/musteriler/ekle', function (Request $r) {
         'sube_id' => $subeId, 'ad' => $r->ad ?: 'Müşteri', 'telefon' => $r->telefon, 'adres' => $r->adres,
         'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
     ]);
+    if ($id && $r->filled('dogum_tarihi') && function_exists('_waDogumKaydet')) { try { _waDogumKaydet($id, $r->input('dogum_tarihi')); } catch (\Throwable $e) {} }
     return ['ok' => 1, 'id' => $id];
 });
 Route::post('/musteriler/guncelle', function (Request $r) {
     DB::table('musteriler')->where('id', $r->id)->update(['ad' => $r->ad, 'telefon' => $r->telefon, 'adres' => $r->adres, 'updated_at' => now()]);
+    if ($r->filled('dogum_tarihi') && function_exists('_waDogumKaydet')) { try { _waDogumKaydet($r->id, $r->input('dogum_tarihi')); } catch (\Throwable $e) {} }
     return ['ok' => 1];
 });
 Route::get('/musteriler/ara', function (Request $r) {
@@ -824,6 +828,7 @@ Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
     $m = $norm ? DB::table('musteriler')->where('sube_id', $s->id)->where('telefon_norm', $norm)->first() : null;
     if ($m) { DB::table('musteriler')->where('id', $m->id)->update(['ad' => $ad, 'adres' => $adres ?: $m->adres, 'updated_at' => now()]); $mid = $m->id; }
     else { $mid = DB::table('musteriler')->insertGetId(['sube_id' => $s->id, 'ad' => $ad, 'telefon' => $tel, 'telefon_norm' => $norm, 'adres' => $adres ?: null, 'created_at' => now(), 'updated_at' => now()]); }
+    if ($mid && $r->filled('dogum_tarihi') && function_exists('_waDogumKaydet')) { try { _waDogumKaydet($mid, $r->input('dogum_tarihi')); } catch (\Throwable $e) {} }
     // Adisyon (kanal=paket, platform=app) -> mutfaga duser
     $token = \Illuminate\Support\Str::random(28);
     $adId = DB::table('adisyonlar')->insertGetId([
@@ -3565,6 +3570,270 @@ Route::post('/api/wa/gelen', function (Request $r) {
         _restoWaGonder($subeId, $yanitHedef,"📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink);
     }
     return response()->json(['ok' => 1, 'tip' => 'ai']);
+});
+
+// ============================================================================
+//  WHATSAPP BİLDİRİM MOTORU — sipariş dışı tüm restoran mesajları
+//  (rezervasyon onay/hatırlatma · doğum günü · memnuniyet anketi · kayıp müşteri · toplu duyuru)
+//  TÜM gönderim _restoWaGonder üzerinden (kontör guard + log dahil). Hepsi additive + try/catch.
+// ============================================================================
+
+// Müşteri doğum tarihi kolonu (doğum günü mesajı için veri)
+if (!function_exists('_waMusteriDogumEnsure')) {
+    function _waMusteriDogumEnsure()
+    {
+        try {
+            if (Schema::hasTable('musteriler') && !Schema::hasColumn('musteriler', 'dogum_tarihi')) {
+                Schema::table('musteriler', fn ($t) => $t->date('dogum_tarihi')->nullable()->after('telefon'));
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+// Müşteri doğum tarihini güvenle kaydet (çeşitli formatları normalize eder)
+if (!function_exists('_waDogumKaydet')) {
+    function _waDogumKaydet($musteriId, $ham)
+    {
+        if (!$musteriId) return;
+        $ham = trim((string) $ham);
+        if ($ham === '') return;
+        _waMusteriDogumEnsure();
+        $d = null;
+        // Kabul: YYYY-MM-DD, DD.MM.YYYY, DD/MM, DD.MM
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ham, $m)) $d = "{$m[1]}-{$m[2]}-{$m[3]}";
+        elseif (preg_match('#^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$#', $ham, $m)) {
+            $g = str_pad($m[1], 2, '0', STR_PAD_LEFT); $ay = str_pad($m[2], 2, '0', STR_PAD_LEFT);
+            $yil = isset($m[3]) && $m[3] !== '' ? (strlen($m[3]) === 2 ? '19' . $m[3] : $m[3]) : '1990';
+            if ((int) $ay >= 1 && (int) $ay <= 12 && (int) $g >= 1 && (int) $g <= 31) $d = "$yil-$ay-$g";
+        }
+        if ($d) { try { DB::table('musteriler')->where('id', $musteriId)->update(['dogum_tarihi' => $d, 'updated_at' => now()]); } catch (\Throwable $e) {} }
+    }
+}
+
+// Mükerrer-gönderim koruması (cron idempotent olsun): aynı tür+anahtar bir kez
+if (!function_exists('_waBildirimGecmisiEnsure')) {
+    function _waBildirimGecmisiEnsure()
+    {
+        if (!Schema::hasTable('wa_bildirim_gecmisi')) {
+            try {
+                Schema::create('wa_bildirim_gecmisi', function ($t) {
+                    $t->increments('id');
+                    $t->integer('sube_id')->index();
+                    $t->string('tur', 30)->index();        // rez_hatirlat|dogum|anket|winback|duyuru
+                    $t->string('anahtar', 120)->index();   // benzersiz iş anahtarı (ör. rez-123-2026-10-06)
+                    $t->timestamp('created_at')->nullable();
+                });
+            } catch (\Throwable $e) {}
+        }
+    }
+    // true dönerse: daha önce gönderildi (atla). false: yeni (işaretlenir).
+    function _waDahaOnce($subeId, $tur, $anahtar)
+    {
+        _waBildirimGecmisiEnsure();
+        try {
+            if (DB::table('wa_bildirim_gecmisi')->where('tur', $tur)->where('anahtar', $anahtar)->exists()) return true;
+            DB::table('wa_bildirim_gecmisi')->insert(['sube_id' => (int) $subeId, 'tur' => $tur, 'anahtar' => mb_substr((string) $anahtar, 0, 120), 'created_at' => now()]);
+            return false;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+
+// Aktif indirim kuponunu metne çevir (doğum günü / hoş geldin mesajında kullanılır)
+if (!function_exists('_waKuponMetni')) {
+    function _waKuponMetni($subeId, $tip)
+    {
+        try {
+            if (!Schema::hasTable('indirimler')) return '';
+            $k = DB::table('indirimler')->where('sube_id', $subeId)->where('tip', $tip)->orderByDesc('aktif')->first();
+            if (!$k) $k = DB::table('indirimler')->where('tip', $tip)->orderByDesc('aktif')->first();
+            if (!$k) return '';
+            $deger = (($k->deger_tipi ?? 'yuzde') === 'yuzde')
+                ? ('%' . (int) $k->deger)
+                : (number_format((float) $k->deger, 0, ',', '.') . '₺');
+            $kod = (!empty($k->kupon_kodu)) ? ("\n🎟️ Kod: *" . $k->kupon_kodu . "*") : '';
+            return $deger . $kod;
+        } catch (\Throwable $e) { return ''; }
+    }
+}
+
+// --- 1) REZERVASYON ONAYI (rezervasyon oluşunca anında) ---
+if (!function_exists('_waRezervasyonOnay')) {
+    function _waRezervasyonOnay($rezId)
+    {
+        try {
+            $rez = DB::table('rezervasyonlar')->find($rezId);
+            if (!$rez || empty($rez->telefon)) return;
+            $sube = DB::table('subeler')->find($rez->sube_id);
+            $ad = $sube->ad ?? 'Restoran';
+            $tarih = \Carbon\Carbon::parse($rez->tarih)->format('d.m.Y');
+            $msg = "✅ *Rezervasyonunuz alındı!*\n\n"
+                . "🏠 " . $ad . "\n"
+                . "📅 " . $tarih . " · 🕐 " . substr((string) $rez->saat, 0, 5) . "\n"
+                . "👥 " . (int) $rez->kisi . " kişi\n\n"
+                . "Değişiklik için bu numaradan bize yazabilirsiniz. Sizi ağırlamak için sabırsızlanıyoruz! 🙏";
+            _restoWaGonder($rez->sube_id, $rez->telefon, $msg);
+        } catch (\Throwable $e) {}
+    }
+}
+
+// --- 2) MEMNUNİYET ANKETİ (hesap kapanınca token'lı link) ---
+if (!function_exists('_waAnketTokenEnsure')) {
+    function _waAnketTokenEnsure()
+    {
+        try {
+            if (Schema::hasTable('degerlendirmeler') && !Schema::hasColumn('degerlendirmeler', 'token')) {
+                Schema::table('degerlendirmeler', fn ($t) => $t->string('token', 40)->nullable()->index());
+            }
+            if (Schema::hasTable('degerlendirmeler') && !Schema::hasColumn('degerlendirmeler', 'durum')) {
+                Schema::table('degerlendirmeler', fn ($t) => $t->string('durum', 16)->default('dolduruldu'));
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_waAnketGonder')) {
+    function _waAnketGonder($adisyonId)
+    {
+        try {
+            if (!Schema::hasTable('degerlendirmeler')) return;
+            _waAnketTokenEnsure();
+            $a = DB::table('adisyonlar')->find($adisyonId);
+            if (!$a || empty($a->musteri_id) || (float) $a->toplam <= 0) return;
+            // Bu adisyon için zaten anket oluşturulmuşsa tekrar gönderme
+            if (DB::table('degerlendirmeler')->where('adisyon_id', $a->id)->whereNotNull('token')->exists()) return;
+            $tel = DB::table('musteriler')->where('id', $a->musteri_id)->value('telefon');
+            if (!$tel) return;
+            $token = \Illuminate\Support\Str::random(28);
+            DB::table('degerlendirmeler')->insert([
+                'sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'masa_id' => $a->masa_id ?? null,
+                'musteri_id' => $a->musteri_id, 'puan' => 0, 'lezzet' => 0, 'servis' => 0, 'hiz' => 0,
+                'token' => $token, 'durum' => 'bekliyor', 'created_at' => now(),
+            ]);
+            $sube = DB::table('subeler')->find($a->sube_id);
+            $msg = "🙏 Bizi tercih ettiğiniz için teşekkürler!\n\n"
+                . "Deneyiminiz nasıldı? 30 saniyenizi ayırıp değerlendirir misiniz?\n"
+                . "👉 " . url('/anket/' . $token) . "\n\n"
+                . "Görüşleriniz bizim için çok değerli. ❤️";
+            _restoWaGonder($a->sube_id, $tel, $msg);
+        } catch (\Throwable $e) {}
+    }
+}
+
+// Anket sayfası (müşteri) — token'lı, giriş gerektirmez
+Route::get('/anket/{token}', function ($token) {
+    $d = Schema::hasTable('degerlendirmeler') ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
+    if (!$d) abort(404);
+    $sube = DB::table('subeler')->find($d->sube_id);
+    $googleUrl = (string) resto_ayar_al('google_yorum_url', '');
+    return view('anket', ['d' => $d, 'sube' => $sube, 'token' => $token, 'dolduruldu' => (($d->durum ?? '') === 'dolduruldu' || (int) $d->puan > 0), 'googleUrl' => $googleUrl]);
+});
+Route::post('/anket/{token}', function (Request $r, $token) {
+    $d = Schema::hasTable('degerlendirmeler') ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
+    if (!$d) return response()->json(['ok' => 0], 404);
+    $puan = max(1, min(5, (int) $r->input('puan', 5)));
+    DB::table('degerlendirmeler')->where('id', $d->id)->update([
+        'puan' => $puan,
+        'lezzet' => max(0, min(5, (int) $r->input('lezzet', $puan))),
+        'servis' => max(0, min(5, (int) $r->input('servis', $puan))),
+        'hiz' => max(0, min(5, (int) $r->input('hiz', $puan))),
+        'yorum' => mb_substr(trim((string) $r->input('yorum')), 0, 500) ?: null,
+        'durum' => 'dolduruldu',
+    ]);
+    // Yüksek puan -> Google yorumuna yönlendir (ayarlıysa)
+    $googleUrl = (string) resto_ayar_al('google_yorum_url', '');
+    return ['ok' => 1, 'google' => ($puan >= 4 && $googleUrl !== '') ? $googleUrl : null];
+});
+
+// --- 3) GÜNLÜK CRON: rezervasyon hatırlatma + doğum günü + kayıp müşteri ---
+//  Dakikalık git-pull cron'una ek: günde 1 kez  curl "<site>/api/wa/gunluk-gorevler?key=SANTRAL_SECRET"
+//  İdempotent: gün içinde kaç kez çağrılırsa çağrılsın aynı kişiye 1 kez gider.
+Route::get('/api/wa/gunluk-gorevler', function (Request $r) {
+    $beklenen = (string) env('SANTRAL_SECRET', env('RESTEOS_ADMIN_KEY', 'resteos2026'));
+    if ($beklenen !== '' && (string) $r->query('key') !== $beklenen) return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
+    _waMusteriDogumEnsure();
+    $rapor = ['rez_hatirlat' => 0, 'dogum' => 0, 'winback' => 0];
+    $bugun = now()->format('Y-m-d');
+    $md = now()->format('m-d');
+
+    // (a) Bugünkü rezervasyonlara sabah hatırlatma
+    try {
+        if (Schema::hasTable('rezervasyonlar')) {
+            $rezler = DB::table('rezervasyonlar')->where('tarih', $bugun)
+                ->whereIn('durum', ['bekliyor', 'onaylandi'])->whereNotNull('telefon')->get();
+            foreach ($rezler as $rez) {
+                if (empty($rez->telefon)) continue;
+                if (_waDahaOnce($rez->sube_id, 'rez_hatirlat', 'rez-' . $rez->id . '-' . $bugun)) continue;
+                $sube = DB::table('subeler')->find($rez->sube_id);
+                $msg = "⏰ *Rezervasyon hatırlatması*\n\n"
+                    . "Bugün saat " . substr((string) $rez->saat, 0, 5) . "'te " . ($sube->ad ?? 'restoranımızda')
+                    . " " . (int) $rez->kisi . " kişilik masanız hazır olacak. 🍽️\n\n"
+                    . "Gelemeyecekseniz lütfen bu numaradan haber verin. Görüşmek üzere! 🙏";
+                if (_restoWaGonder($rez->sube_id, $rez->telefon, $msg)) $rapor['rez_hatirlat']++;
+            }
+        }
+    } catch (\Throwable $e) {}
+
+    // (b) Bugün doğum günü olan müşterilere kutlama + indirim
+    try {
+        if (Schema::hasColumn('musteriler', 'dogum_tarihi')) {
+            $kisiler = DB::table('musteriler')->whereNotNull('dogum_tarihi')->whereNotNull('telefon')
+                ->whereRaw("DATE_FORMAT(dogum_tarihi,'%m-%d') = ?", [$md])->get();
+            foreach ($kisiler as $m) {
+                if (empty($m->telefon)) continue;
+                if (_waDahaOnce($m->sube_id, 'dogum', 'dogum-' . $m->id . '-' . now()->format('Y'))) continue;
+                $sube = DB::table('subeler')->find($m->sube_id);
+                $kupon = _waKuponMetni($m->sube_id, 'dogum_gunu');
+                $msg = "🎉🎂 *İyi ki doğdunuz " . ($m->ad ?: '') . "!*\n\n"
+                    . ($sube->ad ?? 'Biz') . " olarak doğum gününüzü kutlarız. 🥳\n"
+                    . ($kupon !== '' ? ("\n🎁 Size özel doğum günü hediyesi: *" . $kupon . "*\nBu ay içinde ziyaretinizde geçerli.") : "")
+                    . "\n\nNice mutlu senelere! ❤️";
+                if (_restoWaGonder($m->sube_id, $m->telefon, $msg)) $rapor['dogum']++;
+            }
+        }
+    } catch (\Throwable $e) {}
+
+    // (c) Kayıp müşteri geri kazanım (son ziyaret 30-120 gün önce, ayda en fazla 1)
+    try {
+        $sinirBas = now()->subDays(120)->format('Y-m-d H:i:s');
+        $sinirSon = now()->subDays(30)->format('Y-m-d H:i:s');
+        $adaylar = DB::table('musteriler as m')->whereNotNull('m.telefon')
+            ->select('m.id', 'm.ad', 'm.sube_id', 'm.telefon', DB::raw('(SELECT MAX(kapanis) FROM adisyonlar WHERE adisyonlar.musteri_id=m.id AND adisyonlar.durum=\'odendi\') as son'))
+            ->havingRaw('son BETWEEN ? AND ?', [$sinirBas, $sinirSon])->limit(200)->get();
+        foreach ($adaylar as $m) {
+            if (empty($m->telefon)) continue;
+            if (_waDahaOnce($m->sube_id, 'winback', 'winback-' . $m->id . '-' . now()->format('Y-m'))) continue;
+            $sube = DB::table('subeler')->find($m->sube_id);
+            $kupon = _waKuponMetni($m->sube_id, 'kupon');
+            $msg = "👋 Merhaba " . ($m->ad ?: '') . ", sizi özledik!\n\n"
+                . ($sube->ad ?? 'Restoranımız') . " olarak bir süredir görüşemedik. 🥺"
+                . ($kupon !== '' ? ("\n\n🎁 Dönüşünüze özel: *" . $kupon . "*") : "")
+                . "\n\nSizi tekrar ağırlamaktan mutluluk duyarız! 🍽️";
+            if (_restoWaGonder($m->sube_id, $m->telefon, $msg)) $rapor['winback']++;
+        }
+    } catch (\Throwable $e) {}
+
+    return response()->json(['ok' => 1, 'tarih' => $bugun, 'rapor' => $rapor], 200, [], JSON_UNESCAPED_UNICODE);
+});
+
+// --- 4) TOPLU DUYURU / KAMPANYA (patron panelinden) ---
+//  Hedef: hepsi | son30 (son 30 gün gelen) | sadik (>=3 sipariş). Kontör guard her gönderimde.
+Route::post('/api/wa/duyuru-gonder', function (Request $r) {
+    $subeId = (int) ($r->input('sube') ?: DB::table('subeler')->min('id'));
+    $mesaj = trim((string) $r->input('mesaj'));
+    if ($mesaj === '') return ['ok' => 0, 'hata' => 'Mesaj boş.'];
+    $hedef = in_array($r->input('hedef'), ['son30', 'sadik', 'hepsi']) ? $r->input('hedef') : 'hepsi';
+    $q = DB::table('musteriler')->where('sube_id', $subeId)->whereNotNull('telefon')->where('telefon', '!=', '');
+    if ($hedef === 'sadik') $q->where('siparis_sayisi', '>=', 3);
+    if ($hedef === 'son30') {
+        $aktifIds = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')
+            ->where('kapanis', '>=', now()->subDays(30))->whereNotNull('musteri_id')->distinct()->pluck('musteri_id')->all();
+        $q->whereIn('id', $aktifIds ?: [0]);
+    }
+    $kisiler = $q->limit(500)->get(['id', 'telefon']);
+    $gonderilen = 0; $atlanan = 0;
+    foreach ($kisiler as $m) {
+        if (!\App\Services\KontorServisi::yeterliMi($subeId)) { $atlanan++; continue; } // kontör bitti -> dur
+        if (_restoWaGonder($subeId, $m->telefon, $mesaj)) $gonderilen++; else $atlanan++;
+    }
+    return ['ok' => 1, 'hedef' => $hedef, 'aday' => $kisiler->count(), 'gonderilen' => $gonderilen, 'atlanan' => $atlanan];
 });
 
 // Kurulum/yardim + ayar yazici (internal)
@@ -8913,6 +9182,7 @@ Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
 
     // Musteri CRM: telefondan bul/olustur (alerji-not musteriye yazilir) + ozel istek etiketleri
     $musteriId = _rezMusteriCozumle($p->sube_id, $ad, $tel, (string) $r->input('musteri_not'));
+    if ($musteriId && $r->filled('dogum_tarihi') && function_exists('_waDogumKaydet')) { try { _waDogumKaydet($musteriId, $r->input('dogum_tarihi')); } catch (\Throwable $e) {} }
     $etiketler = _rezEtiketTemizle($r->input('etiketler'));
 
     $id = DB::table('rezervasyonlar')->insertGetId([
@@ -8925,6 +9195,9 @@ Route::post('/api/patron/rezervasyon-ekle', function (Request $r) {
 
     // On siparis (ne yiyecek) kalemleri
     $kalem = _rezKalemKaydet($p->sube_id, $id, $r->input('on_siparis'));
+
+    // WhatsApp rezervasyon onayı (telefon varsa; guard'lı — rezervasyon akışını bozmaz)
+    try { if (function_exists('_waRezervasyonOnay')) _waRezervasyonOnay($id); } catch (\Throwable $e) {}
 
     return ['ok' => 1, 'id' => $id, 'musteri_id' => $musteriId, 'kalem' => $kalem,
         'mesaj' => "$ad · $tarih $saat rezervasyonu eklendi." . ($kalem ? " ($kalem ön sipariş)" : '')];

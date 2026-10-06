@@ -126,6 +126,30 @@
   </div>
 </div>
 
+<!-- Toplu Duyuru / Kampanya -->
+<div class="wa-card" style="margin-top:18px">
+  <h3 style="margin-bottom:8px">📣 Toplu Duyuru / Kampanya</h3>
+  <p style="color:#555;margin-bottom:14px;font-size:13.5px;line-height:1.5">Seçtiğiniz müşteri grubuna tek seferde WhatsApp mesajı gönderin (yeni menü, happy hour, özel gün…). <b>Her mesaj 1 kontör</b> harcar; kontör biterse gönderim durur.</p>
+  <div style="display:grid; gap:12px; max-width:620px">
+    <div>
+      <label class="wa-link-label">Hedef Kitle</label>
+      <select id="duyuruHedef" class="wa-link-input">
+        <option value="hepsi">Tüm müşteriler (telefonu olan)</option>
+        <option value="son30">Son 30 günde gelenler</option>
+        <option value="sadik">Sadık müşteriler (3+ sipariş)</option>
+      </select>
+    </div>
+    <div>
+      <label class="wa-link-label">Mesaj</label>
+      <textarea id="duyuruMesaj" class="wa-link-input" rows="4" maxlength="900" placeholder="Örn: 🍕 Bu hafta sonu tüm pizzalarda %20 indirim! Sizi bekliyoruz."></textarea>
+    </div>
+  </div>
+  <div style="margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+    <button class="btn-wa" onclick="duyuruGonder()" id="duyuruBtn">Duyuruyu Gönder</button>
+    <span id="duyuruSonuc" style="font-size:13px"></span>
+  </div>
+</div>
+
 <!-- Kontör / Paketler -->
 <div class="wa-card" style="margin-top:18px">
   <div class="wkp-free-banner">
@@ -232,6 +256,25 @@ async function baglantiKaydet(){
   const st=$('#bgStatus'); st.style.display='inline';
   try{ const r=await fetch('/api/wa/baglantilar-kaydet',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}); const j=await r.json(); st.style.color='#1a7f3e'; st.textContent = j.ok?'✓ Kaydedildi':'Hata'; setTimeout(()=>st.style.display='none',3500); }
   catch(e){ st.style.color='#dc3545'; st.textContent='Bağlantı hatası'; }
+}
+
+/* ---- Toplu Duyuru / Kampanya ---- */
+async function duyuruGonder(){
+  const mesaj = $('#duyuruMesaj').value.trim();
+  const hedef = $('#duyuruHedef').value;
+  const s = $('#duyuruSonuc'), btn = $('#duyuruBtn');
+  if(!mesaj){ s.style.color='#dc3545'; s.textContent='Mesaj boş olamaz.'; return; }
+  const etiket = {hepsi:'tüm müşterilere', son30:'son 30 günde gelenlere', sadik:'sadık müşterilere'}[hedef];
+  if(!confirm('Duyuru '+etiket+' WhatsApp\'tan gönderilecek. Her mesaj 1 kontör harcar. Onaylıyor musunuz?')) return;
+  btn.disabled=true; btn.textContent='Gönderiliyor…'; s.style.color='#555'; s.textContent='';
+  try{
+    const body = new URLSearchParams({ sube:sube(), hedef:hedef, mesaj:mesaj });
+    const r = await fetch('/api/wa/duyuru-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+    const j = await r.json();
+    if(j.ok){ s.style.color='#1a7f3e'; s.textContent='✓ '+j.gonderilen+' kişiye gönderildi'+(j.atlanan? (' · '+j.atlanan+' atlandı (kontör/numara)'):''); $('#duyuruMesaj').value=''; kontorYukle(); }
+    else { s.style.color='#dc3545'; s.textContent = j.hata||'Hata'; }
+  }catch(e){ s.style.color='#dc3545'; s.textContent='Bağlantı hatası'; }
+  btn.disabled=false; btn.textContent='Duyuruyu Gönder';
 }
 
 /* ---- Kontör ---- */
