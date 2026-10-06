@@ -10147,6 +10147,11 @@ Route::post('/api/paket/durum', function (Request $r) {
             break;
         case 'yola':
             $upd['teslimat_durumu'] = 'yolda';
+            $kid = (int) $r->input('kurye_id');
+            if ($kid && DB::table('kuryeler')->where('id', $kid)->where('sube_id', $a->sube_id)->exists()) {
+                $upd['kurye_id'] = $kid;
+                DB::table('kuryeler')->where('id', $kid)->update(['durum' => 'teslimatta']);
+            }
             break;
         case 'teslim':
             // Kasa DOĞRUDAN teslim+tahsil (gel-al / kuryesiz / kasa elden teslim aldı)
@@ -10175,6 +10180,21 @@ Route::post('/api/paket/durum', function (Request $r) {
     }
     DB::table('adisyonlar')->where('id', $id)->update($upd);
     return ['ok' => 1];
+});
+
+// Kasa: aktif kurye listesi (atama + paylaşılacak kurye-app linki)
+Route::get('/api/kuryeler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _kuryeCanliEnsure($p->sube_id);
+    $list = DB::table('kuryeler')->where('sube_id', $p->sube_id)->where('aktif', 1)
+        ->orderBy('ad')->get(['id', 'ad', 'durum', 'token'])
+        ->map(fn ($k) => [
+            'id' => (int) $k->id, 'ad' => $k->ad, 'durum' => $k->durum,
+            'aktif_teslimat' => (int) DB::table('adisyonlar')->where('kurye_id', $k->id)->whereIn('teslimat_durumu', ['hazir', 'yolda'])->count(),
+            'link' => url('/kurye/' . $k->token),
+        ]);
+    return ['ok' => 1, 'kuryeler' => $list];
 });
 
 Route::get('/api/raporlar', function (Request $r) {
