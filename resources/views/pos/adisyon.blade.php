@@ -3,7 +3,12 @@
 @section('baslik', 'Masa ' . $masa->ad)
 
 @section('content')
-<a href="/pos" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 mb-4">← Masa Haritası</a>
+<div class="flex items-center justify-between mb-4">
+    <a href="/pos" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600">← Masa Haritası</a>
+    <div class="text-sm text-slate-600">👤 <b id="posGarsonAd" class="text-indigo-600">—</b>
+        <button onclick="posGarsonSec()" class="ml-2 text-xs font-semibold text-indigo-600 border border-indigo-200 rounded-lg px-2.5 py-1 hover:bg-indigo-50">Değiştir</button>
+    </div>
+</div>
 
 @if (!$adisyon)
     {{-- Bos masa: adisyon ac --}}
@@ -206,5 +211,36 @@
         </div>
     </div>
 @endif
+
+{{-- Garson seçim modalı --}}
+<div id="posGarsonModal" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true">
+    <div class="absolute inset-0 bg-black/40" onclick="document.getElementById('posGarsonModal').style.display='none'"></div>
+    <div class="relative bg-white rounded-2xl p-5 w-full max-w-md shadow-xl">
+        <h3 class="font-bold text-slate-800 mb-1">Garson Seç</h3>
+        <p class="text-xs text-slate-500 mb-4">Aldığın siparişler sana yazılır. Bu cihaz seçimi hatırlar.</p>
+        <div class="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+            @foreach ($garsonlar as $g)
+                <button class="pg-btn border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 text-left"
+                        data-id="{{ $g->id }}" data-ad="{{ $g->ad }}">
+                    {{ $g->ad }}<span class="block text-[10px] text-slate-400">{{ $g->rol }}</span>
+                </button>
+            @endforeach
+        </div>
+    </div>
+</div>
+
 <style>[x-cloak]{display:none!important}</style>
 @endsection
+
+@push('scripts')
+<script>
+    function posGarsonGoster() { var e = document.getElementById('posGarsonAd'); if (e) e.textContent = localStorage.getItem('pos_garson_ad') || '—'; }
+    function posGarsonSec() { document.getElementById('posGarsonModal').style.display = 'flex'; }
+    function posGarsonAta(id, ad) { localStorage.setItem('pos_garson_id', id); localStorage.setItem('pos_garson_ad', ad); document.getElementById('posGarsonModal').style.display = 'none'; posGarsonGoster(); }
+    document.addEventListener('DOMContentLoaded', function () {
+        posGarsonGoster();
+        document.querySelectorAll('.pg-btn').forEach(function (b) { b.onclick = function () { posGarsonAta(b.dataset.id, b.dataset.ad); }; });
+        if (!localStorage.getItem('pos_garson_id')) posGarsonSec();
+    });
+</script>
+@endpush

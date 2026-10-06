@@ -92,7 +92,11 @@
     window.csrf = document.querySelector('meta[name=csrf-token]').content;
     async function api(url, data = null) {
         const opt = { headers: { 'X-CSRF-TOKEN': window.csrf, 'Accept': 'application/json' } };
-        if (data) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(data); }
+        if (data) {
+            // Web POS: aktif garson kimliğini otomatik ekle (localStorage). Diğer sayfalar bu alanı yok sayar.
+            try { var g = localStorage.getItem('pos_garson_id'); if (g && data.garson_id === undefined) data.garson_id = g; } catch (e) {}
+            opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(data);
+        }
         const r = await fetch(url, opt);
         return r.json();
     }

@@ -319,7 +319,8 @@ Route::get('/pos', function () {
     $masalar = DB::table('masalar')->where('sube_id', $subeId)->orderBy('id')->get()->groupBy('bolge_id');
     $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
         ->select('masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
-    return view('pos.harita', compact('bolgeler', 'masalar', 'acik'));
+    $garsonlar = DB::table('personeller')->where('sube_id', $subeId)->whereIn('rol', ['garson', 'mudur', 'sahip'])->orderBy('ad')->get(['id', 'ad', 'rol']);
+    return view('pos.harita', compact('bolgeler', 'masalar', 'acik', 'garsonlar'));
 });
 
 Route::get('/pos/masa/{masa}', function ($masaId) {
@@ -331,12 +332,17 @@ Route::get('/pos/masa/{masa}', function ($masaId) {
     $urunler = DB::table('urunler')->where('sube_id', $masa->sube_id)->where('aktif', 1)->get()->groupBy('kategori_id');
     $bosMasalar = DB::table('masalar')->where('sube_id', $masa->sube_id)->where('durum', 'bos')->where('id', '!=', $masaId)->get();
     $musteri = ($adisyon && $adisyon->musteri_id) ? DB::table('musteriler')->find($adisyon->musteri_id) : null;
-    return view('pos.adisyon', compact('masa', 'adisyon', 'kalemler', 'kategoriler', 'urunler', 'bosMasalar', 'musteri'));
+    $garsonlar = DB::table('personeller')->where('sube_id', $masa->sube_id)->whereIn('rol', ['garson', 'mudur', 'sahip'])->orderBy('ad')->get(['id', 'ad', 'rol']);
+    return view('pos.adisyon', compact('masa', 'adisyon', 'kalemler', 'kategoriler', 'urunler', 'bosMasalar', 'musteri', 'garsonlar'));
 });
 
 Route::post('/pos/adisyon-ac', function (Request $r) {
     $masa = DB::table('masalar')->find($r->masa_id);
-    $garson = DB::table('personeller')->where('sube_id', $masa->sube_id)->where('rol', 'garson')->value('id');
+    // Web POS garson kimliği: seçili garson varsa onu, yoksa ilk garsonu ata
+    $garson = (int) $r->input('garson_id');
+    if (!$garson || !DB::table('personeller')->where('id', $garson)->where('sube_id', $masa->sube_id)->exists()) {
+        $garson = DB::table('personeller')->where('sube_id', $masa->sube_id)->where('rol', 'garson')->value('id');
+    }
     $id = DB::table('adisyonlar')->insertGetId([
         'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'kanal' => 'salon', 'misafir_sayisi' => (int) ($r->misafir ?? 2),
         'durum' => 'acik', 'acan_personel_id' => $garson, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
@@ -348,10 +354,11 @@ Route::post('/pos/adisyon-ac', function (Request $r) {
 
 Route::post('/pos/kalem-ekle', function (Request $r) {
     $u = DB::table('urunler')->find($r->urun_id);
+    $gid = (int) $r->input('garson_id') ?: null;
     DB::table('adisyon_kalemleri')->insert([
         'adisyon_id' => $r->adisyon_id, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => 1,
         'birim_fiyat' => $u->fiyat, 'tutar' => $u->fiyat, 'durum' => 'yeni', 'gonderim_zamani' => null,
-        'created_at' => now(), 'updated_at' => now(),
+        'personel_id' => $gid, 'created_at' => now(), 'updated_at' => now(),
     ]);
     return _adisyonToplamGuncelle($r->adisyon_id);
 });
