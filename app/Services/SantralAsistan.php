@@ -175,9 +175,9 @@ class SantralAsistan
                 if (($m['role'] ?? '') === 'assistant' && mb_stripos((string) ($m['content'] ?? ''), 'rezervasyonunuz görünüyor') !== false) { $uyarildi = true; break; }
             }
             if (!$uyarildi) {
-                $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' ' . $r['kisi'] . ' kişi', $this->mevcutRez));
+                $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . "'de, " . $r['kisi'] . ' kişilik', $this->mevcutRez));
                 $this->teshis = 'mevcut_rez';
-                return ['cevap' => "Zaten $liste için rezervasyonunuz görünüyor. Bunu mu değiştirmek istersiniz, iptal mi, yoksa farklı bir gün için ek bir rezervasyon mu?", 'aksiyon' => null, 'veri' => [], 'bitir' => false];
+                return ['cevap' => "Zaten $liste rezervasyonunuz görünüyor. Bunu mu değiştirmek istersiniz, iptal mi, yoksa farklı bir gün için ek bir rezervasyon mu?", 'aksiyon' => null, 'veri' => [], 'bitir' => false];
             }
         }
 
@@ -283,7 +283,7 @@ class SantralAsistan
         $p = "Sen $ad adlı restoranın telefonla arayan müşterilerine yanıt veren yapay zeka SANTRAL görevlisisin. ";
         // EN BASA: mevcut rezervasyon uyarisi (asagida gomulu kalinca model atliyor). Kisi sormadan ONCE soylet.
         if (!empty($this->mevcutRez)) {
-            $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . ' (' . $r['kisi'] . ' kişi)', $this->mevcutRez));
+            $liste = implode('; ', array_map(fn ($r) => $this->dogalTarih($r['tarih']) . ' saat ' . $r['saat'] . "'de, " . $r['kisi'] . ' kişilik', $this->mevcutRez));
             $p .= "!!! EN ÖNEMLİ KURAL — BU MÜŞTERİNİN ZATEN AKTİF REZERVASYONU VAR: $liste. Müşteri rezervasyondan bahseder bahsetmez (yeni rezervasyon / değişiklik / tarih söyleme) İLK CÜMLENDE, kişi sayısı/tarih SORMADAN ÖNCE bunu MUTLAKA söyle: 'Zaten $liste için rezervasyonunuz görünüyor.' Sonra bunu mu değiştirmek, iptal etmek mi, yoksa farklı bir gün/saat için EK rezervasyon mu istediğini sor. AYNI gün/saate İKİNCİ rezervasyon OLUŞTURMA. Bu kuralı ATLAMA. ";
         }
         $p .= "Doğal, sıcak ve ÇOK KISA Türkçe konuş; genellikle tek cümle, en fazla iki kısa cümle. Gereksiz nezaket/uzatma yok, doğrudan konuya gir. ";
@@ -303,6 +303,7 @@ class SantralAsistan
         $dilim = $saatN < 6 ? 'gece' : ($saatN < 11 ? 'sabah' : ($saatN < 17 ? 'gündüz' : ($saatN < 22 ? 'akşam' : 'gece')));
         $p .= "ZAMAN: Bugün $gunAd, " . $ist->format('Y-m-d') . " (Türkiye, şu an $dilim). 'Bugün' = " . $ist->format('Y-m-d') . ", 'yarın' = " . $ist->copy()->addDay()->format('Y-m-d') . ". Müşteri 'bugün / yarın / bu akşam / hafta sonu / cumartesi' gibi derse tarihi SEN hesapla ve YYYY-MM-DD'ye çevir; müşteriye ASLA 'ayın kaçı' diye SORMA. Saati de HH:MM yap ('akşam 8' = 20:00, 'öğlen' = 12:00). ";
         $p .= "Müşteriye tarihi SÖYLERKEN doğal/Türkçe konuş, ham tarih (2026-10-07 gibi) ya da robotik ifade KULLANMA: bugünse 'bugün', yarınsa 'yarın', bu haftaysa gün adı ('bu çarşamba' / 'çarşamba'), gelecek haftaysa 'haftaya çarşamba'; yalnızca 2+ hafta ilerideyse '21 Ekim' gibi gün+ay söyle. (santral_aksiyon aracına ise HER ZAMAN YYYY-MM-DD ver.) ";
+        $p .= "SAAT + KİŞİ SAYISINI peş peşe söyleme; araya 'de' ve VİRGÜL koy (ör. 'saat 20:00'de, 2 kişilik'), yoksa seslendirmede '20:00 2' birleşip '22 kişi' gibi duyulur. ";
         $p .= "REZERVASYON için gereken bilgiler: kişi sayısı, tarih ve saat. TELEFON numarasını arayan hattan biliyorsun; SORMA ve sesli OKUMA/tekrar etme. ADINI: kayıtlı müşteriyse zaten biliyorsun, TEKRAR SORMA; kayıtlı değilse adını yalnızca BİR KEZ nazikçe sor. Göreceli tarih ifadelerini (yarın, bu akşam) kendin çöz, müşteriye tarih/ayın kaçı diye sorma. Eksik olanları (kişi/tarih/saat) TEK TEK, kısa sorularla iste; tamamlanınca müşteriye SADECE kişi sayısı/tarih/saat'i tekrar edip onay al, sonra santral_aksiyon aracını niyet=rezervasyon, tarih=YYYY-MM-DD, saat=HH:MM ve tamam=true ile çağır. ";
         $p .= "EN KRİTİK KAYIT KURALI: Müşteri onay verdiği an (tamam / olur / onaylıyorum / evet) AYNI yanıtında MUTLAKA santral_aksiyon aracını çağır — rezervasyonda niyet=rezervasyon + kisi + tarih=YYYY-MM-DD + saat=HH:MM + varsa not; siparişte niyet=siparis + kalemler + odeme; her ikisinde tamam=true. Sadece 'rezervasyonunuzu/siparişinizi aldım, onaylıyorum' DEMEK YETMEZ; aracı çağırmazsan sisteme HİÇBİR ŞEY KAYDEDİLMEZ. Onay anındaki metnini kısa tut ki araç çağrısı da sığsın. ";
         $p .= "KAPANIŞ (insani): Rezervasyon/sipariş aracını çağırdıktan sonra görüşmeyi HEMEN KAPATMA ve 'iyi günler' deyip bitirme. Kısaca teyit et ve 'Başka bir arzunuz var mı?' / 'Yardımcı olabileceğim başka bir şey var mı?' diye sor. Müşteri 'yok / hayır / teşekkürler / sağ olun' gibi bitirdiğinde SICAK bir veda et (ör. 'Rica ederiz, iyi günler, görüşmek üzere') ve santral_aksiyon niyet=veda, tamam=true çağır — hat ANCAK o zaman kapanır. Müşteri başka bir şey isterse yardıma devam et. ";
