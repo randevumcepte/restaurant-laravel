@@ -87,6 +87,23 @@
         <button class="btn-wa" id="baglanBtn" onclick="baglan()">WhatsApp'ı Bağla</button>
         <button class="btn-wa btn-wa-danger" id="cikisBtn" style="display:none" onclick="cikis()">Oturumu Kapat</button>
       </div>
+      <!-- Telefon numarasıyla bağlan (QR'a alternatif — bazen QR okutulamıyor) -->
+      <div id="pairBox" style="display:none; margin-top:14px">
+        <div style="text-align:center"><a href="#" onclick="pairAc();return false" style="font-size:13px;color:#7C3AED;font-weight:600;text-decoration:none">📱 QR okutamıyor musunuz? Telefon numarasıyla bağlanın →</a></div>
+        <div id="pairPanel" style="display:none; max-width:420px; margin:12px auto 0; background:#faf8ff; border:1px solid #e9ddfb; border-radius:12px; padding:16px">
+          <p style="font-size:13px;color:#555;margin:0 0 10px">İşletmenizin WhatsApp numarasını yazın, size bir <b>kod</b> verelim. Telefonda <b>WhatsApp &gt; Bağlı Cihazlar &gt; Cihaz Bağla &gt; Telefon numarasıyla bağla</b> deyip bu kodu girin.</p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <input id="pairTel" class="wa-link-input" style="flex:1; min-width:180px" type="tel" inputmode="tel" placeholder="05XX XXX XX XX">
+            <button class="btn-wa" id="pairBtn" onclick="pairUret()">Kod Üret</button>
+          </div>
+          <div id="pairKod" style="display:none; text-align:center; margin-top:14px">
+            <div style="font-size:12px;color:#777">Telefonunuza girilecek kod:</div>
+            <div id="pairKodDeger" style="font-size:30px; font-weight:800; letter-spacing:4px; color:#111; margin-top:4px; font-family:ui-monospace,Consolas,monospace"></div>
+            <div class="wa-meta" style="margin-top:6px">Kod kısa süre geçerlidir. Bağlanınca bu durum ✅ olur.</div>
+          </div>
+          <div id="pairHata" style="display:none; color:#dc3545; font-size:13px; margin-top:10px"></div>
+        </div>
+      </div>
     </div>
     <div class="wa-info">
       <h3>Nasıl Çalışır?</h3>
@@ -249,6 +266,7 @@ async function durumYenile(){
     $('#offWrap').style.display = (!bagli && !qrBekliyor)?'block':'none';
     $('#cikisBtn').style.display = bagli?'inline-block':'none';
     $('#baglanBtn').style.display = bagli?'none':'inline-block';
+    $('#pairBox').style.display = bagli?'none':'block';
     if(bagli && qrTimer){ clearInterval(qrTimer); qrTimer=null; }
     if(qrBekliyor){ loadQr(); if(!qrTimer) qrTimer=setInterval(loadQr,2500); }
   }catch(e){}
@@ -273,6 +291,28 @@ async function cikis(){
   await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
   if(qrTimer){ clearInterval(qrTimer); qrTimer=null; }
   toast('Oturum kapatıldı'); setTimeout(durumYenile,1000);
+}
+/* ---- Telefon numarasıyla bağlan (PairPhone) ---- */
+function pairAc(){ const p=$('#pairPanel'); p.style.display = p.style.display==='none'?'block':'none'; }
+async function pairUret(){
+  const tel=$('#pairTel').value.trim(), btn=$('#pairBtn'), hata=$('#pairHata'), kodBox=$('#pairKod');
+  hata.style.display='none'; kodBox.style.display='none';
+  if(!tel){ hata.textContent='Telefon numarası girin.'; hata.style.display='block'; return; }
+  btn.disabled=true; btn.textContent='Üretiliyor…';
+  try{
+    // Önce oturumu başlat (pairing handshake hazır olsun), sonra kod iste
+    await fetch('/api/wa/baglan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
+    let j=null;
+    for(let i=0;i<4;i++){ // köprü "pairing-not-ready" derse birkaç kez dene
+      const r=await fetch('/api/wa/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube(),phone:tel})});
+      j=await r.json(); const b=j.body||j||{};
+      if(b.code){ $('#pairKodDeger').textContent=b.code; kodBox.style.display='block'; btn.textContent='Yeni Kod'; btn.disabled=false; setTimeout(durumYenile,2000); return; }
+      if(b.error && b.error!=='pairing-not-ready'){ hata.textContent='Hata: '+b.error+(b.error==='already-paired'?' (zaten bağlı)':''); hata.style.display='block'; break; }
+      await new Promise(s=>setTimeout(s,2500));
+    }
+    if(kodBox.style.display==='none' && hata.style.display==='none'){ hata.textContent='Kod üretilemedi, tekrar deneyin (oturum hazırlanıyor olabilir).'; hata.style.display='block'; }
+  }catch(e){ hata.textContent='Bağlantı hatası.'; hata.style.display='block'; }
+  btn.disabled=false; btn.textContent='Kod Üret';
 }
 
 /* ---- İşletme Bağlantıları ---- */

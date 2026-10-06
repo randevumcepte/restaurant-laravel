@@ -3898,6 +3898,8 @@ Route::get('/api/wa/durum', fn (Request $r) => _waNoCache(response()->json(_waBr
 Route::post('/api/wa/baglan', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/start'))));
 Route::get('/api/wa/qr', fn (Request $r) => _waNoCache(response()->json(_waBridge('GET', '/session/' . (int) ($r->query('sube') ?: 1) . '/qr'))));
 Route::post('/api/wa/cikis', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/logout'))));
+// Telefon numarasıyla bağlan (QR'a alternatif): köprü PairPhone -> 8 haneli kod
+Route::post('/api/wa/pair', fn (Request $r) => _waNoCache(response()->json(_waBridge('POST', '/session/' . (int) ($r->input('sube') ?: 1) . '/pair-phone', ['phone' => (string) $r->input('phone')]))));
 // WhatsApp Yönetimi — SİSTEM İÇİNDE (panel layout + sidebar). Randevumcepte tasarımının birebir uyarlaması.
 Route::get('/whatsapp', function () {
     \App\Services\KontorServisi::selfHeal();
