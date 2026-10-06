@@ -3202,6 +3202,8 @@ if (!function_exists('_restoWaGonder')) {
     // Outbound: musteriye WA mesaji (whatsmeow bridge). Konfig yoksa / hata -> false (sessiz).
     function _restoWaGonder($subeId, $tel, $mesaj)
     {
+        // KONTÖR: kontörlü dönemde bakiye yoksa gönderme (ücretsiz/deneme döneminde her zaman geçer).
+        if (!\App\Services\KontorServisi::yeterliMi($subeId)) return false;
         $base = rtrim((string) resto_ayar_al('wa_sidecar_url', ''), '/');
         $token = (string) resto_ayar_al('wa_servis_token', '');
         // Tam JID geldiyse (or. LID "<lid>@lid") dokunma; degilse numarayi normalize et
@@ -3219,7 +3221,9 @@ if (!function_exists('_restoWaGonder')) {
             curl_exec($ch);
             $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            return $kod >= 200 && $kod < 300;
+            $ok = $kod >= 200 && $kod < 300;
+            if ($ok) { try { \App\Services\KontorServisi::dus($subeId, 1, 'whatsapp-mesaj'); } catch (\Throwable $e) {} } // 1 mesaj = 1 kontör
+            return $ok;
         } catch (\Throwable $e) { return false; }
     }
 }
@@ -3602,6 +3606,92 @@ Route::get('/wa-yonetim', function () {
         'karsilama' => (string) resto_ayar_al('wa_karsilama', ''),
         'webhook' => url('/api/wa/gelen'),
     ]));
+});
+
+// ===================== WhatsApp KONTÖR (kredi) — paket durum + talep + admin yükle =====================
+if (!function_exists('_waKontorTalepEnsure')) {
+    function _waKontorTalepEnsure()
+    {
+        if (!Schema::hasTable('wa_kontor_talepleri')) {
+            try {
+                Schema::create('wa_kontor_talepleri', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('paket', 32);
+                    $t->string('paket_ad', 60);
+                    $t->string('fiyat', 32);
+                    $t->integer('adet')->default(0);
+                    $t->string('iletisim', 170)->nullable();
+                    $t->string('durum', 20)->default('bekliyor'); // bekliyor|yuklendi|iptal
+                    $t->timestamps();
+                });
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+}
+
+// Şubenin kontör durumu + paket merdiveni (sayfa gösterir)
+Route::get('/api/wa/paket-durum', function (Request $r) {
+    \App\Services\KontorServisi::selfHeal();
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->min('id'));
+    $sube = DB::table('subeler')->find($subeId);
+    return _waNoCache(response()->json([
+        'ok' => 1,
+        'bakiye' => \App\Services\KontorServisi::bakiye($subeId),
+        'kontorlu' => \App\Services\KontorServisi::kontorluDonemMi($subeId),
+        'deneme_bitis' => $sube->whatsapp_deneme_bitis ?? null,
+        'paketler' => \App\Services\KontorServisi::paketler(),
+    ]));
+});
+
+// Kontör paket talebi -> wa_kontor_talepleri + log + (sistem numarası varsa) WA bildirim
+Route::post('/api/wa/kontor-talep', function (Request $r) {
+    _waKontorTalepEnsure();
+    $subeId = (int) ($r->input('sube') ?: DB::table('subeler')->min('id'));
+    $sube = DB::table('subeler')->find($subeId);
+    if (!$sube) return response()->json(['ok' => 0, 'mesaj' => 'Şube bulunamadı'], 404);
+    $paketler = \App\Services\KontorServisi::paketler();
+    $key = (string) $r->input('paket');
+    if (!isset($paketler[$key])) return response()->json(['ok' => 0, 'mesaj' => 'Geçersiz paket'], 422);
+    $p = $paketler[$key];
+    $iletisim = mb_substr(trim((string) $r->input('iletisim')), 0, 160);
+    DB::table('wa_kontor_talepleri')->insert([
+        'sube_id' => $subeId, 'paket' => $key, 'paket_ad' => $p['ad'], 'fiyat' => $p['fiyat'],
+        'adet' => (int) $p['adet'], 'iletisim' => $iletisim ?: null, 'durum' => 'bekliyor',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    \Log::info('[WA-KONTOR-TALEP]', ['sube' => $subeId, 'paket' => $key, 'fiyat' => $p['fiyat']]);
+    try {
+        $sistemTel = (string) resto_ayar_al('sistem_bildirim_tel', '');
+        if ($sistemTel !== '') {
+            $m = "💰 KONTÖR TALEBİ\nŞube: " . ($sube->ad ?? $subeId) . "\nPaket: " . $p['ad'] . ' (' . $p['fiyat'] . ")\n" . ($iletisim ? ('Not: ' . $iletisim . "\n") : '') . date('d.m.Y H:i');
+            _restoWaGonder($subeId, $sistemTel, $m);
+        }
+    } catch (\Throwable $e) {
+    }
+    return response()->json(['ok' => 1, 'mesaj' => 'Talebiniz alındı. En kısa sürede sizinle iletişime geçeceğiz. 🙌']);
+});
+
+// Bekleyen talepler (admin) + kontör yükle (talep onayı)
+Route::get('/api/wa/kontor-talepler', function (Request $r) {
+    if ((string) $r->query('admin_key') !== (string) env('RESTEOS_ADMIN_KEY', 'resteos2026')) return response()->json(['ok' => 0], 403);
+    _waKontorTalepEnsure();
+    $rows = DB::table('wa_kontor_talepleri')->leftJoin('subeler', 'wa_kontor_talepleri.sube_id', '=', 'subeler.id')
+        ->orderByDesc('wa_kontor_talepleri.id')->limit(100)
+        ->select('wa_kontor_talepleri.*', 'subeler.ad as sube_ad')->get();
+    return response()->json(['ok' => 1, 'talepler' => $rows]);
+});
+Route::post('/api/wa/kontor-yukle', function (Request $r) {
+    if ((string) $r->input('admin_key') !== (string) env('RESTEOS_ADMIN_KEY', 'resteos2026')) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz'], 403);
+    $subeId = (int) $r->input('sube');
+    $adet = (int) $r->input('adet');
+    $res = \App\Services\KontorServisi::yukle($subeId, $adet, 'manuel-yukleme (admin)');
+    if (($res['ok'] ?? false) && $r->input('talep_id')) {
+        _waKontorTalepEnsure();
+        DB::table('wa_kontor_talepleri')->where('id', (int) $r->input('talep_id'))->update(['durum' => 'yuklendi', 'updated_at' => now()]);
+    }
+    return response()->json($res);
 });
 
 // Secilebilir ERKEK Turkce sesler (dinle + sec)
