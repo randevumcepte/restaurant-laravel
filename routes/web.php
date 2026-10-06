@@ -3287,6 +3287,25 @@ if (!function_exists('_waDurumMetni')) {
         return $b;
     }
 }
+if (!function_exists('_waCevapTemizle')) {
+    // WhatsApp sipariş hattı: ortak asistan (masadaki QR için yazılmış) "garson çağırayım" diyebiliyor;
+    // WhatsApp'ta garson çağrılamaz. "garson" geçen cümleleri çıkar, metni doğal bırak. QR asistanı DOKUNULMAZ.
+    function _waCevapTemizle($metin)
+    {
+        $metin = trim((string) $metin);
+        if ($metin === '') return $metin;
+        $parcalar = preg_split('/(?<=[.!?…])\s+|\n+/u', $metin);
+        $tut = [];
+        foreach ((array) $parcalar as $c) {
+            $c = trim((string) $c);
+            if ($c === '') continue;
+            if (mb_stripos($c, 'garson') !== false) continue; // garson çağırma -> WhatsApp'ta yok
+            $tut[] = $c;
+        }
+        $son = trim(implode(' ', $tut));
+        return $son !== '' ? $son : 'Size nasıl yardımcı olabilirim? 🙂 Menümüzden seçip buraya yazabilirsiniz.';
+    }
+}
 
 // -------- FAZ 2: WhatsApp İÇİNDE sohbet-sipariş (durum makinesi + ürün eşleştirme + konum) --------
 if (!function_exists('_waNorm')) {
@@ -3574,7 +3593,7 @@ Route::post('/api/wa/gelen', function (Request $r) {
         $asistan = new \App\Services\MusteriAsistan($subeId);
         $cevap = $asistan->cevapla($text, null);
         $metin = is_array($cevap) ? (string) ($cevap['metin'] ?? $cevap['cevap'] ?? $cevap['mesaj'] ?? '') : (string) $cevap;
-        $metin = trim($metin);
+        $metin = _waCevapTemizle(trim($metin));
         if ($metin === '') $metin = "📋 Menüyü görüp sipariş vermek için:\n" . $siparisLink;
         else $metin .= "\n\n📋 Sipariş vermek için: " . $siparisLink;
         _restoWaGonder($subeId, $yanitHedef,$metin);
