@@ -1,16 +1,17 @@
 @extends('layout.app')
-@section('title', 'Mutfak Ekranı')
-@section('baslik', '👨‍🍳 Mutfak Ekranı (KDS)')
+@section('title', (($ekran ?? 'mutfak') === 'bar') ? 'Bar Ekranı' : 'Mutfak Ekranı')
+@section('baslik', (($ekran ?? 'mutfak') === 'bar') ? '🍹 Bar Ekranı (KDS)' : '👨‍🍳 Mutfak Ekranı (KDS)')
 
 @push('head')<meta http-equiv="refresh" content="20">@endpush
 
 @section('content')
-<p class="text-sm text-slate-500 mb-4">Mutfağa gönderilen siparişler · <span class="text-slate-400">ekran 20 sn'de bir otomatik yenilenir</span></p>
+@php $bar = ($ekran ?? 'mutfak') === 'bar'; @endphp
+<p class="text-sm text-slate-500 mb-4">{{ $bar ? 'Bara gönderilen içecekler' : 'Mutfağa gönderilen yemekler' }} · <span class="text-slate-400">ekran 20 sn'de bir otomatik yenilenir</span></p>
 
 @if ($kalemler->isEmpty())
     <div class="bg-white rounded-2xl border border-slate-200 p-12 text-center">
         <div class="text-5xl mb-3">✅</div>
-        <p class="text-slate-500">Bekleyen sipariş yok. Mutfak temiz!</p>
+        <p class="text-slate-500">{{ $bar ? 'Bekleyen içecek yok. Bar temiz!' : 'Bekleyen sipariş yok. Mutfak temiz!' }}</p>
     </div>
 @else
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

@@ -986,15 +986,32 @@ Route::get('/siparisim/{token}', function ($token) {
 });
 
 // ============================ MUTFAK (KDS) ============================
+// Mutfak/Bar ekran verisi — istasyona göre AYRILIR: bar=içecekler, mutfak=yemekler.
+if (!function_exists('_kdsEkranVeri')) {
+    function _kdsEkranVeri($barMi)
+    {
+        $q = DB::table('adisyon_kalemleri')
+            ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
+            ->where('adisyon_kalemleri.durum', 'gonderildi');
+        if ($barMi) {
+            $q->where('urunler.istasyon', 'bar');
+        } else {
+            // Mutfak: bar HARİÇ her şey (istasyonu olmayan/eski ürünler de mutfakta görünsün)
+            $q->where(function ($w) { $w->where('urunler.istasyon', '!=', 'bar')->orWhereNull('urunler.istasyon'); });
+        }
+        return $q->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.kanal', 'masalar.ad as masa', 'urunler.istasyon')
+            ->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
+    }
+}
 Route::get('/mutfak', function () {
-    $kalemler = DB::table('adisyon_kalemleri')
-        ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-        ->where('adisyon_kalemleri.durum', 'gonderildi')
-        ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
-            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.kanal', 'masalar.ad as masa')
-        ->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
-    return view('mutfak.index', compact('kalemler'));
+    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(false), 'ekran' => 'mutfak']);
+});
+// BAR ekranı (KDS) — sadece içecekler
+Route::get('/bar', function () {
+    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(true), 'ekran' => 'bar']);
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
