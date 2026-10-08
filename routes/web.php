@@ -51,6 +51,25 @@ if (!function_exists('_aktifSubeId')) {
     }
 }
 
+// PERFORMANS: kritik index'ler (tek sefer, admin). Ciro/stok raporları full-scan olmasın.
+Route::get('/perf-index-kur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
+    $yapilan = [];
+    $ekle = function ($tablo, $kolonlar, $ad) use (&$yapilan) {
+        try {
+            Schema::table($tablo, function ($t) use ($kolonlar, $ad) { $t->index($kolonlar, $ad); });
+            $yapilan[] = "$ad: eklendi";
+        } catch (\Throwable $e) {
+            $m = $e->getMessage();
+            $yapilan[] = "$ad: " . ((stripos($m, 'Duplicate') !== false || stripos($m, 'exist') !== false) ? 'zaten var' : $m);
+        }
+    };
+    if (Schema::hasTable('odemeler')) $ekle('odemeler', ['created_at'], 'odemeler_created_idx');
+    if (Schema::hasTable('stok_hareketleri')) $ekle('stok_hareketleri', ['sube_id', 'tip', 'created_at'], 'stok_sube_tip_tarih_idx');
+    if (Schema::hasTable('adisyonlar')) $ekle('adisyonlar', ['sube_id', 'kapanis'], 'adisyon_sube_kapanis_idx');
+    return ['ok' => 1, 'index' => $yapilan];
+});
+
 if (!function_exists('_adisyonToplamGuncelle')) {
     function _adisyonToplamGuncelle($adisyonId): array
     {
@@ -9783,22 +9802,16 @@ Route::post('/api/patron/masa-tasi', function (Request $r) {
 
     $hedefAcik = DB::table('adisyonlar')->where('masa_id', $yeni->id)->where('durum', 'acik')->orderByDesc('id')->first();
     if ($hedefAcik && $hedefAcik->id !== $a->id) {
-        // Hedef DOLU -> otomatik BIRLESTIR (siparisler SILINMEZ, hedefe tasinir)
-        DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->update(['adisyon_id' => $hedefAcik->id, 'updated_at' => now()]);
-        $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedefAcik->id)->where('durum', '!=', 'iptal')->sum('tutar');
-        DB::table('adisyonlar')->where('id', $hedefAcik->id)->update(['ara_toplam' => $ara, 'toplam' => max(0, $ara - (float) $hedefAcik->indirim - (float) $hedefAcik->ikram), 'updated_at' => now()]);
-        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'iptal', 'ara_toplam' => 0, 'toplam' => 0, 'updated_at' => now()]);
-        if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
-        DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $hedefAcik->id, 'islem' => 'birlestirme', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
-        $mesaj = $eskiAd . ' → ' . $yeni->ad . ' birleştirildi.';
-    } else {
-        // Hedef BOS -> tasi (tum siparisler adisyonla birlikte gider)
-        DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $yeni->id, 'updated_at' => now()]);
-        if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
-        DB::table('masalar')->where('id', $yeni->id)->update(['durum' => 'dolu']);
-        DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
-        $mesaj = $eskiAd . ' → ' . $yeni->ad . ' taşındı.';
+        // KURAL: hedef masada da açık hesap varsa TAŞIMA/BİRLEŞTİRME YAPILMAZ (iki hesap karışmasın,
+        // kaynak ödemeleri kaybolmasın). Önce birini kapat/öde. (Sessiz auto-merge kaldırıldı.)
+        return ['ok' => 0, 'hata' => 'Hedef masada da açık hesap var. Önce birinin hesabını kapatın/ödeyin, sonra taşıyın.'];
     }
+    // Hedef BOS -> tasi (tum siparisler adisyonla birlikte gider)
+    DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $yeni->id, 'updated_at' => now()]);
+    if ($eski) DB::table('masalar')->where('id', $eski)->update(['durum' => 'bos']);
+    DB::table('masalar')->where('id', $yeni->id)->update(['durum' => 'dolu']);
+    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
+    $mesaj = $eskiAd . ' → ' . $yeni->ad . ' taşındı.';
     if ($r->filled('cagri_id') && Schema::hasTable('masa_cagrilari')) {
         DB::table('masa_cagrilari')->where('id', (int) $r->cagri_id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
     }
@@ -9816,18 +9829,8 @@ Route::post('/api/patron/masa-birlestir', function (Request $r) {
     if (!$hedef || !$kaynak || $hedef->durum !== 'acik' || $kaynak->durum !== 'acik') return ['ok' => 0, 'hata' => 'Açık adisyonlar bulunamadı'];
     if ($hedef->id === $kaynak->id) return ['ok' => 0, 'hata' => 'Aynı adisyon seçilemez'];
     // KURAL: iki ayrı AÇIK hesap birleştirilmez (hesap karışmasın). Önce biri kapatılsın/ödensin.
+    // (Boş masayla ekstra oturma /api/patron/masa-grupla üzerinden yapılır.)
     return ['ok' => 0, 'hata' => 'İki masada da açık hesap var. Önce birinin hesabını kapatın/ödeyin, sonra birleştirin.'];
-    DB::table('adisyon_kalemleri')->where('adisyon_id', $kaynak->id)->update(['adisyon_id' => $hedef->id, 'updated_at' => now()]);
-    // Zincir: kaynaga daha once birlesmis masalarin loglari da hedefe tasinsin (Masa1->Masa2->Masa3)
-    DB::table('adisyon_masa_loglari')->where('adisyon_id', $kaynak->id)->where('islem', 'birlestirme')->update(['adisyon_id' => $hedef->id]);
-    DB::table('adisyonlar')->where('id', $kaynak->id)->update(['durum' => 'iptal', 'kapanis' => now(), 'updated_at' => now()]);
-    if ($kaynak->masa_id) DB::table('masalar')->where('id', $kaynak->masa_id)->update(['durum' => 'bos']);
-    $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $hedef->id)->where('durum', '!=', 'iptal')->sum('tutar');
-    $top = max(0, $ara - (float) $hedef->indirim - (float) $hedef->ikram);
-    DB::table('adisyonlar')->where('id', $hedef->id)->update(['ara_toplam' => $ara, 'toplam' => $top,
-        'misafir_sayisi' => (int) $hedef->misafir_sayisi + (int) $kaynak->misafir_sayisi, 'updated_at' => now()]);
-    DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $hedef->id, 'islem' => 'birlestirme', 'eski_masa_id' => $kaynak->masa_id, 'yeni_masa_id' => $hedef->masa_id, 'personel_id' => $p->id, 'created_at' => now()]);
-    return ['ok' => 1, 'mesaj' => 'Masalar birleştirildi.', 'toplam' => $top];
 });
 
 // ---- MASA GRUPLA: bos masalari da birlestir (buyuk grup once oturur, sonra siparis) ----

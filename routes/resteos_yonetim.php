@@ -332,9 +332,13 @@ Route::get('/resteos-yonetim/restoranlar', function (Request $r) {
     elseif ($durum === 'bitti') $q->whereNotNull('uyelik_bitis')->where('uyelik_bitis', '<', now()->toDateString());
     $restoranlar = $q->orderByDesc('id')->get();
     // Her restorana özet ciro (son 30g)
+    // Tüm restoranların son 30g cirosu TEK sorguda (N+1 giderildi)
+    $ciroMap = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('odemeler.created_at', '>=', now()->subDays(30))
+        ->select('adisyonlar.sube_id', DB::raw('SUM(odemeler.tutar) as c'))
+        ->groupBy('adisyonlar.sube_id')->pluck('c', 'sube_id');
     foreach ($restoranlar as $s) {
-        $s->son30 = (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.sube_id', $s->id)->where('odemeler.created_at', '>=', now()->subDays(30))->sum('odemeler.tutar');
+        $s->son30 = (float) ($ciroMap[$s->id] ?? 0);
     }
     return view('resteos_yonetim.restoranlar', compact('restoranlar', 'ara', 'durum'));
 });
