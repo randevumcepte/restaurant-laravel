@@ -4625,6 +4625,17 @@ if (!function_exists('_ikramGunlukLimit')) {
         return ['sahip' => 999999, 'mudur' => 10, 'kasa' => 0, 'garson' => 2][$rol] ?? 2;
     }
 }
+if (!function_exists('_ikramKalemEnsure')) {
+    // adisyon_kalemleri.ikram: hangi kalem(ler) ikram edildi -> listede belirgin gösterim için
+    function _ikramKalemEnsure()
+    {
+        try {
+            if (!Schema::hasColumn('adisyon_kalemleri', 'ikram')) {
+                Schema::table('adisyon_kalemleri', fn ($t) => $t->tinyInteger('ikram')->default(0));
+            }
+        } catch (\Throwable $e) {}
+    }
+}
 if (!function_exists('_restoYetkiVar')) {
     function _restoYetkiVar($personel, $yetki)
     {
@@ -8101,6 +8112,10 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         }
         $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+        // Hangi kalemler ikram edildi -> işaretle (listede belirgin gösterim)
+        _ikramKalemEnsure();
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->update(['ikram' => 0]);
+        if (!empty($ids)) DB::table('adisyon_kalemleri')->whereIn('id', $ids)->update(['ikram' => 1]);
         $sebepMetin = ($adlar ? ('İkram: ' . $adlar) : 'İkram') . (trim((string) $r->sebep) !== '' ? (' · ' . trim((string) $r->sebep)) : '');
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
             'tutar' => $tutar, 'sebep' => $sebepMetin, 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
@@ -8127,12 +8142,16 @@ Route::get('/api/patron/adisyon-kalemleri', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     _odemeSplitEnsure();
+    _ikramKalemEnsure();
     $adId = (int) $r->adisyon_id;
-    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')
-        ->select('id', 'urun_adi', 'adet', 'tutar', 'odeme_durum')->orderBy('id')->get()
-        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar, 'odeme_durum' => $k->odeme_durum ?? 'acik']);
-    $kalan = (float) $kalemler->where('odeme_durum', '!=', 'odendi')->sum('tutar');
-    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan];
+    // İptal'leri de DAHİL et (listede üstü çizili gösterilsin) ama toplam/kalan'a sayma
+    $hepsi = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)
+        ->select('id', 'urun_adi', 'adet', 'tutar', 'odeme_durum', 'durum', 'ikram')->orderBy('id')->get()
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar,
+            'odeme_durum' => $k->odeme_durum ?? 'acik', 'durum' => $k->durum ?? 'gonderildi', 'ikram' => (int) ($k->ikram ?? 0)]);
+    $gecerli = $hepsi->where('durum', '!=', 'iptal');
+    $kalan = (float) $gecerli->where('odeme_durum', '!=', 'odendi')->sum('tutar');
+    return ['ok' => 1, 'kalemler' => $hepsi->values(), 'toplam' => (float) $gecerli->sum('tutar'), 'kalan' => $kalan];
 });
 
 // Adisyonda ALINAN ödemeler (geri alma listesi için)
@@ -8264,6 +8283,9 @@ if (!function_exists('_onayEylemUygula')) {
             if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
             $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
             DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+            _ikramKalemEnsure();
+            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->update(['ikram' => 0]);
+            if (!empty($ids)) DB::table('adisyon_kalemleri')->whereIn('id', $ids)->update(['ikram' => 1]);
             $aciklama = trim((string) ($istek->aciklama ?? ''));
             $sebepMetin = ($adlar ? ('İkram: ' . $adlar) : 'İkram') . ($aciklama !== '' ? (' · ' . $aciklama) : '') . ' (yönetici onayı)';
             DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'ikram', 'tutar' => $tutar,
