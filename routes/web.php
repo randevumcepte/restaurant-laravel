@@ -26,6 +26,31 @@ if (!function_exists('_adminKeyGecerli')) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ÇOK-ŞUBELİ (multi-tenant) yardımcılar
+// ---------------------------------------------------------------------------
+if (!function_exists('_aktifSubeId')) {
+    // Web panelinin gösterdiği aktif şube: impersonation (süper-admin "restoran paneline gir") > ilk şube.
+    function _aktifSubeId()
+    {
+        $imp = session('ry_imp_sube');
+        if ($imp && DB::table('subeler')->where('id', (int) $imp)->exists()) return (int) $imp;
+        return (int) (DB::table('subeler')->min('id') ?: 0);
+    }
+    // Şube lisans/askı kilidi. GÜVENLİ: TEK restoran varsa ASLA kilitlemez (canlı sistem riski yok);
+    // çok-şubeli olunca askıya alınan veya DEMO süresi dolan şube kilitlenir. Sahip her zaman muaf.
+    function _subeKilitli($subeId)
+    {
+        if (!Schema::hasColumn('subeler', 'askiya_alindi')) return false;
+        if (DB::table('subeler')->count() <= 1) return false; // tek restoran -> zorlama yok
+        $s = DB::table('subeler')->where('id', $subeId)->first();
+        if (!$s) return false;
+        if (($s->askiya_alindi ?? 0)) return 'askida';
+        if (($s->demo_hesabi ?? 0) && !empty($s->uyelik_bitis) && \Carbon\Carbon::parse($s->uyelik_bitis)->isPast()) return 'suresi_bitti';
+        return false;
+    }
+}
+
 if (!function_exists('_adisyonToplamGuncelle')) {
     function _adisyonToplamGuncelle($adisyonId): array
     {
@@ -4621,7 +4646,11 @@ if (!function_exists('_apiPersonel')) {
     {
         $token = $r->bearerToken();
         if (!$token) return null;
-        return DB::table('personeller')->where('api_token', $token)->first();
+        $p = DB::table('personeller')->where('api_token', $token)->first();
+        if (!$p) return null;
+        // Lisans/askı zorlaması (çok-şubeli; sahip ve tek-restoran muaf)
+        if (($p->rol ?? '') !== 'sahip' && _subeKilitli($p->sube_id)) return null;
+        return $p;
     }
 }
 
@@ -5808,14 +5837,16 @@ Route::get('/api/patron/detay', function (Request $r) {
                 'tutar' => (float) $a->toplam, 'misafir' => $a->misafir_sayisi,
                 'zaman' => $a->kapanis ? \Carbon\Carbon::parse($a->kapanis)->format('d.m H:i') : '',
             ]);
-        $odemeDagilim = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
-            ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))
-            ->groupBy('tip')->orderByDesc('tutar')->get();
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+        $odemeDagilim = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$from, $to])
+            ->select('odemeler.tip as tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(odemeler.tutar) as tutar'))
+            ->groupBy('odemeler.tip')->orderByDesc('tutar')->get();
+        $ciro = (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$from, $to])->sum('odemeler.tutar');
         return [
             'ok' => 1, 'baslik' => 'Kapanan Adisyonlar', 'tip' => 'kapali',
             'toplam' => $ciro,
-            'adet' => DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count(),
+            'adet' => DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count(),
             'odemeDagilim' => $odemeDagilim, 'kayitlar' => $kayitlar,
         ];
     }
@@ -5916,11 +5947,13 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
             'recete_malzemeler' => $kalemler,
         ];
     } else {
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
-        $compCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$pfrom, $pto])->sum('tutar');
-        $iskonto = (float) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('indirim');
-        $ikram = (float) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('ikram');
-        $iptalAdet = DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->count();
+        $ciroQ = fn ($f, $t) => (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$f, $t])->sum('odemeler.tutar');
+        $ciro = $ciroQ($from, $to);
+        $compCiro = $ciroQ($pfrom, $pto);
+        $iskonto = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('indirim');
+        $ikram = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('ikram');
+        $iptalAdet = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->count();
         $topUrun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->groupBy('urun_adi')->orderByRaw('SUM(adisyon_kalemleri.tutar) desc')->limit(5)->pluck('urun_adi')->all();
@@ -9965,9 +9998,11 @@ Route::get('/api/patron/z-raporu', function (Request $r) {
     $to = (clone $tarih)->endOfDay();
     $sube = DB::table('subeler')->find($p->sube_id);
 
-    $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
-    $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
-        ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->orderByDesc('tutar')->get();
+    $ciro = (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$from, $to])->sum('odemeler.tutar');
+    $odeme = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$from, $to])
+        ->select('odemeler.tip as tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(odemeler.tutar) as tutar'))->groupBy('odemeler.tip')->orderByDesc('tutar')->get();
     $kapananQ = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
     $kapanan = (clone $kapananQ)->count();
     $misafir = (int) (clone $kapananQ)->sum('misafir_sayisi');

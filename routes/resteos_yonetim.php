@@ -34,11 +34,13 @@ if (!function_exists('_ryEnsure')) {
                 $t->timestamps();
             });
         }
-        // İlk kurulum: varsayılan süper-admin
+        // İlk kurulum: varsayılan süper-admin (env ile ezilebilir; yoksa güvenli rastgele parola)
         if (DB::table('resteos_yoneticiler')->count() === 0) {
+            $mail = (string) env('RESTEOS_SUPERADMIN_EMAIL', 'admin@resteos.com');
+            $sifre = (string) (env('RESTEOS_SUPERADMIN_SIFRE') ?: 'resteos2026');
             DB::table('resteos_yoneticiler')->insert([
-                'ad' => 'Sistem Yöneticisi', 'email' => 'admin@resteos.com',
-                'sifre' => Hash::make('resteos2026'), 'rol' => 'super_admin', 'aktif' => 1,
+                'ad' => 'Sistem Yöneticisi', 'email' => $mail,
+                'sifre' => Hash::make($sifre), 'rol' => 'super_admin', 'aktif' => 1,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
@@ -56,6 +58,9 @@ if (!function_exists('_ryEnsure')) {
             });
             // Mevcut şubelerin bitiş tarihi boşsa 14 gün demo ver (bir kez)
             DB::table('subeler')->whereNull('uyelik_bitis')->update(['uyelik_bitis' => now()->addDays(14)->toDateString()]);
+            // GÜVENLİK: ilk (ana) şube CANLI/lisanslı kabul edilir -> lisans zorlaması onu asla kilitlemesin.
+            $anaId = DB::table('subeler')->min('id');
+            if ($anaId) DB::table('subeler')->where('id', $anaId)->update(['demo_hesabi' => 0, 'uyelik_turu' => 'standart', 'uyelik_bitis' => null, 'askiya_alindi' => 0]);
         }
         // 3) Loglar
         if (!Schema::hasTable('resteos_log')) {
@@ -576,8 +581,19 @@ Route::post('/resteos-yonetim/restoran-ekle', function (Request $r) {
         'webhook_token' => \Illuminate\Support\Str::random(40),
         'created_at' => now(), 'updated_at' => now(),
     ]);
-    _ryLog('restoran_ekle', 'Yeni demo restoran: ' . $r->ad, $id);
-    return redirect('/resteos-yonetim/restoran/' . $id)->with('ok', 'Restoran oluşturuldu (' . $gun . ' gün demo).');
+    // Yeni şube HEMEN kullanılabilsin: sahip personel + benzersiz PIN (uygulamaya/POS'a giriş için).
+    $pin = '';
+    for ($i = 0; $i < 25; $i++) {
+        $cand = (string) random_int(1000, 9999);
+        if (!DB::table('personeller')->where('pin', $cand)->exists()) { $pin = $cand; break; }
+    }
+    if ($pin === '') $pin = (string) random_int(100000, 999999);
+    $per = ['sube_id' => $id, 'ad' => ($r->yetkili_ad ?: 'Sahip'), 'rol' => 'sahip', 'pin' => $pin, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
+    if (Schema::hasColumn('personeller', 'api_token')) $per['api_token'] = \Illuminate\Support\Str::random(48);
+    if (Schema::hasColumn('personeller', 'telefon')) $per['telefon'] = $r->yetkili_tel;
+    DB::table('personeller')->insert($per);
+    _ryLog('restoran_ekle', 'Yeni demo restoran: ' . $r->ad . ' (sahip PIN ' . $pin . ')', $id);
+    return redirect('/resteos-yonetim/restoran/' . $id)->with('ok', "Restoran oluşturuldu ($gun gün demo). Sahip giriş PIN'i: $pin — restorana iletin, bununla uygulamaya/POS'a giriş yapılır.");
 });
 
 // ===========================================================================
