@@ -1604,9 +1604,14 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
     $i = DB::table('odeme_islemleri')->where('token', $token)->first();
     if (!$i) return response()->json(['ok' => 0], 404);
     if ($i->durum === 'odendi') return ['ok' => 1, 'mesaj' => 'Zaten ödendi'];
-    // === GERCEK SAGLAYICI DOGRULAMASI (Iyzico/PayTR 3D sonucu) BURAYA ===
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
     if ($a) {
+        // GÜVENLİK: gerçek sağlayıcı (Iyzico/PayTR) yapılandırılmışsa ödeme ancak sağlayıcı İMZALI callback ile kapanır.
+        // Simülasyon modu = demo (gerçek para kasadan authed tahsil edilir). İmza doğrulaması entegrasyonda doldurulur.
+        if (_odemeSaglayici($a->sube_id) !== 'simulasyon') {
+            $imzaGecerli = false; // TODO: Iyzico/PayTR 3D callback imza/hash doğrulaması
+            if (!$imzaGecerli) return response()->json(['ok' => 0, 'hata' => 'Ödeme sağlayıcı doğrulaması bekleniyor. (Doğrulanmamış tahsilat kabul edilmez.)'], 402);
+        }
         $indirim = isset($i->indirim) ? (float) $i->indirim : 0;
         DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'indirim' => $indirim, 'created_at' => now()]);
         // Verilen indirim adisyonun indirimine eklenir + toplam yeniden hesaplanir (tahsilat acigi gorunmesin) + kupon kullanimi sayilir
@@ -5219,7 +5224,8 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $t0 = today()->startOfDay();
 
     // --- Ciro (odeme bazli, Kerzz "Total Amount") ---
-    $ciroArasi = fn ($f, $t) => (float) DB::table('odemeler')->whereBetween('created_at', [$f, $t])->sum('tutar');
+    $ciroArasi = fn ($f, $t) => (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$f, $t])->sum('odemeler.tutar');
     $ciro = $ciroArasi($from, $to);
     $compCiro = $ciroArasi($pfrom, $pto);
 
@@ -5320,10 +5326,14 @@ Route::get('/api/patron/ozet', function (Request $r) {
 
     // --- Son 10 gun grafik ---
     $gunluk = [];
+    // 10 günlük ciro TEK sorguda (şube filtreli, N+1 yerine tarih bazlı grupla)
+    $ciroGunMap = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->where('odemeler.created_at', '>=', (clone $t0)->subDays(9)->startOfDay())
+        ->select(DB::raw('DATE(odemeler.created_at) as g'), DB::raw('SUM(odemeler.tutar) as c'))
+        ->groupBy(DB::raw('DATE(odemeler.created_at)'))->pluck('c', 'g');
     for ($i = 9; $i >= 0; $i--) {
         $g0 = (clone $t0)->subDays($i);
-        $g1 = (clone $g0)->endOfDay();
-        $gunluk[] = ['gun' => $g0->format('d/m'), 'ciro' => $ciroArasi($g0, $g1)];
+        $gunluk[] = ['gun' => $g0->format('d/m'), 'ciro' => (float) ($ciroGunMap[$g0->toDateString()] ?? 0)];
     }
 
     // --- Uyarilar / AI Bildirimleri (kural motoru) — hem string listesi (legacy) hem yapili bildirim ---
@@ -7980,6 +7990,9 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
 
     if ($islem === 'kapat') {
         if (!$yetki('adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma / masa kapatma yetkiniz yok.'];
+        // ATOMİK CLAIM: yalnız hâlâ 'acik' ise kapat -> iki kasadan EŞZAMANLI kapanışta çift ödeme/çift kasa kaydı OLMAZ.
+        $claimed = DB::table('adisyonlar')->where('id', $a->id)->where('durum', 'acik')->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
+        if ($claimed === 0) return ['ok' => 0, 'hata' => 'Bu adisyon az önce kapatıldı.'];
         $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti', 'acik_hesap']) ? $r->odeme_tip : 'nakit';
         $kalan = (float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar');
         if ($tip === 'acik_hesap') {
@@ -8000,7 +8013,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
             }
             $mesaj = 'Ödeme alındı (' . ['nakit' => 'Nakit', 'kredi' => 'Kredi', 'yemek_karti' => 'Yemek Kartı'][$tip] . '), masa kapatıldı.';
         }
-        DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now()]);
+        // (durum/kapanis yukarıda atomik claim ile zaten yazıldı)
         if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
         _restoStokTuket($a->id, $p->sube_id, $p->id); // reçeteden otomatik stok düşümü (güvenli, bozmaz)
         _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
@@ -8882,9 +8895,11 @@ if (!function_exists('_mutfakIstasyonlar')) {
 if (!function_exists('_kdsKolonEnsure')) {
     function _kdsKolonEnsure()
     {
+        if (cache()->get('kds_kolon_ok')) return; // sıcak KDS poll'ünde her saniye introspection yapma
         try {
             if (!Schema::hasColumn('urunler', 'hazirlik_dk')) Schema::table('urunler', function ($t) { $t->integer('hazirlik_dk')->default(0); });
             if (!Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) Schema::table('adisyon_kalemleri', function ($t) { $t->timestamp('basla_zamani')->nullable(); });
+            cache()->put('kds_kolon_ok', 1, now()->addHours(12));
         } catch (\Throwable $e) {
         }
     }
@@ -8902,8 +8917,8 @@ Route::get('/api/mutfak', function (Request $r) {
     _kdsKolonEnsure();
     $simdi = now();
     $vars = 15;   // varsayilan hedef hazirlik (dk) — urune ozel girilmemisse
-    $istasyonVar = Schema::hasColumn('urunler', 'istasyon');
-    $hzVar = Schema::hasColumn('urunler', 'hazirlik_dk');
+    $istasyonVar = cache()->remember('kds_urun_istasyon', 3600, fn () => Schema::hasColumn('urunler', 'istasyon'));
+    $hzVar = cache()->remember('kds_urun_hazirlikdk', 3600, fn () => Schema::hasColumn('urunler', 'hazirlik_dk'));
     $filtre = $r->query('istasyon');
     $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')

@@ -293,11 +293,15 @@ Route::get('/resteos-yonetim', function () {
 
     // 14 günlük ciro trendi
     $trend = [];
+    // 14 günlük ciro TEK sorguda (N+1 yerine tarih bazlı grupla)
+    $gunMap = DB::table('odemeler')->where('created_at', '>=', today()->subDays(13))
+        ->select(DB::raw('DATE(created_at) as g'), DB::raw('SUM(tutar) as c'))
+        ->groupBy(DB::raw('DATE(created_at)'))->pluck('c', 'g');
     for ($i = 13; $i >= 0; $i--) {
         $g = today()->subDays($i);
         $trend[] = [
             'gun' => $g->format('d.m'),
-            'ciro' => (float) DB::table('odemeler')->whereDate('created_at', $g)->sum('tutar'),
+            'ciro' => (float) ($gunMap[$g->toDateString()] ?? 0),
         ];
     }
     // Süresi yakında bitecek / bitmiş restoranlar
