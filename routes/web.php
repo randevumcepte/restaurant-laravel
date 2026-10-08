@@ -7970,8 +7970,9 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         }
         $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+        $sebepMetin = ($adlar ? ('İkram: ' . $adlar) : 'İkram') . (trim((string) $r->sebep) !== '' ? (' · ' . trim((string) $r->sebep)) : '');
         DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'tip' => 'ikram',
-            'tutar' => $tutar, 'sebep' => $adlar ? ('İkram: ' . $adlar) : ($r->sebep ?: 'İkram'), 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
+            'tutar' => $tutar, 'sebep' => $sebepMetin, 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
         return ['ok' => 1, 'mesaj' => number_format($tutar, 0, ',', '.') . 'TL ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı' . ($onaylayan ? ' — ' . $onaylayan->ad . ' onayı ile' : '') . '.'];
     }
 
