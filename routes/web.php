@@ -4495,6 +4495,13 @@ if (!function_exists('_restoYetkiVarsayilan')) {
         return ['yetkiler' => $y, 'iskonto_limit' => $limit, 'ikram_limit' => $ikramLimit];
     }
 }
+if (!function_exists('_ikramGunlukLimit')) {
+    // Rol başına GÜNLÜK ikram ADEDİ (yönetici onayı olmadan). Aşılırsa onay gerekir.
+    function _ikramGunlukLimit($rol)
+    {
+        return ['sahip' => 999999, 'mudur' => 10, 'kasa' => 0, 'garson' => 2][$rol] ?? 2;
+    }
+}
 if (!function_exists('_restoYetkiVar')) {
     function _restoYetkiVar($personel, $yetki)
     {
@@ -7944,12 +7951,22 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         }
         if ($tutar <= 0) return ['ok' => 0, 'hata' => 'İkram için ürün seçin.'];
         if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
-        // Ikram LIMITI (TL): asarsa yetkili PIN onayi
+        // Ikram LIMITI: (1) TL limiti, (2) GÜNLÜK ADET limiti — ikisinden biri aşılırsa yönetici onayı
         $iLimit = $p->rol === 'sahip' ? 1e12 : (float) ($p->ikram_limit ?? 0);
-        if ($tutar > $iLimit) {
-            if (!$onaylayan) return ['ok' => 0, 'onay_gerek' => true, 'hata' => number_format($tutar, 0, ',', '.') . 'TL ikram, limitinizi (' . number_format($iLimit, 0, ',', '.') . 'TL) aşıyor. Yetkili PIN onayı gerekli.'];
+        $gunlukLimit = _ikramGunlukLimit($p->rol);
+        $bugunAdet = (int) DB::table('iptal_indirim_loglari')->where('sube_id', $p->sube_id)->where('tip', 'ikram')
+            ->where('personel_id', $p->id)->whereDate('created_at', today())->count();
+        $tlAsildi = $tutar > $iLimit;
+        $adetAsildi = $bugunAdet >= $gunlukLimit;
+        if ($tlAsildi || $adetAsildi) {
+            if (!$onaylayan) {
+                $neden = $adetAsildi
+                    ? ('Günlük ikram hakkınız doldu (' . $bugunAdet . '/' . $gunlukLimit . ').')
+                    : (number_format($tutar, 0, ',', '.') . 'TL ikram, limitinizi (' . number_format($iLimit, 0, ',', '.') . 'TL) aşıyor.');
+                return ['ok' => 0, 'onay_gerek' => true, 'hata' => $neden . ' Yetkili PIN onayı gerekli.'];
+            }
             $onayLimit = $onaylayan->rol === 'sahip' ? 1e12 : (float) ($onaylayan->ikram_limit ?? 0);
-            if (!_restoYetkiVar($onaylayan, 'ikram') || $onayLimit < $tutar) return ['ok' => 0, 'hata' => 'Onaylayan kişinin ikram yetkisi/limiti de yetersiz.'];
+            if (!_restoYetkiVar($onaylayan, 'ikram') || ($tlAsildi && $onayLimit < $tutar)) return ['ok' => 0, 'hata' => 'Onaylayan kişinin ikram yetkisi/limiti de yetersiz.'];
         }
         $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
         DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
@@ -8103,9 +8120,11 @@ if (!function_exists('_onayEylemUygula')) {
 
         if ($istek->tip === 'ikram') {
             $ids = array_values(array_filter(array_map('intval', explode(',', (string) $istek->kalem_idler))));
+            $adlar = '';
             if (!empty($ids)) {
                 $secili = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $ids)->where('durum', '!=', 'iptal')->get(['urun_adi', 'tutar']);
                 $tutar = (float) $secili->sum('tutar');
+                $adlar = $secili->pluck('urun_adi')->implode(', ');
             } else {
                 $tutar = max(0, (float) $istek->tutar);
             }
@@ -8113,8 +8132,9 @@ if (!function_exists('_onayEylemUygula')) {
             if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
             $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
             DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
-            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'ikram', 'tutar' => $tutar, 'sebep' => 'İkram (yönetici onayı)', 'personel_id' => $onaylayanId, 'created_at' => now()]);
-            return [true, number_format($tutar, 0, ',', '.') . 'TL ikram uygulandı.'];
+            DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'ikram', 'tutar' => $tutar,
+                'sebep' => ($adlar ? ('İkram: ' . $adlar . ' (yönetici onayı)') : 'İkram (yönetici onayı)'), 'personel_id' => $onaylayanId, 'created_at' => now()]);
+            return [true, number_format($tutar, 0, ',', '.') . 'TL ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı.'];
         }
 
         if ($istek->tip === 'iptal') {
