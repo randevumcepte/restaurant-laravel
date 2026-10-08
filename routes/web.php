@@ -8853,11 +8853,12 @@ Route::post('/api/patron/kalem-void', function (Request $r) {
     DB::table('adisyon_kalemleri')->where('id', $kalem->id)->update(['durum' => 'iptal', 'updated_at' => now()]);
     DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => $a->id, 'adisyon_kalem_id' => $kalem->id,
         'tip' => 'void', 'tutar' => (float) $kalem->tutar, 'sebep' => $r->sebep ?: 'Ürün silindi', 'personel_id' => ($onaylayan->id ?? $p->id), 'created_at' => now()]);
-    // VOID edilen kalem MUTFAĞA GİTMİŞSE (fiziksel üretilmiş) -> hammaddeyi FIRE olarak düş.
-    // (Ekrana düşmeden iptal edilen 'yeni' kalemde fire yok.) Kapanışta _restoStokTuket iptal kalemi atladığı
-    // için çift düşüm olmaz; variance artık kaybı değil fireyi gösterir.
+    // VOID edilen kalem HAZIRLANMAYA BAŞLANMIŞSA (fiziksel üretim başladı) -> hammaddeyi FIRE olarak düş.
+    // 'gonderildi' (mutfağa düştü ama aşçı "Başla" demedi) = henüz üretilmedi -> FİRE YOK (haksız maliyet olmasın).
+    // basla_zamani dolu VEYA durum hazırlanıyor/hazır/servis ise üretim başlamış sayılır.
+    $uretildi = in_array($kalem->durum, ['hazirlaniyor', 'hazir', 'servis'], true) || !empty($kalem->basla_zamani ?? null);
     try {
-        if (in_array($kalem->durum, ['gonderildi', 'hazirlaniyor', 'hazir', 'servis'], true) && $kalem->urun_id) {
+        if ($uretildi && $kalem->urun_id) {
             $recete = DB::table('receteler')->where('tip', 'urun')->where('urun_id', $kalem->urun_id)->first(['id']);
             if ($recete) {
                 $ihtiyac = [];
