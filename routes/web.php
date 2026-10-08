@@ -5077,11 +5077,15 @@ if (!function_exists('_restoUrunMaliyetMap')) {
 
             $map = [];       // urun_id => birim maliyet
             $mapAd = [];     // urun_adi => birim maliyet (fallback)
+            // Ürün adlarını TEK sorguda çek (döngü içinde N+1 yerine)
+            $urunIdler = [];
+            foreach ($receteler as $rec) { if ($rec->tip === 'urun' && $rec->urun_id) $urunIdler[] = (int) $rec->urun_id; }
+            $urunAdMap = $urunIdler ? DB::table('urunler')->whereIn('id', array_unique($urunIdler))->pluck('ad', 'id') : collect();
             foreach ($receteler as $rec) {
                 if ($rec->tip !== 'urun' || !$rec->urun_id) continue;
                 $mal = $receteMaliyet($rec->id);
                 $map[(int) $rec->urun_id] = $mal;
-                $ad = DB::table('urunler')->where('id', $rec->urun_id)->value('ad');
+                $ad = $urunAdMap[(int) $rec->urun_id] ?? null;
                 if ($ad) $mapAd[$ad] = $mal;
             }
             return ['id' => $map, 'ad' => $mapAd];
@@ -6896,6 +6900,7 @@ function _restoUretimRiski($subeId, $esik = 15)
         ->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
     $birimAd = DB::table('birimler')->pluck('kisaltma', 'id');
     $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $urunAd = DB::table('urunler')->pluck('ad', 'id'); // ürün adları tek sorQuda (döngü içi N+1 yerine)
     // 1) Kritik malzemeler (stok <= kritik esik)
     $kritik = [];
     foreach (DB::table('malzemeler')->where('stok_takipli', 1)->where('kritik_stok', '>', 0)->get(['id', 'ad', 'kritik_stok', 'temel_birim_id']) as $m) {
@@ -6917,7 +6922,7 @@ function _restoUretimRiski($subeId, $esik = 15)
             if ($yap === null || $por < $yap) { $yap = $por; $darbogazId = $mid; }
         }
         if ($yap === null) continue;
-        $riskli[] = ['urun_id' => (int) $rec->urun_id, 'urun' => $malAd[$rec->urun_id] ?? DB::table('urunler')->where('id', $rec->urun_id)->value('ad'),
+        $riskli[] = ['urun_id' => (int) $rec->urun_id, 'urun' => $urunAd[$rec->urun_id] ?? '—',
             'yapilabilir' => $yap, 'darbogaz' => $malAd[$darbogazId] ?? '—'];
     }
     usort($riskli, fn ($a, $b) => $a['yapilabilir'] <=> $b['yapilabilir']);
