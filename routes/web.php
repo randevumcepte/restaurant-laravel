@@ -6,6 +6,26 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+// ---------------------------------------------------------------------------
+// GÜVENLİK: admin anahtarı doğrulama + yıkıcı/demo/kurulum ucu kapısı.
+// RESTEOS_ADMIN_KEY env'de güçlü bir değere ayarlanmalı; zayıf varsayılan ('resteos2026') ve boş REDDEDİLİR.
+// ---------------------------------------------------------------------------
+if (!function_exists('_adminKeyGecerli')) {
+    function _adminKeyGecerli($given): bool
+    {
+        $k = (string) env('RESTEOS_ADMIN_KEY', '');
+        return $k !== '' && $k !== 'resteos2026' && hash_equals($k, (string) $given);
+    }
+    // Yıkıcı/demo/kurulum uçları: süper-admin oturumu VEYA geçerli admin_key. Değilse 403.
+    function _adminKapi($r)
+    {
+        if (function_exists('_ryAdmin') && _ryAdmin()) return null; // panelde giriş yapmış süper-admin
+        $given = $r ? ($r->query('key') ?? $r->input('admin_key') ?? $r->header('X-Admin-Key')) : null;
+        if (_adminKeyGecerli($given)) return null;
+        return response()->json(['ok' => 0, 'hata' => 'Yetkisiz. Sistem yönetimine giriş yapın veya geçerli admin anahtarı gerekir.'], 403);
+    }
+}
+
 if (!function_exists('_adisyonToplamGuncelle')) {
     function _adisyonToplamGuncelle($adisyonId): array
     {
@@ -313,8 +333,44 @@ Route::get('/dashboard', function () {
 });
 
 // ============================ POS / ADISYON ============================
+// WEB POS GÜVENLİK: personel PIN ile oturum (kasa modeli). Tüm /pos* uçları bu kapıdan geçer.
+if (!function_exists('_posPersonel')) {
+    function _posPersonel()
+    {
+        $id = session('pos_personel_id');
+        if (!$id) return null;
+        return DB::table('personeller')->where('id', $id)->where('aktif', 1)->first();
+    }
+    function _posKapi()
+    {
+        if (_posPersonel()) return null;
+        if (request()->isMethod('post')) return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli (POS giriş).'], 401);
+        return redirect('/pos-giris');
+    }
+}
+Route::get('/pos-giris', function () {
+    if (_posPersonel()) return redirect('/pos');
+    $hata = session('pos_hata');
+    return response('<!doctype html><html lang=tr><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>POS Giriş</title>'
+        . '<div style="max-width:360px;margin:12vh auto;font-family:system-ui,-apple-system,sans-serif;padding:26px;border:1px solid #eee;border-radius:18px;box-shadow:0 12px 34px rgba(80,50,140,.10)">'
+        . '<h2 style="margin:0 0 4px">🍽️ ResteOS POS</h2><p style="color:#8a8a9a;margin:0 0 18px;font-size:14px">Personel PIN ile giriş</p>'
+        . ($hata ? '<div style="background:#fde8e8;color:#b23649;padding:9px 12px;border-radius:9px;margin-bottom:12px;font-size:13px">' . e($hata) . '</div>' : '')
+        . '<form method=post action="/pos-giris"><input type=password name=pin inputmode=numeric autofocus placeholder="PIN" style="width:100%;padding:13px;font-size:18px;border:1.5px solid #e2e2ec;border-radius:11px;margin-bottom:12px;box-sizing:border-box">'
+        . csrf_field()
+        . '<button style="width:100%;padding:13px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:11px;font-size:16px;font-weight:700;cursor:pointer">Giriş Yap</button></form></div></html>');
+});
+Route::post('/pos-giris', function (Request $r) {
+    $pin = (string) $r->input('pin');
+    $p = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->first() : null;
+    if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
+    session(['pos_personel_id' => $p->id]);
+    return redirect('/pos');
+});
+Route::match(['get', 'post'], '/pos-cikis', function () { session()->forget('pos_personel_id'); return redirect('/pos-giris'); });
+
 Route::get('/pos', function () {
-    $subeId = DB::table('subeler')->value('id');
+    if ($g = _posKapi()) return $g;
+    $subeId = _posPersonel()->sube_id; // POS personelinin şubesi (çok-şube uyumlu)
     $bolgeler = DB::table('bolgeler')->where('sube_id', $subeId)->orderBy('sira')->get();
     $masalar = DB::table('masalar')->where('sube_id', $subeId)->orderBy('id')->get()->groupBy('bolge_id');
     $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
@@ -324,6 +380,7 @@ Route::get('/pos', function () {
 });
 
 Route::get('/pos/masa/{masa}', function ($masaId) {
+    if ($g = _posKapi()) return $g;
     $masa = DB::table('masalar')->find($masaId);
     if (!$masa) abort(404);
     $adisyon = DB::table('adisyonlar')->where('masa_id', $masaId)->where('durum', 'acik')->first();
@@ -337,7 +394,9 @@ Route::get('/pos/masa/{masa}', function ($masaId) {
 });
 
 Route::post('/pos/adisyon-ac', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $masa = DB::table('masalar')->find($r->masa_id);
+    if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
     // Web POS garson kimliği: seçili garson varsa onu, yoksa ilk garsonu ata
     $garson = (int) $r->input('garson_id');
     if (!$garson || !DB::table('personeller')->where('id', $garson)->where('sube_id', $masa->sube_id)->exists()) {
@@ -353,7 +412,9 @@ Route::post('/pos/adisyon-ac', function (Request $r) {
 });
 
 Route::post('/pos/kalem-ekle', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $u = DB::table('urunler')->find($r->urun_id);
+    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $gid = (int) $r->input('garson_id') ?: null;
     DB::table('adisyon_kalemleri')->insert([
         'adisyon_id' => $r->adisyon_id, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => 1,
@@ -364,6 +425,7 @@ Route::post('/pos/kalem-ekle', function (Request $r) {
 });
 
 Route::post('/pos/kalem-sil', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $k = DB::table('adisyon_kalemleri')->find($r->kalem_id);
     if (!$k) return ['ok' => 0];
     // KACAK KORUMASI: mutfaga GITMIS urun IZSIZ silinemez -> 'iptal' (soft) + LOG (kayip radarinda gorunur, garson cebe atamaz).
@@ -382,13 +444,16 @@ Route::post('/pos/kalem-sil', function (Request $r) {
 });
 
 Route::post('/pos/gonder', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     DB::table('adisyon_kalemleri')->where('adisyon_id', $r->adisyon_id)->where('durum', 'yeni')
         ->update(['durum' => 'gonderildi', 'gonderim_zamani' => now()]);
     return ['ok' => 1];
 });
 
 Route::post('/pos/ode', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $a = DB::table('adisyonlar')->find($r->adisyon_id);
+    if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
     $odemeTip = $r->tip ?? 'nakit';
     DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $odemeTip, 'tutar' => $a->toplam, 'bahsis' => 0, 'personel_id' => $a->acan_personel_id, 'created_at' => now()]);
     if ($odemeTip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $a->toplam, 'Nakit satış · adisyon #' . $a->id, 'adisyon', $a->id, $a->acan_personel_id);
@@ -520,6 +585,7 @@ Route::get('/musteriler/ara', function (Request $r) {
         ->orderBy('ad')->limit(10)->get(['id', 'ad', 'telefon', 'adres', 'puan']);
 });
 Route::post('/pos/musteri-bagla', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $a = DB::table('adisyonlar')->find($r->adisyon_id);
     $musteriId = $r->musteri_id ?: null;
     if (!$musteriId && ($r->ad || $r->telefon)) {
@@ -533,6 +599,7 @@ Route::post('/pos/musteri-bagla', function (Request $r) {
 });
 
 Route::post('/pos/tasi', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $a = DB::table('adisyonlar')->find($r->adisyon_id);
     $eski = $a->masa_id;
     DB::table('adisyonlar')->where('id', $a->id)->update(['masa_id' => $r->yeni_masa_id]);
@@ -836,8 +903,10 @@ Route::get('/callerid-kur', function () {
 
 // EKRAN-POP verisi: son 90 sn icinde bekleyen gelen cagri
 Route::get('/api/callerid-aktif', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _calleridEnsure();
-    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->value('id'));
+    $subeId = (int) $p->sube_id; // kendi şubesi (çapraz-şube PII sızıntısı engeli)
     $c = DB::table('cagri_loglari')->where('sube_id', $subeId)->where('yon', 'gelen')->where('durum', 'bekliyor')
         ->where('created_at', '>=', now()->subSeconds(90))->orderByDesc('id')->first();
     if (!$c) return ['ok' => 1, 'cagri' => null];
@@ -1048,7 +1117,8 @@ if (!function_exists('_mutfakIstasyonTahmin')) {
 }
 
 // MUTFAK KURULUM: istasyon + hazir_zamani kolonlari (defansif) + urunlere istasyon ata (tahminle).
-Route::get('/mutfak-kur', function () {
+Route::get('/mutfak-kur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     $eklenen = [];
     if (!Schema::hasColumn('urunler', 'istasyon')) {
         Schema::table('urunler', fn ($t) => $t->string('istasyon', 20)->default('mutfak')->after('tukendi'));
@@ -1582,7 +1652,8 @@ Route::get('/fiyatlandirma', function () {
 
 // ============================ DEMO VERI YUKLE (tek tik) ============================
 // Tum tablolari (yeni eklenenler dahil) taze demo veriyle doldurur. Idempotent.
-Route::get('/demo-veri-yukle', function () {
+Route::get('/demo-veri-yukle', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     @set_time_limit(600);
     @ini_set('memory_limit', '512M');
     try {
@@ -3001,6 +3072,7 @@ Route::get('/masa-sifirla/{masa}', function ($masa) {
 
 // ============ DEMO DOLDUR: eski veriyi sil + BUGUNE bol veri (yatirimci sunumu icin dashboard/masa/mutfak dolu) ============
 Route::get('/demo-doldur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     @set_time_limit(180);
     $subeId = (int) DB::table('subeler')->min('id');
     if (!$subeId) return 'Once sube olusturun.';
@@ -3225,6 +3297,8 @@ Route::post('/api/qr/kasa-ode', function (Request $r) {
 
 // GARSON EKRANI: kasada/garsonda odemeyi SEÇİLEN YÖNTEMLE tahsil et (nakit -> kasaya yazilir). Kalemleri odendi yapar, hepsi bitince masa kapanir.
 Route::post('/api/qr/kasa-tahsil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _odemeSplitEnsure();
     $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti'], true) ? $r->odeme_tip : 'nakit';
     $token = (string) $r->odeme_token;
@@ -3238,7 +3312,7 @@ Route::post('/api/qr/kasa-tahsil', function (Request $r) {
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
     if ($a) {
         DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $i->tutar, 'created_at' => now()]);
-        if ($tip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $i->tutar, 'QR masa nakit tahsilat · adisyon #' . $a->id, 'adisyon', $a->id, null);
+        if ($tip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $i->tutar, 'QR masa nakit tahsilat · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
         $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
         if (is_array($kids) && $kids) {
             DB::table('adisyon_kalemleri')->whereIn('id', $kids)->where('odeme_token', $token)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
@@ -3900,8 +3974,10 @@ Route::post('/anket/{token}', function (Request $r, $token) {
 //  Dakikalık git-pull cron'una ek: günde 1 kez  curl "<site>/api/wa/gunluk-gorevler?key=SANTRAL_SECRET"
 //  İdempotent: gün içinde kaç kez çağrılırsa çağrılsın aynı kişiye 1 kez gider.
 Route::get('/api/wa/gunluk-gorevler', function (Request $r) {
-    $beklenen = (string) env('SANTRAL_SECRET', env('RESTEOS_ADMIN_KEY', 'resteos2026'));
-    if ($beklenen !== '' && (string) $r->query('key') !== $beklenen) return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
+    $beklenen = (string) env('SANTRAL_SECRET', '');
+    $key = (string) $r->query('key');
+    $ok = ($beklenen !== '' && hash_equals($beklenen, $key)) || _adminKeyGecerli($key);
+    if (!$ok) return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
     _waMusteriDogumEnsure();
     $rapor = ['rez_hatirlat' => 0, 'dogum' => 0, 'winback' => 0];
     $bugun = now()->format('Y-m-d');
@@ -3970,7 +4046,9 @@ Route::get('/api/wa/gunluk-gorevler', function (Request $r) {
 // --- 4) TOPLU DUYURU / KAMPANYA (patron panelinden) ---
 //  Hedef: hepsi | son30 (son 30 gün gelen) | sadik (>=3 sipariş). Kontör guard her gönderimde.
 Route::post('/api/wa/duyuru-gonder', function (Request $r) {
-    $subeId = (int) ($r->input('sube') ?: DB::table('subeler')->min('id'));
+    $p = _apiPersonel($r);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz — sadece sahip/müdür toplu duyuru gönderebilir.'], 401);
+    $subeId = (int) $p->sube_id; // kendi şubesi (çapraz-şube spam engeli)
     $mesaj = trim((string) $r->input('mesaj'));
     if ($mesaj === '') return ['ok' => 0, 'hata' => 'Mesaj boş.'];
     $hedef = in_array($r->input('hedef'), ['son30', 'sadik', 'hepsi']) ? $r->input('hedef') : 'hepsi';
@@ -4010,6 +4088,7 @@ Route::get('/wa-kur', function () {
     return response($out)->header('Content-Type', 'text/plain; charset=utf-8');
 });
 Route::get('/wa-ayar', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     $a = (string) $r->query('anahtar');
     if (!in_array($a, ['wa_sidecar_url', 'wa_servis_token', 'wa_webhook_secret', 'wa_karsilama'])) return response('Geçersiz anahtar', 400);
     resto_ayar_yaz($a, (string) $r->query('deger'));
@@ -4146,7 +4225,7 @@ Route::post('/api/wa/kontor-talep', function (Request $r) {
 
 // Bekleyen talepler (admin) + kontör yükle (talep onayı)
 Route::get('/api/wa/kontor-talepler', function (Request $r) {
-    if ((string) $r->query('admin_key') !== (string) env('RESTEOS_ADMIN_KEY', 'resteos2026')) return response()->json(['ok' => 0], 403);
+    if (!_adminKeyGecerli($r->query('admin_key'))) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz (admin anahtarı geçersiz)'], 403);
     _waKontorTalepEnsure();
     $rows = DB::table('wa_kontor_talepleri')->leftJoin('subeler', 'wa_kontor_talepleri.sube_id', '=', 'subeler.id')
         ->orderByDesc('wa_kontor_talepleri.id')->limit(100)
@@ -4158,7 +4237,7 @@ Route::get('/wa-kontor-admin', function (Request $r) {
     return _waNoCache(response()->view('wa_kontor_admin', ['key' => (string) $r->query('key', '')]));
 });
 Route::post('/api/wa/kontor-yukle', function (Request $r) {
-    if ((string) $r->input('admin_key') !== (string) env('RESTEOS_ADMIN_KEY', 'resteos2026')) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz'], 403);
+    if (!_adminKeyGecerli($r->input('admin_key'))) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz (admin anahtarı geçersiz)'], 403);
     $subeId = (int) $r->input('sube');
     $adet = (int) $r->input('adet');
     $res = \App\Services\KontorServisi::yukle($subeId, $adet, 'manuel-yukleme (admin)');
@@ -9122,7 +9201,8 @@ if (!function_exists('_rezervasyonEnsure')) {
 }
 
 // Kurulum + demo seed
-Route::get('/rezervasyon-kur', function () {
+Route::get('/rezervasyon-kur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     $subeId = DB::table('subeler')->value('id');
     _rezervasyonEnsure($subeId);
     $say = DB::table('rezervasyonlar')->where('sube_id', $subeId)->count();
@@ -9132,7 +9212,8 @@ Route::get('/rezervasyon-kur', function () {
 // DEMO: gosterge paneli canli gorunsun diye bugune + ay geneline rezervasyon serp (?temizle=1 ile bu ayin demosunu sil)
 Route::get('/api/patron/rezervasyon-demo-doldur', function (Request $r) {
     $p = _apiPersonel($r);
-    $subeId = $p ? $p->sube_id : DB::table('subeler')->value('id');
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $subeId = $p->sube_id;
     _rezervasyonEnsure($subeId);
     $ayBasi = now()->startOfMonth()->format('Y-m-d');
     $aySon = now()->endOfMonth()->format('Y-m-d');
@@ -9501,6 +9582,7 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
 // TEMIZLIK: rezervasyonlari + ACIK adisyonlari sifirla -> tertemiz test zemini.
 // ?hepsi=1 TUM acik adisyonlari iptal eder (masalar bosalir, birlesmeler cozulur). Menu/urun/satis gecmisi KORUNUR.
 Route::get('/rezervasyon-sifirla', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     // TUM subeler uzerinde calisir (tek-restoran demo; sube uyusmazligindan etkilenmez)
     $rapor = [];
 
@@ -9940,7 +10022,8 @@ Route::get('/api/patron/z-raporu', function (Request $r) {
 
 // ============================ CARI / ACIK HESAP ("bana yazin") ============================
 // Tablolari kur + Patron hesabi + demo cariler/hareketler (tek sefer)
-Route::get('/cari-kur', function () {
+Route::get('/cari-kur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     if (!Schema::hasTable('cari_hesaplar')) {
         Schema::create('cari_hesaplar', function ($t) {
             $t->id();
@@ -10789,6 +10872,7 @@ Route::get('/muhasebe-entegrasyon/cari-ekstre', function (Request $r) {
 
 // Yazdirilabilir hesap fisi (bilgi fisi) — herhangi bir termal yaziciyla
 Route::get('/pos/fis/{adisyon}', function ($id) {
+    if ($g = _posKapi()) return $g;
     $a = DB::table('adisyonlar')->find($id);
     if (!$a) abort(404);
     $sube = DB::table('subeler')->find($a->sube_id);
@@ -10798,6 +10882,7 @@ Route::get('/pos/fis/{adisyon}', function ($id) {
     return view('pos.fis', compact('a', 'sube', 'kalemler', 'masa', 'ayar'));
 });
 Route::post('/pos/fatura-olustur', function (Request $r) {
+    if ($g = _posKapi()) return $g;
     $a = DB::table('adisyonlar')->find($r->adisyon_id);
     if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadi'];
     $sube = DB::table('subeler')->find($a->sube_id);
