@@ -8132,8 +8132,10 @@ if (!function_exists('_onayEylemUygula')) {
             if ($tutar > (float) $a->ara_toplam) $tutar = (float) $a->ara_toplam;
             $yeni = max(0, (float) $a->ara_toplam - (float) $a->indirim - $tutar);
             DB::table('adisyonlar')->where('id', $a->id)->update(['ikram' => $tutar, 'toplam' => $yeni]);
+            $aciklama = trim((string) ($istek->aciklama ?? ''));
+            $sebepMetin = ($adlar ? ('İkram: ' . $adlar) : 'İkram') . ($aciklama !== '' ? (' · ' . $aciklama) : '') . ' (yönetici onayı)';
             DB::table('iptal_indirim_loglari')->insert(['sube_id' => $subeId, 'adisyon_id' => $a->id, 'tip' => 'ikram', 'tutar' => $tutar,
-                'sebep' => ($adlar ? ('İkram: ' . $adlar . ' (yönetici onayı)') : 'İkram (yönetici onayı)'), 'personel_id' => $onaylayanId, 'created_at' => now()]);
+                'sebep' => $sebepMetin, 'personel_id' => $onaylayanId, 'created_at' => now()]);
             return [true, number_format($tutar, 0, ',', '.') . 'TL ikram' . ($adlar ? ' (' . $adlar . ')' : '') . ' uygulandı.'];
         }
 
@@ -8169,10 +8171,21 @@ Route::get('/api/patron/mesaideki-yoneticiler', function (Request $r) {
 });
 
 // Onay isteği oluştur (kasiyer) — yöneticiye düşer.
+// Onay tablosuna sonradan eklenen kolonlar (sebep + isteyene bildirildi mi)
+if (!function_exists('_onayKolonEnsure')) {
+    function _onayKolonEnsure()
+    {
+        try {
+            if (!Schema::hasColumn('onay_istekleri', 'aciklama')) Schema::table('onay_istekleri', fn ($t) => $t->string('aciklama', 240)->nullable());
+            if (!Schema::hasColumn('onay_istekleri', 'bildirildi')) Schema::table('onay_istekleri', fn ($t) => $t->tinyInteger('bildirildi')->default(0));
+        } catch (\Throwable $e) {}
+    }
+}
 Route::post('/api/patron/onay-iste', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     _onayEnsure();
+    _onayKolonEnsure();
     $tip = in_array($r->tip, ['iskonto', 'ikram', 'iptal', 'odeme_geri_al']) ? $r->tip : null;
     if (!$tip) return ['ok' => 0, 'hata' => 'Geçersiz işlem tipi.'];
     $id = DB::table('onay_istekleri')->insertGetId([
@@ -8183,11 +8196,30 @@ Route::post('/api/patron/onay-iste', function (Request $r) {
         'oran' => $r->oran !== null ? (float) $r->oran : null,
         'kalem_idler' => $r->kalem_idler ?: null,
         'baslik' => mb_substr((string) $r->baslik, 0, 220),
+        'aciklama' => $r->filled('aciklama') ? mb_substr((string) $r->aciklama, 0, 240) : null,
         'isteyen_id' => $p->id, 'isteyen_ad' => $p->ad,
         'hedef_id' => $r->hedef_id ? (int) $r->hedef_id : null,
-        'durum' => 'bekliyor', 'created_at' => now(), 'updated_at' => now(),
+        'durum' => 'bekliyor', 'bildirildi' => 0, 'created_at' => now(), 'updated_at' => now(),
     ]);
     return ['ok' => 1, 'istek_id' => $id];
+});
+
+// İSTEYEN (garson) kendi biten taleplerini yoklar -> onaylandı/reddedildi bildirimi (bir kez)
+Route::get('/api/patron/onay-benim-sonuc', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _onayEnsure();
+    _onayKolonEnsure();
+    $liste = DB::table('onay_istekleri')->where('isteyen_id', $p->id)
+        ->whereIn('durum', ['onaylandi', 'reddedildi'])->where('bildirildi', 0)
+        ->orderBy('id')->limit(8)->get(['id', 'tip', 'baslik', 'durum', 'onaylayan_ad', 'sonuc']);
+    if ($liste->count()) {
+        DB::table('onay_istekleri')->whereIn('id', $liste->pluck('id')->all())->update(['bildirildi' => 1]);
+    }
+    return ['ok' => 1, 'sonuclar' => $liste->map(fn ($i) => [
+        'id' => (int) $i->id, 'tip' => $i->tip, 'baslik' => $i->baslik, 'durum' => $i->durum,
+        'onaylayan' => $i->onaylayan_ad, 'sonuc' => $i->sonuc,
+    ])->values()];
 });
 
 // Onay durumu (kasiyer yoklar).
