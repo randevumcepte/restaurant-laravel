@@ -367,8 +367,35 @@ func buildEventHandler(sess *Session, hooks *WebhookPoster) func(interface{}) {
 			}
 
 		case *events.Message:
-			// GELEN musteri mesaji (1:1 metin/konum). Kendi mesajlarimiz ve gruplar haric.
-			if evt.Info.IsFromMe || evt.Info.IsGroup {
+			// Gruplari her zaman atla.
+			if evt.Info.IsGroup {
+				return
+			}
+			// KENDI mesajimiz (IsFromMe): ya bizim bridge'in AI gonderimi (echo) ya da
+			// personelin KENDI telefonundan (bagli cihaz) musteriye elle yazdigi mesaj.
+			// Bizim gonderdigimiz ID ise echo -> yoksay. Degilse bu bir INSAN DEVRALMA
+			// sinyali -> Laravel'e ilet; o sohbette AI duraklatilir.
+			if evt.Info.IsFromMe {
+				if wasSentByUs(evt.Info.ID) {
+					return // kendi AI gonderimimizin echo'su
+				}
+				mtext := evt.Message.GetConversation()
+				if mtext == "" {
+					if ext := evt.Message.GetExtendedTextMessage(); ext != nil {
+						mtext = ext.GetText()
+					}
+				}
+				if mtext == "" {
+					return // medya/sticker vb. -> devralma sinyali uretme
+				}
+				log.Printf("[%s] MANUEL personel mesaji to=%s (AI duraklatilacak)", sess.SalonID, evt.Info.Chat.User)
+				hooks.Post("message.manual", map[string]interface{}{
+					"salonId":   sess.SalonID,
+					"to":        evt.Info.Chat.User,
+					"toJid":     evt.Info.Chat.String(),
+					"text":      mtext,
+					"messageId": evt.Info.ID,
+				})
 				return
 			}
 			text := evt.Message.GetConversation()
@@ -429,6 +456,37 @@ func sendLoop(ctx context.Context, sess *Session, cfg *Config, hooks *WebhookPos
 			}
 		}
 	}
+}
+
+// ─── Giden mesaj ID takibi (insan-devralma yanlis-pozitif onleme) ───
+// Bridge'in SendMessage ile yolladigi mesajlar da WhatsApp'ta IsFromMe'dir.
+// Bu ID'leri isaretleriz; WhatsApp bu mesajlari bize echo ederse "personel elle
+// yazdi" SANMAYIZ. Personelin telefonundan yazdigi mesajlarin ID'si burada OLMAZ,
+// boylece gercek devralma olarak Laravel'e iletilir (bkz events.Message handler).
+var sentMsgIDs sync.Map // messageID(string) -> int64 (unixtime)
+
+func markSent(id string) {
+	if id == "" {
+		return
+	}
+	now := time.Now().Unix()
+	sentMsgIDs.Store(id, now)
+	// Fazla buyumesin: echo'su hic gelmemis 10 dk'dan eski kayitlari temizle.
+	cutoff := now - 600
+	sentMsgIDs.Range(func(k, v interface{}) bool {
+		if ts, ok := v.(int64); ok && ts < cutoff {
+			sentMsgIDs.Delete(k)
+		}
+		return true
+	})
+}
+
+func wasSentByUs(id string) bool {
+	if id == "" {
+		return false
+	}
+	_, ok := sentMsgIDs.LoadAndDelete(id)
+	return ok
 }
 
 func doSend(sess *Session, job SendJob, hooks *WebhookPoster) {
@@ -492,6 +550,8 @@ func doSend(sess *Session, job SendJob, hooks *WebhookPoster) {
 		return
 	}
 
+	// Kendi gonderdigimiz ID'yi isaretle: echo olarak geri gelirse insan-devralma sanmayalim.
+	markSent(resp.ID)
 	hooks.Post("message.sent", map[string]interface{}{
 		"salonId":   sess.SalonID,
 		"logId":     job.LogID,

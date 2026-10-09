@@ -3575,6 +3575,8 @@ if (!function_exists('_waOturumTablo')) {
                     $t->string('ad', 80)->nullable();
                     $t->text('adres')->nullable();
                     $t->string('odeme', 16)->nullable();
+                    $t->tinyInteger('insan_devraldi')->default(0); // 1 = personel sohbeti elle devraldi, AI sus
+                    $t->timestamp('son_insan_mesaj_at')->nullable(); // personelin son elle mesaj zamani (akilli geri-alma)
                     $t->timestamp('updated_at')->nullable();
                 });
             } catch (\Throwable $e) {}
@@ -3583,6 +3585,23 @@ if (!function_exists('_waOturumTablo')) {
     function _waOturumAl($sube, $tel) { _waOturumTablo(); return DB::table('wa_oturumlari')->where('sube_id', $sube)->where('tel', $tel)->first(); }
     function _waOturumYaz($sube, $tel, array $alanlar) { _waOturumTablo(); $alanlar['updated_at'] = now(); DB::table('wa_oturumlari')->updateOrInsert(['sube_id' => $sube, 'tel' => $tel], $alanlar); }
     function _waOturumSil($sube, $tel) { _waOturumTablo(); DB::table('wa_oturumlari')->where('sube_id', $sube)->where('tel', $tel)->delete(); }
+}
+// İNSAN DEVRALMA: eski kurulumlarda wa_oturumlari'nda kolon olmayabilir; ilk yazimda bir kez ekle (self-healing).
+if (!function_exists('_waDevralmaYaz')) {
+    function _waDevralmaKolonEkle()
+    {
+        try {
+            if (Schema::hasTable('wa_oturumlari')) {
+                if (!Schema::hasColumn('wa_oturumlari', 'insan_devraldi')) Schema::table('wa_oturumlari', function ($t) { $t->tinyInteger('insan_devraldi')->default(0); });
+                if (!Schema::hasColumn('wa_oturumlari', 'son_insan_mesaj_at')) Schema::table('wa_oturumlari', function ($t) { $t->timestamp('son_insan_mesaj_at')->nullable(); });
+            }
+        } catch (\Throwable $e) {}
+    }
+    function _waDevralmaYaz($sube, $tel, array $alanlar)
+    {
+        try { _waOturumYaz($sube, $tel, $alanlar); }
+        catch (\Throwable $e) { _waDevralmaKolonEkle(); try { _waOturumYaz($sube, $tel, $alanlar); } catch (\Throwable $e2) {} }
+    }
 }
 if (!function_exists('_waUrunBul')) {
     // Metin parcasini sube urunlerinden en spesifik (en uzun ad) eslesme ile bul.
@@ -3795,6 +3814,17 @@ Route::post('/api/wa/gelen', function (Request $r) {
     // Bridge TUM event'leri ayni URL'e POST eder (connected/qr.ready/message.sent/delivered/read...).
     // Sadece GELEN mesaji isle; digerlerini sessizce yoksay.
     $event = (string) $r->input('event', '');
+    // İNSAN DEVRALMA: personel KENDI telefonundan musteriye elle yazdi (bridge 'message.manual' yollar).
+    // O sohbette AI'yi duraklat. (Echo ayikligi bridge'de messageId ile yapiliyor; buraya yalniz gercek insan gelir.)
+    if ($event === 'message.manual') {
+        $subeIdM = (int) ($r->input('salonId') ?: $r->input('sube_id') ?: 0);
+        $toM = (string) ($r->input('to') ?: $r->input('tel'));
+        if ($subeIdM > 0 && trim($toM) !== '') {
+            try { _waDevralmaYaz($subeIdM, $toM, ['insan_devraldi' => 1, 'son_insan_mesaj_at' => now()]); } catch (\Throwable $e) {}
+            try { _waLog($subeIdM, $toM, (string) $r->input('text'), 1, 'personel-elle', 'giden'); } catch (\Throwable $e) {}
+        }
+        return response()->json(['ok' => 1, 'tip' => 'insan_devraldi']);
+    }
     if ($event !== '' && $event !== 'message.received') {
         return response()->json(['ok' => 1, 'tip' => 'ignored', 'event' => $event]);
     }
@@ -3806,6 +3836,26 @@ Route::post('/api/wa/gelen', function (Request $r) {
     $text = trim((string) ($r->input('text') ?: $r->input('mesaj') ?: $r->input('body')));
     $s = DB::table('subeler')->find($subeId);
     if (!$s || $from === '') return response()->json(['ok' => 0], 200);
+    // İNSAN DEVRALMA GUARD: personel bu sohbeti elle devraldiysa AI sus.
+    // Akilli geri-alma: personel 'wa_ai_sessizlik_esik_dk' dk (vars. 3) boyunca sessizse ve
+    // musteri tekrar yaziyorsa AI otomatik devralir (personel 'AI'a geri ver' demeyi unutsa bile).
+    try {
+        $od = _waOturumAl($subeId, $from);
+        if ($od && !empty($od->insan_devraldi)) {
+            $esikDk = (int) resto_ayar_al('wa_ai_sessizlik_esik_dk', 3);
+            if ($esikDk < 1) $esikDk = 3;
+            $sonInsan = isset($od->son_insan_mesaj_at) ? $od->son_insan_mesaj_at : null;
+            // Ayni saat-dilimi referansi (now ile yazildi, now ile karsilastir -> tz kaymasi yok)
+            $bosGecti = $sonInsan ? \Carbon\Carbon::parse($sonInsan)->lte(now()->subMinutes($esikDk)) : true;
+            if (!$bosGecti) {
+                // Personel hala aktif -> AI cevap VERMEZ; musteri mesajini panel icin logla.
+                try { _waLog($subeId, $from, $text, 1, 'insan-devralmada', 'gelen'); } catch (\Throwable $e) {}
+                return response()->json(['ok' => 1, 'tip' => 'insan_devralmada']);
+            }
+            // Esik gecti -> AI geri devralir, normal akisa devam.
+            try { _waDevralmaYaz($subeId, $from, ['insan_devraldi' => 0]); } catch (\Throwable $e) {}
+        }
+    } catch (\Throwable $e) { /* devralma kontrolu basarisiz -> normal akisa devam */ }
     $siparisLink = url('/app/' . $subeId . '?wa=' . _waTelNorm($from));
     // Konum mesaji?
     $konum = null;
