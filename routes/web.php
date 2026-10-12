@@ -2465,9 +2465,10 @@ Route::post('/api/patron/masa-ekle', function (Request $r) {
     $bolgeId = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
     if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $p->sube_id)->exists()) $bolgeId = null;
     $data = ['sube_id' => $p->sube_id, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId,
-        'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18),
-        'created_at' => now(), 'updated_at' => now()];
+        'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
     if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
+    if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
+    if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
     $id = DB::table('masalar')->insertGetId($data);
     $m = DB::table('masalar')->find($id);
     return ['ok' => 1, 'mesaj' => $ad . ' eklendi (QR otomatik oluşturuldu).', 'masa' => [
@@ -2484,7 +2485,9 @@ Route::post('/api/patron/masa-sil', function (Request $r) {
     if (!$m) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
     $acik = DB::table('adisyonlar')->where('masa_id', $m->id)->where('durum', 'acik')->exists();
     if ($acik || ($m->durum ?? '') === 'dolu') return ['ok' => 0, 'hata' => 'Bu masada açık hesap var. Önce hesabı kapatın.'];
-    DB::table('masalar')->where('id', $m->id)->update(['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos', 'updated_at' => now()]);
+    $upd = ['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos'];
+    if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+    DB::table('masalar')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'mesaj' => $m->ad . ' arşive taşındı. QR kodu KORUNUYOR — istediğinde geri getirebilirsin.'];
 });
 // Arsivden GERI GETIR — AYNI satir + AYNI qr_token. SADECE SAHIP.
@@ -2494,7 +2497,9 @@ Route::post('/api/patron/masa-geri', function (Request $r) {
     if ($p->rol !== 'sahip') return ['ok' => 0, 'hata' => 'Bu işlemi SADECE işletme sahibi yapabilir.'];
     $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->first();
     if (!$m) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
-    DB::table('masalar')->where('id', $m->id)->update(['arsiv' => 0, 'arsiv_at' => null, 'updated_at' => now()]);
+    $upd = ['arsiv' => 0, 'arsiv_at' => null];
+    if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+    DB::table('masalar')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'mesaj' => $m->ad . ' geri getirildi. Aynı QR kodu geçerli.'];
 });
 // Masa guncelle (ad/kapasite/bolge) — qr_token DEGISMEZ (sahip/mudur)
@@ -2504,7 +2509,7 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
     if (!in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 0, 'hata' => 'Yetkiniz yok.'];
     $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->first();
     if (!$m) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
-    $upd = ['updated_at' => now()];
+    $upd = [];
     if ($r->filled('ad')) $upd['ad'] = trim((string) $r->input('ad'));
     if ($r->filled('kapasite')) $upd['kapasite'] = max(1, min(50, (int) $r->input('kapasite')));
     if ($r->has('bolge_id')) {
@@ -2512,6 +2517,8 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
         if ($bid && !DB::table('bolgeler')->where('id', $bid)->where('sube_id', $p->sube_id)->exists()) $bid = null;
         $upd['bolge_id'] = $bid;
     }
+    if (empty($upd)) return ['ok' => 1, 'mesaj' => 'Değişiklik yok'];
+    if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
     DB::table('masalar')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'mesaj' => 'Güncellendi (QR değişmedi)'];
 });
