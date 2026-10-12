@@ -55,6 +55,12 @@ if (!function_exists('_ryEnsure')) {
                 if (!Schema::hasColumn('subeler', 'yetkili_ad')) $t->string('yetkili_ad', 120)->nullable();
                 if (!Schema::hasColumn('subeler', 'yetkili_tel')) $t->string('yetkili_tel', 24)->nullable();
                 if (!Schema::hasColumn('subeler', 'sehir')) $t->string('sehir', 60)->nullable();
+                // WHITE-LABEL: her restoran/zincir kendi markali mobil uygulamasiyla eslesir.
+                // app_bundle = Flutter uygulamasinin bundle/package id'si (com.marka.restoran) -> login'de eslesir.
+                if (!Schema::hasColumn('subeler', 'app_bundle')) $t->string('app_bundle', 80)->nullable()->index();
+                if (!Schema::hasColumn('subeler', 'marka_ad')) $t->string('marka_ad', 120)->nullable();   // uygulamada gosterilen marka adi (bos -> sube ad)
+                if (!Schema::hasColumn('subeler', 'marka_logo')) $t->string('marka_logo', 255)->nullable(); // logo URL (uygulama basligi/splash)
+                if (!Schema::hasColumn('subeler', 'marka_renk')) $t->string('marka_renk', 9)->nullable();   // tema ana rengi #RRGGBB
             });
             // Mevcut şubelerin bitiş tarihi boşsa 14 gün demo ver (bir kez)
             DB::table('subeler')->whereNull('uyelik_bitis')->update(['uyelik_bitis' => now()->addDays(14)->toDateString()]);

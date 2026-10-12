@@ -2886,8 +2886,15 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
             $t->timestamp('created_at')->useCurrent();
         });
     }
+    $tip = in_array($r->tip, ['garson', 'hesap', 'acil']) ? $r->tip : 'garson';
     DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
-        'tip' => in_array($r->tip, ['garson', 'hesap', 'acil']) ? $r->tip : 'garson', 'durum' => 'bekliyor', 'created_at' => now()]);
+        'tip' => $tip, 'durum' => 'bekliyor', 'created_at' => now()]);
+    // PUSH: salondaki personele anlik bildirim (poll'a ek; arka plan/kapali ekranda da gider)
+    try {
+        $masaAd = DB::table('masalar')->where('id', $masa->id)->value('ad') ?: ('Masa ' . $masa->id);
+        $baslik = $tip === 'hesap' ? '💳 Hesap istendi' : ($tip === 'acil' ? '🔴 Acil çağrı' : '🙋 Garson çağrısı');
+        _fcmSubeyeGonder($masa->sube_id, $baslik, $masaAd, ['tur' => 'garson_cagri', 'masa_id' => $masa->id, 'tip' => $tip]);
+    } catch (\Throwable $e) {}
     return ['ok' => 1];
 });
 
@@ -2913,6 +2920,10 @@ Route::post('/api/qr/tasima-talep', function (Request $r) {
     DB::table('masa_cagrilari')->where('masa_id', $kaynak->id)->where('tip', 'tasima')->where('durum', 'bekliyor')->update(['durum' => 'iptal']);
     DB::table('masa_cagrilari')->insert(['sube_id' => $hedef->sube_id, 'masa_id' => $kaynak->id, 'tip' => 'tasima',
         'durum' => 'bekliyor', 'hedef_masa_id' => $hedef->id, 'created_at' => now()]);
+    try {
+        _fcmSubeyeGonder($hedef->sube_id, '↔️ Masa taşıma talebi', $kaynak->ad . ' → ' . $hedef->ad,
+            ['tur' => 'masa_tasima', 'masa_id' => $kaynak->id, 'hedef_masa_id' => $hedef->id]);
+    } catch (\Throwable $e) {}
     return ['ok' => 1, 'mesaj' => $kaynak->ad . ' → ' . $hedef->ad . ' taşınma talebiniz iletildi. Garson onaylayınca hesabınız buraya taşınır 🙌'];
 });
 
@@ -3085,6 +3096,12 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     // Mutfaga bildirim SADECE klasik modda; on odemede odeme tamamlanınca duser
     if (!$onOdeme && Schema::hasTable('masa_cagrilari')) {
         DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
+        // PUSH: mutfak/garson cihazlarina yeni siparis bildirimi
+        try {
+            $masaAd = $masa->ad ?: ('Masa ' . $masa->id);
+            _fcmSubeyeGonder($masa->sube_id, '🍽️ Yeni QR sipariş', $masaAd . ' · ' . $eklenen . ' kalem',
+                ['tur' => 'yeni_siparis', 'masa_id' => $masa->id, 'adisyon_id' => $adId]);
+        } catch (\Throwable $e) {}
     }
     return ['ok' => 1, 'on_odeme' => $onOdeme, 'kalem_idler' => $yeniIds,
         'mesaj' => $onOdeme ? 'Ödeme alınınca mutfağa iletilecek' : 'Siparişiniz mutfağa iletildi',
@@ -3529,6 +3546,188 @@ if (!function_exists('_waDurumMetni')) {
         $b = $map[$durum] ?? ('Sipariş durumu: ' . $durum);
         if ($takipUrl) $b .= "\n📍 Canlı takip: " . $takipUrl;
         return $b;
+    }
+}
+
+// ============================ FCM PUSH (mobil uygulama bildirimleri) ============================
+// WhatsApp (_restoWaGonder) ile ayni desen: tek guard'li helper, konfig yoksa sessiz false.
+// FCM HTTP v1 (OAuth2 / service account). Eski "server key" API'si 2024'te kapandi.
+if (!function_exists('_fcmTokenEnsure')) {
+    function _fcmTokenEnsure()
+    {
+        if (!Schema::hasTable('cihaz_tokenlari')) {
+            try {
+                Schema::create('cihaz_tokenlari', function ($t) {
+                    $t->increments('id');
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->unsignedBigInteger('personel_id')->nullable()->index();
+                    $t->string('token', 255)->index();          // FCM registration token
+                    $t->string('platform', 10)->nullable();      // ios|android|web
+                    $t->string('app_bundle', 80)->nullable();    // white-label marka anahtari
+                    $t->string('kullanici_tipi', 12)->default('personel'); // personel|musteri
+                    $t->timestamp('created_at')->nullable();
+                    $t->timestamp('updated_at')->nullable();
+                });
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+}
+if (!function_exists('_fcmTokenKaydet')) {
+    // Ayni cihaz/personel icin eski token'lari temizle, tek guncel token birak (cift bildirim onleme).
+    function _fcmTokenKaydet($subeId, $personelId, $token, $platform = null, $appBundle = null, $kullaniciTipi = 'personel')
+    {
+        $token = trim((string) $token);
+        if ($token === '' || strlen($token) < 20) return false;
+        _fcmTokenEnsure();
+        try {
+            // Bu token baska personel/subede kayitliysa guncelle (cihaz el degistirdi)
+            DB::table('cihaz_tokenlari')->where('token', $token)->delete();
+            if ($personelId) {
+                // Ayni personelin eski token'i (ayni platformda) -> tek kayit politikasi
+                DB::table('cihaz_tokenlari')
+                    ->where('personel_id', (int) $personelId)
+                    ->where('platform', $platform ?: '')
+                    ->delete();
+            }
+            DB::table('cihaz_tokenlari')->insert([
+                'sube_id' => (int) $subeId,
+                'personel_id' => $personelId ? (int) $personelId : null,
+                'token' => $token,
+                'platform' => $platform ? mb_substr((string) $platform, 0, 10) : null,
+                'app_bundle' => $appBundle ? mb_substr((string) $appBundle, 0, 80) : null,
+                'kullanici_tipi' => in_array($kullaniciTipi, ['personel', 'musteri']) ? $kullaniciTipi : 'personel',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+}
+if (!function_exists('_fcmServiceAccount')) {
+    // Service account JSON: once ayarlar('fcm_sa_json'), yoksa storage/app/fcm-service-account.json
+    function _fcmServiceAccount()
+    {
+        $raw = (string) resto_ayar_al('fcm_sa_json', '');
+        if ($raw === '') {
+            $path = (string) resto_ayar_al('fcm_sa_path', '');
+            if ($path === '') $path = storage_path('app/fcm-service-account.json');
+            if (is_file($path)) $raw = (string) @file_get_contents($path);
+        }
+        if ($raw === '') return null;
+        $j = json_decode($raw, true);
+        if (!is_array($j) || empty($j['client_email']) || empty($j['private_key']) || empty($j['project_id'])) return null;
+        return $j;
+    }
+}
+if (!function_exists('_fcmAccessToken')) {
+    // SA ile OAuth2 access token uret (RS256 JWT -> token), ~55dk dosyada cache'le.
+    function _fcmAccessToken()
+    {
+        $cacheFile = storage_path('app/fcm_token_cache.json');
+        if (is_file($cacheFile)) {
+            $c = json_decode((string) @file_get_contents($cacheFile), true);
+            if (is_array($c) && !empty($c['token']) && (int) ($c['exp'] ?? 0) > (time() + 60)) return $c['token'];
+        }
+        $sa = _fcmServiceAccount();
+        if (!$sa) return null;
+        try {
+            $now = time();
+            $header = rtrim(strtr(base64_encode(json_encode(['alg' => 'RS256', 'typ' => 'JWT'])), '+/', '-_'), '=');
+            $claim = rtrim(strtr(base64_encode(json_encode([
+                'iss' => $sa['client_email'],
+                'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+                'aud' => 'https://oauth2.googleapis.com/token',
+                'iat' => $now, 'exp' => $now + 3600,
+            ])), '+/', '-_'), '=');
+            $sig = '';
+            if (!openssl_sign($header . '.' . $claim, $sig, $sa['private_key'], 'sha256WithRSAEncryption')) return null;
+            $jwt = $header . '.' . $claim . '.' . rtrim(strtr(base64_encode($sig), '+/', '-_'), '=');
+            $ch = curl_init('https://oauth2.googleapis.com/token');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => http_build_query(['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $jwt]),
+            ]);
+            $res = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($kod < 200 || $kod >= 300) return null;
+            $data = json_decode((string) $res, true);
+            if (empty($data['access_token'])) return null;
+            @file_put_contents($cacheFile, json_encode(['token' => $data['access_token'], 'exp' => $now + (int) ($data['expires_in'] ?? 3600)]));
+            return $data['access_token'];
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+}
+if (!function_exists('_fcmGonder')) {
+    // Outbound push. $tokenlar: string veya string[]. Konfig yoksa / hata -> false (sessiz, _restoWaGonder gibi).
+    function _fcmGonder($subeId, $tokenlar, $baslik, $govde, $data = [])
+    {
+        $liste = array_values(array_unique(array_filter(array_map('strval', (array) $tokenlar), fn($x) => trim($x) !== '')));
+        if (!$liste) return false;
+        $accessToken = _fcmAccessToken();
+        if (!$accessToken) return false;
+        $sa = _fcmServiceAccount();
+        if (!$sa) return false;
+        $projectId = $sa['project_id'];
+        // FCM data payload: tum degerler string olmali
+        $dataStr = [];
+        foreach ((array) $data as $k => $v) $dataStr[(string) $k] = is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE);
+        $dataStr['sube_id'] = (string) (int) $subeId;
+        $basarili = 0;
+        foreach ($liste as $tok) {
+            try {
+                $payload = [
+                    'message' => [
+                        'token' => $tok,
+                        'notification' => ['title' => (string) $baslik, 'body' => (string) $govde],
+                        'data' => $dataStr,
+                        'android' => ['priority' => 'HIGH', 'notification' => ['sound' => 'default', 'channel_id' => 'resteos_siparis']],
+                        'apns' => ['payload' => ['aps' => ['sound' => 'default', 'content-available' => 1]]],
+                    ],
+                ];
+                $ch = curl_init('https://fcm.googleapis.com/v1/projects/' . $projectId . '/messages:send');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $accessToken],
+                    CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                ]);
+                $res = curl_exec($ch);
+                $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($kod >= 200 && $kod < 300) {
+                    $basarili++;
+                } elseif ($kod === 404 || $kod === 400) {
+                    // Gecersiz/suresi dolmus token -> temizle
+                    try { DB::table('cihaz_tokenlari')->where('token', $tok)->delete(); } catch (\Throwable $e) {}
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+        return $basarili > 0;
+    }
+}
+if (!function_exists('_fcmSubeyeGonder')) {
+    // Kolaylik: bir subedeki personel cihazlarina (opsiyonel role filtresi) push.
+    function _fcmSubeyeGonder($subeId, $baslik, $govde, $data = [], $roller = null)
+    {
+        _fcmTokenEnsure();
+        try {
+            $q = DB::table('cihaz_tokenlari')->where('sube_id', (int) $subeId)->where('kullanici_tipi', 'personel');
+            if ($roller) {
+                $ids = DB::table('personeller')->where('sube_id', (int) $subeId)->whereIn('rol', (array) $roller)->pluck('id')->all();
+                if (!$ids) return false;
+                $q->whereIn('personel_id', $ids);
+            }
+            $tokenlar = $q->pluck('token')->all();
+        } catch (\Throwable $e) {
+            return false;
+        }
+        if (!$tokenlar) return false;
+        return _fcmGonder($subeId, $tokenlar, $baslik, $govde, $data);
     }
 }
 if (!function_exists('_waCevapTemizle')) {
@@ -4739,6 +4938,28 @@ if (!function_exists('_apiPersonel')) {
     }
 }
 
+// WHITE-LABEL: subeye bagli marka konfigurasyonu (uygulama basligi/logo/tema).
+// Kolonlar yoksa (eski kurulum) sessizce sube adina duser; appBundle app'ten gelir, echo edilir.
+if (!function_exists('_markaConfig')) {
+    function _markaConfig($sube, $appBundle = null)
+    {
+        $subeAd = is_object($sube) ? ($sube->ad ?? '') : '';
+        $marka = [
+            'ad' => $subeAd,
+            'logo' => null,
+            'renk' => null,
+            'app_bundle' => $appBundle ?: null,
+        ];
+        if (is_object($sube)) {
+            if (!empty($sube->marka_ad)) $marka['ad'] = $sube->marka_ad;
+            if (!empty($sube->marka_logo)) $marka['logo'] = $sube->marka_logo;
+            if (!empty($sube->marka_renk)) $marka['renk'] = $sube->marka_renk;
+            if (!empty($sube->app_bundle)) $marka['app_bundle'] = $sube->app_bundle;
+        }
+        return $marka;
+    }
+}
+
 Route::post('/api/login', function (Request $r) {
     // Patron app: sahip/mudur PIN ile giris
     // Tum AKTIF personel giris yapabilir (garson terminali dahil); UI role gore acilir.
@@ -4747,11 +4968,54 @@ Route::post('/api/login', function (Request $r) {
     // Mevcut token'i KORU (yeni login eskisini gecersiz kilmasin -> es zamanli oturumlar/testler bozulmaz)
     $token = $p->api_token ?: \Illuminate\Support\Str::random(48);
     if (!$p->api_token) DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
+    // WHITE-LABEL: uygulama kendi bundle id'sini gonderir -> markali uygulama dogru markayi/subeyi acar.
+    $appBundle = (string) ($r->appBundle ?? $r->app_bundle ?? '');
+    $subeRow = DB::table('subeler')->where('id', $p->sube_id)->first();
     return [
         'ok' => 1, 'token' => $token,
         'personel' => ['id' => $p->id, 'ad' => $p->ad, 'rol' => $p->rol],
-        'sube' => DB::table('subeler')->where('id', $p->sube_id)->value('ad'),
+        'sube' => $subeRow->ad ?? null,
+        'sube_id' => (int) $p->sube_id,
+        'marka' => _markaConfig($subeRow, $appBundle),
     ];
+});
+
+// -------- FCM PUSH: cihaz token kayit/sil/test (mobil uygulama) --------
+// Uygulama login sonrasi FCM token'ini buraya kaydeder; push bildirimleri bu tokenlara gider.
+Route::post('/api/bildirim/cihaz-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $ok = _fcmTokenKaydet(
+        $p->sube_id, $p->id,
+        (string) ($r->token ?? ''),
+        (string) ($r->platform ?? ''),
+        (string) ($r->appBundle ?? $r->app_bundle ?? ''),
+        'personel'
+    );
+    if (!$ok) return response()->json(['ok' => 0, 'hata' => 'Gecersiz token'], 422);
+    return ['ok' => 1];
+});
+Route::post('/api/bildirim/cihaz-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $token = trim((string) ($r->token ?? ''));
+    _fcmTokenEnsure();
+    try {
+        $q = DB::table('cihaz_tokenlari')->where('personel_id', (int) $p->id);
+        if ($token !== '') $q->where('token', $token);
+        $q->delete();
+    } catch (\Throwable $e) {
+    }
+    return ['ok' => 1];
+});
+Route::post('/api/bildirim/test', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _fcmTokenEnsure();
+    $tokenlar = DB::table('cihaz_tokenlari')->where('personel_id', (int) $p->id)->pluck('token')->all();
+    if (!$tokenlar) return response()->json(['ok' => 0, 'hata' => 'Kayitli cihaz yok'], 404);
+    $ok = _fcmGonder($p->sube_id, $tokenlar, 'ResteOS test', 'Bildirimler calisiyor 🎉', ['tur' => 'test']);
+    return ['ok' => $ok ? 1 : 0, 'gonderildi' => $ok, 'cihaz' => count($tokenlar)];
 });
 // GARSON KENDI DASHBOARD'U: kendi sattiklari, masa sayisi, acik masalar, urun, bahsis (finansal kar/maliyet YOK).
 Route::get('/api/patron/garson-ozet', function (Request $r) {
