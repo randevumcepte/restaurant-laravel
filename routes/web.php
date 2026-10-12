@@ -10686,6 +10686,104 @@ Route::get('/api/paket/{id}', function (Request $r, $id) {
     ]];
 });
 
+// Sipariş-bazlı CANLI kurye konumu + mesafe/ETA (uygulama içi harita — dış URL/ tarayıcı YOK)
+if (!function_exists('_teslimKonumEnsure')) {
+    function _teslimKonumEnsure()
+    {
+        if (cache()->get('teslim_konum_kolon_ok')) return;
+        foreach (['teslim_lat', 'teslim_lng'] as $c) {
+            if (!Schema::hasColumn('adisyonlar', $c)) {
+                Schema::table('adisyonlar', fn ($t) => $t->decimal($c, 10, 7)->nullable());
+            }
+        }
+        cache()->put('teslim_konum_kolon_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_adresGeokodla')) {
+    // Adres (metin) -> {lat,lng}; Nominatim (OSM, bedava), 30 gün cache. Başarısızlık kısa negatif cache.
+    function _adresGeokodla($adres)
+    {
+        $adres = trim((string) $adres);
+        if (mb_strlen($adres) < 5) return null;
+        $ck = 'geo_' . md5($adres);
+        $c = cache()->get($ck);
+        if ($c !== null) return $c ?: null;
+        try {
+            $resp = \Illuminate\Support\Facades\Http::withHeaders(['User-Agent' => 'ResteOS/1.0 kurye-takip'])
+                ->timeout(7)->get('https://nominatim.openstreetmap.org/search', [
+                    'q' => $adres, 'format' => 'json', 'limit' => 1, 'countrycodes' => 'tr', 'accept-language' => 'tr',
+                ]);
+            $j = $resp->successful() ? $resp->json() : null;
+            if (is_array($j) && !empty($j) && isset($j[0]['lat'], $j[0]['lon'])) {
+                $g = ['lat' => (float) $j[0]['lat'], 'lng' => (float) $j[0]['lon']];
+                cache()->put($ck, $g, now()->addDays(30));
+                return $g;
+            }
+        } catch (\Throwable $e) {}
+        cache()->put($ck, false, now()->addHours(6));
+        return null;
+    }
+}
+Route::get('/api/paket/{id}/konum', function (Request $r, $id) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $a = DB::table('adisyonlar')->where('id', $id)->where('sube_id', $p->sube_id)->where('kanal', 'paket')->first();
+    if (!$a) return response()->json(['ok' => 0, 'hata' => 'Sipariş bulunamadı'], 404);
+    _teslimKonumEnsure();
+
+    // Restoran (şube) konumu — mesai geofence merkezi
+    $sube = DB::table('subeler')->where('id', $p->sube_id)->first();
+    $subeLat = ($sube && isset($sube->mesai_lat) && $sube->mesai_lat) ? (float) $sube->mesai_lat : null;
+    $subeLng = ($sube && isset($sube->mesai_lng) && $sube->mesai_lng) ? (float) $sube->mesai_lng : null;
+
+    // Kurye canlı konum
+    $kurye = null;
+    if ($a->kurye_id) {
+        $k = DB::table('kuryeler')->find($a->kurye_id);
+        if ($k) {
+            $dk = (isset($k->konum_zamani) && $k->konum_zamani) ? (int) round(\Carbon\Carbon::parse($k->konum_zamani)->diffInMinutes(now())) : null;
+            $kurye = [
+                'ad' => $k->ad, 'telefon' => $k->telefon,
+                'lat' => isset($k->son_lat) ? (float) $k->son_lat : null,
+                'lng' => isset($k->son_lng) ? (float) $k->son_lng : null,
+                'konum_dk' => $dk,
+            ];
+        }
+    }
+
+    // Hedef (müşteri adresi) — bir kez geokodla + sakla
+    $adres = $a->teslimat_adres ?: null;
+    $hedefLat = isset($a->teslim_lat) ? (float) $a->teslim_lat : null;
+    $hedefLng = isset($a->teslim_lng) ? (float) $a->teslim_lng : null;
+    if (($hedefLat === null || $hedefLng === null) && $adres) {
+        $g = _adresGeokodla($adres);
+        if ($g) {
+            $hedefLat = $g['lat']; $hedefLng = $g['lng'];
+            DB::table('adisyonlar')->where('id', $a->id)->update(['teslim_lat' => $hedefLat, 'teslim_lng' => $hedefLng]);
+        }
+    }
+
+    // Mesafe + ETA (kurye -> hedef; hedef yoksa kurye -> şube)
+    $mesafeKm = null; $eta = null;
+    if ($kurye && $kurye['lat'] !== null) {
+        $hLat = $hedefLat !== null ? $hedefLat : $subeLat;
+        $hLng = $hedefLng !== null ? $hedefLng : $subeLng;
+        if ($hLat !== null && $hLng !== null) {
+            $mesafeKm = round(_mesaiMesafe($kurye['lat'], $kurye['lng'], $hLat, $hLng) / 1000, 2);
+            $eta = max(1, (int) round($mesafeKm / 22 * 60)); // ~22 km/s şehir içi scooter
+        }
+    }
+
+    return ['ok' => 1,
+        'durum' => $a->teslimat_durumu,
+        'kurye' => $kurye,
+        'hedef' => $hedefLat !== null ? ['lat' => $hedefLat, 'lng' => $hedefLng, 'adres' => $adres] : ($adres ? ['adres' => $adres] : null),
+        'sube' => $subeLat !== null ? ['lat' => $subeLat, 'lng' => $subeLng, 'ad' => $sube->ad ?? 'Restoran'] : null,
+        'mesafe_km' => $mesafeKm,
+        'tahmini_dk' => $eta,
+    ];
+});
+
 // Paket sipariş durum akışı (token'li): kabul -> hazir, yola -> yolda, teslim -> kapat, iptal -> iptal
 Route::post('/api/paket/durum', function (Request $r) {
     $p = _apiPersonel($r);
