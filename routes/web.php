@@ -2430,6 +2430,18 @@ Route::get('/masa-afisler', function (Request $r) {
 });
 
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
+// Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
+if (!function_exists('_masaVarsayilanBolge')) {
+    function _masaVarsayilanBolge($subeId)
+    {
+        $id = DB::table('bolgeler')->where('sube_id', $subeId)->orderBy('sira')->orderBy('id')->value('id');
+        if ($id) return $id;
+        $row = ['sube_id' => $subeId, 'ad' => 'Salon'];
+        if (Schema::hasColumn('bolgeler', 'sira')) $row['sira'] = 1;
+        if (Schema::hasColumn('bolgeler', 'created_at')) { $row['created_at'] = now(); $row['updated_at'] = now(); }
+        return DB::table('bolgeler')->insertGetId($row);
+    }
+}
 // Yonetim listesi: aktif + arsiv masalar, her birinin kalici QR'i
 Route::get('/api/patron/masa-yonetim', function (Request $r) {
     $p = _apiPersonel($r);
@@ -2464,6 +2476,7 @@ Route::post('/api/patron/masa-ekle', function (Request $r) {
     $kapasite = max(1, min(50, (int) $r->input('kapasite', 4)));
     $bolgeId = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
     if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $p->sube_id)->exists()) $bolgeId = null;
+    if (!$bolgeId) $bolgeId = _masaVarsayilanBolge($p->sube_id); // bolge_id NOT NULL -> varsayilan
     $data = ['sube_id' => $p->sube_id, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId,
         'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
     if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
@@ -2515,6 +2528,7 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
     if ($r->has('bolge_id')) {
         $bid = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
         if ($bid && !DB::table('bolgeler')->where('id', $bid)->where('sube_id', $p->sube_id)->exists()) $bid = null;
+        if (!$bid) $bid = _masaVarsayilanBolge($p->sube_id); // NOT NULL guard
         $upd['bolge_id'] = $bid;
     }
     if (empty($upd)) return ['ok' => 1, 'mesaj' => 'Değişiklik yok'];
