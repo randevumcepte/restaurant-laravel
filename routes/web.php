@@ -10708,27 +10708,42 @@ if (!function_exists('_teslimKonumEnsure')) {
     }
 }
 if (!function_exists('_adresGeokodla')) {
-    // Adres (metin) -> {lat,lng}; Nominatim (OSM, bedava), 30 gün cache. Başarısızlık kısa negatif cache.
+    // Adres (metin) -> {lat,lng}; Nominatim (OSM, bedava). Tam sokak adresi tutmazsa
+    // kademeli basitlestirme (mahalle/ilce) dener. 30 gun pozitif, 30 dk negatif cache.
     function _adresGeokodla($adres)
     {
         $adres = trim((string) $adres);
-        if (mb_strlen($adres) < 5) return null;
-        $ck = 'geo_' . md5($adres);
+        if (mb_strlen($adres) < 4) return null;
+        $ck = 'geo2_' . md5($adres); // v2: eski basarisiz cache'i gecersiz kil
         $c = cache()->get($ck);
         if ($c !== null) return $c ?: null;
-        try {
-            $resp = \Illuminate\Support\Facades\Http::withHeaders(['User-Agent' => 'ResteOS/1.0 kurye-takip'])
-                ->timeout(7)->get('https://nominatim.openstreetmap.org/search', [
-                    'q' => $adres, 'format' => 'json', 'limit' => 1, 'countrycodes' => 'tr', 'accept-language' => 'tr',
-                ]);
-            $j = $resp->successful() ? $resp->json() : null;
-            if (is_array($j) && !empty($j) && isset($j[0]['lat'], $j[0]['lon'])) {
-                $g = ['lat' => (float) $j[0]['lat'], 'lng' => (float) $j[0]['lon']];
-                cache()->put($ck, $g, now()->addDays(30));
-                return $g;
-            }
-        } catch (\Throwable $e) {}
-        cache()->put($ck, false, now()->addHours(6));
+
+        // Aday sorgular: once tam adres, tutmazsa basitlestir (mahalle / ilce + İstanbul)
+        $adaylar = [$adres];
+        if (!preg_match('/t[üu]rkiye/iu', $adres)) $adaylar[] = $adres . ', Türkiye';
+        if (preg_match('/([\p{L}]+)\s*mah/iu', $adres, $m)) $adaylar[] = $m[1] . ', İstanbul, Türkiye';
+        if (strpos($adres, ',') !== false) {
+            $parcalar = array_map('trim', explode(',', $adres));
+            $son = end($parcalar);
+            if ($son !== '') $adaylar[] = $son . ', İstanbul, Türkiye';
+        }
+        $adaylar = array_values(array_unique($adaylar));
+
+        foreach ($adaylar as $q) {
+            try {
+                $resp = \Illuminate\Support\Facades\Http::withHeaders(['User-Agent' => 'ResteOS/1.0 kurye-takip'])
+                    ->timeout(7)->get('https://nominatim.openstreetmap.org/search', [
+                        'q' => $q, 'format' => 'json', 'limit' => 1, 'countrycodes' => 'tr', 'accept-language' => 'tr',
+                    ]);
+                $j = $resp->successful() ? $resp->json() : null;
+                if (is_array($j) && !empty($j) && isset($j[0]['lat'], $j[0]['lon'])) {
+                    $g = ['lat' => (float) $j[0]['lat'], 'lng' => (float) $j[0]['lon']];
+                    cache()->put($ck, $g, now()->addDays(30));
+                    return $g;
+                }
+            } catch (\Throwable $e) {}
+        }
+        cache()->put($ck, false, now()->addMinutes(30));
         return null;
     }
 }
