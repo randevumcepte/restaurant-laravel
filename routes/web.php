@@ -772,7 +772,11 @@ Route::post('/kurye/{token}/konum', function (Request $r, $token) {
     if (!$k) return response()->json(['ok' => 0], 404);
     $lat = (float) $r->input('lat'); $lng = (float) $r->input('lng');
     if (!$lat || !$lng) return ['ok' => 0];
-    DB::table('kuryeler')->where('id', $k->id)->update(['son_lat' => $lat, 'son_lng' => $lng, 'konum_zamani' => now()]);
+    if (function_exists('_teslimKonumEnsure')) _teslimKonumEnsure();
+    // gercek_gps_at: gerçek kurye GPS'i geldi -> demo simülasyonu bu kurye için kapanır
+    $upd = ['son_lat' => $lat, 'son_lng' => $lng, 'konum_zamani' => now()];
+    if (Schema::hasColumn('kuryeler', 'gercek_gps_at')) $upd['gercek_gps_at'] = now();
+    DB::table('kuryeler')->where('id', $k->id)->update($upd);
     return ['ok' => 1];
 });
 
@@ -10696,6 +10700,10 @@ if (!function_exists('_teslimKonumEnsure')) {
                 Schema::table('adisyonlar', fn ($t) => $t->decimal($c, 10, 7)->nullable());
             }
         }
+        // Gerçek kurye GPS zamanı — demo simülasyonu bunu olan kuryede DEVRE DIŞI bırakır
+        if (!Schema::hasColumn('kuryeler', 'gercek_gps_at')) {
+            Schema::table('kuryeler', fn ($t) => $t->timestamp('gercek_gps_at')->nullable());
+        }
         cache()->put('teslim_konum_kolon_ok', 1, now()->addHours(12));
     }
 }
@@ -10737,7 +10745,7 @@ Route::get('/api/paket/{id}/konum', function (Request $r, $id) {
     $subeLng = ($sube && isset($sube->mesai_lng) && $sube->mesai_lng) ? (float) $sube->mesai_lng : null;
 
     // Kurye canlı konum
-    $kurye = null;
+    $kurye = null; $k = null;
     if ($a->kurye_id) {
         $k = DB::table('kuryeler')->find($a->kurye_id);
         if ($k) {
@@ -10760,6 +10768,23 @@ Route::get('/api/paket/{id}/konum', function (Request $r, $id) {
         if ($g) {
             $hedefLat = $g['lat']; $hedefLng = $g['lng'];
             DB::table('adisyonlar')->where('id', $a->id)->update(['teslim_lat' => $hedefLat, 'teslim_lng' => $hedefLng]);
+        }
+    }
+
+    // DEMO CANLI İLERLEME: gerçek GPS GELMEYEN kurye (demo) her sorguda hedefe ~%18 yaklaşsın.
+    // Gerçek kurye (son 2 dk içinde gercek_gps_at) ASLA simüle edilmez — kendi GPS'i esastır.
+    if ($k && $kurye && $kurye['lat'] !== null && $hedefLat !== null && $hedefLng !== null) {
+        $gercekVar = isset($k->gercek_gps_at) && $k->gercek_gps_at
+            && \Carbon\Carbon::parse($k->gercek_gps_at)->gt(now()->subSeconds(120));
+        if (!$gercekVar) {
+            $uzaklikM = _mesaiMesafe($kurye['lat'], $kurye['lng'], $hedefLat, $hedefLng);
+            if ($uzaklikM > 45) {
+                $f = 0.18; // kalan mesafenin bir kısmı (yaklaştıkça yavaşlar — doğal varış hissi)
+                $yeniLat = $kurye['lat'] + ($hedefLat - $kurye['lat']) * $f;
+                $yeniLng = $kurye['lng'] + ($hedefLng - $kurye['lng']) * $f;
+                DB::table('kuryeler')->where('id', $k->id)->update(['son_lat' => $yeniLat, 'son_lng' => $yeniLng, 'konum_zamani' => now()]);
+                $kurye['lat'] = $yeniLat; $kurye['lng'] = $yeniLng; $kurye['konum_dk'] = 0;
+            }
         }
     }
 
