@@ -729,20 +729,20 @@ if (!function_exists('_kuryeCanliEnsure')) {
             if ($k->son_lat === null) { $upd['son_lat'] = $baseLat + (rand(-120, 120) / 10000); $upd['son_lng'] = $baseLng + (rand(-120, 120) / 10000); $upd['konum_zamani'] = now(); }
             if ($upd) DB::table('kuryeler')->where('id', $k->id)->update($upd);
         }
-        // En az 3 aktif teslimat (yolda) olsun
-        $yolda = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')->where('teslimat_durumu', 'yolda')->count();
-        if ($yolda < 3) {
-            $kids = DB::table('kuryeler')->where('sube_id', $subeId)->pluck('id')->all();
-            $adresler = ['Bağdat Cad. No:112 D:4, Kadıköy', 'Moda Cad. No:45, Kadıköy', 'Feneryolu Mah. Ressam Salih Sk. 8', 'Caferağa Mah. Dr. Esat Işık Cd. 21', 'Osmanağa Mah. Söğütlüçeşme Cd. 60'];
-            for ($i = $yolda; $i < 3; $i++) {
-                DB::table('adisyonlar')->insert([
-                    'sube_id' => $subeId, 'masa_id' => null, 'kurye_id' => $kids[array_rand($kids)] ?? null,
-                    'kanal' => 'paket', 'platform' => ['telefon', 'yemeksepeti', 'getir'][array_rand([0, 1, 2])],
-                    'teslimat_adres' => $adresler[array_rand($adresler)], 'teslimat_durumu' => 'yolda',
-                    'misafir_sayisi' => 1, 'durum' => 'acik', 'ara_toplam' => rand(180, 640), 'toplam' => rand(180, 640),
-                    'acilis' => now()->subMinutes(rand(5, 40)), 'created_at' => now(), 'updated_at' => now(),
-                ]);
-            }
+        // Her teslimat kanalı için en az 1 aktif (yolda) demo sipariş olsun — Getir / Yemeksepeti / Trendyol
+        $kids = DB::table('kuryeler')->where('sube_id', $subeId)->pluck('id')->all();
+        $adresler = ['Bağdat Cad. No:112 D:4, Kadıköy', 'Moda Cad. No:45, Kadıköy', 'Feneryolu Mah. Ressam Salih Sk. 8', 'Caferağa Mah. Dr. Esat Işık Cd. 21', 'Osmanağa Mah. Söğütlüçeşme Cd. 60'];
+        foreach (['getir', 'yemeksepeti', 'trendyol'] as $i => $plat) {
+            $varMi = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')
+                ->where('platform', $plat)->where('teslimat_durumu', 'yolda')->exists();
+            if ($varMi) continue;
+            DB::table('adisyonlar')->insert([
+                'sube_id' => $subeId, 'masa_id' => null, 'kurye_id' => (!empty($kids) ? $kids[$i % count($kids)] : null),
+                'kanal' => 'paket', 'platform' => $plat,
+                'teslimat_adres' => $adresler[$i % count($adresler)], 'teslimat_durumu' => 'yolda',
+                'misafir_sayisi' => 1, 'durum' => 'acik', 'ara_toplam' => rand(180, 640), 'toplam' => rand(180, 640),
+                'acilis' => now()->subMinutes(rand(5, 40)), 'created_at' => now(), 'updated_at' => now(),
+            ]);
         }
     }
 }
