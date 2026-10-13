@@ -5721,8 +5721,8 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $compCiro = $ciroArasi($pfrom, $pto);
 
     // --- Folyo / misafir / ortalamalar (odenmis adisyon = kapali folio) ---
-    $folyoMetrik = function ($f, $t) {
-        $q = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$f, $t]);
+    $folyoMetrik = function ($f, $t) use ($p) {
+        $q = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$f, $t]);
         $adet = (clone $q)->count();
         $misafir = (int) (clone $q)->sum('misafir_sayisi');
         $ciro = (float) (clone $q)->sum('toplam');
@@ -5747,6 +5747,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     // --- Food-cost: satilan urunlerin recete maliyeti (Sales & Costs) ---
     $maliyetMap = _restoUrunMaliyetMap();
     $satisSatir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)
         ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
         ->where('adisyon_kalemleri.durum', '!=', 'iptal')
         ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi',
@@ -5767,13 +5768,14 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $maliyetYuzde = $ciro > 0 ? round($toplamMaliyet / $ciro * 100) : 0;
 
     // --- KAYIP RADARI ---
-    $odendiPencere = fn () => DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
+    $odendiPencere = fn () => DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
     $iskonto = (float) $odendiPencere()->sum('indirim');
     $ikram = (float) $odendiPencere()->sum('ikram');
     $silinen = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)
         ->where('adisyon_kalemleri.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])
         ->sum('adisyon_kalemleri.tutar');
-    $iptalQ = DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to]);
+    $iptalQ = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to]);
     $iptalTutar = (float) (clone $iptalQ)->sum('toplam');
     $iptalAdet = (clone $iptalQ)->count();
     $fire = 0.0;
@@ -5804,12 +5806,13 @@ Route::get('/api/patron/ozet', function (Request $r) {
     ];
 
     // --- Odeme tipi dagilimi ---
-    $odemeTipleri = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
-        ->select('tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(tutar) as tutar'))
-        ->groupBy('tip')->orderByDesc('tutar')->get();
+    $odemeTipleri = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $p->sube_id)->whereBetween('odemeler.created_at', [$from, $to])
+        ->select('odemeler.tip', DB::raw('COUNT(*) as adet'), DB::raw('SUM(odemeler.tutar) as tutar'))
+        ->groupBy('odemeler.tip')->orderByDesc('tutar')->get();
 
     // --- Servis tipi (kanal) dagilimi ---
-    $servisTipleri = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
+    $servisTipleri = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
         ->select('kanal', DB::raw('COUNT(*) as adet'), DB::raw('SUM(toplam) as tutar'))
         ->groupBy('kanal')->orderByDesc('tutar')->get()
         ->map(fn ($k) => ['ad' => ['salon' => 'Masaya Servis', 'paket' => 'Paket / Kurye', 'qr' => 'QR / Self'][$k->kanal] ?? ucfirst($k->kanal),
@@ -5908,7 +5911,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $servisAd = ['salon' => 'Salon', 'masa' => 'Salon', 'qr' => 'Salon', 'paket' => 'Paket', 'kurye' => 'Paket',
         'gelal' => 'Gel-Al', 'gel-al' => 'Gel-Al', 'tezgah' => 'Gel-Al', 'gel_al' => 'Gel-Al'];
     $servisMap = ['Salon' => 0.0, 'Paket' => 0.0, 'Gel-Al' => 0.0];
-    foreach (DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
+    foreach (DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])
         ->select('kanal', DB::raw('SUM(toplam) as tutar'))->groupBy('kanal')->get() as $s) {
         $ad = $servisAd[strtolower((string) $s->kanal)] ?? 'Salon';
         $servisMap[$ad] = ($servisMap[$ad] ?? 0) + (float) $s->tutar;
@@ -5959,9 +5962,9 @@ Route::get('/api/patron/ozet', function (Request $r) {
         'bildirimler' => $bildirimler,
         // legacy
         'bugun' => $bugun, 'dun' => $dun,
-        'acikMasa' => DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count(),
-        'masaSayisi' => DB::table('masalar')->count(),
-        'bugunAdisyon' => DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count(),
+        'acikMasa' => DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'acik')->whereNotNull('masa_id')->count(),
+        'masaSayisi' => DB::table('masalar')->where('sube_id', $p->sube_id)->count(),
+        'bugunAdisyon' => DB::table('adisyonlar')->where('sube_id', $p->sube_id)->whereBetween('acilis', [$t0, $now])->count(),
         'top' => $urunler->take(5),
     ];
 });
@@ -10727,7 +10730,7 @@ Route::get('/api/paket', function (Request $r) {
     _paketOdemeEnsure();
     _paketTahsilatEnsure();
     $simdi = now();
-    $siparisler = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
+    $siparisler = DB::table('adisyonlar')->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.id', 'adisyonlar.platform', 'adisyonlar.platform_siparis_no', 'adisyonlar.teslimat_durumu',
@@ -10830,7 +10833,7 @@ Route::get('/paket-demo-sil', function () {
 Route::get('/api/paket/{id}', function (Request $r, $id) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    $a = DB::table('adisyonlar')->where('adisyonlar.id', $id)->where('adisyonlar.kanal', 'paket')
+    $a = DB::table('adisyonlar')->where('adisyonlar.id', $id)->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.kanal', 'paket')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.*', 'musteriler.ad as musteri', 'musteriler.telefon', 'musteriler.adres as musteri_adres',
@@ -11002,7 +11005,7 @@ Route::post('/api/paket/durum', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0], 401);
     $id = (int) $r->input('id');
     $aksiyon = (string) $r->input('aksiyon');
-    $a = DB::table('adisyonlar')->where('id', $id)->where('kanal', 'paket')->first();
+    $a = DB::table('adisyonlar')->where('id', $id)->where('sube_id', $p->sube_id)->where('kanal', 'paket')->first();
     if (!$a) return response()->json(['ok' => 0, 'mesaj' => 'Sipariş bulunamadı'], 404);
     _paketTahsilatEnsure();
     $upd = ['updated_at' => now()];
