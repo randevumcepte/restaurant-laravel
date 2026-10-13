@@ -12,6 +12,7 @@
  */
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -78,6 +79,9 @@ if (!function_exists('_syncEntities')) {
 if (!function_exists('_syncKolonEnsure')) {
     function _syncKolonEnsure(): void
     {
+        // PERFORMANS: sema introspection pahali -> her istekte degil, saatte bir calistir.
+        // (Kolonlar zaten migration ile olusuyor; bu yalnizca guvenlik agi.)
+        if (Cache::get('sync_ensured_v1')) return;
         foreach (_syncEntities() as $cfg) {
             $t = $cfg['tablo'];
             if (!Schema::hasTable($t)) continue;
@@ -111,6 +115,17 @@ if (!function_exists('_syncKolonEnsure')) {
             } catch (\Throwable $e) {
             }
         }
+        // PERFORMANS: pull sorgusu updated_at uzerinden filtreliyor -> index sart.
+        foreach (_syncEntities() as $cfg) {
+            $t = $cfg['tablo'];
+            if (!Schema::hasTable($t) || !Schema::hasColumn($t, 'updated_at')) continue;
+            try {
+                DB::statement("CREATE INDEX ix_{$t}_updated ON `$t` (updated_at)");
+            } catch (\Throwable $e) {
+                // zaten varsa yok say
+            }
+        }
+        Cache::put('sync_ensured_v1', 1, 3600); // 1 saat: bir daha sema'ya dokunma
     }
 }
 
@@ -236,6 +251,11 @@ Route::get('/api/sync/pull', function (Request $r) {
     $changes = [];
     $maxMs = $since;
 
+    // Gecmisli tablolar: telefonda sadece son N gun tutulur (DB sismesin). Ana veri (masa/menu) tam.
+    $gecmisGun = 7;
+    $gecmisEsik = date('Y-m-d H:i:s', time() - $gecmisGun * 86400);
+    $gecmisliler = ['adisyonlar', 'adisyon_kalemleri', 'odemeler'];
+
     foreach ($entities as $ad => $cfg) {
         if ($istenen && !in_array($ad, $istenen, true)) continue;
         $t = $cfg['tablo'];
@@ -243,6 +263,10 @@ Route::get('/api/sync/pull', function (Request $r) {
         _syncUuidBackfill($t, $subeId);
 
         $q = DB::table($t);
+        // Sipariş/ödeme gecmisini son N gunle sinirla -> ilk senkron yillarca veri cekmez
+        if (in_array($ad, $gecmisliler, true) && Schema::hasColumn($t, 'updated_at')) {
+            $q->where('updated_at', '>', $gecmisEsik);
+        }
         // sube kapsami: dogrudan sube_id varsa onunla; yoksa adisyon uzerinden (kalem/odeme)
         if (Schema::hasColumn($t, 'sube_id')) {
             $q->where('sube_id', $subeId);
