@@ -13120,3 +13120,6 @@ Route::get('/tanitim', function () {
 // ============================ ResteOS SİSTEM YÖNETİMİ (çok-restoranlı admin) ============================
 require __DIR__ . '/resteos_yonetim.php';
 
+// ============================ LOCAL-FIRST SENKRON API (Flutter offline) ============================
+require __DIR__ . '/sync.php';
+
