@@ -291,18 +291,21 @@ Route::get('/resteos-yonetim', function () {
     $demo = $subeler->where('demo_hesabi', true)->count();
     $askida = $subeler->where('askiya_alindi', true)->count();
 
-    // Tüm restoranların ciro/adisyonu
-    $bugunCiro = (float) DB::table('odemeler')->whereDate('created_at', today())->sum('tutar');
-    $son30Ciro = (float) DB::table('odemeler')->where('created_at', '>=', now()->subDays(30))->sum('tutar');
+    // Tüm restoranların ciro/adisyonu — JOIN adisyonlar: adisyonu silinmiş (orphan) ödemeler SAYILMAZ.
+    $bugunCiro = (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->whereDate('odemeler.created_at', today())->sum('odemeler.tutar');
+    $son30Ciro = (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('odemeler.created_at', '>=', now()->subDays(30))->sum('odemeler.tutar');
     $acikAdisyon = DB::table('adisyonlar')->where('durum', 'acik')->count();
     $son30Adisyon = DB::table('adisyonlar')->where('kapanis', '>=', now()->subDays(30))->where('durum', 'odendi')->count();
 
     // 14 günlük ciro trendi
     $trend = [];
     // 14 günlük ciro TEK sorguda (N+1 yerine tarih bazlı grupla)
-    $gunMap = DB::table('odemeler')->where('created_at', '>=', today()->subDays(13))
-        ->select(DB::raw('DATE(created_at) as g'), DB::raw('SUM(tutar) as c'))
-        ->groupBy(DB::raw('DATE(created_at)'))->pluck('c', 'g');
+    $gunMap = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('odemeler.created_at', '>=', today()->subDays(13))
+        ->select(DB::raw('DATE(odemeler.created_at) as g'), DB::raw('SUM(odemeler.tutar) as c'))
+        ->groupBy(DB::raw('DATE(odemeler.created_at)'))->pluck('c', 'g');
     for ($i = 13; $i >= 0; $i--) {
         $g = today()->subDays($i);
         $trend[] = [
