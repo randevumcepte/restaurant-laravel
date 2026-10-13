@@ -281,30 +281,38 @@ Route::get('/dashboard', function () {
         return view('kurulum');
     }
 
-    $sube = DB::table('subeler')->first();
+    // SUBE-IZOLASYONU: panel aktif subeye bagli calisir (impersonation > ilk sube).
+    $subeId = _aktifSubeId();
+    $sube = DB::table('subeler')->where('id', $subeId)->first();
     $son30 = now()->subDays(30);
 
+    // odemeler'de sube_id YOK -> ciro icin adisyonlar join + sube filtresi (orphan/baska sube sayilmaz).
+    $ciroSubeli = fn () => DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $subeId);
+
     // --- Ozet kartlar ---
-    $bugunCiro = (float) DB::table('odemeler')->whereDate('created_at', today())->sum('tutar');
-    $dunCiro = (float) DB::table('odemeler')->whereDate('created_at', today()->subDay())->sum('tutar');
-    $son30Ciro = (float) DB::table('odemeler')->where('created_at', '>=', $son30)->sum('tutar');
-    $son30Adisyon = DB::table('adisyonlar')->where('durum', 'odendi')->where('kapanis', '>=', $son30)->count();
+    $bugunCiro = (float) $ciroSubeli()->whereDate('odemeler.created_at', today())->sum('odemeler.tutar');
+    $dunCiro = (float) $ciroSubeli()->whereDate('odemeler.created_at', today()->subDay())->sum('odemeler.tutar');
+    $son30Ciro = (float) $ciroSubeli()->where('odemeler.created_at', '>=', $son30)->sum('odemeler.tutar');
+    $son30Adisyon = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'odendi')->where('kapanis', '>=', $son30)->count();
     $ortAdisyon = $son30Adisyon > 0 ? $son30Ciro / $son30Adisyon : 0;
 
     // Acik MASA = fiziksel masa dolulugu (paket/gel-al/online masasiz siparisler HARIC).
     // Onceden tum acik adisyonlar sayiliyordu -> "77/36" gibi masa sayisini asan sacma deger cikiyordu.
-    $acikMasaSayisi = (int) DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->distinct()->count('masa_id');
-    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
-    $masaSayisi = DB::table('masalar')->count();
+    $acikMasaSayisi = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->distinct()->count('masa_id');
+    $acikTutar = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
+    $masaSayisi = DB::table('masalar')->where('sube_id', $subeId)->count();
     // Masasiz acik siparisler (paket / gel-al / online) ayri gosterilir
-    $paketAcikSayisi = (int) DB::table('adisyonlar')->where('durum', 'acik')->whereNull('masa_id')->count();
-    $paketAcikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->whereNull('masa_id')->sum('toplam');
+    $paketAcikSayisi = (int) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNull('masa_id')->count();
+    $paketAcikTutar = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNull('masa_id')->sum('toplam');
 
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
 
     // --- Kritik stoklar (defterden turetilen anlik stok < kritik) ---
     $kritikStoklar = DB::table('malzemeler')
-        ->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+        ->leftJoin('stok_hareketleri', function ($j) use ($subeId) {
+            $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $subeId);
+        })
         ->select('malzemeler.ad', 'malzemeler.kritik_stok', 'malzemeler.temel_birim_id',
             DB::raw('COALESCE(SUM(stok_hareketleri.miktar),0) as stok'))
         ->groupBy('malzemeler.id', 'malzemeler.ad', 'malzemeler.kritik_stok', 'malzemeler.temel_birim_id')
@@ -317,6 +325,7 @@ Route::get('/dashboard', function () {
     $acikAdisyonlar = DB::table('adisyonlar')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+        ->where('adisyonlar.sube_id', $subeId)
         ->where('adisyonlar.durum', 'acik')->whereNotNull('adisyonlar.masa_id')
         ->select('masalar.ad as masa', 'personeller.ad as garson', 'adisyonlar.toplam',
             'adisyonlar.acilis', 'adisyonlar.misafir_sayisi')
@@ -326,6 +335,7 @@ Route::get('/dashboard', function () {
     $fiyatUyarilari = DB::table('alis_fatura_kalemleri')
         ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
         ->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+        ->where('alis_faturalari.sube_id', $subeId)
         ->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
         ->select('malzemeler.ad', 'alis_fatura_kalemleri.uyari',
             'alis_fatura_kalemleri.fiyat_farki_yuzde', 'alis_fatura_kalemleri.fiyat_farki_tutar',
@@ -335,6 +345,7 @@ Route::get('/dashboard', function () {
     // --- En cok satan urunler (son 30 gun) ---
     $enCokSatan = DB::table('adisyon_kalemleri')
         ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $subeId)
         ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', $son30)
         ->select('adisyon_kalemleri.urun_adi',
             DB::raw('SUM(adisyon_kalemleri.adet) as adet'),
@@ -345,6 +356,7 @@ Route::get('/dashboard', function () {
     // --- Personel satis (son 30 gun) ---
     $personelSatis = DB::table('adisyonlar')
         ->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+        ->where('adisyonlar.sube_id', $subeId)
         ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', $son30)
         ->select('personeller.ad',
             DB::raw('COUNT(*) as adisyon'), DB::raw('SUM(adisyonlar.toplam) as ciro'))
@@ -354,6 +366,7 @@ Route::get('/dashboard', function () {
     // --- Suistimal radari: son void/indirim/ikram ---
     $sonLoglar = DB::table('iptal_indirim_loglari')
         ->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
+        ->where('iptal_indirim_loglari.sube_id', $subeId)
         ->select('iptal_indirim_loglari.tip', 'iptal_indirim_loglari.tutar',
             'iptal_indirim_loglari.sebep', 'iptal_indirim_loglari.created_at', 'personeller.ad')
         ->orderByDesc('iptal_indirim_loglari.created_at')->limit(8)->get();
@@ -364,7 +377,7 @@ Route::get('/dashboard', function () {
         $g = today()->subDays($i);
         $trend[] = [
             'gun' => $g->format('d.m'),
-            'ciro' => (float) DB::table('odemeler')->whereDate('created_at', $g)->sum('tutar'),
+            'ciro' => (float) $ciroSubeli()->whereDate('odemeler.created_at', $g)->sum('odemeler.tutar'),
         ];
     }
 
@@ -657,13 +670,14 @@ Route::post('/pos/tasi', function (Request $r) {
 // ============================ PAKET SIPARIS MERKEZI ============================
 Route::get('/paket', function () {
     _paketTahsilatEnsure();
-    $aktif = DB::table('adisyonlar')->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
+    $subeId = _aktifSubeId();
+    $aktif = DB::table('adisyonlar')->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.kanal', 'paket')->where('adisyonlar.durum', 'acik')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->select('adisyonlar.*', 'musteriler.ad as musteri_ad', 'musteriler.telefon', 'kuryeler.ad as kurye_ad')
         ->orderByDesc('adisyonlar.acilis')->get();
-    $bugunPaket = DB::table('adisyonlar')->where('kanal', 'paket')->whereDate('acilis', today())->count();
-    $platformDagilim = DB::table('adisyonlar')->where('kanal', 'paket')->where('acilis', '>=', now()->subDays(30))
+    $bugunPaket = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')->whereDate('acilis', today())->count();
+    $platformDagilim = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')->where('acilis', '>=', now()->subDays(30))
         ->select('platform', DB::raw('COUNT(*) as adet'), DB::raw('SUM(toplam) as ciro'))->groupBy('platform')->orderByDesc('ciro')->get();
     return view('paket.index', compact('aktif', 'bugunPaket', 'platformDagilim'));
 });
@@ -1113,13 +1127,14 @@ Route::get('/siparisim/{token}', function ($token) {
 // ============================ MUTFAK (KDS) ============================
 // Mutfak/Bar ekran verisi — istasyona göre AYRILIR: bar=içecekler, mutfak=yemekler.
 if (!function_exists('_kdsEkranVeri')) {
-    function _kdsEkranVeri($barMi)
+    function _kdsEkranVeri($barMi, $subeId = null)
     {
         $q = DB::table('adisyon_kalemleri')
             ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
             ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
             ->where('adisyon_kalemleri.durum', 'gonderildi');
+        if ($subeId) $q->where('adisyonlar.sube_id', $subeId); // SUBE-IZOLASYONU: sadece bu subenin mutfak kalemleri
         if ($barMi) {
             $q->where('urunler.istasyon', 'bar');
         } else {
@@ -1132,11 +1147,11 @@ if (!function_exists('_kdsEkranVeri')) {
     }
 }
 Route::get('/mutfak', function () {
-    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(false), 'ekran' => 'mutfak']);
+    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(false, _aktifSubeId()), 'ekran' => 'mutfak']);
 });
 // BAR ekranı (KDS) — sadece içecekler
 Route::get('/bar', function () {
-    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(true), 'ekran' => 'bar']);
+    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(true, _aktifSubeId()), 'ekran' => 'bar']);
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
@@ -1207,13 +1222,14 @@ Route::post('/menu/86', function (Request $r) {
 
 // ============================ STOK & RECETE ============================
 Route::get('/stok', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
     // Stok toplamini alt-sorgu ile al (GROUP BY / ONLY_FULL_GROUP_BY sorunu olmasin)
+    // SUBE-IZOLASYONU: stok seviyesi stok_hareketleri.sube_id ile bu subeye filtreli (malzeme listesi paylasimli).
     $malzemeler = DB::table('malzemeler')
         ->leftJoin('malzeme_kategorileri', 'malzemeler.kategori_id', '=', 'malzeme_kategorileri.id')
         ->select('malzemeler.*', 'malzeme_kategorileri.ad as kategori',
-            DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id) as stok'))
+            DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as stok'))
         ->orderBy('malzemeler.ad')->get();
     $receteler = DB::table('receteler')->leftJoin('urunler', 'receteler.urun_id', '=', 'urunler.id')
         ->select('receteler.id', 'receteler.ad', 'receteler.tip', DB::raw('(SELECT COUNT(*) FROM recete_kalemleri WHERE recete_kalemleri.recete_id = receteler.id) as kalem_sayisi'))
@@ -1223,11 +1239,14 @@ Route::get('/stok', function () {
 
 // ============================ SATIN ALMA + FIYAT ZEKASI ============================
 Route::get('/satinalma', function () {
+    $subeId = _aktifSubeId();
     $faturalar = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->where('alis_faturalari.sube_id', $subeId)
         ->select('alis_faturalari.*', 'tedarikciler.ad as tedarikci')
         ->orderByDesc('tarih')->limit(30)->get();
     $uyarilar = DB::table('alis_fatura_kalemleri')->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
         ->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+        ->where('alis_faturalari.sube_id', $subeId)
         ->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
         ->select('malzemeler.ad', 'alis_fatura_kalemleri.uyari', 'alis_fatura_kalemleri.birim_fiyat',
             'alis_fatura_kalemleri.onceki_fiyat', 'alis_fatura_kalemleri.fiyat_farki_yuzde',
@@ -1239,8 +1258,9 @@ Route::get('/satinalma', function () {
 
 // ============================ MUSTERILER / CRM ============================
 Route::get('/musteriler', function () {
-    $musteriler = DB::table('musteriler')->orderByDesc('toplam_harcama')->limit(50)->get();
-    $toplam = DB::table('musteriler')->count();
+    $subeId = _aktifSubeId();
+    $musteriler = DB::table('musteriler')->where('sube_id', $subeId)->orderByDesc('toplam_harcama')->limit(50)->get();
+    $toplam = DB::table('musteriler')->where('sube_id', $subeId)->count();
     return view('musteriler.index', compact('musteriler', 'toplam'));
 });
 
@@ -1658,9 +1678,12 @@ Route::get('/odeme-kur', function () {
 
 // ============================ PATRON HIZLI KARSILASTIRMA (Kerzz Boss tarzi) ============================
 Route::get('/patron', function () {
+    $subeId = _aktifSubeId();
     $now = now();
     $t0 = today()->startOfDay();
-    $ciro = fn ($from, $to) => (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+    // SUBE-IZOLASYONU: ciro odemeler JOIN adisyonlar ile sube filtreli (odemeler'de sube_id yok).
+    $ciro = fn ($from, $to) => (float) DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $subeId)->whereBetween('odemeler.created_at', [$from, $to])->sum('odemeler.tutar');
 
     // Bugun (su ana kadar) vs adil karsilastirmalar (dun/gecen hafta AYNI SAATE kadar)
     $bugun = $ciro($t0, $now);
@@ -1671,11 +1694,12 @@ Route::get('/patron', function () {
     $buAy = $ciro((clone $now)->subDays(30), $now);
     $oncekiAy = $ciro((clone $now)->subDays(60), (clone $now)->subDays(30));
 
-    $bugunAdisyon = DB::table('adisyonlar')->whereBetween('acilis', [$t0, $now])->count();
-    $acikMasa = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count();
-    $acikTutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->sum('toplam');
+    $bugunAdisyon = DB::table('adisyonlar')->where('sube_id', $subeId)->whereBetween('acilis', [$t0, $now])->count();
+    $acikMasa = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->whereNotNull('masa_id')->count();
+    $acikTutar = (float) DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->sum('toplam');
 
     $topBugun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $subeId)
         ->whereBetween('adisyonlar.acilis', [$t0, $now])
         ->select('urun_adi', DB::raw('SUM(adet) as a'))->groupBy('urun_adi')->orderByDesc('a')->limit(3)->get();
 
@@ -1686,13 +1710,15 @@ Route::get('/patron', function () {
     } elseif ($dun > 0 && $bugun > $dun * 1.15) {
         $uyarilar[] = ['ikon' => '🚀', 'renk' => 'emerald', 'msg' => 'Bugün ciro, dün aynı saate göre %' . round(($bugun - $dun) / $dun * 100) . ' önde. Harika gidiyor!'];
     }
-    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($subeId) {
+            $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $subeId);
+        })
         ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
         ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
     if ($kritik > 0) $uyarilar[] = ['ikon' => '📦', 'renk' => 'amber', 'msg' => $kritik . ' malzeme kritik stok seviyesinde — sipariş ver.'];
-    $kacan = DB::table('cagri_loglari')->where('sonuc', 'kacan')->whereDate('created_at', today())->count();
+    $kacan = DB::table('cagri_loglari')->where('sube_id', $subeId)->where('sonuc', 'kacan')->whereDate('created_at', today())->count();
     if ($kacan > 0) $uyarilar[] = ['ikon' => '📵', 'renk' => 'rose', 'msg' => 'Bugün ' . $kacan . ' kaçan çağrı — AI Santral bunları kurtarabilir.'];
-    $paketAktif = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')->count();
+    $paketAktif = DB::table('adisyonlar')->where('sube_id', $subeId)->where('kanal', 'paket')->where('durum', 'acik')->count();
     if ($paketAktif > 0) $uyarilar[] = ['ikon' => '🛵', 'renk' => 'indigo', 'msg' => $paketAktif . ' aktif paket sipariş hazırlanıyor.'];
 
     return view('patron', compact('bugun', 'dun', 'gecenHaftaGun', 'buHafta', 'oncekiHafta', 'buAy', 'oncekiAy',
@@ -11584,6 +11610,7 @@ Route::get('/muhasebe', function () {
 // ============================ TEKLIF KARSILASTIRMA (satin alma) ============================
 Route::get('/teklif', function () {
     $teklifler = DB::table('teklifler')
+        ->where('teklifler.sube_id', _aktifSubeId())
         ->join('malzemeler', 'teklifler.malzeme_id', '=', 'malzemeler.id')
         ->join('tedarikciler', 'teklifler.tedarikci_id', '=', 'tedarikciler.id')
         ->leftJoin('birimler', 'teklifler.birim_id', '=', 'birimler.id')
