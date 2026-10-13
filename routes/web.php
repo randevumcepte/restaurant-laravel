@@ -5089,13 +5089,34 @@ if (!function_exists('_markaConfig')) {
 Route::post('/api/login', function (Request $r) {
     // Patron app: sahip/mudur PIN ile giris
     // Tum AKTIF personel giris yapabilir (garson terminali dahil); UI role gore acilir.
-    $p = DB::table('personeller')->where('pin', (string) $r->pin)->where('aktif', 1)->first();
-    if (!$p) return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
+    $pin = (string) $r->pin;
+    // WHITE-LABEL: uygulama kendi bundle id'sini gonderir -> markali uygulama dogru markayi/subeyi acar.
+    $appBundle = (string) ($r->appBundle ?? $r->app_bundle ?? '');
+    // GUVENLIK: PIN brute-force korumasi. IP(+appBundle) basina SADECE basarisiz denemeleri say;
+    // esik asilirsa kilit (429). Basarili giris sayaci sifirlar -> yogun terminal kilitlenmez.
+    $rlKey = 'apilogin:' . $r->ip() . ':' . ($appBundle ?: 'global');
+    if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($rlKey, 10)) {
+        $kalan = \Illuminate\Support\Facades\RateLimiter::availableIn($rlKey);
+        return response()->json(['ok' => 0, 'hata' => 'Çok fazla hatalı deneme. ' . (int) ceil($kalan / 60) . ' dk sonra tekrar deneyin.'], 429);
+    }
+    // Markali uygulamadan giriliyorsa PIN'i O MARKANIN sube(ler)i icinde ara:
+    //  - farkli restoranlarda ayni PIN cakissa bile dogru sube bulunur
+    //  - baska markaya ait personel bu uygulamadan giremez
+    // app_bundle bos ya da hicbir subeye atanmamissa (kurulum gecis donemi) -> eski global arama.
+    $q = DB::table('personeller')->where('pin', $pin)->where('aktif', 1);
+    if ($appBundle !== '' && Schema::hasColumn('subeler', 'app_bundle')) {
+        $markaSubeIds = DB::table('subeler')->where('app_bundle', $appBundle)->pluck('id')->all();
+        if (!empty($markaSubeIds)) $q->whereIn('sube_id', $markaSubeIds);
+    }
+    $p = $q->first();
+    if (!$p) {
+        \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 600); // basarisiz -> 10 dk'lik pencerede say
+        return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
+    }
+    \Illuminate\Support\Facades\RateLimiter::clear($rlKey); // basarili -> sayaci temizle
     // Mevcut token'i KORU (yeni login eskisini gecersiz kilmasin -> es zamanli oturumlar/testler bozulmaz)
     $token = $p->api_token ?: \Illuminate\Support\Str::random(48);
     if (!$p->api_token) DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
-    // WHITE-LABEL: uygulama kendi bundle id'sini gonderir -> markali uygulama dogru markayi/subeyi acar.
-    $appBundle = (string) ($r->appBundle ?? $r->app_bundle ?? '');
     $subeRow = DB::table('subeler')->where('id', $p->sube_id)->first();
     return [
         'ok' => 1, 'token' => $token,
@@ -6952,6 +6973,8 @@ Route::post('/api/patron/personel-kaydet', function (Request $r) {
     ];
     $pid = (int) $r->id;
     if ($pin !== '') {
+        // GUVENLIK: cok kisa PIN brute-force'a acik -> min 4 hane
+        if (strlen($pin) < 4) return ['ok' => 0, 'hata' => 'PIN en az 4 haneli olmalı.'];
         // PIN benzersiz olmali (ayni sube)
         $cak = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', $pin)->where('id', '!=', $pid)->exists();
         if ($cak) return ['ok' => 0, 'hata' => 'Bu PIN başka personelde kullanılıyor.'];
