@@ -1307,6 +1307,73 @@ Route::get('/api/m/siparislerim', function (Request $r) {
         });
     return ['ok' => 1, 'siparisler' => $list];
 });
+// DEMO: giriş yapmış müşteriye fake veri doldur (ödül merdiveni + puan + cüzdan hareketi + geçmiş sipariş). Tekrar çağrı katlamaz.
+Route::post('/api/m/demo-doldur', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2();
+    $sid = $m->sube_id;
+    // 1) Ödül merdiveni (puan_odulleri) — yoksa oluştur + seed
+    if (!Schema::hasTable('puan_odulleri')) {
+        try { Schema::create('puan_odulleri', function ($t) {
+            $t->id(); $t->unsignedBigInteger('sube_id')->index();
+            $t->string('ad', 120); $t->integer('puan')->default(0); $t->tinyInteger('aktif')->default(1); $t->timestamps();
+        }); } catch (\Throwable $e) {}
+    }
+    if (Schema::hasTable('puan_odulleri') && DB::table('puan_odulleri')->where('sube_id', $sid)->count() === 0) {
+        foreach ([['ad' => 'Bedava Türk Kahvesi', 'puan' => 100], ['ad' => '%20 İndirim Kuponu', 'puan' => 200],
+                  ['ad' => 'Tatlı İkramı', 'puan' => 350], ['ad' => 'Ana Yemek Hediye', 'puan' => 500],
+                  ['ad' => 'VIP Kahvaltı (2 kişi)', 'puan' => 800]] as $o) {
+            try { DB::table('puan_odulleri')->insert(array_merge(['sube_id' => $sid, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $o)); } catch (\Throwable $e) {}
+        }
+    }
+    // 2) Müşteri puan / harcama / sipariş sayısı (halka 65/100 dolu görünsün)
+    DB::table('musteriler')->where('id', $m->id)->update(['puan' => 65, 'toplam_harcama' => 4850, 'siparis_sayisi' => 14, 'updated_at' => now()]);
+    // 3) Cüzdan hareketleri (birkaç tane) — mevcut az ise ekle
+    if (Schema::hasTable('cuzdan_hareketleri') && DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->count() < 3) {
+        $bak = (float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0);
+        $hrk = [['tip' => 'harcama', 'tutar' => 145, 'aciklama' => 'Sipariş ödemesi'],
+                ['tip' => 'yukleme', 'tutar' => 270, 'aciklama' => 'Yükleme 250₺ (+20₺ bonus)'],
+                ['tip' => 'harcama', 'tutar' => 90, 'aciklama' => 'Sipariş ödemesi']];
+        foreach ($hrk as $i => $h) {
+            try { DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => $h['tip'], 'tutar' => $h['tutar'],
+                'bakiye_sonra' => $bak, 'aciklama' => $h['aciklama'], 'created_at' => now()->subDays($i + 1), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        }
+    }
+    // 4) Geçmiş siparişler (birkaç tane) — mevcut az ise ekle
+    if (DB::table('adisyonlar')->where('musteri_id', $m->id)->count() < 3) {
+        $urn = DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1)->limit(6)->get(['id', 'ad', 'fiyat']);
+        $havuz = $urn->count() ? $urn->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat])->all()
+            : [['id' => 0, 'ad' => 'Türk Kahvesi', 'fiyat' => 45], ['id' => 0, 'ad' => 'Cheesecake', 'fiyat' => 120], ['id' => 0, 'ad' => 'Latte', 'fiyat' => 75], ['id' => 0, 'ad' => 'Tost', 'fiyat' => 90]];
+        $gruplar = [['durum' => 'kapali', 'td' => 'teslim'], ['durum' => 'kapali', 'td' => 'teslim'], ['durum' => 'acik', 'td' => 'hazirlaniyor']];
+        foreach ($gruplar as $gi => $g) {
+            $sec = array_slice($havuz, $gi % max(1, count($havuz)), 2); if (!$sec) $sec = array_slice($havuz, 0, 2);
+            $top = 0; foreach ($sec as $s) $top += $s['fiyat'];
+            try {
+                $adId = DB::table('adisyonlar')->insertGetId(['sube_id' => $sid, 'masa_id' => null, 'musteri_id' => $m->id,
+                    'kanal' => 'paket', 'platform' => 'app', 'teslimat_durumu' => $g['td'], 'odeme_yontemi' => 'online',
+                    'ara_toplam' => $top, 'toplam' => $top, 'durum' => $g['durum'], 'takip_token' => \Illuminate\Support\Str::random(28),
+                    'acilis' => now()->subDays($gi + 1), 'created_at' => now()->subDays($gi + 1), 'updated_at' => now()->subDays($gi + 1)]);
+                foreach ($sec as $s) {
+                    DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $s['id'], 'urun_adi' => $s['ad'], 'adet' => 1,
+                        'birim_fiyat' => $s['fiyat'], 'tutar' => $s['fiyat'], 'durum' => 'gonderildi', 'gonderim_zamani' => now(),
+                        'created_at' => now()->subDays($gi + 1), 'updated_at' => now()->subDays($gi + 1)]);
+                }
+            } catch (\Throwable $e) {}
+        }
+    }
+    // 5) Starbucks kalitesinde RESİMLİ örnek kartlar (App Yönetim'den düzenlenebilir)
+    _appBannerEnsure($sid);
+    DB::table('app_banner')->where('sube_id', $sid)->delete();
+    $kartlar = [
+        ['tip' => 'hero', 'baslik' => 'Yükle & Kazan ⭐', 'metin' => '500₺ ve üzeri yükle, 50₺ bonus hediye!', 'gorsel' => 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=900&q=80&auto=format&fit=crop', 'renk' => '#14342B', 'sira' => 1],
+        ['tip' => 'hero', 'baslik' => 'Günün Kahvesi', 'metin' => 'Taze çekilmiş espresso bazlı içecekler', 'gorsel' => 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=900&q=80&auto=format&fit=crop', 'renk' => '#2B1A10', 'sira' => 2],
+        ['tip' => 'hero', 'baslik' => 'Tatlı Molası 🍰', 'metin' => 'Kahvene eşlik edecek enfes lezzetler', 'gorsel' => 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=900&q=80&auto=format&fit=crop', 'renk' => '#3A201E', 'sira' => 3],
+        ['tip' => 'kampanya', 'baslik' => 'Hafta Sonu Kahvaltısı', 'metin' => '2 kişilik serpme kahvaltıda %20 indirim', 'gorsel' => 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=900&q=80&auto=format&fit=crop', 'renk' => '#202A14', 'sira' => 1],
+        ['tip' => 'kampanya', 'baslik' => 'Arkadaşını Getir 🤝', 'metin' => 'Davet et, ikiniz de 25₺ kazanın', 'gorsel' => 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=900&q=80&auto=format&fit=crop', 'renk' => '#14202B', 'sira' => 2],
+    ];
+    foreach ($kartlar as $k) { try { DB::table('app_banner')->insert(array_merge(['sube_id' => $sid, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $k)); } catch (\Throwable $e) {} }
+    return ['ok' => 1, 'mesaj' => 'Demo veriler + 5 resimli kart yüklendi', 'puan' => 65];
+});
 // AI asistan (müşteri bağlamıyla: geçmiş ürünler + damak -> kişiselleştirilmiş)
 // AI asistan — QR menü MusteriAsistan'ı ile BİREBİR (tam eğitim seti + sipariş akışı).
 // baglam = son konuşulan ürün adı (STRING), yanıtta urun_baglam döner; istemci saklar (QR akışı aynen).
