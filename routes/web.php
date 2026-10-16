@@ -1045,6 +1045,28 @@ Route::get('/api/app/{sube}/menu', function ($sube) {
         'kategoriler' => $kats, 'urunler' => $urunler];
 });
 
+// Marka/tema (müşteri app açılışta çeker -> restoranın seçtiği renge göre açılır)
+Route::get('/api/app/{sube}/marka', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) return response()->json(['ok' => 0], 404);
+    try { resto_tema_kolon(); } catch (\Throwable $e) {}
+    $temalar = resto_temalar();
+    $stored = $s->tema ?? null;
+    if ($stored === 'ozel' && !empty($s->tema_renk)) $tema = resto_tema_uret($s->tema_renk, $s->tema_renk2 ?? null);
+    elseif ($stored && isset($temalar[$stored])) $tema = $temalar[$stored];
+    else $tema = $temalar['altin'] ?? reset($temalar);
+    $mod = (($s->tema_mod ?? '') === 'acik') ? 'acik' : 'koyu';
+    return ['ok' => 1, 'marka' => [
+        'ad' => $s->ad ?? 'Restoran',
+        'ana' => $tema['ana'] ?? '#E8541E',
+        'ana2' => $tema['ana2'] ?? ($tema['ana'] ?? '#F97316'),
+        'ana3' => $tema['ana3'] ?? null,
+        'ink' => $tema['ink'] ?? '#1E293B',
+        'detay' => $tema['detay'] ?? null,
+        'mod' => $mod,
+    ]];
+});
+
 // Siparis olustur (paket / gel-al) — CSRF muaf (api/*)
 Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
     $s = DB::table('subeler')->where('id', $sube)->first();
