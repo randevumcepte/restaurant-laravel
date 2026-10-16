@@ -1365,11 +1365,16 @@ Route::post('/api/m/demo-doldur', function (Request $r) {
     _appBannerEnsure($sid);
     DB::table('app_banner')->where('sube_id', $sid)->delete();
     $kartlar = [
-        ['tip' => 'hero', 'baslik' => 'Yükle & Kazan ⭐', 'metin' => '500₺ ve üzeri yükle, 50₺ bonus hediye!', 'gorsel' => 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=900&q=80&auto=format&fit=crop', 'renk' => '#14342B', 'sira' => 1],
-        ['tip' => 'hero', 'baslik' => 'Günün Kahvesi', 'metin' => 'Taze çekilmiş espresso bazlı içecekler', 'gorsel' => 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=900&q=80&auto=format&fit=crop', 'renk' => '#2B1A10', 'sira' => 2],
-        ['tip' => 'hero', 'baslik' => 'Tatlı Molası 🍰', 'metin' => 'Kahvene eşlik edecek enfes lezzetler', 'gorsel' => 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=900&q=80&auto=format&fit=crop', 'renk' => '#3A201E', 'sira' => 3],
-        ['tip' => 'kampanya', 'baslik' => 'Hafta Sonu Kahvaltısı', 'metin' => '2 kişilik serpme kahvaltıda %20 indirim', 'gorsel' => 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=900&q=80&auto=format&fit=crop', 'renk' => '#202A14', 'sira' => 1],
-        ['tip' => 'kampanya', 'baslik' => 'Arkadaşını Getir 🤝', 'metin' => 'Davet et, ikiniz de 25₺ kazanın', 'gorsel' => 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=900&q=80&auto=format&fit=crop', 'renk' => '#14202B', 'sira' => 2],
+        ['tip' => 'hero', 'baslik' => 'Yükle & Kazan ⭐', 'metin' => '500₺ ve üzeri yükle, 50₺ bonus hediye!', 'gorsel' => 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=900&q=80&auto=format&fit=crop', 'renk' => '#14342B', 'sira' => 1,
+            'detay' => "Cüzdanına 250₺ yükle 20₺, 500₺ yükle 50₺ bonus hediye.\nBonus anında hesabına tanımlanır.\nSiparişte önce cüzdandan, yetmezse kartından ödenir.\nKampanya stoklarla sınırlıdır.", 'buton' => 'Cüzdana Yükle', 'odul_puan' => 0],
+        ['tip' => 'hero', 'baslik' => 'Günün Kahvesi', 'metin' => 'Taze çekilmiş espresso bazlı içecekler', 'gorsel' => 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=900&q=80&auto=format&fit=crop', 'renk' => '#2B1A10', 'sira' => 2,
+            'detay' => "Her gün taze çekilmiş %100 Arabica çekirdekler.\nGünün kahvesinde %10 indirim.\nYanında seçili tatlılarda sürpriz fiyat.", 'buton' => 'Menüye Göz At', 'odul_puan' => 0],
+        ['tip' => 'hero', 'baslik' => 'Tatlı Molası 🍰', 'metin' => 'Kahvene eşlik edecek enfes lezzetler', 'gorsel' => 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=900&q=80&auto=format&fit=crop', 'renk' => '#3A201E', 'sira' => 3,
+            'detay' => "Cheesecake, brownie ve mevsim tatlıları.\nKahve + tatlı menüsünde avantajlı fiyat.\nGün içi sınırlı sayıda hazırlanır.", 'buton' => 'Menüye Göz At', 'odul_puan' => 0],
+        ['tip' => 'kampanya', 'baslik' => 'Hafta Sonu Kahvaltısı', 'metin' => '2 kişilik serpme kahvaltıda %20 indirim', 'gorsel' => 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=900&q=80&auto=format&fit=crop', 'renk' => '#202A14', 'sira' => 1,
+            'detay' => "Cumartesi ve Pazar 09:00-12:00 arası geçerlidir.\n2 kişilik serpme kahvaltıda %20 indirim.\nKupon kodunu kasada göster.\nBaşka kampanyalarla birleştirilemez.", 'buton' => 'Kuponu Al', 'kupon_kodu' => 'KAHVALTI20', 'odul_puan' => 0],
+        ['tip' => 'kampanya', 'baslik' => 'Arkadaşını Getir 🤝', 'metin' => 'Davet et, ikiniz de 25₺ kazanın', 'gorsel' => 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=900&q=80&auto=format&fit=crop', 'renk' => '#14202B', 'sira' => 2,
+            'detay' => "Arkadaşını davet et, ilk siparişinde ikiniz de 25₺ kazanın.\nDavet ettiğin kişi uygulamayı indirip sipariş vermeli.\nKazandığın puan bir sonraki siparişinde kullanılır.", 'buton' => 'Davet Et & Kazan', 'odul_puan' => 25],
     ];
     foreach ($kartlar as $k) { try { DB::table('app_banner')->insert(array_merge(['sube_id' => $sid, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $k)); } catch (\Throwable $e) {} }
     return ['ok' => 1, 'mesaj' => 'Demo veriler + 5 resimli kart yüklendi', 'puan' => 65];
