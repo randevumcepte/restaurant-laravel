@@ -1031,16 +1031,41 @@ Route::get('/app-kur', function () {
     return response("Musteri App hazir.\nSiparis sayfasi: " . url('/app/' . $s->id) . "\n(QR/link ile musteriye verilir)")->header('Content-Type', 'text/plain; charset=utf-8');
 });
 
+// Ürün DETAY kolonları (çoklu görsel + detay + içindekiler + kalori + süre) — hem müşteri app hem patron ürün formu kullanır
+if (!function_exists('_urunDetayEnsure')) {
+    function _urunDetayEnsure()
+    {
+        if (cache()->get('urun_detay_kolon_ok')) return;
+        $kol = [
+            'detay' => fn ($t) => $t->text('detay')->nullable(),
+            'gorseller' => fn ($t) => $t->text('gorseller')->nullable(), // JSON ekstra görsel listesi
+            'icindekiler' => fn ($t) => $t->text('icindekiler')->nullable(),
+            'kalori' => fn ($t) => $t->integer('kalori')->nullable(),
+            'hazirlik_dk' => fn ($t) => $t->integer('hazirlik_dk')->nullable(),
+        ];
+        foreach ($kol as $k => $tanim) {
+            if (!Schema::hasColumn('urunler', $k)) { try { Schema::table('urunler', $tanim); } catch (\Throwable $e) {} }
+        }
+        cache()->put('urun_detay_kolon_ok', 1, now()->addHours(12));
+    }
+}
 // Public menu (app icin)
 Route::get('/api/app/{sube}/menu', function ($sube) {
     $s = DB::table('subeler')->where('id', $sube)->first();
     if (!$s) return response()->json(['ok' => 0], 404);
+    _urunDetayEnsure();
     $kats = DB::table('menu_kategorileri')->where('sube_id', $s->id)->where('aktif', 1)->orderBy('sira')->orderBy('ad')
         ->get(['id', 'ad'])->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad]);
     $urunler = DB::table('urunler')->where('sube_id', $s->id)->where('aktif', 1)->orderBy('ad')
-        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'gorsel'])
-        ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
-            'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'gorsel' => $u->gorsel ?: null]);
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'gorsel', 'detay', 'icindekiler', 'kalori', 'hazirlik_dk', 'gorseller'])
+        ->map(function ($u) {
+            $gorseller = [];
+            if (!empty($u->gorseller)) { $d = json_decode($u->gorseller, true); if (is_array($d)) $gorseller = array_values(array_filter($d)); }
+            return ['id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
+                'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'gorsel' => $u->gorsel ?: null,
+                'detay' => $u->detay ?: '', 'icindekiler' => $u->icindekiler ?: '', 'gorseller' => $gorseller,
+                'kalori' => $u->kalori !== null ? (int) $u->kalori : null, 'hazirlik_dk' => $u->hazirlik_dk !== null ? (int) $u->hazirlik_dk : null];
+        });
     return ['ok' => 1, 'sube' => ['id' => (int) $s->id, 'ad' => $s->ad, 'adres' => $s->adres ?? '', 'telefon' => $s->telefon ?? ''],
         'kategoriler' => $kats, 'urunler' => $urunler];
 });
