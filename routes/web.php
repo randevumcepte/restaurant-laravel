@@ -2027,7 +2027,9 @@ if (!function_exists('_kdsEkranVeri')) {
             ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
             ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
-            ->where('adisyon_kalemleri.durum', 'gonderildi');
+            ->where('adisyonlar.durum', 'acik') // sadece AÇIK hesaplar (ödenmiş/kapanmış kalemler mutfakta kalmasın)
+            // gonderildi+hazirlaniyor = pişiyor; hazir = pişti ama henüz servis edilmedi → hepsi görünsün, servis edilince düşer
+            ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor', 'hazir']);
         if ($subeId) $q->where('adisyonlar.sube_id', $subeId); // SUBE-IZOLASYONU: sadece bu subenin mutfak kalemleri
         if ($barMi) {
             $q->where('urunler.istasyon', 'bar');
@@ -2036,7 +2038,8 @@ if (!function_exists('_kdsEkranVeri')) {
             $q->where(function ($w) { $w->where('urunler.istasyon', '!=', 'bar')->orWhereNull('urunler.istasyon'); });
         }
         return $q->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
-            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.kanal', 'masalar.ad as masa', 'urunler.istasyon')
+            'adisyon_kalemleri.durum', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.hazir_zamani',
+            'adisyonlar.kanal', 'masalar.ad as masa', 'urunler.istasyon')
             ->orderBy('adisyon_kalemleri.gonderim_zamani')->get();
     }
 }
@@ -2050,6 +2053,11 @@ Route::get('/bar', function () {
 
 Route::post('/mutfak/hazir', function (Request $r) {
     DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->update(['durum' => 'hazir', 'hazir_zamani' => now()]);
+    return ['ok' => 1];
+});
+// Hazır olan kalemi servis edildi işaretle (mutfak/expo ekranından) → ekrandan düşer
+Route::post('/mutfak/servis', function (Request $r) {
+    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     return ['ok' => 1];
 });
 
