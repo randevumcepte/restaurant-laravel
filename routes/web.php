@@ -621,7 +621,7 @@ if (!function_exists('_paketSettle')) {
 
 // --- Musteri: ekle / guncelle / ara / adisyona bagla ---
 Route::post('/musteriler/ekle', function (Request $r) {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     $id = DB::table('musteriler')->insertGetId([
         'sube_id' => $subeId, 'ad' => $r->ad ?: 'Müşteri', 'telefon' => $r->telefon, 'adres' => $r->adres,
         'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0, 'created_at' => now(), 'updated_at' => now(),
@@ -707,13 +707,15 @@ Route::post('/paket/durum', function (Request $r) {
 
 // ============================ KURYE TAKIP ============================
 Route::get('/kurye', function () {
-    $kuryeler = DB::table('kuryeler')->where('aktif', 1)->get();
-    $teslimatlar = DB::table('adisyonlar')->where('kanal', 'paket')->where('teslimat_durumu', 'yolda')
+    $subeId = _aktifSubeId(); // aktif şube (impersonation) — izolasyon
+    $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->where('aktif', 1)->get();
+    $teslimatlar = DB::table('adisyonlar')->where('adisyonlar.sube_id', $subeId)->where('kanal', 'paket')->where('teslimat_durumu', 'yolda')
         ->leftJoin('kuryeler', 'adisyonlar.kurye_id', '=', 'kuryeler.id')
         ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
         ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.teslimat_adres', 'kuryeler.ad as kurye', 'musteriler.ad as musteri')
         ->get();
-    return view('kurye.index', compact('kuryeler', 'teslimatlar'));
+    $sube = DB::table('subeler')->where('id', $subeId)->first();
+    return view('kurye.index', compact('kuryeler', 'teslimatlar', 'sube'));
 });
 
 // ---------------- CANLI KURYE GPS ----------------
@@ -763,7 +765,7 @@ if (!function_exists('_kuryeCanliEnsure')) {
 }
 
 Route::get('/kurye-kur', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     _kuryeCanliEnsure($subeId);
     $kuryeler = DB::table('kuryeler')->where('sube_id', $subeId)->get(['ad', 'token']);
     $links = $kuryeler->map(fn ($k) => $k->ad . ' -> ' . url('/kurye/' . $k->token))->implode("\n");
@@ -862,7 +864,7 @@ Route::get('/api/kurye/{token}/teslimatlar', function ($token) {
 
 // Patron canli harita sayfasi
 Route::get('/kurye-canli', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId(); // aktif şube (impersonation) — ilk şube değil
     _kuryeCanliEnsure($subeId);
     return view('kurye_harita', ['sube' => DB::table('subeler')->where('id', $subeId)->first()]);
 });
@@ -998,7 +1000,7 @@ Route::get('/api/patron/cagrilar', function (Request $r) {
 
 // EKRAN-POP sayfasi — telefonun yanindaki ekranda acilir; cagri gelince kart patlar
 Route::get('/cagri-ekran', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     _calleridEnsure();
     return view('cagri_ekran', ['sube' => DB::table('subeler')->where('id', $subeId)->first()]);
 });
@@ -2110,7 +2112,7 @@ Route::get('/mutfak-kur', function (Request $r) {
 
 // ============================ MENU YONETIMI ============================
 Route::get('/menu', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
     $urunler = DB::table('urunler')->where('sube_id', $subeId)->get()->groupBy('kategori_id');
     return view('menu.index', compact('kategoriler', 'urunler'));
@@ -3149,14 +3151,14 @@ Route::get('/asistan-egitim', function () {
     $kaliplar = DB::table('asistan_kalip')->orderByDesc('kullanim_sayisi')->orderByDesc('id')->get();
     $cozulmeyenler = DB::table('asistan_cozulmeyen')->orderByDesc('adet')->orderByDesc('son_tarih')->limit(100)->get();
     $ozet = ['kalip' => $kaliplar->count(), 'bedava' => (int) $kaliplar->sum('kullanim_sayisi'), 'bekleyen' => $cozulmeyenler->count()];
-    $wifiAd = Schema::hasColumn('subeler', 'wifi_ad') ? (string) DB::table('subeler')->orderBy('id')->value('wifi_ad') : '';
-    $wifiSifre = Schema::hasColumn('subeler', 'wifi_sifre') ? (string) DB::table('subeler')->orderBy('id')->value('wifi_sifre') : '';
+    $wifiAd = Schema::hasColumn('subeler', 'wifi_ad') ? (string) DB::table('subeler')->where('id', _aktifSubeId())->value('wifi_ad') : '';
+    $wifiSifre = Schema::hasColumn('subeler', 'wifi_sifre') ? (string) DB::table('subeler')->where('id', _aktifSubeId())->value('wifi_sifre') : '';
     return view('asistan_egitim', compact('kaliplar', 'cozulmeyenler', 'ozet', 'wifiAd', 'wifiSifre'));
 });
 Route::post('/asistan-egitim/isletme-bilgi', function (Request $r) {
     if (!Schema::hasColumn('subeler', 'wifi_ad')) Schema::table('subeler', function ($t) { $t->string('wifi_ad', 120)->nullable(); });
     if (!Schema::hasColumn('subeler', 'wifi_sifre')) Schema::table('subeler', function ($t) { $t->string('wifi_sifre', 120)->nullable(); });
-    $sube = DB::table('subeler')->orderBy('id')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     if ($sube) {
         DB::table('subeler')->where('id', $sube->id)->update([
             'wifi_ad' => trim((string) $r->wifi_ad) !== '' ? trim((string) $r->wifi_ad) : null,
@@ -3216,7 +3218,7 @@ Route::post('/asistan-egitim/pdf-coz', function (Request $r) {
     if (strtolower($file->getClientOriginalExtension()) !== 'pdf' && $file->getClientMimeType() !== 'application/pdf') return back()->with('hata', 'Lütfen bir PDF yükleyin.');
     if ($file->getSize() > 20 * 1024 * 1024) return back()->with('hata', 'PDF çok büyük (en fazla 20 MB).');
     $b64 = base64_encode(file_get_contents($file->getRealPath()));
-    $subeId = (int) DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     list($ok, $veri) = (new \App\Services\MusteriAsistan($subeId))->pdftenKalipCikar($b64, 'application/pdf');
     if (!$ok) return back()->with('hata', 'PDF işlenemedi: ' . $veri);
     return back()->with('pdf_onizleme', $veri)->with('ok', count($veri) . ' soru-cevap çıkarıldı. Kontrol edip kaydedin.');

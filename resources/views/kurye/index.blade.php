@@ -40,10 +40,14 @@
 @push('scripts')
 <script>
     const kuryeler = @json($kuryeler);
-    const map = L.map('harita').setView([40.988, 29.03], 14);
+    // Restoran konumu: aktif şubenin mesai_lat/lng'si (yoksa varsayılan merkez)
+    const rLat = {{ (isset($sube) && $sube && $sube->mesai_lat) ? (float) $sube->mesai_lat : 'null' }};
+    const rLng = {{ (isset($sube) && $sube && $sube->mesai_lng) ? (float) $sube->mesai_lng : 'null' }};
+    const merkez = (rLat && rLng) ? [rLat, rLng] : [40.988, 29.03];
+    const map = L.map('harita').setView(merkez, 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
     // Restoran
-    L.marker([40.988, 29.03]).addTo(map).bindPopup('🍔 Lezzet Duragi (Restoran)');
+    if (rLat && rLng) L.marker(merkez).addTo(map).bindPopup('🍔 ' + @json((isset($sube) && $sube) ? ($sube->ad ?? 'Restoran') : 'Restoran') + ' (Restoran)');
     // Kuryeler
     kuryeler.forEach(k => {
         if (k.son_lat && k.son_lng) {
