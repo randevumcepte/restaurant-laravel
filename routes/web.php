@@ -1425,6 +1425,81 @@ Route::post('/api/m/kart-kullan', function (Request $r) {
     return ['ok' => 1, 'mesaj' => implode("\n", $parca), 'kupon_kodu' => $kupon, 'odul_puan' => $odul, 'puan' => $puanYeni];
 });
 
+// ===== PUAN ÖDÜLÜ KULLANIMI (müşteri Kullan -> QR/kod -> kasa doğrula -> puan düş) =====
+if (!function_exists('_odulKullanimEnsure')) {
+    function _odulKullanimEnsure()
+    {
+        if (cache()->get('odul_kullanim_ensure_ok')) return;
+        if (!Schema::hasTable('odul_kullanimlari')) {
+            try { Schema::create('odul_kullanimlari', function ($t) {
+                $t->id(); $t->unsignedBigInteger('musteri_id')->index(); $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('odul_id')->nullable(); $t->string('odul_ad', 120); $t->integer('puan')->default(0);
+                $t->string('kod', 20)->unique(); $t->string('durum', 12)->default('bekliyor');
+                $t->timestamp('bitis')->nullable(); $t->unsignedBigInteger('kasiyer_id')->nullable(); $t->timestamp('kullanildi_at')->nullable();
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('odul_kullanim_ensure_ok', 1, now()->addHours(12));
+    }
+}
+// Müşteri: ödülü kullan -> tek seferlik kod (puan HENÜZ düşmez; kasada onayınca düşer)
+Route::post('/api/m/odul-kullan', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _odulKullanimEnsure();
+    $o = DB::table('puan_odulleri')->where('id', (int) $r->input('odul_id'))->where('sube_id', $m->sube_id)->where('aktif', 1)->first();
+    if (!$o) return ['ok' => 0, 'hata' => 'Ödül bulunamadı'];
+    if ((int) ($m->puan ?? 0) < (int) $o->puan) return ['ok' => 0, 'hata' => "Yeterli puanın yok ({$o->puan} puan gerekli)"];
+    $mevcut = DB::table('odul_kullanimlari')->where('musteri_id', $m->id)->where('odul_id', $o->id)
+        ->where('durum', 'bekliyor')->where('bitis', '>', now())->orderByDesc('id')->first();
+    if ($mevcut) return ['ok' => 1, 'kod' => $mevcut->kod, 'odul_ad' => $mevcut->odul_ad, 'puan' => (int) $mevcut->puan, 'bitis' => \Carbon\Carbon::parse($mevcut->bitis)->timestamp];
+    do { $kod = strtoupper(\Illuminate\Support\Str::random(6)); } while (DB::table('odul_kullanimlari')->where('kod', $kod)->exists());
+    $bitis = now()->addMinutes(10);
+    DB::table('odul_kullanimlari')->insert(['musteri_id' => $m->id, 'sube_id' => $m->sube_id, 'odul_id' => $o->id,
+        'odul_ad' => $o->ad, 'puan' => (int) $o->puan, 'kod' => $kod, 'durum' => 'bekliyor', 'bitis' => $bitis, 'created_at' => now(), 'updated_at' => now()]);
+    return ['ok' => 1, 'kod' => $kod, 'odul_ad' => $o->ad, 'puan' => (int) $o->puan, 'bitis' => $bitis->timestamp];
+});
+// Müşteri: kod durumu (kasada onaylandı mı?) — app poll eder
+Route::get('/api/m/odul-durum/{kod}', function ($kod) {
+    _odulKullanimEnsure();
+    $row = DB::table('odul_kullanimlari')->where('kod', strtoupper($kod))->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kod yok'];
+    $suresi = now()->gt(\Carbon\Carbon::parse($row->bitis));
+    return ['ok' => 1, 'durum' => $row->durum, 'suresi_doldu' => ($row->durum === 'bekliyor' && $suresi), 'odul_ad' => $row->odul_ad];
+});
+// Kasa: kodu doğrula (bilgi göster, state değişmez)
+Route::post('/api/pos/odul-dogrula', function (Request $r) {
+    $p = function_exists('_posPersonel') ? _posPersonel() : null; if (!$p) return response()->json(['ok' => 0, 'hata' => 'Giriş gerekli'], 401);
+    _odulKullanimEnsure();
+    $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kod bulunamadı'];
+    if ($row->durum === 'kullanildi') return ['ok' => 0, 'hata' => 'Bu kod zaten kullanıldı'];
+    if ($row->durum === 'iptal' || now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Kodun süresi dolmuş'];
+    $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
+    $yeter = (int) ($mus->puan ?? 0) >= (int) $row->puan;
+    return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan,
+        'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter];
+});
+// Kasa: onayla -> puan düş + kod kullanıldı
+Route::post('/api/pos/odul-onayla', function (Request $r) {
+    $p = function_exists('_posPersonel') ? _posPersonel() : null; if (!$p) return response()->json(['ok' => 0, 'hata' => 'Giriş gerekli'], 401);
+    _odulKullanimEnsure();
+    $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kod yok'];
+    if ($row->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Kod zaten işlenmiş'];
+    if (now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Süre dolmuş'];
+    $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
+    if ((int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
+    DB::table('musteriler')->where('id', $row->musteri_id)->update(['puan' => DB::raw('puan - ' . (int) $row->puan), 'updated_at' => now()]);
+    DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
+    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü"];
+});
+// Kasa ekranı: ödül/kupon doğrula (PIN'li)
+Route::get('/odul-dogrula', function () {
+    if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
+    _odulKullanimEnsure();
+    return view('pos_odul');
+});
+
 // ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====
 if (!function_exists('_appEnsure2')) {
     function _appEnsure2()
