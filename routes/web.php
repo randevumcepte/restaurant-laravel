@@ -1567,8 +1567,10 @@ Route::get('/odul-dogrula', function () {
 });
 // Patron: Kullanılan Ödüller raporu (kim/ne/puan/kasiyer/tarih)
 Route::get('/odul-raporu', function () {
-    $sid = (int) (DB::table('subeler')->value('id') ?: 2);
     _odulKullanimEnsure();
+    // Tek-restoran panel: ödül kullanımı olan şubeyi baz al (yoksa ilk şube). Çok-şubede en çok kayıtlı şube.
+    $sid = (int) (DB::table('odul_kullanimlari')->select('sube_id')->groupBy('sube_id')->orderByRaw('COUNT(*) DESC')->value('sube_id')
+        ?: (DB::table('subeler')->value('id') ?: 2));
     $rows = DB::table('odul_kullanimlari')
         ->leftJoin('musteriler', 'odul_kullanimlari.musteri_id', '=', 'musteriler.id')
         ->leftJoin('personeller', 'odul_kullanimlari.kasiyer_id', '=', 'personeller.id')
