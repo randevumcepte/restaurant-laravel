@@ -27,6 +27,7 @@
         ['/menu', '📋', 'Menü Yönetimi'],
         ['/app-yonetim', '🎨', 'App Kartları (Müşteri App)'],
         ['/cuzdan-ayar', '💳', 'Cüzdan & Bonus'],
+        ['/odeme-ayar', '🔐', 'Ödeme (PayTR)'],
         ['/stok', '📦', 'Stok & Reçete'],
         ['/satinalma', '🧾', 'Satın Alma'],
         ['/teklif', '📊', 'Teklifler'],

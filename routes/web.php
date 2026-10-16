@@ -1679,6 +1679,26 @@ Route::post('/cuzdan-ayar/kaydet', function (Request $r) {
     }
     return redirect('/cuzdan-ayar')->with('ay_ok', 'Cüzdan ayarları kaydedildi');
 });
+// ===== ÖDEME AYARLARI (PayTR/iyzico — her restoran KENDİ hesabı; SADECE sahip) =====
+Route::get('/odeme-ayar', function () {
+    [$g, $p] = _appYonetimKapi(); if ($g) return $g;
+    if ($p->rol !== 'sahip') return response('Ödeme ayarlarına sadece işletme sahibi erişebilir.', 403);
+    _odemeEnsure();
+    $a = DB::table('odeme_ayarlari')->where('sube_id', $p->sube_id)->first();
+    $callback = url('/odeme/paytr-callback');
+    return view('app_odeme_ayar', ['a' => $a, 'callback' => $callback]);
+});
+Route::post('/odeme-ayar/kaydet', function (Request $r) {
+    [$g, $p] = _appYonetimKapi(); if ($g) return $g;
+    if ($p->rol !== 'sahip') abort(403);
+    _odemeEnsure();
+    $data = ['saglayici' => in_array($r->input('saglayici'), ['paytr', 'iyzico', 'kapali']) ? $r->input('saglayici') : 'kapali',
+        'aktif' => $r->boolean('aktif') ? 1 : 0, 'magaza_id' => trim((string) $r->input('magaza_id')), 'updated_at' => now()];
+    if ($r->filled('api_key')) $data['api_key'] = trim((string) $r->input('api_key'));
+    if ($r->filled('secret')) $data['secret'] = trim((string) $r->input('secret'));
+    DB::table('odeme_ayarlari')->updateOrInsert(['sube_id' => $p->sube_id], $data + ['created_at' => now()]);
+    return redirect('/odeme-ayar')->with('ay_ok', 'Ödeme ayarları kaydedildi');
+});
 // Patron: servis tipini ayarla (sahip/mudur)
 Route::post('/api/patron/servis-tipi', function (Request $r) {
     $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
