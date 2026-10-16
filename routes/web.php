@@ -1617,6 +1617,9 @@ if (!function_exists('_autoReloadKontrol')) {
         $tutar = (float) ($row->auto_reload_tutar ?? 0);
         $bakiye = (float) ($row->cuzdan_bakiye ?? 0);
         if ($tutar < 30 || $bakiye >= $esik) return null;
+        // runaway önle: son otomatik yüklemeden 120 sn geçmeden tekrar tetikleme
+        $sonOto = DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->where('tip', 'otomatik')->orderByDesc('id')->value('created_at');
+        if ($sonOto && \Carbon\Carbon::parse($sonOto)->diffInSeconds(now()) < 120) return null;
         $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
         $yeni = round($bakiye + $tutar + $bonus, 2);
         DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
