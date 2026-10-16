@@ -1580,6 +1580,30 @@ Route::post('/app-yonetim/aktif', function (Request $r) {
     if ($b) DB::table('app_banner')->where('id', $b->id)->update(['aktif' => $b->aktif ? 0 : 1, 'updated_at' => now()]);
     return redirect('/app-yonetim')->with('ay_ok', $b && $b->aktif ? 'Kart gizlendi' : 'Kart yayında');
 });
+// ===== CÜZDAN & BONUS AYARLARI (işletme: min yükleme + bonus merdiveni) =====
+Route::get('/cuzdan-ayar', function () {
+    [$g, $p] = _appYonetimKapi(); if ($g) return $g;
+    $sid = $p->sube_id;
+    _cuzdanBonusEnsure($sid);
+    $min = (float) (DB::table('subeler')->where('id', $sid)->value('cuzdan_min') ?? 30);
+    $ladder = DB::table('cuzdan_bonus')->where('sube_id', $sid)->orderBy('esik')->get();
+    return view('app_cuzdan_ayar', compact('min', 'ladder'));
+});
+Route::post('/cuzdan-ayar/kaydet', function (Request $r) {
+    [$g, $p] = _appYonetimKapi(); if ($g) return $g;
+    $sid = $p->sube_id;
+    _cuzdanBonusEnsure($sid);
+    $min = round((float) $r->input('min', 30), 2); if ($min < 1) $min = 1;
+    DB::table('subeler')->where('id', $sid)->update(['cuzdan_min' => $min]);
+    $esikler = (array) $r->input('esik', []);
+    $bonuslar = (array) $r->input('bonus', []);
+    DB::table('cuzdan_bonus')->where('sube_id', $sid)->delete();
+    foreach ($esikler as $idx => $e) {
+        $e = round((float) $e, 2); $b = round((float) ($bonuslar[$idx] ?? 0), 2);
+        if ($e > 0 && $b > 0) { try { DB::table('cuzdan_bonus')->insert(['sube_id' => $sid, 'esik' => $e, 'bonus' => $b, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e2) {} }
+    }
+    return redirect('/cuzdan-ayar')->with('ay_ok', 'Cüzdan ayarları kaydedildi');
+});
 // Patron: servis tipini ayarla (sahip/mudur)
 Route::post('/api/patron/servis-tipi', function (Request $r) {
     $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
@@ -1590,6 +1614,40 @@ Route::post('/api/patron/servis-tipi', function (Request $r) {
     return ['ok' => 1, 'servis_tipi' => $tip];
 });
 // Cüzdan durumu
+// ===== CÜZDAN YÜKLEME BONUSU + MİN (işletme panelden ayarlar) =====
+if (!function_exists('_cuzdanBonusEnsure')) {
+    function _cuzdanBonusEnsure($subeId)
+    {
+        if (!Schema::hasTable('cuzdan_bonus')) {
+            try { Schema::create('cuzdan_bonus', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->decimal('esik', 10, 2); $t->decimal('bonus', 10, 2); $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasColumn('subeler', 'cuzdan_min')) { try { Schema::table('subeler', fn ($t) => $t->decimal('cuzdan_min', 10, 2)->default(30)); } catch (\Throwable $e) {} }
+        if (Schema::hasTable('cuzdan_bonus') && DB::table('cuzdan_bonus')->where('sube_id', $subeId)->count() === 0) {
+            foreach ([['esik' => 250, 'bonus' => 20], ['esik' => 500, 'bonus' => 50], ['esik' => 1000, 'bonus' => 120]] as $d) {
+                try { DB::table('cuzdan_bonus')->insert(array_merge(['sube_id' => $subeId, 'created_at' => now(), 'updated_at' => now()], $d)); } catch (\Throwable $e) {}
+            }
+        }
+    }
+}
+if (!function_exists('_cuzdanBonus')) {
+    function _cuzdanBonus($subeId, $tutar)
+    {
+        _cuzdanBonusEnsure($subeId);
+        try { return (float) (DB::table('cuzdan_bonus')->where('sube_id', $subeId)->where('esik', '<=', $tutar)->orderByDesc('esik')->value('bonus') ?? 0); }
+        catch (\Throwable $e) { return 0.0; }
+    }
+}
+if (!function_exists('_cuzdanMin')) {
+    function _cuzdanMin($subeId)
+    {
+        _cuzdanBonusEnsure($subeId);
+        try { $m = DB::table('subeler')->where('id', $subeId)->value('cuzdan_min'); return $m !== null ? (float) $m : 30.0; }
+        catch (\Throwable $e) { return 30.0; }
+    }
+}
 // ===== OTOMATİK YÜKLEME (auto-reload, Starbucks mantığı) =====
 if (!function_exists('_autoReloadEnsure')) {
     function _autoReloadEnsure()
@@ -1620,7 +1678,7 @@ if (!function_exists('_autoReloadKontrol')) {
         // runaway önle: son otomatik yüklemeden 120 sn geçmeden tekrar tetikleme
         $sonOto = DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->where('tip', 'otomatik')->orderByDesc('id')->value('created_at');
         if ($sonOto && \Carbon\Carbon::parse($sonOto)->diffInSeconds(now()) < 120) return null;
-        $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+        $bonus = _cuzdanBonus($m->sube_id, $tutar);
         $yeni = round($bakiye + $tutar + $bonus, 2);
         DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
         try { DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'otomatik', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
@@ -1664,8 +1722,8 @@ Route::post('/api/m/cuzdan-yukle', function (Request $r) {
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
     _appEnsure2();
     $tutar = round((float) $r->input('tutar'), 2);
-    if ($tutar < 30) return ['ok' => 0, 'hata' => 'En az 30₺ yükleyebilirsin'];
-    $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+    $min = _cuzdanMin($m->sube_id); if ($tutar < $min) return ['ok' => 0, 'hata' => "En az {$min}₺ yükleyebilirsin"];
+    $bonus = _cuzdanBonus($m->sube_id, $tutar);
     $yeni = round((float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
     DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
     DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'yukleme', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
@@ -1725,7 +1783,7 @@ Route::post('/api/m/cuzdan-yukle-baslat', function (Request $r) {
     if (!Schema::hasColumn('odeme_islemleri', 'tur')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->string('tur', 12)->default('adisyon')); } catch (\Throwable $e) {} }
     if (!Schema::hasColumn('odeme_islemleri', 'musteri_id')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->unsignedBigInteger('musteri_id')->nullable()); } catch (\Throwable $e) {} }
     $tutar = round((float) $r->input('tutar'), 2);
-    if ($tutar < 30) return ['ok' => 0, 'hata' => 'En az 30₺ yükleyebilirsin'];
+    $min = _cuzdanMin($m->sube_id); if ($tutar < $min) return ['ok' => 0, 'hata' => "En az {$min}₺ yükleyebilirsin"];
     $saglayici = _odemeSaglayici($m->sube_id);
     $token = \Illuminate\Support\Str::random(30);
     DB::table('odeme_islemleri')->insert(['sube_id' => $m->sube_id, 'adisyon_id' => 0, 'musteri_id' => $m->id, 'tur' => 'cuzdan',
@@ -2291,7 +2349,7 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
             if (!$imzaGecerli) return response()->json(['ok' => 0, 'hata' => 'Ödeme sağlayıcı doğrulaması bekleniyor.'], 402);
         }
         $tutar = (float) $i->tutar;
-        $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+        $bonus = _cuzdanBonus($i->sube_id, $tutar);
         $yeni = round((float) (DB::table('musteriler')->where('id', $i->musteri_id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
         DB::table('musteriler')->where('id', $i->musteri_id)->update(['cuzdan_bakiye' => $yeni]);
         if (Schema::hasTable('cuzdan_hareketleri')) {

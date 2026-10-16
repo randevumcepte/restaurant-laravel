@@ -26,6 +26,7 @@
         ['/kiosk', '🖥️', 'Kiosk (Self-Servis)'],
         ['/menu', '📋', 'Menü Yönetimi'],
         ['/app-yonetim', '🎨', 'App Kartları (Müşteri App)'],
+        ['/cuzdan-ayar', '💳', 'Cüzdan & Bonus'],
         ['/stok', '📦', 'Stok & Reçete'],
         ['/satinalma', '🧾', 'Satın Alma'],
         ['/teklif', '📊', 'Teklifler'],
