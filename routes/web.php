@@ -1117,6 +1117,172 @@ Route::get('/api/app/siparis-durum/{token}', function ($token) {
         'odeme' => $a->odeme_yontemi, 'odeme_etiket' => $odemeEtiket, 'kurye' => $kurye, 'kalemler' => $kalemler];
 });
 
+// ============================ MÜŞTERİ UYGULAMASI (ResteOS Müşteri — telefon omurga, OTP, sadakat, AI) ============================
+if (!function_exists('_musteriEnsure')) {
+    function _musteriEnsure()
+    {
+        if (cache()->get('musteri_app_kolon_ok')) return;
+        $kol = [
+            'api_token' => fn ($t) => $t->string('api_token', 64)->nullable()->index(),
+            'soyad' => fn ($t) => $t->string('soyad', 60)->nullable(),
+            'email' => fn ($t) => $t->string('email', 120)->nullable(),
+            'dogum_tarihi' => fn ($t) => $t->date('dogum_tarihi')->nullable(),
+            'cinsiyet' => fn ($t) => $t->string('cinsiyet', 10)->nullable(),
+            'otp_kod' => fn ($t) => $t->string('otp_kod', 6)->nullable(),
+            'otp_bitis' => fn ($t) => $t->timestamp('otp_bitis')->nullable(),
+            'cihaz_token' => fn ($t) => $t->string('cihaz_token', 255)->nullable(),
+            'damak' => fn ($t) => $t->text('damak')->nullable(),
+        ];
+        foreach ($kol as $k => $tanim) {
+            if (!Schema::hasColumn('musteriler', $k)) { try { Schema::table('musteriler', $tanim); } catch (\Throwable $e) {} }
+        }
+        cache()->put('musteri_app_kolon_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_musteriAuth')) {
+    function _musteriAuth(Request $r)
+    {
+        $tok = $r->bearerToken() ?: $r->input('token');
+        if (!$tok) return null;
+        _musteriEnsure();
+        return DB::table('musteriler')->where('api_token', $tok)->first();
+    }
+}
+if (!function_exists('_musteriSube')) {
+    function _musteriSube(Request $r)
+    {
+        $sid = (int) $r->input('sube');
+        return $sid ?: (int) DB::table('subeler')->min('id');
+    }
+}
+if (!function_exists('_musteriKademe')) {
+    function _musteriKademe($harcama)
+    {
+        if ($harcama >= 5000) return ['ad' => 'Altın', 'sira' => 3, 'carpan' => 1.5, 'sonraki' => null, 'kalan' => 0];
+        if ($harcama >= 1500) return ['ad' => 'Gümüş', 'sira' => 2, 'carpan' => 1.2, 'sonraki' => 'Altın', 'kalan' => 5000 - $harcama];
+        return ['ad' => 'Bronz', 'sira' => 1, 'carpan' => 1.0, 'sonraki' => 'Gümüş', 'kalan' => 1500 - $harcama];
+    }
+}
+if (!function_exists('_profilYuzde')) {
+    function _profilYuzde($m)
+    {
+        $alan = ['ad', 'soyad', 'telefon', 'email', 'dogum_tarihi', 'adres'];
+        $dolu = 0; foreach ($alan as $a) if (!empty($m->$a ?? null)) $dolu++;
+        return (int) round($dolu / count($alan) * 100);
+    }
+}
+if (!function_exists('_musteriKart2')) {
+    function _musteriKart2($m)
+    {
+        return [
+            'id' => (int) $m->id, 'ad' => $m->ad ?? '', 'soyad' => $m->soyad ?? '', 'telefon' => $m->telefon,
+            'email' => $m->email ?? '', 'dogum_tarihi' => $m->dogum_tarihi ?? null, 'cinsiyet' => $m->cinsiyet ?? '',
+            'adres' => $m->adres ?? '', 'puan' => (int) ($m->puan ?? 0), 'siparis_sayisi' => (int) ($m->siparis_sayisi ?? 0),
+            'toplam_harcama' => (float) ($m->toplam_harcama ?? 0), 'kademe' => _musteriKademe((float) ($m->toplam_harcama ?? 0)),
+            'profil_yuzde' => _profilYuzde($m),
+        ];
+    }
+}
+// OTP gönder (telefon omurga; müşteri upsert + 6 hane + WA/SMS varsa gönder, yoksa dev_kod)
+Route::post('/api/m/otp-gonder', function (Request $r) {
+    _musteriEnsure(); _calleridEnsure();
+    $tel = trim((string) $r->input('telefon'));
+    $norm = _telNorm($tel);
+    if (strlen($norm) < 10) return ['ok' => 0, 'hata' => 'Geçerli telefon girin'];
+    $subeId = _musteriSube($r);
+    $kod = (string) random_int(100000, 999999);
+    $m = DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first();
+    if ($m) DB::table('musteriler')->where('id', $m->id)->update(['otp_kod' => $kod, 'otp_bitis' => now()->addMinutes(5), 'updated_at' => now()]);
+    else DB::table('musteriler')->insert(['sube_id' => $subeId, 'ad' => '', 'telefon' => $tel, 'telefon_norm' => $norm,
+        'otp_kod' => $kod, 'otp_bitis' => now()->addMinutes(5), 'puan' => 0, 'siparis_sayisi' => 0, 'toplam_harcama' => 0,
+        'created_at' => now(), 'updated_at' => now()]);
+    $gonderildi = false;
+    try { if (function_exists('_restoWaGonder')) { _restoWaGonder($subeId, $tel, "ResteOS doğrulama kodunuz: $kod"); $gonderildi = true; } } catch (\Throwable $e) {}
+    $cevap = ['ok' => 1, 'gonderildi' => $gonderildi];
+    if (!$gonderildi || env('APP_DEBUG')) $cevap['dev_kod'] = $kod;
+    return $cevap;
+});
+// OTP doğrula -> token + isim/soyisim
+Route::post('/api/m/otp-dogrula', function (Request $r) {
+    _musteriEnsure();
+    $norm = _telNorm((string) $r->input('telefon'));
+    $subeId = _musteriSube($r);
+    $m = DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first();
+    if (!$m) return ['ok' => 0, 'hata' => 'Önce kod isteyin'];
+    if (($m->otp_kod ?? '') !== (string) $r->input('kod') || !$m->otp_bitis || now()->gt(\Carbon\Carbon::parse($m->otp_bitis)))
+        return ['ok' => 0, 'hata' => 'Kod hatalı veya süresi dolmuş'];
+    $token = \Illuminate\Support\Str::random(60);
+    $upd = ['api_token' => $token, 'otp_kod' => null, 'otp_bitis' => null, 'updated_at' => now()];
+    if ($r->filled('ad')) $upd['ad'] = trim((string) $r->input('ad'));
+    if ($r->filled('soyad')) $upd['soyad'] = trim((string) $r->input('soyad'));
+    if ($r->filled('cihaz_token')) $upd['cihaz_token'] = (string) $r->input('cihaz_token');
+    DB::table('musteriler')->where('id', $m->id)->update($upd);
+    return ['ok' => 1, 'token' => $token, 'musteri' => _musteriKart2(DB::table('musteriler')->find($m->id))];
+});
+// Profil
+Route::get('/api/m/profil', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    return ['ok' => 1, 'musteri' => _musteriKart2($m)];
+});
+Route::post('/api/m/profil-guncelle', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    $upd = ['updated_at' => now()];
+    foreach (['ad', 'soyad', 'email', 'cinsiyet', 'adres'] as $f) if ($r->filled($f)) $upd[$f] = trim((string) $r->input($f));
+    if ($r->filled('dogum_tarihi')) $upd['dogum_tarihi'] = $r->input('dogum_tarihi');
+    if ($r->filled('damak')) $upd['damak'] = (string) $r->input('damak');
+    DB::table('musteriler')->where('id', $m->id)->update($upd);
+    return ['ok' => 1, 'musteri' => _musteriKart2(DB::table('musteriler')->find($m->id)), 'mesaj' => 'Profil güncellendi'];
+});
+// Sadakat özeti (puan + kademe + ödül merdiveni)
+Route::get('/api/m/sadakat', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    $oduller = [];
+    if (Schema::hasTable('puan_odulleri')) {
+        try {
+            $oduller = DB::table('puan_odulleri')->where('sube_id', $m->sube_id)->where('aktif', 1)->orderBy('puan')
+                ->get(['id', 'ad', 'puan'])->map(fn ($o) => ['id' => (int) $o->id, 'ad' => $o->ad, 'puan' => (int) $o->puan,
+                    'alinabilir' => (int) ($m->puan ?? 0) >= (int) $o->puan])->values();
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'puan' => (int) ($m->puan ?? 0), 'kademe' => _musteriKademe((float) ($m->toplam_harcama ?? 0)),
+        'siparis_sayisi' => (int) ($m->siparis_sayisi ?? 0), 'toplam_harcama' => (float) ($m->toplam_harcama ?? 0), 'oduller' => $oduller];
+});
+// Geçmiş siparişler (tekrar sipariş için)
+Route::get('/api/m/siparislerim', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    $list = DB::table('adisyonlar')->where('musteri_id', $m->id)->orderByDesc('id')->limit(30)
+        ->get(['id', 'toplam', 'durum', 'teslimat_durumu', 'kanal', 'platform', 'takip_token', 'created_at'])
+        ->map(function ($a) {
+            $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')
+                ->get(['urun_id', 'urun_adi', 'adet', 'tutar'])->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'tutar' => (float) $k->tutar]);
+            return ['id' => (int) $a->id, 'toplam' => (float) $a->toplam, 'durum' => $a->durum, 'teslimat_durumu' => $a->teslimat_durumu,
+                'takip_token' => $a->takip_token, 'tarih' => $a->created_at ? \Carbon\Carbon::parse($a->created_at)->format('d.m.Y H:i') : '', 'kalemler' => $kalemler];
+        });
+    return ['ok' => 1, 'siparisler' => $list];
+});
+// AI asistan (müşteri bağlamıyla: geçmiş ürünler + damak -> kişiselleştirilmiş)
+Route::post('/api/m/ai', function (Request $r) {
+    $m = _musteriAuth($r);
+    $subeId = $m ? $m->sube_id : _musteriSube($r);
+    $soru = trim((string) $r->input('mesaj'));
+    if ($soru === '') return ['ok' => 0, 'hata' => 'Mesaj boş'];
+    $baglam = null;
+    if ($m) {
+        $gecmis = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.musteri_id', $m->id)->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->orderByDesc('adisyon_kalemleri.id')->limit(20)->pluck('adisyon_kalemleri.urun_adi')->unique()->values()->all();
+        $baglam = ['musteri' => trim(($m->ad ?? '') . ' ' . ($m->soyad ?? '')), 'gecmis_urunler' => $gecmis, 'damak' => $m->damak ?? null];
+    }
+    try {
+        $ai = new \App\Services\MusteriAsistan($subeId);
+        $cevap = $ai->cevapla($soru, $baglam);
+        $metin = is_array($cevap) ? ($cevap['cevap'] ?? ($cevap['metin'] ?? reset($cevap))) : $cevap;
+        return ['ok' => 1, 'cevap' => (string) $metin];
+    } catch (\Throwable $e) {
+        return ['ok' => 0, 'hata' => 'AI şu an yanıt veremedi'];
+    }
+});
+
 // Siparis takip sayfasi (musteri)
 Route::get('/siparisim/{token}', function ($token) {
     $a = DB::table('adisyonlar')->where('takip_token', $token)->first();
