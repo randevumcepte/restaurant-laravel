@@ -1324,6 +1324,121 @@ Route::post('/api/m/ai', function (Request $r) {
         return ['ok' => 0, 'hata' => 'AI şu an yanıt veremedi'];
     }
 });
+
+// ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====
+if (!function_exists('_appEnsure2')) {
+    function _appEnsure2()
+    {
+        if (cache()->get('app_ensure2_ok')) return;
+        if (!Schema::hasColumn('subeler', 'servis_tipi')) { try { Schema::table('subeler', fn ($t) => $t->string('servis_tipi', 12)->nullable()); } catch (\Throwable $e) {} }
+        if (!Schema::hasColumn('musteriler', 'cuzdan_bakiye')) { try { Schema::table('musteriler', fn ($t) => $t->decimal('cuzdan_bakiye', 10, 2)->default(0)); } catch (\Throwable $e) {} }
+        if (!Schema::hasTable('cuzdan_hareketleri')) {
+            try {
+                Schema::create('cuzdan_hareketleri', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('musteri_id')->index();
+                    $t->string('tip', 12); $t->decimal('tutar', 10, 2); $t->decimal('bakiye_sonra', 10, 2)->default(0);
+                    $t->string('aciklama', 160)->nullable(); $t->timestamps();
+                });
+            } catch (\Throwable $e) {}
+        }
+        cache()->put('app_ensure2_ok', 1, now()->addHours(12));
+    }
+}
+// Servis tipi + modül profili (müşteri app açılışta çeker). garsonlu | self
+Route::get('/api/app/{sube}/profil', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) return response()->json(['ok' => 0], 404);
+    _appEnsure2();
+    $self = (($s->servis_tipi ?? 'garsonlu') === 'self');
+    return ['ok' => 1, 'servis_tipi' => $self ? 'self' : 'garsonlu',
+        'moduller' => ['masa' => !$self, 'garson' => !$self, 'rezervasyon' => !$self, 'kurye' => !$self,
+            'cuzdan' => true, 'gelal' => true, 'odeme_pesin' => $self],
+        'dashboard' => $self
+            ? ['cuzdan', 'kampanya', 'favori', 'oneriler', 'one_cikan']
+            : ['selam', 'kampanya', 'hizli_eylem', 'oneriler', 'one_cikan'],
+        'etiketler' => $self ? ['puan' => 'yıldız', 'sube' => 'mağaza'] : ['puan' => 'puan', 'sube' => 'şube'],
+    ];
+});
+// Patron: servis tipini ayarla (sahip/mudur)
+Route::post('/api/patron/servis-tipi', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return ['ok' => 0, 'hata' => 'Yetkiniz yok'];
+    _appEnsure2();
+    $tip = $r->input('tip') === 'self' ? 'self' : 'garsonlu';
+    DB::table('subeler')->where('id', $p->sube_id)->update(['servis_tipi' => $tip]);
+    return ['ok' => 1, 'servis_tipi' => $tip];
+});
+// Cüzdan durumu
+Route::get('/api/m/cuzdan', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2();
+    $bakiye = (float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0);
+    $hareket = Schema::hasTable('cuzdan_hareketleri')
+        ? DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->orderByDesc('id')->limit(25)->get()
+            ->map(fn ($h) => ['tip' => $h->tip, 'tutar' => (float) $h->tutar, 'bakiye' => (float) $h->bakiye_sonra,
+                'aciklama' => $h->aciklama, 'tarih' => \Carbon\Carbon::parse($h->created_at)->format('d.m.Y H:i')])
+        : [];
+    return ['ok' => 1, 'bakiye' => $bakiye, 'hareketler' => $hareket];
+});
+// Para yükle — ŞİMDİLİK TEST ödeme (gerçek iyzico/PayTR sonra). Yükleme bonusu (Starbucks mantığı).
+Route::post('/api/m/cuzdan-yukle', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2();
+    $tutar = round((float) $r->input('tutar'), 2);
+    if ($tutar < 1) return ['ok' => 0, 'hata' => 'Geçersiz tutar'];
+    $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+    $yeni = round((float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
+    DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
+    DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'yukleme', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
+        'aciklama' => $bonus > 0 ? "Yükleme {$tutar}₺ (+{$bonus}₺ bonus)" : "Yükleme {$tutar}₺", 'created_at' => now(), 'updated_at' => now()]);
+    return ['ok' => 1, 'bakiye' => $yeni, 'bonus' => $bonus,
+        'mesaj' => $bonus > 0 ? "{$tutar}₺ yüklendi, {$bonus}₺ bonus kazandın! 🎁" : "{$tutar}₺ yüklendi"];
+});
+// Self servis sipariş — ÖDEME PEŞİN: önce cüzdan, yetmezse kalan KART (test). Ödeme olmadan sipariş YOK.
+Route::post('/api/m/self-siparis', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2();
+    $kalemler = json_decode((string) $r->input('kalemler'), true);
+    if (!is_array($kalemler) || !$kalemler) return ['ok' => 0, 'hata' => 'Sepet boş'];
+    $satir = []; $toplam = 0.0;
+    foreach ($kalemler as $k) {
+        $uid = (int) ($k['urun_id'] ?? 0); $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $m->sube_id)->where('aktif', 1)->first();
+        if (!$u) continue;
+        if ($u->tukendi) return ['ok' => 0, 'hata' => $u->ad . ' tükendi'];
+        $satir[] = ['u' => $u, 'adet' => $adet]; $toplam += (float) $u->fiyat * $adet;
+    }
+    if (!$satir) return ['ok' => 0, 'hata' => 'Geçerli ürün yok'];
+    $toplam = round($toplam, 2);
+    // ÖDEME: önce cüzdan, kalan kart (TEST: kart hep başarılı)
+    $bakiye = (float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0);
+    $cuzdanDus = round(min($bakiye, $toplam), 2);
+    $kart = round($toplam - $cuzdanDus, 2);
+    if ($cuzdanDus > 0) {
+        $yeniB = round($bakiye - $cuzdanDus, 2);
+        DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeniB]);
+        DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'harcama', 'tutar' => $cuzdanDus, 'bakiye_sonra' => $yeniB,
+            'aciklama' => 'Sipariş ödemesi', 'created_at' => now(), 'updated_at' => now()]);
+    }
+    $token = \Illuminate\Support\Str::random(28);
+    $adId = DB::table('adisyonlar')->insertGetId([
+        'sube_id' => $m->sube_id, 'masa_id' => null, 'musteri_id' => $m->id, 'kanal' => 'paket', 'platform' => 'app',
+        'teslimat_durumu' => 'hazirlaniyor', 'odeme_yontemi' => ($kart > 0 ? ($cuzdanDus > 0 ? 'cuzdan_kart' : 'online') : 'cuzdan'),
+        'ara_toplam' => $toplam, 'toplam' => $toplam, 'durum' => 'acik', 'takip_token' => $token,
+        'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    foreach ($satir as $s) {
+        DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $s['u']->id, 'urun_adi' => $s['u']->ad, 'adet' => $s['adet'],
+            'birim_fiyat' => (float) $s['u']->fiyat, 'tutar' => (float) $s['u']->fiyat * $s['adet'], 'durum' => 'gonderildi', 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now()]);
+    }
+    try { DB::table('odemeler')->insert(['adisyon_id' => $adId, 'tip' => ($kart > 0 ? 'online' : 'cuzdan'), 'tutar' => $toplam, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    try { DB::table('musteriler')->where('id', $m->id)->update(['puan' => DB::raw('puan + ' . (int) floor($toplam / 10)),
+        'siparis_sayisi' => DB::raw('siparis_sayisi + 1'), 'toplam_harcama' => DB::raw('toplam_harcama + ' . $toplam)]); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'siparis_no' => $adId, 'takip_token' => $token, 'toplam' => $toplam,
+        'odeme' => ['cuzdan' => $cuzdanDus, 'kart' => $kart],
+        'mesaj' => $kart > 0 ? ($cuzdanDus > 0 ? "{$cuzdanDus}₺ cüzdandan + {$kart}₺ karttan alındı" : "{$kart}₺ karttan alındı") : "{$cuzdanDus}₺ cüzdandan alındı"];
+});
+
 // Müşteri AI seslendirme — KADIN WaveNet (cihazda kadın Türkçe ses yok); MP3 döner, önbellekli.
 // Anahtar yok / kota dolu -> 503; Flutter o zaman cihaz sesine (flutter_tts) düşer.
 Route::get('/api/m/ses', function (Request $r) {
