@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#4f46e5">
-    <title>@yield('title', 'Lezzet Duragi') — ResteOS</title>
+    <title>@yield('title', 'ResteOS') — ResteOS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}</style>
@@ -53,6 +53,9 @@
     ];
     $path = '/' . trim(request()->path(), '/');
     if ($path === '/') $path = '/';
+    // Sidebar/başlık restoran adı: AKTİF şube (impersonation > aktif şube). Sabit "Lezzet Duragi" KALDIRILDI.
+    $aktifSubeAd = 'ResteOS';
+    try { if (function_exists('_aktifSubeId')) { $aktifSubeAd = optional(\DB::table('subeler')->where('id', _aktifSubeId())->first())->ad ?: 'ResteOS'; } } catch (\Throwable $e) {}
 @endphp
 
 <div class="flex min-h-screen">
@@ -60,7 +63,7 @@
     <aside class="w-60 shrink-0 bg-slate-900 text-slate-300 flex flex-col fixed h-screen">
         <div class="px-5 py-4 border-b border-slate-700/50">
             <div class="text-white font-bold text-lg">🍔 ResteOS</div>
-            <div class="text-xs text-slate-400">Lezzet Duragi</div>
+            <div class="text-xs text-slate-400">{{ $aktifSubeAd }}</div>
         </div>
         <nav class="flex-1 overflow-y-auto py-3">
             @foreach ($nav as [$url, $ikon, $ad])
