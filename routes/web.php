@@ -1308,23 +1308,18 @@ Route::get('/api/m/siparislerim', function (Request $r) {
     return ['ok' => 1, 'siparisler' => $list];
 });
 // AI asistan (müşteri bağlamıyla: geçmiş ürünler + damak -> kişiselleştirilmiş)
+// AI asistan — QR menü MusteriAsistan'ı ile BİREBİR (tam eğitim seti + sipariş akışı).
+// baglam = son konuşulan ürün adı (STRING), yanıtta urun_baglam döner; istemci saklar (QR akışı aynen).
 Route::post('/api/m/ai', function (Request $r) {
     $m = _musteriAuth($r);
     $subeId = $m ? $m->sube_id : _musteriSube($r);
-    $soru = trim((string) $r->input('mesaj'));
-    if ($soru === '') return ['ok' => 0, 'hata' => 'Mesaj boş'];
-    $baglam = null;
-    if ($m) {
-        $gecmis = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.musteri_id', $m->id)->where('adisyon_kalemleri.durum', '!=', 'iptal')
-            ->orderByDesc('adisyon_kalemleri.id')->limit(20)->pluck('adisyon_kalemleri.urun_adi')->unique()->values()->all();
-        $baglam = ['musteri' => trim(($m->ad ?? '') . ' ' . ($m->soyad ?? '')), 'gecmis_urunler' => $gecmis, 'damak' => $m->damak ?? null];
-    }
+    $soru = (string) $r->input('mesaj');
+    if (trim($soru) === '') return ['ok' => 0, 'hata' => 'Mesaj boş'];
     try {
-        $ai = new \App\Services\MusteriAsistan($subeId);
-        $cevap = $ai->cevapla($soru, $baglam);
-        $metin = is_array($cevap) ? ($cevap['cevap'] ?? ($cevap['metin'] ?? reset($cevap))) : $cevap;
-        return ['ok' => 1, 'cevap' => (string) $metin];
+        $a = new \App\Services\MusteriAsistan($subeId);
+        $res = $a->cevapla($soru, (string) $r->input('baglam', ''));
+        if (is_array($res)) { $res['ok'] = 1; return $res; }
+        return ['ok' => 1, 'cevap' => (string) $res];
     } catch (\Throwable $e) {
         return ['ok' => 0, 'hata' => 'AI şu an yanıt veremedi'];
     }
