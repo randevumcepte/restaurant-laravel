@@ -1391,6 +1391,34 @@ Route::post('/api/m/ai', function (Request $r) {
         return ['ok' => 0, 'hata' => 'AI şu an yanıt veremedi'];
     }
 });
+// Kart/kampanya KULLAN — detay sayfasındaki "Kullan" butonu (tek seferlik: ödül puanı ekle + kupon döndür)
+Route::post('/api/m/kart-kullan', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2();
+    $id = (int) $r->input('id');
+    $b = DB::table('app_banner')->where('id', $id)->where('sube_id', $m->sube_id)->first();
+    if (!$b) return ['ok' => 0, 'hata' => 'Kampanya bulunamadı'];
+    if (!Schema::hasTable('musteri_kart_kullanim')) {
+        try { Schema::create('musteri_kart_kullanim', function ($t) {
+            $t->id(); $t->unsignedBigInteger('musteri_id')->index(); $t->unsignedBigInteger('banner_id')->index(); $t->timestamps();
+        }); } catch (\Throwable $e) {}
+    }
+    $odul = (int) ($b->odul_puan ?? 0);
+    $kupon = $b->kupon_kodu ?? null;
+    $kullanildi = DB::table('musteri_kart_kullanim')->where('musteri_id', $m->id)->where('banner_id', $id)->exists();
+    if ($kullanildi) {
+        return ['ok' => 1, 'tekrar' => 1, 'kupon_kodu' => $kupon,
+            'mesaj' => $kupon ? "Bu kampanyayı zaten aldın.\nKupon kodun: $kupon" : 'Bu kampanyayı zaten kullandın.'];
+    }
+    DB::table('musteri_kart_kullanim')->insert(['musteri_id' => $m->id, 'banner_id' => $id, 'created_at' => now(), 'updated_at' => now()]);
+    $puanYeni = (int) ($m->puan ?? 0);
+    if ($odul > 0) { try { DB::table('musteriler')->where('id', $m->id)->update(['puan' => DB::raw('puan + ' . $odul), 'updated_at' => now()]); $puanYeni += $odul; } catch (\Throwable $e) {} }
+    $parca = [];
+    if ($odul > 0) $parca[] = "+$odul puan hesabına eklendi 🎉";
+    if ($kupon) $parca[] = "Kupon kodun: $kupon";
+    if (!$parca) $parca[] = 'Kampanya hesabına tanımlandı ✓';
+    return ['ok' => 1, 'mesaj' => implode("\n", $parca), 'kupon_kodu' => $kupon, 'odul_puan' => $odul, 'puan' => $puanYeni];
+});
 
 // ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====
 if (!function_exists('_appEnsure2')) {
@@ -1443,6 +1471,16 @@ if (!function_exists('_appBannerEnsure')) {
             } catch (\Throwable $e) {}
         }
         if (!Schema::hasColumn('subeler', 'instagram')) { try { Schema::table('subeler', fn ($t) => $t->string('instagram', 120)->nullable()); } catch (\Throwable $e) {} }
+        // Detay sayfası + paylaşım + Kullan alanları (sonradan eklendi, guard'lı)
+        foreach (['detay' => 'text', 'buton' => 'str40', 'kupon_kodu' => 'str40', 'odul_puan' => 'int'] as $kol => $tur) {
+            if (!Schema::hasColumn('app_banner', $kol)) {
+                try { Schema::table('app_banner', function ($t) use ($kol, $tur) {
+                    if ($tur === 'text') $t->text($kol)->nullable();
+                    elseif ($tur === 'int') $t->integer($kol)->default(0);
+                    else $t->string($kol, 40)->nullable();
+                }); } catch (\Throwable $e) {}
+            }
+        }
         if (Schema::hasTable('app_banner') && DB::table('app_banner')->where('sube_id', $subeId)->count() === 0) {
             $demo = [
                 ['tip' => 'hero', 'baslik' => 'Hoş geldin! 🎉', 'metin' => 'İlk siparişine özel sürprizler seni bekliyor.', 'renk' => '#E8541E', 'renk2' => '#F97316', 'sira' => 1],
@@ -1460,8 +1498,9 @@ Route::get('/api/app/{sube}/dashboard', function ($sube) {
     if (!$s) return response()->json(['ok' => 0], 404);
     _appBannerEnsure($sube);
     $all = DB::table('app_banner')->where('sube_id', $sube)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get();
-    $map = fn ($b) => ['baslik' => $b->baslik, 'metin' => $b->metin, 'gorsel' => $b->gorsel,
-        'renk' => $b->renk ?: '#E8541E', 'renk2' => $b->renk2 ?: ($b->renk ?: '#F97316'), 'link' => $b->link];
+    $map = fn ($b) => ['id' => (int) $b->id, 'baslik' => $b->baslik, 'metin' => $b->metin, 'gorsel' => $b->gorsel,
+        'renk' => $b->renk ?: '#E8541E', 'renk2' => $b->renk2 ?: ($b->renk ?: '#F97316'), 'link' => $b->link,
+        'detay' => $b->detay ?? null, 'buton' => $b->buton ?? null, 'kupon_kodu' => $b->kupon_kodu ?? null, 'odul_puan' => (int) ($b->odul_puan ?? 0)];
     return ['ok' => 1,
         'hero' => $all->where('tip', 'hero')->map($map)->values(),
         'kampanyalar' => $all->where('tip', 'kampanya')->map($map)->values(),
@@ -1486,130 +1525,7 @@ Route::get('/app-yonetim', function () {
     _appBannerEnsure($sid);
     $kartlar = DB::table('app_banner')->where('sube_id', $sid)->orderBy('tip')->orderBy('sira')->orderBy('id')->get();
     $duz = request('duzenle') ? DB::table('app_banner')->where('id', (int) request('duzenle'))->where('sube_id', $sid)->first() : null;
-    $csrf = csrf_token();
-    $msg = session('ay_ok');
-    $pid = $duz->id ?? '';
-    $ptip = $duz->tip ?? 'hero';
-    $pbaslik = e($duz->baslik ?? '');
-    $pmetin = e($duz->metin ?? '');
-    $pgorsel = e($duz->gorsel ?? '');
-    $prenk = e($duz->renk ?? '#14342B');
-    $prenk2 = e($duz->renk2 ?? '');
-    $psira = (int) ($duz->sira ?? 1);
-    $paktif = (!$duz || $duz->aktif) ? 'checked' : '';
-    $selHero = $ptip === 'kampanya' ? '' : 'selected';
-    $selKamp = $ptip === 'kampanya' ? 'selected' : '';
-    $baslikForm = $duz ? 'Kartı Düzenle' : 'Yeni Kart Ekle';
-    // mevcut kartlar listesi
-    $cards = '';
-    foreach ($kartlar as $k) {
-        $bg = $k->gorsel ? 'background-image:url(\'' . e($k->gorsel) . '\')' : '';
-        $r1 = e($k->renk ?: '#14342B'); $r2 = e($k->renk2 ?: ($k->renk ?: '#333'));
-        $rozet = $k->tip === 'kampanya' ? '<span class="rz rz-k">Kampanya</span>' : '<span class="rz rz-h">Hero</span>';
-        $pasif = $k->aktif ? '' : '<span class="rz rz-p">Pasif</span>';
-        $cards .= '<div class="item">'
-            . '<div class="kart" style="background:linear-gradient(135deg,' . $r1 . ',' . $r2 . ')">'
-            . '<div class="bg" style="' . $bg . '"></div><div class="scrim"></div>'
-            . '<div class="txt"><h3>' . e($k->baslik) . '</h3><p>' . e($k->metin) . '</p></div></div>'
-            . '<div class="meta">' . $rozet . $pasif . '<span class="sira">#' . (int) $k->sira . '</span></div>'
-            . '<div class="ops">'
-            . '<a class="btn btn-d" href="/app-yonetim?duzenle=' . (int) $k->id . '">Düzenle</a>'
-            . '<form method=post action="/app-yonetim/aktif" style="display:inline"><input type=hidden name=_token value="' . $csrf . '"><input type=hidden name=id value="' . (int) $k->id . '"><button class="btn btn-t">' . ($k->aktif ? 'Gizle' : 'Göster') . '</button></form>'
-            . '<form method=post action="/app-yonetim/sil" style="display:inline" onsubmit="return confirm(\'Silinsin mi?\')"><input type=hidden name=_token value="' . $csrf . '"><input type=hidden name=id value="' . (int) $k->id . '"><button class="btn btn-s">Sil</button></form>'
-            . '</div></div>';
-    }
-    if ($cards === '') $cards = '<p style="color:#8a8a9a">Henüz kart yok. Sağdaki formdan ekle.</p>';
-    $flash = $msg ? '<div class="flash">✓ ' . e($msg) . '</div>' : '';
-
-    $html = <<<HTML
-<!doctype html><html lang=tr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>App Yönetim — Dashboard Kartları</title>
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f4f5f8;color:#1f2430}
-.top{background:linear-gradient(135deg,#17171c,#24242b);color:#fff;padding:18px 20px;display:flex;align-items:center;gap:12px}
-.top h1{font-size:18px;margin:0;font-weight:800}.top .sp{flex:1}.top a{color:#cfcfe0;text-decoration:none;font-size:13px}
-.wrap{max-width:1100px;margin:0 auto;padding:18px;display:grid;grid-template-columns:1fr 390px;gap:20px}
-@media(max-width:860px){.wrap{grid-template-columns:1fr}}
-.card{background:#fff;border-radius:16px;padding:18px;box-shadow:0 6px 20px rgba(40,30,80,.06)}
-h2{font-size:15px;margin:0 0 14px;color:#39304f}
-.flash{background:#e7f8ef;color:#137a4a;padding:10px 14px;border-radius:10px;margin:0 0 14px;font-size:14px;font-weight:600}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
-.item{background:#fafafe;border:1px solid #eee;border-radius:14px;padding:10px}
-.kart{position:relative;width:100%;height:150px;border-radius:14px;overflow:hidden;box-shadow:0 8px 18px rgba(0,0,0,.18)}
-.kart .bg{position:absolute;inset:0;background-size:cover;background-position:center}
-.kart .scrim{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.02) 32%,rgba(0,0,0,.62))}
-.kart .txt{position:absolute;left:14px;right:14px;bottom:12px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6)}
-.kart .txt h3{margin:0 0 3px;font-size:17px;font-weight:800}.kart .txt p{margin:0;font-size:12.5px;opacity:.96;line-height:1.25}
-.meta{display:flex;gap:6px;align-items:center;margin:9px 2px 8px}
-.rz{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}.rz-h{background:#efe7ff;color:#6d28d9}.rz-k{background:#fde8ef;color:#be1d55}.rz-p{background:#eee;color:#888}
-.sira{margin-left:auto;color:#aab;font-size:12px;font-weight:700}
-.ops{display:flex;gap:6px}.btn{border:none;border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}
-.btn-d{background:#eef;color:#4338ca}.btn-t{background:#f3f3f8;color:#555}.btn-s{background:#fde8e8;color:#c0392b}
-label{display:block;font-size:12.5px;color:#6a6a80;font-weight:600;margin:12px 0 5px}
-input[type=text],textarea,select{width:100%;padding:10px 12px;border:1.5px solid #e4e4ee;border-radius:10px;font-size:14px;font-family:inherit}
-textarea{resize:vertical;min-height:54px}
-.row{display:flex;gap:10px}.row>div{flex:1}
-input[type=color]{width:46px;height:38px;border:1px solid #ddd;border-radius:8px;padding:2px;vertical-align:middle}
-.save{width:100%;margin-top:16px;padding:13px;background:linear-gradient(135deg,#17171c,#2b2b33);color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer}
-.pvwrap{background:#eef0f4;border-radius:14px;padding:16px;margin-bottom:6px}
-.pvlbl{font-size:11px;color:#9a9ab0;font-weight:700;letter-spacing:.5px;margin-bottom:8px}
-#pv{position:relative;width:100%;height:170px;border-radius:18px;overflow:hidden;box-shadow:0 10px 24px rgba(0,0,0,.22)}
-#pv .bg{position:absolute;inset:0;background-size:cover;background-position:center}
-#pv .scrim{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.02) 35%,rgba(0,0,0,.62))}
-#pv .txt{position:absolute;left:16px;right:16px;bottom:14px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6)}
-#pv .txt h3{margin:0 0 4px;font-size:20px;font-weight:800}#pv .txt p{margin:0;font-size:13px;opacity:.96}
-.hint{font-size:11.5px;color:#9a9ab0;margin:4px 0 0}
-.nf{display:flex;align-items:center;gap:8px;margin-top:6px}.nf input{flex:1}
-</style></head><body>
-<div class="top"><h1>🎨 App Yönetim</h1><span style="color:#9a9ab0;font-size:13px">Dashboard Kartları</span><span class="sp"></span><a href="/pos">← POS</a></div>
-<div class="wrap">
-  <div class="card">
-    <h2>Mevcut Kartlar</h2>
-    $flash
-    <div class="grid">$cards</div>
-  </div>
-  <div class="card">
-    <h2>$baslikForm</h2>
-    <div class="pvwrap"><div class="pvlbl">CANLI ÖNİZLEME</div>
-      <div id="pv"><div class="bg"></div><div class="scrim"></div><div class="txt"><h3>Başlık</h3><p>Açıklama</p></div></div>
-    </div>
-    <form method=post action="/app-yonetim/kaydet" enctype="multipart/form-data">
-      <input type=hidden name=_token value="$csrf">
-      <input type=hidden name=id value="$pid">
-      <div class="row">
-        <div><label>Tür</label><select name=tip id=f_tip><option value=hero $selHero>Hero (üst büyük)</option><option value=kampanya $selKamp>Kampanya (yatay)</option></select></div>
-        <div><label>Sıra</label><input type=text name=sira value="$psira"></div>
-      </div>
-      <label>Başlık</label><input type=text name=baslik id=f_baslik value="$pbaslik" oninput="upd()" maxlength=120 placeholder="Örn: Yükle & Kazan ⭐">
-      <label>Açıklama</label><textarea name=metin id=f_metin oninput="upd()" maxlength=240 placeholder="Örn: 500₺ ve üzeri yükle, 50₺ bonus hediye!">$pmetin</textarea>
-      <label>Görsel — bağlantı (URL)</label><input type=text name=gorsel id=f_gorsel value="$pgorsel" oninput="upd()" placeholder="https://...jpg">
-      <p class="hint">veya cihazdan yükle:</p>
-      <input type=file name=gorsel_dosya id=f_dosya accept="image/*">
-      <div class="row" style="margin-top:12px">
-        <div><label>Yedek renk 1</label><div class="nf"><input type=color id=f_renk value="$prenk" oninput="syncRenk()"><input type=text id=f_renk_t value="$prenk" oninput="document.getElementById('f_renk').value=this.value;upd()" name=renk></div></div>
-        <div><label>Yedek renk 2</label><div class="nf"><input type=color id=f_renk2 value="{$prenk2}" oninput="syncRenk2()"><input type=text id=f_renk2_t value="$prenk2" oninput="document.getElementById('f_renk2').value=this.value;upd()" name=renk2 placeholder="(ops.)"></div></div>
-      </div>
-      <p class="hint">Görsel yoksa bu renk geçişi kullanılır (Starbucks gibi her zaman şık görünür).</p>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type=checkbox name=aktif value=1 $paktif style="width:auto"> Yayında (uygulamada görünsün)</label>
-      <button class="save">Kaydet</button>
-      <a href="/app-yonetim" style="display:block;text-align:center;margin-top:10px;color:#8a8a9a;text-decoration:none;font-size:13px">+ Yeni boş karta geç</a>
-    </form>
-  </div>
-</div>
-<script>
-function upd(){var t=document.getElementById('f_baslik').value||'Başlık';var m=document.getElementById('f_metin').value||'Açıklama';
-var g=document.getElementById('f_gorsel').value;var r=document.getElementById('f_renk').value||'#14342B';var r2=document.getElementById('f_renk2').value||r;
-var k=document.getElementById('pv');k.style.background='linear-gradient(135deg,'+r+','+r2+')';
-k.querySelector('.bg').style.backgroundImage=g?("url('"+g+"')"):'none';
-k.querySelector('h3').textContent=t;k.querySelector('p').textContent=m;}
-function syncRenk(){document.getElementById('f_renk_t').value=document.getElementById('f_renk').value;upd();}
-function syncRenk2(){document.getElementById('f_renk2_t').value=document.getElementById('f_renk2').value;upd();}
-document.getElementById('f_dosya').addEventListener('change',function(e){if(e.target.files[0]){var u=URL.createObjectURL(e.target.files[0]);document.querySelector('#pv .bg').style.backgroundImage="url('"+u+"')";}});
-upd();
-</script>
-</body></html>
-HTML;
-    return response($html);
+    return view('app_yonetim', compact('kartlar', 'duz'));
 });
 Route::post('/app-yonetim/kaydet', function (Request $r) {
     [$g, $p] = _appYonetimKapi(); if ($g) return $g;
@@ -1632,6 +1548,11 @@ Route::post('/app-yonetim/kaydet', function (Request $r) {
         'baslik' => trim((string) $r->input('baslik')),
         'metin' => trim((string) $r->input('metin')),
         'gorsel' => $gorsel ?: null,
+        'detay' => trim((string) $r->input('detay')) ?: null,
+        'buton' => trim((string) $r->input('buton')) ?: null,
+        'link' => trim((string) $r->input('link')) ?: null,
+        'kupon_kodu' => trim((string) $r->input('kupon_kodu')) ?: null,
+        'odul_puan' => (int) $r->input('odul_puan', 0),
         'renk' => trim((string) $r->input('renk')) ?: '#14342B',
         'renk2' => trim((string) $r->input('renk2')) ?: null,
         'sira' => (int) $r->input('sira', 1),
