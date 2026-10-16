@@ -376,10 +376,38 @@ Route::get('/resteos-yonetim/restoran/{id}', function ($id) {
 // --- Restoran aksiyonları ---
 Route::post('/resteos-yonetim/restoran/{id}/bilgi', function (Request $r, $id) {
     if ($x = _ryKapi()) return $x;
-    DB::table('subeler')->where('id', $id)->update([
+    // Kolon güvencesi (eski kurulumlar) — servis tipi / logo / tema
+    foreach (['servis_tipi', 'marka_logo', 'tema', 'tema_renk'] as $kol) {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('subeler', $kol)) {
+            try { \Illuminate\Support\Facades\Schema::table('subeler', function ($t) use ($kol) { $t->string($kol, 191)->nullable(); }); } catch (\Throwable $e) {}
+        }
+    }
+    $upd = [
         'ad' => $r->ad ?: DB::raw('ad'), 'adres' => $r->adres, 'telefon' => $r->telefon,
         'yetkili_ad' => $r->yetkili_ad, 'yetkili_tel' => $r->yetkili_tel, 'sehir' => $r->sehir,
-    ]);
+    ];
+    // Servis tipi (garsonlu | self) — masa/garson/rezervasyon modüllerini ve müşteri app öde-önce'yi belirler
+    if (in_array($r->servis_tipi, ['garsonlu', 'self'], true)) $upd['servis_tipi'] = $r->servis_tipi;
+    // Ana renk — SADECE checkbox işaretliyse uygula (palet seçimini ezmemek için). Özel tema olarak kaydeder.
+    if ($r->renk_guncelle) {
+        $renk = trim((string) $r->tema_renk);
+        if (preg_match('/^#?[0-9A-Fa-f]{6}$/', $renk)) {
+            $upd['tema'] = 'ozel';
+            $upd['tema_renk'] = (strpos($renk, '#') === 0 ? $renk : '#' . $renk);
+        }
+    }
+    // Logo yükleme — public/marka/ altına kaydet, tam URL'yi marka_logo'ya yaz (müşteri app + QR menü çeker)
+    if ($r->hasFile('logo')) {
+        $f = $r->file('logo');
+        $ext = strtolower($f->getClientOriginalExtension() ?: 'png');
+        if ($f->isValid() && in_array($ext, ['png', 'jpg', 'jpeg', 'webp', 'gif'], true)) {
+            $dir = public_path('marka');
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $fn = $id . '-' . time() . '.' . $ext;
+            try { $f->move($dir, $fn); $upd['marka_logo'] = url('marka/' . $fn); } catch (\Throwable $e) {}
+        }
+    }
+    DB::table('subeler')->where('id', $id)->update($upd);
     _ryLog('restoran_bilgi', 'Restoran bilgileri güncellendi', $id);
     return back()->with('ok', 'Bilgiler güncellendi.');
 });

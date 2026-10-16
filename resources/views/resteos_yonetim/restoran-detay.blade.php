@@ -89,7 +89,7 @@
   <div>
     <div class="ry-card">
       <h3>✏️ Restoran Bilgileri</h3>
-      <form method="post" action="/resteos-yonetim/restoran/{{ $sube->id }}/bilgi">@csrf
+      <form method="post" action="/resteos-yonetim/restoran/{{ $sube->id }}/bilgi" enctype="multipart/form-data">@csrf
         <div class="ry-field"><label>Restoran Adı</label><input class="ry-input" name="ad" value="{{ $sube->ad }}"></div>
         <div class="ry-row">
           <div class="ry-field"><label>Yetkili</label><input class="ry-input" name="yetkili_ad" value="{{ $sube->yetkili_ad }}"></div>
@@ -100,6 +100,31 @@
           <div class="ry-field"><label>Şehir</label><input class="ry-input" name="sehir" value="{{ $sube->sehir }}"></div>
         </div>
         <div class="ry-field"><label>Adres</label><input class="ry-input" name="adres" value="{{ $sube->adres }}"></div>
+
+        {{-- FAZ 0: Servis tipi + Marka (müşteri app + QR menü otomatik çeker) --}}
+        <div class="ry-row">
+          <div class="ry-field"><label>Servis Tipi</label>
+            <select class="ry-input" name="servis_tipi">
+              <option value="garsonlu" {{ ($sube->servis_tipi ?? 'garsonlu') === 'garsonlu' ? 'selected' : '' }}>Garsonlu (masa / garson / rezervasyon açık)</option>
+              <option value="self" {{ ($sube->servis_tipi ?? '') === 'self' ? 'selected' : '' }}>Self Servis (öde-önce · masa/garson gizli)</option>
+            </select>
+          </div>
+          <div class="ry-field"><label>Ana Renk (marka)</label>
+            <div class="ry-flex" style="align-items:center;gap:8px">
+              <input type="color" name="tema_renk" value="{{ $sube->tema_renk ?: '#6D28D9' }}" style="width:48px;height:40px;padding:2px;border-radius:8px;border:1px solid #ddd;cursor:pointer">
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#666;cursor:pointer">
+                <input type="checkbox" name="renk_guncelle" value="1"> Rengi güncelle
+              </label>
+            </div>
+            <small style="color:#999">İşaretlemezsen QR Menü Rengi seçimi korunur.</small>
+          </div>
+        </div>
+        <div class="ry-field"><label>Logo</label>
+          @if(!empty($sube->marka_logo))<div style="margin-bottom:6px"><img src="{{ $sube->marka_logo }}" alt="logo" style="height:46px;border-radius:8px;background:#fff;padding:4px;border:1px solid #eee"></div>@endif
+          <input class="ry-input" type="file" name="logo" accept="image/*">
+          <small style="color:#999">PNG/JPG/WebP. Müşteri uygulaması ve QR menü otomatik çeker.</small>
+        </div>
+
         <button class="ry-btn ry-btn-primary" type="submit">Kaydet</button>
       </form>
     </div>
