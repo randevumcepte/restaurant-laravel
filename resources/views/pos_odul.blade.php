@@ -27,6 +27,7 @@ async function post(u, b) {
   return r.json();
 }
 let _kod = '';
+let _adId = 0;
 document.getElementById('kod').addEventListener('keydown', e => { if (e.key === 'Enter') dogrula(); });
 
 async function dogrula() {
@@ -36,27 +37,32 @@ async function dogrula() {
   el.innerHTML = '<p class="text-slate-400 text-sm">Kontrol ediliyor…</p>';
   const r = await post('/api/pos/odul-dogrula', { kod: k });
   if (!r.ok) { el.innerHTML = cardErr(r.hata || 'Geçersiz'); return; }
-  _kod = r.kod;
+  _kod = r.kod; _adId = r.adisyon ? r.adisyon.id : 0;
   const yeterRozet = r.yeterli
     ? '<span class="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Puan yeterli</span>'
     : '<span class="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">Puan yetersiz!</span>';
+  const aciklama = r.aciklama ? `<span class="text-xs font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full ml-1">${esc(r.aciklama)}</span>` : '';
+  const hesap = r.adisyon
+    ? `<div class="flex items-center gap-2 mb-3 text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2">🧾 Açık hesap <b>#${r.adisyon.id}</b> · ${Math.round(r.adisyon.toplam)}₺ <span class="ml-auto text-xs text-emerald-600 font-semibold">ödül bu hesaba işlenecek</span></div>`
+    : `<div class="mb-3 text-xs text-slate-400">Bu müşteriye bağlı açık hesap yok — sadece puan düşülür (ürünü garson ikram geçer).</div>`;
   el.innerHTML = `
     <div class="border border-indigo-200 bg-indigo-50/40 rounded-xl p-4">
       <div class="flex items-center gap-2 mb-2"><span class="text-2xl">🎁</span>
-        <div><div class="font-bold text-slate-800">${esc(r.odul_ad)}</div>
+        <div><div class="font-bold text-slate-800">${esc(r.odul_ad)} ${aciklama}</div>
         <div class="text-xs text-slate-500">${esc(r.musteri)} · mevcut ${r.musteri_puan} puan</div></div>
         <div class="ml-auto text-right"><div class="text-lg font-extrabold text-indigo-700">${r.puan}</div><div class="text-[11px] text-slate-400">puan düşülecek</div></div>
       </div>
       <div class="mb-3">${yeterRozet}</div>
+      ${hesap}
       <button onclick="onayla()" ${r.yeterli ? '' : 'disabled'}
         class="w-full py-3 rounded-xl ${r.yeterli ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed'} text-white font-bold">
-        Onayla & ${r.puan} Puan Düş
+        ${r.adisyon ? 'Onayla & Hesaba Uygula' : 'Onayla & Puan Düş'}
       </button>
     </div>`;
 }
 async function onayla() {
   const el = document.getElementById('sonuc');
-  const r = await post('/api/pos/odul-onayla', { kod: _kod });
+  const r = await post('/api/pos/odul-onayla', { kod: _kod, adisyon_id: _adId });
   if (r.ok) {
     el.innerHTML = `<div class="border border-emerald-200 bg-emerald-50 rounded-xl p-5 text-center">
       <div class="text-4xl mb-2">✅</div><div class="font-bold text-emerald-700">${esc(r.mesaj)}</div></div>`;

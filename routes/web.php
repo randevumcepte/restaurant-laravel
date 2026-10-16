@@ -1281,13 +1281,44 @@ Route::post('/api/m/profil-guncelle', function (Request $r) {
     return ['ok' => 1, 'musteri' => _musteriKart2(DB::table('musteriler')->find($m->id)), 'mesaj' => 'Profil güncellendi'];
 });
 // Sadakat özeti (puan + kademe + ödül merdiveni)
+// Ödül tipleri (bedava ürün / %indirim / ₺indirim) için kolon garantisi
+if (!function_exists('_odulKolonEnsure')) {
+    function _odulKolonEnsure()
+    {
+        if (cache()->get('odul_kolon_ensure_ok2')) return;
+        if (Schema::hasTable('puan_odulleri')) {
+            foreach (['tip' => 'str', 'deger' => 'dec', 'urun_id' => 'int'] as $k => $t) {
+                if (!Schema::hasColumn('puan_odulleri', $k)) {
+                    try { Schema::table('puan_odulleri', function ($tb) use ($k, $t) {
+                        if ($t === 'str') $tb->string($k, 16)->nullable();
+                        elseif ($t === 'dec') $tb->decimal($k, 10, 2)->default(0);
+                        else $tb->unsignedBigInteger($k)->nullable();
+                    }); } catch (\Throwable $e) {}
+                }
+            }
+        }
+        cache()->put('odul_kolon_ensure_ok2', 1, now()->addHours(12));
+    }
+}
+// Ödülün hesaba nasıl yansıdığını metinle anlat
+if (!function_exists('_odulAciklama')) {
+    function _odulAciklama($o)
+    {
+        $tip = $o->tip ?? 'urun';
+        if ($tip === 'yuzde') return '%' . rtrim(rtrim(number_format((float) ($o->deger ?? 0), 2, '.', ''), '0'), '.') . ' indirim';
+        if ($tip === 'tutar') return number_format((float) ($o->deger ?? 0), 0, ',', '.') . '₺ indirim';
+        return 'Bedava ürün';
+    }
+}
 Route::get('/api/m/sadakat', function (Request $r) {
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _odulKolonEnsure();
     $oduller = [];
     if (Schema::hasTable('puan_odulleri')) {
         try {
             $oduller = DB::table('puan_odulleri')->where('sube_id', $m->sube_id)->where('aktif', 1)->orderBy('puan')
-                ->get(['id', 'ad', 'puan'])->map(fn ($o) => ['id' => (int) $o->id, 'ad' => $o->ad, 'puan' => (int) $o->puan,
+                ->get()->map(fn ($o) => ['id' => (int) $o->id, 'ad' => $o->ad, 'puan' => (int) $o->puan,
+                    'tip' => $o->tip ?? 'urun', 'deger' => (float) ($o->deger ?? 0), 'aciklama' => _odulAciklama($o),
                     'alinabilir' => (int) ($m->puan ?? 0) >= (int) $o->puan])->values();
         } catch (\Throwable $e) {}
     }
@@ -1319,12 +1350,20 @@ Route::post('/api/m/demo-doldur', function (Request $r) {
             $t->string('ad', 120); $t->integer('puan')->default(0); $t->tinyInteger('aktif')->default(1); $t->timestamps();
         }); } catch (\Throwable $e) {}
     }
-    if (Schema::hasTable('puan_odulleri') && DB::table('puan_odulleri')->where('sube_id', $sid)->count() === 0) {
-        foreach ([['ad' => 'Bedava Türk Kahvesi', 'puan' => 100], ['ad' => '%20 İndirim Kuponu', 'puan' => 200],
-                  ['ad' => 'Tatlı İkramı', 'puan' => 350], ['ad' => 'Ana Yemek Hediye', 'puan' => 500],
-                  ['ad' => 'VIP Kahvaltı (2 kişi)', 'puan' => 800]] as $o) {
-            try { DB::table('puan_odulleri')->insert(array_merge(['sube_id' => $sid, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $o)); } catch (\Throwable $e) {}
-        }
+    _odulKolonEnsure();
+    if (Schema::hasTable('puan_odulleri')) {
+        $kahveId = optional(DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1)->where('ad', 'like', '%kahve%')->first())->id;
+        $tatliId = optional(DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1)
+            ->where(function ($q) { $q->where('ad', 'like', '%tatlı%')->orWhere('ad', 'like', '%cheesecake%')->orWhere('ad', 'like', '%sufle%')->orWhere('ad', 'like', '%brownie%')->orWhere('ad', 'like', '%künefe%'); })->first())->id;
+        DB::table('puan_odulleri')->where('sube_id', $sid)->delete();
+        $odl = [
+            ['ad' => 'Bedava Türk Kahvesi', 'puan' => 100, 'tip' => 'urun', 'urun_id' => $kahveId, 'deger' => 45],
+            ['ad' => '%20 İndirim Kuponu', 'puan' => 200, 'tip' => 'yuzde', 'deger' => 20],
+            ['ad' => 'Tatlı İkramı', 'puan' => 350, 'tip' => 'urun', 'urun_id' => $tatliId, 'deger' => 120],
+            ['ad' => '50₺ İndirim', 'puan' => 500, 'tip' => 'tutar', 'deger' => 50],
+            ['ad' => 'VIP Kahvaltı (2 kişi)', 'puan' => 800, 'tip' => 'tutar', 'deger' => 200],
+        ];
+        foreach ($odl as $o) { try { DB::table('puan_odulleri')->insert(array_merge(['sube_id' => $sid, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $o)); } catch (\Throwable $e) {} }
     }
     // 2) Müşteri puan / harcama / sipariş sayısı (halka 65/100 dolu görünsün)
     DB::table('musteriler')->where('id', $m->id)->update(['puan' => 250, 'toplam_harcama' => 4850, 'siparis_sayisi' => 14, 'updated_at' => now()]);
@@ -1469,35 +1508,80 @@ Route::get('/api/m/odul-durum/{kod}', function ($kod) {
 // Kasa: kodu doğrula (bilgi göster, state değişmez)
 Route::post('/api/pos/odul-dogrula', function (Request $r) {
     $p = function_exists('_posPersonel') ? _posPersonel() : null; if (!$p) return response()->json(['ok' => 0, 'hata' => 'Giriş gerekli'], 401);
-    _odulKullanimEnsure();
+    _odulKullanimEnsure(); _odulKolonEnsure();
     $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->first();
     if (!$row) return ['ok' => 0, 'hata' => 'Kod bulunamadı'];
     if ($row->durum === 'kullanildi') return ['ok' => 0, 'hata' => 'Bu kod zaten kullanıldı'];
     if ($row->durum === 'iptal' || now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Kodun süresi dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
     $yeter = (int) ($mus->puan ?? 0) >= (int) $row->puan;
-    return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan,
-        'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter];
+    $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+    $acik = DB::table('adisyonlar')->where('musteri_id', $row->musteri_id)->where('durum', 'acik')->orderByDesc('id')->first();
+    return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan, 'aciklama' => $o ? _odulAciklama($o) : '',
+        'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter,
+        'adisyon' => $acik ? ['id' => (int) $acik->id, 'toplam' => (float) $acik->toplam] : null];
 });
-// Kasa: onayla -> puan düş + kod kullanıldı
+// Kasa: onayla -> (varsa açık adisyona uygula) + puan düş + kod kullanıldı + log
 Route::post('/api/pos/odul-onayla', function (Request $r) {
     $p = function_exists('_posPersonel') ? _posPersonel() : null; if (!$p) return response()->json(['ok' => 0, 'hata' => 'Giriş gerekli'], 401);
-    _odulKullanimEnsure();
+    _odulKullanimEnsure(); _odulKolonEnsure();
     $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->first();
     if (!$row) return ['ok' => 0, 'hata' => 'Kod yok'];
     if ($row->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Kod zaten işlenmiş'];
     if (now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Süre dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
     if ((int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
+    // Açık adisyona uygula (opsiyonel): bedava ürün -> ikram; %/₺ indirim -> indirim
+    $hesapMesaj = ''; $etki = 0.0;
+    $adId = (int) $r->input('adisyon_id');
+    if ($adId) {
+        $a = DB::table('adisyonlar')->where('id', $adId)->where('durum', 'acik')->first();
+        if ($a) {
+            $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+            $tip = $o->tip ?? 'urun';
+            $ara = (float) $a->ara_toplam; $ind = (float) $a->indirim; $ikr = (float) $a->ikram;
+            $kalan = max(0, $ara - $ind - $ikr);
+            $logTip = 'ikram';
+            if ($tip === 'yuzde') { $etki = round($ara * (float) ($o->deger ?? 0) / 100, 2); $logTip = 'indirim'; }
+            elseif ($tip === 'tutar') { $etki = (float) ($o->deger ?? 0); $logTip = 'indirim'; }
+            else { $uf = ($o && $o->urun_id) ? (float) (DB::table('urunler')->where('id', $o->urun_id)->value('fiyat') ?? 0) : 0.0; $etki = $uf > 0 ? $uf : (float) ($o->deger ?? 0); $logTip = 'ikram'; }
+            $etki = round(min($etki, $kalan), 2);
+            if ($etki > 0) {
+                if ($logTip === 'indirim') $ind += $etki; else $ikr += $etki;
+                $yeniToplam = max(0, round($ara - $ind - $ikr, 2));
+                DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $ind, 'ikram' => $ikr, 'toplam' => $yeniToplam, 'updated_at' => now()]);
+                try { if (Schema::hasTable('iptal_indirim_loglari')) DB::table('iptal_indirim_loglari')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'tip' => $logTip, 'tutar' => $etki, 'sebep' => 'Ödül: ' . $row->odul_ad, 'personel_id' => $p->id ?? null, 'created_at' => now()]); } catch (\Throwable $e) {}
+                $hesapMesaj = ' · Hesaba işlendi (−' . number_format($etki, 0, ',', '.') . '₺) → yeni toplam ' . number_format($yeniToplam, 0, ',', '.') . '₺';
+            }
+        }
+    }
     DB::table('musteriler')->where('id', $row->musteri_id)->update(['puan' => DB::raw('puan - ' . (int) $row->puan), 'updated_at' => now()]);
     DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
-    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü"];
+    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü" . $hesapMesaj, 'etki' => $etki];
 });
 // Kasa ekranı: ödül/kupon doğrula (PIN'li)
 Route::get('/odul-dogrula', function () {
     if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
     _odulKullanimEnsure();
     return view('pos_odul');
+});
+// Patron: Kullanılan Ödüller raporu (kim/ne/puan/kasiyer/tarih)
+Route::get('/odul-raporu', function () {
+    $sid = (int) (DB::table('subeler')->value('id') ?: 2);
+    _odulKullanimEnsure();
+    $rows = DB::table('odul_kullanimlari')
+        ->leftJoin('musteriler', 'odul_kullanimlari.musteri_id', '=', 'musteriler.id')
+        ->leftJoin('personeller', 'odul_kullanimlari.kasiyer_id', '=', 'personeller.id')
+        ->where('odul_kullanimlari.sube_id', $sid)
+        ->orderByDesc('odul_kullanimlari.id')->limit(200)
+        ->get(['odul_kullanimlari.id', 'odul_kullanimlari.odul_ad', 'odul_kullanimlari.puan', 'odul_kullanimlari.kod',
+            'odul_kullanimlari.durum', 'odul_kullanimlari.kullanildi_at', 'odul_kullanimlari.created_at',
+            'musteriler.ad as m_ad', 'musteriler.soyad as m_soyad', 'musteriler.telefon as m_tel', 'personeller.ad as kasiyer_ad']);
+    $kul = $rows->where('durum', 'kullanildi');
+    $ozet = ['adet' => $kul->count(), 'puan' => (int) $kul->sum('puan'),
+        'bugun' => $kul->filter(fn ($x) => \Carbon\Carbon::parse($x->kullanildi_at ?? $x->created_at)->isToday())->count(),
+        'bekleyen' => $rows->where('durum', 'bekliyor')->count()];
+    return view('odul_raporu', compact('rows', 'ozet'));
 });
 
 // ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====

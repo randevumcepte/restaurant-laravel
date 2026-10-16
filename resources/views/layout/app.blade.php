@@ -34,6 +34,7 @@
         ['/musteriler', '👥', 'Müşteriler'],
         ['/sadakat', '🎁', 'Sadakat'],
         ['/odul-dogrula', '✅', 'Ödül/Kupon Doğrula'],
+        ['/odul-raporu', '🏆', 'Ödül Raporu'],
         ['/indirimler', '🎫', 'İndirimler'],
         ['/cagrilar', '📞', 'Çağrı Merkezi'],
         ['/santral-kayitlar', '🎙️', 'AI Santral — Kayıtlar'],
