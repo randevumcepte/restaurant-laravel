@@ -1324,6 +1324,24 @@ Route::post('/api/m/ai', function (Request $r) {
         return ['ok' => 0, 'hata' => 'AI şu an yanıt veremedi'];
     }
 });
+// Müşteri AI seslendirme — KADIN WaveNet (cihazda kadın Türkçe ses yok); MP3 döner, önbellekli.
+// Anahtar yok / kota dolu -> 503; Flutter o zaman cihaz sesine (flutter_tts) düşer.
+Route::get('/api/m/ses', function (Request $r) {
+    $metin = (string) $r->query('m', '');
+    if (trim($metin) === '') return response('', 400);
+    $ses = $r->query('v', 'k') === 'e' ? 'tr-TR-Wavenet-D' : 'tr-TR-Wavenet-E'; // e=erkek, aksi=kadın
+    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->min('id'));
+    try {
+        $srv = new \App\Services\SeslendirmeServisi($subeId);
+        $ad = $srv->uret(mb_substr($metin, 0, 600), $ses);
+        if (!$ad) return response('', 503);
+        $yol = $srv->dosyaYolu($ad);
+        if (!$yol) return response('', 404);
+        return response()->file($yol, ['Content-Type' => 'audio/mpeg', 'Cache-Control' => 'public, max-age=604800']);
+    } catch (\Throwable $e) {
+        return response('', 503);
+    }
+});
 
 // Siparis takip sayfasi (musteri)
 Route::get('/siparisim/{token}', function ($token) {
