@@ -1439,6 +1439,41 @@ Route::post('/api/m/self-siparis', function (Request $r) {
         'mesaj' => $kart > 0 ? ($cuzdanDus > 0 ? "{$cuzdanDus}₺ cüzdandan + {$kart}₺ karttan alındı" : "{$kart}₺ karttan alındı") : "{$cuzdanDus}₺ cüzdandan alındı"];
 });
 
+// Cüzdana para yükleme — PLUGGABLE ödeme (simülasyon anında; PayTR/iyzico anahtarı girilince CANLI /ode sayfası).
+Route::post('/api/m/cuzdan-yukle-baslat', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _appEnsure2(); _odemeEnsure();
+    if (!Schema::hasColumn('odeme_islemleri', 'tur')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->string('tur', 12)->default('adisyon')); } catch (\Throwable $e) {} }
+    if (!Schema::hasColumn('odeme_islemleri', 'musteri_id')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->unsignedBigInteger('musteri_id')->nullable()); } catch (\Throwable $e) {} }
+    $tutar = round((float) $r->input('tutar'), 2);
+    if ($tutar < 1) return ['ok' => 0, 'hata' => 'Geçersiz tutar'];
+    $saglayici = _odemeSaglayici($m->sube_id);
+    $token = \Illuminate\Support\Str::random(30);
+    DB::table('odeme_islemleri')->insert(['sube_id' => $m->sube_id, 'adisyon_id' => 0, 'musteri_id' => $m->id, 'tur' => 'cuzdan',
+        'token' => $token, 'tutar' => $tutar, 'saglayici' => $saglayici, 'durum' => 'bekliyor', 'created_at' => now()]);
+    return ['ok' => 1, 'token' => $token, 'saglayici' => $saglayici, 'ode_url' => url('/ode/' . $token), 'tutar' => $tutar];
+});
+// Patron: ödeme sağlayıcı ayarı (TAK-ÇALIŞTIR — sahip PayTR/iyzico anahtarını girince canlıya geçer)
+Route::get('/api/patron/odeme-ayar', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    if ($p->rol !== 'sahip') return ['ok' => 0, 'hata' => 'Sadece işletme sahibi'];
+    _odemeEnsure();
+    $a = DB::table('odeme_ayarlari')->where('sube_id', $p->sube_id)->first();
+    return ['ok' => 1, 'ayar' => ['saglayici' => $a->saglayici ?? 'kapali', 'aktif' => (bool) ($a->aktif ?? 0),
+        'magaza_id' => $a->magaza_id ?? '', 'api_key_var' => !empty($a->api_key), 'secret_var' => !empty($a->secret)]];
+});
+Route::post('/api/patron/odeme-ayar', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    if ($p->rol !== 'sahip') return ['ok' => 0, 'hata' => 'Sadece işletme sahibi'];
+    _odemeEnsure();
+    $data = ['saglayici' => in_array($r->input('saglayici'), ['paytr', 'iyzico', 'kapali']) ? $r->input('saglayici') : 'kapali',
+        'aktif' => $r->boolean('aktif') ? 1 : 0, 'magaza_id' => trim((string) $r->input('magaza_id')), 'updated_at' => now()];
+    if ($r->filled('api_key')) $data['api_key'] = trim((string) $r->input('api_key'));
+    if ($r->filled('secret')) $data['secret'] = trim((string) $r->input('secret'));
+    DB::table('odeme_ayarlari')->updateOrInsert(['sube_id' => $p->sube_id], $data + ['created_at' => now()]);
+    return ['ok' => 1, 'mesaj' => 'Ödeme ayarı kaydedildi', 'saglayici' => $data['saglayici'], 'aktif' => (bool) $data['aktif']];
+});
+
 // Müşteri AI seslendirme — KADIN WaveNet (cihazda kadın Türkçe ses yok); MP3 döner, önbellekli.
 // Anahtar yok / kota dolu -> 503; Flutter o zaman cihaz sesine (flutter_tts) düşer.
 Route::get('/api/m/ses', function (Request $r) {
@@ -1970,6 +2005,23 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
     $i = DB::table('odeme_islemleri')->where('token', $token)->first();
     if (!$i) return response()->json(['ok' => 0], 404);
     if ($i->durum === 'odendi') return ['ok' => 1, 'mesaj' => 'Zaten ödendi'];
+    // CÜZDAN YÜKLEME ödemesi -> bakiyeye yükle (adisyon değil). Gerçek sağlayıcıda imzalı callback şart.
+    if (($i->tur ?? 'adisyon') === 'cuzdan' && !empty($i->musteri_id)) {
+        if (_odemeSaglayici($i->sube_id) !== 'simulasyon') {
+            $imzaGecerli = false; // TODO: PayTR/iyzico callback imza/hash doğrulaması
+            if (!$imzaGecerli) return response()->json(['ok' => 0, 'hata' => 'Ödeme sağlayıcı doğrulaması bekleniyor.'], 402);
+        }
+        $tutar = (float) $i->tutar;
+        $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+        $yeni = round((float) (DB::table('musteriler')->where('id', $i->musteri_id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
+        DB::table('musteriler')->where('id', $i->musteri_id)->update(['cuzdan_bakiye' => $yeni]);
+        if (Schema::hasTable('cuzdan_hareketleri')) {
+            DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $i->musteri_id, 'tip' => 'yukleme', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
+                'aciklama' => $bonus > 0 ? "Yükleme {$tutar}₺ (+{$bonus}₺ bonus)" : "Yükleme {$tutar}₺", 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
+        return ['ok' => 1, 'mesaj' => 'Cüzdan yüklendi 🎉', 'bakiye' => $yeni];
+    }
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
     if ($a) {
         // GÜVENLİK: gerçek sağlayıcı (Iyzico/PayTR) yapılandırılmışsa ödeme ancak sağlayıcı İMZALI callback ile kapanır.
