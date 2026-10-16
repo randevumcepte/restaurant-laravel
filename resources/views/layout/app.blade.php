@@ -25,6 +25,7 @@
         ['/mutfak', '👨‍🍳', 'Mutfak (KDS)'],
         ['/kiosk', '🖥️', 'Kiosk (Self-Servis)'],
         ['/menu', '📋', 'Menü Yönetimi'],
+        ['/app-yonetim', '🎨', 'App Kartları (Müşteri App)'],
         ['/stok', '📦', 'Stok & Reçete'],
         ['/satinalma', '🧾', 'Satın Alma'],
         ['/teklif', '📊', 'Teklifler'],
