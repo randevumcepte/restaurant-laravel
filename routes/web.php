@@ -1359,6 +1359,48 @@ Route::get('/api/app/{sube}/profil', function ($sube) {
         'etiketler' => $self ? ['puan' => 'yıldız', 'sube' => 'mağaza'] : ['puan' => 'puan', 'sube' => 'şube'],
     ];
 });
+// ===== DASHBOARD İÇERİĞİ (hero banner carousel + kampanya + sosyal) — App Yönetim'den yönetilir (şimdilik demo seed) =====
+if (!function_exists('_appBannerEnsure')) {
+    function _appBannerEnsure($subeId)
+    {
+        if (!Schema::hasTable('app_banner')) {
+            try {
+                Schema::create('app_banner', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('tip', 12)->default('hero'); // hero | kampanya
+                    $t->string('baslik', 120)->nullable(); $t->string('metin', 240)->nullable();
+                    $t->string('gorsel', 255)->nullable(); $t->string('renk', 9)->nullable(); $t->string('renk2', 9)->nullable();
+                    $t->string('link', 255)->nullable(); $t->integer('sira')->default(0); $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                });
+            } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasColumn('subeler', 'instagram')) { try { Schema::table('subeler', fn ($t) => $t->string('instagram', 120)->nullable()); } catch (\Throwable $e) {} }
+        if (Schema::hasTable('app_banner') && DB::table('app_banner')->where('sube_id', $subeId)->count() === 0) {
+            $demo = [
+                ['tip' => 'hero', 'baslik' => 'Hoş geldin! 🎉', 'metin' => 'İlk siparişine özel sürprizler seni bekliyor.', 'renk' => '#E8541E', 'renk2' => '#F97316', 'sira' => 1],
+                ['tip' => 'hero', 'baslik' => 'Puan topla, ödül kazan ⭐', 'metin' => 'Her siparişte puan; puanlar bedava ürüne dönüşür.', 'renk' => '#7C3AED', 'renk2' => '#4F46E5', 'sira' => 2],
+                ['tip' => 'hero', 'baslik' => 'Cüzdana yükle, bonus kap 👛', 'metin' => '500₺ yükle, 50₺ bonus hediye!', 'renk' => '#10B981', 'renk2' => '#059669', 'sira' => 3],
+                ['tip' => 'kampanya', 'baslik' => 'Doğum günün bizden 🎂', 'metin' => 'Doğum gününde ikram seni bekliyor.', 'renk' => '#F43F5E', 'renk2' => '#EC4899', 'sira' => 1],
+                ['tip' => 'kampanya', 'baslik' => 'Arkadaşını getir 🤝', 'metin' => 'Davet et, ikiniz de kazanın.', 'renk' => '#0EA5E9', 'renk2' => '#06B6D4', 'sira' => 2],
+            ];
+            foreach ($demo as $d) { try { DB::table('app_banner')->insert(array_merge(['sube_id' => $subeId, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()], $d)); } catch (\Throwable $e) {} }
+        }
+    }
+}
+Route::get('/api/app/{sube}/dashboard', function ($sube) {
+    $s = DB::table('subeler')->where('id', $sube)->first();
+    if (!$s) return response()->json(['ok' => 0], 404);
+    _appBannerEnsure($sube);
+    $all = DB::table('app_banner')->where('sube_id', $sube)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get();
+    $map = fn ($b) => ['baslik' => $b->baslik, 'metin' => $b->metin, 'gorsel' => $b->gorsel,
+        'renk' => $b->renk ?: '#E8541E', 'renk2' => $b->renk2 ?: ($b->renk ?: '#F97316'), 'link' => $b->link];
+    return ['ok' => 1,
+        'hero' => $all->where('tip', 'hero')->map($map)->values(),
+        'kampanyalar' => $all->where('tip', 'kampanya')->map($map)->values(),
+        'sosyal' => ['instagram' => $s->instagram ?? '', 'ad' => $s->ad ?? '', 'odul_puan' => 20],
+    ];
+});
 // Patron: servis tipini ayarla (sahip/mudur)
 Route::post('/api/patron/servis-tipi', function (Request $r) {
     $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
