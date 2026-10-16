@@ -1590,23 +1590,78 @@ Route::post('/api/patron/servis-tipi', function (Request $r) {
     return ['ok' => 1, 'servis_tipi' => $tip];
 });
 // Cüzdan durumu
+// ===== OTOMATİK YÜKLEME (auto-reload, Starbucks mantığı) =====
+if (!function_exists('_autoReloadEnsure')) {
+    function _autoReloadEnsure()
+    {
+        if (cache()->get('auto_reload_ensure_ok')) return;
+        foreach (['auto_reload' => 'bool', 'auto_reload_esik' => 'dec', 'auto_reload_tutar' => 'dec'] as $kol => $tur) {
+            if (!Schema::hasColumn('musteriler', $kol)) {
+                try { Schema::table('musteriler', function ($t) use ($kol, $tur) {
+                    if ($tur === 'bool') $t->tinyInteger($kol)->default(0);
+                    else $t->decimal($kol, 10, 2)->default(0);
+                }); } catch (\Throwable $e) {}
+            }
+        }
+        cache()->put('auto_reload_ensure_ok', 1, now()->addHours(12));
+    }
+}
+// Bakiye eşiğin altına düşünce otomatik yükle. SİMÜLASYON: direkt kredi; gerçek gateway + kayıtlı kart gelince sessiz çeker.
+if (!function_exists('_autoReloadKontrol')) {
+    function _autoReloadKontrol($m)
+    {
+        _autoReloadEnsure();
+        $row = DB::table('musteriler')->where('id', $m->id)->first();
+        if (!$row || !($row->auto_reload ?? 0)) return null;
+        $esik = (float) ($row->auto_reload_esik ?? 0);
+        $tutar = (float) ($row->auto_reload_tutar ?? 0);
+        $bakiye = (float) ($row->cuzdan_bakiye ?? 0);
+        if ($tutar < 30 || $bakiye >= $esik) return null;
+        $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
+        $yeni = round($bakiye + $tutar + $bonus, 2);
+        DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
+        try { DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'otomatik', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
+            'aciklama' => 'Otomatik yükleme' . ($bonus > 0 ? " (+{$bonus}₺ bonus)" : ''), 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        return ['tutar' => $tutar + $bonus, 'bakiye' => $yeni];
+    }
+}
+Route::get('/api/m/auto-reload', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _autoReloadEnsure();
+    $row = DB::table('musteriler')->where('id', $m->id)->first();
+    return ['ok' => 1, 'aktif' => (bool) ($row->auto_reload ?? 0),
+        'esik' => (float) ($row->auto_reload_esik ?: 50), 'tutar' => (float) ($row->auto_reload_tutar ?: 100)];
+});
+Route::post('/api/m/auto-reload', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _autoReloadEnsure();
+    $aktif = $r->input('aktif') ? 1 : 0;
+    $esik = round((float) $r->input('esik'), 2);
+    $tutar = round((float) $r->input('tutar'), 2);
+    if ($aktif && $tutar < 30) return ['ok' => 0, 'hata' => 'Otomatik yükleme tutarı en az 30₺ olmalı'];
+    DB::table('musteriler')->where('id', $m->id)->update(['auto_reload' => $aktif, 'auto_reload_esik' => $esik, 'auto_reload_tutar' => $tutar, 'updated_at' => now()]);
+    $oto = $aktif ? _autoReloadKontrol($m) : null;
+    return ['ok' => 1, 'aktif' => (bool) $aktif, 'esik' => $esik, 'tutar' => $tutar, 'otomatik' => $oto,
+        'mesaj' => $aktif ? 'Otomatik yükleme açıldı ✓' : 'Otomatik yükleme kapatıldı'];
+});
 Route::get('/api/m/cuzdan', function (Request $r) {
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
     _appEnsure2();
+    $oto = _autoReloadKontrol($m);
     $bakiye = (float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0);
     $hareket = Schema::hasTable('cuzdan_hareketleri')
         ? DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->orderByDesc('id')->limit(25)->get()
             ->map(fn ($h) => ['tip' => $h->tip, 'tutar' => (float) $h->tutar, 'bakiye' => (float) $h->bakiye_sonra,
                 'aciklama' => $h->aciklama, 'tarih' => \Carbon\Carbon::parse($h->created_at)->format('d.m.Y H:i')])
         : [];
-    return ['ok' => 1, 'bakiye' => $bakiye, 'hareketler' => $hareket];
+    return ['ok' => 1, 'bakiye' => $bakiye, 'hareketler' => $hareket, 'otomatik' => $oto];
 });
 // Para yükle — ŞİMDİLİK TEST ödeme (gerçek iyzico/PayTR sonra). Yükleme bonusu (Starbucks mantığı).
 Route::post('/api/m/cuzdan-yukle', function (Request $r) {
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
     _appEnsure2();
     $tutar = round((float) $r->input('tutar'), 2);
-    if ($tutar < 1) return ['ok' => 0, 'hata' => 'Geçersiz tutar'];
+    if ($tutar < 30) return ['ok' => 0, 'hata' => 'En az 30₺ yükleyebilirsin'];
     $bonus = $tutar >= 500 ? 50.0 : ($tutar >= 250 ? 20.0 : 0.0);
     $yeni = round((float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
     DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
@@ -1667,7 +1722,7 @@ Route::post('/api/m/cuzdan-yukle-baslat', function (Request $r) {
     if (!Schema::hasColumn('odeme_islemleri', 'tur')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->string('tur', 12)->default('adisyon')); } catch (\Throwable $e) {} }
     if (!Schema::hasColumn('odeme_islemleri', 'musteri_id')) { try { Schema::table('odeme_islemleri', fn ($t) => $t->unsignedBigInteger('musteri_id')->nullable()); } catch (\Throwable $e) {} }
     $tutar = round((float) $r->input('tutar'), 2);
-    if ($tutar < 1) return ['ok' => 0, 'hata' => 'Geçersiz tutar'];
+    if ($tutar < 30) return ['ok' => 0, 'hata' => 'En az 30₺ yükleyebilirsin'];
     $saglayici = _odemeSaglayici($m->sube_id);
     $token = \Illuminate\Support\Str::random(30);
     DB::table('odeme_islemleri')->insert(['sube_id' => $m->sube_id, 'adisyon_id' => 0, 'musteri_id' => $m->id, 'tur' => 'cuzdan',
