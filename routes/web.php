@@ -1327,7 +1327,7 @@ Route::post('/api/m/demo-doldur', function (Request $r) {
         }
     }
     // 2) Müşteri puan / harcama / sipariş sayısı (halka 65/100 dolu görünsün)
-    DB::table('musteriler')->where('id', $m->id)->update(['puan' => 65, 'toplam_harcama' => 4850, 'siparis_sayisi' => 14, 'updated_at' => now()]);
+    DB::table('musteriler')->where('id', $m->id)->update(['puan' => 250, 'toplam_harcama' => 4850, 'siparis_sayisi' => 14, 'updated_at' => now()]);
     // 3) Cüzdan hareketleri (birkaç tane) — mevcut az ise ekle
     if (Schema::hasTable('cuzdan_hareketleri') && DB::table('cuzdan_hareketleri')->where('musteri_id', $m->id)->count() < 3) {
         $bak = (float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0);
