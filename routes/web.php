@@ -6626,6 +6626,25 @@ if (!function_exists('_restoKuralYorum')) {
     }
 }
 
+// GEÇİCİ TEŞHİS: bugünkü ciro (odemeler) ↔ açık/kapalı folyo mutabakatı
+Route::get('/api/patron/ciro-tani', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    $sid = $p->sube_id;
+    $from = today()->startOfDay(); $to = today()->endOfDay();
+    $odm = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+        ->where('adisyonlar.sube_id', $sid)->whereBetween('odemeler.created_at', [$from, $to])
+        ->select('odemeler.adisyon_id', 'odemeler.tip', 'odemeler.tutar', 'adisyonlar.durum as ad_durum', 'adisyonlar.kanal')
+        ->orderBy('odemeler.adisyon_id')->get();
+    $kirilim = $odm->groupBy(fn ($o) => $o->kanal . '/' . $o->ad_durum)->map(fn ($g) => ['adet' => $g->count(), 'tutar' => (float) $g->sum('tutar')]);
+    return ['ok' => 1, 'sube' => $sid,
+        'ciro_odemeler' => (float) $odm->sum('tutar'), 'odeme_adet' => $odm->count(),
+        'kirilim' => $kirilim,
+        'acik_masali' => (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereNotNull('masa_id')->count(),
+        'acik_masasiz' => (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereNull('masa_id')->count(),
+        'acik_masasiz_tutar' => (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereNull('masa_id')->sum('toplam'),
+        'odendi_bugun' => (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count(),
+        'detay' => $odm];
+});
 Route::get('/api/patron/ozet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
