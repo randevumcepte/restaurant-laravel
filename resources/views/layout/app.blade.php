@@ -44,6 +44,7 @@
         ['/dahili-yonetim', '☎️', 'Dahili Yönetimi'],
         ['/freepbx-ayar', '🔌', 'FreePBX API'],
         ['/raporlar', '📈', 'Raporlar'],
+        ['/garson-performans', '🏅', 'Garson Performans'],
         ['/muhasebe', '💰', 'Muhasebe / Cari'],
         ['/edonusum', '🧾', 'E-Dönüşüm'],
         ['/muhasebe-entegrasyon', '📑', 'ERP / Muhasebe Aktarım'],

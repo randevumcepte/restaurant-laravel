@@ -6247,6 +6247,21 @@ Route::get('/api/patron/benim-atamam', function (Request $r) {
 });
 
 // ---------------- GARSON PERFORMANS + ISI HARITASI ----------------
+// WEB PANEL: Garson Performans (Flutter garson_performans_screen web karşılığı — servis sunucuda token'sız)
+if (!function_exists('_webSubeId')) {
+    function _webSubeId()
+    {
+        try { if (function_exists('_aktifSubeId')) { $s = _aktifSubeId(); if ($s) return (int) $s; } } catch (\Throwable $e) {}
+        return (int) (DB::table('subeler')->value('id') ?: 2);
+    }
+}
+Route::get('/garson-performans', function () {
+    $sid = _webSubeId();
+    $period = in_array(request('period'), ['gunluk', 'haftalik', 'aylik', 'yillik']) ? request('period') : 'gunluk';
+    $rapor = (new \App\Services\GarsonPerformans($sid))->rapor($period, null);
+    $garsonlar = $rapor['garsonlar'] ?? [];
+    return view('garson_performans', compact('garsonlar', 'period'));
+});
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
 Route::get('/api/patron/garson-performans', function (Request $r) {
     $p = _apiPersonel($r);
