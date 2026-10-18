@@ -7030,6 +7030,158 @@ Route::post('/barkod/sil', function (Request $r) {
     try { DB::table('barkodlar')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->delete(); return redirect('/barkod')->with('ok', 'Barkod silindi.'); }
     catch (\Throwable $e) { return redirect('/barkod')->with('hata', 'Silinemedi.'); }
 });
+// ===== WEB PANEL: Yazıcı Ayarları — Flutter yazici_ayarlari_screen karşılığı =====
+Route::get('/yazici-ayarlari', function () {
+    $sid = _webSubeId();
+    $ayar = [];
+    try {
+        if (Schema::hasTable('ayarlar')) {
+            $on = 'yazici_' . $sid . '_';
+            foreach (DB::table('ayarlar')->where('anahtar', 'like', $on . '%')->pluck('deger', 'anahtar') as $k => $v) $ayar[substr($k, strlen($on))] = $v;
+        }
+    } catch (\Throwable $e) { $ayar = []; }
+    return view('yazici_ayarlari', compact('ayar', 'sid'));
+});
+Route::post('/yazici-ayarlari/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (!Schema::hasTable('ayarlar')) Schema::create('ayarlar', function ($t) { $t->string('anahtar', 60)->primary(); $t->text('deger')->nullable(); });
+        $on = 'yazici_' . $sid . '_';
+        $degerler = ['ip' => mb_substr(trim((string) $r->ip), 0, 60), 'port' => (string) (preg_replace('/\D+/', '', (string) $r->port) ?: '9100'),
+            'dar' => ((string) $r->dar === '1') ? '1' : '0', 'turkce' => ((string) $r->turkce === '0') ? '0' : '1', 'kod' => (string) (preg_replace('/\D+/', '', (string) $r->kod) ?: '13'),
+            'cekmece' => $r->has('cekmece') ? '1' : '0', 'mutfak_mod' => in_array((string) $r->mutfak_mod, ['ekran', 'yazici', 'ikisi'], true) ? (string) $r->mutfak_mod : 'ekran',
+            'mutfak_ip' => mb_substr(trim((string) $r->mutfak_ip), 0, 60), 'bar_ip' => mb_substr(trim((string) $r->bar_ip), 0, 60), 'izgara_ip' => mb_substr(trim((string) $r->izgara_ip), 0, 60)];
+        foreach ($degerler as $k => $v) DB::table('ayarlar')->updateOrInsert(['anahtar' => $on . $k], ['deger' => $v]);
+        return redirect('/yazici-ayarlari')->with('yazici_ok', 1);
+    } catch (\Throwable $e) { return redirect('/yazici-ayarlari')->with('yazici_hata', 'Kaydedilemedi.'); }
+});
+// ===== WEB PANEL: Bağlı Cihazlar — Flutter bagli_cihazlar_screen karşılığı =====
+Route::get('/bagli-cihazlar', function () {
+    $sube = _webSubeId();
+    $cihazlar = []; $yazarkasa = null; $esikSn = 120; $hata = false;
+    try {
+        if (function_exists('_restoCihazEnsure')) { try { _restoCihazEnsure(); } catch (\Throwable $e) {} }
+        if (Schema::hasTable('cihazlar')) {
+            $now = now();
+            $gecen = function ($sn) { if ($sn === null) return 'hiç'; if ($sn < 60) return 'az önce'; if ($sn < 3600) return floor($sn / 60) . ' dk önce'; if ($sn < 86400) return floor($sn / 3600) . ' sa önce'; return floor($sn / 86400) . ' gün önce'; };
+            $cihazlar = DB::table('cihazlar')->where('sube_id', $sube)->orderByDesc('son_gorulme')->get()->map(function ($c) use ($now, $esikSn, $gecen) {
+                $sg = $c->son_gorulme ? \Carbon\Carbon::parse($c->son_gorulme) : null; $sn = $sg ? (int) $sg->diffInSeconds($now) : null;
+                return ['id' => (int) $c->id, 'ad' => $c->ad, 'tip' => $c->tip, 'platform' => $c->platform ?? null, 'surum' => $c->surum ?? null, 'ip' => $c->ip ?? null, 'rol' => $c->rol ?? null,
+                    'online' => $sn !== null && $sn <= $esikSn, 'son_gorulme' => $gecen($sn), 'manuel' => (int) ($c->manuel ?? 0) === 1, 'port' => $c->port ?? null, 'marka' => $c->marka ?? null, 'seri_no' => $c->seri_no ?? null, 'aktif' => (int) ($c->aktif ?? 1) === 1, 'notlar' => $c->notlar ?? null];
+            })->sortByDesc('manuel')->values()->all();
+        } else { $hata = true; }
+        $ayar = Schema::hasTable('edonusum_ayarlari') ? DB::table('edonusum_ayarlari')->where('sube_id', $sube)->first() : null;
+        if ($ayar) {
+            $aktif = (($ayar->fis_modu ?? '') === 'okc') && !empty($ayar->okc_aktif);
+            $sonFis = Schema::hasTable('e_faturalar') ? DB::table('e_faturalar')->where('sube_id', $sube)->where('tip', 'okc_fis')->orderByDesc('id')->first() : null;
+            $durum = 'kapali'; $mesaj = 'Yazarkasa modu kapalı (e-Arşiv kullanılıyor).';
+            if ($aktif) {
+                if ($sonFis && $sonFis->durum === 'hata') { $durum = 'hata'; $mesaj = 'Aktif ama son fişte HATA.'; }
+                elseif ($sonFis && $sonFis->durum === 'basildi') { $durum = 'online'; $mesaj = 'Aktif · son mali fiş başarıyla basıldı.'; }
+                elseif ($sonFis && $sonFis->durum === 'simulasyon') { $durum = 'test'; $mesaj = 'Aktif ama fiş simülasyonda.'; }
+                else { $durum = 'bekliyor'; $mesaj = 'Aktif · henüz mali fiş basılmadı.'; }
+            }
+            $yazarkasa = ['marka' => $ayar->okc_marka ?? null, 'ip' => $ayar->okc_ip ?? null, 'port' => $ayar->okc_port ?? null, 'aktif' => $aktif, 'durum' => $durum, 'mesaj' => $mesaj, 'son_fis' => $sonFis ? \Carbon\Carbon::parse($sonFis->created_at)->format('d.m H:i') : null];
+        }
+    } catch (\Throwable $e) { $hata = true; }
+    return view('bagli_cihazlar', compact('cihazlar', 'yazarkasa', 'esikSn', 'hata'));
+});
+Route::post('/bagli-cihazlar/ad', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        $ad = mb_substr(trim((string) $r->ad), 0, 80); $id = (int) $r->id;
+        if ($ad === '') return back()->with('bc_hata', 'Cihaz adı boş olamaz.');
+        if ($id > 0 && Schema::hasTable('cihazlar')) {
+            if (!DB::table('cihazlar')->where('id', $id)->where('sube_id', $sube)->exists()) return back()->with('bc_hata', 'Cihaz bulunamadı.');
+            DB::table('cihazlar')->where('id', $id)->update(['ad' => $ad, 'updated_at' => now()]);
+            return back()->with('bc_mesaj', 'Cihaz adı güncellendi.');
+        }
+    } catch (\Throwable $e) {}
+    return back()->with('bc_hata', 'Güncellenemedi.');
+});
+Route::post('/bagli-cihazlar/sil', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        $id = (int) $r->id;
+        if ($id > 0 && Schema::hasTable('cihazlar')) { DB::table('cihazlar')->where('id', $id)->where('sube_id', $sube)->delete(); return back()->with('bc_mesaj', 'Cihaz silindi.'); }
+    } catch (\Throwable $e) {}
+    return back()->with('bc_hata', 'Silinemedi.');
+});
+// ===== WEB PANEL: İşletme Konum (geofence) — Flutter isletme_konum_screen karşılığı =====
+Route::get('/isletme-konum', function () {
+    $sid = _webSubeId();
+    try { if (function_exists('_mesaiKur')) _mesaiKur(); } catch (\Throwable $e) {}
+    $sube = DB::table('subeler')->where('id', $sid)->first();
+    return view('isletme_konum', compact('sube'));
+});
+Route::post('/isletme-konum/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_mesaiKur')) _mesaiKur();
+        $upd = [];
+        if (Schema::hasColumn('subeler', 'mesai_lat') && $r->filled('lat') && is_numeric($r->input('lat'))) $upd['mesai_lat'] = (float) $r->input('lat');
+        if (Schema::hasColumn('subeler', 'mesai_lng') && $r->filled('lng') && is_numeric($r->input('lng'))) $upd['mesai_lng'] = (float) $r->input('lng');
+        if (Schema::hasColumn('subeler', 'mesai_yaricap')) { $yr = (int) ($r->input('yaricap') ?: 150); if ($yr < 100) $yr = 100; if ($yr > 300) $yr = 300; $upd['mesai_yaricap'] = $yr; }
+        if (Schema::hasColumn('subeler', 'adres') && $r->has('adres')) $upd['adres'] = trim((string) $r->input('adres')) ?: null;
+        if ($upd) DB::table('subeler')->where('id', $sid)->update($upd);
+        return redirect('/isletme-konum')->with('ok', 'İşletme konumu kaydedildi ✓');
+    } catch (\Throwable $e) { return redirect('/isletme-konum')->with('hata', 'Kaydedilemedi.'); }
+});
+// ===== WEB PANEL: Puantaj (Mesai) — Flutter puantaj_screen karşılığı (salt-okunur) =====
+Route::get('/puantaj', function (\Illuminate\Http\Request $r) {
+    $sid = _webSubeId();
+    $period = in_array($r->query('period'), ['gun', 'hafta', 'ay']) ? $r->query('period') : 'gun';
+    $personeller = [];
+    try {
+        if (function_exists('_mesaiKur')) _mesaiKur();
+        try { if (function_exists('_mesaiOtoKapat')) _mesaiOtoKapat($sid); } catch (\Throwable $e) {}
+        if (Schema::hasTable('personel_mesai') && function_exists('_mesaiDk')) {
+            $from = $period === 'ay' ? now()->startOfMonth() : ($period === 'hafta' ? now()->startOfWeek() : now()->startOfDay());
+            $to = now()->endOfDay();
+            $rows = DB::table('personel_mesai as m')->leftJoin('personeller as pr', 'm.personel_id', '=', 'pr.id')->where('m.sube_id', $sid)->whereBetween('m.giris_at', [$from, $to])->orderBy('m.giris_at', 'desc')->get(['m.*', 'pr.ad as personel_ad']);
+            $grup = [];
+            foreach ($rows as $m) {
+                $pid = (int) $m->personel_id;
+                if (!isset($grup[$pid])) $grup[$pid] = ['ad' => $m->personel_ad ?: ('#' . $pid), 'toplam_dk' => 0, 'acik' => false, 'kayitlar' => []];
+                $dk = _mesaiDk($m->giris_at, $m->cikis_at); $acik = ($m->durum === 'acik');
+                $grup[$pid]['toplam_dk'] += $dk; if ($acik) $grup[$pid]['acik'] = true;
+                $grup[$pid]['kayitlar'][] = ['tarih' => \Carbon\Carbon::parse($m->giris_at)->format('d.m.Y'), 'giris' => \Carbon\Carbon::parse($m->giris_at)->format('H:i'),
+                    'cikis' => $m->cikis_at ? \Carbon\Carbon::parse($m->cikis_at)->format('H:i') : null, 'durum' => $m->durum, 'cikis_tip' => $m->cikis_tip, 'dakika' => $dk, 'adim' => (int) $m->adim];
+            }
+            uasort($grup, fn ($a, $b) => $b['toplam_dk'] <=> $a['toplam_dk']);
+            $personeller = array_values($grup);
+        }
+    } catch (\Throwable $e) { $personeller = []; }
+    return view('puantaj', compact('personeller', 'period'));
+});
+// ===== WEB PANEL: Salon Şema (dijital ikiz) — Flutter salon_sema_screen karşılığı =====
+Route::get('/salon-sema', function () {
+    $sid = _webSubeId();
+    $veri = null; $masalar = collect();
+    try {
+        if (function_exists('_salonSemaTablo')) _salonSemaTablo();
+        $row = DB::table('salon_sema')->where('sube_id', $sid)->first();
+        $veri = ($row && $row->veri) ? json_decode($row->veri, true) : null;
+        if (!is_array($veri)) $veri = null;
+        $masalar = DB::table('masalar')->where('sube_id', $sid)->orderBy('bolge_id')->orderBy('ad')->get(['id', 'ad', 'kapasite', 'sekil']);
+    } catch (\Throwable $e) { $veri = null; $masalar = collect(); }
+    return view('salon_sema', compact('veri', 'masalar'));
+});
+Route::post('/salon-sema/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_salonSemaTablo')) _salonSemaTablo();
+        $veriRaw = (string) $r->input('veri', '');
+        $veri = json_decode($veriRaw, true);
+        if (!is_array($veri)) return response()->json(['ok' => 0, 'hata' => 'Geçersiz veri']);
+        $var = DB::table('salon_sema')->where('sube_id', $sid)->first();
+        if ($var) DB::table('salon_sema')->where('id', $var->id)->update(['veri' => $veriRaw, 'updated_at' => now()]);
+        else DB::table('salon_sema')->insert(['sube_id' => $sid, 'veri' => $veriRaw, 'updated_at' => now()]);
+        $mts = $veri['masalar'] ?? [];
+        if (is_array($mts)) foreach ($mts as $mid => $m) { if (!is_array($m)) continue; DB::table('masalar')->where('id', (int) $mid)->where('sube_id', $sid)->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]); }
+        return response()->json(['ok' => 1]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Kaydedilemedi']); }
+});
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
 Route::get('/api/patron/garson-performans', function (Request $r) {
     $p = _apiPersonel($r);

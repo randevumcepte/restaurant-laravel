@@ -33,11 +33,13 @@
         ['/uretim-riski', '⚠️', 'Üretim Riski'],
         ['/barkod', '🔖', 'Barkod'],
         ['/masa-yonetim', '🪑', 'Masa Yönetim'],
+        ['/salon-sema', '🗺️', 'Salon Şema'],
         ['/garson-cagrilari', '🔔', 'Garson Çağrıları'],
         ['/satinalma', '🧾', 'Satın Alma'],
         ['/teklif', '📊', 'Teklifler'],
         ['/musteriler', '👥', 'Müşteriler'],
         ['/personel', '🧑‍🍳', 'Personel'],
+        ['/puantaj', '⏱️', 'Puantaj'],
         ['/rezervasyon', '📅', 'Rezervasyon'],
         ['/sadakat', '🎁', 'Sadakat'],
         ['/odul-dogrula', '✅', 'Ödül/Kupon Doğrula'],
@@ -66,6 +68,9 @@
         ['/copilot', '🤖', 'AI Copilot'],
         ['/asistan-egitim', '🎓', 'Müşteri AI Eğitimi'],
         ['/fiyatlandirma', '🏷️', 'Fiyatlandırma'],
+        ['/yazici-ayarlari', '🖨️', 'Yazıcı Ayarları'],
+        ['/bagli-cihazlar', '🖥️', 'Bağlı Cihazlar'],
+        ['/isletme-konum', '📍', 'İşletme Konum'],
     ];
     $path = '/' . trim(request()->path(), '/');
     if ($path === '/') $path = '/';
