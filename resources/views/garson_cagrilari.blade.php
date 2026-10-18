@@ -1,10 +1,12 @@
 @extends('layout.app')
 @section('title', 'Garson Çağrıları')
-@section('baslik', '🔔 Garson Çağrıları')
+@section('rk_ikon', 'notifications_active')
+@section('baslik', 'Garson Çağrıları')
+@section('rk_alt', 'QR menüden gelen çağrılar buraya anında düşer')
 
 @section('content')
 @php
-  // Tip -> etiket + renk + ikon (Flutter garson_cagrilari_screen ile ayni semantik)
+  // Flutter garson_cagrilari_screen ile BİREBİR semantik: tip -> etiket + renk + ikon.
   $tipAdi = function ($t) {
     return $t === 'servise_hazir' ? 'Servise hazır (mutfak)'
       : ($t === 'tasima' ? 'Taşıma talebi'
@@ -13,12 +15,19 @@
       : ($t === 'acil' ? 'Acil çağrı'
       : ($t === 'siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')))));
   };
+  // Flutter _tipIkon karşılığı material-icons-outlined
   $tipIkon = function ($t) {
-    return $t === 'servise_hazir' ? '🍽️'
-      : ($t === 'tasima' ? '↔️'
-      : ($t === 'odeme' ? '💵'
-      : ($t === 'hesap' ? '💳'
-      : ($t === 'acil' ? '🔴' : '🙋'))));
+    return $t === 'servise_hazir' ? 'room_service'
+      : ($t === 'tasima' ? 'swap_horiz'
+      : ($t === 'odeme' ? 'payments'
+      : ($t === 'hesap' ? 'credit_card'
+      : ($t === 'siparis' ? 'receipt_long' : 'notifications_active'))));
+  };
+  // Flutter vurgu rengi: hesap=amber, taşıma=mor, ödeme/acil/diğer=kırmızı, servise_hazir=yeşil
+  $tipRenk = function ($t) {
+    return $t === 'hesap' ? 'var(--amber)'
+      : ($t === 'tasima' ? 'var(--mor1)'
+      : ($t === 'servise_hazir' ? 'var(--yesil)' : 'var(--kirmizi)'));
   };
   $sureYazi = function ($sn) {
     $sn = $sn < 0 ? 0 : $sn;
@@ -26,92 +35,130 @@
   };
 @endphp
 
-{{-- 10 sn'de bir sayfa kendini yeniler --}}
+{{-- 10 sn'de bir sayfa kendini yeniler (Flutter 4 sn poll karşılığı) --}}
 <meta http-equiv="refresh" content="10">
 
 @if (session('ok'))
-  <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-2.5 mb-4 text-sm font-semibold">{{ session('ok') }}</div>
+  <div class="rk-flash ok">✅ {{ session('ok') }}</div>
 @endif
 @if (session('hata') || !empty($hata))
-  <div class="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-4 py-2.5 mb-4 text-sm font-semibold">{{ session('hata') ?: $hata }}</div>
+  <div class="rk-flash err">⚠️ {{ session('hata') ?: $hata }}</div>
 @endif
 
-<div class="flex items-center gap-3 mb-5 flex-wrap">
-  <div class="bg-white rounded-xl px-4 py-2 shadow-sm text-sm">
-    <span class="text-slate-400">Bekleyen</span>
-    <b class="ml-1 {{ count($bekleyen) ? 'text-rose-600' : 'text-slate-800' }}">{{ count($bekleyen) }}</b>
+{{-- ÖZET ŞERİDİ: Bekleyen / Son karşılanan + Tümünü karşıla --}}
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+  <div class="rk-card" style="padding:10px 16px;display:flex;align-items:center;gap:8px">
+    <span class="material-icons-outlined" style="color:var(--kirmizi)">notifications_active</span>
+    <span class="rk-sub">Bekleyen</span>
+    <b style="font-size:17px;color:{{ count($bekleyen) ? 'var(--kirmizi)' : 'var(--ink)' }}">{{ count($bekleyen) }}</b>
   </div>
-  <div class="bg-white rounded-xl px-4 py-2 shadow-sm text-sm">
-    <span class="text-slate-400">Son karşılanan</span>
-    <b class="text-slate-800 ml-1">{{ count($karsilanan) }}</b>
+  <div class="rk-card" style="padding:10px 16px;display:flex;align-items:center;gap:8px">
+    <span class="material-icons-outlined" style="color:var(--yesil)">done_all</span>
+    <span class="rk-sub">Son karşılanan</span>
+    <b style="font-size:17px;color:var(--ink)">{{ count($karsilanan) }}</b>
   </div>
   @if (count($bekleyen))
-    <form method="POST" action="/garson-cagrilari/karsilandi" class="ml-auto">
+    <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0 0 0 auto">
       @csrf
       <input type="hidden" name="hepsi" value="1">
-      <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl px-4 py-2 shadow-sm">✓ Tümünü karşıla</button>
+      <button type="submit" class="rk-btn" style="background:var(--yesil)">
+        <span class="material-icons-outlined" style="font-size:18px">done_all</span> Tümünü karşıla
+      </button>
     </form>
   @endif
-  <span class="text-[11px] text-slate-400 {{ count($bekleyen) ? '' : 'ml-auto' }}">10 sn'de bir otomatik yenilenir</span>
+  <span class="rk-sub" style="font-size:11.5px;{{ count($bekleyen) ? '' : 'margin-left:auto' }}">10 sn'de bir otomatik yenilenir</span>
 </div>
 
-{{-- BEKLEYEN ÇAĞRILAR --}}
+{{-- ================= BEKLEYEN ÇAĞRILAR ================= --}}
+<div class="rk-bolum">
+  <span class="cubuk" style="background:var(--kirmizi)"></span>
+  <span class="b">Bekleyen Çağrılar</span>
+  @if (count($bekleyen))
+    <span class="sayi" style="background:color-mix(in srgb,var(--kirmizi) 13%,transparent);color:var(--kirmizi)">{{ count($bekleyen) }}</span>
+  @endif
+</div>
+
 @if (!count($bekleyen))
-  <div class="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm mb-6">
-    <div class="text-4xl mb-2">🔔</div>
-    <div class="font-semibold text-slate-500">Bekleyen çağrı yok</div>
-    <div class="text-xs mt-1">QR menüden gelen çağrılar buraya anında düşer.</div>
+  <div class="rk-card" style="text-align:center;padding:48px 20px;margin-bottom:24px">
+    <span class="material-icons-outlined" style="font-size:56px;color:var(--sub)">notifications_none</span>
+    <div style="font-size:16px;font-weight:700;color:var(--sub);margin-top:12px">Bekleyen çağrı yok</div>
+    <div class="rk-sub" style="font-size:12.5px;margin-top:4px">QR menüden gelen çağrılar buraya anında düşer.</div>
   </div>
 @else
-  <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 mb-6">
+  <div class="rk-grid" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-bottom:24px">
     @foreach ($bekleyen as $c)
       @php
         $geciken = $c['saniye'] >= 60;
-        $hesapMi = $c['tip'] === 'hesap';
-        $vurgu = $hesapMi ? 'amber' : ($c['tip'] === 'tasima' ? 'violet' : 'rose');
+        $vurgu = $tipRenk($c['tip']);
+        $tasimaMi = $c['tip'] === 'tasima';
       @endphp
-      <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 {{ $geciken ? 'ring-2 ring-rose-300' : '' }}">
-        <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-{{ $vurgu }}-50">{{ $tipIkon($c['tip']) }}</div>
-        <div class="min-w-0 flex-1">
-          <div class="font-extrabold text-slate-800 text-lg truncate">
-            {{ $c['tip'] === 'tasima' && $c['hedef'] ? ($c['masa'] . ' → ' . $c['hedef']) : $c['masa'] }}
+      <div class="rk-card" style="display:flex;align-items:center;gap:13px;padding:16px;{{ $geciken ? 'border:1.6px solid var(--kirmizi)' : '' }}">
+        {{-- tip ikonu (yumuşak renkli kutu) --}}
+        <div style="width:50px;height:50px;flex:0 0 auto;border-radius:14px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,{{ $vurgu }} 16%,transparent)">
+          <span class="material-icons-outlined" style="font-size:26px;color:{{ $vurgu }}">{{ $tipIkon($c['tip']) }}</span>
+        </div>
+        {{-- masa + tip --}}
+        <div style="min-width:0;flex:1">
+          <div style="font-size:19px;font-weight:900;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ $tasimaMi && $c['hedef'] ? ($c['masa'] . ' → ' . $c['hedef']) : $c['masa'] }}
           </div>
-          <div class="text-xs font-bold text-{{ $vurgu }}-600">{{ $tipAdi($c['tip']) }}</div>
+          <div style="font-size:13.5px;font-weight:700;color:{{ $vurgu }};margin-top:2px">{{ $tipAdi($c['tip']) }}</div>
         </div>
-        <div class="text-right">
-          <div class="font-extrabold {{ $geciken ? 'text-rose-600' : 'text-indigo-600' }}">{{ $sureYazi($c['saniye']) }}</div>
-          <div class="text-[11px] text-slate-400">{{ $c['saat'] }}</div>
+        {{-- geçen süre + saat --}}
+        <div style="text-align:right">
+          <div style="font-size:16px;font-weight:800;color:{{ $geciken ? 'var(--kirmizi)' : 'var(--gold)' }}">{{ $sureYazi($c['saniye']) }}</div>
+          <div class="rk-sub" style="font-size:11px">{{ $c['saat'] }}</div>
         </div>
-        <form method="POST" action="/garson-cagrilari/karsilandi">
+        {{-- karşıla --}}
+        <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0">
           @csrf
           <input type="hidden" name="id" value="{{ $c['id'] }}">
-          <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl px-4 py-3 shadow-sm" title="Karşılandı">✓</button>
+          <button type="submit" class="rk-btn" title="Karşıla" style="background:{{ $tasimaMi ? 'var(--mor1)' : 'var(--yesil)' }};padding:12px 16px;font-size:16px">
+            @if ($tasimaMi)
+              <span class="material-icons-outlined" style="font-size:18px">swap_horiz</span> Taşı
+            @else
+              ✓
+            @endif
+          </button>
         </form>
       </div>
     @endforeach
   </div>
 @endif
 
-{{-- SON KARŞILANAN ÇAĞRILAR --}}
+{{-- ================= SON KARŞILANAN ÇAĞRILAR ================= --}}
 @if (count($karsilanan))
-  <div class="text-sm font-bold text-slate-500 mb-2">Son karşılananlar</div>
-  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="rk-bolum">
+    <span class="cubuk" style="background:var(--yesil)"></span>
+    <span class="b">Son Karşılananlar</span>
+    <span class="sayi" style="background:color-mix(in srgb,var(--yesil) 13%,transparent);color:var(--yesil)">{{ count($karsilanan) }}</span>
+  </div>
+  <div class="rk-tablo">
+    <table>
       <thead>
-        <tr class="text-left text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
-          <th class="px-4 py-2.5 font-semibold">Masa</th>
-          <th class="px-4 py-2.5 font-semibold">Tip</th>
-          <th class="px-4 py-2.5 font-semibold">Saat</th>
-          <th class="px-4 py-2.5 font-semibold">Durum</th>
+        <tr>
+          <th>Masa</th>
+          <th>Tip</th>
+          <th>Saat</th>
+          <th class="sag">Durum</th>
         </tr>
       </thead>
       <tbody>
         @foreach ($karsilanan as $c)
-          <tr class="border-b border-slate-50 last:border-0">
-            <td class="px-4 py-2.5 font-semibold text-slate-700">{{ $c['masa'] }}</td>
-            <td class="px-4 py-2.5 text-slate-500">{{ $tipIkon($c['tip']) }} {{ $tipAdi($c['tip']) }}</td>
-            <td class="px-4 py-2.5 text-slate-400">{{ $c['saat'] }}</td>
-            <td class="px-4 py-2.5"><span class="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full px-2.5 py-0.5">✓ Karşılandı</span></td>
+          <tr>
+            <td style="font-weight:700;color:var(--sub2)">
+              {{ $c['tip'] === 'tasima' && $c['hedef'] ? ($c['masa'] . ' → ' . $c['hedef']) : $c['masa'] }}
+            </td>
+            <td class="rk-sub">
+              <span class="material-icons-outlined" style="font-size:17px;color:{{ $tipRenk($c['tip']) }};vertical-align:-3px">{{ $tipIkon($c['tip']) }}</span>
+              {{ $tipAdi($c['tip']) }}
+            </td>
+            <td class="rk-sub">{{ $c['saat'] }}</td>
+            <td class="sag">
+              <span class="rk-rozet" style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 40%,transparent);background:color-mix(in srgb,var(--yesil) 13%,transparent)">
+                <span class="material-icons-outlined" style="font-size:14px">check</span> Karşılandı
+              </span>
+            </td>
           </tr>
         @endforeach
       </tbody>
