@@ -1,102 +1,154 @@
 @extends('layout.app')
+@section('rk_ikon', 'schedule')
+@section('baslik', 'Puantaj')
 @section('title', 'Puantaj')
-@section('baslik', '⏱️ Puantaj (Mesai)')
 
 @section('content')
 @php
+  // Flutter puantaj_screen (masaüstü) BİREBİR — kim kaçta geldi/gitti, çalışma süresi, vardiya adımı.
+  // Salt-okunur. Route değişkenleri: $personeller[], $period (gun/hafta/ay).
   $periodlar = ['gun' => 'Bugün', 'hafta' => 'Bu Hafta', 'ay' => 'Bu Ay'];
-  $period = in_array($period ?? 'gun', ['gun', 'hafta', 'ay']) ? ($period ?? 'gun') : 'gun';
+  $period = in_array($period ?? 'gun', array_keys($periodlar)) ? ($period ?? 'gun') : 'gun';
+  $personeller = $personeller ?? [];
 
-  $toplamDk = 0;
-  foreach (($personeller ?? []) as $pp) { $toplamDk += (int) ($pp['toplam_dk'] ?? 0); }
-  $maxDk = 0;
-  foreach (($personeller ?? []) as $pp) { $maxDk = max($maxDk, (int) ($pp['toplam_dk'] ?? 0)); }
+  $toplamDk = 0; $maxDk = 0;
+  foreach ($personeller as $pp) {
+    $d = (int) ($pp['toplam_dk'] ?? 0);
+    $toplamDk += $d; $maxDk = max($maxDk, $d);
+  }
 
-  $sureStr = function ($dk) {
-    $dk = (int) $dk;
-    $s = intdiv($dk, 60); $d = $dk % 60;
-    return $s > 0 ? ($s . 's ' . $d . 'dk') : ($d . 'dk');
+  // Flutter _sure: dk → "Xs Yd" / "Yd"
+  $sure = function ($dk) {
+    $dk = (int) $dk; $s = intdiv($dk, 60); $d = $dk % 60;
+    return $s > 0 ? ($s . 's ' . $d . 'd') : ($d . 'd');
   };
+  $sayi = fn ($v) => number_format((int) $v, 0, ',', '.');
 @endphp
 
-<div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-  <div class="inline-flex bg-white rounded-xl p-1 shadow-sm">
+{{-- Dönem sekmeleri (Flutter period seçici: gün/hafta/ay → ?period=) --}}
+<div class="rk-bolum" style="justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
     @foreach ($periodlar as $k => $ad)
       <a href="/puantaj?period={{ $k }}"
-         class="px-4 py-2 rounded-lg text-sm font-semibold {{ $period === $k ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100' }}">{{ $ad }}</a>
+         class="rk-btn {{ $period === $k ? '' : 'bos' }}"
+         style="{{ $period === $k ? 'background:var(--mor1)' : '' }}">{{ $ad }}</a>
     @endforeach
   </div>
-  <div class="flex gap-3 text-sm">
-    <div class="bg-white rounded-xl px-4 py-2 shadow-sm"><span class="text-slate-400">Personel</span> <b class="text-slate-800 ml-1">{{ count($personeller ?? []) }}</b></div>
-    <div class="bg-white rounded-xl px-4 py-2 shadow-sm"><span class="text-slate-400">Toplam süre</span> <b class="text-slate-800 ml-1">{{ $sureStr($toplamDk) }}</b></div>
-  </div>
+  @if (!empty($personeller))
+    <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
+      <span class="rk-rozet" style="color:var(--mor1);border-color:color-mix(in srgb,var(--mor1) 45%,transparent);background:color-mix(in srgb,var(--mor1) 12%,transparent)">
+        <span class="material-icons-outlined" style="font-size:16px">group</span>{{ count($personeller) }} personel
+      </span>
+      <span class="rk-rozet" style="color:var(--sub2);border-color:var(--line);background:var(--card2)">
+        <span class="material-icons-outlined" style="font-size:16px">timer</span>{{ $sure($toplamDk) }} toplam
+      </span>
+    </div>
+  @endif
+</div>
+
+{{-- Çalışma Süreleri bölüm başlığı (Flutter: puantaj listesi) --}}
+<div class="rk-bolum">
+  <span class="cubuk" style="background:var(--mor1)"></span>
+  <span class="b">Çalışma Süreleri</span>
+  @if (!empty($personeller))
+    <span class="sayi" style="color:var(--mor1);background:color-mix(in srgb,var(--mor1) 13%,transparent)">{{ count($personeller) }}</span>
+  @endif
 </div>
 
 @if (empty($personeller))
-  <div class="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm">Bu dönemde mesai kaydı yok.</div>
+  <div class="rk-card" style="text-align:center;padding:38px">
+    <span class="rk-sub">Bu dönemde mesai kaydı yok.</span>
+  </div>
 @else
-  <div class="grid gap-4 lg:grid-cols-2">
+  {{-- Flutter: personel bazlı kartlar — genişken ikili grid --}}
+  <div class="rk-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));align-items:start">
     @foreach ($personeller as $i => $p)
       @php
-        $oran = $maxDk > 0 ? round(($p['toplam_dk'] ?? 0) / $maxDk * 100) : 0;
+        $ad = $p['ad'] ?? '';
+        $pDk = (int) ($p['toplam_dk'] ?? 0);
+        $acik = !empty($p['acik']);
         $kayitlar = $p['kayitlar'] ?? [];
+        $oran = $maxDk > 0 ? round($pDk / $maxDk * 100) : 0;
+        $bas = mb_substr($ad !== '' ? $ad : '?', 0, 1);
       @endphp
-      <div class="bg-white rounded-2xl p-5 shadow-sm">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white {{ $i === 0 ? 'bg-amber-400' : ($i === 1 ? 'bg-slate-400' : ($i === 2 ? 'bg-orange-400' : 'bg-indigo-400')) }}">
-            {{ mb_substr($p['ad'] ?: '?', 0, 1) }}
+      <div class="rk-card">
+        {{-- Üst satır: avatar + ad + mesaide rozeti + toplam süre (sağ) --}}
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:50%;flex:0 0 34px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--mor1);background:color-mix(in srgb,var(--mor1) 15%,transparent)">{{ $bas }}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15.5px;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $ad ?: '-' }}</div>
+            <div style="font-size:11.5px;color:var(--sub)">
+              {{ count($kayitlar) }} kayıt
+              @if ($acik)· <span style="color:var(--yesil);font-weight:700">mesaide</span>@endif
+            </div>
           </div>
-          <div class="min-w-0">
-            <div class="font-bold text-slate-800 truncate">{{ $p['ad'] ?: '-' }}</div>
-            <div class="text-xs text-slate-400">{{ count($kayitlar) }} kayıt @if (!empty($p['acik']))· <span class="text-emerald-600 font-semibold">mesaide</span>@endif</div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:800;color:var(--mor1)">{{ $sure($pDk) }}</div>
+            <div style="font-size:10.5px;color:var(--sub)">toplam</div>
           </div>
-          <div class="ml-auto text-right">
-            <div class="text-xl font-extrabold text-indigo-700">{{ $sureStr($p['toplam_dk'] ?? 0) }}</div>
-            <div class="text-[11px] text-slate-400">toplam</div>
-          </div>
-        </div>
-        <div class="w-full h-1.5 bg-slate-100 rounded-full mb-4 overflow-hidden">
-          <div class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full" style="width: {{ $oran }}%"></div>
+          @if ($acik)
+            <span class="rk-rozet" style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 50%,transparent);background:color-mix(in srgb,var(--yesil) 14%,transparent)">Mesaide</span>
+          @endif
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-[11px] text-slate-400 uppercase tracking-wide">
-                <th class="py-1 pr-2 font-semibold">Tarih</th>
-                <th class="py-1 px-2 font-semibold">Giriş</th>
-                <th class="py-1 px-2 font-semibold">Çıkış</th>
-                <th class="py-1 px-2 font-semibold text-right">Süre</th>
-                <th class="py-1 pl-2 font-semibold text-right">Adım</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach ($kayitlar as $k)
-                @php
-                  $acik = ($k['durum'] ?? '') === 'acik';
-                  $eksik = !$acik && in_array($k['cikis_tip'] ?? '', ['geofence', 'kapanis']);
-                @endphp
-                <tr class="border-t border-slate-100">
-                  <td class="py-2 pr-2 text-slate-500 whitespace-nowrap">{{ $k['tarih'] }}</td>
-                  <td class="py-2 px-2 text-slate-700 whitespace-nowrap">{{ $k['giris'] }}</td>
-                  <td class="py-2 px-2 whitespace-nowrap">
-                    @if ($acik)
-                      <span class="inline-flex items-center gap-1 text-emerald-600 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>devam</span>
-                    @elseif ($eksik)
-                      <span class="text-amber-600" title="Eksik çıkış ({{ $k['cikis_tip'] }})">{{ $k['cikis'] ?: '?' }} ⚠</span>
-                    @else
-                      <span class="text-slate-700">{{ $k['cikis'] ?: '?' }}</span>
-                    @endif
-                  </td>
-                  <td class="py-2 px-2 text-right font-semibold text-slate-800 whitespace-nowrap">{{ $sureStr($k['dakika'] ?? 0) }}</td>
-                  <td class="py-2 pl-2 text-right text-slate-500 whitespace-nowrap">{{ number_format((int) ($k['adim'] ?? 0), 0, ',', '.') }}</td>
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
+        {{-- Toplam süre oranı (en çok çalışana göre) --}}
+        <div style="width:100%;height:6px;border-radius:9px;background:var(--card2);overflow:hidden;margin:12px 0 4px">
+          <div style="height:100%;width:{{ $oran }}%;border-radius:9px;background:linear-gradient(90deg,var(--mor1),var(--mor2))"></div>
         </div>
+
+        {{-- Mesai kayıtları tablosu (Flutter kart: giriş/çıkış/süre/adım) --}}
+        @if (empty($kayitlar))
+          <div class="rk-sub" style="font-size:12px;padding:10px 0 2px">Kayıt yok.</div>
+        @else
+          <div class="rk-tablo" style="margin-top:12px;box-shadow:none">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tarih</th>
+                  <th>Giriş</th>
+                  <th>Çıkış</th>
+                  <th class="sag">Süre</th>
+                  <th class="sag">Adım</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach ($kayitlar as $k)
+                  @php
+                    $kAcik = ($k['durum'] ?? '') === 'acik';
+                    $tip = $k['cikis_tip'] ?? '';
+                    // Flutter: açık VEYA eksik çıkış (geofence/kapanış) → uyarı
+                    $eksik = !$kAcik && in_array($tip, ['geofence', 'kapanis']);
+                  @endphp
+                  <tr>
+                    <td style="color:var(--sub);white-space:nowrap">{{ $k['tarih'] ?? '-' }}</td>
+                    <td style="white-space:nowrap">{{ $k['giris'] ?? '-' }}</td>
+                    <td style="white-space:nowrap">
+                      @if ($kAcik)
+                        <span style="display:inline-flex;align-items:center;gap:5px;color:var(--yesil);font-weight:700">
+                          <span style="width:7px;height:7px;border-radius:50%;background:var(--yesil);display:inline-block"></span>devam
+                        </span>
+                      @elseif ($eksik)
+                        <span style="color:var(--amber)" title="Eksik çıkış ({{ $tip }})">{{ $k['cikis'] ?: '?' }} ⚠</span>
+                      @else
+                        <span>{{ $k['cikis'] ?: '?' }}</span>
+                      @endif
+                    </td>
+                    <td class="sag" style="font-weight:700;white-space:nowrap">{{ $sure($k['dakika'] ?? 0) }}</td>
+                    <td class="sag" style="color:var(--sub);white-space:nowrap">{{ $sayi($k['adim'] ?? 0) }}</td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        @endif
       </div>
     @endforeach
   </div>
 @endif
+
+<style>
+  @media (max-width:860px){
+    .rk-body .rk-grid[style*="repeat(2"]{grid-template-columns:1fr !important}
+  }
+</style>
 @endsection
