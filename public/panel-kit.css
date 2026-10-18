@@ -1,0 +1,87 @@
+/* ResteOS Web Panel — Flutter masaüstü (masaustu_kit.dart + tema_provider.dart) BİREBİR karşılığı.
+   Aydınlık varsayılan (masaüstü), gece modu body.koyu ile. Tüm renkler tema_provider'dan. */
+:root{
+  --bg:#E9ECF7; --card:#fff; --card2:#EFF1FC; --ink:#1E293B; --sub:#64748B; --sub2:#475569; --line:#E4E7F2;
+  --golge:0 5px 16px rgba(49,46,129,.08);
+  --mor1:#7C3AED; --mor2:#9D5DC8; --mavi:#4F46E5; --yesil:#10B981; --kirmizi:#F43F5E; --amber:#F59E0B; --gold:#F6CE63;
+}
+body.koyu{
+  --bg:#0B1020; --card:#161C2E; --card2:#1E2740; --ink:#F1F5F9; --sub:#94A3B8; --sub2:#CBD5E1; --line:#2D3752;
+  --golge:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+.material-icons-outlined{font-size:22px;line-height:1;vertical-align:middle;user-select:none}
+a{text-decoration:none}
+
+/* ---- Kabuk: sol sabit menü + içerik ---- */
+.rk-wrap{display:flex;min-height:100vh}
+.rk-side{width:258px;flex:0 0 258px;background:var(--card);border-right:1px solid var(--line);position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:30}
+.rk-side-head{background:linear-gradient(135deg,var(--mor1),var(--mavi));padding:18px 18px 16px;color:#fff}
+.rk-side-head .ad{font-size:20px;font-weight:800;line-height:1.1}
+.rk-side-head .sube{font-size:13.5px;margin-top:4px;opacity:.97}
+.rk-side-head .kul{font-size:11.5px;color:#E9D5FF;margin-top:1px}
+.rk-menu{flex:1;overflow-y:auto;padding:6px 0}
+.rk-menu a{display:flex;align-items:center;gap:12px;padding:9px 18px;color:var(--ink);font-size:14.5px;font-weight:600}
+.rk-menu a .material-icons-outlined{font-size:21px}
+.rk-menu a:hover{background:var(--card2)}
+.rk-menu a.aktif{background:color-mix(in srgb, var(--mor1) 13%, transparent)}
+.rk-menu a.aktif,.rk-menu a.aktif .material-icons-outlined{color:var(--mor1)}
+.rk-side-foot{border-top:1px solid var(--line)}
+.rk-side-foot a{display:flex;align-items:center;gap:12px;padding:12px 18px;color:#F87171;font-weight:700;font-size:14.5px}
+.rk-main{flex:1;margin-left:258px;min-height:100vh;display:flex;flex-direction:column}
+
+/* ---- Sayfa başlık şeridi (MasaustuSayfa) ---- */
+.rk-header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}
+.rk-header .ikon{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;color:#fff}
+.rk-header .ikon .material-icons-outlined{font-size:21px;color:#fff}
+.rk-header .baslik{font-size:19px;font-weight:800;color:var(--ink);line-height:1.15}
+.rk-header .alt{font-size:12px;color:var(--sub)}
+.rk-header .sp{flex:1}
+.rk-tema{background:none;border:none;cursor:pointer;color:var(--gold);padding:6px;border-radius:8px;display:inline-flex}
+.rk-tema:hover{background:var(--card2)}
+.rk-body{padding:18px 20px;flex:1}
+
+/* ---- MKart ---- */
+.rk-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--golge);padding:16px}
+
+/* ---- MIstatKart (renkli başlık + büyük değer + satırlar) ---- */
+.rk-stat{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--golge);overflow:hidden}
+.rk-stat>.head{padding:12px 16px;color:#fff;display:flex;align-items:center;justify-content:space-between;font-weight:800;font-size:15px}
+.rk-stat>.body{padding:14px}
+.rk-stat .buyuk{font-size:24px;font-weight:800;color:var(--ink);margin-bottom:8px}
+.rk-stat .satir{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
+.rk-stat .satir .e{color:var(--sub)} .rk-stat .satir .d{color:var(--ink);font-weight:600}
+
+/* ---- MRozet ---- */
+.rk-rozet{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:8px;font-size:11.5px;font-weight:700;border:1px solid}
+
+/* ---- MButon ---- */
+.rk-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid transparent;color:#fff}
+.rk-btn.bos{background:var(--card);color:var(--sub2);border-color:var(--line)}
+.rk-btn.lg{padding:14px 18px;font-size:15px;border-radius:14px;width:100%;justify-content:center}
+.rk-btn:disabled{opacity:.55;cursor:not-allowed}
+
+/* ---- MBolumBaslik ---- */
+.rk-bolum{display:flex;align-items:center;gap:8px;margin:4px 0 10px}
+.rk-bolum .cubuk{width:4px;height:18px;border-radius:2px}
+.rk-bolum .b{font-size:15px;font-weight:800;color:var(--ink)}
+.rk-bolum .sayi{padding:2px 8px;border-radius:20px;font-size:12px;font-weight:700}
+
+/* ---- MTablo ---- */
+.rk-tablo{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--golge);overflow:hidden;width:100%}
+.rk-tablo table{width:100%;border-collapse:collapse}
+.rk-tablo thead th{background:var(--card2);color:var(--sub);font-size:12px;font-weight:700;text-align:left;padding:11px 14px}
+.rk-tablo tbody td{padding:10px 14px;font-size:13.5px;color:var(--ink);border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.rk-tablo tbody tr:first-child td{border-top:none}
+.rk-tablo .sag{text-align:right} .rk-tablo .orta{text-align:center}
+
+/* ---- form öğeleri (tema-duyarlı) ---- */
+.rk-inp,input[type=text].rk-inp,input[type=number].rk-inp,select.rk-inp,textarea.rk-inp{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;background:var(--card);color:var(--ink);font-family:inherit}
+.rk-inp:focus{outline:none;border-color:var(--mor1)}
+.rk-lbl{display:block;font-size:12.5px;color:var(--sub2);font-weight:600;margin:12px 0 5px}
+.rk-flash{padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:14px;font-weight:600}
+.rk-flash.ok{background:color-mix(in srgb,var(--yesil) 14%,transparent);color:var(--yesil)}
+.rk-flash.err{background:color-mix(in srgb,var(--kirmizi) 14%,transparent);color:var(--kirmizi)}
+.rk-grid{display:grid;gap:16px}
+.rk-sub{color:var(--sub)} .rk-sub2{color:var(--sub2)} .rk-ink{color:var(--ink)}
