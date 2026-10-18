@@ -1282,6 +1282,18 @@ Route::post('/api/m/profil-guncelle', function (Request $r) {
     DB::table('musteriler')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'musteri' => _musteriKart2(DB::table('musteriler')->find($m->id)), 'mesaj' => 'Profil güncellendi'];
 });
+
+// Hesabımı sil (KVKK): token geçersiz kılınır + kişisel veriler anonimleştirilir
+Route::post('/api/m/hesap-sil', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    try { if (!Schema::hasColumn('musteriler', 'silindi_at')) Schema::table('musteriler', fn ($t) => $t->timestamp('silindi_at')->nullable()); } catch (\Throwable $e) {}
+    $upd = ['api_token' => null, 'updated_at' => now()];
+    foreach (['ad' => 'Silinmiş Hesap', 'soyad' => null, 'email' => null, 'adres' => null, 'dogum_tarihi' => null, 'cinsiyet' => null, 'silindi_at' => now()] as $k => $v) {
+        try { if (Schema::hasColumn('musteriler', $k)) $upd[$k] = $v; } catch (\Throwable $e) {}
+    }
+    DB::table('musteriler')->where('id', $m->id)->update($upd);
+    return ['ok' => 1, 'mesaj' => 'Hesabın silindi. Bizi tercih ettiğin için teşekkürler.'];
+});
 // Sadakat özeti (puan + kademe + ödül merdiveni)
 // Ödül tipleri (bedava ürün / %indirim / ₺indirim) için kolon garantisi
 if (!function_exists('_odulKolonEnsure')) {
