@@ -6262,6 +6262,154 @@ Route::get('/garson-performans', function () {
     $garsonlar = $rapor['garsonlar'] ?? [];
     return view('garson_performans', compact('garsonlar', 'period'));
 });
+// WEB PANEL: Hareketler (aktivite log) — Flutter hareketler_screen karşılığı
+Route::get('/hareketler', function (Request $r) {
+    $sube = _webSubeId();
+    try { if (class_exists('\App\Http\Middleware\AktiviteLog') && method_exists('\App\Http\Middleware\AktiviteLog', 'ensure')) \App\Http\Middleware\AktiviteLog::ensure(); } catch (\Throwable $e) {}
+    $to = $r->to ? \Carbon\Carbon::parse($r->to)->endOfDay() : now();
+    $gun = (int) ($r->gun ?: 7);
+    if (!in_array($gun, [1, 7, 30])) $gun = 7;
+    $from = $r->from ? \Carbon\Carbon::parse($r->from)->startOfDay() : (clone $to)->subDays($gun);
+    $kategori = ($r->kategori && $r->kategori !== 'hepsi') ? (string) $r->kategori : 'hepsi';
+    $kategoriF = $kategori !== 'hepsi' ? $kategori : null;
+    $kim = $r->kim ? (int) $r->kim : null;
+    $ara = trim((string) $r->ara);
+    $limit = 800;
+    $pAd = DB::table('personeller')->pluck('ad', 'id');
+    $pRol = DB::table('personeller')->pluck('rol', 'id');
+    $hepsi = [];
+    $ekle = function ($zaman, $kat, $baslik, $aciklama, $personelId, $tutar, $yon, $kt, $ki, $ip = null, $yol = null) use (&$hepsi) {
+        if (!$zaman) return;
+        $hepsi[] = ['zaman' => (string) $zaman, 'kategori' => $kat, 'baslik' => $baslik, 'aciklama' => $aciklama,
+            'personel_id' => $personelId ? (int) $personelId : null, 'tutar' => $tutar !== null ? (float) $tutar : null,
+            'yon' => $yon, 'kaynak_tip' => $kt, 'kaynak_id' => $ki ? (int) $ki : null, 'ip' => $ip ?: null, 'yol' => $yol ?: null];
+    };
+    try {
+        foreach (DB::table('aktivite_loglari')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $a) {
+            $ekle($a->created_at, $a->kategori, $a->aksiyon, $a->aciklama, $a->personel_id, null, null, 'aktivite', $a->id, $a->ip ?? null, $a->yol ?? null);
+        }
+    } catch (\Throwable $e) {}
+    try {
+        foreach (DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $sube)
+            ->whereBetween('odemeler.created_at', [$from, $to])->orderByDesc('odemeler.id')->limit($limit)
+            ->get(['odemeler.id', 'odemeler.tip', 'odemeler.tutar', 'odemeler.personel_id', 'odemeler.created_at', 'odemeler.adisyon_id']) as $o) {
+            $tipAd = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı', 'acik_hesap' => 'Açık Hesap'][$o->tip] ?? $o->tip;
+            $ekle($o->created_at, 'odeme', 'Ödeme alındı (' . $tipAd . ')', null, $o->personel_id, $o->tutar, 'giris', 'adisyon', $o->adisyon_id);
+        }
+    } catch (\Throwable $e) {}
+    try {
+        foreach (DB::table('iptal_indirim_loglari')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $l) {
+            $ad = ['indirim' => 'İskonto', 'ikram' => 'İkram', 'void' => 'Ürün silme (void)'][$l->tip] ?? $l->tip;
+            $ekle($l->created_at, 'kayip', $ad, $l->sebep ?? null, $l->personel_id, $l->tutar, 'cikis', 'adisyon', $l->adisyon_id);
+        }
+    } catch (\Throwable $e) {}
+    try {
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        foreach (DB::table('stok_hareketleri')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $s) {
+            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer'][$s->tip] ?? $s->tip;
+            $mik = (float) $s->miktar;
+            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.'),
+                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $mik < 0 ? 'cikis' : 'giris', 'malzeme', $s->malzeme_id);
+        }
+    } catch (\Throwable $e) {}
+    try {
+        if (Schema::hasTable('giderler')) {
+            foreach (DB::table('giderler')->where('sube_id', $sube)->where('kategori', '!=', 'maas')->whereBetween('tarih', [substr($from, 0, 10), substr($to, 0, 10)])->orderByDesc('id')->limit($limit)->get() as $g) {
+                $ekle($g->tarih, 'gider', 'Gider · ' . ($g->kategori ?? ''), $g->aciklama ?? null, $g->created_by ?? null, $g->tutar ?? null, 'cikis', 'gider', $g->id);
+            }
+        }
+    } catch (\Throwable $e) {}
+    try {
+        foreach (DB::table('adisyonlar')->where('sube_id', $sube)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $a) {
+            $ekle($a->acilis, 'satis', 'Adisyon iptal edildi', null, $a->acan_personel_id ?? null, $a->toplam ?? null, 'cikis', 'adisyon', $a->id);
+        }
+    } catch (\Throwable $e) {}
+    $suz = array_values(array_filter($hepsi, function ($h) use ($kategoriF, $kim, $ara) {
+        if ($kategoriF && $h['kategori'] !== $kategoriF) return false;
+        if ($kim && (int) $h['personel_id'] !== $kim) return false;
+        if ($ara !== '') { $hay = mb_strtolower(($h['baslik'] ?? '') . ' ' . ($h['aciklama'] ?? '') . ' ' . (string) ($h['tutar'] ?? '')); if (mb_strpos($hay, mb_strtolower($ara)) === false) return false; }
+        return true;
+    }));
+    usort($suz, fn ($a, $b) => strcmp($b['zaman'], $a['zaman']));
+    $girisT = 0.0; $cikisT = 0.0; $katSay = [];
+    foreach ($suz as $h) {
+        if ($h['tutar'] !== null) { if ($h['yon'] === 'giris') $girisT += $h['tutar']; elseif ($h['yon'] === 'cikis') $cikisT += $h['tutar']; }
+        $katSay[$h['kategori']] = ($katSay[$h['kategori']] ?? 0) + 1;
+    }
+    $toplam = count($suz);
+    $boyut = min(100, max(10, (int) ($r->boyut ?: 40)));
+    $sayfa = max(1, (int) ($r->sayfa ?: 1));
+    $dilim = array_slice($suz, ($sayfa - 1) * $boyut, $boyut);
+    foreach ($dilim as &$h) {
+        $c = \Carbon\Carbon::parse($h['zaman']);
+        $h['saat'] = $c->format('H:i'); $h['tarih'] = $c->format('d.m.Y'); $h['zaman_tam'] = $c->format('d.m.Y H:i:s');
+        $h['personel'] = $h['personel_id'] ? ($pAd[$h['personel_id']] ?? null) : null;
+        $rolK = $h['personel_id'] ? ($pRol[$h['personel_id']] ?? null) : null;
+        $h['rol'] = $rolK ? (['sahip' => 'Sahip', 'mudur' => 'Müdür', 'kasa' => 'Kasa', 'garson' => 'Garson'][$rolK] ?? ucfirst($rolK)) : null;
+    }
+    unset($h);
+    $ozet = ['toplam' => $toplam, 'giris' => round($girisT), 'cikis' => round($cikisT), 'kategori' => $katSay];
+    $hareketler = array_values($dilim);
+    $personeller = DB::table('personeller')->where('sube_id', $sube)->orderBy('ad')->get(['id', 'ad']);
+    return view('hareketler', compact('hareketler', 'personeller', 'ozet', 'gun', 'kategori', 'kim', 'ara', 'sayfa', 'boyut'));
+});
+// WEB PANEL: Finans — Flutter finans_screen karşılığı
+Route::get('/finans', function () {
+    $sid = _webSubeId();
+    if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
+    $period = in_array(request('period'), ['gunluk', 'haftalik', 'aylik']) ? request('period') : 'aylik';
+    if ($period === 'gunluk') { $bas = date('Y-m-d 00:00:00'); $bit = date('Y-m-d 23:59:59'); $aralikMetin = date('d.m.Y'); }
+    elseif ($period === 'haftalik') { $bas = date('Y-m-d 00:00:00', strtotime('monday this week')); $bit = date('Y-m-d 23:59:59', strtotime('sunday this week')); $aralikMetin = date('d.m', strtotime($bas)) . ' - ' . date('d.m.Y', strtotime($bit)); }
+    else { $bas = date('Y-m-01 00:00:00'); $bit = date('Y-m-t 23:59:59'); $aralikMetin = date('m / Y'); }
+    $gelir = 0.0; $bahsis = 0.0; $gelir_tip = [];
+    try {
+        foreach (DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $sid)->whereBetween('odemeler.created_at', [$bas, $bit])
+            ->selectRaw('odemeler.tip, SUM(odemeler.tutar) t, SUM(odemeler.bahsis) b')->groupBy('odemeler.tip')->get() as $g) {
+            $gelir += (float) $g->t; $bahsis += (float) $g->b; $gelir_tip[] = ['tip' => $g->tip, 'tutar' => (float) $g->t];
+        }
+    } catch (\Throwable $e) {}
+    $gider = 0.0; $gider_kategori = [];
+    try {
+        foreach (DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->get() as $g) { $gider += (float) $g->t; $gider_kategori[] = ['kategori' => $g->kategori, 'tutar' => (float) $g->t]; }
+        usort($gider_kategori, fn ($a, $b) => $b['tutar'] <=> $a['tutar']);
+    } catch (\Throwable $e) {}
+    $alis_toplam = 0.0;
+    try { $alis_toplam = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->sum('toplam'); } catch (\Throwable $e) {}
+    $gelir = round($gelir, 2); $gider = round($gider, 2); $bahsis = round($bahsis, 2);
+    $net = round($gelir - $gider, 2); $alis_toplam = round($alis_toplam, 2); $aralik_metin = $aralikMetin;
+    return view('finans', compact('period', 'gelir', 'gider', 'bahsis', 'net', 'gelir_tip', 'gider_kategori', 'alis_toplam', 'aralik_metin'));
+});
+// WEB PANEL: Giderler — Flutter gider_screen karşılığı
+Route::get('/gider', function () {
+    $sid = _webSubeId();
+    if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
+    [$ay, $bas, $bit] = _restoAyAralik(request('ay'));
+    $b = substr($bas, 0, 10); $e = substr($bit, 0, 10);
+    $giderler = DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [$b, $e])->orderByDesc('tarih')->orderByDesc('id')->get(['id', 'kategori', 'aciklama', 'tutar', 'tarih']);
+    $kategoriler = DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [$b, $e])->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->pluck('t', 'kategori');
+    $toplam = (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [$b, $e])->sum('tutar');
+    return view('gider', compact('giderler', 'kategoriler', 'toplam', 'ay'));
+});
+Route::post('/gider/ekle', function (Request $r) {
+    $sid = _webSubeId();
+    if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
+    $tutar = round((float) $r->tutar, 2);
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string) $r->ay) ? $r->ay : date('Y-m');
+    if ($tutar <= 0) return redirect('/gider?ay=' . $ay)->with('hata', 'Tutar sifirdan büyük olmalı');
+    $kategori = in_array($r->kategori, ['kira', 'fatura', 'malzeme', 'maas', 'vergi', 'diger']) ? $r->kategori : 'diger';
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->tarih) ? $r->tarih : date('Y-m-d');
+    $id = DB::table('giderler')->insertGetId(['sube_id' => $sid, 'kategori' => $kategori, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => null]);
+    $nakit = !isset($r->nakit) || in_array((string) $r->nakit, ['1', 'true', 'nakit', 'on'], true);
+    if ($nakit && function_exists('_kasaYaz')) { _kasaYaz($sid, 'gider', 'cikis', $tutar, ($kategori === 'maas' ? 'Maaş' : ucfirst($kategori)) . ' gideri' . ($r->aciklama ? ' — ' . $r->aciklama : ''), 'gider', $id, null); }
+    return redirect('/gider?ay=' . substr($tarih, 0, 7));
+});
+Route::post('/gider/sil', function (Request $r) {
+    $sid = _webSubeId();
+    DB::table('giderler')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string) $r->ay) ? $r->ay : date('Y-m');
+    return redirect('/gider?ay=' . $ay);
+});
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
 Route::get('/api/patron/garson-performans', function (Request $r) {
     $p = _apiPersonel($r);
