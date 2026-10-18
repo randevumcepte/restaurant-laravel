@@ -1,89 +1,152 @@
 @extends('layout.app')
 @section('title', 'Giderler')
-@section('baslik', '🧾 Giderler')
+@section('rk_ikon', 'receipt_long')
+@section('baslik', 'Giderler')
+@section('rk_alt', $ayMetin ?? '')
 
 @section('content')
 @php
-  $katAd = ['kira' => 'Kira', 'fatura' => 'Fatura', 'malzeme' => 'Malzeme', 'maas' => 'Maaş / Personel', 'vergi' => 'Vergi', 'diger' => 'Diğer'];
-  $katRenk = ['kira' => 'amber', 'fatura' => 'indigo', 'malzeme' => 'emerald', 'maas' => 'violet', 'vergi' => 'rose', 'diger' => 'slate'];
-  $aylar = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-  $yil = (int) substr($ay, 0, 4);
+  $katAd   = ['kira' => 'Kira', 'fatura' => 'Fatura', 'malzeme' => 'Malzeme', 'maas' => 'Maaş / Personel', 'vergi' => 'Vergi', 'diger' => 'Diğer'];
+  $katIkon = ['kira' => 'home_work', 'fatura' => 'receipt_long', 'malzeme' => 'inventory_2', 'maas' => 'groups', 'vergi' => 'account_balance', 'diger' => 'more_horiz'];
+  $katRenk = ['kira' => 'var(--amber)', 'fatura' => 'var(--mavi)', 'malzeme' => 'var(--yesil)', 'maas' => 'var(--mor1)', 'vergi' => 'var(--kirmizi)', 'diger' => 'var(--sub)'];
+  $aylar   = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
+  $yil    = (int) substr($ay, 0, 4);
   $aySayi = (int) substr($ay, 5, 2);
   $ayMetin = ($aylar[$aySayi] ?? '') . ' ' . $yil;
-  // Önceki / sonraki ay
-  $oncekiTs = mktime(0, 0, 0, $aySayi - 1, 1, $yil);
+
+  $oncekiTs  = mktime(0, 0, 0, $aySayi - 1, 1, $yil);
   $sonrakiTs = mktime(0, 0, 0, $aySayi + 1, 1, $yil);
-  $onceki = date('Y-m', $oncekiTs);
-  $sonraki = date('Y-m', $sonrakiTs);
+  $onceki    = date('Y-m', $oncekiTs);
+  $sonraki   = date('Y-m', $sonrakiTs);
   $sonrakiVar = $sonrakiTs <= mktime(0, 0, 0, (int) date('n'), 1, (int) date('Y'));
+
+  // Flutter: kategoriler tutara göre azalan sıralı
+  $kats = collect($kategoriler)->sortDesc();
+
+  $tl = fn($v) => number_format((float) $v, 0, ',', '.') . '₺';
 @endphp
 
-{{-- Üst bar: ay gezgini + toplam + Gider Ekle --}}
-<div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-  <div class="inline-flex items-center bg-white rounded-xl p-1 shadow-sm">
-    <a href="/gider?ay={{ $onceki }}" class="px-3 py-2 rounded-lg text-slate-500 hover:bg-slate-100">‹</a>
-    <span class="px-4 py-2 text-sm font-bold text-slate-800">{{ $ayMetin }}</span>
+@if (session('ok'))<div class="rk-flash ok">{{ session('ok') }}</div>@endif
+@if (session('hata'))<div class="rk-flash err">{{ session('hata') }}</div>@endif
+
+{{-- Araç çubuğu: ay navigasyonu + Gider Ekle (Flutter masaüstü araclar) --}}
+<div class="rk-bolum" style="justify-content:space-between;margin-bottom:18px">
+  <div style="display:inline-flex;align-items:center;gap:4px">
+    <a href="/gider?ay={{ $onceki }}" class="rk-btn bos" style="padding:7px 9px" title="Önceki ay">
+      <span class="material-icons-outlined" style="font-size:20px">chevron_left</span>
+    </a>
+    <span class="b" style="min-width:140px;text-align:center">{{ $ayMetin }}</span>
     @if ($sonrakiVar)
-      <a href="/gider?ay={{ $sonraki }}" class="px-3 py-2 rounded-lg text-slate-500 hover:bg-slate-100">›</a>
+      <a href="/gider?ay={{ $sonraki }}" class="rk-btn bos" style="padding:7px 9px" title="Sonraki ay">
+        <span class="material-icons-outlined" style="font-size:20px">chevron_right</span>
+      </a>
     @else
-      <span class="px-3 py-2 rounded-lg text-slate-200">›</span>
+      <span class="rk-btn bos" style="padding:7px 9px;opacity:.35;pointer-events:none">
+        <span class="material-icons-outlined" style="font-size:20px">chevron_right</span>
+      </span>
     @endif
   </div>
-  <div class="flex items-center gap-3">
-    <div class="bg-white rounded-xl px-4 py-2 shadow-sm text-sm"><span class="text-slate-400">Toplam</span> <b class="text-rose-600 ml-1">{{ number_format($toplam, 0, ',', '.') }}₺</b></div>
-    <button type="button" onclick="document.getElementById('giderEkleModal').classList.remove('hidden')"
-            class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold shadow-sm">+ Gider Ekle</button>
-  </div>
+  <button type="button" class="rk-btn" style="background:var(--kirmizi);padding:10px 16px"
+          onclick="document.getElementById('giderEkleForm').classList.toggle('acik')">
+    <span class="material-icons-outlined" style="color:#fff;font-size:18px">add</span> Gider Ekle
+  </button>
 </div>
 
-{{-- Kategori özet kartları --}}
-@if (!empty($kategoriler))
-  <div class="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6 mb-5">
-    @foreach ($kategoriler as $kat => $tutarKat)
-      @php $renk = $katRenk[$kat] ?? 'slate'; @endphp
-      <div class="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-{{ $renk }}-400">
-        <div class="text-[11px] text-slate-400 mb-0.5">{{ $katAd[$kat] ?? ucfirst($kat) }}</div>
-        <div class="text-lg font-extrabold text-slate-800">{{ number_format($tutarKat, 0, ',', '.') }}₺</div>
+{{-- Gider ekleme formu (Flutter _ekleDialog — maaş HARİÇ) --}}
+<div id="giderEkleForm" class="rk-card" style="margin-bottom:18px;display:none">
+  <div class="rk-bolum">
+    <span class="cubuk" style="background:var(--kirmizi)"></span>
+    <span class="b">Yeni Gider</span>
+  </div>
+  <form method="POST" action="/gider/ekle" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px">
+    @csrf
+    <input type="hidden" name="ay" value="{{ $ay }}">
+    <div style="min-width:200px">
+      <label class="rk-lbl" style="margin-top:0">Kategori</label>
+      <select name="kategori" class="rk-inp">
+        <option value="kira">Kira</option>
+        <option value="fatura">Fatura (elektrik/su/doğalgaz)</option>
+        <option value="malzeme">Malzeme / Alım</option>
+        <option value="vergi">Vergi / Resmi</option>
+        <option value="diger">Diğer</option>
+      </select>
+    </div>
+    <div style="width:150px">
+      <label class="rk-lbl" style="margin-top:0">Tutar (TL)</label>
+      <input type="number" name="tutar" step="0.01" min="0" required placeholder="0" class="rk-inp">
+    </div>
+    <div style="width:170px">
+      <label class="rk-lbl" style="margin-top:0">Tarih</label>
+      <input type="date" name="tarih" value="{{ date('Y-m-d') }}" class="rk-inp">
+    </div>
+    <div style="flex:1;min-width:200px">
+      <label class="rk-lbl" style="margin-top:0">Açıklama (opsiyonel)</label>
+      <input type="text" name="aciklama" maxlength="200" placeholder="Örn. Eylül kirası" class="rk-inp">
+    </div>
+    <button type="submit" class="rk-btn" style="background:var(--mor1);padding:11px 18px">
+      <span class="material-icons-outlined" style="color:#fff;font-size:18px">save</span> Kaydet
+    </button>
+  </form>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--sub)">
+    <input type="checkbox" form="" disabled checked style="accent-color:var(--mor1)">
+    Nakit gider açık vardiya varsa kasadan düşülür.
+  </label>
+</div>
+
+{{-- Toplam Gider özet kartı (Flutter MIstatKart: başlık kırmızı + büyük değer + kategori satırları) --}}
+<div class="rk-stat" style="margin-bottom:20px">
+  <div class="head" style="background:var(--kirmizi)"><span>Toplam Gider</span></div>
+  <div class="body">
+    <div class="buyuk">{{ $tl($toplam) }}</div>
+    @foreach ($kats as $kat => $tutarKat)
+      <div class="satir">
+        <span class="e">{{ $katAd[$kat] ?? ucfirst($kat) }}</span>
+        <span class="d" style="color:{{ $katRenk[$kat] ?? 'var(--ink)' }}">{{ $tl($tutarKat) }}</span>
       </div>
     @endforeach
   </div>
-@endif
+</div>
 
-{{-- Liste --}}
-@if (empty($giderler))
-  <div class="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm">Bu ay gider kaydı yok.</div>
+{{-- Gider listesi (Flutter MTablo) --}}
+@if (empty($giderler) || count($giderler) === 0)
+  <div class="rk-card" style="text-align:center;padding:40px">
+    <div class="rk-sub">Bu ay gider kaydı yok.</div>
+  </div>
 @else
-  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="rk-tablo">
+    <table>
       <thead>
-        <tr class="text-left text-slate-400 border-b border-slate-100">
-          <th class="px-4 py-3 font-semibold">Kategori</th>
-          <th class="px-4 py-3 font-semibold">Açıklama</th>
-          <th class="px-4 py-3 font-semibold">Tarih</th>
-          <th class="px-4 py-3 font-semibold text-right">Tutar</th>
-          <th class="px-4 py-3 font-semibold text-right">İşlem</th>
+        <tr>
+          <th style="width:18%">Kategori</th>
+          <th style="width:36%">Açıklama</th>
+          <th style="width:18%">Tarih</th>
+          <th class="sag" style="width:16%">Tutar</th>
+          <th class="sag" style="width:12%"></th>
         </tr>
       </thead>
       <tbody>
         @foreach ($giderler as $g)
-          @php $kat = $g->kategori; $renk = $katRenk[$kat] ?? 'slate'; @endphp
-          <tr class="border-b border-slate-50 hover:bg-slate-50">
-            <td class="px-4 py-3">
-              <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold bg-{{ $renk }}-50 text-{{ $renk }}-600">{{ $katAd[$kat] ?? ucfirst($kat) }}</span>
+          @php $kat = $g->kategori; $renk = $katRenk[$kat] ?? 'var(--sub)'; @endphp
+          <tr>
+            <td>
+              <span class="rk-rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 13%,transparent);border-color:color-mix(in srgb,{{ $renk }} 40%,transparent)">
+                <span class="material-icons-outlined" style="font-size:14px">{{ $katIkon[$kat] ?? 'more_horiz' }}</span>{{ $katAd[$kat] ?? ucfirst($kat) }}
+              </span>
             </td>
-            <td class="px-4 py-3 text-slate-700">{{ $g->aciklama ?: '—' }}</td>
-            <td class="px-4 py-3 text-slate-500">{{ $g->tarih }}</td>
-            <td class="px-4 py-3 text-right font-bold text-slate-800">{{ number_format($g->tutar, 2, ',', '.') }}₺</td>
-            <td class="px-4 py-3 text-right">
+            <td class="rk-ink">{{ $g->aciklama ?: '—' }}</td>
+            <td class="rk-sub">{{ $g->tarih }}</td>
+            <td class="sag" style="font-weight:800;color:var(--ink);white-space:nowrap">{{ $tl($g->tutar) }}</td>
+            <td class="sag">
               @if ($kat !== 'maas')
-                <form method="POST" action="/gider/sil" onsubmit="return confirm('Bu gideri silmek istediğinize emin misiniz?')" class="inline">
+                <form method="POST" action="/gider/sil" onsubmit="return confirm('Bu gideri silmek istediğinize emin misiniz?')" style="display:inline">
                   @csrf
                   <input type="hidden" name="id" value="{{ $g->id }}">
                   <input type="hidden" name="ay" value="{{ $ay }}">
-                  <button type="submit" class="text-slate-400 hover:text-rose-500 font-bold px-2" title="Sil">✕</button>
+                  <button type="submit" class="rk-btn bos" style="padding:6px 9px" title="Sil">
+                    <span class="material-icons-outlined" style="font-size:16px;color:var(--sub)">close</span>
+                  </button>
                 </form>
-              @else
-                <span class="text-slate-300 text-xs">otomatik</span>
               @endif
             </td>
           </tr>
@@ -93,47 +156,7 @@
   </div>
 @endif
 
-{{-- Gider Ekle Modal --}}
-<div id="giderEkleModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-    <div class="flex items-center justify-between mb-5">
-      <h3 class="text-lg font-bold text-slate-800">Yeni Gider</h3>
-      <button type="button" onclick="document.getElementById('giderEkleModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
-    </div>
-    <form method="POST" action="/gider/ekle" class="space-y-4">
-      @csrf
-      <input type="hidden" name="ay" value="{{ $ay }}">
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">Kategori</label>
-        <select name="kategori" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none">
-          <option value="kira">Kira</option>
-          <option value="fatura">Fatura (elektrik/su/doğalgaz)</option>
-          <option value="malzeme">Malzeme / Alım</option>
-          <option value="vergi">Vergi / Resmi</option>
-          <option value="diger">Diğer</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">Tutar (TL)</label>
-        <input type="number" name="tutar" step="0.01" min="0" required class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none" placeholder="0">
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">Tarih</label>
-        <input type="date" name="tarih" value="{{ date('Y-m-d') }}" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none">
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">Açıklama (opsiyonel)</label>
-        <input type="text" name="aciklama" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none" placeholder="Örn. Eylül kirası">
-      </div>
-      <label class="flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" name="nakit" value="1" checked class="rounded border-slate-300 text-violet-600 focus:ring-violet-400">
-        Nakit gider (açık vardiya varsa kasadan düş)
-      </label>
-      <div class="flex gap-3 pt-2">
-        <button type="button" onclick="document.getElementById('giderEkleModal').classList.add('hidden')" class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50">Vazgeç</button>
-        <button type="submit" class="flex-1 rounded-xl bg-violet-600 hover:bg-violet-700 py-2.5 text-sm font-semibold text-white">Kaydet</button>
-      </div>
-    </form>
-  </div>
-</div>
+<style>
+  #giderEkleForm.acik { display:block !important; }
+</style>
 @endsection
