@@ -1674,6 +1674,55 @@ Route::get('/odul-raporu', function () {
     return view('odul_raporu', compact('rows', 'ozet'));
 });
 
+// Garson çağır (müşteri app) — GPS GEOFENCE: sadece restorandayken çalışır (evdeki müşteri çağıramaz)
+Route::post('/api/m/garson-cagir', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    $sube = DB::table('subeler')->where('id', $m->sube_id)->first();
+    $slat = ($sube && isset($sube->mesai_lat) && $sube->mesai_lat) ? (float) $sube->mesai_lat : null;
+    $slng = ($sube && isset($sube->mesai_lng) && $sube->mesai_lng) ? (float) $sube->mesai_lng : null;
+    $clat = is_numeric($r->input('lat')) ? (float) $r->input('lat') : null;
+    $clng = is_numeric($r->input('lng')) ? (float) $r->input('lng') : null;
+    $radius = 250; // metre — restoran çevresi
+
+    // GEOFENCE: restoran konumu ayarlıysa mesafe kontrol
+    if ($slat && $slng) {
+        if ($clat === null || $clng === null) {
+            return ['ok' => 0, 'kod' => 'konum_yok',
+                'mesaj' => 'Garson çağırabilmek için konum iznine ihtiyacımız var — masanızda olduğunuzu doğrulamak için 📍'];
+        }
+        $mesafe = function_exists('_mesaiMesafe') ? _mesaiMesafe($slat, $slng, $clat, $clng) : 0;
+        if ($mesafe > $radius) {
+            return ['ok' => 0, 'kod' => 'uzak', 'mesafe' => (int) round($mesafe),
+                'mesaj' => 'Şu an restoranımızda görünmüyorsunuz 💜 Garson çağırma hizmeti yalnızca masanızdayken kullanılabilir. Sizi tekrar aramızda ağırlamak için sabırsızlanıyoruz — afiyet olsun!'];
+        }
+    }
+    // Restorandayız (ya da restoran konumu ayarlı değil → geçiş). Masa: aktif açık adisyondan bul.
+    $masaId = DB::table('adisyonlar')->where('sube_id', $m->sube_id)->where('musteri_id', $m->id)
+        ->where('durum', 'acik')->whereNotNull('masa_id')->orderByDesc('id')->value('masa_id');
+    // masa_no verilmişse ada/numaraya göre bul
+    if (!$masaId && $r->filled('masa_no')) {
+        $mn = trim((string) $r->input('masa_no'));
+        $masaId = DB::table('masalar')->where('sube_id', $m->sube_id)->where('arsiv', 0)
+            ->where(function ($w) use ($mn) { $w->where('ad', $mn)->orWhere('ad', 'Masa ' . $mn)->orWhere('id', (int) $mn); })
+            ->value('id');
+    }
+    if (!$masaId) return ['ok' => 0, 'kod' => 'masa_sor', 'mesaj' => 'Hangi masadasınız? Masa numaranızı girin.'];
+
+    if (!Schema::hasTable('masa_cagrilari')) {
+        Schema::create('masa_cagrilari', function ($t) {
+            $t->increments('id'); $t->unsignedBigInteger('sube_id'); $t->unsignedBigInteger('masa_id');
+            $t->string('tip', 20)->default('garson'); $t->string('durum', 20)->default('bekliyor'); $t->timestamp('created_at')->useCurrent();
+        });
+    }
+    $tip = in_array($r->input('tip'), ['garson', 'hesap', 'acil']) ? $r->input('tip') : 'garson';
+    DB::table('masa_cagrilari')->insert(['sube_id' => $m->sube_id, 'masa_id' => $masaId, 'tip' => $tip, 'durum' => 'bekliyor', 'created_at' => now()]);
+    $masaAd = DB::table('masalar')->where('id', $masaId)->value('ad') ?: ('Masa ' . $masaId);
+    try {
+        $baslik = $tip === 'hesap' ? '💳 Hesap istendi' : '🙋 Garson çağrısı';
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($m->sube_id, $baslik, $masaAd . ' · ' . ($m->ad ?: 'Müşteri'), ['tur' => 'garson_cagri', 'masa_id' => $masaId, 'tip' => $tip]);
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'masa' => $masaAd, 'mesaj' => 'Garson çağrınız alındı! Birazdan masanıza gelecek 🙌'];
+});
 // ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====
 if (!function_exists('_appEnsure2')) {
     function _appEnsure2()
