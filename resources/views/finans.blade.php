@@ -1,6 +1,7 @@
 @extends('layout.app')
-@section('title', 'Finans')
-@section('baslik', '💵 Finans / Kâr-Zarar')
+@section('rk_ikon', 'analytics')
+@section('baslik', 'Finans / Kâr-Zarar')
+@section('rk_alt', $aralik_metin ?? '')
 
 @section('content')
 @php
@@ -16,110 +17,125 @@
   $tipAd = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı', 'acik_hesap' => 'Açık Hesap'];
   $katAd = ['kira' => 'Kira', 'fatura' => 'Fatura', 'malzeme' => 'Malzeme / Alış', 'maas' => 'Maaş / Personel', 'vergi' => 'Vergi', 'diger' => 'Diğer'];
   $tl = fn ($v) => number_format(round((float) $v), 0, ',', '.') . '₺';
-  $maxGelir = $gelirTip ? max(array_merge([1], array_map(fn ($g) => (float) $g['tutar'], $gelirTip))) : 1;
-  $maxGider = $giderKat ? max(array_merge([1], array_map(fn ($g) => (float) $g['tutar'], $giderKat))) : 1;
+  $netRenk = $net >= 0 ? 'var(--mor1)' : 'var(--kirmizi)';
 @endphp
 
-<div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-  <div class="inline-flex bg-white rounded-xl p-1 shadow-sm">
+{{-- Dönem sekmeleri (Flutter: önceki/sonraki ay oku karşılığı — gün/hafta/ay) --}}
+<div class="rk-bolum" style="justify-content:flex-end;margin-bottom:16px">
+  <div style="display:inline-flex;gap:8px">
     @foreach ($periodlar as $k => $ad)
       <a href="/finans?period={{ $k }}"
-         class="px-4 py-2 rounded-lg text-sm font-semibold transition {{ $period === $k ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100' }}">{{ $ad }}</a>
+         class="rk-btn {{ $period === $k ? '' : 'bos' }}"
+         style="{{ $period === $k ? 'background:var(--mor1)' : '' }}">{{ $ad }}</a>
     @endforeach
   </div>
-  <div class="text-xs text-slate-400">{{ $aralik_metin ?? '' }}</div>
 </div>
 
-{{-- Özet kartları: Gelir / Gider / Net --}}
-<div class="grid gap-4 md:grid-cols-3 mb-6">
-  <div class="bg-white rounded-2xl p-5 shadow-sm border-t-4 border-emerald-400">
-    <div class="flex items-center gap-2 text-emerald-500 text-sm font-semibold mb-1">
-      <span class="text-lg">↓</span> Gelir
-    </div>
-    <div class="text-3xl font-extrabold text-slate-800">{{ $tl($gelir) }}</div>
-    <div class="text-xs text-slate-400 mt-2">
-      @if ($bahsis > 0) Bahşiş: <b class="text-emerald-600">{{ $tl($bahsis) }}</b> · @endif
-      {{ count($gelirTip) }} ödeme tipi
-    </div>
-  </div>
-
-  <div class="bg-white rounded-2xl p-5 shadow-sm border-t-4 border-rose-400">
-    <div class="flex items-center gap-2 text-rose-500 text-sm font-semibold mb-1">
-      <span class="text-lg">↑</span> Gider
-    </div>
-    <div class="text-3xl font-extrabold text-slate-800">{{ $tl($gider) }}</div>
-    <div class="text-xs text-slate-400 mt-2">
-      @if ($alis > 0) Tedarikçi alışı: <b class="text-rose-600">{{ $tl($alis) }}</b> · @endif
-      {{ count($giderKat) }} kategori
+{{-- Üst satır: 3 büyük KPI kartı (Flutter MIstatKart birebir) --}}
+<div class="rk-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:22px">
+  {{-- Gelir --}}
+  <div class="rk-stat">
+    <div class="head" style="background:var(--yesil)">Gelir</div>
+    <div class="body">
+      <div class="buyuk">{{ $tl($gelir) }}</div>
+      @if ($bahsis > 0)
+        <div class="satir"><span class="e">Bahşiş</span><span class="d" style="color:var(--yesil)">{{ $tl($bahsis) }}</span></div>
+      @endif
+      <div class="satir"><span class="e">Ödeme tipi</span><span class="d">{{ count($gelirTip) }} kalem</span></div>
     </div>
   </div>
 
-  <div class="rounded-2xl p-5 shadow-sm text-white bg-gradient-to-br {{ $net >= 0 ? 'from-violet-600 to-indigo-600' : 'from-rose-700 to-rose-500' }}">
-    <div class="text-sm font-semibold mb-1 opacity-90">{{ $net >= 0 ? 'Net Kâr' : 'Net Zarar' }}</div>
-    <div class="text-3xl font-extrabold">{{ $tl($net) }}</div>
-    <div class="flex gap-4 text-xs mt-3 opacity-90">
-      <span>Gelir <b>{{ $tl($gelir) }}</b></span>
-      <span>Gider <b>{{ $tl($gider) }}</b></span>
+  {{-- Gider --}}
+  <div class="rk-stat">
+    <div class="head" style="background:var(--kirmizi)">Gider</div>
+    <div class="body">
+      <div class="buyuk">{{ $tl($gider) }}</div>
+      @if ($alis > 0)
+        <div class="satir"><span class="e">Tedarikçi alışı</span><span class="d" style="color:var(--kirmizi)">{{ $tl($alis) }}</span></div>
+      @endif
+      <div class="satir"><span class="e">Kategori</span><span class="d">{{ count($giderKat) }} kalem</span></div>
+    </div>
+  </div>
+
+  {{-- Net Kâr / Zarar --}}
+  <div class="rk-stat">
+    <div class="head" style="background:{{ $netRenk }}">{{ $net >= 0 ? 'Net Kâr' : 'Net Zarar' }}</div>
+    <div class="body">
+      <div class="buyuk">{{ $tl($net) }}</div>
+      <div class="satir"><span class="e">Gelir</span><span class="d" style="color:var(--yesil)">{{ $tl($gelir) }}</span></div>
+      <div class="satir"><span class="e">Gider</span><span class="d" style="color:var(--kirmizi)">{{ $tl($gider) }}</span></div>
     </div>
   </div>
 </div>
 
-{{-- Dağılım tabloları: Gelir ödeme tipi + Gider kategori --}}
-<div class="grid gap-4 lg:grid-cols-2">
-  {{-- Gelir — ödeme tipi --}}
-  <div class="bg-white rounded-2xl p-5 shadow-sm">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold text-slate-800">💵 Gelir — Ödeme Tipi</h3>
-      <span class="text-xs text-slate-400">{{ count($gelirTip) }} kalem</span>
+{{-- Alt satır: gelir/gider döküm tabloları yan yana (Flutter MBolumBaslik + MTablo) --}}
+<div class="rk-grid" style="grid-template-columns:repeat(2,1fr);align-items:start">
+  {{-- Gelir — Ödeme Tipi --}}
+  <div>
+    <div class="rk-bolum">
+      <span class="cubuk" style="background:var(--yesil)"></span>
+      <span class="b">Gelir — Ödeme Tipi</span>
+      <span class="sayi" style="color:var(--yesil);background:color-mix(in srgb,var(--yesil) 13%,transparent)">{{ count($gelirTip) }}</span>
     </div>
     @if (empty($gelirTip))
-      <div class="text-center text-slate-400 py-8 text-sm">Bu dönemde tahsilat yok.</div>
+      <div class="rk-card"><span class="rk-sub">Bu ay tahsilat yok.</span></div>
     @else
-      <div class="space-y-3">
-        @foreach ($gelirTip as $g)
-          @php $oran = round((float) $g['tutar'] / $maxGelir * 100); @endphp
-          <div>
-            <div class="flex items-center justify-between text-sm mb-1">
-              <span class="text-slate-600">{{ $tipAd[$g['tip']] ?? $g['tip'] }}</span>
-              <b class="text-emerald-600">{{ $tl($g['tutar']) }}</b>
-            </div>
-            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-400 rounded-full" style="width: {{ max(3, $oran) }}%"></div>
-            </div>
-          </div>
-        @endforeach
+      <div class="rk-tablo">
+        <table>
+          <thead><tr><th>Ödeme Tipi</th><th class="sag">Tutar</th></tr></thead>
+          <tbody>
+            @foreach ($gelirTip as $g)
+              <tr>
+                <td>{{ $tipAd[$g['tip']] ?? $g['tip'] }}</td>
+                <td class="sag" style="color:var(--yesil);font-weight:700">{{ $tl($g['tutar']) }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
       </div>
     @endif
   </div>
 
-  {{-- Gider — kategori --}}
-  <div class="bg-white rounded-2xl p-5 shadow-sm">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold text-slate-800">🧾 Gider — Kategori</h3>
-      <span class="text-xs text-slate-400">{{ count($giderKat) }} kalem</span>
+  {{-- Gider — Kategori (+ Tedarikçi Alışı) --}}
+  <div>
+    <div class="rk-bolum">
+      <span class="cubuk" style="background:var(--kirmizi)"></span>
+      <span class="b">Gider — Kategori</span>
+      <span class="sayi" style="color:var(--kirmizi);background:color-mix(in srgb,var(--kirmizi) 13%,transparent)">{{ count($giderKat) }}</span>
     </div>
     @if (empty($giderKat))
-      <div class="text-center text-slate-400 py-8 text-sm">Bu dönemde gider yok.</div>
+      <div class="rk-card"><span class="rk-sub">Bu ay gider yok.</span></div>
     @else
-      <div class="space-y-3">
-        @foreach ($giderKat as $g)
-          @php $oran = round((float) $g['tutar'] / $maxGider * 100); @endphp
-          <div>
-            <div class="flex items-center justify-between text-sm mb-1">
-              <span class="text-slate-600">{{ $katAd[$g['kategori']] ?? $g['kategori'] }}</span>
-              <b class="text-rose-600">{{ $tl($g['tutar']) }}</b>
-            </div>
-            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div class="h-full bg-rose-400 rounded-full" style="width: {{ max(3, $oran) }}%"></div>
-            </div>
-          </div>
-        @endforeach
+      <div class="rk-tablo">
+        <table>
+          <thead><tr><th>Kategori</th><th class="sag">Tutar</th></tr></thead>
+          <tbody>
+            @foreach ($giderKat as $g)
+              <tr>
+                <td>{{ $katAd[$g['kategori']] ?? $g['kategori'] }}</td>
+                <td class="sag" style="color:var(--kirmizi);font-weight:700">{{ $tl($g['tutar']) }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
       </div>
     @endif
+
     @if ($alis > 0)
-      <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-sm">
-        <span class="text-slate-500">📦 Toplam alış faturası</span>
-        <b class="text-amber-600">{{ $tl($alis) }}</b>
+      <div class="rk-bolum" style="margin-top:14px">
+        <span class="cubuk" style="background:var(--amber)"></span>
+        <span class="b">Tedarikçi Alışı</span>
+      </div>
+      <div class="rk-tablo">
+        <table>
+          <thead><tr><th>Kalem</th><th class="sag">Tutar</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Toplam alış faturası</td>
+              <td class="sag" style="color:var(--amber);font-weight:700">{{ $tl($alis) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     @endif
   </div>

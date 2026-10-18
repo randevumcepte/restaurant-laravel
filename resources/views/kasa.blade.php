@@ -1,6 +1,8 @@
 @extends('layout.app')
 @section('title', 'Kasa')
-@section('baslik', '💰 Kasa')
+@section('rk_ikon', 'account_balance')
+@section('baslik', 'Kasa (Vardiya)')
+@section('rk_alt', ($acik ?? false) ? ('Açık · ' . ($acilis ?? '')) : 'Kapalı')
 
 @section('content')
 @php
@@ -11,122 +13,144 @@
   $cikis = (float) ($cikis ?? 0);
   $beklenen = (float) ($beklenen ?? 0);
   $devir = (float) ($devir ?? 0);
+  $sonDevir = (float) ($son_devir ?? 0);
   $hareketler = $hareketler ?? [];
   $etiket = ['devir' => 'Devir', 'satis' => 'Nakit Satış', 'tahsilat' => 'Tahsilat', 'gider' => 'Gider', 'personel' => 'Personel', 'al' => 'Kasadan Al', 'koy' => 'Kasaya Koy'];
   $tl = fn($v) => number_format((float) $v, 0, ',', '.') . '₺';
 @endphp
 
-@if (session('ok'))
-  <div class="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 text-sm font-semibold">{{ session('ok') }}</div>
-@endif
-@if (session('hata'))
-  <div class="mb-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 text-sm font-semibold">{{ session('hata') }}</div>
-@endif
+@if (session('ok'))<div class="rk-flash ok">{{ session('ok') }}</div>@endif
+@if (session('hata'))<div class="rk-flash err">{{ session('hata') }}</div>@endif
 
-{{-- Durum özeti --}}
 @if (!$acik)
-  <div class="bg-white rounded-2xl p-10 text-center shadow-sm mb-5">
-    <div class="text-5xl mb-3">🗄️</div>
-    <div class="text-xl font-bold text-slate-800">Kasa kapalı</div>
-    <p class="text-sm text-slate-400 mt-2">Bu şubede şu an açık bir kasa vardiyası yok.<br>Kasa, uygulamadan (POS) açılır. Açıldığında güncel durum burada görünür.</p>
-    @if (($son_devir ?? 0) > 0)
-      <div class="text-xs text-slate-400 mt-3">Son kapanış: <b class="text-slate-600">{{ $tl($son_devir) }}</b></div>
-    @endif
+  {{-- ===== KASA KAPALI ===== (Flutter _masaustuKapali) --}}
+  <div style="max-width:460px;margin:40px auto 0">
+    <div class="rk-card" style="padding:32px;text-align:center">
+      <span class="material-icons-outlined" style="font-size:64px;color:var(--line)">account_balance</span>
+      <div style="font-size:22px;font-weight:800;color:var(--ink);margin-top:14px">Kasa kapalı</div>
+      <div class="rk-sub" style="font-size:13px;margin-top:8px;line-height:1.4">
+        Vardiyayı başlatmak için kasayı açın.<br>Açılış devir = şu an çekmecedeki nakit.
+      </div>
+      <div class="rk-sub2" style="font-size:12.5px;margin-top:12px;line-height:1.4">
+        Kasa, uygulamadan (POS) açılır. Açıldığında güncel durum burada görünür.
+      </div>
+      @if ($sonDevir > 0)
+        <div class="rk-sub2" style="font-size:12px;margin-top:10px">Son kapanış: <b class="rk-ink">{{ $tl($sonDevir) }}</b></div>
+      @endif
+    </div>
   </div>
 @else
-  <div class="grid gap-4 md:grid-cols-4 mb-5">
-    <div class="md:col-span-2 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-5 shadow-sm text-white">
-      <div class="flex items-center justify-between">
-        <span class="text-sm text-white/80">Kasada Beklenen Nakit</span>
-        <span class="text-[11px] bg-white/20 rounded-full px-2 py-0.5 font-bold">Açık · {{ $acilis ?? '' }}</span>
+  {{-- ===== KASA AÇIK ===== (Flutter _masaustuAcik) --}}
+  {{-- Üst özet — 3 istatistik kartı --}}
+  <div class="rk-grid" style="grid-template-columns:12fr 9fr 9fr">
+    <div class="rk-stat">
+      <div class="head" style="background:var(--mor1)">
+        <span>Kasada Beklenen Nakit</span>
+        <span class="rk-rozet" style="color:#fff;background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.35)">Açık · {{ $acilis ?? '' }}</span>
       </div>
-      <div class="text-3xl font-extrabold mt-1">{{ $tl($beklenen) }}</div>
-      <div class="text-xs text-white/80 mt-1">Açan: {{ $acan ?? '-' }} &nbsp;·&nbsp; Devir {{ $tl($devir) }}</div>
+      <div class="body">
+        <div class="buyuk">{{ $tl($beklenen) }}</div>
+        <div class="satir"><span class="e">Açan</span><span class="d">{{ $acan ?? '-' }}</span></div>
+        <div class="satir"><span class="e">Açılış devir</span><span class="d">{{ $tl($devir) }}</span></div>
+      </div>
     </div>
-    <div class="bg-white rounded-2xl p-5 shadow-sm">
-      <div class="text-xs text-slate-400">Giriş (+)</div>
-      <div class="text-2xl font-extrabold text-emerald-600 mt-1">{{ $tl($giris) }}</div>
-      <div class="text-[11px] text-slate-400 mt-1">Devir dahil kasaya eklenen</div>
+    <div class="rk-stat">
+      <div class="head" style="background:var(--yesil)"><span>Giriş (+)</span></div>
+      <div class="body">
+        <div class="buyuk" style="color:var(--yesil)">{{ $tl($giris) }}</div>
+        <div class="satir"><span class="e">Devir dahil kasaya eklenen</span><span class="d"></span></div>
+      </div>
     </div>
-    <div class="bg-white rounded-2xl p-5 shadow-sm">
-      <div class="text-xs text-slate-400">Çıkış (−)</div>
-      <div class="text-2xl font-extrabold text-rose-500 mt-1">{{ $tl($cikis) }}</div>
-      <div class="text-[11px] text-slate-400 mt-1">Kasadan alınan</div>
+    <div class="rk-stat">
+      <div class="head" style="background:var(--kirmizi)"><span>Çıkış (−)</span></div>
+      <div class="body">
+        <div class="buyuk" style="color:var(--kirmizi)">{{ $tl($cikis) }}</div>
+        <div class="satir"><span class="e">Kasadan alınan</span><span class="d"></span></div>
+      </div>
     </div>
   </div>
 
-  {{-- Manuel kasa giriş/çıkış --}}
-  <div class="bg-white rounded-2xl p-5 shadow-sm mb-5">
-    <div class="font-bold text-slate-800 mb-3">Manuel Kasa Hareketi</div>
-    <form method="POST" action="/kasa/hareket" class="flex flex-wrap items-end gap-3">
+  {{-- Manuel kasa hareketi (Flutter: Kasaya Koy / Kasadan Al) --}}
+  <div class="rk-card" style="margin-top:18px">
+    <div class="rk-bolum">
+      <span class="cubuk" style="background:var(--mor1)"></span>
+      <span class="b">Manuel Kasa Hareketi</span>
+    </div>
+    <form method="POST" action="/kasa/hareket" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px">
       @csrf
-      <div>
-        <label class="block text-[11px] text-slate-400 mb-1">Yön</label>
-        <select name="yon" class="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none">
+      <div style="min-width:160px">
+        <label class="rk-lbl" style="margin-top:0">Yön</label>
+        <select name="yon" class="rk-inp">
           <option value="giris">Kasaya Koy (+)</option>
           <option value="cikis">Kasadan Al (−)</option>
         </select>
       </div>
-      <div>
-        <label class="block text-[11px] text-slate-400 mb-1">Tutar</label>
-        <input type="number" name="tutar" step="0.01" min="0.01" required placeholder="0,00"
-               class="w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none">
+      <div style="width:140px">
+        <label class="rk-lbl" style="margin-top:0">Tutar</label>
+        <input type="number" name="tutar" step="0.01" min="0.01" required placeholder="0,00" class="rk-inp">
       </div>
-      <div class="flex-1 min-w-[180px]">
-        <label class="block text-[11px] text-slate-400 mb-1">Açıklama (opsiyonel)</label>
-        <input type="text" name="aciklama" maxlength="200" placeholder="Örn. bozuk para, kasa düzeltme"
-               class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-indigo-300 outline-none">
+      <div style="flex:1;min-width:200px">
+        <label class="rk-lbl" style="margin-top:0">Açıklama (opsiyonel)</label>
+        <input type="text" name="aciklama" maxlength="200" placeholder="Örn. bozuk para, kasa düzeltme" class="rk-inp">
       </div>
-      <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg px-5 py-2 transition">Kaydet</button>
+      <button type="submit" class="rk-btn" style="background:var(--mor1);padding:11px 18px">
+        <span class="material-icons-outlined" style="color:#fff;font-size:18px">save</span> Kaydet
+      </button>
     </form>
-    <p class="text-[11px] text-slate-400 mt-2">Kasa açma / sayım-kapatma işlemleri uygulamadan (POS) yapılır.</p>
+    <div class="rk-sub2" style="font-size:11.5px;margin-top:10px">Kasa açma / sayım-kapatma işlemleri uygulamadan (POS) yapılır.</div>
   </div>
 @endif
 
-{{-- Dönem filtresi + hareketler --}}
-<div class="flex items-center justify-between mb-3 flex-wrap gap-3">
-  <div class="font-bold text-slate-800">Kasa Hareketleri</div>
-  <div class="inline-flex bg-white rounded-xl p-1 shadow-sm">
+{{-- Hareketler (dönem filtresi + tablo) --}}
+<div class="rk-bolum" style="margin-top:22px;justify-content:space-between">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span class="cubuk" style="background:var(--mor1)"></span>
+    <span class="b">Hareketler</span>
+    <span class="rk-rozet" style="color:var(--mor1);background:color-mix(in srgb,var(--mor1) 13%,transparent);border-color:color-mix(in srgb,var(--mor1) 40%,transparent)">{{ count($hareketler) }}</span>
+  </div>
+  <div style="display:inline-flex;background:var(--card2);border-radius:10px;padding:4px;gap:2px">
     @foreach ($periodlar as $k => $ad)
-      <a href="/kasa?period={{ $k }}"
-         class="px-4 py-2 rounded-lg text-sm font-semibold {{ $period === $k ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100' }}">{{ $ad }}</a>
+      <a href="/kasa?period={{ $k }}" class="rk-btn {{ $period === $k ? '' : 'bos' }}"
+         style="{{ $period === $k ? 'background:var(--mor1)' : 'border-color:transparent' }};padding:7px 14px">{{ $ad }}</a>
     @endforeach
   </div>
 </div>
 
 @if (empty($hareketler))
-  <div class="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm">Bu dönemde kasa hareketi yok.</div>
+  <div class="rk-card" style="text-align:center;padding:40px">
+    <div class="rk-sub">Bu dönemde kasa hareketi yok.</div>
+  </div>
 @else
-  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="rk-tablo">
+    <table>
       <thead>
-        <tr class="text-left text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
-          <th class="px-4 py-3">Tarih</th>
-          <th class="px-4 py-3">Tip</th>
-          <th class="px-4 py-3">Açıklama</th>
-          <th class="px-4 py-3 text-center">Yön</th>
-          <th class="px-4 py-3 text-right">Tutar</th>
+        <tr>
+          <th style="width:14%">Tip</th>
+          <th style="width:30%">Açıklama</th>
+          <th class="orta" style="width:12%">Yön</th>
+          <th class="sag" style="width:16%">Tutar</th>
+          <th class="sag" style="width:16%">Zaman</th>
         </tr>
       </thead>
       <tbody>
         @foreach ($hareketler as $h)
           @php
             $girisMi = ($h['yon'] ?? '') === 'giris';
-            $renk = $girisMi ? 'text-emerald-600' : 'text-rose-500';
+            $renk = $girisMi ? 'var(--yesil)' : 'var(--kirmizi)';
+            $ikon = $girisMi ? 'south_west' : 'north_east';
           @endphp
-          <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-4 py-3 text-slate-500 whitespace-nowrap">{{ $h['zaman'] ?? '' }}</td>
-            <td class="px-4 py-3 font-semibold text-slate-700">{{ $etiket[$h['tip'] ?? ''] ?? ($h['tip'] ?? '-') }}</td>
-            <td class="px-4 py-3 text-slate-500">
-              {{ $h['aciklama'] ?? '' }}
-              @if (!empty($h['personel']))<span class="text-slate-400">· {{ $h['personel'] }}</span>@endif
+          <tr>
+            <td style="font-weight:600">{{ $etiket[$h['tip'] ?? ''] ?? ($h['tip'] ?? '-') }}</td>
+            <td class="rk-sub">
+              {{ $h['aciklama'] ?? '' }}@if (!empty($h['personel'])) · {{ $h['personel'] }}@endif
             </td>
-            <td class="px-4 py-3 text-center">
-              <span class="inline-block text-[11px] font-bold rounded-full px-2 py-0.5 {{ $girisMi ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500' }}">
-                {{ $girisMi ? 'Giriş' : 'Çıkış' }}
+            <td class="orta">
+              <span class="rk-rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 13%,transparent);border-color:color-mix(in srgb,{{ $renk }} 40%,transparent)">
+                <span class="material-icons-outlined" style="font-size:14px">{{ $ikon }}</span>{{ $girisMi ? 'Giriş' : 'Çıkış' }}
               </span>
             </td>
-            <td class="px-4 py-3 text-right font-bold {{ $renk }} whitespace-nowrap">{{ $girisMi ? '+' : '−' }}{{ $tl($h['tutar'] ?? 0) }}</td>
+            <td class="sag" style="font-weight:800;color:{{ $renk }};white-space:nowrap">{{ $girisMi ? '+' : '−' }}{{ $tl($h['tutar'] ?? 0) }}</td>
+            <td class="sag rk-sub2" style="white-space:nowrap">{{ $h['zaman'] ?? '' }}</td>
           </tr>
         @endforeach
       </tbody>

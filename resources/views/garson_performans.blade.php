@@ -1,80 +1,127 @@
 @extends('layout.app')
-@section('title', 'Garson Performans')
-@section('baslik', '🏅 Garson Performans')
+@section('rk_ikon', 'emoji_events')
+@section('baslik', 'Garson Performansı')
+@section('title', 'Garson Performansı')
 
 @section('content')
 @php
-  $periodlar = ['gunluk' => 'Bugün', 'haftalik' => 'Hafta', 'aylik' => 'Ay', 'yillik' => 'Yıl'];
+  // Flutter garson_performans_screen (karne kısmı) BİREBİR — ısı haritası web'de atlanır.
+  $periodlar = ['gunluk' => 'Günlük', 'haftalik' => 'Haftalık', 'aylik' => 'Aylık', 'yillik' => 'Yıllık'];
+  $period = in_array($period ?? '', array_keys($periodlar)) ? $period : 'gunluk';
+  $garsonlar = $garsonlar ?? [];
+
+  // Flutter: ciroya göre sıralı (karne başlığı "Ciroya göre sıralı")
+  usort($garsonlar, fn ($a, $b) => (float) ($b['ciro'] ?? 0) <=> (float) ($a['ciro'] ?? 0));
+
   $toplamCiro = array_sum(array_column($garsonlar, 'ciro'));
   $toplamAdisyon = array_sum(array_column($garsonlar, 'adisyon'));
-  $maxCiro = $garsonlar ? max(array_column($garsonlar, 'ciro')) : 0;
+  $toplamAdim = array_sum(array_column($garsonlar, 'adim'));
+
+  $tl = fn ($v) => number_format(round((float) $v), 0, ',', '.') . '₺';
+  $sayi = fn ($v) => number_format((int) $v, 0, ',', '.');
 @endphp
 
-<div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-  <div class="inline-flex bg-white rounded-xl p-1 shadow-sm">
+{{-- Dönem sekmeleri (Flutter period seçici: gün/hafta/ay/yıl → ?period=) --}}
+<div class="rk-bolum" style="justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
     @foreach ($periodlar as $k => $ad)
       <a href="/garson-performans?period={{ $k }}"
-         class="px-4 py-2 rounded-lg text-sm font-semibold {{ $period === $k ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100' }}">{{ $ad }}</a>
+         class="rk-btn {{ $period === $k ? '' : 'bos' }}"
+         style="{{ $period === $k ? 'background:var(--mor1)' : '' }}">{{ $ad }}</a>
     @endforeach
   </div>
-  <div class="flex gap-3 text-sm">
-    <div class="bg-white rounded-xl px-4 py-2 shadow-sm"><span class="text-slate-400">Toplam ciro</span> <b class="text-slate-800 ml-1">{{ number_format($toplamCiro, 0, ',', '.') }}₺</b></div>
-    <div class="bg-white rounded-xl px-4 py-2 shadow-sm"><span class="text-slate-400">Adisyon</span> <b class="text-slate-800 ml-1">{{ $toplamAdisyon }}</b></div>
-  </div>
+  @if (!empty($garsonlar))
+    <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
+      <span class="rk-rozet" style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 45%,transparent);background:color-mix(in srgb,var(--yesil) 12%,transparent)">
+        <span class="material-icons-outlined" style="font-size:16px">payments</span>{{ $tl($toplamCiro) }}
+      </span>
+      <span class="rk-rozet" style="color:var(--mor1);border-color:color-mix(in srgb,var(--mor1) 45%,transparent);background:color-mix(in srgb,var(--mor1) 12%,transparent)">
+        <span class="material-icons-outlined" style="font-size:16px">receipt_long</span>{{ $sayi($toplamAdisyon) }} adisyon
+      </span>
+      <span class="rk-rozet" style="color:var(--sub2);border-color:var(--line);background:var(--card2)">
+        <span class="material-icons-outlined" style="font-size:16px">directions_walk</span>{{ $sayi($toplamAdim) }} adım
+      </span>
+    </div>
+  @endif
 </div>
 
-@if (!$garsonlar)
-  <div class="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm">Bu dönemde garson hareketi yok.</div>
+{{-- Garson Karnesi bölüm başlığı (Flutter: "Garson Karnesi" + "Ciroya göre sıralı") --}}
+<div class="rk-bolum">
+  <span class="cubuk" style="background:var(--mor1)"></span>
+  <span class="b">Garson Karnesi</span>
+  @if (!empty($garsonlar))
+    <span class="sayi" style="color:var(--mor1);background:color-mix(in srgb,var(--mor1) 13%,transparent)">{{ count($garsonlar) }}</span>
+  @endif
+</div>
+<div class="rk-sub" style="font-size:12px;margin:-4px 0 14px">Ciroya göre sıralı</div>
+
+@if (empty($garsonlar))
+  <div class="rk-card" style="text-align:center;padding:38px">
+    <span class="rk-sub">Bu dönemde veri yok.</span>
+  </div>
 @else
-  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  {{-- Flutter: genişken ikili grid (Wrap), karne kartları --}}
+  <div class="rk-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
     @foreach ($garsonlar as $i => $g)
-      @php $oran = $maxCiro > 0 ? round($g['ciro'] / $maxCiro * 100) : 0; @endphp
-      <div class="bg-white rounded-2xl p-5 shadow-sm {{ $i === 0 && $g['ciro'] > 0 ? 'ring-2 ring-amber-300' : '' }}">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white {{ $i === 0 ? 'bg-amber-400' : ($i === 1 ? 'bg-slate-400' : ($i === 2 ? 'bg-orange-400' : 'bg-indigo-400')) }}">
-            {{ mb_substr($g['ad'], 0, 1) }}
-          </div>
-          <div class="min-w-0">
-            <div class="font-bold text-slate-800 truncate">{{ $g['ad'] }}</div>
-            <div class="text-xs text-slate-400">{{ $i === 0 && $g['ciro'] > 0 ? '🥇 En iyi' : '#' . ($i + 1) }}</div>
-          </div>
-          <div class="ml-auto text-right">
-            <div class="text-xl font-extrabold text-indigo-700">{{ number_format($g['ciro'], 0, ',', '.') }}₺</div>
-            <div class="text-[11px] text-slate-400">ciro</div>
-          </div>
+      @php
+        $ad = $g['ad'] ?? '';
+        $ciro = (float) ($g['ciro'] ?? 0);
+        $adisyon = (int) ($g['adisyon'] ?? 0);
+        $kalem = (int) ($g['kalem'] ?? 0);
+        $servis = (int) round((float) ($g['ort_servis_dk'] ?? 0));
+        $adim = (int) ($g['adim'] ?? 0);
+        $saatler = $g['saat_dagilim'] ?? [];
+        $maxSaat = 1;
+        foreach ($saatler as $s) { $maxSaat = max($maxSaat, (int) ($s['adisyon'] ?? 0)); }
+        $bas = mb_substr($ad !== '' ? $ad : '?', 0, 1);
+      @endphp
+      <div class="rk-card">
+        {{-- Üst satır: avatar + ad + ciro (sağ, yeşil) --}}
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:50%;flex:0 0 34px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--mor1);background:color-mix(in srgb,var(--mor1) 15%,transparent)">{{ $bas }}</div>
+          <div style="flex:1;min-width:0;font-size:15.5px;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ $ad }}</div>
+          <div style="font-size:15px;font-weight:800;color:var(--yesil)">{{ $tl($ciro) }}</div>
         </div>
-        <div class="w-full h-1.5 bg-slate-100 rounded-full mb-4 overflow-hidden">
-          <div class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full" style="width: {{ $oran }}%"></div>
-        </div>
-        <div class="grid grid-cols-4 gap-2 text-center">
-          @php
-            $mini = [
-              ['Adisyon', $g['adisyon']],
-              ['Kalem', $g['kalem']],
-              ['Ort. servis', $g['ort_servis_dk'] . ' dk'],
-              ['Adım', number_format($g['adim'], 0, ',', '.')],
-            ];
-          @endphp
-          @foreach ($mini as [$ad, $v])
-            <div class="bg-slate-50 rounded-lg py-2">
-              <div class="text-sm font-bold text-slate-700">{{ $v }}</div>
-              <div class="text-[10px] text-slate-400 mt-0.5">{{ $ad }}</div>
+
+        {{-- 4 metrik (Flutter _metrik: Masa/Adisyon · Ürün kalemi · Ort. servis · Adım) --}}
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px;text-align:center">
+          @foreach ([[$adisyon, 'Masa/Adisyon'], [$kalem, 'Ürün kalemi'], [$servis . ' dk', 'Ort. servis'], [$sayi($adim), 'Adım']] as [$deger, $etiket])
+            <div>
+              <div style="font-size:15px;font-weight:800;color:var(--ink)">{{ $deger }}</div>
+              <div style="font-size:10.5px;color:var(--sub);margin-top:2px">{{ $etiket }}</div>
             </div>
           @endforeach
         </div>
-        @if (!empty($g['saat_dagilim']))
-          @php $maxSaat = max(array_map(fn($s) => $s['adisyon'], $g['saat_dagilim'])) ?: 1; @endphp
-          <div class="mt-4">
-            <div class="text-[11px] text-slate-400 mb-1.5">Saat dağılımı (adisyon)</div>
-            <div class="flex items-end gap-0.5 h-10">
-              @foreach ($g['saat_dagilim'] as $s)
-                <div class="flex-1 bg-indigo-200 rounded-t hover:bg-indigo-400 transition" style="height: {{ max(4, round($s['adisyon'] / $maxSaat * 100)) }}%" title="{{ $s['saat'] }}:00 · {{ $s['adisyon'] }}"></div>
-              @endforeach
-            </div>
+
+        {{-- Saatlik yoğunluk (Flutter mini bar grafiği, 08→23) --}}
+        <div style="font-size:11px;color:var(--sub);margin-top:14px">Saatlik yoğunluk</div>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:6px">
+          @if (empty($saatler))
+            <div style="flex:1;align-self:center;text-align:center;font-size:11px;color:var(--sub)">Veri yok</div>
+          @else
+            @foreach ($saatler as $s)
+              @php
+                $v = (int) ($s['adisyon'] ?? 0);
+                $yuzde = $v > 0 ? max(8, round($v / $maxSaat * 100)) : 0;
+              @endphp
+              <div title="{{ $s['saat'] ?? '' }}:00 · {{ $v }} adisyon"
+                   style="flex:1;height:{{ $yuzde }}%;min-height:{{ $v > 0 ? 3 : 0 }}px;border-radius:2px;background:{{ $v > 0 ? 'var(--mor1)' : 'var(--line)' }}"></div>
+            @endforeach
+          @endif
+        </div>
+        @if (!empty($saatler))
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--sub);margin-top:2px">
+            <span>08</span><span>23</span>
           </div>
         @endif
       </div>
     @endforeach
   </div>
 @endif
+
+<style>
+  @media (max-width:860px){
+    .rk-body .rk-grid[style*="repeat(2"]{grid-template-columns:1fr !important}
+  }
+</style>
 @endsection
