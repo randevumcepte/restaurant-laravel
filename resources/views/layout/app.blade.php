@@ -48,6 +48,7 @@
         ['/bagli-cihazlar', 'devices_other', 'Bağlı Cihazlar', '#0EA5E9'],
         ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#14B8A6'],
         ['/isletme-konum', 'my_location', 'İşletme Konum', null],
+        ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
         ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
         ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
         ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],

@@ -7188,6 +7188,53 @@ Route::post('/isletme-konum/kaydet', function (Request $r) {
         return redirect('/isletme-konum')->with('ok', 'İşletme konumu kaydedildi ✓');
     } catch (\Throwable $e) { return redirect('/isletme-konum')->with('hata', 'Kaydedilemedi.'); }
 });
+
+// ===== WEB PANEL: Yasal Bilgiler (sözleşme otomasyonu) =====
+// İşletme sahibi şirket/yasal verilerini doldurur; YasalMetin servisi şablona
+// enjekte ederek Gizlilik/Kullanım/KVKK/Mesafeli/Çerez belgelerini otomatik üretir.
+Route::get('/yasal-bilgiler', function () {
+    $sid = _webSubeId();
+    try { \App\Services\YasalMetin::kur(); } catch (\Throwable $e) {}
+    $row = DB::table('isletme_yasal')->where('sube_id', $sid)->first();
+    $alanlar = \App\Services\YasalMetin::alanlar();
+    $tipler = \App\Services\YasalMetin::tipler();
+    $servis = new \App\Services\YasalMetin($sid);
+    $eksikler = $servis->eksikler();
+    return view('yasal_bilgiler', compact('row', 'alanlar', 'tipler', 'eksikler'));
+});
+Route::post('/yasal-bilgiler/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        \App\Services\YasalMetin::kur();
+        $upd = ['sube_id' => $sid, 'guncelleme_tarihi' => now(), 'updated_at' => now()];
+        foreach (array_keys(\App\Services\YasalMetin::alanlar()) as $k) {
+            if ($k === 'iade_suresi') { $upd[$k] = $r->filled($k) ? max(0, (int) $r->input($k)) : null; }
+            else { $upd[$k] = trim((string) $r->input($k)) ?: null; }
+        }
+        $var = DB::table('isletme_yasal')->where('sube_id', $sid)->first();
+        if ($var) { unset($upd['sube_id']); DB::table('isletme_yasal')->where('sube_id', $sid)->update($upd); }
+        else { $upd['created_at'] = now(); DB::table('isletme_yasal')->insert($upd); }
+        return redirect('/yasal-bilgiler')->with('ok', 'Yasal bilgiler kaydedildi ✓ Sözleşmeler otomatik güncellendi.');
+    } catch (\Throwable $e) { return redirect('/yasal-bilgiler')->with('hata', 'Kaydedilemedi: ' . $e->getMessage()); }
+});
+// Belge önizleme (web panel) — sahibin üretilen metni görmesi için
+Route::get('/yasal-onizle/{tip}', function ($tip) {
+    $sid = _webSubeId();
+    $belge = (new \App\Services\YasalMetin($sid))->belge($tip);
+    return view('yasal_onizle', compact('belge', 'tip'));
+});
+
+// ===== APP API: üretilmiş yasal belge (müşteri uygulaması çeker) =====
+Route::get('/api/app/{sube}/yasal/{tip}', function ($sube, $tip) {
+    if (!DB::table('subeler')->where('id', $sube)->exists()) return response()->json(['ok' => 0], 404);
+    try {
+        $belge = (new \App\Services\YasalMetin((int) $sube))->belge($tip);
+        return ['ok' => 1, 'baslik' => $belge['baslik'], 'metin' => $belge['metin'], 'guncelleme' => $belge['guncelleme'], 'tam' => $belge['tam']];
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => 'Belge üretilemedi'], 500);
+    }
+});
+
 // ===== WEB PANEL: Puantaj (Mesai) — Flutter puantaj_screen karşılığı (salt-okunur) =====
 Route::get('/puantaj', function (\Illuminate\Http\Request $r) {
     $sid = _webSubeId();
