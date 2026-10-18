@@ -1466,6 +1466,26 @@ Route::post('/api/m/kart-kullan', function (Request $r) {
     return ['ok' => 1, 'mesaj' => implode("\n", $parca), 'kupon_kodu' => $kupon, 'odul_puan' => $odul, 'puan' => $puanYeni];
 });
 
+// KUPONLARIM: müşterinin aldığı tüm kampanyalar (geçmiş dahil) + kupon kodları
+Route::get('/api/m/kuponlarim', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    if (!Schema::hasTable('musteri_kart_kullanim')) return ['ok' => 1, 'kuponlar' => []];
+    $list = DB::table('musteri_kart_kullanim as k')
+        ->join('app_banner as b', 'k.banner_id', '=', 'b.id')
+        ->where('k.musteri_id', $m->id)
+        ->orderByDesc('k.id')
+        ->get(['b.baslik', 'b.metin', 'b.gorsel', 'b.kupon_kodu', 'b.odul_puan', 'k.created_at'])
+        ->map(fn ($x) => [
+            'baslik' => $x->baslik ?: 'Kampanya',
+            'metin' => $x->metin ?: '',
+            'gorsel' => $x->gorsel,
+            'kupon_kodu' => $x->kupon_kodu,
+            'odul_puan' => (int) ($x->odul_puan ?? 0),
+            'tarih' => $x->created_at ? \Carbon\Carbon::parse($x->created_at)->format('d.m.Y') : '',
+        ]);
+    return ['ok' => 1, 'kuponlar' => $list->values()];
+});
+
 // ===== PUAN ÖDÜLÜ KULLANIMI (müşteri Kullan -> QR/kod -> kasa doğrula -> puan düş) =====
 if (!function_exists('_odulKullanimEnsure')) {
     function _odulKullanimEnsure()
