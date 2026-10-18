@@ -32,6 +32,8 @@
         ['/satinalma', '🧾', 'Satın Alma'],
         ['/teklif', '📊', 'Teklifler'],
         ['/musteriler', '👥', 'Müşteriler'],
+        ['/personel', '🧑‍🍳', 'Personel'],
+        ['/rezervasyon', '📅', 'Rezervasyon'],
         ['/sadakat', '🎁', 'Sadakat'],
         ['/odul-dogrula', '✅', 'Ödül/Kupon Doğrula'],
         ['/odul-raporu', '🏆', 'Ödül Raporu'],

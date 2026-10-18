@@ -6410,6 +6410,153 @@ Route::post('/gider/sil', function (Request $r) {
     $ay = preg_match('/^\d{4}-\d{2}$/', (string) $r->ay) ? $r->ay : date('Y-m');
     return redirect('/gider?ay=' . $ay);
 });
+// ===== WEB PANEL: Rezervasyon (Flutter rezervasyon_screen karşılığı) =====
+Route::get('/rezervasyon', function (\Illuminate\Http\Request $r) {
+    $sube = _webSubeId();
+    if (function_exists('_rezervasyonEnsure')) { try { _rezervasyonEnsure($sube); } catch (\Throwable $e) {} }
+    $tarih = $r->query('tarih') ?: \Carbon\Carbon::now()->format('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $tarih)) $tarih = \Carbon\Carbon::now()->format('Y-m-d');
+    $rezervasyonlar = collect(); $masalar = collect();
+    try {
+        $rezervasyonlar = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
+            ->where('rezervasyonlar.sube_id', $sube)->where('rezervasyonlar.tarih', $tarih)->orderBy('rezervasyonlar.saat')
+            ->select('rezervasyonlar.*', 'masalar.ad as masa_ad')->get();
+    } catch (\Throwable $e) {}
+    try { $masalar = DB::table('masalar')->where('sube_id', $sube)->orderBy('ad')->get(['id', 'ad', 'kapasite']); } catch (\Throwable $e) {}
+    $ozet = ['toplam' => $rezervasyonlar->count(), 'bekleyen' => $rezervasyonlar->where('durum', 'bekliyor')->count(),
+        'onaylanan' => $rezervasyonlar->where('durum', 'onaylandi')->count(),
+        'misafir' => (int) $rezervasyonlar->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi'])->sum('kisi')];
+    $gunler = [];
+    for ($i = 0; $i < 7; $i++) {
+        $g = \Carbon\Carbon::now()->addDays($i)->format('Y-m-d'); $adet = 0;
+        try { $adet = DB::table('rezervasyonlar')->where('sube_id', $sube)->where('tarih', $g)->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi'])->count(); } catch (\Throwable $e) {}
+        $gunler[] = ['tarih' => $g, 'adet' => $adet];
+    }
+    return view('rezervasyon', compact('tarih', 'rezervasyonlar', 'masalar', 'ozet', 'gunler'));
+});
+Route::post('/rezervasyon/ekle', function (\Illuminate\Http\Request $r) {
+    $sube = _webSubeId();
+    if (function_exists('_rezervasyonEnsure')) { try { _rezervasyonEnsure($sube); } catch (\Throwable $e) {} }
+    $ad = trim((string) $r->input('ad'));
+    $tarih = $r->input('tarih') ?: \Carbon\Carbon::now()->format('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $tarih)) $tarih = \Carbon\Carbon::now()->format('Y-m-d');
+    $don = fn () => redirect('/rezervasyon?tarih=' . urlencode($tarih));
+    if ($ad === '') return $don()->with('rez_hata', 'İsim gerekli.');
+    $saat = substr(trim((string) $r->input('saat', '19:00')), 0, 5);
+    $tel = trim((string) $r->input('telefon'));
+    if ($tarih < \Carbon\Carbon::now()->format('Y-m-d')) return $don()->with('rez_hata', 'Geçmiş tarihe rezervasyon alınamaz.');
+    if ($tarih === \Carbon\Carbon::now()->format('Y-m-d') && $saat < \Carbon\Carbon::now()->format('H:i')) return $don()->with('rez_hata', 'Geçmiş saate rezervasyon alınamaz.');
+    $masaId = (int) $r->input('masa_id');
+    try { if ($masaId && !DB::table('masalar')->where('id', $masaId)->where('sube_id', $sube)->exists()) $masaId = 0; } catch (\Throwable $e) { $masaId = 0; }
+    if ($masaId) {
+        try {
+            $dk = fn ($s) => ((int) substr((string) $s, 0, 2)) * 60 + (int) substr((string) $s, 3, 2);
+            $yeniDk = $dk($saat);
+            foreach (DB::table('rezervasyonlar')->where('sube_id', $sube)->where('masa_id', $masaId)->where('tarih', $tarih)->whereIn('durum', ['bekliyor', 'onaylandi', 'geldi'])->pluck('saat') as $cs) {
+                if (abs($dk(substr((string) $cs, 0, 5)) - $yeniDk) < 90) return $don()->with('rez_hata', 'Bu masa ' . substr((string) $cs, 0, 5) . ' civarında zaten rezerve.');
+            }
+        } catch (\Throwable $e) {}
+    }
+    try {
+        $data = ['sube_id' => $sube, 'masa_id' => $masaId ?: null, 'ad' => $ad, 'telefon' => $tel ?: null,
+            'kisi' => max(1, (int) $r->input('kisi', 2)), 'tarih' => $tarih, 'saat' => $saat, 'durum' => 'onaylandi',
+            'kaynak' => 'admin', 'not' => trim((string) $r->input('not')) ?: null, 'created_at' => \Carbon\Carbon::now()];
+        if (function_exists('_rezMusteriCozumle')) { try { $mid = _rezMusteriCozumle($sube, $ad, $tel, ''); if ($mid) $data['musteri_id'] = $mid; } catch (\Throwable $e) {} }
+        DB::table('rezervasyonlar')->insert($data);
+    } catch (\Throwable $e) { return $don()->with('rez_hata', 'Rezervasyon eklenemedi.'); }
+    return $don()->with('rez_ok', "$ad · $tarih $saat rezervasyonu eklendi.");
+});
+Route::post('/rezervasyon/durum', function (\Illuminate\Http\Request $r) {
+    $sube = _webSubeId();
+    $geri = $r->input('tarih') ?: \Carbon\Carbon::now()->format('Y-m-d');
+    $don = fn () => redirect('/rezervasyon?tarih=' . urlencode($geri));
+    $durum = (string) $r->input('durum');
+    if (!in_array($durum, ['bekliyor', 'onaylandi', 'geldi', 'iptal', 'gelmedi'])) return $don()->with('rez_hata', 'Geçersiz işlem.');
+    try {
+        $rez = DB::table('rezervasyonlar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
+        if (!$rez) return $don()->with('rez_hata', 'Rezervasyon bulunamadı.');
+        DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => $durum]);
+        if (!empty($rez->masa_id)) {
+            $m = DB::table('masalar')->where('id', $rez->masa_id)->first();
+            if ($m) {
+                if ($durum === 'onaylandi' && $m->durum === 'bos') DB::table('masalar')->where('id', $rez->masa_id)->update(['durum' => 'rezerve']);
+                if (in_array($durum, ['iptal', 'gelmedi', 'geldi']) && $m->durum === 'rezerve') DB::table('masalar')->where('id', $rez->masa_id)->update(['durum' => 'bos']);
+            }
+        }
+    } catch (\Throwable $e) { return $don()->with('rez_hata', 'Durum güncellenemedi.'); }
+    return $don()->with('rez_ok', 'Rezervasyon durumu güncellendi.');
+});
+// ===== WEB PANEL: Personel & Yetki (Flutter personel_screen karşılığı) =====
+Route::get('/personel', function () {
+    $sid = _webSubeId();
+    try {
+        if (!Schema::hasColumn('personeller', 'yetkiler')) Schema::table('personeller', fn ($t) => $t->text('yetkiler')->nullable());
+        if (!Schema::hasColumn('personeller', 'iskonto_limit')) Schema::table('personeller', fn ($t) => $t->decimal('iskonto_limit', 5, 2)->default(0));
+        if (!Schema::hasColumn('personeller', 'ikram_limit')) Schema::table('personeller', fn ($t) => $t->decimal('ikram_limit', 12, 2)->nullable());
+    } catch (\Throwable $e) {}
+    $personeller = DB::table('personeller')->where('sube_id', $sid)
+        ->orderByRaw("FIELD(rol,'sahip','mudur','kasa','garson','mutfak')")->orderBy('ad')
+        ->get(['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit'])
+        ->map(function ($x) {
+            $y = $x->yetkiler ? json_decode($x->yetkiler, true) : _restoYetkiVarsayilan($x->rol)['yetkiler'];
+            $y = array_merge(array_fill_keys(_restoYetkiKeys(), false), is_array($y) ? $y : []);
+            return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'rol' => $x->rol, 'pin' => $x->pin,
+                'aktif' => (int) $x->aktif, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit,
+                'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit];
+        })->toArray();
+    return view('personel', ['personeller' => $personeller, 'duzenleyebilir' => true]);
+});
+Route::post('/personel/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $ad = trim((string) $r->ad); $pid = (int) $r->id;
+        if ($pid > 0 && $ad === '' && $r->has('aktif') && !$r->filled('rol')) {
+            DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->update(['aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()]);
+            return redirect('/personel')->with('ok', 'Durum güncellendi.');
+        }
+        if ($ad === '') return redirect('/personel')->with('hata', 'İsim boş olamaz.');
+        $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak']) ? $r->rol : 'garson';
+        $pin = preg_replace('/\D/', '', (string) $r->pin);
+        $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'rol' => $rol, 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
+        if ($pin !== '') {
+            if (strlen($pin) < 4) return redirect('/personel')->with('hata', 'PIN en az 4 haneli olmalı.');
+            $cak = DB::table('personeller')->where('sube_id', $sid)->where('pin', $pin)->where('id', '!=', $pid)->exists();
+            if ($cak) return redirect('/personel')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
+            $veri['pin'] = $pin;
+        }
+        if ($pid > 0) {
+            $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->first();
+            if (!$hedef) return redirect('/personel')->with('hata', 'Personel bulunamadı.');
+            DB::table('personeller')->where('id', $pid)->update($veri);
+            return redirect('/personel')->with('ok', 'Personel güncellendi.');
+        }
+        if ($pin === '') return redirect('/personel')->with('hata', 'Yeni personel için PIN zorunlu.');
+        $veri['sube_id'] = $sid; $veri['created_at'] = now();
+        DB::table('personeller')->insert($veri);
+        return redirect('/personel')->with('ok', 'Personel eklendi.');
+    } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Kaydedilemedi.'); }
+});
+Route::post('/personel/sil', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $hedef = DB::table('personeller')->where('id', (int) $r->id)->where('sube_id', $sid)->first();
+        if (!$hedef) return redirect('/personel')->with('hata', 'Personel bulunamadı.');
+        DB::table('personeller')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+        return redirect('/personel')->with('ok', $hedef->ad . ' silindi.');
+    } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Silinemedi (bağlı kayıt olabilir).'); }
+});
+Route::post('/personel/yetki', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $hedef = DB::table('personeller')->where('id', (int) $r->id)->where('sube_id', $sid)->first();
+        if (!$hedef) return redirect('/personel')->with('hata', 'Personel bulunamadı.');
+        $temiz = [];
+        foreach (_restoYetkiKeys() as $k) $temiz[$k] = $r->has('yetki_' . $k);
+        DB::table('personeller')->where('id', (int) $r->id)->update(['yetkiler' => json_encode($temiz),
+            'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)), 'ikram_limit' => max(0, (float) $r->ikram_limit), 'updated_at' => now()]);
+        return redirect('/personel')->with('ok', 'Yetkiler kaydedildi.');
+    } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Yetki kaydedilemedi.'); }
+});
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
 Route::get('/api/patron/garson-performans', function (Request $r) {
     $p = _apiPersonel($r);
