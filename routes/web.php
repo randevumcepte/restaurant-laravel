@@ -1581,6 +1581,60 @@ Route::post('/api/pos/odul-onayla', function (Request $r) {
     DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
     return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü" . $hesapMesaj, 'etki' => $etki];
 });
+
+// ---- KASA/GARSON (Flutter app, Bearer token'li) — POS uçlarının token'li ikizi ----
+// Flutter kasa/garson, müşterinin ödül QR kodunu okutup doğrular/onaylar. Şube izolasyonlu.
+Route::post('/api/patron/odul-dogrula', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _odulKullanimEnsure(); _odulKolonEnsure();
+    $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->where('sube_id', $p->sube_id)->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kod bulunamadı'];
+    if ($row->durum === 'kullanildi') return ['ok' => 0, 'hata' => 'Bu kod zaten kullanıldı'];
+    if ($row->durum === 'iptal' || now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Kodun süresi dolmuş'];
+    $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
+    $yeter = (int) ($mus->puan ?? 0) >= (int) $row->puan;
+    $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+    $acik = DB::table('adisyonlar')->where('musteri_id', $row->musteri_id)->where('sube_id', $p->sube_id)->where('durum', 'acik')->orderByDesc('id')->first();
+    return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan, 'aciklama' => $o ? _odulAciklama($o) : '',
+        'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter,
+        'adisyon' => $acik ? ['id' => (int) $acik->id, 'toplam' => (float) $acik->toplam] : null];
+});
+Route::post('/api/patron/odul-onayla', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _odulKullanimEnsure(); _odulKolonEnsure();
+    $row = DB::table('odul_kullanimlari')->where('kod', strtoupper(trim((string) $r->input('kod'))))->where('sube_id', $p->sube_id)->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kod yok'];
+    if ($row->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Kod zaten işlenmiş'];
+    if (now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Süre dolmuş'];
+    $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
+    if ((int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
+    $hesapMesaj = ''; $etki = 0.0;
+    $adId = (int) $r->input('adisyon_id');
+    if ($adId) {
+        $a = DB::table('adisyonlar')->where('id', $adId)->where('sube_id', $p->sube_id)->where('durum', 'acik')->first();
+        if ($a) {
+            $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+            $tip = $o->tip ?? 'urun';
+            $ara = (float) $a->ara_toplam; $ind = (float) $a->indirim; $ikr = (float) $a->ikram;
+            $kalan = max(0, $ara - $ind - $ikr);
+            $logTip = 'ikram';
+            if ($tip === 'yuzde') { $etki = round($ara * (float) ($o->deger ?? 0) / 100, 2); $logTip = 'indirim'; }
+            elseif ($tip === 'tutar') { $etki = (float) ($o->deger ?? 0); $logTip = 'indirim'; }
+            else { $uf = ($o && $o->urun_id) ? (float) (DB::table('urunler')->where('id', $o->urun_id)->value('fiyat') ?? 0) : 0.0; $etki = $uf > 0 ? $uf : (float) ($o->deger ?? 0); $logTip = 'ikram'; }
+            $etki = round(min($etki, $kalan), 2);
+            if ($etki > 0) {
+                if ($logTip === 'indirim') $ind += $etki; else $ikr += $etki;
+                $yeniToplam = max(0, round($ara - $ind - $ikr, 2));
+                DB::table('adisyonlar')->where('id', $a->id)->update(['indirim' => $ind, 'ikram' => $ikr, 'toplam' => $yeniToplam, 'updated_at' => now()]);
+                try { if (Schema::hasTable('iptal_indirim_loglari')) DB::table('iptal_indirim_loglari')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'tip' => $logTip, 'tutar' => $etki, 'sebep' => 'Ödül: ' . $row->odul_ad, 'personel_id' => $p->id ?? null, 'created_at' => now()]); } catch (\Throwable $e) {}
+                $hesapMesaj = ' · Hesaba işlendi (−' . number_format($etki, 0, ',', '.') . '₺) → yeni toplam ' . number_format($yeniToplam, 0, ',', '.') . '₺';
+            }
+        }
+    }
+    DB::table('musteriler')->where('id', $row->musteri_id)->update(['puan' => DB::raw('puan - ' . (int) $row->puan), 'updated_at' => now()]);
+    DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
+    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü" . $hesapMesaj, 'etki' => $etki];
+});
 // Kasa ekranı: ödül/kupon doğrula (PIN'li)
 Route::get('/odul-dogrula', function () {
     if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
