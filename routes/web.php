@@ -6791,6 +6791,191 @@ Route::post('/tedarikci/sil', function (Request $r) {
         return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi silindi.');
     } catch (\Throwable $e) { return redirect('/tedarikci')->with('ted_hata', 'Silinemedi.'); }
 });
+// ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
+Route::get('/masa-yonetim', function () {
+    $sid = _webSubeId();
+    $aktif = []; $arsiv = []; $bolgeler = collect();
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        $rows = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')->where('masalar.sube_id', $sid)
+            ->select('masalar.id', 'masalar.ad', 'masalar.kapasite', 'masalar.durum', 'masalar.bolge_id', 'masalar.qr_token', 'masalar.arsiv', 'bolgeler.ad as bolge')->orderBy('masalar.id')->get();
+        $fmt = fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'kapasite' => (int) ($m->kapasite ?? 0), 'bolge' => $m->bolge, 'bolge_id' => $m->bolge_id ? (int) $m->bolge_id : null,
+            'durum' => $m->durum, 'qr_token' => $m->qr_token, 'qr_url' => $m->qr_token ? url('/m/' . $m->qr_token) : null, 'arsiv' => (int) ($m->arsiv ?? 0)];
+        $aktif = $rows->where('arsiv', 0)->map($fmt)->values()->all();
+        $arsiv = $rows->where('arsiv', 1)->map($fmt)->values()->all();
+        $bolgeler = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
+    } catch (\Throwable $e) {}
+    return view('masa_yonetim', compact('aktif', 'arsiv', 'bolgeler'));
+});
+Route::post('/masa-yonetim/ekle', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        $ad = trim((string) $r->input('ad'));
+        if ($ad === '') $ad = 'Masa ' . (DB::table('masalar')->where('sube_id', $sid)->count() + 1);
+        $kapasite = max(1, min(50, (int) $r->input('kapasite', 4)));
+        $bolgeId = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
+        if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $sid)->exists()) $bolgeId = null;
+        if (!$bolgeId && function_exists('_masaVarsayilanBolge')) $bolgeId = _masaVarsayilanBolge($sid);
+        $data = ['sube_id' => $sid, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId, 'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
+        if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
+        if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
+        if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
+        DB::table('masalar')->insertGetId($data);
+        return redirect('/masa-yonetim')->with('ok', $ad . ' eklendi (QR otomatik).');
+    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'Masa eklenemedi.'); }
+});
+Route::post('/masa-yonetim/sil', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+        if (!$m) return redirect('/masa-yonetim')->with('hata', 'Masa bulunamadı');
+        $acik = DB::table('adisyonlar')->where('masa_id', $m->id)->where('durum', 'acik')->exists();
+        if ($acik || ($m->durum ?? '') === 'dolu') return redirect('/masa-yonetim')->with('hata', 'Bu masada açık hesap var.');
+        $upd = ['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos'];
+        if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        DB::table('masalar')->where('id', $m->id)->update($upd);
+        return redirect('/masa-yonetim')->with('ok', $m->ad . ' arşive taşındı. QR KORUNUYOR.');
+    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'İşlem başarısız.'); }
+});
+Route::post('/masa-yonetim/geri', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+        if (!$m) return redirect('/masa-yonetim')->with('hata', 'Masa bulunamadı');
+        $upd = ['arsiv' => 0, 'arsiv_at' => null];
+        if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        DB::table('masalar')->where('id', $m->id)->update($upd);
+        return redirect('/masa-yonetim')->with('ok', $m->ad . ' geri getirildi. Aynı QR geçerli.');
+    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'İşlem başarısız.'); }
+});
+// ===== WEB PANEL: Garson Çağrıları — Flutter garson_cagrilari_screen karşılığı =====
+Route::get('/garson-cagrilari', function () {
+    $sid = _webSubeId();
+    $bekleyen = []; $karsilanan = []; $hata = null;
+    try {
+        if (Schema::hasTable('masa_cagrilari')) {
+            if (function_exists('_masaCagriEnsure')) { try { _masaCagriEnsure(); } catch (\Throwable $e) {} }
+            try { DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
+            $tasima = Schema::hasColumn('masa_cagrilari', 'hedef_masa_id');
+            $cols = ['masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.durum', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad'];
+            if ($tasima) $cols[] = 'masa_cagrilari.hedef_masa_id';
+            $cevir = function ($c) use ($tasima) {
+                $hedef = null;
+                if ($tasima && !empty($c->hedef_masa_id)) $hedef = DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id);
+                return ['id' => (int) $c->id, 'tip' => $c->tip, 'durum' => $c->durum, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id), 'hedef' => $hedef,
+                    'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'), 'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))];
+            };
+            $bekleyen = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')->where('masa_cagrilari.sube_id', $sid)->where('masa_cagrilari.durum', 'bekliyor')->orderBy('masa_cagrilari.id')->select($cols)->limit(60)->get()->map($cevir)->toArray();
+            $karsilanan = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')->where('masa_cagrilari.sube_id', $sid)->where('masa_cagrilari.durum', 'karsilandi')->orderByDesc('masa_cagrilari.id')->select($cols)->limit(20)->get()->map($cevir)->toArray();
+        }
+    } catch (\Throwable $e) { $hata = 'Çağrılar yüklenemedi.'; }
+    return view('garson_cagrilari', compact('bekleyen', 'karsilanan', 'hata'));
+});
+Route::post('/garson-cagrilari/karsilandi', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (!Schema::hasTable('masa_cagrilari')) return redirect('/garson-cagrilari')->with('hata', 'Çağrı tablosu yok.');
+        if ($r->filled('hepsi')) { $n = DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->update(['durum' => 'karsilandi']); return redirect('/garson-cagrilari')->with('ok', $n . ' çağrı karşılandı.'); }
+        $id = (int) $r->id;
+        if ($id > 0) { DB::table('masa_cagrilari')->where('id', $id)->where('sube_id', $sid)->update(['durum' => 'karsilandi']); return redirect('/garson-cagrilari')->with('ok', 'Çağrı karşılandı.'); }
+        return redirect('/garson-cagrilari')->with('hata', 'Geçersiz istek.');
+    } catch (\Throwable $e) { return redirect('/garson-cagrilari')->with('hata', 'İşlem başarısız.'); }
+});
+// ===== WEB PANEL: Üretim Riski — Flutter uretim_riski_screen karşılığı =====
+Route::get('/uretim-riski', function (Request $r) {
+    $sid = _webSubeId();
+    $esik = $r->esik !== null ? max(0, (int) $r->esik) : 15;
+    $kritik = []; $riskli = [];
+    try { if (function_exists('_restoUretimRiski')) { $risk = _restoUretimRiski($sid, $esik); $kritik = $risk['kritik'] ?? []; $riskli = $risk['riskli'] ?? []; } } catch (\Throwable $e) {}
+    return view('uretim_riski', compact('kritik', 'riskli', 'esik'));
+});
+// ===== WEB PANEL: Sayım — Flutter sayim_screen karşılığı =====
+Route::get('/sayim', function () {
+    $sid = _webSubeId();
+    $malzemeler = []; $sonSayimlar = [];
+    try {
+        if (function_exists('_restoSayimEnsure')) _restoSayimEnsure();
+        $mevcut = function_exists('_restoStokMevcut') ? _restoStokMevcut($sid) : collect();
+        $birim = Schema::hasTable('birimler') ? DB::table('birimler')->pluck('kisaltma', 'id') : collect();
+        $kat = Schema::hasTable('malzeme_kategorileri') ? DB::table('malzeme_kategorileri')->pluck('ad', 'id') : collect();
+        if (Schema::hasTable('malzemeler')) {
+            $malzemeler = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => ['malzeme_id' => (int) $m->id, 'ad' => $m->ad,
+                'kategori' => $kat[$m->kategori_id] ?? '—', 'birim' => $birim[$m->temel_birim_id] ?? '', 'teorik' => round((float) ($mevcut[$m->id] ?? 0), 3), 'guncel_maliyet' => (float) $m->guncel_maliyet])->values()->all();
+        }
+        if (Schema::hasTable('sayimlar') && Schema::hasTable('sayim_kalemleri')) {
+            $sonSayimlar = DB::table('sayimlar')->where('sube_id', $sid)->orderByDesc('id')->limit(10)->get()->map(function ($s) {
+                $agg = DB::table('sayim_kalemleri')->where('sayim_id', $s->id)->selectRaw('COUNT(*) n, COALESCE(SUM(fark_maliyet),0) fm, COALESCE(SUM(CASE WHEN fark < 0 THEN 1 ELSE 0 END),0) eksik')->first();
+                return ['id' => (int) $s->id, 'tarih' => \Carbon\Carbon::parse($s->tarih)->format('d.m.Y'), 'kalem' => (int) $agg->n, 'eksik' => (int) $agg->eksik, 'fark_maliyet' => round((float) $agg->fm, 2)];
+            })->all();
+        }
+    } catch (\Throwable $e) {}
+    return view('sayim', compact('malzemeler', 'sonSayimlar'));
+});
+Route::post('/sayim/kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_restoSayimEnsure')) _restoSayimEnsure();
+        $girilen = $r->input('sayilan', []);
+        if (!is_array($girilen) || !$girilen) return redirect('/sayim')->with('sayim_hata', 'Hiç sayım girilmemiş.');
+        $sonuc = DB::transaction(function () use ($sid, $girilen) {
+            $sayimId = DB::table('sayimlar')->insertGetId(['sube_id' => $sid, 'tarih' => today(), 'durum' => 'kapandi', 'personel_id' => null, 'created_at' => now(), 'updated_at' => now()]);
+            $toplamFarkMaliyet = 0.0; $eksik = 0; $fazla = 0; $n = 0;
+            foreach ($girilen as $mid => $deger) {
+                $mid = (int) $mid;
+                if ($mid <= 0 || $deger === null || trim((string) $deger) === '') continue;
+                $m = DB::table('malzemeler')->where('id', $mid)->first(['guncel_maliyet']);
+                if (!$m) continue;
+                $sayilan = (float) str_replace(',', '.', (string) $deger);
+                $teorik = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('malzeme_id', $mid)->sum('miktar');
+                $fark = round($sayilan - $teorik, 4); $farkMaliyet = round($fark * (float) $m->guncel_maliyet, 2);
+                DB::table('sayim_kalemleri')->insert(['sayim_id' => $sayimId, 'malzeme_id' => $mid, 'sayilan' => $sayilan, 'teorik' => $teorik, 'fark' => $fark, 'fark_maliyet' => $farkMaliyet, 'created_at' => now(), 'updated_at' => now()]);
+                if (abs($fark) > 0.0001) DB::table('stok_hareketleri')->insert(['sube_id' => $sid, 'malzeme_id' => $mid, 'tip' => 'sayim', 'miktar' => $fark, 'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'sayim', 'kaynak_id' => $sayimId, 'aciklama' => 'Sayım düzeltmesi', 'personel_id' => null, 'created_at' => now()]);
+                $toplamFarkMaliyet += $farkMaliyet; $n++;
+                if ($fark < 0) $eksik++; elseif ($fark > 0) $fazla++;
+            }
+            if ($n === 0) { DB::table('sayimlar')->where('id', $sayimId)->delete(); return null; }
+            return ['sayilan_kalem' => $n, 'eksik' => $eksik, 'fazla' => $fazla, 'toplam_fark_maliyet' => round($toplamFarkMaliyet, 2)];
+        });
+        if (!$sonuc) return redirect('/sayim')->with('sayim_hata', 'Hiç sayım girilmemiş.');
+        return redirect('/sayim')->with('sayim_sonuc', $sonuc);
+    } catch (\Throwable $e) { return redirect('/sayim')->with('sayim_hata', 'Sayım kaydedilemedi.'); }
+});
+// ===== WEB PANEL: Barkod Yönetim — Flutter barkod_yonetim_screen karşılığı =====
+Route::get('/barkod', function () {
+    if (function_exists('_barkodKur')) _barkodKur();
+    $sid = _webSubeId();
+    $urunler = []; $malzemeler = []; $barkodlar = [];
+    try {
+        $urunler = DB::table('urunler')->orderBy('ad')->get(['id', 'ad']);
+        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad']);
+        $rows = DB::table('barkodlar')->where('sube_id', $sid)->orderByDesc('id')->get(['id', 'barkod', 'tur', 'hedef_id']);
+        $urunAd = DB::table('urunler')->pluck('ad', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        foreach ($rows as $b) $b->hedef_ad = $b->tur === 'urun' ? ($urunAd[$b->hedef_id] ?? null) : ($malAd[$b->hedef_id] ?? null);
+        $barkodlar = $rows;
+    } catch (\Throwable $e) {}
+    return view('barkod', compact('barkodlar', 'urunler', 'malzemeler'));
+});
+Route::post('/barkod/ekle', function (Request $r) {
+    if (function_exists('_barkodKur')) _barkodKur();
+    $sid = _webSubeId();
+    try {
+        $kod = trim((string) $r->input('barkod', '')); $tur = (string) $r->input('tur', 'urun');
+        $hid = $tur === 'urun' ? (int) $r->input('hedef_id_urun', 0) : (int) $r->input('hedef_id_malzeme', 0);
+        if ($kod === '' || !$hid || !in_array($tur, ['urun', 'malzeme'])) return redirect('/barkod')->with('hata', 'Eksik bilgi: barkod ve öğe seçilmeli.');
+        $var = DB::table('barkodlar')->where('sube_id', $sid)->where('barkod', $kod)->first();
+        if ($var) { if ($var->tur === $tur && (int) $var->hedef_id === $hid) return redirect('/barkod')->with('ok', 'Bu barkod zaten bu öğede tanımlı.'); return redirect('/barkod')->with('hata', 'Bu barkod başka bir öğede tanımlı.'); }
+        DB::table('barkodlar')->insert(['sube_id' => $sid, 'barkod' => $kod, 'tur' => $tur, 'hedef_id' => $hid, 'created_at' => now()]);
+        return redirect('/barkod')->with('ok', 'Barkod eklendi.');
+    } catch (\Throwable $e) { return redirect('/barkod')->with('hata', 'Eklenemedi.'); }
+});
+Route::post('/barkod/sil', function (Request $r) {
+    if (function_exists('_barkodKur')) _barkodKur();
+    $sid = _webSubeId();
+    try { DB::table('barkodlar')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->delete(); return redirect('/barkod')->with('ok', 'Barkod silindi.'); }
+    catch (\Throwable $e) { return redirect('/barkod')->with('hata', 'Silinemedi.'); }
+});
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
 Route::get('/api/patron/garson-performans', function (Request $r) {
     $p = _apiPersonel($r);
