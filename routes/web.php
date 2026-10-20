@@ -6738,17 +6738,32 @@ Route::get('/personel', function () {
         if (!Schema::hasColumn('personeller', 'iskonto_limit')) Schema::table('personeller', fn ($t) => $t->decimal('iskonto_limit', 5, 2)->default(0));
         if (!Schema::hasColumn('personeller', 'ikram_limit')) Schema::table('personeller', fn ($t) => $t->decimal('ikram_limit', 12, 2)->nullable());
     } catch (\Throwable $e) {}
+    _panelYetkiEnsure();
+    $benSahip = false;
+    try { $bp = _posPersonel(); $benSahip = $bp && ($bp->rol ?? '') === 'sahip'; } catch (\Throwable $e) {}
     $personeller = DB::table('personeller')->where('sube_id', $sid)
         ->orderByRaw("FIELD(rol,'sahip','mudur','kasa','garson','mutfak')")->orderBy('ad')
-        ->get(['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit'])
+        ->get(['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit', 'kademe', 'sayfa_yetki'])
         ->map(function ($x) {
             $y = $x->yetkiler ? json_decode($x->yetkiler, true) : _restoYetkiVarsayilan($x->rol)['yetkiler'];
             $y = array_merge(array_fill_keys(_restoYetkiKeys(), false), is_array($y) ? $y : []);
+            $kademe = $x->kademe ?: _rolKademe($x->rol);
+            $sy = $x->sayfa_yetki ? json_decode($x->sayfa_yetki, true) : null;
+            $sayfa = [];
+            foreach (_panelSayfaKeys() as $k) {
+                if (($x->rol ?? '') === 'sahip') { $sayfa[$k] = true; continue; }
+                if (is_array($sy) && array_key_exists($k, $sy)) $sayfa[$k] = !empty($sy[$k]);
+                else $sayfa[$k] = in_array($k, _kademeSayfalar($kademe));
+            }
             return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'rol' => $x->rol, 'pin' => $x->pin,
                 'aktif' => (int) $x->aktif, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit,
-                'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit];
+                'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit,
+                'kademe' => $kademe, 'sayfa' => $sayfa];
         })->toArray();
-    return view('personel', ['personeller' => $personeller, 'duzenleyebilir' => true]);
+    $kademeSayfa = [];
+    foreach (array_keys(_panelKademeler()) as $kd) $kademeSayfa[$kd] = _kademeSayfalar($kd);
+    return view('personel', ['personeller' => $personeller, 'duzenleyebilir' => $benSahip,
+        'kademeler' => _panelKademeler(), 'sayfaKategori' => _panelSayfaKategori(), 'kademeSayfa' => $kademeSayfa, 'tumSayfa' => _panelSayfaKeys()]);
 });
 Route::post('/personel/kaydet', function (Request $r) {
     $sid = _webSubeId();
@@ -6792,11 +6807,18 @@ Route::post('/personel/sil', function (Request $r) {
 Route::post('/personel/yetki', function (Request $r) {
     $sid = _webSubeId();
     try {
+        $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+        if (!$bp || ($bp->rol ?? '') !== 'sahip') return redirect('/personel')->with('hata', 'Yetki düzenlemeyi yalnızca işletme sahibi yapabilir.');
+        _panelYetkiEnsure();
         $hedef = DB::table('personeller')->where('id', (int) $r->id)->where('sube_id', $sid)->first();
         if (!$hedef) return redirect('/personel')->with('hata', 'Personel bulunamadı.');
         $temiz = [];
         foreach (_restoYetkiKeys() as $k) $temiz[$k] = $r->has('yetki_' . $k);
+        $kademe = in_array($r->kademe, array_keys(_panelKademeler())) ? $r->kademe : _rolKademe($hedef->rol);
+        $sayfa = [];
+        foreach (_panelSayfaKeys() as $k) $sayfa[$k] = $r->has('sayfa_' . $k);
         DB::table('personeller')->where('id', (int) $r->id)->update(['yetkiler' => json_encode($temiz),
+            'kademe' => $kademe, 'sayfa_yetki' => json_encode($sayfa),
             'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)), 'ikram_limit' => max(0, (float) $r->ikram_limit), 'updated_at' => now()]);
         return redirect('/personel')->with('ok', 'Yetkiler kaydedildi.');
     } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Yetki kaydedilemedi.'); }

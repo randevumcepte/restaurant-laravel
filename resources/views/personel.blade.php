@@ -276,6 +276,40 @@
         <button type="button" class="rk-modal-kapa" onclick="yetkiKapat()">&times;</button>
       </div>
       <div class="rk-modal-govde">
+        {{-- Yetki Seviyesi (kademe) — seçince sayfalar ön-işaretlenir --}}
+        <div class="rk-bolum" style="margin:2px 0 8px">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--mor1)">workspace_premium</span>
+          <span class="b" style="font-size:13.5px;color:var(--mor1)">Yetki Seviyesi</span>
+        </div>
+        <select name="kademe" id="y_kademe" class="rk-inp" onchange="kademeUygula()">
+          @foreach ($kademeler as $kd => $info)
+            <option value="{{ $kd }}">{{ $info['ad'] }} — {{ $info['aciklama'] }}</option>
+          @endforeach
+        </select>
+        <div class="rk-sub" style="font-size:11.5px;margin:6px 0 16px">Seviye seçince aşağıdaki sayfalar otomatik işaretlenir; istediğini tek tek açıp kapatabilirsin.</div>
+
+        {{-- Sayfa (menü) yetkileri — kılcal --}}
+        <div class="rk-bolum" style="margin:2px 0 8px">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--mor1)">visibility</span>
+          <span class="b" style="font-size:13.5px;color:var(--mor1)">Görebileceği Sayfalar (Menü)</span>
+        </div>
+        @foreach ($sayfaKategori as $kat => $sayfalar)
+          <div style="font-size:12px;font-weight:700;color:var(--sub2);margin:8px 2px 4px">{{ $kat }}</div>
+          <div style="background:var(--card2);border-radius:12px;padding:4px 12px;margin-bottom:10px">
+            @foreach ($sayfalar as $sk => $et)
+              <label class="rk-yetki-satir">
+                <input type="checkbox" name="sayfa_{{ $sk }}" data-sayfa="{{ $sk }}" class="rk-chk">
+                <span>{{ $et }}</span>
+              </label>
+            @endforeach
+          </div>
+        @endforeach
+
+        {{-- İşlem yetkileri (POS operasyon) --}}
+        <div class="rk-bolum" style="margin:16px 0 8px">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--mor1)">tune</span>
+          <span class="b" style="font-size:13.5px;color:var(--mor1)">İşlem Yetkileri (POS)</span>
+        </div>
         @foreach ($gruplar as $baslik => $g)
           <div class="rk-bolum" style="margin:2px 0 8px">
             <span class="material-icons-outlined" style="font-size:18px;color:var(--mor1)">{{ $g['ikon'] }}</span>
@@ -347,12 +381,26 @@
   }
   function personelKapat() { document.getElementById('personelModal').classList.remove('acik'); }
 
+  const KADEME_SAYFA = @json($kademeSayfa ?? []);
+  function kademeUygula() {
+    var kd = document.getElementById('y_kademe').value;
+    var liste = KADEME_SAYFA[kd] || [];
+    var hepsi = (kd === 'sahip');
+    document.querySelectorAll('#yetkiModal input[data-sayfa]').forEach(function (el) {
+      el.checked = hepsi || liste.indexOf(el.dataset.sayfa) >= 0;
+    });
+  }
   function yetkiAc(p) {
     document.getElementById('y_id').value = p.id;
     document.getElementById('yetkiModalAd').textContent = p.ad || 'Personel';
     var y = p.yetkiler || {};
     document.querySelectorAll('#yetkiModal input[data-yetki]').forEach(function (el) {
       el.checked = y[el.dataset.yetki] === true;
+    });
+    document.getElementById('y_kademe').value = p.kademe || 'personel';
+    var sf = p.sayfa || {};
+    document.querySelectorAll('#yetkiModal input[data-sayfa]').forEach(function (el) {
+      el.checked = sf[el.dataset.sayfa] === true;
     });
     document.getElementById('y_iskonto_limit').value = Math.round(p.iskonto_limit || 0);
     document.getElementById('y_ikram_limit').value = Math.round(p.ikram_limit || 0);
