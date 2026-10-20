@@ -6290,7 +6290,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -7763,6 +7763,98 @@ Route::get('/satinalma-siparis-detay', function (Request $r) {
             ->map(function ($k) use ($birim, $malAd) { $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? ''; return $k; });
     } catch (\Throwable $e) {}
     return view('satinalma_siparis_detay', $d);
+});
+
+// ===== FAZ 2: Mal Kabul (irsaliye / GRN) — stoğu yazan adım =====
+Route::get('/mal-kabul', function (Request $r) {
+    $sid = _webSubeId();
+    $d = ['kabuller' => collect(), 'siparis' => null, 'siparisKalem' => collect(), 'tedarikciler' => collect(), 'malzemeler' => collect(), 'birimler' => collect(), 'acikSiparisler' => collect()];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $d['tedarikciler'] = Schema::hasTable('tedarikciler') ? DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']) : collect();
+        $d['malzemeler'] = Schema::hasTable('malzemeler') ? DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']) : collect();
+        $d['birimler'] = Schema::hasTable('birimler') ? DB::table('birimler')->get(['id', 'ad', 'kisaltma']) : collect();
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $d['acikSiparisler'] = Schema::hasTable('satinalma_siparisleri') ? DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['gonderildi', 'kismi'])->orderByDesc('id')->get(['id', 'siparis_no', 'tedarikci_id'])->map(function ($s) use ($tedAd) { $s->tedarikci = $tedAd[$s->tedarikci_id] ?? '—'; return $s; }) : collect();
+        $spid = (int) $r->query('siparis_id');
+        if ($spid) {
+            $sp = DB::table('satinalma_siparisleri')->where('id', $spid)->where('sube_id', $sid)->first();
+            if ($sp) {
+                $d['siparis'] = $sp;
+                $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+                $d['siparisKalem'] = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $spid)->get()->map(function ($k) use ($malAd, $birim) {
+                    $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? ''; $k->kalan = max(0, (float) $k->miktar - (float) $k->teslim_edilen); return $k;
+                });
+            }
+        }
+        if (Schema::hasTable('mal_kabuller')) {
+            $d['kabuller'] = DB::table('mal_kabuller')->where('sube_id', $sid)->orderByDesc('id')->limit(100)->get()->map(function ($m) use ($tedAd) { $m->tedarikci = $tedAd[$m->tedarikci_id] ?? '—'; return $m; });
+        }
+    } catch (\Throwable $e) {}
+    return view('mal_kabul', $d);
+});
+Route::post('/mal-kabul/olustur', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $tedId = (int) $r->input('tedarikci_id') ?: null;
+        $spid = (int) $r->input('siparis_id') ?: null;
+        $kalemler = json_decode((string) $r->input('kalemler'), true);
+        if (!is_array($kalemler) || !count($kalemler)) return redirect('/mal-kabul')->with('mk_hata', 'En az bir kalem girin.');
+        $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : date('Y-m-d');
+        $pp = function_exists('_posPersonel') ? _posPersonel() : null;
+        return DB::transaction(function () use ($r, $sid, $tedId, $spid, $kalemler, $tarih, $pp) {
+            $mkId = DB::table('mal_kabuller')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tedId, 'siparis_id' => $spid, 'irsaliye_no' => $r->input('irsaliye_no') ? (string) $r->input('irsaliye_no') : null,
+                'tarih' => $tarih, 'teslim_alan_personel_id' => $pp->id ?? null, 'durum' => 'tam', 'notlar' => $r->input('notlar') ? (string) $r->input('notlar') : null, 'stok_islendi' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            foreach ($kalemler as $k) {
+                $mid = (int) ($k['malzeme_id'] ?? 0); if (!$mid) continue;
+                $gelen = (float) ($k['gelen'] ?? 0); $kabul = (float) ($k['kabul'] ?? $gelen); $red = (float) ($k['red'] ?? 0);
+                $birimId = ((int) ($k['alis_birim_id'] ?? 0)) ?: null; $fiyat = (float) ($k['birim_fiyat'] ?? 0);
+                $skId = ((int) ($k['siparis_kalem_id'] ?? 0)) ?: null;
+                DB::table('mal_kabul_kalemleri')->insert(['mal_kabul_id' => $mkId, 'siparis_kalem_id' => $skId, 'malzeme_id' => $mid, 'alis_birim_id' => $birimId,
+                    'siparis_miktar' => isset($k['siparis_miktar']) ? (float) $k['siparis_miktar'] : null, 'gelen_miktar' => $gelen, 'kabul_miktar' => $kabul, 'red_miktar' => $red,
+                    'red_sebep' => !empty($k['red_sebep']) ? mb_substr((string) $k['red_sebep'], 0, 120) : null, 'birim_fiyat' => $fiyat,
+                    'lot_no' => !empty($k['lot_no']) ? mb_substr((string) $k['lot_no'], 0, 60) : null,
+                    'skt' => (!empty($k['skt']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $k['skt'])) ? $k['skt'] : null, 'created_at' => now(), 'updated_at' => now()]);
+                if ($kabul > 0) {
+                    $m = DB::table('malzemeler')->where('id', $mid)->first();
+                    if ($m) {
+                        $kars = _restoBirimKarsilik($m->id, $birimId ?: $m->temel_birim_id, $m->temel_birim_id);
+                        $temelMiktar = $kabul * $kars; $temelMaliyet = $kars > 0 ? $fiyat / $kars : $fiyat;
+                        DB::table('stok_hareketleri')->insert(['sube_id' => $sid, 'malzeme_id' => $mid, 'tip' => 'alis', 'miktar' => $temelMiktar, 'birim_maliyet' => $temelMaliyet,
+                            'kaynak_tip' => 'mal_kabul', 'kaynak_id' => $mkId, 'aciklama' => 'Mal kabul (irsaliye)', 'personel_id' => $pp->id ?? null, 'created_at' => now()]);
+                        $eskiStok = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('malzeme_id', $mid)->where(function ($q) use ($mkId) { $q->where('kaynak_tip', '!=', 'mal_kabul')->orWhere('kaynak_id', '!=', $mkId); })->sum('miktar');
+                        $eskiMaliyet = (float) $m->guncel_maliyet;
+                        $yeni = ($eskiStok > 0 && $eskiMaliyet > 0) ? (($eskiStok * $eskiMaliyet + $temelMiktar * $temelMaliyet) / ($eskiStok + $temelMiktar)) : $temelMaliyet;
+                        DB::table('malzemeler')->where('id', $mid)->update(['guncel_maliyet' => round($yeni, 4), 'updated_at' => now()]);
+                        if ($tedId && $fiyat > 0 && function_exists('_tedarikMalzemeFiyat')) _tedarikMalzemeFiyat($sid, $tedId, $mid, $birimId, $fiyat, $tarih);
+                    }
+                    if ($skId) DB::table('satinalma_siparis_kalemleri')->where('id', $skId)->update(['teslim_edilen' => DB::raw('teslim_edilen + ' . $kabul), 'updated_at' => now()]);
+                }
+            }
+            if ($spid) {
+                $kalemSay = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $spid)->count();
+                $tamam = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $spid)->whereColumn('teslim_edilen', '>=', 'miktar')->count();
+                DB::table('satinalma_siparisleri')->where('id', $spid)->update(['durum' => ($kalemSay > 0 && $tamam >= $kalemSay) ? 'tamamlandi' : 'kismi', 'updated_at' => now()]);
+            }
+            return redirect('/mal-kabul-detay?id=' . $mkId)->with('mk_ok', 'Mal kabul kaydedildi, stok güncellendi.');
+        });
+    } catch (\Throwable $e) { return redirect('/mal-kabul')->with('mk_hata', 'Mal kabul kaydedilemedi.'); }
+});
+Route::get('/mal-kabul-detay', function (Request $r) {
+    $sid = _webSubeId(); $id = (int) $r->query('id');
+    $d = ['m' => null, 'kalemler' => collect(), 'tedarikci' => null, 'siparis' => null];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $m = DB::table('mal_kabuller')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$m) return redirect('/mal-kabul')->with('mk_hata', 'Mal kabul bulunamadı.');
+        $d['m'] = $m;
+        $d['tedarikci'] = $m->tedarikci_id ? DB::table('tedarikciler')->where('id', $m->tedarikci_id)->first() : null;
+        $d['siparis'] = $m->siparis_id ? DB::table('satinalma_siparisleri')->where('id', $m->siparis_id)->first() : null;
+        $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        $d['kalemler'] = DB::table('mal_kabul_kalemleri')->where('mal_kabul_id', $id)->get()->map(function ($k) use ($birim, $malAd) { $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? ''; return $k; });
+    } catch (\Throwable $e) {}
+    return view('mal_kabul_detay', $d);
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {

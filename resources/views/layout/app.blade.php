@@ -51,6 +51,7 @@
         'Stok & Tedarik' => [
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Satınalma Siparişi', '#4F46E5'],
+            ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],

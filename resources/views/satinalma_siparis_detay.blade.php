@@ -62,10 +62,13 @@
 
 @if (!empty($s->notlar))<div class="rk-card" style="margin-top:12px"><div class="rk-sub2" style="font-size:11px">Not</div><div class="rk-ink">{{ $s->notlar }}</div></div>@endif
 
-<div class="rk-card" style="margin-top:16px;background:color-mix(in srgb,var(--mavi) 6%,transparent);border-color:color-mix(in srgb,var(--mavi) 25%,transparent)">
-  <div style="display:flex;align-items:center;gap:10px">
-    <span class="material-icons-outlined" style="color:var(--mavi);font-size:22px">local_shipping</span>
-    <div style="flex:1"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Mal geldiğinde</div><div class="rk-sub2" style="font-size:12px">Bu siparişten <b>Mal Kabul (irsaliye)</b> oluşturulacak — gelen/eksik kalemler işaretlenip stok girilecek. (Faz 2 devamı)</div></div>
+<div class="rk-card" style="margin-top:16px;background:color-mix(in srgb,var(--yesil) 6%,transparent);border-color:color-mix(in srgb,var(--yesil) 25%,transparent)">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="material-icons-outlined" style="color:var(--yesil);font-size:22px">local_shipping</span>
+    <div style="flex:1;min-width:200px"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Mal geldiğinde</div><div class="rk-sub2" style="font-size:12px">Gelen/eksik kalemleri işaretle, lot/SKT gir → stok otomatik girer.</div></div>
+    @if (in_array($s->durum ?? '', ['gonderildi', 'kismi', 'taslak']))
+      <a href="/mal-kabul?siparis_id={{ $s->id }}" class="rk-btn" style="background:var(--yesil);padding:11px 16px"><span class="material-icons-outlined" style="color:#fff;font-size:18px">inventory</span> Mal Kabul Oluştur</a>
+    @endif
   </div>
 </div>
 @endsection
