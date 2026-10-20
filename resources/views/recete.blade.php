@@ -210,8 +210,8 @@ body.koyu .rct-picker .pick-ara{background:#161C2E}
 .rct-picker .pick-item:hover{background:rgba(124,58,237,.07)}
 .rct-picker .pick-bos{text-align:center;padding:24px;color:var(--sub);font-size:13px}
 
-/* Yarı mamül modal (üst modal içinde kalem ekleme) */
-#rctEkleModal{z-index:800}
+/* Kalem ekleme modalı editörlerin (700) ÜSTÜNDE açılmalı — id rctEkleBg (rctEkleModal değil!) */
+#rctEkleBg{z-index:820}
 
 /* Kaydet butonu (Flutter FilledButton) */
 .rct-kaydet{width:100%;padding:14px;border:none;border-radius:12px;background:var(--mor1);
