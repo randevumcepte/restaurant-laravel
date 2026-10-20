@@ -18,46 +18,62 @@
 <body>
 <script>if(document.documentElement.classList.contains('_koyu'))document.body.classList.add('koyu');</script>
 @php
-    // Flutter YonetimDrawer ile BİREBİR: [url, material-icon, etiket, renk(null=ink)]
-    $nav = [
-        ['/dashboard', 'dashboard', 'Dashboard', null],
-        ['/pos', 'point_of_sale', 'POS / Masa', null],
-        ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
-        ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
-        ['/finans', 'analytics', 'Finans / Kâr-Zarar', null],
-        ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
-        ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
-        ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
-        ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
-        ['/app-yonetim', 'palette', 'App Kartları / QR Menü', '#F6CE63'],
-        ['/indirimler', 'local_offer', 'İndirimler', '#22C55E'],
-        ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
-        ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
-        ['/cari', 'account_balance_wallet', 'Cari / Açık Hesaplar', null],
-        ['/rezervasyon', 'event_available', 'Rezervasyonlar', null],
-        ['/kurye', 'map', 'Canlı Kurye Haritası', '#10B981'],
-        ['/masa-yonetim', 'qr_code_2', 'Masa & QR Yönetimi', '#F6CE63'],
-        ['/personel', 'badge', 'Personel & Maaş', null],
-        ['/puantaj', 'schedule', 'Puantaj', null],
-        ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
-        ['/salon-sema', 'grid_on', 'Salon Şeması', '#0EA5E9'],
-        ['/gider', 'receipt_long', 'Giderler', null],
-        ['/raporlar', 'bar_chart', 'Raporlar', null],
-        ['/z-raporu', 'summarize', 'Z Raporu', null],
-        ['/muhasebe', 'account_balance', 'Muhasebe / Cari', null],
-        ['/bagli-cihazlar', 'devices_other', 'Bağlı Cihazlar', '#0EA5E9'],
-        ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#14B8A6'],
-        ['/isletme-konum', 'my_location', 'İşletme Konum', null],
-        ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
-        ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
-        ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
-        ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
-        ['/barkod', 'qr_code', 'Barkod', null],
-        ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
-        ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
-        ['/mutfak', 'soup_kitchen', 'Mutfak (KDS)', null],
-        ['/paket', 'delivery_dining', 'Paket Siparişler', null],
-        ['/copilot', 'auto_awesome', 'Patron Asistan', '#C4B5FD'],
+    // Gruplu menü — başlık => [[url, material-icon, etiket, renk(null=ink)], ...]
+    $gruplar = [
+        'Özet' => [
+            ['/dashboard', 'dashboard', 'Dashboard', null],
+            ['/copilot', 'auto_awesome', 'Patron Asistan', '#C4B5FD'],
+        ],
+        'Satış & Servis' => [
+            ['/pos', 'point_of_sale', 'POS / Masa', null],
+            ['/mutfak', 'soup_kitchen', 'Mutfak (KDS)', null],
+            ['/paket', 'delivery_dining', 'Paket Siparişler', null],
+            ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
+            ['/rezervasyon', 'event_available', 'Rezervasyonlar', null],
+            ['/kurye', 'map', 'Canlı Kurye Haritası', '#10B981'],
+            ['/masa-yonetim', 'qr_code_2', 'Masa & QR Yönetimi', '#F6CE63'],
+            ['/salon-sema', 'grid_on', 'Salon Şeması', '#0EA5E9'],
+        ],
+        'Menü & Ürünler' => [
+            ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
+            ['/app-yonetim', 'palette', 'App Kartları / QR Menü', '#F6CE63'],
+            ['/indirimler', 'local_offer', 'İndirimler', '#22C55E'],
+            ['/barkod', 'qr_code', 'Barkod', null],
+        ],
+        'Stok & Tedarik' => [
+            ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
+            ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
+            ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
+            ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
+        ],
+        'Kasa & Finans' => [
+            ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
+            ['/finans', 'analytics', 'Finans / Kâr-Zarar', null],
+            ['/gider', 'receipt_long', 'Giderler', null],
+            ['/cari', 'account_balance_wallet', 'Cari / Açık Hesaplar', null],
+            ['/muhasebe', 'account_balance', 'Muhasebe / Cari', null],
+            ['/raporlar', 'bar_chart', 'Raporlar', null],
+            ['/z-raporu', 'summarize', 'Z Raporu', null],
+        ],
+        'Personel' => [
+            ['/personel', 'badge', 'Personel & Maaş', null],
+            ['/puantaj', 'schedule', 'Puantaj', null],
+            ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
+        ],
+        'Sadakat & Müşteri' => [
+            ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
+            ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
+        ],
+        'Ayarlar & Entegrasyon' => [
+            ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
+            ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
+            ['/bagli-cihazlar', 'devices_other', 'Bağlı Cihazlar', '#0EA5E9'],
+            ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#14B8A6'],
+            ['/isletme-konum', 'my_location', 'İşletme Konum', null],
+            ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
+            ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
+            ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
+        ],
     ];
     $path = '/' . trim(request()->path(), '/');
     $aktifSubeAd = 'ResteOS';
@@ -81,12 +97,19 @@
             <div class="kul">{{ $kulAd }} · {{ $kulRol }}</div>
         </div>
         <nav class="rk-menu">
-            @foreach ($nav as [$url, $ikon, $ad, $renk])
-                @continue($_pp && isset($_harita[$url]) && !_panelYetkiVar($_pp, $_harita[$url]))
-                @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
-                <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
-                    <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
-                </a>
+            @foreach ($gruplar as $grupAd => $items)
+                @php
+                    $gorunur = array_values(array_filter($items, fn ($it) => !($_pp && isset($_harita[$it[0]]) && !_panelYetkiVar($_pp, $_harita[$it[0]]))));
+                @endphp
+                @if (count($gorunur))
+                    <div class="rk-grp" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;opacity:.55;padding:14px 18px 5px">{{ $grupAd }}</div>
+                    @foreach ($gorunur as [$url, $ikon, $ad, $renk])
+                        @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
+                        <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
+                            <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
+                        </a>
+                    @endforeach
+                @endif
             @endforeach
         </nav>
         <div class="rk-side-foot">
