@@ -57,6 +57,7 @@
             ['/parti-takip', 'event_busy', 'Parti / SKT Takip', '#F43F5E'],
             ['/fiyat-radari', 'radar', 'Fiyat Radarı · Gizli Zam', '#EC4899'],
             ['/hal-fiyatlari', 'storefront', 'Hal Fiyatları (sen vs hal)', '#059669'],
+            ['/satinalma-analiz', 'leaderboard', 'Satınalma Analizi · Karne', '#4F46E5'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],

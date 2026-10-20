@@ -6535,7 +6535,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -8481,6 +8481,58 @@ Route::post('/hal-fiyatlari/sil', function (Request $r) {
         DB::table('hal_fiyatlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete();
         return redirect('/hal-fiyatlari')->with('hal_ok', 'Silindi.');
     } catch (\Throwable $e) { return redirect('/hal-fiyatlari')->with('hal_hata', 'Silinemedi.'); }
+});
+
+// ===== FAZ 4/5: Satınalma Analizi — Tedarikçi Karnesi (zamanında/red) + Harcama Trendi =====
+Route::get('/satinalma-analiz', function () {
+    $sid = _webSubeId();
+    $d = ['karne' => collect(), 'aylik' => collect(), 'toplamAlis' => 0.0];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (!Schema::hasTable('alis_faturalari')) return view('satinalma_analiz', $d);
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        // Harcama (fatura toplamları) — tedarikçi bazlı
+        $alis = DB::table('alis_faturalari')->where('sube_id', $sid)->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
+        $d['toplamAlis'] = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->sum('toplam');
+        // Zamanında teslim: PO beklenen_teslim vs mal kabul tarih
+        $zaman = []; // tedarikci_id => [tam, toplam]
+        if (Schema::hasTable('mal_kabuller') && Schema::hasTable('satinalma_siparisleri')) {
+            $mkPo = DB::table('mal_kabuller as mk')->join('satinalma_siparisleri as s', 'mk.siparis_id', '=', 's.id')
+                ->where('mk.sube_id', $sid)->whereNotNull('s.beklenen_teslim')
+                ->get(['mk.tedarikci_id', 'mk.tarih as mk_tarih', 's.beklenen_teslim']);
+            foreach ($mkPo as $x) {
+                $tid = (int) $x->tedarikci_id;
+                $zaman[$tid] = $zaman[$tid] ?? ['tam' => 0, 'top' => 0];
+                $zaman[$tid]['top']++;
+                if ($x->mk_tarih && $x->beklenen_teslim && $x->mk_tarih <= $x->beklenen_teslim) $zaman[$tid]['tam']++;
+            }
+        }
+        // Red/eksik oranı: mal_kabul_kalemleri red vs gelen
+        $red = [];
+        if (Schema::hasTable('mal_kabul_kalemleri') && Schema::hasTable('mal_kabuller')) {
+            $rr = DB::table('mal_kabul_kalemleri as k')->join('mal_kabuller as mk', 'k.mal_kabul_id', '=', 'mk.id')
+                ->where('mk.sube_id', $sid)->selectRaw('mk.tedarikci_id, SUM(k.red_miktar) r, SUM(k.gelen_miktar) g')->groupBy('mk.tedarikci_id')->get();
+            foreach ($rr as $x) { $red[(int) $x->tedarikci_id] = ['r' => (float) $x->r, 'g' => (float) $x->g]; }
+        }
+        $karne = collect();
+        foreach ($alis as $tid => $a) {
+            if (!$tid) continue;
+            $zt = $zaman[$tid] ?? null; $zamaninda = ($zt && $zt['top'] > 0) ? round($zt['tam'] / $zt['top'] * 100) : null;
+            $rd = $red[$tid] ?? null; $redOran = ($rd && $rd['g'] > 0) ? round($rd['r'] / $rd['g'] * 100, 1) : 0;
+            // puan: zamanında (0-3) + red (0-2) basit
+            $p = 3.0;
+            if ($zamaninda !== null) $p = 2.5 + ($zamaninda / 100) * 2.0; // 2.5..4.5
+            $p -= min(1.5, $redOran / 10); // red düşürür
+            $p = max(1, min(5, round($p, 1)));
+            $karne->push((object) ['ad' => $tedAd[$tid] ?? '—', 'toplam' => (float) $a->t, 'fatura' => (int) $a->c, 'zamaninda' => $zamaninda, 'red_oran' => $redOran, 'puan' => $p]);
+        }
+        $d['karne'] = $karne->sortByDesc('toplam')->values();
+        // Aylık harcama trendi (son 6 ay)
+        $aylik = DB::table('alis_faturalari')->where('sube_id', $sid)->where('tarih', '>=', today()->subMonths(6)->startOfMonth())
+            ->selectRaw("DATE_FORMAT(tarih,'%Y-%m') ay, SUM(toplam) t")->groupBy('ay')->orderBy('ay')->get();
+        $d['aylik'] = $aylik;
+    } catch (\Throwable $e) {}
+    return view('satinalma_analiz', $d);
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
