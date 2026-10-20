@@ -7182,9 +7182,8 @@ Route::get('/kasa', function (Request $r) {
         if ($kasaId) { $data['kasa_id'] = $kasaId; $data['kasa_ad'] = DB::table('kasalar')->where('id', $kasaId)->value('ad'); }
         $o = null;
         if (Schema::hasTable('kasa_oturumlari')) {
-            $oq = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'acik');
-            if ($kasaId) $oq->where('kasa_id', $kasaId);
-            $o = $oq->orderByDesc('id')->first();
+            // seçili kasanın vardiyası; yoksa tek-havuz (kasa_id NULL) vardiyaya düşer — Flutter ile birebir
+            $o = _kasaAcikOturum($sube, $kasaId);
             if ($o) {
                 $data['acik'] = true; $data['devir'] = (float) $o->acilis_devir;
                 $data['acilis'] = $o->acilis_zamani ? \Carbon\Carbon::parse($o->acilis_zamani)->format('d.m H:i') : '';
@@ -7194,15 +7193,17 @@ Route::get('/kasa', function (Request $r) {
                 $data['beklenen'] = round($data['giris'] - $data['cikis'], 2);
             } else {
                 $sonq = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'kapali');
-                if ($kasaId) $sonq->where('kasa_id', $kasaId);
+                if ($kasaId) $sonq->where(fn ($w) => $w->where('kasa_id', $kasaId)->orWhereNull('kasa_id'));
                 $son = $sonq->orderByDesc('id')->first();
                 $data['son_devir'] = $son ? (float) $son->sayilan_nakit : 0;
             }
         }
+        // hareketler kasa filtresi: açık vardiya tek-havuz (NULL) ise kasa'ya göre kısma (Flutter aynısını gösterir)
+        $effKasa = $o ? ($o->kasa_id ?? null) : $kasaId;
         $to = now();
         $from = $period === 'ay' ? (clone $to)->startOfMonth() : ($period === 'hafta' ? (clone $to)->subDays(7) : (clone $to)->startOfDay());
         $data['hareketler'] = DB::table('kasa_hareketleri as h')->leftJoin('personeller as pe', 'h.personel_id', '=', 'pe.id')
-            ->where('h.sube_id', $sube)->when($kasaId, fn ($q) => $q->where('h.kasa_id', $kasaId))->whereBetween('h.created_at', [$from, $to])->orderByDesc('h.id')->limit(500)
+            ->where('h.sube_id', $sube)->when($effKasa, fn ($q) => $q->where('h.kasa_id', $effKasa))->whereBetween('h.created_at', [$from, $to])->orderByDesc('h.id')->limit(500)
             ->select('h.tip', 'h.yon', 'h.tutar', 'h.aciklama', 'h.created_at', 'pe.ad as personel')->get()
             ->map(fn ($h) => ['tip' => $h->tip, 'yon' => $h->yon, 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama, 'personel' => $h->personel, 'zaman' => \Carbon\Carbon::parse($h->created_at)->format('d.m H:i')])->toArray();
     } catch (\Throwable $e) {}
@@ -10648,9 +10649,15 @@ if (!function_exists('_kasaAcikOturum')) {
     {
         _restoKasaEnsure();
         if ($kasaId === null) { try { $kasaId = session('pos_kasa_id'); } catch (\Throwable $e) {} }
-        $q = DB::table('kasa_oturumlari')->where('sube_id', $subeId)->where('durum', 'acik');
-        if ($kasaId) $q->where('kasa_id', $kasaId);
-        return $q->orderByDesc('id')->first();
+        $base = DB::table('kasa_oturumlari')->where('sube_id', $subeId)->where('durum', 'acik');
+        if ($kasaId) {
+            // önce bu kasanın kendi açık vardiyası
+            $o = (clone $base)->where('kasa_id', $kasaId)->orderByDesc('id')->first();
+            if ($o) return $o;
+            // yoksa tek-havuz / eski (kasa_id NULL) vardiya — Flutter & web AYNI vardiyayı görsün
+            return (clone $base)->whereNull('kasa_id')->orderByDesc('id')->first();
+        }
+        return $base->orderByDesc('id')->first();
     }
 }
 // Nakit hareketi kasaya yaz — SADECE acik oturum varsa (yoksa sessiz gecer, akisi bozmaz)
