@@ -19,11 +19,11 @@ body.koyu {
   --kart:#1b2235; --kart2:#242f47; --zemin:#151d30;
   --ink:#e2e8f0; --sub:#94a3b8; --sub2:#64748b; --cizgi:#2c3650;
 }
-/* ---- Layout ---- */
-#posWrap { display:flex; gap:0; height:calc(100vh - 112px); min-height:500px; }
-#posMenu { flex:1 1 0; min-width:0; display:flex; flex-direction:column; background:var(--zemin); border-radius:16px; border:1px solid var(--cizgi); overflow:hidden; }
-#posPanel { width:360px; flex-shrink:0; display:flex; flex-direction:column; background:var(--kart); border-radius:16px; border:1px solid var(--cizgi); margin-left:16px; overflow:hidden; }
-@media(max-width:900px){ #posWrap{flex-direction:column;height:auto;} #posPanel{width:100%;margin-left:0;margin-top:12px;} #posMenu{min-height:400px;} }
+/* ---- Layout (GRID: menü sütunu minmax(0,1fr) garantili küçülür, panel sabit 360 → taşma yok) ---- */
+#posWrap { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:16px; height:calc(100vh - 112px); min-height:500px; max-width:100%; }
+#posMenu { min-width:0; display:flex; flex-direction:column; background:var(--zemin); border-radius:16px; border:1px solid var(--cizgi); overflow:hidden; }
+#posPanel { min-width:0; display:flex; flex-direction:column; background:var(--kart); border-radius:16px; border:1px solid var(--cizgi); overflow:hidden; }
+@media(max-width:900px){ #posWrap{grid-template-columns:1fr;height:auto;} #posPanel{margin-top:12px;} #posMenu{min-height:400px;} }
 /* ---- Arama ---- */
 #posAra { width:100%; padding:10px 14px; box-sizing:border-box; border:none; border-bottom:1px solid var(--cizgi); background:var(--kart); color:var(--ink); font-size:14px; outline:none; }
 #posAra::placeholder { color:var(--sub2); }
@@ -179,7 +179,7 @@ body.koyu {
     {{-- Arama --}}
     <div style="padding:10px 14px;background:var(--kart);border-bottom:1px solid var(--cizgi);display:flex;align-items:center;gap:8px">
       <span class="material-icons-outlined" style="color:var(--sub2);font-size:20px">search</span>
-      <input id="posAraInput" type="text" placeholder="Ürün ara…"
+      <input id="posAraInput" type="text" placeholder="Ürün ara…" autocomplete="off" name="pos_urun_ara_{{ $adisyon->id }}"
              style="flex:1;border:none;background:transparent;color:var(--ink);font-size:14px;outline:none"
              oninput="posAra(this.value)">
     </div>
