@@ -27,7 +27,7 @@
     <div style="font-weight:800;color:var(--ink);font-size:14.5px">Kurulum akışı</div>
     <div class="rk-sub2" style="font-size:12px">Sırayla: önce bölgeleri oluştur, masaları bölgelere yerleştir, garsonları masalara/bölgelere ata, sonra (varsa) çoklu kasayı düzenle.</div>
   </div>
-  <a href="/salon-sema" class="rk-btn bos" style="padding:9px 14px"><span class="material-icons-outlined" style="font-size:17px;color:#0EA5E9">grid_on</span> Salon Şeması (görsel kroki)</a>
+  <a href="/salon-sema" class="rk-btn" style="background:linear-gradient(135deg,#0EA5E9,#2563EB);color:#fff;padding:12px 20px;font-size:14px;font-weight:800;text-decoration:none;box-shadow:0 5px 16px rgba(14,165,233,.4)"><span class="material-icons-outlined" style="font-size:19px;color:#fff">grid_on</span> Salon Şeması (görsel kroki)</a>
 </div>
 
 {{-- ============ ADIM 1 — BÖLGELER ============ --}}
