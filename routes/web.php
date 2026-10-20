@@ -2350,14 +2350,14 @@ Route::get('/qr/{masa?}', function ($masaAd = null) {
 
 // ============================ ENTEGRASYONLAR (paket servis) ============================
 Route::get('/entegrasyon', function () {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $entegrasyonlar = DB::table('entegrasyonlar')->where('sube_id', $sube->id)->get()->keyBy('platform');
     $webhookUrl = url('/webhook/siparis/' . $sube->webhook_token);
     return view('entegrasyon.index', compact('sube', 'entegrasyonlar', 'webhookUrl'));
 });
 
 Route::post('/entegrasyon/kaydet', function (Request $r) {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     DB::table('entegrasyonlar')->updateOrInsert(
         ['sube_id' => $sube->id, 'platform' => $r->platform],
         ['aktif' => $r->aktif ? 1 : 0, 'magaza_id' => $r->magaza_id, 'api_key' => $r->api_key, 'otomatik_onay' => $r->otomatik_onay ? 1 : 0, 'updated_at' => now()]
@@ -2367,7 +2367,7 @@ Route::post('/entegrasyon/kaydet', function (Request $r) {
 
 // Test siparisi: gercek webhook akisini simule eder -> Paket Merkezi'ne dusr
 Route::post('/entegrasyon/test', function (Request $r) {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $urunler = DB::table('urunler')->where('sube_id', $sube->id)->inRandomOrder()->limit(random_int(1, 3))->get();
     $kalemler = $urunler->map(fn ($u) => ['ad' => $u->ad, 'adet' => random_int(1, 2), 'fiyat' => $u->fiyat])->toArray();
     $adlar = ['Deniz Yilmaz', 'Cem Ozkan', 'Selin Ak', 'Baris Tan', 'Ece Demir'];
@@ -5640,7 +5640,7 @@ Route::post('/api/wa/pair', fn (Request $r) => _waNoCache(response()->json(_waBr
 Route::get('/whatsapp', function () {
     \App\Services\KontorServisi::selfHeal();
     return view('whatsapp_panel', [
-        'subeId' => (int) (DB::table('subeler')->min('id') ?: 1),
+        'subeId' => _aktifSubeId(),
         'bg' => [
             'konum' => (string) resto_ayar_al('wa_konum_linki', ''),
             'igBaslik' => (string) (resto_ayar_al('wa_instagram_baslik', '') ?: 'Instagram'),
@@ -13048,7 +13048,7 @@ Route::get('/api/raporlar', function (Request $r) {
 
 // ============================ KIOSK (self-servis, public) ============================
 Route::get('/kiosk', function () {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _aktifSubeId();
     $sube = DB::table('subeler')->find($subeId);
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
     $urunler = DB::table('urunler')->where('sube_id', $subeId)->where('aktif', 1)->get()->groupBy('kategori_id');
@@ -13072,7 +13072,7 @@ Route::post('/sadakat/toggle', function (Request $r) {
 
 // ============================ INDIRIMLER (yonetilebilir; her tur ayri + aktif/pasif) ============================
 Route::get('/indirimler', function () {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     if (!$sube) abort(404, 'Şube yok');
     _indirimEnsure($sube->id);
     $kurallar = DB::table('indirimler')->where('sube_id', $sube->id)->orderBy('tip')->orderByDesc('id')->get();
@@ -13080,7 +13080,7 @@ Route::get('/indirimler', function () {
     return view('indirimler', ['sube' => $sube, 'kurallar' => $kurallar, 'urunler' => $urunler]);
 });
 Route::post('/indirimler/kaydet', function (Request $r) {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     if (!$sube) return ['ok' => 0, 'hata' => 'Şube yok'];
     _indirimEnsure($sube->id);
     $tipler = ['online_odeme', 'uygulama', 'kupon', 'ilk_siparis', 'tutar_ustu', 'happy_hour', 'gun', 'dogum_gunu', 'urun'];
@@ -13186,7 +13186,7 @@ Route::post('/api/patron/indirim-sil', function (Request $r) {
 
 // ============================ E-DONUSUM (e-arsiv/e-fatura) ============================
 Route::get('/edonusum', function () {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $sube->id)->first();
     $belgeler = DB::table('e_faturalar')->where('sube_id', $sube->id)->orderByDesc('created_at')->limit(30)->get();
     $bugunAdet = DB::table('e_faturalar')->where('sube_id', $sube->id)->whereDate('created_at', today())->count();
@@ -13195,7 +13195,7 @@ Route::get('/edonusum', function () {
     return view('edonusum', compact('sube', 'ayar', 'belgeler', 'bugunAdet', 'bugunTutar', 'ayAdet'));
 });
 Route::post('/edonusum/ayar-kaydet', function (Request $r) {
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     DB::table('edonusum_ayarlari')->updateOrInsert(
         ['sube_id' => $sube->id],
         ['entegrator' => $r->entegrator ?: 'parasut', 'api_key' => $r->api_key, 'api_secret' => $r->api_secret,
@@ -13407,7 +13407,7 @@ if (!function_exists('_muhasebeErpGonder')) {
 
 Route::get('/muhasebe-entegrasyon', function () {
     _muhasebeEntegrasyonKur();
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
     $hp = _muhasebeVarsayilanHesapPlani();
     if ($ayar && $ayar->hesap_plani) {
@@ -13420,7 +13420,7 @@ Route::get('/muhasebe-entegrasyon', function () {
 
 Route::post('/muhasebe-entegrasyon/ayar-kaydet', function (Request $r) {
     _muhasebeEntegrasyonKur();
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $hpGelen = is_array($r->hesap_plani) ? $r->hesap_plani : [];
     $hp = _muhasebeVarsayilanHesapPlani();
     foreach ($hp as $k => $v) {
@@ -13443,7 +13443,7 @@ Route::post('/muhasebe-entegrasyon/ayar-kaydet', function (Request $r) {
 // Mahsup fisi uret (CSV, UTF-8 BOM, ; ayrac — Logo/Netsis/Excel uyumlu) + aktarim gecmisine logla
 Route::get('/muhasebe-entegrasyon/disa-aktar', function (Request $r) {
     _muhasebeEntegrasyonKur();
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
     $hp = _muhasebeVarsayilanHesapPlani();
     if ($ayar && $ayar->hesap_plani) {
@@ -13489,7 +13489,7 @@ Route::get('/muhasebe-entegrasyon/disa-aktar', function (Request $r) {
 // Faz 2: REST API ile ERP'ye otomatik gonder (logo_api / netsis_api). Lisans + API bilgisi musteride.
 Route::post('/muhasebe-entegrasyon/gonder', function (Request $r) {
     _muhasebeEntegrasyonKur();
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->first();
     if (!$ayar) return ['ok' => 0, 'hata' => 'Once baglanti ayarlarini kaydedin.'];
     $hp = _muhasebeVarsayilanHesapPlani();
@@ -13516,7 +13516,7 @@ Route::post('/muhasebe-entegrasyon/gonder', function (Request $r) {
 // Faz 3: Cari ekstre (tedarikci bazinda alis faturalari + yuruyen bakiye) — CSV
 Route::get('/muhasebe-entegrasyon/cari-ekstre', function (Request $r) {
     _muhasebeEntegrasyonKur();
-    $sube = DB::table('subeler')->first();
+    $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     [$from, $to] = _muhasebeDonem($r);
     $fatura = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
         ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
