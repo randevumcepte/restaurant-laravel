@@ -223,6 +223,9 @@ body.koyu #ted{
             {{-- Düzenle / Sil --}}
             <td class="sag">
               <div class="ted-aksiyon">
+                <a href="/tedarikci-detay?id={{ (int) $t->id }}" class="btn" style="color:var(--mor1);border-color:color-mix(in srgb,var(--mor1) 40%,transparent)">
+                  <span class="material-icons-outlined">insights</span> Detay
+                </a>
                 <button type="button" class="btn"
                         onclick="tedAc({{ \Illuminate\Support\Js::from($t) }})">
                   <span class="material-icons-outlined">edit_outlined</span> Düzenle
@@ -273,6 +276,9 @@ body.koyu #ted{
             <span class="material-icons-outlined">more_vert</span>
           </button>
           <div class="ted-dropdown" id="drop-{{ $mid }}">
+            <a href="/tedarikci-detay?id={{ $mid }}" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--mor1);text-decoration:none">
+              <span class="material-icons-outlined">insights</span> Detay
+            </a>
             <button type="button"
                     onclick="tedMenuKapat({{ $mid }});tedAc({{ \Illuminate\Support\Js::from($t) }})">
               <span class="material-icons-outlined">edit_outlined</span> Düzenle

@@ -6287,7 +6287,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/satinalma' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -7515,6 +7515,71 @@ Route::post('/tedarikci/sil', function (Request $r) {
         DB::table('tedarikciler')->where('id', $id)->delete();
         return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi silindi.');
     } catch (\Throwable $e) { return redirect('/tedarikci')->with('ted_hata', 'Silinemedi.'); }
+});
+// ===== FAZ 1: Tedarikçi DETAY (kart + katalog/fiyat geçmişi + cari borç/ödeme/vade) =====
+Route::get('/tedarikci-detay', function (Request $r) {
+    $sid = _webSubeId();
+    $id = (int) $r->query('id');
+    $d = ['ted' => null, 'katalog' => collect(), 'ekstre' => collect(), 'borc' => 0.0, 'odeme' => 0.0, 'bakiye' => 0.0];
+    try {
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        $ted = DB::table('tedarikciler')->where('id', $id)->first();
+        if (!$ted) return redirect('/tedarikci')->with('ted_hata', 'Tedarikçi bulunamadı.');
+        $d['ted'] = $ted;
+        // Katalog = bu tedarikçinin faturalarından (gerçek alış geçmişi + fiyat bandı + trend)
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari')) {
+            $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+            $d['katalog'] = DB::table('alis_fatura_kalemleri as k')
+                ->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                ->join('malzemeler as m', 'k.malzeme_id', '=', 'm.id')
+                ->where('f.tedarikci_id', $id)->where('f.sube_id', $sid)
+                ->select('m.ad', 'k.malzeme_id', 'k.alis_birim_id', DB::raw('COUNT(*) adet'), DB::raw('MAX(f.tarih) son_tarih'),
+                    DB::raw('AVG(k.birim_fiyat) ort_fiyat'), DB::raw('MIN(k.birim_fiyat) min_fiyat'), DB::raw('MAX(k.birim_fiyat) max_fiyat'))
+                ->groupBy('k.malzeme_id', 'm.ad', 'k.alis_birim_id')->orderBy('m.ad')->get()
+                ->map(function ($x) use ($birim, $id) {
+                    $son = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                        ->where('f.tedarikci_id', $id)->where('k.malzeme_id', $x->malzeme_id)->orderByDesc('f.tarih')->orderByDesc('k.id')->value('k.birim_fiyat');
+                    $x->son_fiyat = (float) $son; $x->birim = $birim[$x->alis_birim_id] ?? '';
+                    $x->trend = ($x->son_fiyat > 0 && $x->ort_fiyat > 0) ? round(($x->son_fiyat - $x->ort_fiyat) / $x->ort_fiyat * 100, 1) : 0.0;
+                    return $x;
+                });
+        }
+        // Cari: borç = fatura toplamları; ödeme = tahsilatlar (cari_hareketler)
+        $d['borc'] = (float) (Schema::hasTable('alis_faturalari') ? DB::table('alis_faturalari')->where('tedarikci_id', $id)->where('sube_id', $sid)->sum('toplam') : 0);
+        $cid = function_exists('_tedarikciCari') ? _tedarikciCari($sid, $id) : null;
+        if ($cid && Schema::hasTable('cari_hareketler')) $d['odeme'] = (float) DB::table('cari_hareketler')->where('cari_id', $cid)->where('tip', 'tahsilat')->sum('tutar');
+        $d['bakiye'] = round($d['borc'] - $d['odeme'], 2);
+        // Birleşik ekstre
+        $ek = collect();
+        if (Schema::hasTable('alis_faturalari')) {
+            foreach (DB::table('alis_faturalari')->where('tedarikci_id', $id)->where('sube_id', $sid)->orderByDesc('tarih')->orderByDesc('id')->limit(80)->get(['fatura_no', 'tarih', 'toplam']) as $f) {
+                $ek->push((object) ['tarih' => (string) $f->tarih, 'tip' => 'borc', 'tutar' => (float) $f->toplam, 'aciklama' => 'Alış faturası' . ($f->fatura_no ? ' · ' . $f->fatura_no : '')]);
+            }
+        }
+        if ($cid && Schema::hasTable('cari_hareketler')) {
+            foreach (DB::table('cari_hareketler')->where('cari_id', $cid)->where('tip', 'tahsilat')->orderByDesc('created_at')->limit(80)->get() as $h) {
+                $ek->push((object) ['tarih' => \Carbon\Carbon::parse($h->created_at)->toDateString(), 'tip' => 'tahsilat', 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama ?: 'Ödeme']);
+            }
+        }
+        $d['ekstre'] = $ek->sortByDesc('tarih')->values();
+    } catch (\Throwable $e) {}
+    return view('tedarikci_detay', $d);
+});
+Route::post('/tedarikci-detay/odeme', function (Request $r) {
+    $sid = _webSubeId();
+    $id = (int) $r->input('tedarikci_id');
+    try {
+        if (!DB::table('tedarikciler')->where('id', $id)->exists()) return redirect('/tedarikci')->with('ted_hata', 'Tedarikçi bulunamadı.');
+        $tutar = round((float) $r->input('tutar'), 2);
+        if ($tutar <= 0) return redirect('/tedarikci-detay?id=' . $id)->with('ted_hata', 'Geçerli tutar girin.');
+        $cid = function_exists('_tedarikciCari') ? _tedarikciCari($sid, $id) : null;
+        if (!$cid || !Schema::hasTable('cari_hareketler')) return redirect('/tedarikci-detay?id=' . $id)->with('ted_hata', 'Cari kurulamadı.');
+        $sekil = in_array($r->input('odeme_sekli'), ['nakit', 'havale', 'kart']) ? $r->input('odeme_sekli') : 'nakit';
+        $pp = function_exists('_posPersonel') ? _posPersonel() : null;
+        DB::table('cari_hareketler')->insert(['sube_id' => $sid, 'cari_id' => $cid, 'tip' => 'tahsilat', 'tutar' => $tutar, 'odeme_sekli' => $sekil,
+            'aciklama' => 'Tedarikçi ödemesi' . ($r->input('not') ? ' · ' . $r->input('not') : ''), 'personel_id' => $pp->id ?? null, 'created_at' => now()]);
+        return redirect('/tedarikci-detay?id=' . $id)->with('ted_ok', 'Ödeme kaydedildi (' . number_format($tutar, 0, ',', '.') . '₺).');
+    } catch (\Throwable $e) { return redirect('/tedarikci-detay?id=' . $id)->with('ted_hata', 'Ödeme kaydedilemedi.'); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
@@ -10872,6 +10937,8 @@ Route::post('/api/patron/alis-fatura-kaydet', function (Request $r) {
                 $yeni = $temelMaliyet;
             }
             DB::table('malzemeler')->where('id', $m->id)->update(['guncel_maliyet' => round($yeni, 4), 'updated_at' => now()]);
+            // FAZ 1: tedarikçi-malzeme katalog/fiyat otomatik güncelle (radar + gizli-zam beyni)
+            if ($tedId && function_exists('_tedarikMalzemeFiyat')) _tedarikMalzemeFiyat($p->sube_id, $tedId, $m->id, $h['birimId'], $h['birimFiyat'], $tarih);
         }
 
         // Otomatik gider (kategori malzeme)
