@@ -475,7 +475,7 @@ const STK_TOKEN = '{{ $webToken }}'; // personel api_token (Bearer)
 let stkDuzenleyebilir = {{ $duzenleyebilir ? 'true' : 'false' }};
 
 // Server-render edilen veri (JS'de detay/hareket/formlarda kullanmak için)
-let stkVeriler = @json($rows->values()->map(fn($m) => [
+let stkVeriler = {!! json_encode($rows->values()->map(fn($m) => [
     'id'            => $m->id,
     'ad'            => $m->ad,
     'kategori'      => $m->kategori,
@@ -488,9 +488,9 @@ let stkVeriler = @json($rows->values()->map(fn($m) => [
     'mevcut'        => $m->mevcut,
     'deger'         => $m->deger,
     'kritik'        => $m->kritik,
-]));
-let stkBirimler = @json($birimListesi->map(fn($b) => ['id' => $b->id, 'ad' => $b->ad, 'kisaltma' => $b->kisaltma]));
-let stkKategoriler = @json($katListesi->map(fn($k) => ['id' => $k->id, 'ad' => $k->ad]));
+]), 15, 512) !!};
+let stkBirimler = {!! json_encode($birimListesi->map(fn($b) => ['id' => $b->id, 'ad' => $b->ad, 'kisaltma' => $b->kisaltma]), 15, 512) !!};
+let stkKategoriler = {!! json_encode($katListesi->map(fn($k) => ['id' => $k->id, 'ad' => $k->ad]), 15, 512) !!};
 
 // Hareket dialog state
 let _stkHareketMalzemeId = null;

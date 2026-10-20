@@ -592,10 +592,10 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
   'use strict';
 
   /* ---------- ham veriler (PHP'ten) ---------- */
-  const ISILER = @json($isiler ?: ['tum' => []]);
-  const SEMA   = @json($semaVeri ?: null);
-  const SEKIL  = @json(collect($semaMasalar)->mapWithKeys(fn($m, $id) => [$id => $m->sekil ?? 'kare'])->all());
-  const KAPASITE = @json(collect($semaMasalar)->mapWithKeys(fn($m, $id) => [$id => max(1, min(12, (int) ($m->kapasite ?? 4)))])->all());
+  const ISILER = {!! json_encode($isiler ?: ['tum' => []], 15, 512) !!};
+  const SEMA   = {!! json_encode($semaVeri ?: null, 15, 512) !!};
+  const SEKIL  = {!! json_encode(collect($semaMasalar)->mapWithKeys(fn($m, $id) => [$id => $m->sekil ?? 'kare'])->all(), 15, 512) !!};
+  const KAPASITE = {!! json_encode(collect($semaMasalar)->mapWithKeys(fn($m, $id) => [$id => max(1, min(12, (int) ($m->kapasite ?? 4)))])->all(), 15, 512) !!};
   const GARSONLAR = @json(array_values($garsonlar));
   let seciliId = null; // null = tüm salon
 

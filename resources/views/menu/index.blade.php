@@ -227,14 +227,14 @@ const MNY_TOKEN   = '{{ $webToken }}';
 const MNY_DUZENLE = {{ $duzenleyebilir ? 'true' : 'false' }};
 
 /* Blade'den PHP → JS veri akışı */
-let mnyKategoriler = @json($kategoriler->values()->map(fn($k)=>[
+let mnyKategoriler = {!! json_encode($kategoriler->values()->map(fn($k)=>[
     'id'   => (int)$k->id,
     'ad'   => $k->ad,
     'sira' => (int)($k->sira ?? 0),
     'aktif'=> (bool)($k->aktif ?? true),
-])->all());
+])->all(), 15, 512) !!};
 
-let mnyUrunler = @json($urunFlat->map(fn($u)=>[
+let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     'id'         => (int)$u->id,
     'ad'         => $u->ad,
     'aciklama'   => $u->aciklama ?? '',
@@ -247,7 +247,7 @@ let mnyUrunler = @json($urunFlat->map(fn($u)=>[
     'one_soz'    => $u->one_soz ?? '',
     'one_ai_soz' => $u->one_ai_soz ?? '',
     'one_sira'   => (int)($u->one_sira ?? 0),
-])->values()->all());
+])->values()->all(), 15, 512) !!};
 </script>
 
 {{-- ── Boş durum ── --}}
