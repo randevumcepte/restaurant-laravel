@@ -1916,6 +1916,47 @@ Route::post('/cark-yonetim/kaydet', function (Request $r) {
         return redirect('/cark-yonetim')->with('ok', 'Çark ayarları kaydedildi ✓');
     } catch (\Throwable $e) { return redirect('/cark-yonetim')->with('hata', 'Kaydedilemedi: ' . $e->getMessage()); }
 });
+// Patron app (Flutter, Bearer): çark ayar + dilimleri getir
+Route::get('/api/patron/cark', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = (int) $p->sube_id; _carkKur(); _carkSeed($sid);
+    $ayar = DB::table('carkifelek_ayar')->where('sube_id', $sid)->first();
+    $dilimler = DB::table('carkifelek_dilimleri')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')
+        ->get()->map(fn ($d) => ['id' => (int) $d->id, 'ad' => $d->ad, 'renk' => $d->renk, 'olasilik' => (int) $d->olasilik,
+            'tip' => $d->tip, 'deger' => (float) $d->deger, 'aktif' => (int) ($d->aktif ?? 1)])->values();
+    return ['ok' => 1, 'aktif' => (int) ($ayar->aktif ?? 1), 'aralik' => (int) ($ayar->cevirme_araligi_gun ?? 7),
+        'gecerlilik' => (int) ($ayar->kupon_gecerlilik_gun ?? 7), 'kurallar' => $ayar->kurallar ?? '', 'dilimler' => $dilimler];
+});
+// Patron app (Flutter, Bearer): çark ayar + dilimleri kaydet
+Route::post('/api/patron/cark-kaydet', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = (int) $p->sube_id; _carkKur();
+    try {
+        DB::table('carkifelek_ayar')->updateOrInsert(['sube_id' => $sid], [
+            'aktif' => (int) $r->input('aktif') ? 1 : 0,
+            'cevirme_araligi_gun' => max(0, (int) $r->input('aralik', 7)),
+            'kupon_gecerlilik_gun' => max(1, (int) $r->input('gecerlilik', 7)),
+            'kurallar' => trim((string) $r->input('kurallar')) ?: null,
+            'updated_at' => now(),
+        ]);
+        $dilimler = json_decode((string) $r->input('dilimler', '[]'), true) ?: [];
+        DB::table('carkifelek_dilimleri')->where('sube_id', $sid)->delete();
+        $i = 0;
+        foreach ($dilimler as $d) {
+            $ad = trim((string) ($d['ad'] ?? '')); if ($ad === '') continue;
+            DB::table('carkifelek_dilimleri')->insert([
+                'sube_id' => $sid, 'ad' => mb_substr($ad, 0, 80),
+                'renk' => (isset($d['renk']) && preg_match('/^#[0-9A-Fa-f]{6}$/', $d['renk'])) ? $d['renk'] : '#7C3AED',
+                'olasilik' => max(0, (int) ($d['olasilik'] ?? 0)),
+                'tip' => in_array($d['tip'] ?? '', ['puan', 'yuzde', 'tutar', 'tekrar', 'bos']) ? $d['tip'] : 'puan',
+                'deger' => max(0, (float) ($d['deger'] ?? 0)),
+                'sira' => $i++, 'aktif' => (isset($d['aktif']) && !$d['aktif']) ? 0 : 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        return ['ok' => 1, 'mesaj' => 'Çark ayarları kaydedildi'];
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Kaydedilemedi: ' . $e->getMessage()]; }
+});
 
 // Garson çağır (müşteri app) — GPS GEOFENCE: sadece restorandayken çalışır (evdeki müşteri çağıramaz)
 Route::post('/api/m/garson-cagir', function (Request $r) {
@@ -6494,7 +6535,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -8361,6 +8402,85 @@ Route::get('/fiyat-radari', function () {
         }
     } catch (\Throwable $e) {}
     return view('fiyat_radari', $d);
+});
+
+// ===== FAZ 5 (temel): Hal Fiyatı — manuel referans (+ ileride oto-çekim) + "sen vs hal" karşılaştırma =====
+if (!function_exists('_restoHalEnsure')) {
+    function _restoHalEnsure()
+    {
+        if (cache()->get('resto_hal_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('hal_fiyatlari')) {
+                Schema::create('hal_fiyatlari', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id');
+                    $t->string('urun_ad', 80);
+                    $t->string('birim', 12)->nullable();
+                    $t->decimal('asgari', 12, 2)->nullable();
+                    $t->decimal('azami', 12, 2)->nullable();
+                    $t->decimal('ortalama', 12, 2)->nullable();
+                    $t->date('tarih')->nullable();
+                    $t->string('kaynak', 30)->nullable(); // manuel | api
+                    $t->timestamps();
+                    $t->index(['sube_id', 'tarih']);
+                });
+            }
+            cache()->put('resto_hal_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/hal-fiyatlari', function () {
+    $sid = _webSubeId();
+    $d = ['hal' => collect(), 'kiyas' => collect()];
+    try {
+        if (function_exists('_restoHalEnsure')) _restoHalEnsure();
+        if (!Schema::hasTable('hal_fiyatlari')) return view('hal_fiyatlari', $d);
+        $d['hal'] = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
+        // "sen vs hal": her hal ürünü için ada göre eşleşen malzemenin son alış fiyatı
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('malzemeler')) {
+            $malzemeler = DB::table('malzemeler')->get(['id', 'ad']);
+            $kiyas = collect();
+            foreach ($d['hal']->groupBy('urun_ad') as $ad => $grp) {
+                $halOrt = (float) ($grp->first()->ortalama ?? 0);
+                if ($halOrt <= 0) continue;
+                $eslesen = $malzemeler->first(function ($m) use ($ad) {
+                    $a = mb_strtolower($m->ad); $h = mb_strtolower($ad);
+                    return str_contains($a, $h) || str_contains($h, $a);
+                });
+                if (!$eslesen) continue;
+                $sonFiyat = (float) DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                    ->where('f.sube_id', $sid)->where('k.malzeme_id', $eslesen->id)->orderByDesc('f.tarih')->orderByDesc('k.id')->value('k.birim_fiyat');
+                if ($sonFiyat <= 0) continue;
+                $fark = $halOrt > 0 ? round(($sonFiyat - $halOrt) / $halOrt * 100, 0) : 0;
+                $kiyas->push((object) ['malzeme' => $eslesen->ad, 'hal_ad' => $ad, 'hal' => $halOrt, 'senin' => $sonFiyat, 'fark' => $fark, 'birim' => $grp->first()->birim]);
+            }
+            $d['kiyas'] = $kiyas->sortByDesc('fark')->values();
+        }
+    } catch (\Throwable $e) {}
+    return view('hal_fiyatlari', $d);
+});
+Route::post('/hal-fiyatlari/ekle', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_restoHalEnsure')) _restoHalEnsure();
+        $ad = trim((string) $r->input('urun_ad'));
+        if ($ad === '') return redirect('/hal-fiyatlari')->with('hal_hata', 'Ürün adı girin.');
+        $ort = (float) $r->input('ortalama');
+        $asg = $r->filled('asgari') ? (float) $r->input('asgari') : $ort;
+        $azm = $r->filled('azami') ? (float) $r->input('azami') : $ort;
+        if ($ort <= 0 && $asg > 0 && $azm > 0) $ort = round(($asg + $azm) / 2, 2);
+        $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : date('Y-m-d');
+        DB::table('hal_fiyatlari')->insert(['sube_id' => $sid, 'urun_ad' => mb_substr($ad, 0, 80), 'birim' => $r->input('birim') ? mb_substr((string) $r->input('birim'), 0, 12) : 'kg',
+            'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'manuel', 'created_at' => now(), 'updated_at' => now()]);
+        return redirect('/hal-fiyatlari')->with('hal_ok', $ad . ' hal fiyatı eklendi.');
+    } catch (\Throwable $e) { return redirect('/hal-fiyatlari')->with('hal_hata', 'Eklenemedi.'); }
+});
+Route::post('/hal-fiyatlari/sil', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        DB::table('hal_fiyatlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete();
+        return redirect('/hal-fiyatlari')->with('hal_ok', 'Silindi.');
+    } catch (\Throwable $e) { return redirect('/hal-fiyatlari')->with('hal_hata', 'Silinemedi.'); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
