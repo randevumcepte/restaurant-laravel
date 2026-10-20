@@ -6290,7 +6290,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -7581,6 +7581,72 @@ if (!function_exists('_restoSatinalmaEnsure')) {
     }
 }
 
+// ============================================================================
+// FAZ 3 — LOT/PARTI + SKT + FEFO: stok_partileri defteri. Mal kabul giriş yazar,
+// satış tüketimi FEFO (ilk bozulan ilk çıkar) ile düşer. Gıda izlenebilirliği.
+// ============================================================================
+if (!function_exists('_restoPartiEnsure')) {
+    function _restoPartiEnsure()
+    {
+        if (cache()->get('resto_parti_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('stok_partileri')) {
+                Schema::create('stok_partileri', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id');
+                    $t->unsignedBigInteger('malzeme_id');
+                    $t->string('lot_no', 60)->nullable();
+                    $t->date('skt')->nullable();
+                    $t->decimal('giris_miktar', 16, 4)->default(0);  // temel birim
+                    $t->decimal('kalan_miktar', 16, 4)->default(0);  // temel birim
+                    $t->decimal('birim_maliyet', 14, 4)->default(0);
+                    $t->unsignedBigInteger('tedarikci_id')->nullable();
+                    $t->unsignedBigInteger('mal_kabul_id')->nullable();
+                    $t->date('giris_tarihi')->nullable();
+                    $t->timestamps();
+                    $t->index(['sube_id', 'malzeme_id']);
+                    $t->index(['sube_id', 'skt']);
+                });
+            }
+            cache()->put('resto_parti_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Parti giriş (mal kabulde) — temel birimde
+if (!function_exists('_partiGir')) {
+    function _partiGir($sube, $malzemeId, $temelMiktar, $birimMaliyet, $lot = null, $skt = null, $tedId = null, $mkId = null, $tarih = null)
+    {
+        try {
+            _restoPartiEnsure();
+            if (!Schema::hasTable('stok_partileri') || $temelMiktar <= 0) return;
+            DB::table('stok_partileri')->insert([
+                'sube_id' => $sube, 'malzeme_id' => $malzemeId, 'lot_no' => $lot ?: null, 'skt' => $skt ?: null,
+                'giris_miktar' => round($temelMiktar, 4), 'kalan_miktar' => round($temelMiktar, 4), 'birim_maliyet' => round($birimMaliyet, 4),
+                'tedarikci_id' => $tedId, 'mal_kabul_id' => $mkId, 'giris_tarihi' => $tarih ?: now()->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+}
+// FEFO düşüm — en yakın SKT'li partiden tüket (SKT yoksa en sona); satış tüketiminde çağrılır
+if (!function_exists('_partiDus')) {
+    function _partiDus($sube, $malzemeId, $temelMiktar)
+    {
+        try {
+            _restoPartiEnsure();
+            if (!Schema::hasTable('stok_partileri') || $temelMiktar <= 0) return;
+            $kalanDus = (float) $temelMiktar;
+            $partiler = DB::table('stok_partileri')->where('sube_id', $sube)->where('malzeme_id', $malzemeId)->where('kalan_miktar', '>', 0)
+                ->orderByRaw('skt IS NULL, skt ASC')->orderBy('id')->get(['id', 'kalan_miktar']);
+            foreach ($partiler as $p) {
+                if ($kalanDus <= 0) break;
+                $al = min((float) $p->kalan_miktar, $kalanDus);
+                DB::table('stok_partileri')->where('id', $p->id)->update(['kalan_miktar' => DB::raw('kalan_miktar - ' . $al), 'updated_at' => now()]);
+                $kalanDus -= $al;
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+
 Route::get('/tedarikci', function () {
     $sid = _webSubeId();
     $tedarikciler = [];
@@ -7828,6 +7894,10 @@ Route::post('/mal-kabul/olustur', function (Request $r) {
                         $yeni = ($eskiStok > 0 && $eskiMaliyet > 0) ? (($eskiStok * $eskiMaliyet + $temelMiktar * $temelMaliyet) / ($eskiStok + $temelMiktar)) : $temelMaliyet;
                         DB::table('malzemeler')->where('id', $mid)->update(['guncel_maliyet' => round($yeni, 4), 'updated_at' => now()]);
                         if ($tedId && $fiyat > 0 && function_exists('_tedarikMalzemeFiyat')) _tedarikMalzemeFiyat($sid, $tedId, $mid, $birimId, $fiyat, $tarih);
+                        // FAZ 3: parti giriş (lot/SKT) — temel birimde
+                        if (function_exists('_partiGir')) _partiGir($sid, $mid, $temelMiktar, $temelMaliyet,
+                            !empty($k['lot_no']) ? mb_substr((string) $k['lot_no'], 0, 60) : null,
+                            (!empty($k['skt']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $k['skt'])) ? $k['skt'] : null, $tedId, $mkId, $tarih);
                     }
                     if ($skId) DB::table('satinalma_siparis_kalemleri')->where('id', $skId)->update(['teslim_edilen' => DB::raw('teslim_edilen + ' . $kabul), 'updated_at' => now()]);
                 }
@@ -7935,6 +8005,32 @@ Route::post('/fatura-eslestir/kaydet', function (Request $r) {
             return redirect('/fatura-eslestir')->with($eslesme === 'eslesti' ? 'fe_ok' : 'fe_hata', $msg);
         });
     } catch (\Throwable $e) { return redirect('/fatura-eslestir?mal_kabul_id=' . $mkId)->with('fe_hata', 'Fatura kaydedilemedi.'); }
+});
+
+// ===== FAZ 3: Parti / SKT Takip (FEFO + yaklaşan son kullanma) =====
+Route::get('/parti-takip', function () {
+    $sid = _webSubeId();
+    $d = ['partiler' => collect(), 'yaklasanSay' => 0, 'gecmisSay' => 0, 'esik' => 7];
+    try {
+        if (function_exists('_restoPartiEnsure')) _restoPartiEnsure();
+        if (!Schema::hasTable('stok_partileri')) return view('parti_takip', $d);
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $bugun = today(); $esik = 7;
+        $rows = DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0.0001)
+            ->orderByRaw('skt IS NULL, skt ASC')->orderBy('id')->limit(500)->get();
+        $d['partiler'] = $rows->map(function ($p) use ($malAd, $tedAd, $bugun, $esik) {
+            $p->malzeme = $malAd[$p->malzeme_id] ?? '—'; $p->tedarikci = $tedAd[$p->tedarikci_id] ?? null; $p->durum = 'normal'; $p->kalan_gun = null;
+            if ($p->skt) {
+                $kalanGun = (int) $bugun->diffInDays(\Carbon\Carbon::parse($p->skt), false);
+                $p->kalan_gun = $kalanGun;
+                if ($kalanGun < 0) $p->durum = 'gecmis'; elseif ($kalanGun <= $esik) $p->durum = 'yaklasan';
+            }
+            return $p;
+        });
+        $d['gecmisSay'] = $d['partiler']->where('durum', 'gecmis')->count();
+        $d['yaklasanSay'] = $d['partiler']->where('durum', 'yaklasan')->count();
+    } catch (\Throwable $e) {}
+    return view('parti_takip', $d);
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
@@ -10454,6 +10550,8 @@ function _restoStokTuket($adisyonId, $subeId, $personelId)
                 'birim_maliyet' => $m ? (float) $m->guncel_maliyet : 0, 'kaynak_tip' => 'adisyon', 'kaynak_id' => $adisyonId,
                 'aciklama' => 'Satış tüketimi', 'personel_id' => $personelId,
             ]);
+            // FAZ 3: FEFO — en yakın SKT'li partiden düş (parti takibi varsa)
+            if (function_exists('_partiDus')) _partiDus($subeId, (int) $malzemeId, $temelMiktar);
         }
     } catch (\Throwable $e) {
         // sessiz geç — satış akışını asla bozma
