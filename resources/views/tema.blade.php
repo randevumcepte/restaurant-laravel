@@ -135,20 +135,8 @@
     <button type="button" class="ozel-uygula" onclick="ozelKaydet()">Bu Rengi Uygula &amp; Kaydet</button>
   </div>
 
-  <div class="onizlik">
-    <h2>Canlı Önizleme</h2>
-    <div class="prev">
-      <div class="pcard">
-        <img src="https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=600&q=72" alt="" onerror="this.style.display='none'">
-        <div class="sh"></div>
-        <div class="t"><div class="ad">Izgara Antrikot<small>650 TL</small></div><button class="art">+</button></div>
-      </div>
-      <div class="satir"><div class="ara">Ne yemek istersiniz?</div><button class="go">🔍</button></div>
-      <div class="cip">🍽️ Tüm Menüler</div>
-    </div>
-  </div>
-
-  <a class="ac" href="/menu-onizle" target="_blank">Menüyü Aç / Önizle →</a>
+  <a class="ac" href="/menu-onizle" target="_blank"
+     style="font-size:19px;font-weight:900;padding:20px;letter-spacing:.3px">Menüyü Önizle →</a>
 </div>
 
 <div id="kayit">✓ Kaydedildi</div>
