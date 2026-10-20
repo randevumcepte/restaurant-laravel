@@ -54,10 +54,11 @@
 
 @if (!empty($m->notlar))<div class="rk-card" style="margin-top:12px"><div class="rk-sub2" style="font-size:11px">Not</div><div class="rk-ink">{{ $m->notlar }}</div></div>@endif
 
-<div class="rk-card" style="margin-top:16px;background:color-mix(in srgb,var(--mor1) 6%,transparent);border-color:color-mix(in srgb,var(--mor1) 25%,transparent)">
-  <div style="display:flex;align-items:center;gap:10px">
-    <span class="material-icons-outlined" style="color:var(--mor1);font-size:22px">receipt</span>
-    <div style="flex:1"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Fatura geldiğinde</div><div class="rk-sub2" style="font-size:12px">Bu mal kabul <b>fatura ile 3'lü eşleştirilecek</b> (sipariş ↔ irsaliye ↔ fatura): miktar + fiyat tutuyor mu, fazla ödeme var mı. (Faz 2 devamı)</div></div>
+<div class="rk-card" style="margin-top:16px;background:color-mix(in srgb,var(--amber) 7%,transparent);border-color:color-mix(in srgb,var(--amber) 28%,transparent)">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="material-icons-outlined" style="color:var(--amber);font-size:22px">receipt</span>
+    <div style="flex:1;min-width:200px"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Fatura geldiğinde</div><div class="rk-sub2" style="font-size:12px"><b>3'lü eşleştir</b>: sipariş ↔ irsaliye ↔ fatura; miktar+fiyat tutuyor mu, fazla ödeme var mı.</div></div>
+    <a href="/fatura-eslestir?mal_kabul_id={{ $m->id }}" class="rk-btn" style="background:var(--amber);padding:11px 16px"><span class="material-icons-outlined" style="color:#fff;font-size:18px">fact_check</span> Fatura Eşleştir</a>
   </div>
 </div>
 @endsection
