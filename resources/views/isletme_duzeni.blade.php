@@ -107,26 +107,25 @@
 @foreach ($masaByBolge as $bid => $grup)
   <div class="rk-card" style="margin-bottom:10px">
     <div class="rk-bolum" style="margin-bottom:10px"><span class="cubuk" style="background:{{ $adimRenk[1] }}"></span><span class="b">{{ $bolgeAd[$bid] ?? 'Bölgesiz' }}</span><span class="rk-rozet" style="color:var(--sub2);background:var(--card2)">{{ $grup->count() }}</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <div class="mduz-masa-grid">
       @foreach ($grup as $m)
         @php $qrurl = !empty($m->qr_token) ? url('/m/' . $m->qr_token) : null; @endphp
-        <div style="display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
-          <span class="material-icons-outlined" style="font-size:16px;color:#B45309">{{ ($m->sekil ?? 'kare')==='yuvarlak' ? 'circle' : 'crop_square' }}</span>
-          <span style="font-weight:700;color:var(--ink);font-size:13px">{{ $m->ad }}</span>
-          <span class="rk-sub2" style="font-size:11px">({{ (int)($m->kapasite ?? 0) }} kişi)</span>
-          <button type="button" class="rk-btn bos" style="padding:3px 7px;margin-left:2px" onclick="masaQr(@js($m->ad), @js($qrurl))" title="{{ $qrurl ? 'QR kodu göster / yazdır' : 'QR henüz yok' }}">
-            <span class="material-icons-outlined" style="font-size:15px;color:{{ $qrurl ? 'var(--yesil)' : 'var(--amber)' }}">qr_code_2</span>
-          </button>
-          <form method="POST" action="/isletme-duzeni/masa-bolge" style="margin:0 0 0 4px">
-            @csrf<input type="hidden" name="id" value="{{ $m->id }}">
-            <select name="bolge_id" class="rk-inp" style="padding:4px 6px;font-size:12px;min-width:92px" onchange="this.form.requestSubmit()" title="Bölge değiştir">
-              @foreach ($bolgeler as $b)<option value="{{ $b->id }}" {{ (int)$bid===(int)$b->id?'selected':'' }}>{{ $b->ad }}</option>@endforeach
-            </select>
-          </form>
-          <form method="POST" action="/masa-yonetim/sil" onsubmit="return confirm('{{ $m->ad }} arşive taşınsın mı? (QR korunur)')" style="margin:0">
-            @csrf<input type="hidden" name="id" value="{{ $m->id }}">
-            <button class="rk-btn bos" style="padding:3px 6px;color:var(--kirmizi);border:none" title="Arşive taşı"><span class="material-icons-outlined" style="font-size:15px">delete_outline</span></button>
-          </form>
+        <div class="mduz-masa-kart">
+          <div class="mduz-masa-ust">
+            <span class="material-icons-outlined mduz-sekil">{{ ($m->sekil ?? 'kare')==='yuvarlak' ? 'circle' : 'crop_square' }}</span>
+            <div class="mduz-masa-bilgi">
+              <div class="mduz-masa-ad" title="{{ $m->ad }}">{{ $m->ad }}</div>
+              <div class="mduz-masa-alt">{{ (int)($m->kapasite ?? 0) }} kişi · {{ $bolgeAd[$bid] ?? 'Bölgesiz' }}</div>
+            </div>
+          </div>
+          <div class="mduz-masa-btns">
+            <button type="button" class="mduz-ibtn" style="color:{{ $qrurl ? 'var(--yesil)' : 'var(--amber)' }}" onclick="masaQr(@js($m->ad), @js($qrurl))" title="{{ $qrurl ? 'QR göster / yazdır' : 'QR henüz yok' }}"><span class="material-icons-outlined">qr_code_2</span></button>
+            <button type="button" class="mduz-ibtn" style="color:var(--mavi)" onclick="masaDuzenleAc(@js(['id'=>(int)$m->id,'ad'=>$m->ad,'kapasite'=>(int)($m->kapasite ?? 4),'bolge_id'=>(int)$bid]))" title="Düzenle (ad · kişi · bölge)"><span class="material-icons-outlined">edit_outlined</span></button>
+            <form method="POST" action="/masa-yonetim/sil" onsubmit="return confirm('{{ $m->ad }} arşive taşınsın mı? (QR korunur)')" style="margin:0">
+              @csrf<input type="hidden" name="id" value="{{ $m->id }}">
+              <button class="mduz-ibtn" style="color:var(--kirmizi)" title="Arşive taşı"><span class="material-icons-outlined">delete_outline</span></button>
+            </form>
+          </div>
         </div>
       @endforeach
     </div>
@@ -245,21 +244,54 @@
   </div>
 @endif
 
-{{-- QR afiş önizleme modalı (uygulama içi) --}}
-<div id="mduzQrModal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px">
-  <div class="rk-card" style="max-width:360px;width:100%;text-align:center;padding:24px">
-    <div style="font-size:16px;font-weight:800;color:var(--ink)">{{ $subeAd ?? 'Restoran' }}</div>
-    <div class="rk-sub" style="font-size:12px;margin-top:2px">Karekodu telefonunuzla okutun</div>
-    <div style="background:#fff;border-radius:16px;padding:14px;margin:14px auto 0;display:inline-flex">
-      <img id="mduzQrImg" src="" alt="QR" style="width:220px;height:220px;object-fit:contain">
+{{-- QR afiş önizleme modalı (uygulama içi) — kaliteli afiş önizleme --}}
+<div id="mduzQrModal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.6);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px">
+  <div class="mduz-qr-box">
+    <div class="mduz-qr-head">
+      <span class="material-icons-outlined" style="font-size:19px">qr_code_2</span>
+      <span id="mduzQrAd" class="mduz-qr-masa">-</span>
     </div>
-    <div class="rk-ink" id="mduzQrAd" style="font-size:24px;font-weight:800;margin-top:12px;color:var(--ink)">-</div>
-    <div class="rk-sub" style="font-size:11px">Menü · Sipariş · Garson Çağır · Öde</div>
-    <div class="rk-sub2" id="mduzQrLink" style="font-size:10.5px;margin-top:8px;word-break:break-all;opacity:.8"></div>
-    <div style="display:flex;gap:10px;margin-top:18px">
+    <div class="mduz-qr-body">
+      <div class="mduz-qr-sube">{{ $subeAd ?? 'Restoran' }}</div>
+      <div class="mduz-qr-ipucu">Karekodu telefonunuzla okutun</div>
+      <div class="mduz-qr-frame">
+        <img id="mduzQrImg" src="" alt="QR" style="width:220px;height:220px;object-fit:contain;display:block">
+      </div>
+      <div class="mduz-qr-ozellik">
+        <span><span class="material-icons-outlined">restaurant_menu</span>Menü</span>
+        <span><span class="material-icons-outlined">add_shopping_cart</span>Sipariş</span>
+        <span><span class="material-icons-outlined">room_service</span>Garson</span>
+        <span><span class="material-icons-outlined">payments</span>Öde</span>
+      </div>
+      <div class="rk-sub2" id="mduzQrLink" style="font-size:10.5px;margin-top:10px;word-break:break-all;opacity:.75"></div>
+    </div>
+    <div class="mduz-qr-foot">
       <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="mduzQrKapat()">Kapat</button>
       <button type="button" class="rk-btn" style="flex:1;justify-content:center;background:var(--mor1)" onclick="mduzQrYazdir()">
         <span class="material-icons-outlined" style="font-size:18px">print</span> Yazdır
+      </button>
+    </div>
+  </div>
+</div>
+
+{{-- Masa düzenle modalı (ad · kapasite · bölge) — tek uçtan /api/patron/masa-guncelle --}}
+<div id="mduzEditModal" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(15,23,42,.6);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px">
+  <div class="rk-card" style="max-width:400px;width:100%;padding:22px">
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:16px;display:flex;align-items:center;gap:8px"><span class="material-icons-outlined" style="color:var(--mavi)">edit</span> Masa Düzenle</div>
+    <input type="hidden" id="mduzEditId">
+    <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa adı</label>
+    <input type="text" id="mduzEditAd" class="rk-inp" maxlength="40" placeholder='Örn. "Masa 1", "B4"'>
+    <label class="rk-lbl" style="font-size:12px;margin-top:12px">Kapasite (kişi)</label>
+    <input type="number" id="mduzEditKap" class="rk-inp" min="1" max="50">
+    <label class="rk-lbl" style="font-size:12px;margin-top:12px">Bölge</label>
+    <select id="mduzEditBolge" class="rk-inp">
+      @foreach ($bolgeler as $b)<option value="{{ $b->id }}">{{ $b->ad }}</option>@endforeach
+    </select>
+    <div class="rk-sub" style="font-size:11px;margin-top:12px">QR kodu <b>değişmez</b> — basılı QR geçerli kalır.</div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="masaDuzenleKapat()">İptal</button>
+      <button type="button" class="rk-btn" id="mduzEditKaydet" style="flex:1;justify-content:center;background:var(--mavi)" onclick="masaDuzenleKaydet()">
+        <span class="material-icons-outlined" style="font-size:16px">save</span> Kaydet
       </button>
     </div>
   </div>
@@ -295,6 +327,33 @@ function mduzQrYazdir(){
   w.document.close();
   setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
 }
+// ---- Masa düzenle (ad · kapasite · bölge) → /api/patron/masa-guncelle (session ile çalışır) ----
+function masaDuzenleAc(m){
+  document.getElementById('mduzEditId').value = m.id;
+  document.getElementById('mduzEditAd').value = m.ad || '';
+  document.getElementById('mduzEditKap').value = m.kapasite || 4;
+  document.getElementById('mduzEditBolge').value = m.bolge_id || '';
+  document.getElementById('mduzEditModal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('mduzEditAd').focus(); }, 50);
+}
+function masaDuzenleKapat(){ document.getElementById('mduzEditModal').style.display='none'; }
+(function(){ var m=document.getElementById('mduzEditModal'); if(m) m.addEventListener('click',function(e){ if(e.target===m) masaDuzenleKapat(); }); })();
+function masaDuzenleKaydet(){
+  var id = parseInt(document.getElementById('mduzEditId').value);
+  var ad = document.getElementById('mduzEditAd').value.trim();
+  var kap = parseInt(document.getElementById('mduzEditKap').value) || 1;
+  var bolge = document.getElementById('mduzEditBolge').value;
+  if(!ad){ alert('Masa adı boş olamaz.'); return; }
+  var btn = document.getElementById('mduzEditKaydet'); if(btn){ btn.disabled = true; btn.style.opacity = .6; }
+  fetch('/api/patron/masa-guncelle', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-TOKEN':(window.csrf||(document.querySelector('meta[name=csrf-token]')||{}).content||'')},
+    body: JSON.stringify({ id:id, ad:ad, kapasite:kap, bolge_id: bolge })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok==1){ location.reload(); }
+    else { if(btn){ btn.disabled=false; btn.style.opacity=1; } alert(d.hata || 'Güncellenemedi.'); }
+  }).catch(function(){ if(btn){ btn.disabled=false; btn.style.opacity=1; } alert('Sunucuya ulaşılamadı.'); });
+}
 function rkBolgeTog(cb){
   // Bölge "tümü" seçilince o bölgenin tek tek masa kutuları kapanır (zaten dahil)
   var box = cb.closest('div').querySelector('[data-bolge]');
@@ -308,4 +367,31 @@ function rkBolgeTog(cb){
 @endsection
 @push('head')<style>
 .rk-bolum-sayi{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;color:#fff;font-weight:800;font-size:14px;margin-right:4px}
+/* ---- İşletme Düzeni: eşit masa kartları ---- */
+.mduz-masa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.mduz-masa-kart{background:var(--card2);border:1px solid var(--line);border-radius:13px;padding:11px 12px;display:flex;flex-direction:column;gap:9px;min-height:86px;transition:border-color .12s,box-shadow .12s}
+.mduz-masa-kart:hover{border-color:color-mix(in srgb,var(--mavi) 45%,var(--line));box-shadow:0 3px 10px rgba(0,0,0,.07)}
+.mduz-masa-ust{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.mduz-sekil{font-size:23px;color:#B45309;flex-shrink:0}
+.mduz-masa-bilgi{min-width:0;flex:1}
+.mduz-masa-ad{font-weight:800;color:var(--ink);font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mduz-masa-alt{font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mduz-masa-btns{display:flex;gap:4px;justify-content:flex-end;align-items:center;border-top:1px solid var(--line);padding-top:8px}
+.mduz-masa-btns form{margin:0;display:inline-flex}
+.mduz-ibtn{display:inline-flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:8px;border:none;background:transparent;cursor:pointer;transition:background .12s}
+.mduz-ibtn:hover{background:color-mix(in srgb,currentColor 15%,transparent)}
+.mduz-ibtn .material-icons-outlined{font-size:19px}
+/* ---- Kaliteli QR afiş popup ---- */
+.mduz-qr-box{background:var(--card);border-radius:22px;max-width:360px;width:100%;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.4);animation:mduzPop .18s ease}
+@keyframes mduzPop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+.mduz-qr-head{display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;padding:14px 18px}
+.mduz-qr-masa{font-size:19px;font-weight:800;letter-spacing:.2px}
+.mduz-qr-body{padding:20px 22px 4px;text-align:center}
+.mduz-qr-sube{font-size:16px;font-weight:800;color:var(--ink)}
+.mduz-qr-ipucu{font-size:12px;color:var(--sub);margin-top:2px}
+.mduz-qr-frame{display:inline-flex;background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:14px;margin:14px auto 0;box-shadow:0 6px 20px rgba(0,0,0,.1)}
+.mduz-qr-ozellik{display:flex;justify-content:center;gap:14px;margin-top:16px;flex-wrap:wrap}
+.mduz-qr-ozellik span{display:inline-flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--sub)}
+.mduz-qr-ozellik .material-icons-outlined{font-size:20px;color:var(--mor1)}
+.mduz-qr-foot{display:flex;gap:10px;padding:16px 22px 22px}
 </style>@endpush
