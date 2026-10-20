@@ -421,7 +421,8 @@ Route::post('/pos-giris', function (Request $r) {
     $p = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->first() : null;
     if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
     session(['pos_personel_id' => $p->id]);
-    return redirect('/pos');
+    $hedef = session('panel_hedef'); session()->forget('panel_hedef');
+    return redirect($hedef ?: '/pos');
 });
 Route::match(['get', 'post'], '/pos-cikis', function () { session()->forget('pos_personel_id'); return redirect('/pos-giris'); });
 
@@ -6104,6 +6105,115 @@ if (!function_exists('_restoYetkiVar')) {
         if (($personel->rol ?? '') === 'sahip') return true;
         $y = isset($personel->yetkiler) && $personel->yetkiler ? json_decode($personel->yetkiler, true) : _restoYetkiVarsayilan($personel->rol ?? '')['yetkiler'];
         return !empty($y[$yetki]);
+    }
+}
+
+// ============================ WEB PANEL SAYFA YETKİLERİ (menü görünürlüğü + sayfa kapısı) ============================
+// personeller.kademe (seviye) + personeller.sayfa_yetki (JSON: sayfa bazlı override) kolonlarını garantiler
+if (!function_exists('_panelYetkiEnsure')) {
+    function _panelYetkiEnsure()
+    {
+        if (cache()->get('panel_yetki_ensure_ok')) return;
+        try { if (!Schema::hasColumn('personeller', 'kademe')) Schema::table('personeller', fn ($t) => $t->string('kademe', 16)->nullable()); } catch (\Throwable $e) {}
+        try { if (!Schema::hasColumn('personeller', 'sayfa_yetki')) Schema::table('personeller', fn ($t) => $t->text('sayfa_yetki')->nullable()); } catch (\Throwable $e) {}
+        cache()->put('panel_yetki_ensure_ok', 1, now()->addHours(12));
+    }
+}
+// Tüm sayfa (menü) yetki anahtarları + insan okunur etiket (kategoriye göre gruplu)
+if (!function_exists('_panelSayfaKategori')) {
+    function _panelSayfaKategori()
+    {
+        return [
+            '🧾 Sipariş & Masa' => [
+                'gor_pos' => 'POS / Masa', 'gor_masa_yonetim' => 'Masa & QR Yönetimi', 'gor_salon_sema' => 'Salon Şeması',
+                'gor_rezervasyon' => 'Rezervasyonlar', 'gor_garson_cagri' => 'Garson Çağrıları', 'gor_mutfak' => 'Mutfak (KDS)', 'gor_paket' => 'Paket Siparişler', 'gor_kurye' => 'Kurye Takip',
+            ],
+            '💰 Kasa & Finans' => [
+                'gor_kasa' => 'Kasa (Vardiya)', 'gor_z_raporu' => 'Z Raporu', 'gor_finans' => 'Finans / Kâr-Zarar',
+                'gor_gider' => 'Giderler', 'gor_cari' => 'Cari / Açık Hesaplar', 'gor_muhasebe' => 'Muhasebe', 'gor_raporlar' => 'Raporlar', 'gor_hareketler' => 'Hareketler (Log)',
+            ],
+            '📦 Stok & Ürün' => [
+                'gor_stok' => 'Stok / Sayım / Üretim / Barkod / Tedarikçi', 'gor_menu' => 'Menü Yönetimi',
+            ],
+            '👥 Personel & Müşteri' => [
+                'gor_personel' => 'Personel & Maaş', 'gor_puantaj' => 'Puantaj', 'gor_garson_perf' => 'Garson Performansı',
+                'gor_indirimler' => 'İndirimler', 'gor_odul_dogrula' => 'Ödül Doğrula', 'gor_odul_raporu' => 'Ödül Raporu', 'gor_app_yonetim' => 'App Kartları / QR Menü', 'gor_whatsapp' => 'WhatsApp Yönetimi',
+            ],
+            '⚙️ Ayarlar & Yönetim' => [
+                'gor_dashboard' => 'Dashboard / Özet', 'gor_yazici' => 'Yazıcı Ayarları', 'gor_bagli_cihaz' => 'Bağlı Cihazlar',
+                'gor_isletme_konum' => 'İşletme Konum', 'gor_sebep' => 'İptal / İkram Sebepleri', 'gor_odeme_ayar' => 'Ödeme / Kaçak Önleme (hassas)', 'gor_copilot' => 'Patron Asistan',
+            ],
+        ];
+    }
+}
+if (!function_exists('_panelSayfaKeys')) {
+    function _panelSayfaKeys()
+    {
+        $k = [];
+        foreach (_panelSayfaKategori() as $grup) foreach ($grup as $key => $et) $k[] = $key;
+        return $k;
+    }
+}
+// URL öneki -> gereken sayfa yetkisi (middleware + menü ortak kaynak). Sadece bu sayfalar kapılıdır.
+if (!function_exists('_sayfaYetkiHaritasi')) {
+    function _sayfaYetkiHaritasi()
+    {
+        return [
+            '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
+            '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
+            '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/satinalma' => 'gor_stok',
+            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
+            '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
+            '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
+            '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
+            '/yazici-ayarlari' => 'gor_yazici', '/bagli-cihazlar' => 'gor_bagli_cihaz', '/isletme-konum' => 'gor_isletme_konum',
+            '/sebep-yonetimi' => 'gor_sebep', '/odeme-ayar' => 'gor_odeme_ayar', '/copilot' => 'gor_copilot',
+        ];
+    }
+}
+// Seviyeler (kademe) + varsayılan açık sayfalar
+if (!function_exists('_panelKademeler')) {
+    function _panelKademeler()
+    {
+        return [
+            'personel'  => ['ad' => 'Personel',  'renk' => '#64748B', 'aciklama' => 'En dar — sadece sipariş/masa'],
+            'kasa'      => ['ad' => 'Kasa',       'renk' => '#D97706', 'aciklama' => 'Standart — sipariş + ödeme/kasa'],
+            'supervizor' => ['ad' => 'Süpervizör', 'renk' => '#4F46E5', 'aciklama' => 'Sahibin bir altı — neredeyse tümü'],
+            'sahip'     => ['ad' => 'Sahip',      'renk' => '#7C3AED', 'aciklama' => 'Tam yetki (yetki verme dahil)'],
+        ];
+    }
+}
+if (!function_exists('_kademeSayfalar')) {
+    function _kademeSayfalar($kademe)
+    {
+        $tum = _panelSayfaKeys();
+        switch ($kademe) {
+            case 'sahip': return $tum;
+            case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar'])); // ödeme/kaçak hariç her şey
+            case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
+            case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
+            default: return ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon']; // personel / garson
+        }
+    }
+}
+// Rol -> varsayılan kademe (kademe kolonu boşsa)
+if (!function_exists('_rolKademe')) {
+    function _rolKademe($rol)
+    {
+        return ['sahip' => 'sahip', 'mudur' => 'supervizor', 'kasa' => 'kasa', 'mutfak' => 'mutfak', 'garson' => 'personel'][$rol ?? ''] ?? 'personel';
+    }
+}
+// Etkin sayfa erişimi: sahip=hep; sayfa_yetki override varsa o; yoksa kademe varsayılanı
+if (!function_exists('_panelYetkiVar')) {
+    function _panelYetkiVar($personel, $sayfaKey)
+    {
+        if (!$personel) return false;
+        if (($personel->rol ?? '') === 'sahip') return true;
+        $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
+        if (is_array($sy) && array_key_exists($sayfaKey, $sy)) return !empty($sy[$sayfaKey]);
+        $kademe = $personel->kademe ?? _rolKademe($personel->rol ?? '');
+        return in_array($sayfaKey, _kademeSayfalar($kademe));
     }
 }
 

@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: ['webhook/*', 'api/*', 'rez/*', 'kurye/*', 'ode/*']);
         // Aktivite log: her degistiren API cagrisini terminate'de (yanit sonrasi) loglar -> istegi bozmaz
         $middleware->append(\App\Http\Middleware\AktiviteLog::class);
+        // Web panel sayfa kapisi: menudeki sayfalar yetkiyle korunur (session'dan sonra calisir)
+        $middleware->web(append: [\App\Http\Middleware\PanelYetki::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

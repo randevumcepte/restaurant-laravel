@@ -63,8 +63,15 @@
     $aktifSubeAd = 'ResteOS';
     try { if (function_exists('_aktifSubeId')) { $aktifSubeAd = optional(\DB::table('subeler')->where('id', _aktifSubeId())->first())->ad ?: 'ResteOS'; } } catch (\Throwable $e) {}
     if ($aktifSubeAd === 'ResteOS') { try { $aktifSubeAd = optional(\DB::table('subeler')->first())->ad ?: 'ResteOS'; } catch (\Throwable $e) {} }
-    $kulAd = 'Yönetim'; $kulRol = 'Panel';
-    try { if (function_exists('_posPersonel') && _posPersonel()) { $p = _posPersonel(); $kulAd = $p->ad ?? 'Yönetim'; $kulRol = ['sahip'=>'Sahip','mudur'=>'Müdür','kasa'=>'Kasa','garson'=>'Garson'][$p->rol ?? ''] ?? ($p->rol ?? 'Panel'); } } catch (\Throwable $e) {}
+    $kulAd = 'Yönetim'; $kulRol = 'Panel'; $_pp = null;
+    try { if (function_exists('_posPersonel')) $_pp = _posPersonel(); } catch (\Throwable $e) {}
+    if ($_pp) {
+        $kulAd = $_pp->ad ?? 'Yönetim';
+        $_kad = $_pp->kademe ?? (function_exists('_rolKademe') ? _rolKademe($_pp->rol ?? '') : ($_pp->rol ?? ''));
+        $_kadlar = function_exists('_panelKademeler') ? _panelKademeler() : [];
+        $kulRol = $_kadlar[$_kad]['ad'] ?? (['sahip'=>'Sahip','mudur'=>'Müdür','kasa'=>'Kasa','garson'=>'Garson','mutfak'=>'Mutfak'][$_pp->rol ?? ''] ?? ($_pp->rol ?? 'Panel'));
+    }
+    $_harita = function_exists('_sayfaYetkiHaritasi') ? _sayfaYetkiHaritasi() : [];
 @endphp
 <div class="rk-wrap">
     <aside class="rk-side">
@@ -75,6 +82,7 @@
         </div>
         <nav class="rk-menu">
             @foreach ($nav as [$url, $ikon, $ad, $renk])
+                @continue($_pp && isset($_harita[$url]) && !_panelYetkiVar($_pp, $_harita[$url]))
                 @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
                 <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
                     <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
