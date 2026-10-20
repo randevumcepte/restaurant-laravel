@@ -37,11 +37,19 @@ body.koyu #mny{
 
 /* ── Araç çubuğu ── */
 #mny .mny-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-#mny .mny-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:22px;
-  font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid transparent;transition:opacity .12s}
-#mny .mny-btn:hover{opacity:.82}
-#mny .mny-btn.dolu{color:#fff}
-#mny .mny-btn.bos{background:transparent}
+/* NOT: bu butonlar header'da (rk_araclar, #mny DIŞINDA) render edilir → global tanım + panel-kit
+   global değişkenleri (var(--card/line/ink/sub/mor1)) ile gece/gündüz otomatik uyar. */
+.mny-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;
+  font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid transparent;line-height:1;white-space:nowrap;
+  transition:transform .13s ease,box-shadow .13s ease,background .13s ease,border-color .13s ease,filter .13s ease}
+.mny-btn .material-icons-outlined{font-size:18px}
+.mny-btn:active{transform:translateY(0)!important}
+.mny-btn.bos{background:var(--card);color:var(--ink);border-color:var(--line);box-shadow:0 1px 2px rgba(16,24,40,.07)}
+.mny-btn.bos .material-icons-outlined{color:var(--sub)}
+.mny-btn.bos:hover{background:var(--card2);border-color:color-mix(in srgb,var(--mor1) 32%,var(--line));transform:translateY(-1px);box-shadow:0 4px 11px rgba(16,24,40,.11)}
+.mny-btn.dolu{color:#fff;background:linear-gradient(135deg,#7C3AED,#6D28D9);border-color:transparent;box-shadow:0 4px 14px rgba(124,58,237,.38)}
+.mny-btn.dolu .material-icons-outlined{color:#fff}
+.mny-btn.dolu:hover{filter:brightness(1.07);transform:translateY(-1px);box-shadow:0 7px 20px rgba(124,58,237,.48)}
 
 /* ── Bölüm başlığı ── */
 #mny .mny-bolum{display:flex;align-items:center;gap:8px;padding:14px 0 6px}
@@ -204,14 +212,14 @@ body.koyu #mny{
 
 @section('rk_araclar')
 @if($duzenleyebilir)
-<button class="mny-btn bos" style="border-color:var(--gold);color:var(--gold)" onclick="mnyOneSiralaAc()">
-  <span class="material-icons-outlined" style="font-size:17px">star_outline</span> Öne Çıkanları Sırala
+<button class="mny-btn bos" onclick="mnyOneSiralaAc()">
+  <span class="material-icons-outlined" style="color:var(--gold)">star</span> Öne Çıkanları Sırala
 </button>
-<button class="mny-btn bos" style="border-color:#C4B5FD;color:#C4B5FD" onclick="mnyKategoriAc(null)">
-  <span class="material-icons-outlined" style="font-size:17px">create_new_folder_outlined</span> Kategori
+<button class="mny-btn bos" onclick="mnyKategoriAc(null)">
+  <span class="material-icons-outlined">create_new_folder</span> Kategori
 </button>
-<button class="mny-btn dolu" style="background:var(--mor1)" onclick="mnyUrunAc(null)">
-  <span class="material-icons-outlined" style="font-size:17px">add</span> Yeni Ürün
+<button class="mny-btn dolu" onclick="mnyUrunAc(null)">
+  <span class="material-icons-outlined">add</span> Yeni Ürün
 </button>
 @endif
 @endsection
