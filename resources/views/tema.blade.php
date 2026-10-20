@@ -65,6 +65,26 @@
     padding:15px; border-radius:16px; color:#3a2600; background:linear-gradient(135deg,#F6DFA0,#E9C46A,#C9962F); box-shadow:0 12px 26px rgba(201,150,47,.4); }
   #kayit{ position:fixed; left:50%; transform:translateX(-50%); bottom:22px; background:#16351f; color:#c9f5d6; border:1px solid #2e7d4d;
     padding:12px 18px; border-radius:14px; font-size:13.5px; font-weight:700; opacity:0; transition:.25s; pointer-events:none; }
+
+  /* OZEL RENK + LOGO */
+  .ozel{ margin-top:16px; border:1px solid var(--cizgi); border-radius:20px; background:#171319; padding:16px 16px 18px; transition:border-color .15s, box-shadow .15s; }
+  .ozel.sec{ border-color:var(--gold); box-shadow:0 0 0 2px var(--gold); }
+  .ozel h3{ font-family:var(--serif); font-size:17px; color:var(--gold); display:flex; align-items:center; gap:8px; }
+  .ozel p{ color:#B49CB6; font-size:12.5px; margin:5px 0 14px; line-height:1.4; }
+  .ozel-row{ display:flex; gap:12px; flex-wrap:wrap; }
+  .ozel-renk{ flex:1; min-width:150px; display:flex; align-items:center; gap:10px; background:rgba(0,0,0,.28); border:1px solid var(--cizgi); border-radius:14px; padding:10px 12px; cursor:pointer; }
+  .ozel-renk span{ font-size:12px; color:#9a8a9c; flex:1; }
+  .ozel-renk input[type=color]{ width:36px; height:36px; border:none; background:none; border-radius:9px; cursor:pointer; padding:0; }
+  .ozel-renk input[type=color]::-webkit-color-swatch-wrapper{ padding:0; }
+  .ozel-renk input[type=color]::-webkit-color-swatch{ border:1px solid rgba(255,255,255,.2); border-radius:9px; }
+  .ozel-renk b{ font-size:12px; color:#F3E9EE; min-width:66px; letter-spacing:.5px; }
+  .ozel-logo{ margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .ozel-logo button{ background:rgba(233,196,106,.12); border:1px dashed var(--gold2); color:var(--gold); border-radius:13px; padding:11px 16px; font-size:13px; font-weight:800; cursor:pointer; }
+  .ozel-logo button:active{ transform:scale(.98); }
+  .ozel-logo img{ width:46px; height:46px; object-fit:contain; border-radius:11px; background:#fff; padding:4px; }
+  .ozel-uygula{ margin-top:14px; width:100%; border:none; border-radius:14px; padding:14px; font-size:14.5px; font-weight:800; color:var(--ink); cursor:pointer;
+    background:linear-gradient(135deg,var(--ana),var(--ana2),var(--ana3)); box-shadow:0 10px 24px rgba(0,0,0,.45); }
+  .ozel-uygula:active{ transform:scale(.99); }
 </style>
 </head>
 <body>
@@ -93,6 +113,28 @@
     @endforeach
   </div>
 
+  {{-- ÖZEL RENK + LOGO --}}
+  <div class="ozel {{ $ozel ?? false ? 'sec' : '' }}" id="ozelPanel">
+    <h3>🎨 Kendi Renginiz</h3>
+    <p>Markanın rengini seç, ya da <b style="color:var(--gold)">logonu yükle</b> — sistem logondan baskın rengi bulup otomatik uygular.</p>
+    <div class="ozel-row">
+      <label class="ozel-renk"><span>Ana Renk (butonlar)</span>
+        <input type="color" id="ozelAna" value="{{ ($ozel ?? false) ? ($sube->tema_renk ?? '#C41E3A') : '#C41E3A' }}" oninput="ozelDegis()">
+        <b id="ozelAnaHex">{{ ($ozel ?? false) ? ($sube->tema_renk ?? '#C41E3A') : '#C41E3A' }}</b>
+      </label>
+      <label class="ozel-renk"><span>Detay (altın yerine)</span>
+        <input type="color" id="ozelDetay" value="{{ ($ozel ?? false) ? ($sube->tema_renk2 ?? ($sube->tema_renk ?? '#E9C46A')) : '#E9C46A' }}" oninput="ozelDegis()">
+        <b id="ozelDetayHex">{{ ($ozel ?? false) ? ($sube->tema_renk2 ?? '#E9C46A') : '#E9C46A' }}</b>
+      </label>
+    </div>
+    <div class="ozel-logo">
+      <input type="file" id="ozelLogo" accept="image/*" style="display:none" onchange="ozelLogoYukle(event)">
+      <button type="button" onclick="document.getElementById('ozelLogo').click()">📤 Logo Yükle → Rengi Otomatik Al</button>
+      <img id="ozelLogoImg" alt="logo" style="display:none">
+    </div>
+    <button type="button" class="ozel-uygula" onclick="ozelKaydet()">Bu Rengi Uygula &amp; Kaydet</button>
+  </div>
+
   <div class="onizlik">
     <h2>Canlı Önizleme</h2>
     <div class="prev">
@@ -117,18 +159,94 @@ function uygula(el){
   const r=document.documentElement.style;
   r.setProperty('--ana', el.dataset.ana); r.setProperty('--ana2', el.dataset.ana2);
   r.setProperty('--ana3', el.dataset.ana3); r.setProperty('--ink', el.dataset.ink); r.setProperty('--glow', el.dataset.glow);
+  r.setProperty('--gold', '#E9C46A'); r.setProperty('--gold2', '#C9962F'); // preset'te altın detay sabit
 }
 function sec(el){
   document.querySelectorAll('.kart').forEach(k=>k.classList.remove('sec'));
+  var op=document.getElementById('ozelPanel'); if(op) op.classList.remove('sec');
   el.classList.add('sec');
   uygula(el);
   fetch('/tema/kaydet',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body:new URLSearchParams({tema:el.dataset.key, sube:SUBE})})
     .then(x=>x.json()).then(j=>{ if(j.ok) mesaj(); });
 }
-function mesaj(){ const k=document.getElementById('kayit'); k.style.opacity='1'; clearTimeout(k._z); k._z=setTimeout(()=>k.style.opacity='0',2200); }
-// acilista secili temanin onizlemesini uygula (KAYIT YOK)
-(function(){ const s=document.querySelector('.kart.sec'); if(s) uygula(s); })();
+function mesaj(t){ const k=document.getElementById('kayit'); k.textContent=t||'✓ Kaydedildi'; k.style.opacity='1'; clearTimeout(k._z); k._z=setTimeout(()=>k.style.opacity='0',2400); }
+
+// ── ÖZEL RENK + LOGO ──
+function _hx(v){ return ('0'+Math.max(0,Math.min(255,Math.round(v))).toString(16)).slice(-2); }
+// tek hex'ten palet (resto_renk_tonlar ile birebir mantık)
+function _tonlar(hex){
+  hex=hex.replace('#','');
+  const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+  const mix=(t,h)=>'#'+[r,g,b].map(c=>_hx(c+(h-c)*t)).join('').toUpperCase();
+  const lum=(0.299*r+0.587*g+0.114*b)/255;
+  return { ana:'#'+hex.toUpperCase(), ana2:mix(0.22,255), ana3:mix(0.26,0), ink: lum>0.62?'#3a2600':'#ffffff', glow:'rgba('+r+','+g+','+b+',.15)' };
+}
+function ozelUygulaPrev(){
+  const ana=document.getElementById('ozelAna').value, detay=document.getElementById('ozelDetay').value;
+  const t=_tonlar(ana), r=document.documentElement.style;
+  r.setProperty('--ana',t.ana); r.setProperty('--ana2',t.ana2); r.setProperty('--ana3',t.ana3);
+  r.setProperty('--ink',t.ink); r.setProperty('--glow',t.glow);
+  r.setProperty('--gold', detay); r.setProperty('--gold2', detay);
+}
+function ozelDegis(){
+  document.getElementById('ozelAnaHex').textContent=document.getElementById('ozelAna').value.toUpperCase();
+  document.getElementById('ozelDetayHex').textContent=document.getElementById('ozelDetay').value.toUpperCase();
+  document.querySelectorAll('.kart').forEach(k=>k.classList.remove('sec'));
+  document.getElementById('ozelPanel').classList.add('sec');
+  ozelUygulaPrev();
+}
+function ozelKaydet(){
+  const ana=document.getElementById('ozelAna').value, detay=document.getElementById('ozelDetay').value;
+  document.querySelectorAll('.kart').forEach(k=>k.classList.remove('sec'));
+  document.getElementById('ozelPanel').classList.add('sec');
+  ozelUygulaPrev();
+  fetch('/tema/kaydet',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({tema:'ozel', renk:ana, renk2:detay, sube:SUBE})})
+    .then(x=>x.json()).then(j=>{ if(j.ok) mesaj('✓ Özel renk kaydedildi'); else alert(j.hata||'Kaydedilemedi'); });
+}
+function ozelLogoYukle(e){
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=function(ev){
+    const im=new Image();
+    im.onload=function(){
+      const img=document.getElementById('ozelLogoImg'); img.src=im.src; img.style.display='';
+      const renk=_logoRenk(im);
+      if(renk){ document.getElementById('ozelAna').value=renk; ozelDegis(); mesaj('Logodan renk alındı: '+renk+' — kaydetmek için Uygula'); }
+      else { alert('Logodan belirgin bir renk bulunamadı. Rengi elle seçebilirsin.'); }
+    };
+    im.src=ev.target.result;
+  };
+  rd.readAsDataURL(f);
+}
+// logodan baskın (doygun) rengi bul — canvas, AI yok
+function _logoRenk(im){
+  try{
+    const c=document.createElement('canvas'), s=48; c.width=s; c.height=s;
+    const x=c.getContext('2d'); x.drawImage(im,0,0,s,s);
+    const d=x.getImageData(0,0,s,s).data, bk={};
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i],g=d[i+1],b=d[i+2],a=d[i+3]; if(a<128) continue;
+      const mx=Math.max(r,g,b),mn=Math.min(r,g,b), sat=mx===0?0:(mx-mn)/mx, lum=(0.299*r+0.587*g+0.114*b)/255;
+      if(lum>0.92||lum<0.08||sat<0.18) continue; // beyaz/siyah/gri ele
+      const key=(r>>4)+'-'+(g>>4)+'-'+(b>>4);
+      if(!bk[key]) bk[key]={n:0,r:0,g:0,b:0,sc:0};
+      const o=bk[key]; o.n++; o.r+=r; o.g+=g; o.b+=b; o.sc+=sat;
+    }
+    let best=null;
+    for(const k in bk){ const o=bk[k]; if(!best||o.sc>best.sc) best={sc:o.sc,r:o.r/o.n,g:o.g/o.n,b:o.b/o.n}; }
+    if(!best) return null;
+    return '#'+_hx(best.r)+_hx(best.g)+_hx(best.b);
+  }catch(e){ return null; }
+}
+
+// açılışta: özel seçiliyse özel paleti, değilse preset paleti uygula (KAYIT YOK)
+(function(){
+  const s=document.querySelector('.kart.sec');
+  if(s){ uygula(s); }
+  else if(document.getElementById('ozelPanel') && document.getElementById('ozelPanel').classList.contains('sec')){ ozelUygulaPrev(); }
+})();
 </script>
 </body>
 </html>

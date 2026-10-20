@@ -3735,18 +3735,29 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
 // QR Menü Rengi — panel içinde (sidebar görünür), /tema'yı iframe ile gömer.
 Route::get('/qr-menu-rengi', fn () => view('qr_menu_rengi'));
 Route::get('/tema/{subeId?}', function ($subeId = null) {
-    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    if (function_exists('resto_tema_kolon')) resto_tema_kolon();
     $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
     if (!$sube) abort(404, 'Şube yok');
     $temalar = resto_temalar();
-    $secili = (isset($sube->tema) && isset($temalar[$sube->tema])) ? $sube->tema : 'altin';
-    return view('tema', ['sube' => $sube, 'temalar' => $temalar, 'secili' => $secili]);
+    $stored = $sube->tema ?? null;
+    $ozel = ($stored === 'ozel');
+    $secili = (!$ozel && $stored && isset($temalar[$stored])) ? $stored : ($ozel ? 'ozel' : 'altin');
+    return view('tema', ['sube' => $sube, 'temalar' => $temalar, 'secili' => $secili, 'ozel' => $ozel]);
 });
 Route::post('/tema/kaydet', function (Request $r) {
-    try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
+    if (function_exists('resto_tema_kolon')) resto_tema_kolon();
     $key = (string) $r->tema;
-    if (!isset(resto_temalar()[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
     $subeId = (int) ($r->sube ?: DB::table('subeler')->value('id'));
+    // Özel renk (renk paleti / logodan alınan) — resto_tema_uret ile tüm menü otomatik uygular.
+    if ($key === 'ozel') {
+        $renk = '#' . ltrim((string) $r->renk, '#');
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $renk)) return ['ok' => 0, 'hata' => 'Geçersiz renk'];
+        $renk2 = $r->filled('renk2') ? ('#' . ltrim((string) $r->renk2, '#')) : null;
+        if ($renk2 && !preg_match('/^#[0-9a-fA-F]{6}$/', $renk2)) $renk2 = null;
+        DB::table('subeler')->where('id', $subeId)->update(['tema' => 'ozel', 'tema_renk' => strtoupper($renk), 'tema_renk2' => $renk2 ? strtoupper($renk2) : null]);
+        return ['ok' => 1, 'tema' => 'ozel', 'renk' => strtoupper($renk)];
+    }
+    if (!isset(resto_temalar()[$key])) return ['ok' => 0, 'hata' => 'Geçersiz tema'];
     DB::table('subeler')->where('id', $subeId)->update(['tema' => $key]);
     return ['ok' => 1, 'tema' => $key];
 });
