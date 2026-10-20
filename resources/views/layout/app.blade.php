@@ -44,7 +44,7 @@
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
             ['/app-yonetim', 'palette', 'App Kartları / QR Menü', '#F6CE63'],
-            ['/tema', 'color_lens', 'QR Menü Rengi', '#EC4899'],
+            ['/qr-menu-rengi', 'color_lens', 'QR Menü Rengi', '#EC4899'],
             ['/indirimler', 'local_offer', 'İndirimler', '#22C55E'],
             ['/barkod', 'qr_code', 'Barkod', null],
         ],

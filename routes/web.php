@@ -3732,6 +3732,8 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
 });
 
 // RENK KARTELASI: restoran QR menu temasini secer (subeler.tema)
+// QR Menü Rengi — panel içinde (sidebar görünür), /tema'yı iframe ile gömer.
+Route::get('/qr-menu-rengi', fn () => view('qr_menu_rengi'));
 Route::get('/tema/{subeId?}', function ($subeId = null) {
     try { if (!Schema::hasColumn('subeler', 'tema')) Schema::table('subeler', function ($t) { $t->string('tema', 20)->nullable(); }); } catch (\Throwable $e) {}
     $sube = $subeId ? DB::table('subeler')->find((int) $subeId) : DB::table('subeler')->first();
