@@ -31,8 +31,7 @@
     // Gruplu menü — başlık => [[url, material-icon, etiket, renk(null=ink)], ...]
     $gruplar = [
         'Özet' => [
-            ['/dashboard', 'dashboard', 'Dashboard', null],
-            ['/copilot', 'auto_awesome', 'Patron Asistan', '#C4B5FD'],
+            ['/dashboard', 'dashboard', 'Özet', null],
         ],
         'Satış & Servis' => [
             ['/pos', 'point_of_sale', 'POS / Masa', null],

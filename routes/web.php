@@ -2444,7 +2444,8 @@ Route::get('/raporlar', function () {
 
 // ============================ AI COPILOT ============================
 Route::get('/copilot', function () {
-    return view('copilot.index');
+    // Patron Asistan web panelden kaldırıldı — mobil uygulamadan ilerleniyor. Dashboard'a yönlendir.
+    return redirect('/dashboard');
 });
 
 Route::post('/copilot/sor', function (Request $r) {
