@@ -6285,12 +6285,24 @@ if (!function_exists('_apiPersonel')) {
     function _apiPersonel(Request $r)
     {
         $token = $r->bearerToken();
-        if (!$token) return null;
-        $p = DB::table('personeller')->where('api_token', $token)->first();
-        if (!$p) return null;
-        // Lisans/askı zorlaması (çok-şubeli; sahip ve tek-restoran muaf)
-        if (($p->rol ?? '') !== 'sahip' && _subeKilitli($p->sube_id)) return null;
-        return $p;
+        if ($token) {
+            $p = DB::table('personeller')->where('api_token', $token)->first();
+            if ($p) {
+                // Lisans/askı zorlaması (çok-şubeli; sahip ve tek-restoran muaf)
+                if (($p->rol ?? '') !== 'sahip' && _subeKilitli($p->sube_id)) return null;
+                return $p;
+            }
+        }
+        // Web panel oturumu (POS session) — Bearer yoksa/geçersizse aktif oturumdaki personele düş.
+        // Flutter her istekte Bearer gönderir (üstteki dal), bu dal yalnızca tarayıcı panelini etkiler.
+        if (function_exists('_posPersonel')) {
+            $sp = _posPersonel();
+            if ($sp) {
+                if (($sp->rol ?? '') !== 'sahip' && _subeKilitli($sp->sube_id)) return null;
+                return $sp;
+            }
+        }
+        return null;
     }
 }
 
@@ -7583,6 +7595,30 @@ Route::post('/bagli-cihazlar/sil', function (Request $r) {
         if ($id > 0 && Schema::hasTable('cihazlar')) { DB::table('cihazlar')->where('id', $id)->where('sube_id', $sube)->delete(); return back()->with('bc_mesaj', 'Cihaz silindi.'); }
     } catch (\Throwable $e) {}
     return back()->with('bc_hata', 'Silinemedi.');
+});
+// Manuel cihaz ekle (panel modal) — Flutter'da el ile yazıcı/ÖKC tanımı karşılığı.
+Route::post('/bagli-cihazlar/ekle', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        if (function_exists('_restoCihazEnsure')) { try { _restoCihazEnsure(); } catch (\Throwable $e) {} }
+        if (!Schema::hasTable('cihazlar')) return back()->with('bc_hata', 'Cihaz tablosu yok.');
+        $ad = mb_substr(trim((string) $r->ad), 0, 80);
+        if ($ad === '') return back()->with('bc_hata', 'Cihaz adı boş olamaz.');
+        $tip = mb_substr(trim((string) ($r->tip ?: 'yazici')), 0, 40);
+        $veri = ['sube_id' => $sube, 'ad' => $ad, 'tip' => $tip, 'manuel' => 1, 'aktif' => 1,
+            'ip' => mb_substr(trim((string) $r->ip), 0, 60) ?: null,
+            'port' => mb_substr(trim((string) $r->port), 0, 12) ?: null,
+            'marka' => mb_substr(trim((string) $r->marka), 0, 60) ?: null,
+            'seri_no' => mb_substr(trim((string) $r->seri_no), 0, 60) ?: null,
+            'rol' => mb_substr(trim((string) $r->rol), 0, 40) ?: null,
+            'notlar' => mb_substr(trim((string) $r->notlar), 0, 240) ?: null,
+            'created_at' => now(), 'updated_at' => now()];
+        // Şemada olmayan kolonları ele (eski kurulum güvenliği)
+        $kolonlar = Schema::getColumnListing('cihazlar');
+        $veri = array_intersect_key($veri, array_flip($kolonlar));
+        DB::table('cihazlar')->insert($veri);
+        return back()->with('bc_mesaj', 'Cihaz eklendi.');
+    } catch (\Throwable $e) { return back()->with('bc_hata', 'Eklenemedi.'); }
 });
 // ===== WEB PANEL: İşletme Konum (geofence) — Flutter isletme_konum_screen karşılığı =====
 Route::get('/isletme-konum', function () {
