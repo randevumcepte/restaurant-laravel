@@ -85,6 +85,31 @@ body.koyu #odm .bolge-kart select{color:var(--ink);background:var(--card)}
 #odm-yukleniyor{display:flex;align-items:center;justify-content:center;padding:60px 0}
 #odm-yukleniyor .spin2{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--mavi);
   border-radius:50%;animation:odmSpin .7s linear infinite}
+
+/* ── Sağ bilgi paneli (sistemi anlatan alan) ── */
+.odm-wrap{display:grid;grid-template-columns:minmax(0,680px) minmax(300px,1fr);gap:26px;align-items:start}
+@media(max-width:1080px){.odm-wrap{grid-template-columns:1fr}}
+#odm{max-width:none}
+#odm-bilgi{--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;--card:#fff;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:0 20px 20px;overflow:hidden;margin-top:16px}
+body.koyu #odm-bilgi{--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650;--card:#1b2235}
+#odm-bilgi p{font-size:13px;line-height:1.5;color:var(--sub);margin:0 0 4px}
+#odm-bilgi b{color:var(--ink);font-weight:700}
+.ob-head{display:flex;align-items:center;gap:12px;margin:0 -20px 16px;padding:18px 20px;background:linear-gradient(135deg,#7C3AED,#4F46E5)}
+.ob-head .material-icons-outlined{color:#fff;font-size:30px}
+.ob-title{color:#fff;font-size:17px;font-weight:800}
+.ob-sub{color:#E9D5FF;font-size:12px;margin-top:2px;line-height:1.3}
+.ob-giris{margin-bottom:14px !important}
+.ob-bolum{font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#7C3AED;margin:18px 0 10px}
+.ob-mod{border-left:3px solid var(--c);background:color-mix(in srgb,var(--c) 8%,transparent);border-radius:0 12px 12px 0;padding:10px 13px;margin-bottom:10px}
+.ob-mod-ust{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.ob-ik{font-size:17px;flex:none}
+.ob-mod-ad{font-weight:800;color:var(--ink);font-size:14px;flex:1}
+.ob-etiket{font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+.ob-not{display:inline-block;color:var(--sub2);font-size:11.5px;margin-top:4px}
+.ob-ipucu{display:flex;gap:10px;align-items:flex-start;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);border-radius:12px;padding:12px;margin-top:18px}
+.ob-ipucu .material-icons-outlined{color:#F59E0B;font-size:20px;flex:none}
+.ob-ipucu div{font-size:12.5px;line-height:1.45;color:var(--ink)}
 </style>
 @endpush
 
@@ -97,6 +122,7 @@ body.koyu #odm .bolge-kart select{color:var(--ink);background:var(--card)}
   $odmDuz   = $_odm_p && in_array($_odm_p->rol ?? '', ['sahip', 'mudur']);
 @endphp
 
+<div class="odm-wrap">
 <div id="odm">
   <div id="odm-yukleniyor"><div class="spin2"></div></div>
   <div id="odm-icerik" style="display:none" class="odm-list">
@@ -187,6 +213,47 @@ body.koyu #odm .bolge-kart select{color:var(--ink);background:var(--card)}
 
   </div><!-- /odm-icerik -->
 </div><!-- /odm -->
+
+<aside id="odm-bilgi">
+  <div class="ob-head">
+    <span class="material-icons-outlined">shield</span>
+    <div>
+      <div class="ob-title">Bu sistem ne işe yarar?</div>
+      <div class="ob-sub">Ödemeden ayrılan masayı önler, parayı ne zaman alacağını sen seçersin</div>
+    </div>
+  </div>
+
+  <p class="ob-giris">Restoranın en sessiz kayıplarından biri <b>“ödemeden kalkan masa”</b> ve kontrolsüz açık hesaplardır. Bu ekranda iki şeyi ayarlarsın: <b>parayı ne zaman alacağın</b> (ödeme modu) ve <b>riskli masaları yakalayan radar</b>.</p>
+
+  <div class="ob-bolum">Ödeme Modları</div>
+
+  <div class="ob-mod" style="--c:#10B981">
+    <div class="ob-mod-ust"><span class="ob-ik">🍽️</span><span class="ob-mod-ad">Klasik</span><span class="ob-etiket" style="background:rgba(16,185,129,.16);color:#10B981">En yaygın</span></div>
+    <p>Müşteri önce yer, <b>sonra öder</b>. Garsonlu/masalı düzen için en doğal akış. Tek koruması aşağıdaki <b>Kaçak Radarı</b>’dır.</p>
+  </div>
+
+  <div class="ob-mod" style="--c:#4F46E5">
+    <div class="ob-mod-ust"><span class="ob-ik">💳</span><span class="ob-mod-ad">Ön Ödemeli</span></div>
+    <p>Sipariş <b>önce ödenir</b>, parası alınınca mutfağa düşer. <b>Kaçak riski sıfır.</b> Yoğun, self-servis, bahçe veya QR’dan sipariş için ideal.<span class="ob-not">🔒 Canlı ödeme (Iyzico/PayTR) kurulunca tam aktifleşir.</span></p>
+  </div>
+
+  <div class="ob-mod" style="--c:#7C3AED">
+    <div class="ob-mod-ust"><span class="ob-ik">🔐</span><span class="ob-mod-ad">Açık Hesap + Kart</span></div>
+    <p>Müşteri QR’da <b>kartını bağlar</b>, masa boyunca sipariş verir, çıkışta tutar <b>otomatik çekilir</b>. Uzun oturan, çok adisyonlu masalar için.<span class="ob-not">🔒 Canlı ödeme kurulunca tam aktifleşir.</span></p>
+  </div>
+
+  <div class="ob-bolum">Kaçak Radarı</div>
+  <p class="ob-giris">Açıkken; <b>uzun süredir açık ve hâlâ ödenmemiş</b> masalar garson ekranında kırmızı <b>“ödemeden ayrılma riski”</b> kartı olarak belirir. Böylece masa gözden kaçmaz. Süreyi restoranının ortalama oturma süresine göre ayarla (ör. 90 dk).</p>
+
+  <div class="ob-bolum">Bölge Bazlı (opsiyonel)</div>
+  <p class="ob-giris">Her bölgeye ayrı mod verebilirsin: ör. <b>Bahçe = Ön Ödemeli</b> (kaçak çok), <b>Salon = Klasik</b>. “Varsayılan” seçilirse o bölge üstteki restoran modunu kullanır.</p>
+
+  <div class="ob-ipucu">
+    <span class="material-icons-outlined">tips_and_updates</span>
+    <div><b>Öneri:</b> Başlangıç için <b>Klasik + Kaçak Radarı 90 dk</b> yeterli. Canlı ödeme kurulunca kaçağın yoğun olduğu bölgeleri <b>Ön Ödemeli</b>’ye al.</div>
+  </div>
+</aside>
+</div><!-- /odm-wrap -->
 
 <div id="odm-toast"></div>
 
