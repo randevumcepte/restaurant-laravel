@@ -363,9 +363,23 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
       <button id="urunKaydetBtn" style="background:var(--mor1);color:#fff" onclick="urunKaydet(true)">Kaydet</button>
     </div>
     <div id="barkodBtn" style="display:none;margin-top:8px">
-      <a id="barkodLink" href="#" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;border:1.5px solid var(--mor1);border-radius:12px;color:var(--mor1);font-size:14px;font-weight:700;text-decoration:none">
+      <button type="button" onclick="mnyBarkodAc()" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;border:1.5px solid var(--mor1);border-radius:12px;color:var(--mor1);font-size:14px;font-weight:700;background:transparent;cursor:pointer">
         <span class="material-icons-outlined" style="font-size:20px">qr_code_2</span> Barkodları Yönet
-      </a>
+      </button>
+      {{-- İnline barkod paneli — ayrı sayfaya ATMAZ, burada yönetilir --}}
+      <div id="barkodPanel" style="display:none;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card2)">
+        <div id="barkodListe" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="barkodGiris" placeholder="Barkod numarası — elle yaz veya okut" autocomplete="off"
+            style="flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();mnyBarkodEkle();}">
+          <button type="button" onclick="mnyBarkodEkle()" style="padding:10px 16px;border:none;border-radius:10px;background:var(--mor1);color:#fff;font-weight:800;cursor:pointer">Ekle</button>
+        </div>
+        <button type="button" onclick="mnyBarkodIcUret()" style="margin-top:8px;width:100%;padding:10px;border:1px dashed var(--mor1);border-radius:10px;background:transparent;color:var(--mor1);font-weight:700;cursor:pointer;font-size:13px">
+          # İç Barkod Üret (barkodsuz ürün)
+        </button>
+        <div style="font-size:11.5px;color:var(--sub);margin-top:8px">Aynı barkod başka öğedeyse eklenmez. Bir ürünün birden çok barkodu olabilir.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -607,6 +621,51 @@ async function mnyTukendiSet(deger) {
     }
 }
 
+// ── İNLINE BARKOD (modal içi — ayrı sayfaya atmaz; token'lı /api/barkod/*) ──
+function mnyBarkodAc() {
+    const p = document.getElementById('barkodPanel');
+    const ac = p.style.display === 'none';
+    p.style.display = ac ? 'block' : 'none';
+    if (ac) mnyBarkodYukle();
+}
+async function mnyBarkodYukle() {
+    const liste = document.getElementById('barkodListe');
+    if (!mnyAktifUrunId) { liste.innerHTML = '<span style="color:var(--sub);font-size:13px">Önce ürünü kaydedin (barkod için ürün gerekli)</span>'; return; }
+    liste.innerHTML = '<span style="color:var(--sub);font-size:13px">Yükleniyor…</span>';
+    try {
+        const r = await mnyApi('/api/barkod/liste?tur=urun&hedef_id=' + mnyAktifUrunId);
+        if (r && r.ok === 1) {
+            const bk = r.barkodlar || [];
+            liste.innerHTML = bk.length
+                ? bk.map(b => `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:5px 6px 5px 13px;font-size:13px;font-weight:700;color:var(--ink)">${b.barkod}<button type="button" onclick="mnyBarkodSil(${b.id})" title="Sil" style="border:none;background:rgba(244,63,94,.14);color:#F43F5E;border-radius:50%;width:22px;height:22px;cursor:pointer;font-weight:900;line-height:1">×</button></span>`).join('')
+                : '<span style="color:var(--sub);font-size:13px">Henüz barkod yok. Aşağıdan ekle veya iç barkod üret.</span>';
+        } else { liste.innerHTML = '<span style="color:var(--kirmizi);font-size:13px">Yüklenemedi</span>'; }
+    } catch (e) { liste.innerHTML = '<span style="color:var(--kirmizi);font-size:13px">Bağlantı hatası</span>'; }
+}
+async function mnyBarkodEkle() {
+    if (!mnyAktifUrunId) { mnyToast('Önce ürünü kaydedin'); return; }
+    const inp = document.getElementById('barkodGiris');
+    const kod = (inp.value || '').trim();
+    if (!kod) return;
+    try {
+        const r = await mnyApi('/api/barkod/ekle', { barkod: kod, tur: 'urun', hedef_id: mnyAktifUrunId });
+        if (r && r.ok === 1) { inp.value = ''; mnyToast(r.zaten ? 'Zaten tanımlı' : 'Barkod eklendi'); mnyBarkodYukle(); }
+        else { mnyToast(r.hata || 'Eklenemedi'); }
+    } catch (e) { mnyToast('Bağlantı hatası'); }
+}
+async function mnyBarkodSil(id) {
+    try { const r = await mnyApi('/api/barkod/sil', { id }); if (r && r.ok === 1) mnyBarkodYukle(); else mnyToast('Silinemedi'); }
+    catch (e) { mnyToast('Bağlantı hatası'); }
+}
+async function mnyBarkodIcUret() {
+    if (!mnyAktifUrunId) { mnyToast('Önce ürünü kaydedin'); return; }
+    try {
+        const r = await mnyApi('/api/barkod/ic-uret', { tur: 'urun', hedef_id: mnyAktifUrunId });
+        if (r && r.ok === 1) { mnyToast('İç barkod üretildi: ' + r.barkod); mnyBarkodYukle(); }
+        else { mnyToast(r.hata || 'Üretilemedi'); }
+    } catch (e) { mnyToast('Bağlantı hatası'); }
+}
+
 function mnyUrunAc(urunIdOrNull) {
     if (!MNY_DUZENLE) return;
     const u = urunIdOrNull ? mnyUrunler.find(x=>x.id===urunIdOrNull) : null;
@@ -637,10 +696,9 @@ function mnyUrunAc(urunIdOrNull) {
 
     // Sil butonu
     document.getElementById('urunSilBtn').style.display = u ? '' : 'none';
-    // Barkod linki
-    const bbtn = document.getElementById('barkodBtn');
-    const blink= document.getElementById('barkodLink');
-    if (u) { bbtn.style.display=''; blink.href='/barkod?tur=urun&hedef_id='+u.id; } else { bbtn.style.display='none'; }
+    // Barkod butonu (inline panel) — modal açılınca panel kapalı başlar
+    document.getElementById('barkodBtn').style.display = u ? '' : 'none';
+    document.getElementById('barkodPanel').style.display = 'none';
     // İpucu (yeni)
     document.getElementById('fotoIpucu').style.display = u ? 'none' : '';
 
@@ -731,9 +789,8 @@ async function urunKaydet(kapat = true) {
                 document.getElementById('oneAiMetin').textContent = '"' + u.one_ai_soz + '"';
                 document.getElementById('oneAiPreview').style.display = '';
             }
-            // Barkod linki güncelle
+            // Barkod butonu görünür (inline panel)
             document.getElementById('barkodBtn').style.display = '';
-            document.getElementById('barkodLink').href = '/barkod?tur=urun&hedef_id=' + u.id;
             document.getElementById('fotoIpucu').style.display = 'none';
             document.getElementById('urunSilBtn').style.display = '';
             // Lokal veriyi güncelle
