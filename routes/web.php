@@ -7383,14 +7383,105 @@ Route::post('/cari/tahsilat', function (Request $r) {
     } catch (\Throwable $e) { return redirect('/cari')->with('cari_hata', 'Tahsilat kaydedilemedi.'); }
 });
 // ===== WEB PANEL: Tedarikçiler — Flutter tedarikci_screen karşılığı =====
+// ============================================================================
+// FAZ 1 — TEDARİKÇİ BAĞLARI: zengin tedarikçi kartı + malzeme-tedarikçi katalog/fiyat + tedarikçi cari.
+// Çekirdek KORUNUR; hepsi additive + guard'lı (Flutter/canlı bozulmaz). Tüm yüzeyler (web/Flutter/app)
+// bu çekirdeği besler → birebir parite. stok_hareketleri tek doğruluk kaynağı.
+// ============================================================================
+if (!function_exists('_restoTedarikEnsure')) {
+    function _restoTedarikEnsure()
+    {
+        if (cache()->get('resto_tedarik_ensure_ok')) return;
+        try {
+            if (Schema::hasTable('tedarikciler')) {
+                $ek = [
+                    'unvan'          => fn ($t) => $t->string('unvan', 160)->nullable(),
+                    'vkn_tckn'       => fn ($t) => $t->string('vkn_tckn', 16)->nullable(),
+                    'vergi_dairesi'  => fn ($t) => $t->string('vergi_dairesi', 80)->nullable(),
+                    'adres'          => fn ($t) => $t->string('adres', 255)->nullable(),
+                    'yetkili'        => fn ($t) => $t->string('yetkili', 120)->nullable(),
+                    'email'          => fn ($t) => $t->string('email', 120)->nullable(),
+                    'iban'           => fn ($t) => $t->string('iban', 34)->nullable(),
+                    'odeme_vade_gun' => fn ($t) => $t->integer('odeme_vade_gun')->nullable(),
+                    'aktif'          => fn ($t) => $t->tinyInteger('aktif')->default(1),
+                    'cari_id'        => fn ($t) => $t->unsignedBigInteger('cari_id')->nullable(),
+                ];
+                foreach ($ek as $kol => $fn) {
+                    if (!Schema::hasColumn('tedarikciler', $kol)) Schema::table('tedarikciler', $fn);
+                }
+            }
+            // Katalog / fiyat listesi — radar + RFQ + gizli-zam dedektörünün beyni; faturalardan kendiliğinden dolar
+            if (!Schema::hasTable('tedarikci_malzeme')) {
+                Schema::create('tedarikci_malzeme', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id');
+                    $t->unsignedBigInteger('tedarikci_id');
+                    $t->unsignedBigInteger('malzeme_id');
+                    $t->string('tedarikci_urun_kodu', 60)->nullable();
+                    $t->unsignedBigInteger('alis_birim_id')->nullable();
+                    $t->decimal('guncel_fiyat', 14, 4)->nullable();
+                    $t->decimal('son_fiyat', 14, 4)->nullable();
+                    $t->date('son_alis_tarihi')->nullable();
+                    $t->decimal('min_siparis', 14, 3)->nullable();
+                    $t->integer('teslim_suresi_gun')->nullable();
+                    $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                    $t->unique(['tedarikci_id', 'malzeme_id']);
+                    $t->index(['sube_id', 'malzeme_id']);
+                });
+            }
+            cache()->put('resto_tedarik_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Tedarikçinin cari hesabını getir/oluştur (cari_hesaplar tip=tedarikci) — borç/ödeme/vade için
+if (!function_exists('_tedarikciCari')) {
+    function _tedarikciCari($subeId, $tedarikciId)
+    {
+        try {
+            _restoTedarikEnsure();
+            if (!Schema::hasTable('cari_hesaplar') || !Schema::hasTable('tedarikciler')) return null;
+            $ted = DB::table('tedarikciler')->where('id', $tedarikciId)->first();
+            if (!$ted) return null;
+            if (!empty($ted->cari_id) && DB::table('cari_hesaplar')->where('id', $ted->cari_id)->exists()) return (int) $ted->cari_id;
+            $cid = DB::table('cari_hesaplar')->insertGetId(['sube_id' => $subeId, 'ad' => $ted->ad, 'tip' => 'tedarikci', 'telefon' => $ted->telefon ?? null, 'aktif' => 1, 'created_at' => now()]);
+            DB::table('tedarikciler')->where('id', $tedarikciId)->update(['cari_id' => $cid]);
+            return (int) $cid;
+        } catch (\Throwable $e) { return null; }
+    }
+}
+// Fatura/mal kabul satırından katalog fiyatını güncelle (otomatik tedarikçi fiyat zekâsı)
+if (!function_exists('_tedarikMalzemeFiyat')) {
+    function _tedarikMalzemeFiyat($subeId, $tedarikciId, $malzemeId, $alisBirimId, $fiyat, $tarih = null)
+    {
+        try {
+            if (!$tedarikciId || !$malzemeId) return;
+            _restoTedarikEnsure();
+            if (!Schema::hasTable('tedarikci_malzeme')) return;
+            $fiyat = round((float) $fiyat, 4);
+            if ($fiyat <= 0) return;
+            $tarih = $tarih ?: now()->toDateString();
+            $row = DB::table('tedarikci_malzeme')->where('tedarikci_id', $tedarikciId)->where('malzeme_id', $malzemeId)->first();
+            if ($row) {
+                DB::table('tedarikci_malzeme')->where('id', $row->id)->update(['son_fiyat' => $row->guncel_fiyat, 'guncel_fiyat' => $fiyat, 'alis_birim_id' => $alisBirimId ?: $row->alis_birim_id, 'son_alis_tarihi' => $tarih, 'updated_at' => now()]);
+            } else {
+                DB::table('tedarikci_malzeme')->insert(['sube_id' => $subeId, 'tedarikci_id' => $tedarikciId, 'malzeme_id' => $malzemeId, 'alis_birim_id' => $alisBirimId, 'guncel_fiyat' => $fiyat, 'son_alis_tarihi' => $tarih, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+
 Route::get('/tedarikci', function () {
     $sid = _webSubeId();
     $tedarikciler = [];
     try {
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
         if (Schema::hasTable('tedarikciler')) {
             $alis = collect();
             if (Schema::hasTable('alis_faturalari')) $alis = DB::table('alis_faturalari')->where('sube_id', $sid)->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
-            $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'aciklama'])->map(function ($x) use ($alis) {
+            $kolonlar = ['id', 'ad', 'telefon', 'aciklama'];
+            foreach (['unvan', 'vkn_tckn', 'vergi_dairesi', 'adres', 'yetkili', 'email', 'iban', 'odeme_vade_gun', 'aktif', 'cari_id'] as $k) { if (Schema::hasColumn('tedarikciler', $k)) $kolonlar[] = $k; }
+            $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get($kolonlar)->map(function ($x) use ($alis) {
                 $a = $alis[$x->id] ?? null; $x->toplam_alis = $a ? (float) $a->t : 0.0; $x->fatura_sayisi = $a ? (int) $a->c : 0; return $x;
             });
         }
@@ -7400,9 +7491,14 @@ Route::get('/tedarikci', function () {
 Route::post('/tedarikci/kaydet', function (Request $r) {
     try {
         if (!Schema::hasTable('tedarikciler')) return redirect('/tedarikci')->with('ted_hata', 'Tedarikçi tablosu bulunamadı.');
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
         $ad = trim((string) $r->ad);
         if ($ad === '') return redirect('/tedarikci')->with('ted_hata', 'Ad boş olamaz.');
         $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'updated_at' => now()];
+        // zengin kart alanları (kolon varsa)
+        $zengin = ['unvan' => 160, 'vkn_tckn' => 16, 'vergi_dairesi' => 80, 'adres' => 255, 'yetkili' => 120, 'email' => 120, 'iban' => 34];
+        foreach ($zengin as $k => $len) { if (Schema::hasColumn('tedarikciler', $k)) $veri[$k] = $r->filled($k) ? mb_substr(trim((string) $r->input($k)), 0, $len) : null; }
+        if (Schema::hasColumn('tedarikciler', 'odeme_vade_gun')) $veri['odeme_vade_gun'] = $r->filled('odeme_vade_gun') ? max(0, (int) $r->input('odeme_vade_gun')) : null;
         $id = (int) $r->id;
         if ($id > 0) { DB::table('tedarikciler')->where('id', $id)->update($veri); return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi güncellendi.'); }
         $veri['created_at'] = now();

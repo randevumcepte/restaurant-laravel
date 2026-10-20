@@ -224,7 +224,7 @@ body.koyu #ted{
             <td class="sag">
               <div class="ted-aksiyon">
                 <button type="button" class="btn"
-                        onclick="tedAc({{ (int) $t->id }}, {{ \Illuminate\Support\Js::from($ad) }}, {{ \Illuminate\Support\Js::from($tel) }}, {{ \Illuminate\Support\Js::from($not) }})">
+                        onclick="tedAc({{ \Illuminate\Support\Js::from($t) }})">
                   <span class="material-icons-outlined">edit_outlined</span> Düzenle
                 </button>
                 <form action="/tedarikci/sil" method="POST" style="display:inline"
@@ -274,7 +274,7 @@ body.koyu #ted{
           </button>
           <div class="ted-dropdown" id="drop-{{ $mid }}">
             <button type="button"
-                    onclick="tedMenuKapat({{ $mid }});tedAc({{ $mid }}, {{ \Illuminate\Support\Js::from($ad) }}, {{ \Illuminate\Support\Js::from($tel) }}, {{ \Illuminate\Support\Js::from($not) }})">
+                    onclick="tedMenuKapat({{ $mid }});tedAc({{ \Illuminate\Support\Js::from($t) }})">
               <span class="material-icons-outlined">edit_outlined</span> Düzenle
             </button>
             <form action="/tedarikci/sil" method="POST"
@@ -313,6 +313,28 @@ body.koyu #ted{
       {{-- Flutter: TextField Not --}}
       <label class="rk-lbl">Not (opsiyonel)</label>
       <input type="text" name="aciklama" id="tedAciklama" placeholder="Not (opsiyonel)" class="rk-inp">
+
+      {{-- ZENGİN KART: Fatura & Cari bilgileri (aç/kapa) --}}
+      <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+        <div onclick="tedDetayTog()" style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--mor1);font-weight:700;font-size:13px;user-select:none">
+          <span class="material-icons-outlined" id="tedDetayOk" style="font-size:18px">expand_more</span> Fatura & Cari Bilgileri (opsiyonel)
+        </div>
+        <div id="tedDetay" style="display:none;margin-top:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label class="rk-lbl" style="margin-top:0">Unvan</label><input type="text" name="unvan" id="tedUnvan" placeholder="Resmî unvan" class="rk-inp"></div>
+            <div><label class="rk-lbl" style="margin-top:0">VKN / TCKN</label><input type="text" name="vkn_tckn" id="tedVkn" placeholder="Vergi/TC no" class="rk-inp"></div>
+            <div><label class="rk-lbl" style="margin-top:0">Vergi Dairesi</label><input type="text" name="vergi_dairesi" id="tedVd" placeholder="Vergi dairesi" class="rk-inp"></div>
+            <div><label class="rk-lbl" style="margin-top:0">Yetkili Kişi</label><input type="text" name="yetkili" id="tedYetkili" placeholder="Yetkili" class="rk-inp"></div>
+            <div><label class="rk-lbl" style="margin-top:0">E-posta</label><input type="text" name="email" id="tedEmail" placeholder="E-posta" class="rk-inp"></div>
+            <div><label class="rk-lbl" style="margin-top:0">Ödeme Vadesi (gün)</label><input type="number" name="odeme_vade_gun" id="tedVade" min="0" placeholder="Örn. 30" class="rk-inp"></div>
+          </div>
+          <label class="rk-lbl">IBAN</label>
+          <input type="text" name="iban" id="tedIban" placeholder="TR.." class="rk-inp">
+          <label class="rk-lbl">Adres</label>
+          <input type="text" name="adres" id="tedAdres" placeholder="Adres" class="rk-inp">
+        </div>
+      </div>
+
       {{-- Flutter: FilledButton Kaydet --}}
       <button type="submit" class="rk-btn lg" style="background:var(--mor1);margin-top:16px">
         <span class="material-icons-outlined" style="font-size:20px">save</span> Kaydet
@@ -325,14 +347,34 @@ body.koyu #ted{
 
 <script>
 // ── Modal: Ekle / Düzenle ──────────────────────────────────────────────────
-function tedAc(id, ad, tel, aciklama) {
-  document.getElementById('tedModalBaslik').textContent = id ? 'Tedarikçi Düzenle' : 'Yeni Tedarikçi';
-  document.getElementById('tedId').value       = id        || '';
-  document.getElementById('tedAd').value       = ad        || '';
-  document.getElementById('tedTel').value      = tel       || '';
-  document.getElementById('tedAciklama').value = aciklama  || '';
-  document.getElementById('tedModal').style.display = 'flex';
-  document.getElementById('tedAd').focus();
+function tedAc(o) {
+  o = o || {};
+  var g = function(id){ return document.getElementById(id); };
+  g('tedModalBaslik').textContent = o.id ? 'Tedarikçi Düzenle' : 'Yeni Tedarikçi';
+  g('tedId').value       = o.id        || '';
+  g('tedAd').value       = o.ad        || '';
+  g('tedTel').value      = o.telefon   || '';
+  g('tedAciklama').value = o.aciklama  || '';
+  g('tedUnvan').value    = o.unvan     || '';
+  g('tedVkn').value      = o.vkn_tckn  || '';
+  g('tedVd').value       = o.vergi_dairesi || '';
+  g('tedYetkili').value  = o.yetkili   || '';
+  g('tedEmail').value    = o.email     || '';
+  g('tedVade').value     = (o.odeme_vade_gun !== null && o.odeme_vade_gun !== undefined) ? o.odeme_vade_gun : '';
+  g('tedIban').value     = o.iban      || '';
+  g('tedAdres').value    = o.adres     || '';
+  // düzenlemede detayda veri varsa aç
+  var detayDolu = o.unvan || o.vkn_tckn || o.vergi_dairesi || o.yetkili || o.email || o.iban || o.adres || o.odeme_vade_gun;
+  g('tedDetay').style.display = detayDolu ? 'block' : 'none';
+  g('tedDetayOk').textContent = detayDolu ? 'expand_less' : 'expand_more';
+  g('tedModal').style.display = 'flex';
+  g('tedAd').focus();
+}
+function tedDetayTog() {
+  var d = document.getElementById('tedDetay'), ok = document.getElementById('tedDetayOk');
+  var ac = d.style.display === 'none';
+  d.style.display = ac ? 'block' : 'none';
+  ok.textContent = ac ? 'expand_less' : 'expand_more';
 }
 function tedKapat() { document.getElementById('tedModal').style.display = 'none'; }
 document.getElementById('tedModal').addEventListener('click', function (e) { if (e.target === this) tedKapat(); });
