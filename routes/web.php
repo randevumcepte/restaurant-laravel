@@ -1691,7 +1691,7 @@ Route::post('/api/patron/odul-onayla', function (Request $r) {
 Route::get('/odul-dogrula', function () {
     if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
     _odulKullanimEnsure();
-    return view('pos_odul');
+    return view('pos.odul_dogrula');
 });
 // Patron: Kullanılan Ödüller raporu (kim/ne/puan/kasiyer/tarih)
 Route::get('/odul-raporu', function () {
