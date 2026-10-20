@@ -6202,7 +6202,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/satinalma' => 'gor_stok',
-            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
+            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -6946,36 +6946,36 @@ Route::post('/kasalar/ekle', function (Request $r) {
     try {
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
         $ad = trim((string) $r->input('ad'));
-        if ($ad === '') return redirect('/kasalar')->with('hata', 'Kasa adı girin.');
+        if ($ad === '') return redirect()->back()->with('hata', 'Kasa adı girin.');
         $sira = (int) (DB::table('kasalar')->where('sube_id', $sube)->max('sira') ?? 0) + 1;
         DB::table('kasalar')->insert(['sube_id' => $sube, 'ad' => mb_substr($ad, 0, 60), 'aktif' => 1, 'sira' => $sira, 'created_at' => now(), 'updated_at' => now()]);
-        return redirect('/kasalar')->with('ok', $ad . ' eklendi.');
-    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Kasa eklenemedi.'); }
+        return redirect()->back()->with('ok', $ad . ' eklendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Kasa eklenemedi.'); }
 });
 Route::post('/kasalar/duzenle', function (Request $r) {
     $sube = _webSubeId();
     try {
         $k = DB::table('kasalar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
-        if (!$k) return redirect('/kasalar')->with('hata', 'Kasa bulunamadı.');
+        if (!$k) return redirect()->back()->with('hata', 'Kasa bulunamadı.');
         $upd = [];
         if ($r->filled('ad')) $upd['ad'] = mb_substr(trim((string) $r->input('ad')), 0, 60);
         if ($r->has('aktif')) $upd['aktif'] = $r->input('aktif') ? 1 : 0;
         if ($upd) { $upd['updated_at'] = now(); DB::table('kasalar')->where('id', $k->id)->update($upd); }
-        return redirect('/kasalar')->with('ok', 'Güncellendi.');
-    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Güncellenemedi.'); }
+        return redirect()->back()->with('ok', 'Güncellendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Güncellenemedi.'); }
 });
 Route::post('/kasalar/sil', function (Request $r) {
     $sube = _webSubeId();
     try {
         $k = DB::table('kasalar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
-        if (!$k) return redirect('/kasalar')->with('hata', 'Kasa bulunamadı.');
+        if (!$k) return redirect()->back()->with('hata', 'Kasa bulunamadı.');
         if (Schema::hasTable('kasa_oturumlari') && DB::table('kasa_oturumlari')->where('kasa_id', $k->id)->where('durum', 'acik')->exists())
-            return redirect('/kasalar')->with('hata', 'Bu kasada açık vardiya var, önce kapatın.');
+            return redirect()->back()->with('hata', 'Bu kasada açık vardiya var, önce kapatın.');
         // kayıtlar kalsın (geçmiş bozulmasın) → sadece pasife çek
         DB::table('kasalar')->where('id', $k->id)->update(['aktif' => 0, 'updated_at' => now()]);
         DB::table('personeller')->where('varsayilan_kasa_id', $k->id)->update(['varsayilan_kasa_id' => null]);
-        return redirect('/kasalar')->with('ok', $k->ad . ' kapatıldı (pasif).');
-    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Kapatılamadı.'); }
+        return redirect()->back()->with('ok', $k->ad . ' kapatıldı (pasif).');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Kapatılamadı.'); }
 });
 Route::post('/kasalar/atama', function (Request $r) {
     $sube = _webSubeId();
@@ -6983,12 +6983,134 @@ Route::post('/kasalar/atama', function (Request $r) {
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
         $pid = (int) $r->input('personel_id');
         $per = DB::table('personeller')->where('id', $pid)->where('sube_id', $sube)->first();
-        if (!$per) return redirect('/kasalar')->with('hata', 'Personel bulunamadı.');
+        if (!$per) return redirect()->back()->with('hata', 'Personel bulunamadı.');
         $kid = (int) $r->input('kasa_id');
         $gecerli = $kid && DB::table('kasalar')->where('id', $kid)->where('sube_id', $sube)->exists();
         DB::table('personeller')->where('id', $pid)->update(['varsayilan_kasa_id' => $gecerli ? $kid : null, 'updated_at' => now()]);
-        return redirect('/kasalar')->with('ok', $per->ad . ' ataması güncellendi.');
-    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Atama yapılamadı.'); }
+        return redirect()->back()->with('ok', $per->ad . ' ataması güncellendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Atama yapılamadı.'); }
+});
+
+// ============================================================================
+// İŞLETME DÜZENİ — tek sayfada: Bölge → Masa → Garson Ataması → Kasa (personel+masa)
+// Mevcut tabloları (bolgeler/masalar/personel_atama/kasalar) kullanır; dağınık
+// yönetim sayfalarını (masa-yonetim, salon-sema, kasalar) tek akışta toplar.
+// ============================================================================
+Route::get('/isletme-duzeni', function () {
+    $sid = _webSubeId();
+    $d = ['bolgeler' => collect(), 'masalar' => collect(), 'garsonlar' => collect(), 'kasalar' => collect(), 'personeller' => collect(), 'coklu' => false];
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        if (function_exists('_atamaTablo')) _atamaTablo();
+
+        $d['bolgeler'] = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
+        $kasaIdVar = Schema::hasColumn('masalar', 'kasa_id');
+        $masaSel = ['id', 'ad', 'kapasite', 'bolge_id', 'durum', 'arsiv'];
+        if ($kasaIdVar) $masaSel[] = 'kasa_id';
+        $d['masalar'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get($masaSel);
+
+        // garson atamaları (bölge/masa)
+        $atama = DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']);
+        $bMap = []; $mMap = [];
+        foreach ($atama as $a) { if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id; else $mMap[$a->personel_id][] = (int) $a->hedef_id; }
+        $d['garsonlar'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)
+            ->whereIn('rol', ['garson', 'mudur', 'sahip'])->orderBy('ad')->get(['id', 'ad', 'rol'])
+            ->map(function ($g) use ($bMap, $mMap) { $g->bolge_idler = $bMap[$g->id] ?? []; $g->masa_idler = $mMap[$g->id] ?? []; return $g; });
+
+        // kasalar + atanmış personel + atanmış masa
+        $d['coklu'] = Schema::hasTable('kasalar');
+        $kasalar = Schema::hasTable('kasalar') ? DB::table('kasalar')->where('sube_id', $sid)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get(['id', 'ad']) : collect();
+        $d['kasalar'] = $kasalar->map(function ($k) use ($sid, $kasaIdVar) {
+            $k->masa_idler = $kasaIdVar ? DB::table('masalar')->where('sube_id', $sid)->where('kasa_id', $k->id)->pluck('id')->map(fn ($x) => (int) $x)->all() : [];
+            return $k;
+        });
+        $d['personeller'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol', 'varsayilan_kasa_id']);
+    } catch (\Throwable $e) {}
+    return view('isletme_duzeni', $d);
+});
+// --- Bölge CRUD ---
+Route::post('/isletme-duzeni/bolge-ekle', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $ad = trim((string) $r->input('ad'));
+        if ($ad === '') return redirect()->back()->with('hata', 'Bölge adı girin.');
+        $sira = (int) (DB::table('bolgeler')->where('sube_id', $sid)->max('sira') ?? 0) + 1;
+        $row = ['sube_id' => $sid, 'ad' => mb_substr($ad, 0, 60), 'sira' => $sira];
+        if (Schema::hasColumn('bolgeler', 'created_at')) { $row['created_at'] = now(); $row['updated_at'] = now(); }
+        DB::table('bolgeler')->insert($row);
+        return redirect()->back()->with('ok', $ad . ' bölgesi eklendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Bölge eklenemedi.'); }
+});
+Route::post('/isletme-duzeni/bolge-duzenle', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $b = DB::table('bolgeler')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+        if (!$b) return redirect()->back()->with('hata', 'Bölge bulunamadı.');
+        $ad = trim((string) $r->input('ad'));
+        if ($ad === '') return redirect()->back()->with('hata', 'Bölge adı boş olamaz.');
+        $upd = ['ad' => mb_substr($ad, 0, 60)];
+        if (Schema::hasColumn('bolgeler', 'updated_at')) $upd['updated_at'] = now();
+        DB::table('bolgeler')->where('id', $b->id)->update($upd);
+        return redirect()->back()->with('ok', 'Bölge güncellendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Güncellenemedi.'); }
+});
+Route::post('/isletme-duzeni/bolge-sil', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $b = DB::table('bolgeler')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+        if (!$b) return redirect()->back()->with('hata', 'Bölge bulunamadı.');
+        if (DB::table('masalar')->where('sube_id', $sid)->where('bolge_id', $b->id)->where('arsiv', 0)->exists())
+            return redirect()->back()->with('hata', 'Bu bölgede masa var. Önce masaları başka bölgeye taşıyın.');
+        DB::table('bolgeler')->where('id', $b->id)->delete();
+        return redirect()->back()->with('ok', $b->ad . ' bölgesi silindi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Silinemedi.'); }
+});
+// Masanın bölgesini değiştir
+Route::post('/isletme-duzeni/masa-bolge', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+        if (!$m) return redirect()->back()->with('hata', 'Masa bulunamadı.');
+        $bid = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
+        if ($bid && !DB::table('bolgeler')->where('id', $bid)->where('sube_id', $sid)->exists()) $bid = null;
+        $upd = ['bolge_id' => $bid];
+        if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        DB::table('masalar')->where('id', $m->id)->update($upd);
+        return redirect()->back()->with('ok', $m->ad . ' bölgesi güncellendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Güncellenemedi.'); }
+});
+// --- Garson ataması (bölge ∪ ekstra masa) — /api/patron/atama-kaydet ile aynı mantık ---
+Route::post('/isletme-duzeni/garson-ata', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_atamaTablo')) _atamaTablo();
+        $pid = (int) $r->input('personel_id');
+        if (!DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->exists())
+            return redirect()->back()->with('hata', 'Personel bulunamadı.');
+        $bolgeIdler = array_map('intval', (array) $r->input('bolge_idler', []));
+        $masaIdler  = array_map('intval', (array) $r->input('masa_idler', []));
+        DB::table('personel_atama')->where('sube_id', $sid)->where('personel_id', $pid)->delete();
+        foreach (array_unique($bolgeIdler) as $bid) if ($bid > 0) { try { DB::table('personel_atama')->insert(['sube_id' => $sid, 'personel_id' => $pid, 'tip' => 'bolge', 'hedef_id' => $bid, 'created_at' => now()]); } catch (\Throwable $e) {} }
+        foreach (array_unique($masaIdler) as $mid) if ($mid > 0) { try { DB::table('personel_atama')->insert(['sube_id' => $sid, 'personel_id' => $pid, 'tip' => 'masa', 'hedef_id' => $mid, 'created_at' => now()]); } catch (\Throwable $e) {} }
+        return redirect()->back()->with('ok', 'Garson ataması kaydedildi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Atama kaydedilemedi.'); }
+});
+// --- Kasa -> masa ataması (bu kasaya bağlı masalar) ---
+Route::post('/isletme-duzeni/kasa-masa', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        if (!Schema::hasColumn('masalar', 'kasa_id')) return redirect()->back()->with('hata', 'Kasa-masa kolonu yok.');
+        $kid = (int) $r->input('kasa_id');
+        if (!DB::table('kasalar')->where('id', $kid)->where('sube_id', $sid)->exists())
+            return redirect()->back()->with('hata', 'Kasa bulunamadı.');
+        $masaIdler = array_values(array_filter(array_map('intval', (array) $r->input('masa_idler', [])), fn ($x) => $x > 0));
+        // önce bu kasaya bağlı tüm masaları çöz, sonra seçilenleri bağla (toggle set)
+        DB::table('masalar')->where('sube_id', $sid)->where('kasa_id', $kid)->update(['kasa_id' => null]);
+        if ($masaIdler) DB::table('masalar')->where('sube_id', $sid)->whereIn('id', $masaIdler)->update(['kasa_id' => $kid]);
+        return redirect()->back()->with('ok', 'Kasaya bağlı masalar güncellendi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Masa ataması yapılamadı.'); }
 });
 // Web'den Kasa Aç (vardiya başlat) — oturumdaki kasa noktasına (çok-kasa) ya da tek-havuza
 Route::post('/kasa/ac', function (Request $r) {
@@ -7229,33 +7351,33 @@ Route::post('/masa-yonetim/ekle', function (Request $r) {
         if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
         if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
         DB::table('masalar')->insertGetId($data);
-        return redirect('/masa-yonetim')->with('ok', $ad . ' eklendi (QR otomatik).');
-    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'Masa eklenemedi.'); }
+        return redirect()->back()->with('ok', $ad . ' eklendi (QR otomatik).');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Masa eklenemedi.'); }
 });
 Route::post('/masa-yonetim/sil', function (Request $r) {
     $sid = _webSubeId();
     try {
         if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
         $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
-        if (!$m) return redirect('/masa-yonetim')->with('hata', 'Masa bulunamadı');
+        if (!$m) return redirect()->back()->with('hata', 'Masa bulunamadı');
         $acik = DB::table('adisyonlar')->where('masa_id', $m->id)->where('durum', 'acik')->exists();
-        if ($acik || ($m->durum ?? '') === 'dolu') return redirect('/masa-yonetim')->with('hata', 'Bu masada açık hesap var.');
+        if ($acik || ($m->durum ?? '') === 'dolu') return redirect()->back()->with('hata', 'Bu masada açık hesap var.');
         $upd = ['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos'];
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
         DB::table('masalar')->where('id', $m->id)->update($upd);
-        return redirect('/masa-yonetim')->with('ok', $m->ad . ' arşive taşındı. QR KORUNUYOR.');
-    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'İşlem başarısız.'); }
+        return redirect()->back()->with('ok', $m->ad . ' arşive taşındı. QR KORUNUYOR.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'İşlem başarısız.'); }
 });
 Route::post('/masa-yonetim/geri', function (Request $r) {
     $sid = _webSubeId();
     try {
         $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
-        if (!$m) return redirect('/masa-yonetim')->with('hata', 'Masa bulunamadı');
+        if (!$m) return redirect()->back()->with('hata', 'Masa bulunamadı');
         $upd = ['arsiv' => 0, 'arsiv_at' => null];
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
         DB::table('masalar')->where('id', $m->id)->update($upd);
-        return redirect('/masa-yonetim')->with('ok', $m->ad . ' geri getirildi. Aynı QR geçerli.');
-    } catch (\Throwable $e) { return redirect('/masa-yonetim')->with('hata', 'İşlem başarısız.'); }
+        return redirect()->back()->with('ok', $m->ad . ' geri getirildi. Aynı QR geçerli.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'İşlem başarısız.'); }
 });
 // ===== WEB PANEL: Garson Çağrıları — Flutter garson_cagrilari_screen karşılığı =====
 Route::get('/garson-cagrilari', function () {
@@ -9434,6 +9556,10 @@ function _restoKasaEnsure()
             }
             if (Schema::hasTable('personeller') && !Schema::hasColumn('personeller', 'varsayilan_kasa_id')) {
                 Schema::table('personeller', fn ($t) => $t->unsignedBigInteger('varsayilan_kasa_id')->nullable());
+            }
+            // kasa -> masa bağı (hangi masalar bu kasaya ait); null = bağsız
+            if (Schema::hasTable('masalar') && !Schema::hasColumn('masalar', 'kasa_id')) {
+                Schema::table('masalar', fn ($t) => $t->unsignedBigInteger('kasa_id')->nullable());
             }
             cache()->put('resto_kasa_coklu_ok', 1, now()->addHours(12));
         } catch (\Throwable $e) {}

@@ -36,13 +36,12 @@
         ],
         'Satış & Servis' => [
             ['/pos', 'point_of_sale', 'POS / Masa', null],
+            ['/isletme-duzeni', 'table_restaurant', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
             ['/mutfak', 'soup_kitchen', 'Mutfak (KDS)', null],
             ['/paket', 'delivery_dining', 'Paket Siparişler', null],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
             ['/rezervasyon', 'event_available', 'Rezervasyonlar', null],
             ['/kurye', 'map', 'Canlı Kurye Haritası', '#10B981'],
-            ['/masa-yonetim', 'qr_code_2', 'Masa & QR Yönetimi', '#F6CE63'],
-            ['/salon-sema', 'grid_on', 'Salon Şeması', '#0EA5E9'],
         ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
@@ -58,7 +57,6 @@
         ],
         'Kasa & Finans' => [
             ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
-            ['/kasalar', 'storefront', 'Kasa Noktaları', '#D97706'],
             ['/finans', 'analytics', 'Finans / Kâr-Zarar', null],
             ['/gider', 'receipt_long', 'Giderler', null],
             ['/cari', 'account_balance_wallet', 'Cari / Açık Hesaplar', null],
