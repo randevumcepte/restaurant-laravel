@@ -2299,7 +2299,79 @@ Route::post('/menu/86', function (Request $r) {
 });
 
 // ============================ STOK & RECETE ============================
-Route::get('/stok', function () {
+// Stok & Satın Alma HUB — Flutter isletme_hub_screen ile birebir (5 kart) → alt sayfalara dağılım.
+Route::get('/stok', fn () => view('stok_hub'));
+
+// Reçeteler (web sayfası) — Flutter recete_screen ile birebir. Ürün maliyeti + food-cost + yarı mamül.
+Route::get('/recete', function () {
+    if (function_exists('_posKapi')) { $k = _posKapi(); if ($k) return $k; }
+    $urunler = collect(); $malzemeler = collect(); $birimler = collect(); $yarimamuller = collect();
+    try {
+        $mMap = _restoUrunMaliyetMap();
+        $receteliSet = array_flip(
+            DB::table('receteler')->where('tip', 'urun')->whereNotNull('urun_id')
+                ->join('recete_kalemleri', 'receteler.id', '=', 'recete_kalemleri.recete_id')
+                ->distinct()->pluck('receteler.urun_id')->toArray()
+        );
+        $urunler = DB::table('urunler')->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat'])
+            ->map(function ($u) use ($mMap, $receteliSet) {
+                $mal = $mMap['id'][$u->id] ?? 0;
+                $fc  = (float) $u->fiyat > 0 && $mal > 0 ? round($mal / (float) $u->fiyat * 100, 1) : 0.0;
+                return (object) ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat,
+                    'maliyet' => round($mal, 2), 'food_cost' => $fc, 'receteli' => isset($receteliSet[$u->id])];
+            });
+        $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get()
+            ->map(fn ($m) => (object) ['id' => (int) $m->id, 'ad' => $m->ad, 'temel_birim_id' => (int) $m->temel_birim_id,
+                'guncel_maliyet' => (float) $m->guncel_maliyet, 'birim' => $birimKis[$m->temel_birim_id] ?? '']);
+        $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma', 'tip']);
+        $kalemSay = DB::table('recete_kalemleri')->selectRaw('recete_id, COUNT(*) c')->groupBy('recete_id')->pluck('c', 'recete_id');
+        $yarimamuller = DB::table('receteler')->where('tip', 'yari_mamul')->orderBy('ad')->get()
+            ->map(function ($rec) use ($birimKis, $kalemSay) {
+                $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
+                $toplam = _restoReceteToplamMaliyet($rec->id);
+                return (object) ['id' => (int) $rec->id, 'ad' => $rec->ad, 'verim_miktar' => (float) $rec->verim_miktar,
+                    'verim_birim_id' => (int) $rec->verim_birim_id, 'verim_birim' => $birimKis[$rec->verim_birim_id] ?? '',
+                    'kalem_sayisi' => (int) ($kalemSay[$rec->id] ?? 0), 'toplam_maliyet' => round($toplam, 2), 'birim_maliyet' => round($toplam / $verim, 4)];
+            });
+    } catch (\Throwable $e) {}
+    return view('recete', compact('urunler', 'malzemeler', 'birimler', 'yarimamuller'));
+});
+
+// Alış Faturaları (web sayfası) — Flutter alis_fatura_screen ile birebir. Stok girişi + fiyat uyarısı.
+Route::get('/alis-fatura', function (Request $r) {
+    if (function_exists('_posKapi')) { $k = _posKapi(); if ($k) return $k; }
+    $subeId = _aktifSubeId();
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string) $r->ay) ? (string) $r->ay : date('Y-m');
+    $faturalar = collect(); $tedarikciler = collect(); $malzemeler = collect(); $birimler = collect();
+    $_pp = null;
+    try { if (function_exists('_posPersonel')) $_pp = _posPersonel(); } catch (\Throwable $e) {}
+    $duzenleyebilir = $_pp && ($_pp->rol ?? '') === 'sahip';
+    try {
+        [$ayY, $ayM] = array_map('intval', explode('-', $ay));
+        $bas = sprintf('%04d-%02d-01', $ayY, $ayM);
+        $bit = date('Y-m-t', strtotime($bas));
+        if (Schema::hasTable('alis_faturalari')) {
+            $faturalar = DB::table('alis_faturalari')
+                ->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+                ->where('alis_faturalari.sube_id', $subeId)
+                ->whereBetween('alis_faturalari.tarih', [$bas, $bit])
+                ->orderByDesc('alis_faturalari.tarih')->orderByDesc('alis_faturalari.id')
+                ->select('alis_faturalari.*', 'tedarikciler.ad as tedarikci')->get()
+                ->map(function ($f) {
+                    $enUyari = Schema::hasTable('alis_fatura_kalemleri')
+                        ? DB::table('alis_fatura_kalemleri')->where('fatura_id', $f->id)->orderByRaw("FIELD(uyari,'kirmizi','sari','yesil')")->value('uyari') : null;
+                    $f->uyari = $enUyari ?: 'yesil';
+                    return $f;
+                });
+        }
+        $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
+        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+        $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
+    } catch (\Throwable $e) {}
+    return view('alis_fatura', compact('faturalar', 'tedarikciler', 'malzemeler', 'birimler', 'ay', 'duzenleyebilir'));
+});
+Route::get('/stok/malzeme', function () {
     $subeId = _aktifSubeId();
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
     // Stok toplamini alt-sorgu ile al (GROUP BY / ONLY_FULL_GROUP_BY sorunu olmasin)
