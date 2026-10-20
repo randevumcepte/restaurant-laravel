@@ -421,6 +421,17 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                 <input type="number" id="stkFMaliyet" placeholder="0.00" step="0.01" min="0">
             </div>
         </div>
+        {{-- TEK EKRAN: yeni malzeme eklerken başlangıç stok + barkod da buradan (sadece eklemede görünür) --}}
+        <div class="stk-row" id="stkFYeniAlanlar">
+            <div class="stk-field">
+                <label>Başlangıç stok <span style="color:var(--sub2,#94a3b8);font-weight:400">(ürettiğin/eldeki miktar)</span></label>
+                <input type="number" id="stkFBaslangic" placeholder="0" step="0.01" min="0">
+            </div>
+            <div class="stk-field">
+                <label>Barkod <span style="color:var(--sub2,#94a3b8);font-weight:400">(varsa — opsiyonel)</span></label>
+                <input type="text" id="stkFBarkod" placeholder="Okut veya elle yaz" autocomplete="off">
+            </div>
+        </div>
         <div class="stk-switch">
             <label for="stkFTakip">Stok takibi yapılsın</label>
             <input type="checkbox" id="stkFTakip" checked>
@@ -689,6 +700,7 @@ function stkMalzemeFormuAc(id) {
     var yeni = id === null;
     document.getElementById('stkFormBaslik').textContent = yeni ? 'Yeni Malzeme' : 'Malzeme Düzenle';
     document.getElementById('stkFMaliyetWrap').style.display = yeni ? '' : 'none';
+    document.getElementById('stkFYeniAlanlar').style.display = yeni ? '' : 'none'; // başlangıç stok + barkod sadece eklemede
 
     if (!yeni) {
         var m = stkVeriler.find(function(x){ return x.id === id; });
@@ -707,6 +719,8 @@ function stkMalzemeFormuAc(id) {
         document.getElementById('stkFKritik').value  = '';
         document.getElementById('stkFMaliyet').value = '';
         document.getElementById('stkFTakip').checked = true;
+        document.getElementById('stkFBaslangic').value = '';
+        document.getElementById('stkFBarkod').value = '';
     }
     stkModAc('stkFormModal');
 }
@@ -724,11 +738,16 @@ function stkFormKaydet() {
         stok_takipli:   document.getElementById('stkFTakip').checked ? 1 : 0,
         guncel_maliyet: parseFloat((document.getElementById('stkFMaliyet').value || '0').replace(',','.')) || 0,
     };
+    // Yeni malzemede başlangıç stok + barkod aynı formdan (tek ekran)
+    if (!_stkFormId) {
+        veri.baslangic_stok = parseFloat((document.getElementById('stkFBaslangic').value || '0').replace(',','.')) || 0;
+        veri.barkod = document.getElementById('stkFBarkod').value.trim();
+    }
 
     stkApi('/api/patron/malzeme-kaydet', veri).then(function(r) {
         if (r.ok === 1) {
             stkModKapat('stkFormModal');
-            stkUyar(_stkFormId ? 'Güncellendi' : 'Malzeme eklendi');
+            stkUyar(_stkFormId ? 'Güncellendi' : 'Malzeme + stok + barkod eklendi');
             setTimeout(function(){ window.location.reload(); }, 700);
         } else {
             stkUyar(r.hata || 'Kaydedilemedi');

@@ -6290,7 +6290,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -7855,6 +7855,86 @@ Route::get('/mal-kabul-detay', function (Request $r) {
         $d['kalemler'] = DB::table('mal_kabul_kalemleri')->where('mal_kabul_id', $id)->get()->map(function ($k) use ($birim, $malAd) { $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? ''; return $k; });
     } catch (\Throwable $e) {}
     return view('mal_kabul_detay', $d);
+});
+
+// ===== FAZ 2: Fatura 3'lü eşleştirme (sipariş ↔ irsaliye ↔ fatura) — FİNANSAL (stok yazmaz, mal kabulde girdi) =====
+Route::get('/fatura-eslestir', function (Request $r) {
+    $sid = _webSubeId(); $mkId = (int) $r->query('mal_kabul_id');
+    $d = ['mk' => null, 'kalemler' => collect(), 'tedarikci' => null, 'bekleyen' => collect()];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $faturaliMk = Schema::hasColumn('alis_faturalari', 'mal_kabul_id') ? DB::table('alis_faturalari')->whereNotNull('mal_kabul_id')->pluck('mal_kabul_id')->map(fn ($x) => (int) $x)->all() : [];
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        if (Schema::hasTable('mal_kabuller')) {
+            $d['bekleyen'] = DB::table('mal_kabuller')->where('sube_id', $sid)->whereNotIn('id', $faturaliMk ?: [0])->orderByDesc('id')->limit(60)->get()
+                ->map(function ($m) use ($tedAd) { $m->tedarikci = $tedAd[$m->tedarikci_id] ?? '—'; return $m; });
+        }
+        if ($mkId) {
+            $mk = DB::table('mal_kabuller')->where('id', $mkId)->where('sube_id', $sid)->first();
+            if ($mk) {
+                $d['mk'] = $mk; $d['tedarikci'] = $mk->tedarikci_id ? DB::table('tedarikciler')->where('id', $mk->tedarikci_id)->first() : null;
+                $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+                $d['kalemler'] = DB::table('mal_kabul_kalemleri')->where('mal_kabul_id', $mkId)->where('kabul_miktar', '>', 0)->get()
+                    ->map(function ($k) use ($malAd, $birim) {
+                        $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? '';
+                        $k->po_fiyat = $k->siparis_kalem_id ? (float) DB::table('satinalma_siparis_kalemleri')->where('id', $k->siparis_kalem_id)->value('birim_fiyat') : 0.0;
+                        return $k;
+                    });
+            }
+        }
+    } catch (\Throwable $e) {}
+    return view('fatura_eslestir', $d);
+});
+Route::post('/fatura-eslestir/kaydet', function (Request $r) {
+    $sid = _webSubeId(); $mkId = (int) $r->input('mal_kabul_id');
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $mk = DB::table('mal_kabuller')->where('id', $mkId)->where('sube_id', $sid)->first();
+        if (!$mk) return redirect('/fatura-eslestir')->with('fe_hata', 'Mal kabul bulunamadı.');
+        if (Schema::hasColumn('alis_faturalari', 'mal_kabul_id') && DB::table('alis_faturalari')->where('mal_kabul_id', $mkId)->exists())
+            return redirect('/fatura-eslestir')->with('fe_hata', 'Bu mal kabulün faturası zaten var.');
+        $kalemler = json_decode((string) $r->input('kalemler'), true);
+        if (!is_array($kalemler) || !count($kalemler)) return redirect('/fatura-eslestir?mal_kabul_id=' . $mkId)->with('fe_hata', 'Kalem yok.');
+        $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : date('Y-m-d');
+        $vade = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('vade_tarihi')) ? $r->input('vade_tarihi') : null;
+        $genelIsk = max(0, (float) $r->input('iskonto'));
+        $pp = function_exists('_posPersonel') ? _posPersonel() : null;
+        return DB::transaction(function () use ($r, $sid, $mk, $mkId, $kalemler, $tarih, $vade, $genelIsk, $pp) {
+            $ara = 0.0; $kdvT = 0.0; $farklar = [];
+            $hazir = [];
+            foreach ($kalemler as $k) {
+                $mid = (int) ($k['malzeme_id'] ?? 0); if (!$mid) continue;
+                $miktar = (float) ($k['miktar'] ?? 0); $fiyat = (float) ($k['birim_fiyat'] ?? 0); $ky = max(0, (float) ($k['kdv_yuzde'] ?? 0));
+                $net = $miktar * $fiyat; $kdv = $net * $ky / 100; $ara += $net; $kdvT += $kdv;
+                $kabul = (float) ($k['kabul_miktar'] ?? 0); $po = (float) ($k['po_fiyat'] ?? 0);
+                $ad = DB::table('malzemeler')->where('id', $mid)->value('ad') ?: ('#' . $mid);
+                if ($kabul > 0 && abs($kabul - $miktar) > 0.001) $farklar[] = $ad . ': miktar farkı (irsaliye ' . rtrim(rtrim(number_format($kabul, 3), '0'), '.') . ' ≠ fatura ' . rtrim(rtrim(number_format($miktar, 3), '0'), '.') . ')';
+                if ($po > 0 && $fiyat > $po + 0.0001) $farklar[] = $ad . ': fiyat yüksek (sipariş ' . number_format($po, 2) . ' → fatura ' . number_format($fiyat, 2) . ')';
+                $hazir[] = ['malzeme_id' => $mid, 'alis_birim_id' => ((int) ($k['alis_birim_id'] ?? 0)) ?: null, 'miktar' => $miktar, 'birim_fiyat' => $fiyat, 'kdv_yuzde' => $ky, 'kdv_tutar' => round($kdv, 2), 'satir_toplam' => round($net, 2)];
+            }
+            if (!count($hazir)) return redirect('/fatura-eslestir?mal_kabul_id=' . $mkId)->with('fe_hata', 'Geçerli kalem yok.');
+            $araNet = round($ara - $genelIsk, 2); $genel = round($araNet + $kdvT, 2);
+            $eslesme = count($farklar) ? 'fark_var' : 'eslesti';
+            $frow = ['sube_id' => $sid, 'tedarikci_id' => $mk->tedarikci_id, 'fatura_no' => $r->input('fatura_no') ? (string) $r->input('fatura_no') : null,
+                'tarih' => $tarih, 'toplam' => $genel, 'durum' => 'onaylandi', 'giren_personel_id' => $pp->id ?? null, 'onaylayan_personel_id' => $pp->id ?? null, 'created_at' => now(), 'updated_at' => now()];
+            foreach (['mal_kabul_id' => $mkId, 'siparis_id' => $mk->siparis_id, 'irsaliye_no' => $mk->irsaliye_no, 'ara_toplam' => $araNet, 'iskonto' => $genelIsk, 'kdv_toplam' => round($kdvT, 2), 'vade_tarihi' => $vade, 'eslesme_durumu' => $eslesme] as $kol => $val) {
+                if (Schema::hasColumn('alis_faturalari', $kol)) $frow[$kol] = $val;
+            }
+            $faturaId = DB::table('alis_faturalari')->insertGetId($frow);
+            foreach ($hazir as $h) {
+                $krow = ['fatura_id' => $faturaId, 'malzeme_id' => $h['malzeme_id'], 'alis_birim_id' => $h['alis_birim_id'], 'miktar' => $h['miktar'], 'birim_fiyat' => $h['birim_fiyat'], 'satir_toplam' => $h['satir_toplam'], 'created_at' => now(), 'updated_at' => now()];
+                foreach (['kdv_yuzde' => $h['kdv_yuzde'], 'kdv_tutar' => $h['kdv_tutar']] as $kol => $val) { if (Schema::hasColumn('alis_fatura_kalemleri', $kol)) $krow[$kol] = $val; }
+                DB::table('alis_fatura_kalemleri')->insert($krow);
+            }
+            // Finansal gider (satın alma)
+            if (Schema::hasTable('giderler')) {
+                $tedAd = $mk->tedarikci_id ? DB::table('tedarikciler')->where('id', $mk->tedarikci_id)->value('ad') : 'Tedarikçi';
+                DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => 'malzeme', 'aciklama' => $tedAd . ($r->input('fatura_no') ? ' · ' . $r->input('fatura_no') : '') . ' (fatura)', 'tutar' => $genel, 'tarih' => $tarih, 'created_by' => $pp->id ?? null]);
+            }
+            $msg = $eslesme === 'eslesti' ? '✓ Fatura eşleşti — sipariş/irsaliye/fatura tutuyor.' : '⚠ FARK VAR: ' . implode(' · ', array_slice($farklar, 0, 4));
+            return redirect('/fatura-eslestir')->with($eslesme === 'eslesti' ? 'fe_ok' : 'fe_hata', $msg);
+        });
+    } catch (\Throwable $e) { return redirect('/fatura-eslestir?mal_kabul_id=' . $mkId)->with('fe_hata', 'Fatura kaydedilemedi.'); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
@@ -10496,6 +10576,25 @@ Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
     $veri['guncel_maliyet'] = max(0, (float) $r->guncel_maliyet);
     $veri['created_at'] = now();
     $yeni = DB::table('malzemeler')->insertGetId($veri);
+    // TEK EKRAN: malzeme eklenirken opsiyonel başlangıç stok + barkod da işlensin (web "+ Malzeme" formu)
+    $bs = (float) $r->input('baslangic_stok', 0);
+    if ($bs > 0) {
+        try {
+            DB::table('stok_hareketleri')->insert([
+                'sube_id' => $p->sube_id, 'malzeme_id' => $yeni, 'tip' => 'iade',
+                'miktar' => abs($bs), 'birim_maliyet' => $veri['guncel_maliyet'], 'kaynak_tip' => 'manuel',
+                'aciklama' => 'İlk giriş (malzeme eklenirken)', 'personel_id' => $p->id, 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+    $bk = trim((string) $r->input('barkod', ''));
+    if ($bk !== '') {
+        try {
+            if (function_exists('_barkodKur')) _barkodKur();
+            $zaten = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $bk)->exists();
+            if (!$zaten) DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $bk, 'tur' => 'malzeme', 'hedef_id' => $yeni, 'created_at' => now()]);
+        } catch (\Throwable $e) {}
+    }
     return ['ok' => 1, 'id' => $yeni];
 });
 
