@@ -6998,8 +6998,9 @@ Route::post('/kasalar/atama', function (Request $r) {
 // ============================================================================
 Route::get('/isletme-duzeni', function () {
     $sid = _webSubeId();
-    $d = ['bolgeler' => collect(), 'masalar' => collect(), 'garsonlar' => collect(), 'kasalar' => collect(), 'personeller' => collect(), 'coklu' => false];
+    $d = ['bolgeler' => collect(), 'masalar' => collect(), 'garsonlar' => collect(), 'kasalar' => collect(), 'personeller' => collect(), 'coklu' => false, 'subeAd' => 'Restoran'];
     try {
+        $d['subeAd'] = DB::table('subeler')->where('id', $sid)->value('ad') ?: 'Restoran';
         if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
         if (function_exists('_atamaTablo')) _atamaTablo();
@@ -7007,6 +7008,7 @@ Route::get('/isletme-duzeni', function () {
         $d['bolgeler'] = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
         $kasaIdVar = Schema::hasColumn('masalar', 'kasa_id');
         $masaSel = ['id', 'ad', 'kapasite', 'bolge_id', 'durum', 'arsiv'];
+        if (Schema::hasColumn('masalar', 'qr_token')) $masaSel[] = 'qr_token';
         if ($kasaIdVar) $masaSel[] = 'kasa_id';
         $d['masalar'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get($masaSel);
 

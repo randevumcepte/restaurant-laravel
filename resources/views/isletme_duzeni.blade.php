@@ -80,7 +80,7 @@
   <span class="rk-rozet" style="color:#B45309;background:color-mix(in srgb,{{ $adimRenk[1] }} 22%,transparent);border-color:color-mix(in srgb,{{ $adimRenk[1] }} 55%,transparent)">{{ $masalar->count() }}</span>
 </div>
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 12px">
-  <div class="rk-sub2" style="font-size:12px;flex:1;min-width:220px">Masa ekle ve bölgesini seç. Silinen masa arşive gider, <b>QR kodu korunur</b>.</div>
+  <div class="rk-sub2" style="font-size:12px;flex:1;min-width:220px">Masa ekle ve bölgesini seç. Her masaya <b>kalıcı QR otomatik</b> oluşur (<span class="material-icons-outlined" style="font-size:13px;color:var(--yesil);vertical-align:-2px">qr_code_2</span> ile göster/yazdır). Silinen masa arşive gider, <b>QR korunur</b>.</div>
   <a href="/masa-yonetim" class="rk-btn bos" style="padding:7px 12px;font-size:12.5px"><span class="material-icons-outlined" style="font-size:16px;color:#B45309">qr_code_2</span> QR Afişleri / Arşiv</a>
 </div>
 <div class="rk-card" style="margin-bottom:10px">
@@ -109,10 +109,14 @@
     <div class="rk-bolum" style="margin-bottom:10px"><span class="cubuk" style="background:{{ $adimRenk[1] }}"></span><span class="b">{{ $bolgeAd[$bid] ?? 'Bölgesiz' }}</span><span class="rk-rozet" style="color:var(--sub2);background:var(--card2)">{{ $grup->count() }}</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       @foreach ($grup as $m)
+        @php $qrurl = !empty($m->qr_token) ? url('/m/' . $m->qr_token) : null; @endphp
         <div style="display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">
           <span class="material-icons-outlined" style="font-size:16px;color:#B45309">{{ ($m->sekil ?? 'kare')==='yuvarlak' ? 'circle' : 'crop_square' }}</span>
           <span style="font-weight:700;color:var(--ink);font-size:13px">{{ $m->ad }}</span>
           <span class="rk-sub2" style="font-size:11px">({{ (int)($m->kapasite ?? 0) }} kişi)</span>
+          <button type="button" class="rk-btn bos" style="padding:3px 7px;margin-left:2px" onclick="masaQr(@js($m->ad), @js($qrurl))" title="{{ $qrurl ? 'QR kodu göster / yazdır' : 'QR henüz yok' }}">
+            <span class="material-icons-outlined" style="font-size:15px;color:{{ $qrurl ? 'var(--yesil)' : 'var(--amber)' }}">qr_code_2</span>
+          </button>
           <form method="POST" action="/isletme-duzeni/masa-bolge" style="margin:0 0 0 4px">
             @csrf<input type="hidden" name="id" value="{{ $m->id }}">
             <select name="bolge_id" class="rk-inp" style="padding:4px 6px;font-size:12px;min-width:92px" onchange="this.form.requestSubmit()" title="Bölge değiştir">
@@ -241,7 +245,56 @@
   </div>
 @endif
 
+{{-- QR afiş önizleme modalı (uygulama içi) --}}
+<div id="mduzQrModal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px">
+  <div class="rk-card" style="max-width:360px;width:100%;text-align:center;padding:24px">
+    <div style="font-size:16px;font-weight:800;color:var(--ink)">{{ $subeAd ?? 'Restoran' }}</div>
+    <div class="rk-sub" style="font-size:12px;margin-top:2px">Karekodu telefonunuzla okutun</div>
+    <div style="background:#fff;border-radius:16px;padding:14px;margin:14px auto 0;display:inline-flex">
+      <img id="mduzQrImg" src="" alt="QR" style="width:220px;height:220px;object-fit:contain">
+    </div>
+    <div class="rk-ink" id="mduzQrAd" style="font-size:24px;font-weight:800;margin-top:12px;color:var(--ink)">-</div>
+    <div class="rk-sub" style="font-size:11px">Menü · Sipariş · Garson Çağır · Öde</div>
+    <div class="rk-sub2" id="mduzQrLink" style="font-size:10.5px;margin-top:8px;word-break:break-all;opacity:.8"></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="mduzQrKapat()">Kapat</button>
+      <button type="button" class="rk-btn" style="flex:1;justify-content:center;background:var(--mor1)" onclick="mduzQrYazdir()">
+        <span class="material-icons-outlined" style="font-size:18px">print</span> Yazdır
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
+var MDUZ_SUBE = @js($subeAd ?? 'Restoran');
+var mduzAktifQr = null, mduzAktifAd = null;
+function mduzQrImgUrl(url, size){ return 'https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&margin=0&data='+encodeURIComponent(url); }
+function masaQr(ad, url){
+  if(!url){ alert('Bu masanın QR kodu henüz oluşmamış. Sayfayı yenileyince otomatik oluşur.'); return; }
+  mduzAktifQr = url; mduzAktifAd = ad || '-';
+  document.getElementById('mduzQrAd').textContent = mduzAktifAd;
+  document.getElementById('mduzQrLink').textContent = url;
+  document.getElementById('mduzQrImg').src = mduzQrImgUrl(url, 220);
+  document.getElementById('mduzQrModal').style.display = 'flex';
+}
+function mduzQrKapat(){ document.getElementById('mduzQrModal').style.display='none'; }
+(function(){ var m=document.getElementById('mduzQrModal'); if(m) m.addEventListener('click',function(e){ if(e.target===m) mduzQrKapat(); }); })();
+function mduzEsc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function mduzQrYazdir(){
+  if(!mduzAktifQr){ return; }
+  var w = window.open('', '_blank');
+  if(!w){ alert('Yazdırma penceresi açılamadı (açılır pencere engellenmiş olabilir).'); return; }
+  w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>QR Afiş</title><style>'+
+    '@page{size:A6;margin:10mm}body{margin:0;font-family:ui-sans-serif,system-ui,sans-serif}'+
+    '.afis{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:100vh}'+
+    '.s{font-size:18px;font-weight:800}.h{font-size:11px;color:#555;margin-top:4px}'+
+    '.afis img{width:150px;height:150px;margin:14px 0}.ad{font-size:26px;font-weight:800}.alt{font-size:10px;color:#555;margin-top:3px}'+
+    '</style></head><body><div class="afis"><div class="s">'+mduzEsc(MDUZ_SUBE)+'</div>'+
+    '<div class="h">Karekodu telefonunuzla okutun</div><img src="'+mduzQrImgUrl(mduzAktifQr,300)+'">'+
+    '<div class="ad">'+mduzEsc(mduzAktifAd)+'</div><div class="alt">Menü · Sipariş · Garson Çağır · Öde</div></div><'+'/body></html>');
+  w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+}
 function rkBolgeTog(cb){
   // Bölge "tümü" seçilince o bölgenin tek tek masa kutuları kapanır (zaten dahil)
   var box = cb.closest('div').querySelector('[data-bolge]');
