@@ -12,7 +12,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
-    <style>html._koyu body{}</style>
+    <style>
+    html._koyu body{}
+    .rk-grp{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;
+      font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;opacity:.72;
+      padding:12px 16px 7px;margin-top:3px;border-top:1px solid rgba(120,120,140,.14)}
+    .rk-grp:first-of-type{border-top:0;margin-top:0}
+    .rk-grp:hover{opacity:1}
+    .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.7}
+    .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
+    .rk-grp.kapali + .rk-grp-body{display:none}
+    </style>
     @stack('head')
 </head>
 <body>
@@ -102,13 +112,15 @@
                     $gorunur = array_values(array_filter($items, fn ($it) => !($_pp && isset($_harita[$it[0]]) && !_panelYetkiVar($_pp, $_harita[$it[0]]))));
                 @endphp
                 @if (count($gorunur))
-                    <div class="rk-grp" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;opacity:.55;padding:14px 18px 5px">{{ $grupAd }}</div>
-                    @foreach ($gorunur as [$url, $ikon, $ad, $renk])
-                        @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
-                        <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
-                            <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
-                        </a>
-                    @endforeach
+                    <div class="rk-grp" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+                    <div class="rk-grp-body">
+                        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
+                            @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
+                            <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
+                                <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
+                            </a>
+                        @endforeach
+                    </div>
                 @endif
             @endforeach
         </nav>
@@ -149,6 +161,23 @@
         const r = await fetch(url, opt);
         return r.json();
     }
+    function rkGrpTog(el){
+        el.classList.toggle('kapali');
+        try{
+            var k = JSON.parse(localStorage.getItem('rk_grp_kapali')||'[]');
+            var ad = el.getAttribute('data-grp'); var i = k.indexOf(ad);
+            if(el.classList.contains('kapali')){ if(i<0) k.push(ad); } else if(i>=0){ k.splice(i,1); }
+            localStorage.setItem('rk_grp_kapali', JSON.stringify(k));
+        }catch(e){}
+    }
+    (function(){ try{
+        var k = JSON.parse(localStorage.getItem('rk_grp_kapali')||'[]');
+        document.querySelectorAll('.rk-grp').forEach(function(h){
+            var body = h.nextElementSibling;
+            var aktifVar = body && body.querySelector && body.querySelector('a.aktif'); // aktif sayfanin grubu hep acik
+            if(k.indexOf(h.getAttribute('data-grp'))>=0 && !aktifVar){ h.classList.add('kapali'); }
+        });
+    }catch(e){} })();
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {})); }
 </script>
