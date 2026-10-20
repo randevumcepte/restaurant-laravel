@@ -4,40 +4,109 @@
 @section('baslik', 'Garson Çağrıları')
 @section('rk_alt', 'QR menüden gelen çağrılar buraya anında düşer')
 
-@section('content')
+@push('head')
+<style>
+/* ====== garson_cagrilari_screen.dart BİREBİR ====== */
+#gcroot{--poll:10}
+/* AppBar başlık badge (Flutter kırmızı yuvarlak sayaç) */
+#gcroot .gc-badge{display:inline-flex;align-items:center;justify-content:center;
+  background:var(--kirmizi);color:#fff;border-radius:12px;padding:1px 9px;
+  font-size:13px;font-weight:700;min-width:24px;line-height:22px;margin-left:8px}
+/* Özet şerit kartları */
+#gcroot .gc-ozet{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+#gcroot .gc-ozet .gc-oc{display:flex;align-items:center;gap:8px;padding:10px 16px}
+/* Flutter ListView.separated padding:EdgeInsets.all(14), separatorBuilder: SizedBox(12) */
+#gcroot .gc-liste{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
+/* Flutter _kart Container: borderRadius:18, padding:16, boxShadow:golge */
+#gcroot .gc-kart{display:flex;align-items:center;gap:13px;padding:16px;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  box-shadow:var(--golge);transition:box-shadow .1s}
+#gcroot .gc-kart.geciken{border:1.6px solid var(--kirmizi)}
+/* Flutter icon box: width:50,height:50, borderRadius:14, color.withValues(alpha:0.16) */
+#gcroot .gc-ikon{width:50px;height:50px;flex:0 0 50px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center}
+#gcroot .gc-ikon .material-icons-outlined{font-size:26px}
+/* Flutter Expanded > Column */
+#gcroot .gc-meta{min-width:0;flex:1}
+/* Flutter masa ad: fontSize:19, fontWeight:w900 */
+#gcroot .gc-masa{font-size:19px;font-weight:900;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Flutter tipYazi: fontSize:13.5, fontWeight:w700 */
+#gcroot .gc-tip{font-size:13.5px;font-weight:700;margin-top:2px}
+/* Flutter süre kolonisi */
+#gcroot .gc-sure-col{text-align:right;flex:0 0 auto}
+/* Flutter süre: fontSize:16, fontWeight:w800; geciken=kirmizi, normal=gold */
+#gcroot .gc-sure{font-size:16px;font-weight:800}
+/* Flutter saat: fontSize:11, color:sub */
+#gcroot .gc-saat{font-size:11px;color:var(--sub)}
+/* Flutter FilledButton (karşıla / taşı) */
+#gcroot .gc-btn{display:inline-flex;align-items:center;gap:5px;padding:12px 16px;
+  border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
+  color:#fff;flex:0 0 auto;white-space:nowrap}
+#gcroot .gc-btn.yesil{background:#16A34A}
+#gcroot .gc-btn.mor{background:var(--mor1)}
+#gcroot .gc-btn .material-icons-outlined{font-size:18px}
+/* Flutter boş ekran: SizedBox(height: ~28%), Icon(60), Text(16,w600) */
+#gcroot .gc-bos{text-align:center;padding:64px 20px 48px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--golge)}
+#gcroot .gc-bos .material-icons-outlined{font-size:60px;color:var(--sub)}
+#gcroot .gc-bos .b{font-size:16px;font-weight:600;color:var(--sub);margin-top:14px}
+#gcroot .gc-bos .s{font-size:12.5px;color:var(--sub);margin-top:6px}
+/* Tümünü karşıla butonu (Flutter gold TextButton.icon) */
+#gcroot .gc-tumunu{display:inline-flex;align-items:center;gap:6px;
+  background:transparent;border:none;cursor:pointer;
+  color:var(--gold);font-size:14px;font-weight:700;padding:6px 8px;border-radius:8px}
+#gcroot .gc-tumunu:hover{background:color-mix(in srgb,var(--gold) 12%,transparent)}
+#gcroot .gc-tumunu .material-icons-outlined{font-size:19px;color:var(--gold)}
+/* Son karşılananlar tablosu — web'e özgü ek bilgi (Flutter'da yoktu, web paritesi) */
+#gcroot .gc-karsilanan-tablo .rk-rozet .material-icons-outlined{font-size:14px}
+/* Yenile göstergesi */
+#gcroot .gc-yenile{font-size:11.5px;color:var(--sub);margin-left:auto}
+body.koyu #gcroot .gc-kart{border-color:var(--line)}
+body.koyu #gcroot .gc-kart.geciken{border-color:var(--kirmizi)}
+</style>
+@endpush
+
 @php
-  // Flutter garson_cagrilari_screen ile BİREBİR semantik: tip -> etiket + renk + ikon.
+  /* Flutter _tipYazi ile BİREBİR */
   $tipAdi = function ($t) {
     return $t === 'servise_hazir' ? 'Servise hazır (mutfak)'
-      : ($t === 'tasima' ? 'Taşıma talebi'
-      : ($t === 'odeme' ? 'Ödeme alınacak'
-      : ($t === 'hesap' ? 'Hesap istiyor'
-      : ($t === 'acil' ? 'Acil çağrı'
-      : ($t === 'siparis' ? 'Sipariş verdi' : 'Garson çağırıyor')))));
+      : ($t === 'tasima'         ? 'Taşıma talebi'
+      : ($t === 'odeme'          ? 'Ödeme alınacak'
+      : ($t === 'hesap'          ? 'Hesap istiyor'
+      : ($t === 'siparis'        ? 'Sipariş verdi'
+      : 'Garson çağırıyor'))));
   };
-  // Flutter _tipIkon karşılığı material-icons-outlined
+  /* Flutter _tipIkon ile BİREBİR (material-icons-outlined karşılığı) */
   $tipIkon = function ($t) {
     return $t === 'servise_hazir' ? 'room_service'
-      : ($t === 'tasima' ? 'swap_horiz'
-      : ($t === 'odeme' ? 'payments'
-      : ($t === 'hesap' ? 'credit_card'
-      : ($t === 'siparis' ? 'receipt_long' : 'notifications_active'))));
+      : ($t === 'tasima'          ? 'swap_horiz'
+      : ($t === 'odeme'           ? 'payments'
+      : ($t === 'hesap'           ? 'credit_card'
+      : ($t === 'siparis'         ? 'receipt_long'
+      : 'notifications_active'))));
   };
-  // Flutter vurgu rengi: hesap=amber, taşıma=mor, ödeme/acil/diğer=kırmızı, servise_hazir=yeşil
-  $tipRenk = function ($t) {
+  /* Flutter vurgu: hesap=amber, diğer=kirmizi (taşıma mor buton, ikon rengi kirmizi) */
+  $tipRenkVar = function ($t) {
     return $t === 'hesap' ? 'var(--amber)'
-      : ($t === 'tasima' ? 'var(--mor1)'
-      : ($t === 'servise_hazir' ? 'var(--yesil)' : 'var(--kirmizi)'));
+      : ($t === 'tasima'           ? 'var(--mor1)'
+      : ($t === 'servise_hazir'    ? 'var(--yesil)'
+      : 'var(--kirmizi)'));
   };
+  /* Flutter _sure: sn<60 -> 'X sn', else 'X dk' */
   $sureYazi = function ($sn) {
-    $sn = $sn < 0 ? 0 : $sn;
+    $sn = max(0, (int) $sn);
     return $sn < 60 ? ($sn . ' sn') : (floor($sn / 60) . ' dk');
   };
+  $bekleyenSay = count($bekleyen ?? []);
+  $karsilananSay = count($karsilanan ?? []);
 @endphp
 
-{{-- 10 sn'de bir sayfa kendini yeniler (Flutter 4 sn poll karşılığı) --}}
-<meta http-equiv="refresh" content="10">
+@section('content')
+<div id="gcroot">
 
+{{-- ===== FLASH MESAJLARI ===== --}}
 @if (session('ok'))
   <div class="rk-flash ok">✅ {{ session('ok') }}</div>
 @endif
@@ -45,95 +114,124 @@
   <div class="rk-flash err">⚠️ {{ session('hata') ?: $hata }}</div>
 @endif
 
-{{-- ÖZET ŞERİDİ: Bekleyen / Son karşılanan + Tümünü karşıla --}}
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px">
-  <div class="rk-card" style="padding:10px 16px;display:flex;align-items:center;gap:8px">
+{{-- ===== AppBar benzer: özet + tümünü karşıla + sayaç ===== --}}
+{{-- Flutter AppBar title: 🔔 Garson Çağrıları + kırmızı badge + gold "Tümünü karşıla" + volume icon --}}
+<div class="gc-ozet">
+
+  {{-- Bekleyen sayaç (Flutter AppBar badge) --}}
+  <div class="rk-card gc-oc">
     <span class="material-icons-outlined" style="color:var(--kirmizi)">notifications_active</span>
     <span class="rk-sub">Bekleyen</span>
-    <b style="font-size:17px;color:{{ count($bekleyen) ? 'var(--kirmizi)' : 'var(--ink)' }}">{{ count($bekleyen) }}</b>
+    <b style="font-size:17px;color:{{ $bekleyenSay ? 'var(--kirmizi)' : 'var(--ink)' }}">{{ $bekleyenSay }}</b>
+    @if ($bekleyenSay)
+      <span class="gc-badge">{{ $bekleyenSay }}</span>
+    @endif
   </div>
-  <div class="rk-card" style="padding:10px 16px;display:flex;align-items:center;gap:8px">
+
+  {{-- Son karşılanan sayaç --}}
+  <div class="rk-card gc-oc">
     <span class="material-icons-outlined" style="color:var(--yesil)">done_all</span>
     <span class="rk-sub">Son karşılanan</span>
-    <b style="font-size:17px;color:var(--ink)">{{ count($karsilanan) }}</b>
+    <b style="font-size:17px;color:var(--ink)">{{ $karsilananSay }}</b>
   </div>
-  @if (count($bekleyen))
-    <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0 0 0 auto">
+
+  {{-- Flutter "Tümünü karşıla" TextButton.icon (gold, sadece bekleyen varsa) --}}
+  @if ($bekleyenSay)
+    <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0">
       @csrf
       <input type="hidden" name="hepsi" value="1">
-      <button type="submit" class="rk-btn" style="background:var(--yesil)">
-        <span class="material-icons-outlined" style="font-size:18px">done_all</span> Tümünü karşıla
+      <button type="submit" class="gc-tumunu">
+        <span class="material-icons-outlined">done_all</span>
+        Tümünü karşıla
       </button>
     </form>
   @endif
-  <span class="rk-sub" style="font-size:11.5px;{{ count($bekleyen) ? '' : 'margin-left:auto' }}">10 sn'de bir otomatik yenilenir</span>
+
+  {{-- Flutter 10 sn auto-yenile notu --}}
+  <span class="gc-yenile" id="gcSayac">10 sn'de bir yenilenir</span>
 </div>
 
-{{-- ================= BEKLEYEN ÇAĞRILAR ================= --}}
+{{-- ===== BEKLEYEN ÇAĞRILAR BÖLÜMÜ ===== --}}
+{{-- Flutter: ListView.separated (bekleyen liste) --}}
 <div class="rk-bolum">
   <span class="cubuk" style="background:var(--kirmizi)"></span>
   <span class="b">Bekleyen Çağrılar</span>
-  @if (count($bekleyen))
-    <span class="sayi" style="background:color-mix(in srgb,var(--kirmizi) 13%,transparent);color:var(--kirmizi)">{{ count($bekleyen) }}</span>
+  @if ($bekleyenSay)
+    <span class="sayi" style="background:color-mix(in srgb,var(--kirmizi) 13%,transparent);color:var(--kirmizi)">{{ $bekleyenSay }}</span>
   @endif
 </div>
 
-@if (!count($bekleyen))
-  <div class="rk-card" style="text-align:center;padding:48px 20px;margin-bottom:24px">
-    <span class="material-icons-outlined" style="font-size:56px;color:var(--sub)">notifications_none</span>
-    <div style="font-size:16px;font-weight:700;color:var(--sub);margin-top:12px">Bekleyen çağrı yok</div>
-    <div class="rk-sub" style="font-size:12.5px;margin-top:4px">QR menüden gelen çağrılar buraya anında düşer.</div>
+@if (!$bekleyenSay)
+  {{-- Flutter boş liste görünümü --}}
+  <div class="gc-bos" style="margin-bottom:24px">
+    <span class="material-icons-outlined">notifications_none</span>
+    <div class="b">Bekleyen çağrı yok</div>
+    <div class="s">QR menüden gelen çağrılar buraya anında düşer.</div>
   </div>
 @else
-  <div class="rk-grid" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-bottom:24px">
+  {{-- Flutter ListView.separated, padding:14, gap:12 --}}
+  <div class="gc-liste">
     @foreach ($bekleyen as $c)
       @php
-        $geciken = $c['saniye'] >= 60;
-        $vurgu = $tipRenk($c['tip']);
-        $tasimaMi = $c['tip'] === 'tasima';
+        $tip      = $c['tip'] ?? 'garson';
+        $geciken  = ($c['saniye'] ?? 0) >= 60;   /* Flutter: sn >= 60 → kırmızı border */
+        $renkVar  = $tipRenkVar($tip);
+        $tasimaMi = ($tip === 'tasima');
+        $masaAd   = $tasimaMi && !empty($c['hedef'])
+                      ? ($c['masa'] . ' → ' . $c['hedef'])
+                      : ($c['masa'] ?? '—');
       @endphp
-      <div class="rk-card" style="display:flex;align-items:center;gap:13px;padding:16px;{{ $geciken ? 'border:1.6px solid var(--kirmizi)' : '' }}">
-        {{-- tip ikonu (yumuşak renkli kutu) --}}
-        <div style="width:50px;height:50px;flex:0 0 auto;border-radius:14px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,{{ $vurgu }} 16%,transparent)">
-          <span class="material-icons-outlined" style="font-size:26px;color:{{ $vurgu }}">{{ $tipIkon($c['tip']) }}</span>
+      {{-- Flutter _kart Container --}}
+      <div class="gc-kart{{ $geciken ? ' geciken' : '' }}">
+
+        {{-- Flutter: ikon kutu (50x50, borderRadius:14, vurgu %16 arka plan) --}}
+        <div class="gc-ikon"
+          style="background:color-mix(in srgb,{{ $renkVar }} 16%,transparent)">
+          <span class="material-icons-outlined" style="color:{{ $renkVar }}">{{ $tipIkon($tip) }}</span>
         </div>
-        {{-- masa + tip --}}
-        <div style="min-width:0;flex:1">
-          <div style="font-size:19px;font-weight:900;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            {{ $tasimaMi && $c['hedef'] ? ($c['masa'] . ' → ' . $c['hedef']) : $c['masa'] }}
+
+        {{-- Flutter: Expanded Column (masa adı + tip yazısı) --}}
+        <div class="gc-meta">
+          <div class="gc-masa">{{ $masaAd }}</div>
+          <div class="gc-tip" style="color:{{ $renkVar }}">{{ $tipAdi($tip) }}</div>
+        </div>
+
+        {{-- Flutter: sağ kolon (süre + saat) --}}
+        <div class="gc-sure-col" style="margin-right:10px">
+          <div class="gc-sure" style="color:{{ $geciken ? 'var(--kirmizi)' : 'var(--gold)' }}">
+            {{ $sureYazi($c['saniye'] ?? 0) }}
           </div>
-          <div style="font-size:13.5px;font-weight:700;color:{{ $vurgu }};margin-top:2px">{{ $tipAdi($c['tip']) }}</div>
+          <div class="gc-saat">{{ $c['saat'] ?? '' }}</div>
         </div>
-        {{-- geçen süre + saat --}}
-        <div style="text-align:right">
-          <div style="font-size:16px;font-weight:800;color:{{ $geciken ? 'var(--kirmizi)' : 'var(--gold)' }}">{{ $sureYazi($c['saniye']) }}</div>
-          <div class="rk-sub" style="font-size:11px">{{ $c['saat'] }}</div>
-        </div>
-        {{-- karşıla --}}
+
+        {{-- Flutter: FilledButton — taşıma=mor+swap_horiz+'Taşı', diğer=yesil+'✓' --}}
         <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0">
           @csrf
           <input type="hidden" name="id" value="{{ $c['id'] }}">
-          <button type="submit" class="rk-btn" title="Karşıla" style="background:{{ $tasimaMi ? 'var(--mor1)' : 'var(--yesil)' }};padding:12px 16px;font-size:16px">
-            @if ($tasimaMi)
-              <span class="material-icons-outlined" style="font-size:18px">swap_horiz</span> Taşı
-            @else
-              ✓
-            @endif
-          </button>
+          @if ($tasimaMi)
+            <button type="submit" class="gc-btn mor" title="Taşıma onayla">
+              <span class="material-icons-outlined">swap_horiz</span> Taşı
+            </button>
+          @else
+            <button type="submit" class="gc-btn yesil" title="Karşıla"
+              style="font-size:17px;font-weight:700">✓</button>
+          @endif
         </form>
-      </div>
+
+      </div>{{-- /gc-kart --}}
     @endforeach
-  </div>
+  </div>{{-- /gc-liste --}}
 @endif
 
-{{-- ================= SON KARŞILANAN ÇAĞRILAR ================= --}}
-@if (count($karsilanan))
-  <div class="rk-bolum">
+{{-- ===== SON KARŞILANANLAR (web bonus — Flutter'da list sonundaymış gibi düşün) ===== --}}
+@if ($karsilananSay)
+  <div class="rk-bolum" style="margin-top:8px">
     <span class="cubuk" style="background:var(--yesil)"></span>
     <span class="b">Son Karşılananlar</span>
-    <span class="sayi" style="background:color-mix(in srgb,var(--yesil) 13%,transparent);color:var(--yesil)">{{ count($karsilanan) }}</span>
+    <span class="sayi"
+      style="background:color-mix(in srgb,var(--yesil) 13%,transparent);color:var(--yesil)">{{ $karsilananSay }}</span>
   </div>
-  <div class="rk-tablo">
+  <div class="rk-tablo gc-karsilanan-tablo">
     <table>
       <thead>
         <tr>
@@ -145,18 +243,24 @@
       </thead>
       <tbody>
         @foreach ($karsilanan as $c)
+          @php
+            $tip     = $c['tip'] ?? 'garson';
+            $masaAd  = ($tip === 'tasima' && !empty($c['hedef']))
+                         ? ($c['masa'] . ' → ' . $c['hedef'])
+                         : ($c['masa'] ?? '—');
+          @endphp
           <tr>
-            <td style="font-weight:700;color:var(--sub2)">
-              {{ $c['tip'] === 'tasima' && $c['hedef'] ? ($c['masa'] . ' → ' . $c['hedef']) : $c['masa'] }}
-            </td>
+            <td style="font-weight:700;color:var(--sub2)">{{ $masaAd }}</td>
             <td class="rk-sub">
-              <span class="material-icons-outlined" style="font-size:17px;color:{{ $tipRenk($c['tip']) }};vertical-align:-3px">{{ $tipIkon($c['tip']) }}</span>
-              {{ $tipAdi($c['tip']) }}
+              <span class="material-icons-outlined"
+                style="font-size:17px;color:{{ $tipRenkVar($tip) }};vertical-align:-3px">{{ $tipIkon($tip) }}</span>
+              {{ $tipAdi($tip) }}
             </td>
-            <td class="rk-sub">{{ $c['saat'] }}</td>
+            <td class="rk-sub">{{ $c['saat'] ?? '' }}</td>
             <td class="sag">
-              <span class="rk-rozet" style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 40%,transparent);background:color-mix(in srgb,var(--yesil) 13%,transparent)">
-                <span class="material-icons-outlined" style="font-size:14px">check</span> Karşılandı
+              <span class="rk-rozet"
+                style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 40%,transparent);background:color-mix(in srgb,var(--yesil) 13%,transparent)">
+                <span class="material-icons-outlined">check</span> Karşılandı
               </span>
             </td>
           </tr>
@@ -165,4 +269,20 @@
     </table>
   </div>
 @endif
+
+</div>{{-- /gcroot --}}
+
+{{-- ===== Flutter 4 sn poll karşılığı: 10 sn'de bir sayfa yenile + geri sayım ===== --}}
+<script>
+(function () {
+  var sn = 10, el = document.getElementById('gcSayac');
+  function tick() {
+    sn--;
+    if (el) el.textContent = sn > 0 ? (sn + ' sn\'de bir yenilenir') : 'Yenileniyor…';
+    if (sn <= 0) { window.location.reload(); return; }
+    setTimeout(tick, 1000);
+  }
+  setTimeout(tick, 1000);
+})();
+</script>
 @endsection
