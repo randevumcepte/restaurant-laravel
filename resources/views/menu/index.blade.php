@@ -291,8 +291,13 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
   <div class="mny-modal-kart">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div class="m-baslik" id="urunModalBaslik" style="margin:0">Yeni Ürün</div>
-      <button type="button" id="urunTukendiBtn" onclick="mnyTukendiTog()" title="Tek tıkla: Satışta ↔ Tükendi (tüm menülerden kaldırır)"
-        style="flex-shrink:0;border:none;cursor:pointer;padding:7px 15px;border-radius:20px;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px">Satışta</button>
+      <div style="flex-shrink:0;display:inline-flex;background:var(--card2,#eef2f9);border:1px solid var(--line,#e2e8f0);border-radius:22px;padding:3px;gap:2px"
+           title="Tıkla seç — Tükendi tüm menülerden/QR'dan/app'ten kaldırır, AI 'tükendi' der">
+        <button type="button" id="urunSatistaBtn" onclick="mnyTukendiSet(false)"
+          style="border:none;cursor:pointer;padding:6px 15px;border-radius:20px;font-size:12.5px;font-weight:800;transition:all .15s;background:transparent;color:var(--sub)">Satışta</button>
+        <button type="button" id="urunTukendiBtn" onclick="mnyTukendiSet(true)"
+          style="border:none;cursor:pointer;padding:6px 15px;border-radius:20px;font-size:12.5px;font-weight:800;transition:all .15s;background:transparent;color:var(--sub)">Tükendi</button>
+      </div>
     </div>
 
     {{-- Fotoğraf --}}
@@ -574,23 +579,26 @@ async function katSil() {
 let mnyAktifUrunId = null;
 let mnyAktifGorsel = null;
 
-// Tükendi düğmesi (başlık yanı) — görünüm
-function mnyTukendiBtnGuncelle() {
+// Satışta/Tükendi segment — aktif olanı dolu göster
+function mnyTukendiSegGuncelle() {
     const t = document.getElementById('urunTukendi').checked;
-    const b = document.getElementById('urunTukendiBtn'); if (!b) return;
-    if (t) { b.textContent = '⛔ Tükendi'; b.style.background = 'rgba(244,63,94,.16)'; b.style.color = '#F43F5E'; }
-    else   { b.textContent = '✓ Satışta'; b.style.background = 'rgba(34,197,94,.16)'; b.style.color = '#16A34A'; }
+    const sat = document.getElementById('urunSatistaBtn');
+    const tuk = document.getElementById('urunTukendiBtn');
+    if (!sat || !tuk) return;
+    sat.style.background = !t ? '#16A34A' : 'transparent'; sat.style.color = !t ? '#fff' : 'var(--sub)';
+    tuk.style.background =  t ? '#F43F5E' : 'transparent'; tuk.style.color =  t ? '#fff' : 'var(--sub)';
 }
-// Tek tıkla aç/kapa — mevcut üründe ANINDA kaydeder (tüm menülerden/QR/app'ten kalkar, AI görür)
-async function mnyTukendiTog() {
+// Satışta(false) / Tükendi(true) seç — mevcut üründe ANINDA kaydeder (tüm menülerden/QR/app'ten kalkar, AI görür)
+async function mnyTukendiSet(deger) {
     const cb = document.getElementById('urunTukendi');
-    cb.checked = !cb.checked;
-    mnyTukendiBtnGuncelle();
+    if (cb.checked === deger) { mnyTukendiSegGuncelle(); return; } // zaten o durumda
+    cb.checked = deger;
+    mnyTukendiSegGuncelle();
     if (mnyAktifUrunId) {
         try {
-            const r = await mnyApi('/menu/86', { urun_id: mnyAktifUrunId });
+            const r = await mnyApi('/menu/86', { urun_id: mnyAktifUrunId }); // toggle -> seçilen duruma geçer
             if (r && typeof r.tukendi !== 'undefined') {
-                cb.checked = !!r.tukendi; mnyTukendiBtnGuncelle();
+                cb.checked = !!r.tukendi; mnyTukendiSegGuncelle();
                 const idx = mnyUrunler.findIndex(x => x.id === mnyAktifUrunId);
                 if (idx >= 0) { mnyUrunler[idx].tukendi = !!r.tukendi; mnyRenderIcerik(); }
                 mnyToast(r.tukendi ? 'Tükendi — tüm menülerden kaldırıldı' : 'Satışa açıldı');
@@ -611,7 +619,7 @@ function mnyUrunAc(urunIdOrNull) {
     document.getElementById('urunFiyat').value     = u ? u.fiyat : '';
     document.getElementById('urunAciklama').value  = u ? (u.aciklama || '') : '';
     document.getElementById('urunTukendi').checked = u ? u.tukendi : false;
-    mnyTukendiBtnGuncelle();
+    mnyTukendiSegGuncelle();
     document.getElementById('urunAktif').checked   = u ? u.aktif : true;
     document.getElementById('urunOneCikan').checked= u ? u.one_cikan : false;
     document.getElementById('urunOneSoz').value    = u ? (u.one_soz || '') : '';
