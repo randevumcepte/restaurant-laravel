@@ -110,9 +110,10 @@
             @foreach ($gruplar as $grupAd => $items)
                 @php
                     $gorunur = array_values(array_filter($items, fn ($it) => !($_pp && isset($_harita[$it[0]]) && !_panelYetkiVar($_pp, $_harita[$it[0]]))));
+                    $grupAktif = collect($gorunur)->contains(fn ($it) => $it[0] === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $it[0]));
                 @endphp
                 @if (count($gorunur))
-                    <div class="rk-grp" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
                     <div class="rk-grp-body">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
                             @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
@@ -164,18 +165,17 @@
     function rkGrpTog(el){
         el.classList.toggle('kapali');
         try{
-            var k = JSON.parse(localStorage.getItem('rk_grp_kapali')||'[]');
-            var ad = el.getAttribute('data-grp'); var i = k.indexOf(ad);
-            if(el.classList.contains('kapali')){ if(i<0) k.push(ad); } else if(i>=0){ k.splice(i,1); }
-            localStorage.setItem('rk_grp_kapali', JSON.stringify(k));
+            var a = JSON.parse(localStorage.getItem('rk_grp_acik')||'[]');
+            var ad = el.getAttribute('data-grp'); var i = a.indexOf(ad);
+            if(el.classList.contains('kapali')){ if(i>=0) a.splice(i,1); } // kapandi
+            else if(i<0){ a.push(ad); } // acildi
+            localStorage.setItem('rk_grp_acik', JSON.stringify(a));
         }catch(e){}
     }
-    (function(){ try{
-        var k = JSON.parse(localStorage.getItem('rk_grp_kapali')||'[]');
+    (function(){ try{ // varsayilan KAPALI; daha once elle acilan gruplari geri ac (aktif grup zaten acik)
+        var a = JSON.parse(localStorage.getItem('rk_grp_acik')||'[]');
         document.querySelectorAll('.rk-grp').forEach(function(h){
-            var body = h.nextElementSibling;
-            var aktifVar = body && body.querySelector && body.querySelector('a.aktif'); // aktif sayfanin grubu hep acik
-            if(k.indexOf(h.getAttribute('data-grp'))>=0 && !aktifVar){ h.classList.add('kapali'); }
+            if(a.indexOf(h.getAttribute('data-grp'))>=0){ h.classList.remove('kapali'); }
         });
     }catch(e){} })();
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
