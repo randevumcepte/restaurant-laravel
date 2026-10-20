@@ -428,14 +428,17 @@ Route::match(['get', 'post'], '/pos-cikis', function () { session()->forget('pos
 
 Route::get('/pos', function () {
     if ($g = _posKapi()) return $g;
-    $subeId = _posPersonel()->sube_id; // POS personelinin şubesi (çok-şube uyumlu)
-    _masaQrEnsure($subeId); // arsiv kolonu garanti (cache'li)
-    $bolgeler = DB::table('bolgeler')->where('sube_id', $subeId)->orderBy('sira')->get();
-    $masalar = DB::table('masalar')->where('sube_id', $subeId)->where('arsiv', 0)->orderBy('id')->get()->groupBy('bolge_id');
-    $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
-        ->select('masa_id', 'toplam', 'acilis')->get()->keyBy('masa_id');
-    $garsonlar = DB::table('personeller')->where('sube_id', $subeId)->whereIn('rol', ['garson', 'mudur', 'sahip'])->orderBy('ad')->get(['id', 'ad', 'rol']);
-    return view('pos.harita', compact('bolgeler', 'masalar', 'acik', 'garsonlar'));
+    $pp = _posPersonel();
+    // Flutter masalar_screen ile AYNI veri (tutar/kalem_say/acilis_dk/son_siparis_dk/odenen/hesap_istendi/rezervasyon/birlesik)
+    $masalar = _masalarVeri($pp->sube_id);
+    $gruplu = collect($masalar)->groupBy(fn ($m) => $m['bolge'] ?? 'Salon');
+    $garsonlar = DB::table('personeller')->where('sube_id', $pp->sube_id)->whereIn('rol', ['garson', 'mudur', 'sahip'])->orderBy('ad')->get(['id', 'ad', 'rol']);
+    return view('pos.harita', ['gruplu' => $gruplu, 'personelAd' => $pp->ad ?? 'Ben']);
+});
+// POS masa JSON (canli yenileme icin — Flutter ile ayni veri, oturum bazli)
+Route::get('/pos/masalar-json', function () {
+    if ($g = _posKapi()) return $g;
+    return ['ok' => 1, 'masalar' => _masalarVeri(_posPersonel()->sube_id)];
 });
 
 Route::get('/pos/masa/{masa}', function ($masaId) {
@@ -8750,9 +8753,9 @@ Route::get('/api/patron/duzelt-turkce', function (Request $r) {
     return ['ok' => 1, 'duzeltilen' => $say];
 });
 
-Route::get('/api/masalar', function (Request $r) {
-    $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0], 401);
+if (!function_exists('_masalarVeri')) {
+function _masalarVeri($subeId) {
+    $p = (object) ['sube_id' => $subeId]; // helper: asagidaki $p->sube_id referanslari aynen calissin
     _masaQrEnsure($p->sube_id); // arsiv kolonu + token garanti (cache'li)
     $acikTum = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')
         ->select('id', 'masa_id', 'toplam', 'acilis')->get();
@@ -8857,7 +8860,13 @@ Route::get('/api/masalar', function (Request $r) {
             }
             return $row;
         });
-    return ['ok' => 1, 'masalar' => $masalar];
+    return $masalar;
+}
+}
+Route::get('/api/masalar', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    return ['ok' => 1, 'masalar' => _masalarVeri($p->sube_id)];
 });
 
 // GEÇİCİ (demo): acik adisyonlari cesitli TAZE durumlara cek -> masalar renkli/gercekci gorunsun.
