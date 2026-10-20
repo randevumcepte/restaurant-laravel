@@ -289,7 +289,11 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
 {{-- ════════════════ ÜRÜN MODAL ════════════════ --}}
 <div class="mny-modal-bg" id="urunModal">
   <div class="mny-modal-kart">
-    <div class="m-baslik" id="urunModalBaslik">Yeni Ürün</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div class="m-baslik" id="urunModalBaslik" style="margin:0">Yeni Ürün</div>
+      <button type="button" id="urunTukendiBtn" onclick="mnyTukendiTog()" title="Tek tıkla: Satışta ↔ Tükendi (tüm menülerden kaldırır)"
+        style="flex-shrink:0;border:none;cursor:pointer;padding:7px 15px;border-radius:20px;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px">Satışta</button>
+    </div>
 
     {{-- Fotoğraf --}}
     <div class="mny-foto-alan" id="fotoAlan" onclick="mnyFotoSec()">
@@ -313,14 +317,8 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     <label>Açıklama (müşteriye tanıtım)</label>
     <textarea id="urunAciklama" placeholder="Kısa ve iştah açıcı..."></textarea>
 
-    {{-- Tükendi / Aktif --}}
-    <div class="mny-switch-row">
-      <div class="sw-bilgi">
-        <div class="sw-b">Tükendi (86)</div>
-        <div class="sw-alt">Geçici olarak yok — menüde "tükendi" görünür</div>
-      </div>
-      <input type="checkbox" id="urunTukendi">
-    </div>
+    {{-- Tükendi durumu ÜSTTE, başlık yanındaki tek-tık düğmeyle yönetilir. State burada gizli. --}}
+    <input type="checkbox" id="urunTukendi" style="display:none">
     <div class="mny-switch-row">
       <div class="sw-bilgi">
         <div class="sw-b">Aktif</div>
@@ -576,6 +574,31 @@ async function katSil() {
 let mnyAktifUrunId = null;
 let mnyAktifGorsel = null;
 
+// Tükendi düğmesi (başlık yanı) — görünüm
+function mnyTukendiBtnGuncelle() {
+    const t = document.getElementById('urunTukendi').checked;
+    const b = document.getElementById('urunTukendiBtn'); if (!b) return;
+    if (t) { b.textContent = '⛔ Tükendi'; b.style.background = 'rgba(244,63,94,.16)'; b.style.color = '#F43F5E'; }
+    else   { b.textContent = '✓ Satışta'; b.style.background = 'rgba(34,197,94,.16)'; b.style.color = '#16A34A'; }
+}
+// Tek tıkla aç/kapa — mevcut üründe ANINDA kaydeder (tüm menülerden/QR/app'ten kalkar, AI görür)
+async function mnyTukendiTog() {
+    const cb = document.getElementById('urunTukendi');
+    cb.checked = !cb.checked;
+    mnyTukendiBtnGuncelle();
+    if (mnyAktifUrunId) {
+        try {
+            const r = await mnyApi('/menu/86', { urun_id: mnyAktifUrunId });
+            if (r && typeof r.tukendi !== 'undefined') {
+                cb.checked = !!r.tukendi; mnyTukendiBtnGuncelle();
+                const idx = mnyUrunler.findIndex(x => x.id === mnyAktifUrunId);
+                if (idx >= 0) { mnyUrunler[idx].tukendi = !!r.tukendi; mnyRenderIcerik(); }
+                mnyToast(r.tukendi ? 'Tükendi — tüm menülerden kaldırıldı' : 'Satışa açıldı');
+            }
+        } catch (e) { mnyToast('İşlem başarısız'); }
+    }
+}
+
 function mnyUrunAc(urunIdOrNull) {
     if (!MNY_DUZENLE) return;
     const u = urunIdOrNull ? mnyUrunler.find(x=>x.id===urunIdOrNull) : null;
@@ -588,6 +611,7 @@ function mnyUrunAc(urunIdOrNull) {
     document.getElementById('urunFiyat').value     = u ? u.fiyat : '';
     document.getElementById('urunAciklama').value  = u ? (u.aciklama || '') : '';
     document.getElementById('urunTukendi').checked = u ? u.tukendi : false;
+    mnyTukendiBtnGuncelle();
     document.getElementById('urunAktif').checked   = u ? u.aktif : true;
     document.getElementById('urunOneCikan').checked= u ? u.one_cikan : false;
     document.getElementById('urunOneSoz').value    = u ? (u.one_soz || '') : '';
