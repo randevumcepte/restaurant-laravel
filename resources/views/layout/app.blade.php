@@ -58,6 +58,7 @@
         ],
         'Kasa & Finans' => [
             ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
+            ['/kasalar', 'storefront', 'Kasa Noktaları', '#D97706'],
             ['/finans', 'analytics', 'Finans / Kâr-Zarar', null],
             ['/gider', 'receipt_long', 'Giderler', null],
             ['/cari', 'account_balance_wallet', 'Cari / Açık Hesaplar', null],

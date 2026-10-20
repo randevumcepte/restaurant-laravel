@@ -1,8 +1,8 @@
 @extends('layout.app')
 @section('title', 'Kasa')
 @section('rk_ikon', 'account_balance')
-@section('baslik', 'Kasa (Vardiya)')
-@section('rk_alt', ($acik ?? false) ? ('Açık · ' . ($acilis ?? '')) : 'Kapalı')
+@section('baslik', ($kasa_ad ?? null) ? ('Kasa · ' . $kasa_ad) : 'Kasa (Vardiya)')
+@section('rk_alt', (($acik ?? false) ? ('Açık · ' . ($acilis ?? '')) : 'Kapalı') . (($kasa_ad ?? null) ? ' · ' . $kasa_ad : ''))
 
 @section('content')
 @php
@@ -15,9 +15,23 @@
   $devir = (float) ($devir ?? 0);
   $sonDevir = (float) ($son_devir ?? 0);
   $hareketler = $hareketler ?? [];
+  $coklu = $coklu ?? false;
+  $kasaAd = $kasa_ad ?? null;
   $etiket = ['devir' => 'Devir', 'satis' => 'Nakit Satış', 'tahsilat' => 'Tahsilat', 'gider' => 'Gider', 'personel' => 'Personel', 'al' => 'Kasadan Al', 'koy' => 'Kasaya Koy'];
   $tl = fn($v) => number_format((float) $v, 0, ',', '.') . '₺';
 @endphp
+
+@if ($coklu)
+  <div class="rk-card" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;padding:12px 16px">
+    <span class="material-icons-outlined" style="color:#D97706;font-size:22px">storefront</span>
+    <div style="flex:1">
+      <div style="font-weight:800;color:var(--ink);font-size:14.5px">{{ $kasaAd ?? 'Kasa seçilmedi' }}</div>
+      <div class="rk-sub2" style="font-size:11.5px">Çoklu kasa aktif — bu ekran yalnızca bu kasanın vardiyasını gösterir.</div>
+    </div>
+    <a href="/pos-kasa-sec" class="rk-btn bos" style="padding:8px 13px"><span class="material-icons-outlined" style="font-size:16px">swap_horiz</span> Kasa Değiştir</a>
+    <a href="/kasalar" class="rk-btn bos" style="padding:8px 13px"><span class="material-icons-outlined" style="font-size:16px">settings</span> Kasaları Yönet</a>
+  </div>
+@endif
 
 @if (session('ok'))<div class="rk-flash ok">{{ session('ok') }}</div>@endif
 @if (session('hata'))<div class="rk-flash err">{{ session('hata') }}</div>@endif
@@ -31,12 +45,17 @@
       <div class="rk-sub" style="font-size:13px;margin-top:8px;line-height:1.4">
         Vardiyayı başlatmak için kasayı açın.<br>Açılış devir = şu an çekmecedeki nakit.
       </div>
-      <div class="rk-sub2" style="font-size:12.5px;margin-top:12px;line-height:1.4">
-        Kasa, uygulamadan (POS) açılır. Açıldığında güncel durum burada görünür.
-      </div>
       @if ($sonDevir > 0)
         <div class="rk-sub2" style="font-size:12px;margin-top:10px">Son kapanış: <b class="rk-ink">{{ $tl($sonDevir) }}</b></div>
       @endif
+      <form method="POST" action="/kasa/ac" style="margin-top:18px;text-align:left">
+        @csrf
+        <label class="rk-lbl" style="margin-top:0">Açılış devir (çekmecedeki nakit)</label>
+        <input type="number" name="devir" step="0.01" min="0" value="{{ $sonDevir > 0 ? number_format($sonDevir, 2, '.', '') : '0' }}" class="rk-inp" style="text-align:center;font-size:18px;font-weight:700">
+        <button type="submit" class="rk-btn lg" style="background:var(--yesil);margin-top:14px;width:100%">
+          <span class="material-icons-outlined" style="color:#fff;font-size:19px">lock_open</span> Kasayı Aç
+        </button>
+      </form>
     </div>
   </div>
 @else
@@ -97,7 +116,30 @@
         <span class="material-icons-outlined" style="color:#fff;font-size:18px">save</span> Kaydet
       </button>
     </form>
-    <div class="rk-sub2" style="font-size:11.5px;margin-top:10px">Kasa açma / sayım-kapatma işlemleri uygulamadan (POS) yapılır.</div>
+  </div>
+
+  {{-- Kasa Kapat (sayım) --}}
+  <div class="rk-card" style="margin-top:18px">
+    <div class="rk-bolum">
+      <span class="cubuk" style="background:var(--kirmizi)"></span>
+      <span class="b">Kasa Kapat (Sayım)</span>
+    </div>
+    <div class="rk-sub2" style="font-size:12px;margin-bottom:12px">Çekmecedeki nakiti say, gir. Sistem beklenen ({{ $tl($beklenen) }}) ile karşılaştırıp farkı hesaplar.</div>
+    <form method="POST" action="/kasa/kapat" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px"
+          onsubmit="return confirm('Kasa kapatılsın mı? Bu vardiya kapanır.')">
+      @csrf
+      <div style="width:170px">
+        <label class="rk-lbl" style="margin-top:0">Sayılan nakit</label>
+        <input type="number" name="sayilan" step="0.01" min="0" required placeholder="0,00" class="rk-inp">
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label class="rk-lbl" style="margin-top:0">Not (opsiyonel)</label>
+        <input type="text" name="not" maxlength="200" placeholder="Örn. gün sonu sayımı" class="rk-inp">
+      </div>
+      <button type="submit" class="rk-btn" style="background:var(--kirmizi);padding:11px 18px">
+        <span class="material-icons-outlined" style="color:#fff;font-size:18px">lock</span> Kasayı Kapat
+      </button>
+    </form>
   </div>
 @endif
 

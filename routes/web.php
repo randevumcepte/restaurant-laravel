@@ -6866,13 +6866,20 @@ Route::post('/personel/yetki', function (Request $r) {
 Route::get('/kasa', function (Request $r) {
     $sube = _webSubeId();
     $period = in_array($r->period, ['gun', 'hafta', 'ay']) ? $r->period : 'gun';
-    $data = ['period' => $period, 'acik' => false, 'son_devir' => 0, 'giris' => 0, 'cikis' => 0, 'beklenen' => 0, 'devir' => 0, 'hareketler' => []];
+    $data = ['period' => $period, 'acik' => false, 'son_devir' => 0, 'giris' => 0, 'cikis' => 0, 'beklenen' => 0, 'devir' => 0, 'hareketler' => [],
+        'coklu' => false, 'kasa_ad' => null, 'kasa_id' => null];
     try {
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
         if (!Schema::hasTable('kasa_hareketleri')) return view('kasa', $data);
+        // ÇOKLU KASA: oturumdaki kasa noktasına odaklan (yoksa tek-havuz, bugünkü davranış)
+        $kasaId = session('pos_kasa_id');
+        $data['coklu'] = _kasalarAktif($sube)->count() > 0;
+        if ($kasaId) { $data['kasa_id'] = $kasaId; $data['kasa_ad'] = DB::table('kasalar')->where('id', $kasaId)->value('ad'); }
         $o = null;
         if (Schema::hasTable('kasa_oturumlari')) {
-            $o = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'acik')->orderByDesc('id')->first();
+            $oq = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'acik');
+            if ($kasaId) $oq->where('kasa_id', $kasaId);
+            $o = $oq->orderByDesc('id')->first();
             if ($o) {
                 $data['acik'] = true; $data['devir'] = (float) $o->acilis_devir;
                 $data['acilis'] = $o->acilis_zamani ? \Carbon\Carbon::parse($o->acilis_zamani)->format('d.m H:i') : '';
@@ -6881,14 +6888,16 @@ Route::get('/kasa', function (Request $r) {
                 $data['cikis'] = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'cikis')->sum('tutar');
                 $data['beklenen'] = round($data['giris'] - $data['cikis'], 2);
             } else {
-                $son = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'kapali')->orderByDesc('id')->first();
+                $sonq = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'kapali');
+                if ($kasaId) $sonq->where('kasa_id', $kasaId);
+                $son = $sonq->orderByDesc('id')->first();
                 $data['son_devir'] = $son ? (float) $son->sayilan_nakit : 0;
             }
         }
         $to = now();
         $from = $period === 'ay' ? (clone $to)->startOfMonth() : ($period === 'hafta' ? (clone $to)->subDays(7) : (clone $to)->startOfDay());
         $data['hareketler'] = DB::table('kasa_hareketleri as h')->leftJoin('personeller as pe', 'h.personel_id', '=', 'pe.id')
-            ->where('h.sube_id', $sube)->whereBetween('h.created_at', [$from, $to])->orderByDesc('h.id')->limit(500)
+            ->where('h.sube_id', $sube)->when($kasaId, fn ($q) => $q->where('h.kasa_id', $kasaId))->whereBetween('h.created_at', [$from, $to])->orderByDesc('h.id')->limit(500)
             ->select('h.tip', 'h.yon', 'h.tutar', 'h.aciklama', 'h.created_at', 'pe.ad as personel')->get()
             ->map(fn ($h) => ['tip' => $h->tip, 'yon' => $h->yon, 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama, 'personel' => $h->personel, 'zaman' => \Carbon\Carbon::parse($h->created_at)->format('d.m H:i')])->toArray();
     } catch (\Throwable $e) {}
@@ -6899,15 +6908,128 @@ Route::post('/kasa/hareket', function (Request $r) {
     try {
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
         if (!Schema::hasTable('kasa_hareketleri') || !Schema::hasTable('kasa_oturumlari')) return redirect('/kasa')->with('hata', 'Kasa tablosu bulunamadı.');
-        $o = DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'acik')->orderByDesc('id')->first();
-        if (!$o) return redirect('/kasa')->with('hata', 'Açık kasa yok. Kasa POS uygulamasından açılmalı.');
+        $o = _kasaAcikOturum($sube, session('pos_kasa_id'));
+        if (!$o) return redirect('/kasa')->with('hata', 'Açık kasa yok. Önce "Kasa Aç" ile vardiya başlatın.');
         $yon = in_array($r->yon, ['giris', 'cikis']) ? $r->yon : 'cikis';
         $tutar = round((float) $r->tutar, 2);
         if ($tutar <= 0) return redirect('/kasa')->with('hata', 'Geçerli bir tutar girin.');
-        DB::table('kasa_hareketleri')->insert(['sube_id' => $sube, 'oturum_id' => $o->id, 'tip' => $yon === 'giris' ? 'koy' : 'al', 'yon' => $yon, 'tutar' => $tutar,
-            'aciklama' => $r->aciklama ? (string) $r->aciklama : ($yon === 'giris' ? 'Kasaya para konuldu' : 'Kasadan para alındı'), 'kaynak_tip' => 'manuel', 'kaynak_id' => null, 'personel_id' => null, 'created_at' => now()]);
+        $hrow = ['sube_id' => $sube, 'oturum_id' => $o->id, 'tip' => $yon === 'giris' ? 'koy' : 'al', 'yon' => $yon, 'tutar' => $tutar,
+            'aciklama' => $r->aciklama ? (string) $r->aciklama : ($yon === 'giris' ? 'Kasaya para konuldu' : 'Kasadan para alındı'), 'kaynak_tip' => 'manuel', 'kaynak_id' => null, 'personel_id' => null, 'created_at' => now()];
+        if (cache()->get('resto_kasa_coklu_ok')) $hrow['kasa_id'] = $o->kasa_id ?? null;
+        DB::table('kasa_hareketleri')->insert($hrow);
         return redirect('/kasa')->with('ok', $yon === 'giris' ? 'Kasaya eklendi.' : 'Kasadan düşüldü.');
     } catch (\Throwable $e) { return redirect('/kasa')->with('hata', 'İşlem sırasında hata oluştu.'); }
+});
+// ===== ÇOKLU KASA: Kasa (nokta/istasyon) Yönetimi =====
+Route::get('/kasalar', function () {
+    $sube = _webSubeId();
+    $data = ['kasalar' => collect(), 'personeller' => collect()];
+    try {
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        $kasalar = _kasalarAktif($sube);
+        // açık vardiya durumu her kasa için
+        $acik = Schema::hasTable('kasa_oturumlari')
+            ? DB::table('kasa_oturumlari')->where('sube_id', $sube)->where('durum', 'acik')->whereNotNull('kasa_id')->pluck('id', 'kasa_id')
+            : collect();
+        // pasif kasalar da yönetimde görünsün
+        $tum = Schema::hasTable('kasalar') ? DB::table('kasalar')->where('sube_id', $sube)->orderBy('sira')->orderBy('id')->get() : collect();
+        $data['kasalar'] = $tum->map(function ($k) use ($acik) {
+            $k->acik = isset($acik[$k->id]); return $k;
+        });
+        $data['personeller'] = DB::table('personeller')->where('sube_id', $sube)->where('aktif', 1)
+            ->orderBy('ad')->get(['id', 'ad', 'rol', 'varsayilan_kasa_id']);
+    } catch (\Throwable $e) {}
+    return view('kasalar', $data);
+});
+Route::post('/kasalar/ekle', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        $ad = trim((string) $r->input('ad'));
+        if ($ad === '') return redirect('/kasalar')->with('hata', 'Kasa adı girin.');
+        $sira = (int) (DB::table('kasalar')->where('sube_id', $sube)->max('sira') ?? 0) + 1;
+        DB::table('kasalar')->insert(['sube_id' => $sube, 'ad' => mb_substr($ad, 0, 60), 'aktif' => 1, 'sira' => $sira, 'created_at' => now(), 'updated_at' => now()]);
+        return redirect('/kasalar')->with('ok', $ad . ' eklendi.');
+    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Kasa eklenemedi.'); }
+});
+Route::post('/kasalar/duzenle', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        $k = DB::table('kasalar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
+        if (!$k) return redirect('/kasalar')->with('hata', 'Kasa bulunamadı.');
+        $upd = [];
+        if ($r->filled('ad')) $upd['ad'] = mb_substr(trim((string) $r->input('ad')), 0, 60);
+        if ($r->has('aktif')) $upd['aktif'] = $r->input('aktif') ? 1 : 0;
+        if ($upd) { $upd['updated_at'] = now(); DB::table('kasalar')->where('id', $k->id)->update($upd); }
+        return redirect('/kasalar')->with('ok', 'Güncellendi.');
+    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Güncellenemedi.'); }
+});
+Route::post('/kasalar/sil', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        $k = DB::table('kasalar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
+        if (!$k) return redirect('/kasalar')->with('hata', 'Kasa bulunamadı.');
+        if (Schema::hasTable('kasa_oturumlari') && DB::table('kasa_oturumlari')->where('kasa_id', $k->id)->where('durum', 'acik')->exists())
+            return redirect('/kasalar')->with('hata', 'Bu kasada açık vardiya var, önce kapatın.');
+        // kayıtlar kalsın (geçmiş bozulmasın) → sadece pasife çek
+        DB::table('kasalar')->where('id', $k->id)->update(['aktif' => 0, 'updated_at' => now()]);
+        DB::table('personeller')->where('varsayilan_kasa_id', $k->id)->update(['varsayilan_kasa_id' => null]);
+        return redirect('/kasalar')->with('ok', $k->ad . ' kapatıldı (pasif).');
+    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Kapatılamadı.'); }
+});
+Route::post('/kasalar/atama', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        $pid = (int) $r->input('personel_id');
+        $per = DB::table('personeller')->where('id', $pid)->where('sube_id', $sube)->first();
+        if (!$per) return redirect('/kasalar')->with('hata', 'Personel bulunamadı.');
+        $kid = (int) $r->input('kasa_id');
+        $gecerli = $kid && DB::table('kasalar')->where('id', $kid)->where('sube_id', $sube)->exists();
+        DB::table('personeller')->where('id', $pid)->update(['varsayilan_kasa_id' => $gecerli ? $kid : null, 'updated_at' => now()]);
+        return redirect('/kasalar')->with('ok', $per->ad . ' ataması güncellendi.');
+    } catch (\Throwable $e) { return redirect('/kasalar')->with('hata', 'Atama yapılamadı.'); }
+});
+// Web'den Kasa Aç (vardiya başlat) — oturumdaki kasa noktasına (çok-kasa) ya da tek-havuza
+Route::post('/kasa/ac', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        $pp = _posPersonel();
+        $kasaId = session('pos_kasa_id');   // çok-kasa açıksa buradaki kasa; yoksa null (tek-havuz)
+        if (_kasaAcikOturum($sube, $kasaId)) return redirect('/kasa')->with('hata', 'Zaten açık bir vardiya var.');
+        $devir = max(0, round((float) $r->input('devir'), 2));
+        $row = ['sube_id' => $sube, 'acan_personel_id' => $pp->id ?? null, 'acilis_devir' => $devir,
+            'acilis_zamani' => now(), 'durum' => 'acik', 'created_at' => now(), 'updated_at' => now()];
+        if (cache()->get('resto_kasa_coklu_ok') && $kasaId) $row['kasa_id'] = $kasaId;
+        $oid = DB::table('kasa_oturumlari')->insertGetId($row);
+        if ($devir > 0) {
+            $h = ['sube_id' => $sube, 'oturum_id' => $oid, 'tip' => 'devir', 'yon' => 'giris', 'tutar' => $devir,
+                'aciklama' => 'Açılış devir', 'kaynak_tip' => 'manuel', 'personel_id' => $pp->id ?? null, 'created_at' => now()];
+            if (cache()->get('resto_kasa_coklu_ok') && $kasaId) $h['kasa_id'] = $kasaId;
+            DB::table('kasa_hareketleri')->insert($h);
+        }
+        return redirect('/kasa')->with('ok', 'Kasa açıldı.');
+    } catch (\Throwable $e) { return redirect('/kasa')->with('hata', 'Kasa açılamadı.'); }
+});
+// Web'den Kasa Kapat (say) — beklenen vs sayılan = fark
+Route::post('/kasa/kapat', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        $pp = _posPersonel();
+        $kasaId = session('pos_kasa_id');
+        $o = _kasaAcikOturum($sube, $kasaId);
+        if (!$o) return redirect('/kasa')->with('hata', 'Açık kasa yok.');
+        $giris = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'giris')->sum('tutar');
+        $cikis = (float) DB::table('kasa_hareketleri')->where('oturum_id', $o->id)->where('yon', 'cikis')->sum('tutar');
+        $beklenen = round($giris - $cikis, 2);
+        $sayilan = round((float) $r->input('sayilan'), 2);
+        DB::table('kasa_oturumlari')->where('id', $o->id)->update([
+            'kapanis_zamani' => now(), 'beklenen_nakit' => $beklenen, 'sayilan_nakit' => $sayilan, 'fark' => round($sayilan - $beklenen, 2),
+            'kapatan_personel_id' => $pp->id ?? null, 'durum' => 'kapali', 'not' => $r->input('not') ? (string) $r->input('not') : null, 'updated_at' => now()]);
+        $fark = round($sayilan - $beklenen, 2);
+        return redirect('/kasa')->with('ok', 'Kasa kapatıldı. ' . ($fark == 0 ? 'Tuttu ✓' : ($fark > 0 ? 'Fazla: ' : 'Açık: ') . number_format(abs($fark), 2, ',', '.') . ' ₺'));
+    } catch (\Throwable $e) { return redirect('/kasa')->with('hata', 'Kasa kapatılamadı.'); }
 });
 // ===== WEB PANEL: Z Raporu — Flutter z_raporu_screen karşılığı =====
 Route::get('/z-raporu', function (\Illuminate\Http\Request $r) {
