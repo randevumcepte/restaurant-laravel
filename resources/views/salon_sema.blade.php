@@ -485,7 +485,7 @@ body.koyu #sema-kanvas{background:#0E1526}
   function cizNokta(nk, i){
     var def = TIPLER[nk.tip] || TIPLER['diger'];
     var boy = n(nk.boy) > 0 ? n(nk.boy) : 58;
-    var bpx = clamp(sx(boy), 24, 220);
+    var bpx = clamp(sx(boy), 24, px().w); // üst sınır kaldırıldı -> ısı haritasıyla birebir (sx(boy))
     var secli = sc('nokta', i);
     var d = document.createElement('div');
     d.className = 'oge';

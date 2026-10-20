@@ -703,8 +703,8 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
       if ((yer.kat||0) !== 0) return;
       const a = agirMap[id] || 0;
       const o = maxA > 0 ? a / maxA : 0;
-      const boyV = +yer.boy > 0 ? +yer.boy : 150;
-      const size = Math.max(32, Math.min(88, sx(boyV)));
+      const boyV = +yer.boy > 0 ? +yer.boy : 170;
+      const size = Math.max(28, sx(boyV)); // editörle BİREBİR: sx(boy), 88 kırpma YOK
       const yuvarlak = (SEKIL[id] || 'kare') === 'yuvarlak';
       tablolar.push({ id, cx: sx(+yer.x), cy: sy(+yer.y), size, o, renk: sicaklik(o), yuvarlak, ad: adMap[id] || '', kapasite: +(KAPASITE[id] || 4) });
     });
@@ -910,8 +910,8 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
     noktalar.forEach(nk => {
       const img = SEMA_IMG[nk.tip];
       const cx3 = sx(+nk.x), cy3 = sy(+nk.y);
-      // Senkron: masalar gibi orana göre (sx) + büyütme çarpanı. NOKTA_K ile Flutter'la birebir boyut.
-      const box = Math.max(40, sx(+nk.boy > 0 ? +nk.boy : 66) * NOKTA_K);
+      // Editörle BİREBİR: sx(boy), çarpan YOK (mutfak/bar boyutu editörde ne ise ısı haritasında da o)
+      const box = Math.max(24, sx(+nk.boy > 0 ? +nk.boy : 58));
       if (img && img.width) {
         const h3 = box * img.height / img.width;
         ctx.save();
