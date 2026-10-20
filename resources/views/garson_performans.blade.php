@@ -627,6 +627,7 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
 
   /* ---------- SEMA GÖRSEL KÜTÜPHANESİ (Flutter assets/sema → /sema) ---------- */
   const MASA_OLCEK = 0.9; // Flutter _masaOlcek
+  const NOKTA_K = 2.3;    // mutfak/bar büyütme çarpanı (sx orana göre + bu) — uygulamayla senkron
   const SEMA_IMG = {};
   const _sonIsi = {}; // canvasId -> son çizilen ısı verisi (görsel async yüklenince yeniden çiz)
   ['masa_yuvarlak','masa_yuvarlak_2','masa_kare','masa_kare_2','mutfak','bar','giris'].forEach(ad => {
@@ -909,8 +910,8 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
     noktalar.forEach(nk => {
       const img = SEMA_IMG[nk.tip];
       const cx3 = sx(+nk.x), cy3 = sy(+nk.y);
-      // Flutter _semaNokta: boy HAM piksel (sx ile küçültME) — mutfak/bar kullanıcının büyüttüğü boyda kalsın
-      const box = Math.max(40, (+nk.boy > 0 ? +nk.boy : 66));
+      // Senkron: masalar gibi orana göre (sx) + büyütme çarpanı. NOKTA_K ile Flutter'la birebir boyut.
+      const box = Math.max(40, sx(+nk.boy > 0 ? +nk.boy : 66) * NOKTA_K);
       if (img && img.width) {
         const h3 = box * img.height / img.width;
         ctx.save();
