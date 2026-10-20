@@ -310,6 +310,19 @@ body.koyu #sema-kanvas{background:#0E1526}
   function vdx(d){ return d / px().w * 1000; }
   function vdy(d){ return d / px().h * 1000; }
 
+  // Kanvasa KESİN piksel boyut ver (CSS aspect-ratio+max-height definite yükseklik vermiyordu -> 0 boyut -> boş görünüyordu)
+  function boyutla(){
+    var alan = kanvas.parentElement; // #kanvas-alani
+    if (!alan) return;
+    var aw = alan.clientWidth - 24, ah = alan.clientHeight - 24; // padding 12*2
+    if (aw <= 10) aw = alan.clientWidth || 600;
+    if (ah <= 10) ah = Math.round(aw * 1.35);
+    var w = aw, h = w * 1.35;
+    if (h > ah) { h = ah; w = h / 1.35; }
+    kanvas.style.width  = Math.round(w) + 'px';
+    kanvas.style.height = Math.round(h) + 'px';
+  }
+
   // ---- GERİ AL ----
   function anlik()    { return JSON.stringify(state); }
   function gecmisKaydet(){
@@ -809,9 +822,10 @@ body.koyu #sema-kanvas{background:#0E1526}
   };
 
   // ---- İLK ÇİZİM + RESIZE ----
-  ciz();
+  requestAnimationFrame(function(){ boyutla(); ciz(); });
+  window.addEventListener('load', function(){ boyutla(); ciz(); });
   var tmr = null;
-  window.addEventListener('resize', function(){ clearTimeout(tmr); tmr=setTimeout(ciz,150); });
+  window.addEventListener('resize', function(){ clearTimeout(tmr); tmr=setTimeout(function(){ boyutla(); ciz(); },150); });
 
   } catch(e) {
     var k = document.getElementById('sema-kanvas');
