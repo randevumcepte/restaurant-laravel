@@ -2,7 +2,7 @@
 @section('title', 'Otomatik Sipariş Önerisi')
 @section('rk_ikon', 'auto_awesome')
 @section('baslik', 'Otomatik Sipariş Önerisi')
-@section('rk_alt', 'Par (hedef stok) + 30 günlük tüketime göre ne almalısın')
+@section('rk_alt', 'Neyin azaldı, ne kadar almalısın — sistem senin yerine hesaplar')
 
 @section('content')
 @php
@@ -18,15 +18,15 @@
 <div class="rk-card" style="margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
   <span class="material-icons-outlined" style="color:var(--mor1);font-size:26px">auto_awesome</span>
   <div style="flex:1;min-width:220px"><div style="font-weight:800;color:var(--ink);font-size:14.5px">{{ $oneriler->count() }} malzeme sipariş bekliyor</div>
-    <div class="rk-sub2" style="font-size:12px">Par (hedef stok) altına düşenler + 30 günlük tüketim hızına göre öneri. Tahmini tutar: <b class="rk-ink">{{ $tl($tahminiTutar) }}</b></div></div>
-  <div class="rk-sub2" style="font-size:11.5px;max-width:320px">💡 <b>Par (hedef stok)</b> belirle → sistem o seviyeye tamamlayacak kadar önersin. Belirlemezsen kritik stoğun 2 katı hedeflenir.</div>
+    <div class="rk-sub2" style="font-size:12px">Bu ekran senin yerine alışveriş listesi çıkarır: stoğu azalan malzemeleri + son 30 günde ne kadar harcadığını hesaplar. Tahmini tutar: <b class="rk-ink">{{ $tl($tahminiTutar) }}</b></div></div>
+  <div class="rk-sub2" style="font-size:11.5px;max-width:340px">💡 <b>Hedef stok (par)</b> = "elimde hep en az şu kadar dursun" dediğin miktar. Belirlersen sistem o seviyeye tamamlar; belirlemezsen kritik stoğun 2 katını hedefler.</div>
 </div>
 
 @if ($oneriler->isEmpty())
   <div class="rk-card" style="text-align:center;padding:40px">
     <span class="material-icons-outlined" style="font-size:52px;color:var(--yesil)">check_circle</span>
     <div class="rk-ink" style="font-weight:800;font-size:17px;margin-top:10px">Her şey yeterli 👍</div>
-    <div class="rk-sub" style="margin-top:6px">Par/kritik seviyenin altına düşen malzeme yok. (Hedef stok belirlemediysen malzeme kartından belirleyebilirsin.)</div>
+    <div class="rk-sub" style="margin-top:6px">Hedef (par) / kritik seviyenin altına düşen malzeme yok. (Hedef stok belirlemediysen malzeme kartından belirleyebilirsin.)</div>
   </div>
 @else
   <form method="POST" action="/siparis-onerisi/olustur" id="soForm">
@@ -35,10 +35,17 @@
     <div class="rk-tablo">
       <table>
         <thead>
+          @php $thac = 'display:block;font-weight:400;font-size:10px;margin-top:2px'; @endphp
           <tr>
             <th style="width:30px"><input type="checkbox" id="soHepsi" onclick="soTumunu(this)" checked></th>
-            <th>Malzeme</th><th class="sag">Mevcut</th><th class="sag">Kritik</th><th class="sag">Hedef (par)</th>
-            <th class="sag">Günlük</th><th class="sag">Önerilen</th><th>Tedarikçi</th><th class="sag">Tahmini</th>
+            <th>Malzeme<span class="rk-sub2" style="{{ $thac }}">ne alınacak</span></th>
+            <th class="sag">Mevcut<span class="rk-sub2" style="{{ $thac }}">şu an elinde olan</span></th>
+            <th class="sag">Kritik<span class="rk-sub2" style="{{ $thac }}">bu seviyenin altı tehlike</span></th>
+            <th class="sag">Hedef stok (par)<span class="rk-sub2" style="{{ $thac }}">hep bu kadar dursun istediğin</span></th>
+            <th class="sag">Günlük<span class="rk-sub2" style="{{ $thac }}">günde ortalama harcanan</span></th>
+            <th class="sag">Önerilen<span class="rk-sub2" style="{{ $thac }}">sistemin "al" dediği miktar</span></th>
+            <th>Tedarikçi<span class="rk-sub2" style="{{ $thac }}">kimden · birim fiyat</span></th>
+            <th class="sag">Tahmini<span class="rk-sub2" style="{{ $thac }}">bu kalemin maliyeti</span></th>
           </tr>
         </thead>
         <tbody>
@@ -53,7 +60,7 @@
                 <form method="POST" action="/siparis-onerisi/par" style="display:inline-flex;gap:4px;align-items:center" onclick="event.stopPropagation()">
                   @csrf<input type="hidden" name="malzeme_id" value="{{ $o->id }}">
                   <input type="number" name="hedef_stok" value="{{ $num($o->hedef) }}" step="0.001" min="0" class="rk-inp" style="width:72px;padding:5px 7px;font-size:12px">
-                  <button class="rk-btn bos" style="padding:5px 7px" title="Par kaydet"><span class="material-icons-outlined" style="font-size:14px">save</span></button>
+                  <button class="rk-btn bos" style="padding:5px 7px" title="Hedef stoğu (par) kaydet"><span class="material-icons-outlined" style="font-size:14px">save</span></button>
                 </form>
               </td>
               <td class="sag rk-sub2">{{ $num($o->gunluk) }}</td>
