@@ -30,7 +30,7 @@
 @php
     // Gruplu menü — başlık => [[url, material-icon, etiket, renk(null=ink)], ...]
     $gruplar = [
-        'Özet' => [
+        'Panel' => [
             ['/dashboard', 'dashboard', 'Özet', null],
         ],
         'Satış & Servis' => [
