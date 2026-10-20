@@ -76,6 +76,7 @@
         'Sadakat & Müşteri' => [
             ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
             ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
+            ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
         ],
         'Ayarlar & Entegrasyon' => [
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],

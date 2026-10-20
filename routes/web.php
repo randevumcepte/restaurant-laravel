@@ -1521,21 +1521,42 @@ Route::post('/api/m/kart-kullan', function (Request $r) {
 // KUPONLARIM: müşterinin aldığı tüm kampanyalar (geçmiş dahil) + kupon kodları
 Route::get('/api/m/kuponlarim', function (Request $r) {
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
-    if (!Schema::hasTable('musteri_kart_kullanim')) return ['ok' => 1, 'kuponlar' => []];
-    $list = DB::table('musteri_kart_kullanim as k')
-        ->join('app_banner as b', 'k.banner_id', '=', 'b.id')
-        ->where('k.musteri_id', $m->id)
-        ->orderByDesc('k.id')
-        ->get(['b.baslik', 'b.metin', 'b.gorsel', 'b.kupon_kodu', 'b.odul_puan', 'k.created_at'])
-        ->map(fn ($x) => [
-            'baslik' => $x->baslik ?: 'Kampanya',
-            'metin' => $x->metin ?: '',
-            'gorsel' => $x->gorsel,
-            'kupon_kodu' => $x->kupon_kodu,
-            'odul_puan' => (int) ($x->odul_puan ?? 0),
-            'tarih' => $x->created_at ? \Carbon\Carbon::parse($x->created_at)->format('d.m.Y') : '',
-        ]);
-    return ['ok' => 1, 'kuponlar' => $list->values()];
+    $list = collect();
+    if (Schema::hasTable('musteri_kart_kullanim')) {
+        $list = DB::table('musteri_kart_kullanim as k')
+            ->join('app_banner as b', 'k.banner_id', '=', 'b.id')
+            ->where('k.musteri_id', $m->id)
+            ->orderByDesc('k.id')
+            ->get(['b.baslik', 'b.metin', 'b.gorsel', 'b.kupon_kodu', 'b.odul_puan', 'k.created_at'])
+            ->map(fn ($x) => [
+                'baslik' => $x->baslik ?: 'Kampanya',
+                'metin' => $x->metin ?: '',
+                'gorsel' => $x->gorsel,
+                'kupon_kodu' => $x->kupon_kodu,
+                'odul_puan' => (int) ($x->odul_puan ?? 0),
+                'tur' => 'kampanya',
+                'tarih' => $x->created_at ? \Carbon\Carbon::parse($x->created_at)->format('d.m.Y') : '',
+            ]);
+    }
+    // Çarktan kazanılan indirim kuponları (bekleyen + süresi geçmemiş)
+    $cark = collect();
+    try {
+        _carkKur();
+        $cark = DB::table('odul_kullanimlari')->where('musteri_id', $m->id)->where('kaynak', 'cark')
+            ->where('durum', 'bekliyor')->where('bitis', '>', now())->orderByDesc('id')
+            ->get(['baslik', 'kod', 'bitis', 'created_at'])
+            ->map(fn ($x) => [
+                'baslik' => $x->baslik ?: 'Çark Ödülü',
+                'metin' => 'Kasada bu kodu göster — anında indirim',
+                'gorsel' => null,
+                'kupon_kodu' => $x->kod,
+                'odul_puan' => 0,
+                'tur' => 'cark',
+                'bitis' => $x->bitis ? \Carbon\Carbon::parse($x->bitis)->format('d.m.Y') : null,
+                'tarih' => $x->created_at ? \Carbon\Carbon::parse($x->created_at)->format('d.m.Y') : '',
+            ]);
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'kuponlar' => $cark->concat($list)->values()];
 });
 
 // ===== PUAN ÖDÜLÜ KULLANIMI (müşteri Kullan -> QR/kod -> kasa doğrula -> puan düş) =====
@@ -1588,8 +1609,9 @@ Route::post('/api/pos/odul-dogrula', function (Request $r) {
     if ($row->durum === 'kullanildi') return ['ok' => 0, 'hata' => 'Bu kod zaten kullanıldı'];
     if ($row->durum === 'iptal' || now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Kodun süresi dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
-    $yeter = (int) ($mus->puan ?? 0) >= (int) $row->puan;
-    $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+    $cark = (($row->kaynak ?? 'puan') === 'cark'); // çark kuponu: puan gerektirmez
+    $yeter = $cark ? true : ((int) ($mus->puan ?? 0) >= (int) $row->puan);
+    $o = $cark ? $row : DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
     $acik = DB::table('adisyonlar')->where('musteri_id', $row->musteri_id)->where('durum', 'acik')->orderByDesc('id')->first();
     return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan, 'aciklama' => $o ? _odulAciklama($o) : '',
         'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter,
@@ -1604,14 +1626,15 @@ Route::post('/api/pos/odul-onayla', function (Request $r) {
     if ($row->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Kod zaten işlenmiş'];
     if (now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Süre dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
-    if ((int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
+    $cark = (($row->kaynak ?? 'puan') === 'cark'); // çark kuponu: puan düşmez
+    if (!$cark && (int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
     // Açık adisyona uygula (opsiyonel): bedava ürün -> ikram; %/₺ indirim -> indirim
     $hesapMesaj = ''; $etki = 0.0;
     $adId = (int) $r->input('adisyon_id');
     if ($adId) {
         $a = DB::table('adisyonlar')->where('id', $adId)->where('durum', 'acik')->first();
         if ($a) {
-            $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+            $o = $cark ? $row : DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
             $tip = $o->tip ?? 'urun';
             $ara = (float) $a->ara_toplam; $ind = (float) $a->indirim; $ikr = (float) $a->ikram;
             $kalan = max(0, $ara - $ind - $ikr);
@@ -1631,7 +1654,8 @@ Route::post('/api/pos/odul-onayla', function (Request $r) {
     }
     DB::table('musteriler')->where('id', $row->musteri_id)->update(['puan' => DB::raw('puan - ' . (int) $row->puan), 'updated_at' => now()]);
     DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
-    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü" . $hesapMesaj, 'etki' => $etki];
+    $dusMsg = $cark ? '' : " · {$row->puan} puan düşüldü";
+    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı" . $dusMsg . $hesapMesaj, 'etki' => $etki];
 });
 
 // ---- KASA/GARSON (Flutter app, Bearer token'li) — POS uçlarının token'li ikizi ----
@@ -1644,8 +1668,9 @@ Route::post('/api/patron/odul-dogrula', function (Request $r) {
     if ($row->durum === 'kullanildi') return ['ok' => 0, 'hata' => 'Bu kod zaten kullanıldı'];
     if ($row->durum === 'iptal' || now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Kodun süresi dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
-    $yeter = (int) ($mus->puan ?? 0) >= (int) $row->puan;
-    $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+    $cark = (($row->kaynak ?? 'puan') === 'cark'); // çark kuponu: puan gerektirmez
+    $yeter = $cark ? true : ((int) ($mus->puan ?? 0) >= (int) $row->puan);
+    $o = $cark ? $row : DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
     $acik = DB::table('adisyonlar')->where('musteri_id', $row->musteri_id)->where('sube_id', $p->sube_id)->where('durum', 'acik')->orderByDesc('id')->first();
     return ['ok' => 1, 'kod' => $row->kod, 'odul_ad' => $row->odul_ad, 'puan' => (int) $row->puan, 'aciklama' => $o ? _odulAciklama($o) : '',
         'musteri' => trim(($mus->ad ?? '') . ' ' . ($mus->soyad ?? '')) ?: 'Müşteri', 'musteri_puan' => (int) ($mus->puan ?? 0), 'yeterli' => $yeter,
@@ -1659,13 +1684,14 @@ Route::post('/api/patron/odul-onayla', function (Request $r) {
     if ($row->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Kod zaten işlenmiş'];
     if (now()->gt(\Carbon\Carbon::parse($row->bitis))) return ['ok' => 0, 'hata' => 'Süre dolmuş'];
     $mus = DB::table('musteriler')->where('id', $row->musteri_id)->first();
-    if ((int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
+    $cark = (($row->kaynak ?? 'puan') === 'cark'); // çark kuponu: puan düşmez
+    if (!$cark && (int) ($mus->puan ?? 0) < (int) $row->puan) return ['ok' => 0, 'hata' => 'Müşterinin puanı yetersiz'];
     $hesapMesaj = ''; $etki = 0.0;
     $adId = (int) $r->input('adisyon_id');
     if ($adId) {
         $a = DB::table('adisyonlar')->where('id', $adId)->where('sube_id', $p->sube_id)->where('durum', 'acik')->first();
         if ($a) {
-            $o = DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
+            $o = $cark ? $row : DB::table('puan_odulleri')->where('id', $row->odul_id)->first();
             $tip = $o->tip ?? 'urun';
             $ara = (float) $a->ara_toplam; $ind = (float) $a->indirim; $ikr = (float) $a->ikram;
             $kalan = max(0, $ara - $ind - $ikr);
@@ -1685,7 +1711,8 @@ Route::post('/api/patron/odul-onayla', function (Request $r) {
     }
     DB::table('musteriler')->where('id', $row->musteri_id)->update(['puan' => DB::raw('puan - ' . (int) $row->puan), 'updated_at' => now()]);
     DB::table('odul_kullanimlari')->where('id', $row->id)->update(['durum' => 'kullanildi', 'kullanildi_at' => now(), 'kasiyer_id' => $p->id ?? null, 'updated_at' => now()]);
-    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı · {$row->puan} puan düşüldü" . $hesapMesaj, 'etki' => $etki];
+    $dusMsg = $cark ? '' : " · {$row->puan} puan düşüldü";
+    return ['ok' => 1, 'mesaj' => "{$row->odul_ad} uygulandı" . $dusMsg . $hesapMesaj, 'etki' => $etki];
 });
 // Kasa ekranı: ödül/kupon doğrula (PIN'li)
 Route::get('/odul-dogrula', function () {
@@ -1711,6 +1738,183 @@ Route::get('/odul-raporu', function () {
         'bugun' => $kul->filter(fn ($x) => \Carbon\Carbon::parse($x->kullanildi_at ?? $x->created_at)->isToday())->count(),
         'bekleyen' => $rows->where('durum', 'bekliyor')->count()];
     return view('odul_raporu', compact('rows', 'ozet'));
+});
+
+// ============================= ÇARKIFELEK (sadakat çarkı) =============================
+// Randevumcepte çark sisteminden devşirme. Ödül: puan→anında musteriler.puan;
+// indirim→odul_kullanimlari(kaynak='cark') kuponu, mevcut POS /odul-dogrula ile tüketilir.
+if (!function_exists('_carkKur')) {
+    function _carkKur()
+    {
+        if (cache()->get('cark_kur_ok1')) return;
+        if (!Schema::hasTable('carkifelek_ayar')) {
+            try { Schema::create('carkifelek_ayar', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->tinyInteger('aktif')->default(1);
+                $t->unsignedSmallInteger('cevirme_araligi_gun')->default(7);
+                $t->unsignedSmallInteger('kupon_gecerlilik_gun')->default(7);
+                $t->text('kurallar')->nullable();
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasTable('carkifelek_dilimleri')) {
+            try { Schema::create('carkifelek_dilimleri', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 80); $t->string('renk', 16)->default('#7C3AED');
+                $t->unsignedSmallInteger('olasilik')->default(10);
+                $t->string('tip', 16)->default('puan'); // puan|yuzde|tutar|tekrar|bos
+                $t->decimal('deger', 10, 2)->default(0);
+                $t->unsignedSmallInteger('sira')->default(0);
+                $t->tinyInteger('aktif')->default(1);
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasTable('carkifelek_log')) {
+            try { Schema::create('carkifelek_log', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->unsignedBigInteger('musteri_id')->index();
+                $t->unsignedBigInteger('dilim_id')->nullable(); $t->string('tip', 16)->nullable();
+                $t->decimal('deger', 10, 2)->default(0); $t->string('dilim_ad', 80)->nullable();
+                $t->string('kupon_kodu', 20)->nullable(); $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        // odul_kullanimlari çark alanları: indirim kuponu kaynağı + tip/deger satırda tutulur (puan_odulleri'siz)
+        if (Schema::hasTable('odul_kullanimlari')) {
+            foreach (['kaynak' => 'str16', 'tip' => 'str16', 'indirim_tipi' => 'str10', 'baslik' => 'str150', 'deger' => 'dec'] as $k => $tp) {
+                if (!Schema::hasColumn('odul_kullanimlari', $k)) {
+                    try { Schema::table('odul_kullanimlari', function ($tb) use ($k, $tp) {
+                        if ($tp === 'dec') $tb->decimal($k, 10, 2)->default(0);
+                        elseif ($tp === 'str10') $tb->string($k, 10)->nullable();
+                        elseif ($tp === 'str150') $tb->string($k, 150)->nullable();
+                        else $tb->string($k, 16)->nullable();
+                    }); } catch (\Throwable $e) {}
+                }
+            }
+        }
+        cache()->put('cark_kur_ok1', 1, now()->addHours(6));
+    }
+}
+if (!function_exists('_carkSeed')) {
+    function _carkSeed($sid)
+    {
+        if (DB::table('carkifelek_ayar')->where('sube_id', $sid)->exists()) return;
+        DB::table('carkifelek_ayar')->insert(['sube_id' => $sid, 'aktif' => 1, 'cevirme_araligi_gun' => 7, 'kupon_gecerlilik_gun' => 7,
+            'kurallar' => "Çarkıfelek bir sadakat kampanyasıdır, şans oyunu değildir. Ödüller önceden belirlenmiştir ve herkese aynıdır. İşletme kampanya koşullarını değiştirme hakkını saklı tutar. Kazanılan indirim kuponları belirtilen süre içinde geçerlidir.",
+            'created_at' => now(), 'updated_at' => now()]);
+        $d = [
+            ['ad' => '10 Puan', 'renk' => '#7C3AED', 'olasilik' => 30, 'tip' => 'puan', 'deger' => 10],
+            ['ad' => '%5 İndirim', 'renk' => '#F59E0B', 'olasilik' => 20, 'tip' => 'yuzde', 'deger' => 5],
+            ['ad' => '25 Puan', 'renk' => '#10B981', 'olasilik' => 18, 'tip' => 'puan', 'deger' => 25],
+            ['ad' => 'Tekrar Dene', 'renk' => '#64748B', 'olasilik' => 12, 'tip' => 'tekrar', 'deger' => 0],
+            ['ad' => '%10 İndirim', 'renk' => '#E8541E', 'olasilik' => 12, 'tip' => 'yuzde', 'deger' => 10],
+            ['ad' => '50 Puan', 'renk' => '#4F46E5', 'olasilik' => 6, 'tip' => 'puan', 'deger' => 50],
+            ['ad' => '25₺ İndirim', 'renk' => '#F43F5E', 'olasilik' => 2, 'tip' => 'tutar', 'deger' => 25],
+        ];
+        $i = 0;
+        foreach ($d as $x) { $x['sube_id'] = $sid; $x['sira'] = $i++; $x['aktif'] = 1; $x['created_at'] = now(); $x['updated_at'] = now(); DB::table('carkifelek_dilimleri')->insert($x); }
+    }
+}
+if (!function_exists('_carkSonraki')) {
+    function _carkSonraki($sid, $mid, $araGun)
+    {
+        $son = DB::table('carkifelek_log')->where('sube_id', $sid)->where('musteri_id', $mid)
+            ->where('tip', '!=', 'tekrar')->orderByDesc('id')->first();
+        if (!$son) return null;
+        return \Carbon\Carbon::parse($son->created_at)->startOfDay()->addDays(max(0, (int) $araGun));
+    }
+}
+if (!function_exists('_carkAciklama')) {
+    function _carkAciklama($tip, $deger)
+    {
+        if ($tip === 'puan') return '+' . (int) $deger . ' puan';
+        if ($tip === 'yuzde') return '%' . rtrim(rtrim(number_format((float) $deger, 2, '.', ''), '0'), '.') . ' indirim';
+        if ($tip === 'tutar') return number_format((float) $deger, 0, ',', '.') . '₺ indirim';
+        if ($tip === 'tekrar') return 'Tekrar dene';
+        return 'Boş';
+    }
+}
+// Müşteri: çark durumu (dilimler + çevirebilir mi) — olasılık ASLA dışarı verilmez
+Route::get('/api/m/cark', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _carkKur(); _carkSeed($m->sube_id);
+    $ayar = DB::table('carkifelek_ayar')->where('sube_id', $m->sube_id)->first();
+    $dilimler = DB::table('carkifelek_dilimleri')->where('sube_id', $m->sube_id)->where('aktif', 1)->orderBy('sira')->orderBy('id')
+        ->get(['id', 'ad', 'renk'])->map(fn ($d) => ['id' => (int) $d->id, 'ad' => $d->ad, 'renk' => $d->renk])->values();
+    $sonraki = _carkSonraki($m->sube_id, $m->id, $ayar->cevirme_araligi_gun ?? 7);
+    $cevirebilir = ($ayar && $ayar->aktif) && (!$sonraki || \Carbon\Carbon::today()->gte($sonraki));
+    return ['ok' => 1, 'aktif' => (bool) ($ayar->aktif ?? 0), 'cevirebilir' => $cevirebilir,
+        'sonraki' => $sonraki ? $sonraki->format('d.m.Y') : null,
+        'kurallar' => $ayar->kurallar ?? '', 'dilimler' => $dilimler];
+});
+// Müşteri: çarkı çevir (ağırlıklı random SUNUCUDA; ödül işlenir)
+Route::post('/api/m/cark-cevir', function (Request $r) {
+    $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
+    _carkKur(); _carkSeed($m->sube_id); _odulKullanimEnsure();
+    $ayar = DB::table('carkifelek_ayar')->where('sube_id', $m->sube_id)->first();
+    if (!$ayar || !$ayar->aktif) return ['ok' => 0, 'hata' => 'Çark şu an kapalı'];
+    $sonraki = _carkSonraki($m->sube_id, $m->id, $ayar->cevirme_araligi_gun ?? 7);
+    if ($sonraki && \Carbon\Carbon::today()->lt($sonraki)) return ['ok' => 0, 'kilitli' => 1, 'sonraki' => $sonraki->format('d.m.Y'), 'hata' => 'Bir sonraki çevirme hakkın: ' . $sonraki->format('d.m.Y')];
+    $dilimler = DB::table('carkifelek_dilimleri')->where('sube_id', $m->sube_id)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get();
+    if ($dilimler->count() < 2) return ['ok' => 0, 'hata' => 'Çark henüz hazır değil'];
+    // ağırlıklı random seçim
+    $toplam = (int) $dilimler->sum('olasilik'); if ($toplam <= 0) $toplam = $dilimler->count();
+    $rand = random_int(1, $toplam); $bir = 0; $sec = $dilimler->last(); $idx = $dilimler->count() - 1; $i = 0;
+    foreach ($dilimler as $d) { $bir += max(0, (int) $d->olasilik); if ($rand <= $bir) { $sec = $d; $idx = $i; break; } $i++; }
+    $tip = $sec->tip; $deger = (float) $sec->deger; $kupon = null; $puanYeni = (int) ($m->puan ?? 0);
+    $logId = DB::table('carkifelek_log')->insertGetId(['sube_id' => $m->sube_id, 'musteri_id' => $m->id, 'dilim_id' => $sec->id, 'tip' => $tip, 'deger' => $deger, 'dilim_ad' => $sec->ad, 'created_at' => now(), 'updated_at' => now()]);
+    if ($tip === 'puan' && $deger > 0) {
+        DB::table('musteriler')->where('id', $m->id)->update(['puan' => DB::raw('puan + ' . (int) $deger), 'updated_at' => now()]);
+        $puanYeni += (int) $deger;
+    } elseif (in_array($tip, ['yuzde', 'tutar']) && $deger > 0) {
+        do { $kupon = strtoupper(\Illuminate\Support\Str::random(6)); } while (DB::table('odul_kullanimlari')->where('kod', $kupon)->exists());
+        $baslik = _carkAciklama($tip, $deger) . ' (Çark)';
+        $bitis = now()->addDays(max(1, (int) ($ayar->kupon_gecerlilik_gun ?? 7)));
+        DB::table('odul_kullanimlari')->insert(['musteri_id' => $m->id, 'sube_id' => $m->sube_id, 'odul_id' => null,
+            'odul_ad' => $baslik, 'puan' => 0, 'kod' => $kupon, 'durum' => 'bekliyor', 'bitis' => $bitis,
+            'kaynak' => 'cark', 'tip' => $tip, 'deger' => $deger, 'baslik' => $baslik, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('carkifelek_log')->where('id', $logId)->update(['kupon_kodu' => $kupon]);
+    }
+    $mesaj = $tip === 'tekrar' ? 'Bu sefer olmadı, tekrar deneyebilirsin! 🍀'
+        : ($tip === 'bos' ? 'Bu sefer boş geldi 😊 Yine bekleriz!'
+        : ($tip === 'puan' ? '+' . (int) $deger . ' puan hesabına eklendi! 🎉'
+        : _carkAciklama($tip, $deger) . ' kazandın! 🎉 Kodu kasada göster.'));
+    return ['ok' => 1, 'index' => $idx, 'dilim_id' => (int) $sec->id, 'tip' => $tip, 'deger' => $deger,
+        'baslik' => $sec->ad, 'kupon_kodu' => $kupon, 'puan' => $puanYeni, 'mesaj' => $mesaj, 'renk' => $sec->renk];
+});
+// Patron: çark yönetimi (dilim + ayar düzenleme)
+Route::get('/cark-yonetim', function () {
+    if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
+    $sid = _webSubeId(); _carkKur(); _carkSeed($sid);
+    $ayar = DB::table('carkifelek_ayar')->where('sube_id', $sid)->first();
+    $dilimler = DB::table('carkifelek_dilimleri')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get();
+    return view('cark_yonetim', compact('ayar', 'dilimler'));
+});
+Route::post('/cark-yonetim/kaydet', function (Request $r) {
+    $sid = _webSubeId(); _carkKur();
+    try {
+        DB::table('carkifelek_ayar')->updateOrInsert(['sube_id' => $sid], [
+            'aktif' => $r->input('aktif') ? 1 : 0,
+            'cevirme_araligi_gun' => max(0, (int) $r->input('aralik', 7)),
+            'kupon_gecerlilik_gun' => max(1, (int) $r->input('gecerlilik', 7)),
+            'kurallar' => trim((string) $r->input('kurallar')) ?: null,
+            'updated_at' => now(),
+        ]);
+        $dilimler = json_decode((string) $r->input('dilimler_json', '[]'), true) ?: [];
+        DB::table('carkifelek_dilimleri')->where('sube_id', $sid)->delete();
+        $i = 0;
+        foreach ($dilimler as $d) {
+            $ad = trim((string) ($d['ad'] ?? '')); if ($ad === '') continue;
+            DB::table('carkifelek_dilimleri')->insert([
+                'sube_id' => $sid, 'ad' => mb_substr($ad, 0, 80),
+                'renk' => (isset($d['renk']) && preg_match('/^#[0-9A-Fa-f]{6}$/', $d['renk'])) ? $d['renk'] : '#7C3AED',
+                'olasilik' => max(0, (int) ($d['olasilik'] ?? 0)),
+                'tip' => in_array($d['tip'] ?? '', ['puan', 'yuzde', 'tutar', 'tekrar', 'bos']) ? $d['tip'] : 'puan',
+                'deger' => max(0, (float) ($d['deger'] ?? 0)),
+                'sira' => $i++, 'aktif' => (isset($d['aktif']) && !$d['aktif']) ? 0 : 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        return redirect('/cark-yonetim')->with('ok', 'Çark ayarları kaydedildi ✓');
+    } catch (\Throwable $e) { return redirect('/cark-yonetim')->with('hata', 'Kaydedilemedi: ' . $e->getMessage()); }
 });
 
 // Garson çağır (müşteri app) — GPS GEOFENCE: sadece restorandayken çalışır (evdeki müşteri çağıramaz)
@@ -6290,7 +6494,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -8111,6 +8315,51 @@ Route::post('/siparis-onerisi/olustur', function (Request $r) {
         }
         return redirect('/satinalma-siparis')->with('sa_ok', $olusan . ' sipariş taslağı oluşturuldu (tedarikçiye göre gruplandı).');
     } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Sipariş oluşturulamadı.'); }
+});
+
+// ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
+Route::get('/fiyat-radari', function () {
+    $sid = _webSubeId();
+    $d = ['zamlar' => collect(), 'firsatlar' => collect(), 'esik' => 8];
+    try {
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        if (!Schema::hasTable('alis_fatura_kalemleri') || !Schema::hasTable('alis_faturalari')) return view('fiyat_radari', $d);
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $from = today()->subDays(120);
+        $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+            ->where('f.sube_id', $sid)->whereDate('f.tarih', '>=', $from)
+            ->orderBy('k.malzeme_id')->orderBy('f.tarih')->orderBy('k.id')
+            ->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar', 'f.tarih']);
+        $esik = 8; $zamlar = collect();
+        foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
+            if ($g->count() < 2) continue;
+            $ilk = (float) $g->first()->birim_fiyat; $son = (float) $g->last()->birim_fiyat;
+            if ($ilk <= 0) continue;
+            $yuzde = round(($son - $ilk) / $ilk * 100, 1);
+            if ($yuzde < $esik) continue;
+            $yillikMik = (float) $g->sum('miktar') * (365 / 120);
+            $zamlar->push((object) ['ad' => $malAd[$mid] ?? '—', 'birim' => $birimKis[$g->first()->alis_birim_id] ?? '', 'ilk' => $ilk, 'son' => $son, 'yuzde' => $yuzde,
+                'adet' => $g->count(), 'ilk_tarih' => $g->first()->tarih, 'son_tarih' => $g->last()->tarih, 'yillik_etki' => round(($son - $ilk) * $yillikMik, 0)]);
+        }
+        $d['zamlar'] = $zamlar->sortByDesc('yillik_etki')->values();
+        if (Schema::hasTable('tedarikci_malzeme')) {
+            $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+            $kat = DB::table('tedarikci_malzeme')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('guncel_fiyat')->where('guncel_fiyat', '>', 0)->get();
+            $firsat = collect();
+            foreach ($kat->groupBy('malzeme_id') as $mid => $cs) {
+                if ($cs->count() < 2) continue;
+                $sorted = $cs->sortBy('guncel_fiyat')->values();
+                $enUcuz = $sorted->first(); $enPahali = $sorted->last();
+                if ((float) $enPahali->guncel_fiyat <= 0) continue;
+                $tasarruf = round(((float) $enPahali->guncel_fiyat - (float) $enUcuz->guncel_fiyat) / (float) $enPahali->guncel_fiyat * 100, 1);
+                if ($tasarruf < 5) continue;
+                $firsat->push((object) ['ad' => $malAd[$mid] ?? '—', 'en_ucuz_ted' => $tedAd[$enUcuz->tedarikci_id] ?? '—', 'en_ucuz_fiyat' => (float) $enUcuz->guncel_fiyat,
+                    'en_pahali_fiyat' => (float) $enPahali->guncel_fiyat, 'tasarruf' => $tasarruf, 'ted_say' => $cs->count()]);
+            }
+            $d['firsatlar'] = $firsat->sortByDesc('tasarruf')->values();
+        }
+    } catch (\Throwable $e) {}
+    return view('fiyat_radari', $d);
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
