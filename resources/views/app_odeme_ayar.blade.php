@@ -1,122 +1,380 @@
 @extends('layout.app')
-@section('title', 'Ödeme Ayarları')
-@section('baslik', '💳 Ödeme Ayarları (PayTR / iyzico)')
+@section('title', 'Kaçak Önleme / Ödeme')
+@section('rk_ikon', 'security')
+@section('baslik', 'Kaçak Önleme / Ödeme')
 
 @push('head')
 <style>
-#odroot{--line:#e4e4ee;max-width:1060px}
-#odroot .wrap{display:grid;grid-template-columns:1fr 350px;gap:20px;align-items:start}
-@media(max-width:900px){#odroot .wrap{grid-template-columns:1fr}}
-#odroot .card{background:#fff;border-radius:16px;padding:22px;box-shadow:0 6px 20px rgba(40,30,80,.06);margin-bottom:18px}
-#odroot h2{font-size:15px;margin:0 0 4px;color:#39304f;font-weight:800}
-#odroot .alt{color:#8a8a9a;font-size:13px;margin:0 0 16px}
-#odroot .flash{background:#e7f8ef;color:#137a4a;padding:10px 14px;border-radius:10px;margin:0 0 16px;font-size:14px;font-weight:600}
-#odroot label{display:block;font-size:12.5px;color:#6a6a80;font-weight:700;margin:14px 0 6px}
-#odroot input,#odroot select{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;box-sizing:border-box}
-#odroot .kayitli{font-size:11.5px;color:#137a4a;font-weight:700;margin-top:4px}
-#odroot .cb{display:flex;gap:8px;align-items:center;background:#f6f7fb;border:1px dashed #c9cce0;border-radius:10px;padding:10px 12px}
-#odroot .cb code{font-size:12.5px;color:#39304f;word-break:break-all;flex:1}
-#odroot .cpy{background:#eef;color:#4338ca;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;font-size:12.5px}
-#odroot .save{margin-top:6px;padding:13px 26px;background:linear-gradient(135deg,#17171c,#2b2b33);color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:800;cursor:pointer}
-#odroot .note{background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:16px;color:#9a3412;font-size:12.8px;line-height:1.55;margin-bottom:18px}
-#odroot .sw{display:flex;align-items:center;gap:10px;margin-top:16px}
-#odroot ol{margin:6px 0 0;padding-left:18px}#odroot ol li{margin-bottom:3px}
-#odroot .adim{display:flex;gap:11px;margin-bottom:12px}
-#odroot .adim .n{flex:none;width:24px;height:24px;border-radius:50%;background:#eef;color:#4338ca;font-weight:800;font-size:12.5px;display:flex;align-items:center;justify-content:center}
-#odroot .adim .t{font-size:12.8px;color:#51526a;line-height:1.45}
-#odroot .sup{background:linear-gradient(135deg,#17171c,#3a2b55);border-radius:16px;padding:22px;color:#fff;box-shadow:0 10px 26px rgba(40,30,80,.18)}
-#odroot .sup h3{margin:0 0 6px;font-size:16px;font-weight:800}
-#odroot .sup p{margin:0 0 16px;font-size:13px;line-height:1.55;color:#d6d3e6}
-#odroot .sup .tel{display:block;font-size:22px;font-weight:900;letter-spacing:.5px;color:#fff;text-decoration:none;margin-bottom:14px}
-#odroot .sup .btns{display:flex;gap:10px}
-#odroot .sup a.b{flex:1;text-align:center;text-decoration:none;font-weight:800;font-size:13.5px;padding:11px 0;border-radius:11px}
-#odroot .sup .ara{background:#fff;color:#1f1733}
-#odroot .sup .wa{background:#25D366;color:#063}
+/* ── Kaçak Önleme & Ödeme Modu — Flutter OdemeModuScreen web eşdeğeri ─── */
+#odm{--mor1:#7C3AED;--mor2:#9D5DC8;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;--gold:#F6CE63;
+  --card:#fff;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;max-width:680px}
+body.koyu #odm{--card:#1b2235;--ink:#e2e8f0;--sub:#64748b;--sub2:#94a3b8;--line:#2c3650}
+
+/* liste kabı */
+#odm .odm-list{display:flex;flex-direction:column;gap:0;padding:16px 0 40px}
+
+/* bölüm başlığı */
+#odm .odm-baslik{font-size:12.5px;font-weight:700;color:var(--sub);padding:18px 2px 8px;text-transform:uppercase;letter-spacing:.4px}
+
+/* mod kartı */
+#odm .mod-kart{background:var(--card);border-radius:14px;border:1.5px solid var(--line);padding:13px;margin-bottom:8px;
+  display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color .15s,box-shadow .15s;user-select:none}
+#odm .mod-kart.secili{border-color:var(--mavi);border-width:2px;box-shadow:0 0 0 2px rgba(79,70,229,.08)}
+#odm .mod-kart .ik{font-size:24px;flex:none}
+#odm .mod-kart .icerik{flex:1;min-width:0}
+#odm .mod-kart .mod-ad{font-size:15px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#odm .mod-kart .mod-ad .kilit{font-size:13px;color:var(--sub2)}
+#odm .mod-kart .mod-aciklama{font-size:12px;color:var(--sub2);margin-top:3px;line-height:1.3}
+#odm .mod-kart .radyo{color:var(--sub2);font-size:22px;flex:none;transition:color .15s}
+#odm .mod-kart.secili .radyo{color:var(--mavi)}
+
+/* uyarı bandı (amber) */
+#odm .uyari-bant{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:12px;
+  padding:12px;font-size:12.5px;color:var(--ink);line-height:1.35;margin-bottom:8px}
+
+/* radar kartı */
+#odm .radar-kart{background:var(--card);border-radius:12px;border:1px solid var(--line);
+  padding:0 14px}
+#odm .radar-satir{display:flex;align-items:center;gap:10px;padding:14px 0;cursor:pointer;user-select:none}
+#odm .radar-satir .radar-yazi{flex:1;min-width:0}
+#odm .radar-satir .radar-baslik{font-size:14.5px;color:var(--ink)}
+#odm .radar-satir .radar-alt{font-size:12px;color:var(--sub2);margin-top:2px;line-height:1.3}
+
+/* toggle switch */
+#odm .tog{position:relative;display:inline-flex;align-items:center;width:42px;height:24px;flex:none}
+#odm .tog input{opacity:0;width:0;height:0;position:absolute}
+#odm .tog-slider{position:absolute;inset:0;border-radius:34px;background:#cbd5e1;transition:background .2s;cursor:pointer}
+#odm .tog-slider:before{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;
+  top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+#odm .tog input:checked + .tog-slider{background:#22C55E}
+#odm .tog input:checked + .tog-slider:before{transform:translateX(18px)}
+
+/* slider satırı */
+#odm .slider-satir{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+#odm .slider-satir .sl-label{font-size:13.5px;color:var(--sub);white-space:nowrap}
+#odm .slider-satir .sl-deger{font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;min-width:48px;text-align:right}
+#odm .slider-satir input[type=range]{flex:1;accent-color:var(--mavi);cursor:pointer}
+
+/* hint metni */
+#odm .hint{font-size:12px;color:var(--sub2);padding:6px 2px 0;line-height:1.35}
+
+/* bölge satırı */
+#odm .bolge-kart{background:var(--card);border-radius:12px;border:1px solid var(--line);padding:4px 14px;
+  display:flex;align-items:center;gap:10px;margin-top:8px}
+#odm .bolge-kart .bolge-ad{flex:1;font-size:14.5px;font-weight:600;color:var(--ink)}
+#odm .bolge-kart select{border:none;background:transparent;font-size:13.5px;color:var(--ink);cursor:pointer;
+  padding:10px 4px;outline:none;appearance:auto}
+body.koyu #odm .bolge-kart select{color:var(--ink);background:var(--card)}
+#odm .bolge-kart select option{background:var(--card);color:var(--ink)}
+
+/* kaydet butonu */
+#odm .kaydet-btn{width:100%;height:52px;background:var(--mavi);color:#fff;border:none;border-radius:14px;
+  font-size:16px;font-weight:700;cursor:pointer;margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s}
+#odm .kaydet-btn:disabled{opacity:.55;cursor:not-allowed}
+#odm .kaydet-btn .spin{width:20px;height:20px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:odmSpin .7s linear infinite}
+@keyframes odmSpin{to{transform:rotate(360deg)}}
+#odm .yetki-yok{font-size:13.5px;color:var(--sub);padding-top:4px}
+
+/* toast */
+#odm-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#1e293b;color:#fff;padding:11px 22px;border-radius:12px;font-size:14px;font-weight:600;
+  z-index:9999;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none}
+#odm-toast.goster{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* spinner overlay (yükleniyor) */
+#odm-yukleniyor{display:flex;align-items:center;justify-content:center;padding:60px 0}
+#odm-yukleniyor .spin2{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--mavi);
+  border-radius:50%;animation:odmSpin .7s linear infinite}
 </style>
 @endpush
 
 @section('content')
 @php
-  $sag = $a->saglayici ?? 'kapali';
-  $apiVar = !empty($a->api_key);
-  $secVar = !empty($a->secret);
+  /* Personel token — Bearer gerektiren /api/patron/odeme-modu uçlarına JS'den çağrı için */
+  $_odm_p = null;
+  try { if (function_exists('_posPersonel')) $_odm_p = _posPersonel(); } catch (\Throwable $e) {}
+  $odmToken = $_odm_p ? ($_odm_p->api_token ?? '') : '';
+  $odmDuz   = $_odm_p && in_array($_odm_p->rol ?? '', ['sahip', 'mudur']);
 @endphp
-<div id="odroot">
-  @if (session('ay_ok'))<div class="flash">✓ {{ session('ay_ok') }}</div>@endif
 
-  <div class="wrap">
-    {{-- SOL: Form --}}
-    <div>
-      <form method="post" action="/odeme-ayar/kaydet">
-        @csrf
-        <div class="card">
-          <h2>Sağlayıcı Bağlantısı</h2>
-          <p class="alt">Bilgileri girip "Aktif" işaretleyince cüzdan yüklemeleri gerçek karttan çekilir.</p>
+<div id="odm">
+  <div id="odm-yukleniyor"><div class="spin2"></div></div>
+  <div id="odm-icerik" style="display:none" class="odm-list">
 
-          <label>Ödeme Sağlayıcı</label>
-          <select name="saglayici">
-            <option value="kapali" @selected($sag==='kapali')>Kapalı (test / simülasyon)</option>
-            <option value="paytr" @selected($sag==='paytr')>PayTR</option>
-            <option value="iyzico" @selected($sag==='iyzico')>iyzico</option>
-          </select>
+    <!-- ── Ödeme Modu ── -->
+    <div class="odm-baslik">Ödeme Modu</div>
 
-          <label>Mağaza No (merchant_id)</label>
-          <input type="text" name="magaza_id" value="{{ $a->magaza_id ?? '' }}" placeholder="Örn: 123456" autocomplete="off">
-
-          <label>Mağaza Parolası (merchant_key)</label>
-          <input type="password" name="api_key" placeholder="{{ $apiVar ? '•••••••• (kayıtlı — değiştirmek için yaz)' : 'PayTR mağaza parolası' }}" autocomplete="off">
-          @if($apiVar)<div class="kayitli">✓ Kayıtlı</div>@endif
-
-          <label>Mağaza Gizli Anahtarı (merchant_salt)</label>
-          <input type="password" name="secret" placeholder="{{ $secVar ? '•••••••• (kayıtlı — değiştirmek için yaz)' : 'PayTR gizli anahtarı' }}" autocomplete="off">
-          @if($secVar)<div class="kayitli">✓ Kayıtlı</div>@endif
-
-          <div class="sw">
-            <input type="checkbox" name="aktif" value="1" @checked(!empty($a->aktif)) style="width:auto">
-            <span style="font-size:13.5px;color:#39304f;font-weight:700">Aktif — gerçek ödeme açık</span>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Bildirim (Callback) URL'i</h2>
-          <p class="alt">Bu adresi PayTR panelinizde <b>"Bildirim URL"</b> alanına yapıştırın. Ödeme sonucu buraya gelir.</p>
-          <div class="cb"><code id="cbu">{{ $callback }}</code><button type="button" class="cpy" onclick="navigator.clipboard.writeText(document.getElementById('cbu').innerText)">Kopyala</button></div>
-        </div>
-
-        <button class="save">Kaydet</button>
-      </form>
+    <!-- post_pay -->
+    <div class="mod-kart" id="mk-post_pay" onclick="odmModSec('post_pay')">
+      <span class="ik">🍽️</span>
+      <div class="icerik">
+        <div class="mod-ad">Klasik (servis sonrası öde)</div>
+        <div class="mod-aciklama">Müşteri yer, sonra öder. Aktif koruma: aşağıdaki Kaçak Radarı.</div>
+      </div>
+      <span class="material-icons-outlined radyo" id="radyo-post_pay">radio_button_off</span>
     </div>
 
-    {{-- SAĞ: Bilgi + Destek --}}
-    <div>
-      <div class="note">
-        🔐 <b>Her restoran kendi PayTR hesabını kullanır</b> — para doğrudan <b>sizin</b> banka hesabınıza geçer, biz paraya dokunmayız.<br><br>
-        PayTR hesabınız yoksa: <b>paytr.com → Üye İşyeri Başvuru</b>. Onay sonrası PayTR panelinden 3 bilgiyi alırsınız:
-        <ol>
-          <li><b>Mağaza No</b> (merchant_id)</li>
-          <li><b>Mağaza Parolası</b> (merchant_key)</li>
-          <li><b>Mağaza Gizli Anahtarı</b> (merchant_salt)</li>
-        </ol>
+    <!-- on_odeme -->
+    <div class="mod-kart" id="mk-on_odeme" onclick="odmModSec('on_odeme')">
+      <span class="ik">💳</span>
+      <div class="icerik">
+        <div class="mod-ad">Ön Ödemeli <span class="kilit">🔒</span></div>
+        <div class="mod-aciklama">Sipariş önce ödenir, sonra mutfağa düşer. Kaçak = sıfır.</div>
+      </div>
+      <span class="material-icons-outlined radyo" id="radyo-on_odeme">radio_button_off</span>
+    </div>
+
+    <!-- acik_kart -->
+    <div class="mod-kart" id="mk-acik_kart" onclick="odmModSec('acik_kart')">
+      <span class="ik">🔐</span>
+      <div class="icerik">
+        <div class="mod-ad">Açık Hesap + Kart <span class="kilit">🔒</span></div>
+        <div class="mod-aciklama">QR'da kart bağlanır, çıkışta otomatik çekilir.</div>
+      </div>
+      <span class="material-icons-outlined radyo" id="radyo-acik_kart">radio_button_off</span>
+    </div>
+
+    <!-- uyarı bandı -->
+    <div class="uyari-bant">
+      🔒 "Ön Ödemeli" ve "Açık Hesap + Kart", canlı ödeme (Iyzico/PayTR) devreye girince tam aktifleşir. Şu an her modda aktif koruma: Kaçak Radarı.
+    </div>
+
+    <!-- ── Kaçak Radarı ── -->
+    <div class="odm-baslik">Kaçak Radarı</div>
+
+    <div class="radar-kart">
+      <div class="radar-satir" onclick="odmToggle()">
+        <div class="radar-yazi">
+          <div class="radar-baslik">Uzun süredir açık + ödenmemiş masaları uyar</div>
+          <div class="radar-alt">Garson ekranında kırmızı "ödemeden ayrılma riski" kartı gösterilir.</div>
+        </div>
+        <label class="tog" onclick="event.stopPropagation()">
+          <input type="checkbox" id="kacak-toggl" onchange="odmToggleChange()">
+          <span class="tog-slider"></span>
+        </label>
       </div>
 
-      <div class="card">
-        <h2 style="margin-bottom:14px">Nasıl çalışır?</h2>
-        <div class="adim"><div class="n">1</div><div class="t">PayTR'den aldığınız 3 bilgiyi buraya girer, "Aktif" edersiniz.</div></div>
-        <div class="adim"><div class="n">2</div><div class="t">Müşteri cüzdana yükleme yapınca PayTR'nin güvenli kart ekranı açılır.</div></div>
-        <div class="adim"><div class="n">3</div><div class="t">Ödeme onaylanınca para hesabınıza geçer, müşterinin cüzdanı anında yüklenir.</div></div>
-        <div class="adim"><div class="n">4</div><div class="t">Kasada cüzdanla ödemede ek komisyon yok — kart komisyonunu tek seferde ödersiniz.</div></div>
-      </div>
-
-      <div class="sup">
-        <h3>Yardıma mı ihtiyacınız var? 💜</h3>
-        <p>PayTR bağlantısı, kurulum veya herhangi bir konuda takılırsanız yanınızdayız. Kurulumu birlikte dakikalar içinde tamamlayalım.</p>
-        <a class="tel" href="tel:+905412948144">0541 294 81 44</a>
-        <div class="btns">
-          <a class="b ara" href="tel:+905412948144">📞 Ara</a>
-          <a class="b wa" href="https://wa.me/905412948144?text=Merhaba, ResteOS ödeme (PayTR) kurulumu için yardım istiyorum." target="_blank" rel="noopener">WhatsApp</a>
+      <div id="slider-wrap" style="display:none">
+        <div class="slider-satir">
+          <span class="sl-label">Uyarı süresi</span>
+          <input type="range" id="kacak-slider" min="15" max="240" step="15" value="90" oninput="odmSlider(this.value)">
+          <span class="sl-deger" id="kacak-dk-label">90 dk</span>
         </div>
       </div>
     </div>
-  </div>
-</div>
+
+    <div class="hint">
+      Örn: 90 dk'dan uzun süredir açık ve ödenmemiş bir masa varsa garson uyarılır. Süreyi restoranın ortalama oturma süresine göre ayarla.
+    </div>
+
+    <!-- ── Bölge Bazlı ── -->
+    <div id="bolge-wrap" style="display:none">
+      <div class="odm-baslik">Bölge Bazlı (opsiyonel)</div>
+      <div class="hint" style="padding-bottom:4px">
+        Her bölge için ayrı mod seçebilirsin (ör. Bahçe = Ön Ödemeli, Salon = Klasik). "Varsayılan" = yukarıdaki restoran modu.
+      </div>
+      <div id="bolge-listesi"></div>
+    </div>
+
+    <!-- ── Kaydet / Yetki ── -->
+    @if($odmDuz)
+      <button class="kaydet-btn" id="kaydet-btn" onclick="odmKaydet()">
+        <span id="kaydet-label">Kaydet</span>
+      </button>
+    @else
+      <div class="yetki-yok">Bu ayarları yalnızca işletme sahibi/müdürü değiştirebilir.</div>
+    @endif
+
+  </div><!-- /odm-icerik -->
+</div><!-- /odm -->
+
+<div id="odm-toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Kaçak Önleme / Ödeme Modu — Flutter OdemeModuScreen web eşdeğeri
+// ─────────────────────────────────────────────────────────────────────────────
+const ODM_TOKEN    = '{{ $odmToken }}';
+const ODM_DUZ      = {{ $odmDuz ? 'true' : 'false' }};
+const ODM_MOD_AD   = { '': 'Varsayılan', post_pay: 'Klasik', on_odeme: 'Ön Ödemeli', acik_kart: 'Açık Hesap+Kart' };
+
+let odmDurum = { mod: 'post_pay', kacak_aktif: true, kacak_dk: 90, bolgeler: [] };
+
+/* ── api çağrısı (Bearer) ── */
+async function odmApi(url, data) {
+    const opts = {
+        method: data ? 'POST' : 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + ODM_TOKEN,
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': window.csrf,
+        }
+    };
+    if (data) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(data);
+    }
+    const r = await fetch(url, opts);
+    return r.json();
+}
+
+/* ── yükle ── */
+async function odmYukle() {
+    try {
+        const res = await odmApi('/api/patron/odeme-modu');
+        if (res && res.ok) {
+            odmDurum.mod         = res.mod        || 'post_pay';
+            odmDurum.kacak_aktif = res.kacak_aktif !== false;
+            odmDurum.kacak_dk    = parseInt(res.kacak_dk) || 90;
+            odmDurum.bolgeler    = Array.isArray(res.bolgeler) ? res.bolgeler : [];
+        }
+    } catch (e) { /* sessiz */ }
+    odmRender();
+    document.getElementById('odm-yukleniyor').style.display = 'none';
+    document.getElementById('odm-icerik').style.display = 'flex';
+    document.getElementById('odm-icerik').style.flexDirection = 'column';
+}
+
+/* ── render (state → DOM) ── */
+function odmRender() {
+    // mod kartları
+    ['post_pay', 'on_odeme', 'acik_kart'].forEach(function(m) {
+        const kart  = document.getElementById('mk-' + m);
+        const radyo = document.getElementById('radyo-' + m);
+        if (odmDurum.mod === m) {
+            kart.classList.add('secili');
+            radyo.textContent = 'radio_button_checked';
+        } else {
+            kart.classList.remove('secili');
+            radyo.textContent = 'radio_button_off';
+        }
+        // devre dışı görünüm (yetki yoksa pointer yok)
+        kart.style.cursor = ODM_DUZ ? 'pointer' : 'default';
+    });
+
+    // toggle
+    const togEl = document.getElementById('kacak-toggl');
+    togEl.checked = odmDurum.kacak_aktif;
+    if (!ODM_DUZ) togEl.disabled = true;
+
+    // slider
+    const sliderWrap = document.getElementById('slider-wrap');
+    sliderWrap.style.display = odmDurum.kacak_aktif ? 'block' : 'none';
+    const sliderEl = document.getElementById('kacak-slider');
+    sliderEl.value = Math.min(240, Math.max(15, odmDurum.kacak_dk));
+    document.getElementById('kacak-dk-label').textContent = odmDurum.kacak_dk + ' dk';
+    if (!ODM_DUZ) sliderEl.disabled = true;
+
+    // bölgeler
+    const bWrap = document.getElementById('bolge-wrap');
+    if (odmDurum.bolgeler.length > 0) {
+        bWrap.style.display = 'block';
+        odmBolgeleriRender();
+    } else {
+        bWrap.style.display = 'none';
+    }
+}
+
+/* ── bölge listesini çiz ── */
+function odmBolgeleriRender() {
+    const list = document.getElementById('bolge-listesi');
+    list.innerHTML = '';
+    odmDurum.bolgeler.forEach(function(b, idx) {
+        const div = document.createElement('div');
+        div.className = 'bolge-kart';
+
+        const adEl = document.createElement('span');
+        adEl.className = 'bolge-ad';
+        adEl.textContent = b.ad || '';
+
+        const sel = document.createElement('select');
+        sel.disabled = !ODM_DUZ;
+        Object.keys(ODM_MOD_AD).forEach(function(k) {
+            const opt = document.createElement('option');
+            opt.value = k;
+            opt.textContent = ODM_MOD_AD[k];
+            if ((b.mod || '') === k) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', function() {
+            odmDurum.bolgeler[idx].mod = sel.value;
+        });
+
+        div.appendChild(adEl);
+        div.appendChild(sel);
+        list.appendChild(div);
+    });
+}
+
+/* ── mod seç ── */
+function odmModSec(m) {
+    if (!ODM_DUZ) return;
+    odmDurum.mod = m;
+    odmRender();
+}
+
+/* ── toggle (tıklama ile) ── */
+function odmToggle() {
+    if (!ODM_DUZ) return;
+    const togEl = document.getElementById('kacak-toggl');
+    togEl.checked = !togEl.checked;
+    odmDurum.kacak_aktif = togEl.checked;
+    odmRender();
+}
+
+/* ── toggle (checkbox onchange) ── */
+function odmToggleChange() {
+    odmDurum.kacak_aktif = document.getElementById('kacak-toggl').checked;
+    odmRender();
+}
+
+/* ── slider ── */
+function odmSlider(val) {
+    odmDurum.kacak_dk = parseInt(val);
+    document.getElementById('kacak-dk-label').textContent = odmDurum.kacak_dk + ' dk';
+}
+
+/* ── kaydet ── */
+async function odmKaydet() {
+    if (!ODM_DUZ) return;
+    const btn = document.getElementById('kaydet-btn');
+    const lbl = document.getElementById('kaydet-label');
+    btn.disabled = true;
+    lbl.innerHTML = '<span class="spin"></span>';
+    try {
+        const payload = {
+            mod: odmDurum.mod,
+            kacak_aktif: odmDurum.kacak_aktif ? '1' : '0',
+            kacak_dk: odmDurum.kacak_dk,
+            bolgeler: JSON.stringify(odmDurum.bolgeler.map(function(b) {
+                return { id: b.id, mod: b.mod || '' };
+            })),
+        };
+        const res = await odmApi('/api/patron/odeme-modu-kaydet', payload);
+        if (res && res.ok) {
+            odmToast('Kaydedildi ✓');
+        } else {
+            odmToast('Kaydedilemedi');
+        }
+    } catch (e) {
+        odmToast('Kaydedilemedi');
+    } finally {
+        btn.disabled = false;
+        lbl.textContent = 'Kaydet';
+    }
+}
+
+/* ── toast ── */
+let _odmToastTimer = null;
+function odmToast(msg) {
+    const el = document.getElementById('odm-toast');
+    el.textContent = msg;
+    el.classList.add('goster');
+    if (_odmToastTimer) clearTimeout(_odmToastTimer);
+    _odmToastTimer = setTimeout(function() { el.classList.remove('goster'); }, 2500);
+}
+
+/* ── başlat ── */
+odmYukle();
+</script>
 @endsection
