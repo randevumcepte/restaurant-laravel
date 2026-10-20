@@ -41,7 +41,6 @@
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
             ['/salon-sema', 'grid_on', 'Salon Şeması', '#0EA5E9'],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
-            ['/kurye', 'map', 'Canlı Kurye Haritası', '#10B981'],
         ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],

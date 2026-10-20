@@ -3,6 +3,12 @@
 @section('rk_ikon', 'two_wheeler')
 @section('baslik', 'Paket Siparişler (' . $aktif->count() . ')')
 
+@section('rk_araclar')
+<a href="/kurye" class="rk-btn" style="background:#10B981;text-decoration:none;color:#fff">
+    <span class="material-icons-outlined" style="font-size:18px">map</span> Canlı Kurye Haritası
+</a>
+@endsection
+
 @push('head')
 <style>
 #pk{--mor:#7C3AED;--mor2:#9D5DC8;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;
