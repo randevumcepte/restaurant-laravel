@@ -6290,7 +6290,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -7576,6 +7576,10 @@ if (!function_exists('_restoSatinalmaEnsure')) {
                 ];
                 foreach ($kek as $kol => $fn) { if (!Schema::hasColumn('alis_fatura_kalemleri', $kol)) Schema::table('alis_fatura_kalemleri', $fn); }
             }
+            // Faz 4: par / hedef stok (otomatik sipariş önerisi için)
+            if (Schema::hasTable('malzemeler') && !Schema::hasColumn('malzemeler', 'hedef_stok')) {
+                Schema::table('malzemeler', fn ($t) => $t->decimal('hedef_stok', 14, 3)->default(0));
+            }
             cache()->put('resto_satinalma_ensure_ok', 1, now()->addHours(12));
         } catch (\Throwable $e) {}
     }
@@ -8031,6 +8035,82 @@ Route::get('/parti-takip', function () {
         $d['yaklasanSay'] = $d['partiler']->where('durum', 'yaklasan')->count();
     } catch (\Throwable $e) {}
     return view('parti_takip', $d);
+});
+
+// ===== FAZ 4: Otomatik Sipariş Önerisi (par + talep tahmini → tedarikçiye gruplu PO taslağı) =====
+Route::get('/siparis-onerisi', function () {
+    $sid = _webSubeId();
+    $d = ['oneriler' => collect(), 'birimler' => collect()];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        if (!Schema::hasTable('malzemeler')) return view('siparis_onerisi', $d);
+        $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+        $from = today()->subDays(30);
+        $tuketim = DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'tuketim')->where('created_at', '>=', $from)->selectRaw('malzeme_id, SUM(-miktar) t')->groupBy('malzeme_id')->pluck('t', 'malzeme_id');
+        $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
+        $kolon = ['id', 'ad', 'temel_birim_id', 'kritik_stok', 'stok_takipli', 'guncel_maliyet']; if ($hedefVar) $kolon[] = 'hedef_stok';
+        $malz = DB::table('malzemeler')->where('stok_takipli', 1)->get($kolon);
+        $katalogVar = Schema::hasTable('tedarikci_malzeme');
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $oner = collect();
+        foreach ($malz as $m) {
+            $mevcut = (float) ($stok[$m->id] ?? 0);
+            $hedef = $hedefVar ? (float) $m->hedef_stok : 0; $kritik = (float) $m->kritik_stok;
+            $gunluk = round(((float) ($tuketim[$m->id] ?? 0)) / 30, 3);
+            $ref = $hedef > 0 ? $hedef : ($kritik > 0 ? $kritik * 2 : 0);
+            if ($ref <= 0) continue;
+            if ($mevcut >= ($hedef > 0 ? $hedef : $kritik)) continue;
+            $oneri = max(0, round($ref - $mevcut, 3));
+            if ($oneri <= 0) continue;
+            $ted = null;
+            if ($katalogVar) {
+                $c = DB::table('tedarikci_malzeme')->where('malzeme_id', $m->id)->where('aktif', 1)->whereNotNull('guncel_fiyat')->orderBy('guncel_fiyat')->first();
+                if ($c) $ted = ['id' => (int) $c->tedarikci_id, 'ad' => $tedAd[$c->tedarikci_id] ?? '—', 'fiyat' => (float) $c->guncel_fiyat, 'birim_id' => (int) ($c->alis_birim_id ?: $m->temel_birim_id)];
+            }
+            if (!$ted) $ted = ['id' => 0, 'ad' => '—', 'fiyat' => (float) $m->guncel_maliyet, 'birim_id' => (int) $m->temel_birim_id];
+            $oner->push((object) ['id' => $m->id, 'ad' => $m->ad, 'birim' => $birimKis[$m->temel_birim_id] ?? '', 'mevcut' => $mevcut, 'kritik' => $kritik, 'hedef' => $hedef, 'gunluk' => $gunluk, 'oneri' => $oneri, 'ted' => $ted, 'kritikMi' => $kritik > 0 && $mevcut <= $kritik]);
+        }
+        $d['oneriler'] = $oner->sort(fn ($a, $b) => ($b->kritikMi <=> $a->kritikMi) ?: strcmp($a->ad, $b->ad))->values();
+    } catch (\Throwable $e) {}
+    return view('siparis_onerisi', $d);
+});
+Route::post('/siparis-onerisi/par', function (Request $r) {
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $mid = (int) $r->input('malzeme_id');
+        if (Schema::hasColumn('malzemeler', 'hedef_stok')) DB::table('malzemeler')->where('id', $mid)->update(['hedef_stok' => max(0, (float) $r->input('hedef_stok')), 'updated_at' => now()]);
+        return redirect('/siparis-onerisi')->with('so_ok', 'Par (hedef stok) güncellendi.');
+    } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Güncellenemedi.'); }
+});
+Route::post('/siparis-onerisi/olustur', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $kalemler = json_decode((string) $r->input('kalemler'), true);
+        if (!is_array($kalemler) || !count($kalemler)) return redirect('/siparis-onerisi')->with('so_hata', 'Ürün seçilmedi.');
+        $pp = function_exists('_posPersonel') ? _posPersonel() : null;
+        $grup = [];
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0); $miktar = (float) ($k['miktar'] ?? 0);
+            if (!$mid || $miktar <= 0) continue;
+            $tid = (int) ($k['tedarikci_id'] ?? 0);
+            $grup[$tid][] = ['malzeme_id' => $mid, 'alis_birim_id' => ((int) ($k['birim_id'] ?? 0)) ?: null, 'miktar' => $miktar, 'birim_fiyat' => (float) ($k['fiyat'] ?? 0)];
+        }
+        if (!count($grup)) return redirect('/siparis-onerisi')->with('so_hata', 'Geçerli kalem yok.');
+        $olusan = 0;
+        foreach ($grup as $tid => $lines) {
+            $ara = 0.0; $kdvT = 0.0; $hazir = [];
+            foreach ($lines as $l) { $net = $l['miktar'] * $l['birim_fiyat']; $ara += $net; $kdvT += $net * 0.10; $hazir[] = $l + ['iskonto_yuzde' => 0, 'kdv_yuzde' => 10, 'satir_toplam' => round($net, 2)]; }
+            $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
+            $spid = DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'taslak',
+                'ara_toplam' => round($ara, 2), 'iskonto' => 0, 'kdv_toplam' => round($kdvT, 2), 'genel_toplam' => round($ara + $kdvT, 2), 'notlar' => 'Otomatik sipariş önerisinden', 'olusturan_personel_id' => $pp->id ?? null, 'created_at' => now(), 'updated_at' => now()]);
+            foreach ($hazir as $h) { $h['siparis_id'] = $spid; $h['created_at'] = now(); $h['updated_at'] = now(); DB::table('satinalma_siparis_kalemleri')->insert($h); }
+            $olusan++;
+        }
+        return redirect('/satinalma-siparis')->with('sa_ok', $olusan . ' sipariş taslağı oluşturuldu (tedarikçiye göre gruplandı).');
+    } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Sipariş oluşturulamadı.'); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {

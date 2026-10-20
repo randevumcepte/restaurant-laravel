@@ -50,6 +50,7 @@
         ],
         'Stok & Tedarik' => [
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
+            ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Satınalma Siparişi', '#4F46E5'],
             ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
             ['/fatura-eslestir', 'fact_check', 'Fatura Eşleştir (3-way)', '#F59E0B'],
