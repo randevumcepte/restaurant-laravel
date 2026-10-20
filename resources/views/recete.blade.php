@@ -687,11 +687,12 @@ rctResponsive();
 // ===================================================================
 function rctYmGoster() {
     document.getElementById('rctUrunSayfa').style.display = 'none';
-    document.getElementById('rctYmSayfa').style.display   = '';
+    document.getElementById('rctYmSayfa').style.display   = 'block'; // CSS #rctYmSayfa{display:none} → '' işe yaramaz, 'block' şart
 }
 function rctYmGeri() {
     document.getElementById('rctYmSayfa').style.display   = 'none';
-    document.getElementById('rctUrunSayfa').style.display = '';
+    document.getElementById('rctUrunSayfa').style.display = 'block';
+    rctResponsive(); // ürün sayfasına dönünce grid/mobil görünürlüğünü yeniden uygula
 }
 
 // ===================================================================
