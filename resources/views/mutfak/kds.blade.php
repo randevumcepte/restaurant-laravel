@@ -22,10 +22,9 @@ body.koyu #kds{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub
 #kds .boyut{display:inline-flex;align-items:center;gap:4px;color:var(--sub);font-size:12px}
 #kds .boyut button{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:16px;line-height:1}
 #kds .board{column-gap:10px}
-#kds .fis{break-inside:avoid;margin-bottom:10px;border-radius:14px;border:2px solid var(--amber);background:var(--card);overflow:hidden;box-shadow:0 3px 8px rgba(0,0,0,.06)}
-#kds .fis.yesil{border-color:var(--yesil)} #kds .fis.kirmizi{border-color:var(--kirmizi)} #kds .fis.amber{border-color:var(--amber)}
-#kds .fis.blink{animation:kdsblink 1s steps(1) infinite}
-@keyframes kdsblink{50%{border-color:var(--kirmizi);box-shadow:0 0 0 2px rgba(244,63,94,.35)}}
+#kds .fis{position:relative;break-inside:avoid;margin-bottom:10px;border-radius:14px;background:var(--card);overflow:hidden;box-shadow:0 3px 8px rgba(0,0,0,.06)}
+#kds .fis .pulse{position:absolute;inset:0;border-radius:14px;pointer-events:none;animation:kpulse 1s steps(1) infinite}
+@keyframes kpulse{0%,49%{opacity:1}50%,100%{opacity:0}}
 #kds .fis .bas{padding:7px 10px 6px}
 #kds .fis .r1{display:flex;align-items:center;gap:6px}
 #kds .rozet{padding:3px 8px;border-radius:20px;color:#fff;font-size:11px;font-weight:700}
@@ -38,9 +37,11 @@ body.koyu #kds{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub
 #kds .fis .bar{height:5px;border-radius:6px;margin:6px 12px 2px;overflow:hidden}
 #kds .fis .bar>i{display:block;height:100%;border-radius:6px}
 #kds .fis .kalemler{padding:6px 12px 4px}
-#kds .fis .kal{display:flex;gap:7px;padding:2px 0;color:var(--ink);font-size:13px}
-#kds .fis .kal b{color:var(--mor);min-width:26px}
-#kds .fis .kal .not{color:var(--kirmizi);font-size:11px}
+#kds .fis .kal{display:flex;gap:7px;padding:2px 0;color:var(--ink);font-size:13.5px;align-items:flex-start}
+#kds .fis .kal b{background:var(--mor);color:#fff;border-radius:7px;padding:1px 6px;font-size:13px;font-weight:900;min-width:26px;text-align:center;flex:none}
+#kds .fis .kal .ad{font-weight:700}
+#kds .fis .kal .not{display:inline-block;margin-top:3px;padding:3px 7px;border-radius:6px;font-size:11.5px;font-weight:600;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);color:var(--amber)}
+#kds .fis .kal .not.alerji{background:rgba(244,63,94,.14);border-color:rgba(244,63,94,.45);color:var(--kirmizi);font-weight:700}
 #kds .fis .tur{color:var(--mor);font-size:10.5px;font-weight:700;margin:4px 0 2px;border-top:1px dashed var(--line);padding-top:4px}
 #kds .fis .btns{display:flex;gap:7px;padding:4px 10px 10px}
 #kds .fis .btns button{flex:1;height:38px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer}
@@ -75,7 +76,7 @@ body.koyu #kds{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub
 </div>
 <script>
 const KDS = {tab:0, ist:'hepsi', toplu:false, boyut:2, veri:null, servis:null, urun:null, analiz:null, sira:[]};
-const KBOY = [260,230,200,175]; // sutun genisligi (boyut 0..3)
+const KBOY = [275,215,170,140]; // Flutter _hedefKartW ile BIREBIR (boyut 0..3; vars=2 -> 170 -> ~7 sutun)
 function kesc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function ksure(dk){dk=Math.round(dk); if(dk<60)return dk+' dk'; if(dk<1440)return Math.floor(dk/60)+' sa '+(dk%60)+' dk'; return Math.floor(dk/1440)+' g '+Math.floor((dk%1440)/60)+' sa';}
 function kkalan(k){return k>0?('~'+ksure(k)+' kaldı'):(k===0?'süresi doldu':ksure(-k)+' gecikme');}
@@ -109,7 +110,8 @@ function kfis(s){
   let kalHtml='',onceki=null;
   for(const k of kalemler){const t=Number(k.tur||1);
     if(onceki!==null&&t!==onceki) kalHtml+='<div class="tur">'+t+'. Tur</div>'; onceki=t;
-    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div>'+kesc(k.ad)+(k.not?'<div class="not">📝 '+kesc(k.not)+'</div>':'')+'</div></div>';}
+    const alj=/alerj/i.test(k.not||'');
+    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+(k.not?'<div class="not'+(alj?' alerji':'')+'">'+(alj?'⚠️ ':'📝 ')+kesc(k.not)+'</div>':'')+'</div></div>';}
   let sureHtml;
   if(!basladi){
     sureHtml='<div class="sure"><span class="material-icons-outlined" style="font-size:13px;color:var(--'+renk+')">schedule</span>'+ksure(gecen)+' geçti <b style="color:var(--'+renk+')">'+kkalan(kalan)+'</b></div>'
@@ -120,7 +122,14 @@ function kfis(s){
       +'<div style="padding:2px 12px 0;color:var(--sub);font-size:10.5px">toplam '+ksure(gecen)+' (geldiğinden beri)</div>';
   }
   const basRenk = basladi?'var(--amber)':'var(--yesil)';
-  return '<div class="fis '+renk+(blink?' blink':'')+'">'
+  // Flutter _kart birebir: 3 durum. KRITIK (hazirlik_asti) -> kirmizi dolgu(0.18)+kalin kenar+guclu kirmizi nabiz(0.34). 1.kademe -> amber. Normal -> ince renk kenar.
+  const rhex={kirmizi:'244,63,94',amber:'245,158,11',yesil:'16,185,129'}[renk];
+  let wrap, pulse='';
+  if(!blink){ wrap='background:var(--card);border:1.4px solid rgba('+rhex+',.6)'; }
+  else { const bh=kritik?'244,63,94':'245,158,11', pa=kritik?0.34:0.22;
+    wrap='border:'+(kritik?'2.2':'1.8')+'px solid rgb('+bh+');background:'+(kritik?'rgba(244,63,94,.18)':'var(--card)');
+    pulse='<div class="pulse" style="background:rgba('+bh+','+pa+')"></div>'; }
+  return '<div class="fis" style="'+wrap+'">'
     +'<div class="bas" style="background:color-mix(in srgb,var(--'+renk+') 12%,transparent)">'
       +'<div class="r1"><span class="rozet" style="background:'+basRenk+'">'+(basladi?'👨‍🍳 Hazırlanıyor':'🆕 Yeni')+'</span>'
         +(minTur>1?'<span class="rozet" style="background:var(--mor)">'+minTur+'. Tur</span>':'')
@@ -134,6 +143,7 @@ function kfis(s){
     +'<div class="btns">'
       +(!basladi?'<button class="bt-basla" onclick="kBasla('+adId+')">▶ Başla</button>':'')
       +'<button class="bt-hazir" onclick="kHazir('+adId+')">✓ Hazır</button></div>'
+    + pulse
   +'</div>';
 }
 
