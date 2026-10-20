@@ -37,6 +37,7 @@
         'Satış & Servis' => [
             ['/pos', 'point_of_sale', 'POS / Masa', null],
             ['/isletme-duzeni', 'table_restaurant', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
+            ['/salon-sema', 'grid_on', 'Salon Şeması', '#0EA5E9'],
             ['/mutfak', 'soup_kitchen', 'Mutfak (KDS)', null],
             ['/paket', 'delivery_dining', 'Paket Siparişler', null],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
