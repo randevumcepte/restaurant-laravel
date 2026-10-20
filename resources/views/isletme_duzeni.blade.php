@@ -416,6 +416,21 @@ function rkBolgeTog(cb){
     x.closest('label').style.opacity = cb.checked ? .5 : 1;
   });
 }
+
+// ---- Kaydırma konumunu koru: bu sayfadaki atama formları POST→redirect ile sayfayı yeniler,
+//      ana içerik en üste zıplamasın diye gönderimden önce kaydet, yüklenince geri yükle. ----
+(function(){
+  var KEY = 'idz_scroll';
+  // Ana içeriğin kaydırıcısı window mı yoksa .rk-body/.rk-main mi olduğunu bilmiyoruz; hepsini ele.
+  function adaylar(){ return [document.querySelector('.rk-body'), document.querySelector('.rk-main'), document.scrollingElement, document.documentElement, document.body].filter(Boolean); }
+  function getY(){ var y=0; adaylar().forEach(function(el){ if(el.scrollTop>y) y=el.scrollTop; }); if(window.scrollY>y) y=window.scrollY; return y; }
+  function setY(y){ adaylar().forEach(function(el){ try{ el.scrollTop=y; }catch(e){} }); try{ window.scrollTo(0,y); }catch(e){} }
+  // Yüklenince geri yükle (içerik yüksekliği oturana kadar birkaç kez dene)
+  try{ var s=sessionStorage.getItem(KEY); if(s!==null){ var y=parseInt(s,10)||0; sessionStorage.removeItem(KEY);
+    setY(y); requestAnimationFrame(function(){ setY(y); }); setTimeout(function(){ setY(y); }, 60); setTimeout(function(){ setY(y); }, 200); } }catch(e){}
+  // Herhangi bir form gönderiminden hemen önce konumu sakla
+  document.addEventListener('submit', function(){ try{ sessionStorage.setItem(KEY, getY()); }catch(e){} }, true);
+})();
 </script>
 @endsection
 @push('head')<style>
