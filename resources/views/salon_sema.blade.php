@@ -587,7 +587,7 @@ body.koyu #sema-kanvas{background:#0E1526}
   function noktaBoy(i, f){
     gecmisKaydet();
     var nk = state.noktalar[i];
-    nk.boy = clamp((n(nk.boy)>0?n(nk.boy):58)*f, 28, 220);
+    nk.boy = clamp((n(nk.boy)>0?n(nk.boy):58)*f, 28, 900); // üst sınır 220->900: mutfak/bar gerçekten büyüyebilsin (ısı haritası sx(boy) ile birebir)
     ciz();
   }
 
