@@ -225,13 +225,17 @@
         <button type="button" class="rk-modal-kapa" onclick="personelKapat()">&times;</button>
       </div>
       <div class="rk-modal-govde">
+        <div style="background:color-mix(in srgb,var(--mavi) 10%,transparent);border:1px solid color-mix(in srgb,var(--mavi) 30%,transparent);border-radius:12px;padding:10px 12px;margin-bottom:14px;display:flex;gap:9px;align-items:flex-start">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--mavi)">info</span>
+          <span class="rk-sub2" style="font-size:12px;line-height:1.4"><b>Kasa / istasyon oluşturmak için:</b> bir ad yaz (ör. "Kasa 1"), <b>Rol = Kasa</b> seç ve bir <b>PIN</b> ver. Telefon gerekmez. O PIN'le kasada giriş yapılır; kaydettikten sonra kartına tıkla → <b>Yetkiler</b>'den ince ayar yaparsın.</span>
+        </div>
         <label class="rk-lbl">Ad Soyad</label>
-        <input type="text" name="ad" id="f_ad" required class="rk-inp" placeholder="Ad Soyad">
+        <input type="text" name="ad" id="f_ad" required class="rk-inp" placeholder='Ad Soyad veya "Kasa 1"'>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
-            <label class="rk-lbl">Telefon</label>
-            <input type="text" name="telefon" id="f_telefon" class="rk-inp" inputmode="tel">
+            <label class="rk-lbl">Telefon <span class="rk-sub" style="font-weight:400">(opsiyonel)</span></label>
+            <input type="text" name="telefon" id="f_telefon" class="rk-inp" inputmode="tel" placeholder="Kasa için boş bırak">
           </div>
           <div>
             <label class="rk-lbl">PIN (en az 4 hane)</label>
