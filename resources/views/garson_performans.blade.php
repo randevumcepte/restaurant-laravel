@@ -625,6 +625,16 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
     return [r,g,b];
   }
 
+  /* ---------- SEMA GÖRSEL KÜTÜPHANESİ (Flutter assets/sema → /sema) ---------- */
+  const MASA_OLCEK = 0.9; // Flutter _masaOlcek
+  const SEMA_IMG = {};
+  const _sonIsi = {}; // canvasId -> son çizilen ısı verisi (görsel async yüklenince yeniden çiz)
+  ['masa_yuvarlak','masa_yuvarlak_2','masa_kare','masa_kare_2','mutfak','bar','giris'].forEach(ad => {
+    const im = new Image();
+    im.onload = () => { SEMA_IMG[ad] = im; Object.keys(_sonIsi).forEach(id => cizCanvas(id, _sonIsi[id])); };
+    im.src = '/sema/' + ad + '.png';
+  });
+
   /* ---------- boyalarCanvas (Flutter _SemaPainter portu) ---------- */
   function cizSema(canvas, isiVeri, koyu) {
     if (!canvas || !SEMA) return;
@@ -831,9 +841,22 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
       ctx.restore();
     });
 
-    // 7. masalar (vektör)
+    // 7. masalar — GERÇEK combo görsel (masa+sandalye tek PNG); yoksa vektör fallback
     tablolar.forEach(m => {
       const s = m.size;
+      const combo = m.yuvarlak
+        ? (m.kapasite <= 2 ? (SEMA_IMG['masa_yuvarlak_2'] || SEMA_IMG['masa_yuvarlak']) : SEMA_IMG['masa_yuvarlak'])
+        : (m.kapasite <= 2 ? (SEMA_IMG['masa_kare_2'] || SEMA_IMG['masa_kare']) : SEMA_IMG['masa_kare']);
+      if (combo && combo.width) {
+        const w = s * 1.3 * MASA_OLCEK;
+        const h = w * combo.height / combo.width; // en-boy oranını koru
+        ctx.save();
+        ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(0,0,0,.22)'; ctx.shadowOffsetY = 3;
+        ctx.drawImage(combo, m.cx - w/2, m.cy - h/2, w, h);
+        ctx.restore();
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        return; // combo PNG sandalyeyi içeriyor -> vektör çizme
+      }
       // Sandalyeler
       const n = Math.max(1, Math.min(12, m.kapasite));
       const g2 = s * 0.13, chH = Math.max(6, Math.min(24, s * 0.26));
@@ -880,6 +903,30 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
         ctx.strokeStyle = '#3D2817'; ctx.lineWidth = 1.5; ctx.stroke();
       }
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    });
+
+    // 7.5 servis noktaları — GERÇEK fotoğraf (mutfak/bar/giriş), Flutter _semaNokta
+    noktalar.forEach(nk => {
+      const img = SEMA_IMG[nk.tip];
+      const cx3 = sx(+nk.x), cy3 = sy(+nk.y);
+      const box = Math.max(28, sx(+nk.boy > 0 ? +nk.boy : 66));
+      if (img && img.width) {
+        const h3 = box * img.height / img.width;
+        ctx.save();
+        ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(0,0,0,.30)'; ctx.shadowOffsetY = 2;
+        ctx.drawImage(img, cx3 - box/2, cy3 - h3/2, box, h3);
+        ctx.restore();
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      } else {
+        ctx.fillStyle = 'rgba(100,116,139,.92)';
+        roundRect(ctx, cx3 - box/2, cy3 - box/2, box, box, 9); ctx.fill();
+      }
+      if (nk.ad) {
+        ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = koyu ? '#e2e8f0' : '#1e293b';
+        ctx.textAlign = 'center';
+        ctx.fillText(nk.ad, cx3, cy3 + box/2 + 11);
+        ctx.textAlign = 'start';
+      }
     });
 
     // 8. yön okları (Flutter _oklariCiz)
@@ -987,6 +1034,7 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
     const kap = canvas.parentElement;
     const W = kap ? kap.clientWidth : 800;
     if (W > 10) { canvas.width = W; canvas.height = Math.round(W * 1.35); }
+    _sonIsi[canvasId] = isiVeri; // görsel async yüklenince yeniden çizebilmek için sakla
     cizSema(canvas, isiVeri, koyu);
   }
 
