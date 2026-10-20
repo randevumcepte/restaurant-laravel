@@ -186,11 +186,11 @@ body.koyu .rk-flash.err{color:#fda4af}
               <div class="my-kart-btns" onclick="event.stopPropagation()">
                 {{-- QR görüntüle --}}
                 <button type="button" class="my-icon-btn" title="QR Afişi" style="color:var(--mor1)" onclick="masaAfis(@js($m))">
-                  <span class="material-icons-outlined">visibility_outlined</span>
+                  <span class="material-icons-outlined">visibility</span>
                 </button>
                 {{-- Düzenle --}}
                 <button type="button" class="my-icon-btn" title="Düzenle" style="color:var(--mavi)" onclick="masaDuzenleAc(@js($m))">
-                  <span class="material-icons-outlined">edit_outlined</span>
+                  <span class="material-icons-outlined">edit</span>
                 </button>
                 {{-- Arşivle --}}
                 <button type="button" class="my-icon-btn" title="Arşivle" style="color:var(--kirmizi)"

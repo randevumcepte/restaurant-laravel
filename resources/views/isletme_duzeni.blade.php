@@ -120,7 +120,7 @@
           </div>
           <div class="mduz-masa-btns">
             <button type="button" class="mduz-ibtn" style="color:{{ $qrurl ? 'var(--yesil)' : 'var(--amber)' }}" onclick="masaQr(@js($m->ad), @js($qrurl))" title="{{ $qrurl ? 'QR göster / yazdır' : 'QR henüz yok' }}"><span class="material-icons-outlined">qr_code_2</span></button>
-            <button type="button" class="mduz-ibtn" style="color:var(--mavi)" onclick="masaDuzenleAc(@js(['id'=>(int)$m->id,'ad'=>$m->ad,'kapasite'=>(int)($m->kapasite ?? 4),'bolge_id'=>(int)$bid]))" title="Düzenle (ad · kişi · bölge)"><span class="material-icons-outlined">edit_outlined</span></button>
+            <button type="button" class="mduz-ibtn" style="color:var(--mavi)" onclick="masaDuzenleAc(@js(['id'=>(int)$m->id,'ad'=>$m->ad,'kapasite'=>(int)($m->kapasite ?? 4),'bolge_id'=>(int)$bid]))" title="Düzenle (ad · kişi · bölge)"><span class="material-icons-outlined">edit</span></button>
             <form method="POST" action="/masa-yonetim/sil" onsubmit="return confirm('{{ $m->ad }} arşive taşınsın mı? (QR korunur)')" style="margin:0">
               @csrf<input type="hidden" name="id" value="{{ $m->id }}">
               <button class="mduz-ibtn" style="color:var(--kirmizi)" title="Arşive taşı"><span class="material-icons-outlined">delete_outline</span></button>
@@ -140,36 +140,73 @@
 </div>
 <div class="rk-sub2" style="font-size:12px;margin:2px 0 12px">Her garsonun hangi <b>bölge</b> ve/veya <b>masalara</b> bakacağını seç. Bölge seçersen o bölgenin tüm masaları dahildir. Hiç seçmezsen tüm masalara bakar.</div>
 @if ($garsonlar->count() && $masalar->count())
-  @foreach ($garsonlar as $g)
-    <div class="rk-card" style="margin-bottom:10px">
-      <form method="POST" action="/isletme-duzeni/garson-ata">
-        @csrf<input type="hidden" name="personel_id" value="{{ $g->id }}">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <span class="material-icons-outlined" style="color:{{ $adimRenk[2] }};font-size:22px">room_service</span>
-          <div style="flex:1;font-weight:800;color:var(--ink)">{{ $g->ad }} <span class="rk-sub2" style="font-weight:500;font-size:12px">· {{ ucfirst($g->rol ?? '') }}</span></div>
-          <button type="submit" class="rk-btn" style="background:{{ $adimRenk[2] }};padding:8px 14px"><span class="material-icons-outlined" style="color:#fff;font-size:16px">save</span> Kaydet</button>
+  {{-- Kompakt garson listesi (50 garson olsa bile tek tek değil, liste) --}}
+  <div class="gata-list">
+    @foreach ($garsonlar as $g)
+      @php
+        $aMasa = count($g->masa_idler ?? []);
+        $aBolge = count($g->bolge_idler ?? []);
+        if ($aBolge > 0) $ozet = $aBolge . ' bölge' . ($aMasa > 0 ? ' + ' . $aMasa . ' masa' : '');
+        elseif ($aMasa > 0) $ozet = $aMasa . ' masa';
+        else $ozet = 'Tüm masalar';
+        $atandi = $aBolge > 0 || $aMasa > 0;
+      @endphp
+      <div class="gata-row">
+        <span class="material-icons-outlined gata-ikon" style="color:{{ $adimRenk[2] }}">room_service</span>
+        <div class="gata-bilgi">
+          <div class="gata-ad">{{ $g->ad }} <span class="gata-rol">· {{ ucfirst($g->rol ?? '') }}</span></div>
+          <div class="gata-ozet" style="color:{{ $atandi ? $adimRenk[2] : 'var(--sub2)' }}"><span class="material-icons-outlined" style="font-size:13px;vertical-align:-2px">{{ $atandi ? 'check_circle' : 'remove_circle_outline' }}</span> {{ $ozet }}</div>
         </div>
-        @foreach ($bolgeler as $b)
-          @php $grupM = $masaByBolge[$b->id] ?? collect(); $bSecili = in_array((int)$b->id, $g->bolge_idler ?? []); @endphp
-          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;color:var(--ink);font-size:13.5px">
-              <input type="checkbox" name="bolge_idler[]" value="{{ $b->id }}" {{ $bSecili ? 'checked' : '' }} onchange="rkBolgeTog(this)">
-              <span class="material-icons-outlined" style="font-size:17px;color:{{ $adimRenk[0] }}">deck</span> {{ $b->ad }} <span class="rk-sub2" style="font-weight:500;font-size:11px">(tüm bölge)</span>
-            </label>
-            @if ($grupM->count())
-              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-left:4px" data-bolge="{{ $b->id }}">
-                @foreach ($grupM as $m)
-                  <label style="display:inline-flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:12.5px;{{ $bSecili ? 'opacity:.5' : '' }}">
-                    <input type="checkbox" name="masa_idler[]" value="{{ $m->id }}" {{ in_array((int)$m->id, $g->masa_idler ?? []) ? 'checked' : '' }} {{ $bSecili ? 'disabled' : '' }}> {{ $m->ad }}
-                  </label>
-                @endforeach
-              </div>
-            @endif
+        <button type="button" class="rk-btn bos gata-ata-btn" onclick="garsonAtaAc({{ $g->id }})"><span class="material-icons-outlined" style="font-size:16px">tune</span> Ata / Düzenle</button>
+      </div>
+    @endforeach
+  </div>
+
+  {{-- Gizli atama panelleri — tıklanınca modala taşınır --}}
+  <div id="gata-paneller" style="display:none">
+    @foreach ($garsonlar as $g)
+      <div id="gata-panel-{{ $g->id }}" data-ad="{{ $g->ad }}">
+        <form method="POST" action="/isletme-duzeni/garson-ata">
+          @csrf<input type="hidden" name="personel_id" value="{{ $g->id }}">
+          @foreach ($bolgeler as $b)
+            @php $grupM = $masaByBolge[$b->id] ?? collect(); $bSecili = in_array((int)$b->id, $g->bolge_idler ?? []); @endphp
+            <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;color:var(--ink);font-size:13.5px">
+                <input type="checkbox" name="bolge_idler[]" value="{{ $b->id }}" {{ $bSecili ? 'checked' : '' }} onchange="rkBolgeTog(this)">
+                <span class="material-icons-outlined" style="font-size:17px;color:{{ $adimRenk[0] }}">deck</span> {{ $b->ad }} <span class="rk-sub2" style="font-weight:500;font-size:11px">(tüm bölge)</span>
+              </label>
+              @if ($grupM->count())
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-left:4px" data-bolge="{{ $b->id }}">
+                  @foreach ($grupM as $m)
+                    <label style="display:inline-flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:12.5px;{{ $bSecili ? 'opacity:.5' : '' }}">
+                      <input type="checkbox" name="masa_idler[]" value="{{ $m->id }}" {{ in_array((int)$m->id, $g->masa_idler ?? []) ? 'checked' : '' }} {{ $bSecili ? 'disabled' : '' }}> {{ $m->ad }}
+                    </label>
+                  @endforeach
+                </div>
+              @endif
+            </div>
+          @endforeach
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="garsonAtaKapat()">İptal</button>
+            <button type="submit" class="rk-btn" style="flex:2;justify-content:center;background:{{ $adimRenk[2] }}"><span class="material-icons-outlined" style="color:#fff;font-size:16px">save</span> Kaydet</button>
           </div>
-        @endforeach
-      </form>
+        </form>
+      </div>
+    @endforeach
+  </div>
+
+  {{-- Modal kabuğu --}}
+  <div id="gataModal" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(15,23,42,.6);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:20px">
+    <div class="rk-card gata-modal-box">
+      <div class="gata-modal-head">
+        <span class="material-icons-outlined" style="color:{{ $adimRenk[2] }};font-size:20px">room_service</span>
+        <span id="gataModalAd" style="font-weight:800;color:var(--ink);font-size:15px;flex:1">Garson</span>
+        <button type="button" class="mduz-ibtn" style="color:var(--sub)" onclick="garsonAtaKapat()"><span class="material-icons-outlined">close</span></button>
+      </div>
+      <div class="rk-sub2" style="font-size:11.5px;margin:2px 0 12px">Bölge seçersen o bölgenin tüm masaları dahildir. Hiç seçmezsen bu garson tüm masalara bakar.</div>
+      <div id="gataModalBody"></div>
     </div>
-  @endforeach
+  </div>
 @else
   <div class="rk-card" style="text-align:center;padding:24px"><div class="rk-sub">Garson ataması için önce masa ve garson (personel) ekleyin.</div></div>
 @endif
@@ -354,6 +391,22 @@ function masaDuzenleKaydet(){
     else { if(btn){ btn.disabled=false; btn.style.opacity=1; } alert(d.hata || 'Güncellenemedi.'); }
   }).catch(function(){ if(btn){ btn.disabled=false; btn.style.opacity=1; } alert('Sunucuya ulaşılamadı.'); });
 }
+// ---- Garson atama modalı (gizli paneli modala taşı) ----
+function garsonAtaAc(id){
+  var panel = document.getElementById('gata-panel-'+id);
+  if(!panel) return;
+  document.getElementById('gataModalAd').textContent = panel.getAttribute('data-ad') || 'Garson';
+  document.getElementById('gataModalBody').appendChild(panel);
+  panel.style.display = '';
+  document.getElementById('gataModal').style.display = 'flex';
+}
+function garsonAtaKapat(){
+  var body = document.getElementById('gataModalBody');
+  var store = document.getElementById('gata-paneller');
+  while(body.firstChild){ body.firstChild.style.display='none'; store.appendChild(body.firstChild); }
+  document.getElementById('gataModal').style.display = 'none';
+}
+(function(){ var m=document.getElementById('gataModal'); if(m) m.addEventListener('click',function(e){ if(e.target===m) garsonAtaKapat(); }); })();
 function rkBolgeTog(cb){
   // Bölge "tümü" seçilince o bölgenin tek tek masa kutuları kapanır (zaten dahil)
   var box = cb.closest('div').querySelector('[data-bolge]');
@@ -394,4 +447,16 @@ function rkBolgeTog(cb){
 .mduz-qr-ozellik span{display:inline-flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--sub)}
 .mduz-qr-ozellik .material-icons-outlined{font-size:20px;color:var(--mor1)}
 .mduz-qr-foot{display:flex;gap:10px;padding:16px 22px 22px}
+/* ---- Garson ataması: kompakt liste + modal ---- */
+.gata-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px;margin-bottom:12px}
+.gata-row{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.gata-ikon{font-size:22px;flex-shrink:0}
+.gata-bilgi{min-width:0;flex:1}
+.gata-ad{font-weight:800;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gata-rol{font-weight:500;font-size:12px;color:var(--sub2)}
+.gata-ozet{font-size:11.5px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gata-ata-btn{flex-shrink:0;padding:7px 12px;font-size:12.5px}
+.gata-modal-box{max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column;padding:20px}
+.gata-modal-head{display:flex;align-items:center;gap:8px}
+#gataModalBody{overflow-y:auto;flex:1;margin:0 -4px;padding:0 4px}
 </style>@endpush

@@ -177,6 +177,14 @@
             if(a.indexOf(h.getAttribute('data-grp'))>=0){ h.classList.remove('kapali'); }
         });
     }catch(e){} })();
+    // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
+    (function(){
+        var menu = document.querySelector('.rk-menu'); if(!menu) return;
+        try{ var s = sessionStorage.getItem('rk_menu_scroll'); if(s!==null) menu.scrollTop = parseInt(s,10)||0; }catch(e){}
+        var t; function kaydet(){ try{ sessionStorage.setItem('rk_menu_scroll', menu.scrollTop); }catch(e){} }
+        menu.addEventListener('scroll', function(){ clearTimeout(t); t=setTimeout(kaydet, 80); }, {passive:true});
+        menu.addEventListener('click', kaydet); // link tiklaninca reload oncesi kaydet
+    })();
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {})); }
 </script>
