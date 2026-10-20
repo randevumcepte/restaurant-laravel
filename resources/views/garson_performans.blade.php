@@ -183,7 +183,7 @@ foreach ($isiMasalar as $m) {
 $enBolge = -1; $enBolgeVal = -1;
 foreach ($bolgeTop as $bid => $v) { if ($v > $enBolgeVal) { $enBolgeVal = $v; $enBolge = $bid; } }
 $bolgeAd = function ($id) use ($isiBolgeler) {
-    foreach ($isiBolgeler as $b) { if ((int) $b['id'] === (int) $id) return $b['ad'] ?? ''; }
+    foreach ($isiBolgeler as $b) { if ((int) $b->id === (int) $id) return $b->ad ?? ''; }
     return '';
 };
 
@@ -195,8 +195,8 @@ $semaNoktatipleri = array_unique($semaNoktatipleri);
 // Sakin bölgeler
 $sakinBolgeler = [];
 foreach ($isiBolgeler as $b) {
-    $bid = (int) $b['id'];
-    if (($bolgeTop[$bid] ?? 0) === 0 && !empty($b['ad'])) $sakinBolgeler[] = $b['ad'];
+    $bid = (int) $b->id;
+    if (($bolgeTop[$bid] ?? 0) === 0 && !empty($b->ad)) $sakinBolgeler[] = $b->ad;
 }
 
 // Sicaklik rengi (0=soguk mavi, 1=sicak kirmizi) — JS'te de kullanılacak, PHP'te tile rengi için
@@ -303,14 +303,14 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
           {{-- Bölge ızgara fallback --}}
           @foreach ($isiBolgeler as $b)
             @php
-              $bid = (int) $b['id'];
+              $bid = (int) $b->id;
               $bMasalar = array_filter($isiMasalar, fn ($m) => (int) ($m['bolge_id'] ?? 0) === $bid);
               usort($bMasalar, fn ($x, $y) => (int) ($y['agirlik'] ?? 0) <=> (int) ($x['agirlik'] ?? 0));
             @endphp
             @if (!empty($bMasalar))
               <div class="bolge-blok">
                 <div class="bolge-baslik">
-                  {{ $b['ad'] ?? '' }}
+                  {{ $b->ad ?? '' }}
                   @if (($bolgeTop[$bid] ?? 0) > 0)
                     <span class="bolge-rozet">{{ $bolgeTop[$bid] }} işlem</span>
                   @endif
@@ -448,14 +448,14 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
       <div id="harita-izgara-t">
         @foreach ($isiBolgeler as $b)
           @php
-            $bid = (int) $b['id'];
+            $bid = (int) $b->id;
             $bMasalar = array_filter($isiMasalar, fn ($m) => (int) ($m['bolge_id'] ?? 0) === $bid);
             usort($bMasalar, fn ($x, $y) => (int) ($y['agirlik'] ?? 0) <=> (int) ($x['agirlik'] ?? 0));
           @endphp
           @if (!empty($bMasalar))
             <div class="bolge-blok">
               <div class="bolge-baslik">
-                {{ $b['ad'] ?? '' }}
+                {{ $b->ad ?? '' }}
                 @if (($bolgeTop[$bid] ?? 0) > 0)
                   <span class="bolge-rozet">{{ $bolgeTop[$bid] }} işlem</span>
                 @endif
