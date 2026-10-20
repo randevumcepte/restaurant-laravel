@@ -909,7 +909,8 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
     noktalar.forEach(nk => {
       const img = SEMA_IMG[nk.tip];
       const cx3 = sx(+nk.x), cy3 = sy(+nk.y);
-      const box = Math.max(28, sx(+nk.boy > 0 ? +nk.boy : 66));
+      // Flutter _semaNokta: boy HAM piksel (sx ile küçültME) — mutfak/bar kullanıcının büyüttüğü boyda kalsın
+      const box = Math.max(40, (+nk.boy > 0 ? +nk.boy : 66));
       if (img && img.width) {
         const h3 = box * img.height / img.width;
         ctx.save();
@@ -1049,20 +1050,22 @@ if (empty($aiArti) && empty($aiGelisim)) $aiMeyin .= 'Değerlendirme için yeter
 
   window.isiSec = function(garsonId, el, mode) {
     seciliId = garsonId;
-    // chip aktif
-    const cont = document.getElementById('isi-garsonlar-' + mode);
-    if (cont) cont.querySelectorAll('.isi-g-chip').forEach(c => {
-      const cid = c.dataset.id === '' ? null : +c.dataset.id;
-      c.classList.toggle('akt', cid === seciliId);
+    // chip aktif — HER İKİ satırı (mobil+masaüstü) senkronla
+    ['m','t'].forEach(md => {
+      const cont = document.getElementById('isi-garsonlar-' + md);
+      if (cont) cont.querySelectorAll('.isi-g-chip').forEach(c => {
+        const cid = c.dataset.id === '' ? null : +c.dataset.id;
+        c.classList.toggle('akt', cid === seciliId);
+      });
     });
-    // isi verisi
+    // isi verisi (seçili garson yoksa 'tum')
     const key = garsonId !== null ? String(garsonId) : 'tum';
     const isiVeri = ISILER[key] || ISILER['tum'] || {};
 
-    // canvas yeniden çiz
+    // canvas yeniden çiz — HER İKİ canvas'ı da yenile (görünür olan kesin güncellensin)
     if (SEMA) {
-      if (mode === 'm') cizCanvas('isi-canvas', isiVeri);
-      else cizCanvas('isi-canvas-t', isiVeri);
+      cizCanvas('isi-canvas', isiVeri);
+      cizCanvas('isi-canvas-t', isiVeri);
     } else {
       // izgara renk güncelle
       const izgara = mode === 't' ? document.getElementById('harita-izgara-t') : document.getElementById('harita-kap');
