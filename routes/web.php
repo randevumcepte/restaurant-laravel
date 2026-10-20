@@ -421,10 +421,46 @@ Route::post('/pos-giris', function (Request $r) {
     $p = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->first() : null;
     if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
     session(['pos_personel_id' => $p->id]);
+    session()->forget('pos_kasa_id');
+    // ÇOKLU KASA: kasa noktası tanımlıysa hangi kasada çalışılacağını belirle
+    $kasalar = function_exists('_kasalarAktif') ? _kasalarAktif($p->sube_id) : collect();
+    if ($kasalar->count()) {
+        $vk = DB::table('personeller')->where('id', $p->id)->value('varsayilan_kasa_id');
+        $sec = $vk ? $kasalar->firstWhere('id', (int) $vk) : null;   // atanmış kasa
+        if (!$sec && $kasalar->count() === 1) $sec = $kasalar->first(); // tek kasa → otomatik
+        if ($sec) { session(['pos_kasa_id' => $sec->id]); }
+        else { return redirect('/pos-kasa-sec'); }                     // birden fazla & atanmamış → seçtir
+    }
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
     return redirect($hedef ?: '/pos');
 });
-Route::match(['get', 'post'], '/pos-cikis', function () { session()->forget('pos_personel_id'); return redirect('/pos-giris'); });
+// ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
+Route::get('/pos-kasa-sec', function () {
+    $p = _posPersonel();
+    if (!$p) return redirect('/pos-giris');
+    $kasalar = _kasalarAktif($p->sube_id);
+    if ($kasalar->count() <= 1) { if ($kasalar->count() === 1) session(['pos_kasa_id' => $kasalar->first()->id]); return redirect('/pos'); }
+    $btn = '';
+    foreach ($kasalar as $k) {
+        $btn .= '<form method=post action="/pos-kasa-sec" style="margin:0 0 10px">' . csrf_field()
+            . '<input type=hidden name=kasa_id value="' . $k->id . '">'
+            . '<button style="width:100%;padding:15px;background:#fff;border:1.5px solid #e2e2ec;border-radius:12px;font-size:16px;font-weight:700;color:#1E293B;cursor:pointer;display:flex;align-items:center;gap:10px;justify-content:center">🗄️ ' . e($k->ad) . '</button></form>';
+    }
+    return response('<!doctype html><html lang=tr><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Kasa Seç</title>'
+        . '<div style="max-width:380px;margin:11vh auto;font-family:system-ui,-apple-system,sans-serif;padding:26px;border:1px solid #eee;border-radius:18px;box-shadow:0 12px 34px rgba(80,50,140,.10)">'
+        . '<h2 style="margin:0 0 4px">🗄️ Hangi kasadasın?</h2><p style="color:#8a8a9a;margin:0 0 18px;font-size:14px">' . e($p->ad) . ' · çalışacağın kasayı seç</p>'
+        . $btn . '</div></html>');
+});
+Route::post('/pos-kasa-sec', function (Request $r) {
+    $p = _posPersonel();
+    if (!$p) return redirect('/pos-giris');
+    $kasalar = _kasalarAktif($p->sube_id);
+    $sec = $kasalar->firstWhere('id', (int) $r->input('kasa_id'));
+    if ($sec) session(['pos_kasa_id' => $sec->id]);
+    $hedef = session('panel_hedef'); session()->forget('panel_hedef');
+    return redirect($hedef ?: '/pos');
+});
+Route::match(['get', 'post'], '/pos-cikis', function () { session()->forget('pos_personel_id'); session()->forget('pos_kasa_id'); return redirect('/pos-giris'); });
 
 Route::get('/pos', function () {
     if ($g = _posKapi()) return $g;
@@ -2184,7 +2220,7 @@ if (!function_exists('_kdsEkranVeri')) {
     }
 }
 Route::get('/mutfak', function () {
-    return view('mutfak.index', ['kalemler' => _kdsEkranVeri(false, _aktifSubeId()), 'ekran' => 'mutfak']);
+    return view('mutfak.kds'); // Flutter mutfak_screen ile birebir (JS canli veri ceker)
 });
 // BAR ekranı (KDS) — sadece içecekler
 Route::get('/bar', function () {
@@ -6166,7 +6202,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/satinalma' => 'gor_stok',
-            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
+            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -9252,28 +9288,75 @@ function _restoKasaEnsure()
             $t->index(['sube_id', 'created_at']);
         });
     }
+    // ÇOKLU KASA (kasa noktası / istasyon) — OPSİYONEL. Hiç kasa tanımlanmazsa sistem
+    // bugünkü gibi TEK-HAVUZ çalışır (kasa_id=null). Tanımlanırsa her kasanın ayrı
+    // vardiyası/çekmecesi olur. Geriye dönük tam uyumlu.
+    if (!cache()->get('resto_kasa_coklu_ok')) {
+        try {
+            if (!Schema::hasTable('kasalar')) {
+                Schema::create('kasalar', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id');
+                    $t->string('ad', 60);
+                    $t->tinyInteger('aktif')->default(1);
+                    $t->integer('sira')->default(0);
+                    $t->timestamps();
+                    $t->index(['sube_id', 'aktif']);
+                });
+            }
+            if (!Schema::hasColumn('kasa_oturumlari', 'kasa_id')) {
+                Schema::table('kasa_oturumlari', fn ($t) => $t->unsignedBigInteger('kasa_id')->nullable()->after('sube_id'));
+            }
+            if (!Schema::hasColumn('kasa_hareketleri', 'kasa_id')) {
+                Schema::table('kasa_hareketleri', fn ($t) => $t->unsignedBigInteger('kasa_id')->nullable()->after('sube_id'));
+            }
+            if (Schema::hasTable('personeller') && !Schema::hasColumn('personeller', 'varsayilan_kasa_id')) {
+                Schema::table('personeller', fn ($t) => $t->unsignedBigInteger('varsayilan_kasa_id')->nullable());
+            }
+            cache()->put('resto_kasa_coklu_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Şubenin aktif kasa (nokta) listesi — boşsa TEK-HAVUZ modu demektir
+if (!function_exists('_kasalarAktif')) {
+    function _kasalarAktif($subeId)
+    {
+        try {
+            if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+            if (!Schema::hasTable('kasalar')) return collect();
+            return DB::table('kasalar')->where('sube_id', $subeId)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get();
+        } catch (\Throwable $e) { return collect(); }
+    }
 }
 if (!function_exists('_kasaAcikOturum')) {
-    function _kasaAcikOturum($subeId)
+    // $kasaId: belirli kasa noktasının açık vardiyası. null ise önce session('pos_kasa_id')
+    // denenir (web POS bağlamı), o da yoksa şubenin herhangi açık vardiyası (tek-havuz, bugünkü davranış).
+    function _kasaAcikOturum($subeId, $kasaId = null)
     {
         _restoKasaEnsure();
-        return DB::table('kasa_oturumlari')->where('sube_id', $subeId)->where('durum', 'acik')->orderByDesc('id')->first();
+        if ($kasaId === null) { try { $kasaId = session('pos_kasa_id'); } catch (\Throwable $e) {} }
+        $q = DB::table('kasa_oturumlari')->where('sube_id', $subeId)->where('durum', 'acik');
+        if ($kasaId) $q->where('kasa_id', $kasaId);
+        return $q->orderByDesc('id')->first();
     }
 }
 // Nakit hareketi kasaya yaz — SADECE acik oturum varsa (yoksa sessiz gecer, akisi bozmaz)
 if (!function_exists('_kasaYaz')) {
-    function _kasaYaz($subeId, $tip, $yon, $tutar, $aciklama, $kaynakTip = 'manuel', $kaynakId = null, $personelId = null)
+    function _kasaYaz($subeId, $tip, $yon, $tutar, $aciklama, $kaynakTip = 'manuel', $kaynakId = null, $personelId = null, $kasaId = null)
     {
         try {
             $tutar = round((float) $tutar, 2);
             if ($tutar <= 0) return;
-            $o = _kasaAcikOturum($subeId);
+            $o = _kasaAcikOturum($subeId, $kasaId);
             if (!$o) return;
-            DB::table('kasa_hareketleri')->insert([
+            $row = [
                 'sube_id' => $subeId, 'oturum_id' => $o->id, 'tip' => $tip, 'yon' => $yon, 'tutar' => $tutar,
                 'aciklama' => $aciklama, 'kaynak_tip' => $kaynakTip, 'kaynak_id' => $kaynakId,
                 'personel_id' => $personelId, 'created_at' => now(),
-            ]);
+            ];
+            // çok-kasa açıksa hareketi ait olduğu kasaya da işaretle (hızlı rapor için)
+            if (cache()->get('resto_kasa_coklu_ok')) $row['kasa_id'] = $o->kasa_id ?? null;
+            DB::table('kasa_hareketleri')->insert($row);
         } catch (\Throwable $e) {
         }
     }
@@ -11514,15 +11597,14 @@ if (!function_exists('_kdsKolonEnsure')) {
         return 'kirmizi';
     }
 }
-Route::get('/api/mutfak', function (Request $r) {
-    $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0], 401);
+if (!function_exists('_mutfakVeri')) {
+function _mutfakVeri($subeId, $filtre = null) {
+    $p = (object) ['sube_id' => $subeId]; // helper: asagidaki $p->sube_id aynen calissin
     _kdsKolonEnsure();
     $simdi = now();
     $vars = 15;   // varsayilan hedef hazirlik (dk) — urune ozel girilmemisse
     $istasyonVar = cache()->remember('kds_urun_istasyon', 3600, fn () => Schema::hasColumn('urunler', 'istasyon'));
     $hzVar = cache()->remember('kds_urun_hazirlikdk', 3600, fn () => Schema::hasColumn('urunler', 'hazirlik_dk'));
-    $filtre = $r->query('istasyon');
     $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
@@ -11618,6 +11700,49 @@ Route::get('/api/mutfak', function (Request $r) {
     usort($siparisler, fn ($a, $b) => ($b['dk'] <=> $a['dk']) ?: ($a['adisyon_id'] <=> $b['adisyon_id']));
     return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
         'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
+}
+}
+Route::get('/api/mutfak', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    return _mutfakVeri($p->sube_id, $r->query('istasyon'));
+});
+// ===== WEB KDS (panel oturumu) — Flutter mutfak_screen ile AYNI veri/aksiyonlar =====
+Route::get('/mutfak/veri', fn (Request $r) => _mutfakVeri(_aktifSubeId(), $r->query('istasyon')));
+Route::get('/mutfak/servise-veri', function () {
+    $sid = _aktifSubeId();
+    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+        ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
+        ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+            'adisyon_kalemleri.hazir_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal')
+        ->orderBy('adisyon_kalemleri.hazir_zamani')->get();
+    $g = [];
+    foreach ($rows as $k) {
+        $aid = $k->adisyon_id;
+        $dk = $k->hazir_zamani ? (int) \Carbon\Carbon::parse($k->hazir_zamani)->diffInMinutes(now()) : 0;
+        if (!isset($g[$aid])) $g[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst((string) $k->kanal), 'kanal' => (string) $k->kanal, 'masali' => ($k->masa !== null), 'dk' => $dk, 'kalemler' => []];
+        $g[$aid]['dk'] = max($g[$aid]['dk'], $dk);
+        $g[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $k->not];
+    }
+    return ['ok' => 1, 'siparisler' => array_values($g)];
+});
+Route::post('/mutfak/basla', function (Request $r) {
+    _kdsKolonEnsure();
+    $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
+    if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
+    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+    return ['ok' => 1];
+});
+Route::post('/mutfak/adisyon-hazir', function (Request $r) {
+    $upd = ['durum' => 'hazir', 'updated_at' => now()];
+    if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
+    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+    return ['ok' => 1];
+});
+Route::post('/mutfak/adisyon-servis', function (Request $r) {
+    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    return ['ok' => 1];
 });
 
 // Mutfak: kalem/adisyon HAZIRLAMAYA BASLA (Yeni -> Hazirlaniyor)
@@ -11744,9 +11869,9 @@ Route::post('/api/mutfak/86', function (Request $r) {
 });
 
 // MUTFAK ANALIZ: hazirlik suresi, en yavas urunler, istasyon yuku, saatlik yogunluk + kurallı prep onerisi.
-Route::get('/api/mutfak/analiz', function (Request $r) {
-    $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0], 401);
+if (!function_exists('_mutfakAnalizVeri')) {
+function _mutfakAnalizVeri($subeId) {
+    $p = (object) ['sube_id' => $subeId];
     $bekVar = Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani');
     $istVar = Schema::hasColumn('urunler', 'istasyon');
     $bugun = now()->startOfDay();
@@ -11841,6 +11966,32 @@ Route::get('/api/mutfak/analiz', function (Request $r) {
         'ozet' => ['ort_dk' => $ortDk, 'ort_bekleme' => $ortBek, 'ort_hazirlik' => $ortHaz, 'ort_gecikme' => $ortGec,
             'olcum' => $olcum, 'bekleyen' => (int) round(array_sum($istYuk)), 'geciken' => $geciken, 'en_eski_dk' => $enEskiDk],
         'en_yavas' => $enYavas, 'istasyon_yuku' => $istasyonYuku, 'saatlik' => $saatDizi, 'oneriler' => $oneriler];
+}
+}
+Route::get('/api/mutfak/analiz', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    return _mutfakAnalizVeri($p->sube_id);
+});
+Route::get('/mutfak/analiz-veri', fn () => _mutfakAnalizVeri(_aktifSubeId()));
+Route::get('/mutfak/urunler-veri', function () {
+    $sid = _aktifSubeId();
+    $istVar = Schema::hasColumn('urunler', 'istasyon');
+    $sel = ['urunler.id', 'urunler.ad', 'urunler.tukendi', 'menu_kategorileri.ad as kategori'];
+    $sel[] = $istVar ? 'urunler.istasyon' : DB::raw("'mutfak' as istasyon");
+    $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
+        ->where('urunler.sube_id', $sid)->where('urunler.aktif', 1)
+        ->orderByDesc('urunler.tukendi')->orderBy('urunler.ad')->select($sel)->get()
+        ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'tukendi' => (bool) $u->tukendi, 'istasyon' => $u->istasyon ?: 'mutfak', 'kategori' => $u->kategori ?: '—']);
+    return ['ok' => 1, 'urunler' => $rows, 'tukenen' => $rows->where('tukendi', true)->count()];
+});
+Route::post('/mutfak/86-toggle', function (Request $r) {
+    $sid = _aktifSubeId();
+    $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', $sid)->first();
+    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $yeni = $u->tukendi ? 0 : 1;
+    DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
+    return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
 });
 
 // ============================ REZERVASYON (online masa rezervasyonu) ============================
