@@ -9544,6 +9544,37 @@ Route::get('/api/patron/mal-kabul-barkod', function (Request $r) {
         return response()->json(['ok' => 1, 'bulundu' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Çözülemedi']); }
 });
+// API: bilinmeyen barkodu malzemeye bağla (Flutter mal kabul — web /mal-kabul/barkod-bagla ile aynı)
+Route::post('/api/patron/mal-kabul-barkod-bagla', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    try {
+        if (function_exists('_barkodKur')) _barkodKur();
+        $kod = trim((string) $r->input('kod', '')); $mid = (int) $r->input('malzeme_id', 0);
+        if ($kod === '' || !$mid) return response()->json(['ok' => 0, 'hata' => 'Barkod ve malzeme seç']);
+        $m = DB::table('malzemeler')->where('id', $mid)->first(['id', 'ad', 'temel_birim_id', 'guncel_maliyet']);
+        if (!$m) return response()->json(['ok' => 0, 'hata' => 'Malzeme bulunamadı']);
+        $var = DB::table('barkodlar')->where('sube_id', $sid)->where('barkod', $kod)->first();
+        if ($var) { if (!($var->tur === 'malzeme' && (int) $var->hedef_id === $mid)) return response()->json(['ok' => 0, 'hata' => 'Bu barkod zaten başka bir öğeye bağlı.']); }
+        else DB::table('barkodlar')->insert(['sube_id' => $sid, 'barkod' => $kod, 'tur' => 'malzeme', 'hedef_id' => $mid, 'created_at' => now()]);
+        return response()->json(['ok' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Bağlanamadı']); }
+});
+// API: seçili tedarikçinin bilinen malzeme fiyat kataloğu (Flutter mal kabul — malzeme seçince fiyat otomatik)
+Route::get('/api/patron/tedarikci-katalog', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $tid = (int) $r->query('tedarikci_id', 0);
+    $out = [];
+    try {
+        if ($tid && Schema::hasTable('tedarikci_malzeme')) {
+            $rows = DB::table('tedarikci_malzeme')->where('sube_id', $p->sube_id)->where('tedarikci_id', $tid)->where('aktif', 1)->get(['malzeme_id', 'alis_birim_id', 'guncel_fiyat']);
+            foreach ($rows as $x) { if ((float) $x->guncel_fiyat <= 0) continue; $out[] = ['malzeme_id' => (int) $x->malzeme_id, 'birim_id' => (int) ($x->alis_birim_id ?: 0), 'fiyat' => (float) $x->guncel_fiyat]; }
+        }
+    } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'katalog' => $out]);
+});
 Route::post('/api/patron/mal-kabul-olustur', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
