@@ -64,6 +64,16 @@
           <input type="file" accept="image/*" capture="environment" style="display:none" onchange="mkFotoSec(this)"></label>
         <span id="mkDurum" class="rk-sub2" style="font-size:12px"></span>
       </div>
+      {{-- Bilinmeyen barkod -> oracıkta malzemeye bağla (ekran değiştirmeden) --}}
+      <div id="mkYeniBarkod" style="display:none;margin-top:10px;padding:11px;border:1px solid var(--amber);border-radius:12px;background:color-mix(in srgb,var(--amber) 9%,transparent)">
+        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:7px">Barkod <b id="mkYbKod"></b> tanımlı değil — bu hangi malzeme?</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="mkYbSel" class="rk-inp" style="max-width:300px"></select>
+          <button type="button" class="rk-btn" style="background:var(--yesil);color:#fff;padding:7px 13px" onclick="mkBarkodBagla()">Bağla ve Ekle</button>
+          <button type="button" class="rk-btn bos" style="padding:7px 12px" onclick="document.getElementById('mkYeniBarkod').style.display='none'">İptal</button>
+        </div>
+        <div class="rk-sub2" style="font-size:11px;margin-top:6px">Bir kez bağla; bu ürünün barkodu bundan sonra hep otomatik tanınır.</div>
+      </div>
       <video id="mkKamera" playsinline muted style="display:none;width:100%;max-width:360px;border-radius:12px;margin-top:10px;background:#000"></video>
       <div id="mkFotoSar" style="display:none;margin-top:10px">
         <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır (büyütmek için tıkla):</div>
@@ -244,9 +254,37 @@ async function mkBarkodCoz(kod){
       else row=mkSatirEkle({malzeme_id:j.id});
       if(j.maliyet>0 && !row.querySelector('.mk-fiyat').value) row.querySelector('.mk-fiyat').value=mkFmt(j.maliyet);
       row.querySelector('.mk-gelen').focus();
-      mkBip(true); mkDurumYaz('Eklendi: '+j.ad,true);
-    } else { mkBip(false); mkDurumYaz(j.hata||'Barkod bulunamadı',false); }
+      mkBip(true); mkDurumYaz('Eklendi: '+j.ad,true); mkTopHesapla();
+    } else if(j.bulundu===0 && j.barkod){ mkBip(false); mkYeniBarkodAc(j.barkod); }
+    else { mkBip(false); mkDurumYaz(j.hata||'Barkod bulunamadı',false); }
   }catch(e){ mkBip(false); mkDurumYaz('Barkod çözülemedi',false); }
+}
+
+// ---- Bilinmeyen barkodu oracıkta malzemeye bağla ----
+function mkYeniBarkodAc(kod){
+  const p=document.getElementById('mkYeniBarkod'), sel=document.getElementById('mkYbSel');
+  if(sel && !sel.dataset.dolu){ sel.innerHTML=mkMalzOpt(); sel.dataset.dolu='1'; }
+  document.getElementById('mkYbKod').textContent=kod;
+  if(p){ p.dataset.kod=kod; p.style.display='block'; }
+  mkDurumYaz('Yeni barkod — bu ürünün hangi malzeme olduğunu seç.',null);
+}
+async function mkBarkodBagla(){
+  const p=document.getElementById('mkYeniBarkod'), kod=p?.dataset.kod, mid=parseInt(document.getElementById('mkYbSel')?.value)||0;
+  if(!kod){ return; }
+  if(!mid){ mkDurumYaz('Önce listeden malzeme seç.',false); return; }
+  try{
+    const res=await fetch('/mal-kabul/barkod-bagla',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':mkCsrf(),'Accept':'application/json'},body:JSON.stringify({kod:kod,malzeme_id:mid})});
+    const j=await res.json();
+    if(j.ok){
+      p.style.display='none';
+      let row=[...document.querySelectorAll('.mk-serbest')].find(r=>!r.querySelector('.mk-m').value);
+      if(row){ const ms=row.querySelector('.mk-m'); ms.value=j.id; const b=ms.selectedOptions[0]?.dataset.birim; if(b)row.querySelector('.mk-b').value=b; ms.style.outline=''; }
+      else row=mkSatirEkle({malzeme_id:j.id});
+      if(j.maliyet>0 && !row.querySelector('.mk-fiyat').value) row.querySelector('.mk-fiyat').value=mkFmt(j.maliyet);
+      row.querySelector('.mk-gelen').focus();
+      mkBip(true); mkDurumYaz('Bağlandı ve eklendi: '+j.ad+' — bu barkod bundan sonra hep tanınır.',true); mkTopHesapla();
+    } else { mkDurumYaz(j.hata||'Bağlanamadı',false); }
+  }catch(e){ mkDurumYaz('Bağlanamadı',false); }
 }
 
 // ---- KAMERA ile barkod (BarcodeDetector varsa) ----

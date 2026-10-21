@@ -8301,6 +8301,27 @@ Route::get('/mal-kabul/barkod-coz', function (Request $r) {
         return ['ok' => 1, 'bulundu' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet];
     } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Çözülemedi']; }
 });
+// Mal kabul: bilinmeyen barkodu oracikta bir malzemeye bagla (ekran degistirmeden). Sonra hep taninir.
+Route::post('/mal-kabul/barkod-bagla', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_barkodKur')) _barkodKur();
+        $kod = trim((string) $r->input('kod', ''));
+        $mid = (int) $r->input('malzeme_id', 0);
+        if ($kod === '' || !$mid) return ['ok' => 0, 'hata' => 'Barkod ve malzeme seç'];
+        $m = DB::table('malzemeler')->where('id', $mid)->first(['id', 'ad', 'temel_birim_id', 'guncel_maliyet']);
+        if (!$m) return ['ok' => 0, 'hata' => 'Malzeme bulunamadı'];
+        $var = DB::table('barkodlar')->where('sube_id', $sid)->where('barkod', $kod)->first();
+        if ($var) {
+            if (!($var->tur === 'malzeme' && (int) $var->hedef_id === $mid)) {
+                return ['ok' => 0, 'hata' => 'Bu barkod zaten başka bir öğeye bağlı.'];
+            }
+        } else {
+            DB::table('barkodlar')->insert(['sube_id' => $sid, 'barkod' => $kod, 'tur' => 'malzeme', 'hedef_id' => $mid, 'created_at' => now()]);
+        }
+        return ['ok' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet];
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Bağlanamadı']; }
+});
 // Mal kabul: irsaliye/fatura FOTOGRAFI -> AI (vision) okur, kalemleri cikarir, malzeme/birim/tedarikci esler.
 Route::post('/mal-kabul/foto-oku', function (Request $r) {
     $sid = _webSubeId();
