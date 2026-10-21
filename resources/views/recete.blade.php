@@ -565,6 +565,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
           <input type="date" id="rctYmUretSkt"></div>
       </div>
       <p style="color:var(--sub2);font-size:11px;margin:-4px 0 8px">Her üretimde o partiye özel <b>barkod otomatik</b> oluşturulur (çıktısını alıp ürüne yapıştır).</p>
+      <div id="rctYmUretSonuc" style="display:none;margin-bottom:10px"></div>
       <div id="rctYmPartiWrap" style="display:none;margin-top:4px">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px">Üretim Partileri <span id="rctYmUretStok" style="color:var(--sub);font-weight:500"></span></div>
         <div id="rctYmPartiler"></div>
@@ -1070,6 +1071,7 @@ function rctYmEditorAc(id) {
     document.getElementById('rctYmUretMiktar').value = document.getElementById('rctYmEdVerim').value;
     document.getElementById('rctYmUretSkt').value = '';
     document.getElementById('rctYmPartiWrap').style.display = id ? 'block' : 'none';
+    { const _s = document.getElementById('rctYmUretSonuc'); if (_s) { _s.style.display = 'none'; _s.innerHTML = ''; } }
     if (id) { _rctYmPartiYukle(id); } else { document.getElementById('rctYmPartiler').innerHTML = ''; document.getElementById('rctYmUretStok').textContent = ''; }
 
     // Birim select doldur
@@ -1124,6 +1126,7 @@ function rctYmEditorAc(id) {
 function rctYmEdKapat() {
     document.getElementById('rctYmEdBg').classList.remove('acik');
     _rctYmEdId = null;
+    if (_rctYmDegisti) { _rctYmDegisti = false; location.reload(); } // üretim/kayıt oldu → kartları/stoğu tazele
 }
 
 function _rctYmEdRender() {
@@ -1344,6 +1347,10 @@ async function rctYmKaydet() {
     const verimBirimId = parseInt(document.getElementById('rctYmEdVerimBirim').value) || 0;
     if (!verimBirimId) { rctToast('Verim birimi seçin'); return; }
     if (_ymEdKalemler.length === 0) { rctToast('En az bir bileşen ekleyin'); return; }
+    // Üretim yapılıyorsa SKT ZORUNLU
+    const _uretMik = parseFloat((document.getElementById('rctYmUretMiktar').value || '0').replace(',', '.')) || 0;
+    const _uretSkt = document.getElementById('rctYmUretSkt').value;
+    if (_uretMik > 0 && !_uretSkt) { rctToast('Üretim için Son Kullanma Tarihi (SKT) zorunlu'); document.getElementById('rctYmUretSkt').focus(); return; }
 
     const btn = document.getElementById('rctYmKaydetBtn');
     btn.disabled = true; btn.textContent = 'Kaydediliyor…';
@@ -1357,20 +1364,26 @@ async function rctYmKaydet() {
         if (_rctYmEdId) payload.id = _rctYmEdId;
         const res = await api('/api/patron/yarimamul-kaydet', payload);
         if (res && res.ok) {
-            // Aynı ekranda üretim: miktar doluysa kaydettikten sonra üret (hammadde düş + parti + barkod)
-            const uretMiktar = parseFloat((document.getElementById('rctYmUretMiktar').value || '0').replace(',', '.')) || 0;
             const recId = res.id || _rctYmEdId;
-            if (uretMiktar > 0 && recId) {
+            if (_uretMik > 0 && recId) {
                 btn.textContent = 'Üretiliyor…';
-                const skt = document.getElementById('rctYmUretSkt').value;
                 try {
-                    const ures = await api('/api/patron/yarimamul-uret', { recete_id: recId, miktar: uretMiktar, skt: skt });
-                    if (ures && ures.ok) rctToast('Kaydedildi + üretildi ✓ · Barkod: ' + ures.barkod);
-                    else rctToast('Reçete kaydedildi; üretim hatası: ' + ((ures && ures.hata) || '—'));
-                } catch(e) { rctToast('Reçete kaydedildi; üretimde bağlantı hatası'); }
-            } else {
-                rctToast('Yarı mamül kaydedildi');
+                    const ures = await api('/api/patron/yarimamul-uret', { recete_id: recId, miktar: _uretMik, skt: _uretSkt });
+                    btn.disabled = false; btn.textContent = 'Kaydet';
+                    if (ures && ures.ok) {
+                        _rctYmDegisti = true;
+                        document.getElementById('rctYmPartiWrap').style.display = 'block';
+                        _rctYmPartiYukle(recId);
+                        _rctYmUretSonucGoster(ures.barkod, _uretSkt, _uretMik);
+                        document.getElementById('rctYmUretMiktar').value = '';
+                        document.getElementById('rctYmUretSkt').value = '';
+                        _rctYmUretElle = false;
+                        rctToast('Üretildi ✓ stoğa eklendi');
+                    } else { rctToast('Reçete kaydedildi; üretim hatası: ' + ((ures && ures.hata) || '—')); }
+                } catch(e) { btn.disabled = false; btn.textContent = 'Kaydet'; rctToast('Reçete kaydedildi; üretimde bağlantı hatası'); }
+                return; // modalı KAPATMA — kullanıcı sonucu görsün + etiketi yazdırsın
             }
+            rctToast('Yarı mamül kaydedildi');
             rctYmEdKapat();
             location.reload();
         } else {
@@ -1385,9 +1398,49 @@ async function rctYmKaydet() {
 
 // Üretilen miktar varsayılanı = verim (kullanıcı elle değiştirmediyse takip eder)
 let _rctYmUretElle = false;
+let _rctYmDegisti = false;
 function _rctYmUretMirror() {
     if (_rctYmUretElle) return;
     document.getElementById('rctYmUretMiktar').value = document.getElementById('rctYmEdVerim').value;
+}
+function _rctYmBirimTxt() {
+    const sel = document.getElementById('rctYmEdVerimBirim');
+    return (sel && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent : '';
+}
+// Üretim sonrası: stoğa eklendi bandı + Etiket Yazdır
+function _rctYmUretSonucGoster(barkod, skt, miktar) {
+    const el = document.getElementById('rctYmUretSonuc'); if (!el) return;
+    const sktTxt = skt ? skt.split('-').reverse().join('.') : '—';
+    const bugun = new Date().toISOString().slice(0, 10);
+    el.style.display = 'block';
+    el.innerHTML = '<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        + '<span class="material-icons-outlined" style="color:var(--yesil);font-size:22px">check_circle</span>'
+        + '<div style="flex:1;min-width:150px;font-size:12.5px;color:var(--ink);line-height:1.4"><b>' + _mik(miktar) + ' ' + escHtml(_rctYmBirimTxt()) + '</b> üretildi, stoğa eklendi.<br>Barkod: <b>' + escHtml(barkod) + '</b> · SKT: <b>' + sktTxt + '</b></div>'
+        + '<button onclick="rctEtiketYazdir(' + JSON.stringify(barkod) + ',' + JSON.stringify(skt || '') + ',' + miktar + ',' + JSON.stringify(_rctYmBirimTxt()) + ',' + JSON.stringify(bugun) + ')" style="background:var(--mavi);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><span class="material-icons-outlined" style="font-size:16px">print</span> Etiket Yazdır</button>'
+        + '</div>';
+}
+// Parti etiketi yazdır (ad + miktar + üretim + SKT + CODE128 barkod). Hasarlıysa yeniden basılır.
+function rctEtiketYazdir(barkod, skt, miktar, birim, tarih) {
+    const ad = document.getElementById('rctYmEdAd').value || 'Yarı Mamül';
+    const sktTxt = skt ? String(skt).split('-').reverse().join('.') : '—';
+    const tarihTxt = tarih ? String(tarih).split('-').reverse().join('.') : '';
+    const barImg = 'https://bwipjs-api.metafloor.com/?bcid=code128&text=' + encodeURIComponent(barkod) + '&scale=3&height=12&includetext&guardwhitespace';
+    const w = window.open('', '_blank');
+    if (!w) { rctToast('Yazdırma penceresi açılamadı (pop-up engelli olabilir)'); return; }
+    w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Etiket</title><style>'
+        + '@page{size:58mm auto;margin:3mm}body{margin:0;font-family:ui-sans-serif,system-ui,Arial,sans-serif;text-align:center;color:#000}'
+        + '.ad{font-size:18px;font-weight:800;margin:2px 0}.sat{font-size:12.5px;margin:1px 0}'
+        + '.skt{font-size:15px;font-weight:800;margin:5px 4px;border:1.5px solid #000;border-radius:6px;padding:3px 0}'
+        + '.bar{margin-top:7px}.bar img{max-width:100%}.num{font-size:11px;letter-spacing:1px}'
+        + '</style></head><body>'
+        + '<div class="ad">' + escHtml(ad) + '</div>'
+        + '<div class="sat">Miktar: ' + escHtml(_mik(miktar)) + ' ' + escHtml(birim || '') + '</div>'
+        + (tarihTxt ? '<div class="sat">Üretim: ' + escHtml(tarihTxt) + '</div>' : '')
+        + '<div class="skt">SKT: ' + escHtml(sktTxt) + '</div>'
+        + '<div class="bar"><img src="' + barImg + '" onerror="this.style.display=\'none\'"><div class="num">' + escHtml(barkod) + '</div></div>'
+        + '</body></html>');
+    w.document.close();
+    setTimeout(function(){ try { w.focus(); w.print(); } catch(e) {} }, 800);
 }
 // Üretim miktarı etiketine verim birimini yaz
 function _rctYmUretBirimGuncelle() {
@@ -1416,7 +1469,9 @@ function _rctYmPartiYukle(id) {
                 + '<span class="material-icons-outlined" style="font-size:16px;color:' + renk + '">inventory_2</span>'
                 + '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--ink);font-weight:600">' + escHtml(x.lot_no || '-') + '</div>'
                 + '<div style="font-size:11px;color:' + renk + '">SKT: ' + sktTxt + (uyari ? ' · ' + uyari : '') + '</div></div>'
-                + '<div style="font-size:12.5px;font-weight:700;color:var(--ink)">' + _mik(x.kalan) + '</div></div>';
+                + '<div style="font-size:12.5px;font-weight:700;color:var(--ink)">' + _mik(x.kalan) + '</div>'
+                + '<button onclick="rctEtiketYazdir(' + JSON.stringify(x.lot_no || '') + ',' + JSON.stringify(x.skt || '') + ',' + x.giris + ',' + JSON.stringify(_rctYmBirimTxt()) + ',' + JSON.stringify(x.giris_tarihi || '') + ')" title="Etiketi yeniden yazdır" style="background:none;border:none;cursor:pointer;color:var(--mavi);padding:2px 3px;line-height:1"><span class="material-icons-outlined" style="font-size:18px">print</span></button>'
+                + '</div>';
         }).join('');
     }).catch(function(){ box.innerHTML = ''; });
 }
