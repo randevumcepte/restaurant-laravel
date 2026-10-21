@@ -8323,10 +8323,29 @@ Route::post('/mal-kabul/barkod-bagla', function (Request $r) {
     } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Bağlanamadı']; }
 });
 // Mal kabul: secili tedarikcinin bilinen malzeme fiyatlari (katalog) -> malzeme secince fiyat otomatik gelsin.
+// Tedarikci kart bilgisi (satici alanlarini doldurmak icin) — web+API ortak.
+if (!function_exists('_tedarikciKart')) {
+    function _tedarikciKart($tid)
+    {
+        try {
+            if (!$tid || !Schema::hasTable('tedarikciler')) return null;
+            $cols = ['id', 'ad'];
+            foreach (['unvan', 'vkn_tckn', 'vergi_dairesi', 'adres'] as $c) if (Schema::hasColumn('tedarikciler', $c)) $cols[] = $c;
+            $t = DB::table('tedarikciler')->where('id', $tid)->first($cols);
+            if (!$t) return null;
+            return [
+                'ad' => (isset($t->unvan) && $t->unvan) ? $t->unvan : ($t->ad ?? null),
+                'vkn' => $t->vkn_tckn ?? null,
+                'vergi_dairesi' => $t->vergi_dairesi ?? null,
+                'adres' => $t->adres ?? null,
+            ];
+        } catch (\Throwable $e) { return null; }
+    }
+}
 Route::get('/mal-kabul/tedarikci-katalog', function (Request $r) {
     $sid = _webSubeId();
     $tid = (int) $r->query('tedarikci_id', 0);
-    $out = [];
+    $out = []; $kart = null;
     try {
         if ($tid && Schema::hasTable('tedarikci_malzeme')) {
             $rows = DB::table('tedarikci_malzeme')->where('sube_id', $sid)->where('tedarikci_id', $tid)->where('aktif', 1)->get(['malzeme_id', 'alis_birim_id', 'guncel_fiyat']);
@@ -8335,8 +8354,9 @@ Route::get('/mal-kabul/tedarikci-katalog', function (Request $r) {
                 $out[] = ['malzeme_id' => (int) $x->malzeme_id, 'birim_id' => (int) ($x->alis_birim_id ?: 0), 'fiyat' => (float) $x->guncel_fiyat];
             }
         }
+        if ($tid && function_exists('_tedarikciKart')) $kart = _tedarikciKart($tid);
     } catch (\Throwable $e) {}
-    return ['ok' => 1, 'katalog' => $out];
+    return ['ok' => 1, 'katalog' => $out, 'tedarikci' => $kart];
 });
 // Mal kabul: irsaliye/fatura FOTOGRAFI -> AI (vision) okur, kalemleri cikarir, malzeme/birim/tedarikci esler.
 Route::post('/mal-kabul/foto-oku', function (Request $r) {
@@ -9566,14 +9586,15 @@ Route::get('/api/patron/tedarikci-katalog', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     $tid = (int) $r->query('tedarikci_id', 0);
-    $out = [];
+    $out = []; $kart = null;
     try {
         if ($tid && Schema::hasTable('tedarikci_malzeme')) {
             $rows = DB::table('tedarikci_malzeme')->where('sube_id', $p->sube_id)->where('tedarikci_id', $tid)->where('aktif', 1)->get(['malzeme_id', 'alis_birim_id', 'guncel_fiyat']);
             foreach ($rows as $x) { if ((float) $x->guncel_fiyat <= 0) continue; $out[] = ['malzeme_id' => (int) $x->malzeme_id, 'birim_id' => (int) ($x->alis_birim_id ?: 0), 'fiyat' => (float) $x->guncel_fiyat]; }
         }
+        if ($tid && function_exists('_tedarikciKart')) $kart = _tedarikciKart($tid);
     } catch (\Throwable $e) {}
-    return response()->json(['ok' => 1, 'katalog' => $out]);
+    return response()->json(['ok' => 1, 'katalog' => $out, 'tedarikci' => $kart]);
 });
 Route::post('/api/patron/mal-kabul-olustur', function (Request $r) {
     $p = _apiPersonel($r);

@@ -316,6 +316,9 @@ async function mkTedarikciSec(tid){
     const res=await fetch('/mal-kabul/tedarikci-katalog?tedarikci_id='+tid);
     const j=await res.json();
     (j.katalog||[]).forEach(k=>{ MK_KAT[k.malzeme_id]={fiyat:k.fiyat,birim_id:k.birim_id}; });
+    // Satıcı (tedarikçi) bilgilerini doldur (boşsa)
+    if(j.tedarikci){ const td=j.tedarikci; const dl=(id,v)=>{ const el=document.getElementById(id); if(el&&!el.value&&v) el.value=v; };
+      dl('mkFbSaticiAd',td.ad); dl('mkFbSaticiVkn',td.vkn); dl('mkFbSaticiVd',td.vergi_dairesi); dl('mkFbSaticiAdres',td.adres); mkYasalKontrol(); }
     document.querySelectorAll('.mk-satir').forEach(r=>mkKatalogDoldur(r));
     const n=Object.keys(MK_KAT).length;
     mkDurumYaz(n?('Bu tedarikçiden '+n+' ürün biliniyor — malzeme seçince fiyatı otomatik gelir.'):'Bu tedarikçiden henüz alış kaydı yok; fiyatları elle gir.', n?true:null);
