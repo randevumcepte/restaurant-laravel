@@ -1811,13 +1811,16 @@ if (!function_exists('_carkSeed')) {
             'kurallar' => "Çarkıfelek bir sadakat kampanyasıdır, şans oyunu değildir. Ödüller önceden belirlenmiştir ve herkese aynıdır. İşletme kampanya koşullarını değiştirme hakkını saklı tutar. Kazanılan indirim kuponları belirtilen süre içinde geçerlidir.",
             'created_at' => now(), 'updated_at' => now()]);
         // Kazandırma modeli: olasilik=100 olan dilim her zaman çıkar (Randevumcepte birebir)
+        // Restorana uygun varsayılan çark (kazanan = 25 Puan; sahibi değiştirir)
         $d = [
-            ['ad' => '100 Puan',    'renk' => '#FF6B6B', 'olasilik' => 100, 'tip' => 'puan',            'deger' => 100, 'indirim_tipi' => 'yuzde'],
-            ['ad' => '%20 Hizmet',  'renk' => '#FF8E53', 'olasilik' => 0,   'tip' => 'hizmet_indirimi', 'deger' => 20,  'indirim_tipi' => 'yuzde'],
-            ['ad' => '%10 Ürün',    'renk' => '#FFC107', 'olasilik' => 0,   'tip' => 'urun_indirimi',   'deger' => 10,  'indirim_tipi' => 'yuzde'],
-            ['ad' => '50 Puan',     'renk' => '#51CF66', 'olasilik' => 0,   'tip' => 'puan',            'deger' => 50,  'indirim_tipi' => 'yuzde'],
-            ['ad' => 'Tekrar Dene', 'renk' => '#339AF0', 'olasilik' => 0,   'tip' => 'tekrar_dene',     'deger' => 0,   'indirim_tipi' => 'yuzde'],
-            ['ad' => 'Boş',         'renk' => '#CC5DE8', 'olasilik' => 0,   'tip' => 'bos',             'deger' => 0,   'indirim_tipi' => 'yuzde'],
+            ['ad' => '10 Puan',       'renk' => '#FF6B6B', 'olasilik' => 0,   'tip' => 'puan',            'deger' => 10,  'indirim_tipi' => 'yuzde'],
+            ['ad' => '%10 Ürün',      'renk' => '#FF922B', 'olasilik' => 0,   'tip' => 'urun_indirimi',   'deger' => 10,  'indirim_tipi' => 'yuzde'],
+            ['ad' => '25 Puan',       'renk' => '#51CF66', 'olasilik' => 100, 'tip' => 'puan',            'deger' => 25,  'indirim_tipi' => 'yuzde'],
+            ['ad' => '%5 Hesap',      'renk' => '#339AF0', 'olasilik' => 0,   'tip' => 'hizmet_indirimi', 'deger' => 5,   'indirim_tipi' => 'yuzde'],
+            ['ad' => 'Tekrar Dene',   'renk' => '#868E96', 'olasilik' => 0,   'tip' => 'tekrar_dene',     'deger' => 0,   'indirim_tipi' => 'yuzde'],
+            ['ad' => '50 Puan',       'renk' => '#CC5DE8', 'olasilik' => 0,   'tip' => 'puan',            'deger' => 50,  'indirim_tipi' => 'yuzde'],
+            ['ad' => 'Paket 25₺',     'renk' => '#20C997', 'olasilik' => 0,   'tip' => 'paket_indirimi',  'deger' => 25,  'indirim_tipi' => 'tutar'],
+            ['ad' => 'Bedava İçecek', 'renk' => '#F06595', 'olasilik' => 0,   'tip' => 'urun_indirimi',   'deger' => 40,  'indirim_tipi' => 'tutar'],
         ];
         $i = 0;
         foreach ($d as $x) { $x['sube_id'] = $sid; $x['sira'] = $i++; $x['aktif'] = 1; $x['created_at'] = now(); $x['updated_at'] = now(); DB::table('carkifelek_dilimleri')->insert($x); }
@@ -1839,7 +1842,7 @@ if (!function_exists('_carkAciklama')) {
         if ($tip === 'tekrar' || $tip === 'tekrar_dene') return 'Tekrar dene';
         if ($tip === 'bos') return 'Boş';
         // indirim dilimleri (yuzde|tutar|hizmet/urun/paket_indirimi)
-        $kategori = $tip === 'hizmet_indirimi' ? ' hizmet' : ($tip === 'urun_indirimi' ? ' ürün' : ($tip === 'paket_indirimi' ? ' paket' : ''));
+        $kategori = $tip === 'hizmet_indirimi' ? ' hesap' : ($tip === 'urun_indirimi' ? ' ürün' : ($tip === 'paket_indirimi' ? ' paket' : ''));
         $tutarMi = ($tip === 'tutar') || ($indirimTipi === 'tutar');
         if ($tutarMi) return number_format((float) $deger, 0, ',', '.') . '₺' . $kategori . ' indirimi';
         return '%' . rtrim(rtrim(number_format((float) $deger, 2, '.', ''), '0'), '.') . $kategori . ' indirimi';

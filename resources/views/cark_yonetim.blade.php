@@ -366,9 +366,9 @@
     const COLORS = ['#FF6B6B','#FF8E53','#FFC107','#51CF66','#339AF0','#CC5DE8','#F06595','#74C0FC','#63E6BE','#FFD43B','#FF922B','#20C997','#4DABF7','#DA77F2','#F783AC','#E64980','#7950F2','#4C6EF5','#228BE6','#099268'];
     const TIPS = [
         { id: 'puan',            label: '💰 Puan',   hasDeger: true,  unit: 'puan' },
-        { id: 'hizmet_indirimi', label: '✂️ Hizmet', hasDeger: true,  unit: '%'    },
-        { id: 'urun_indirimi',   label: '📦 Ürün',   hasDeger: true,  unit: '%'    },
-        { id: 'paket_indirimi',  label: '🎁 Paket',  hasDeger: true,  unit: '%'    },
+        { id: 'hizmet_indirimi', label: '🧾 Hesap',  hasDeger: true,  unit: '%'    },
+        { id: 'urun_indirimi',   label: '🍽️ Ürün',   hasDeger: true,  unit: '%'    },
+        { id: 'paket_indirimi',  label: '🛵 Paket',  hasDeger: true,  unit: '%'    },
         { id: 'tekrar_dene',     label: '🔄 Tekrar', hasDeger: false, unit: ''     },
         { id: 'bos',             label: '— Boş',      hasDeger: false, unit: ''     },
     ];
@@ -469,7 +469,7 @@
             const tipObj = TIPS.find(t => t.id === (sl.tip || 'bos')) || TIPS[4];
             if (tipObj.hasDeger && sl.deger != null) {
                 const numStr = isIndirim(sl.tip) ? (sl.indirim_tipi === 'tutar' ? sl.deger + '₺' : '%' + sl.deger) : String(sl.deger);
-                const catStr = sl.tip === 'puan' ? 'Puan' : sl.tip === 'hizmet_indirimi' ? 'Hizmet' : sl.tip === 'paket_indirimi' ? 'Paket' : 'Ürün';
+                const catStr = sl.tip === 'puan' ? 'Puan' : sl.tip === 'hizmet_indirimi' ? 'Hesap' : sl.tip === 'paket_indirimi' ? 'Paket' : 'Ürün';
                 const numFs = n <= 8 ? 17 : 14, catFs = n <= 8 ? 11 : 9;
                 const numDist = R - (n <= 8 ? 16 : 13);
                 const nx = CX + numDist * Math.cos(tRad), ny = CY + numDist * Math.sin(tRad);
@@ -565,7 +565,7 @@
         const d = sl.deger;
         switch (sl.tip) {
             case 'puan': return d != null ? 'Puan' : (sl.name || 'Puan');
-            case 'hizmet_indirimi': return d != null ? 'Hizmet İnd.' : (sl.name || 'Hizmet İnd.');
+            case 'hizmet_indirimi': return d != null ? 'Hesap İnd.' : (sl.name || 'Hesap İnd.');
             case 'urun_indirimi': return d != null ? 'Ürün İnd.' : (sl.name || 'Ürün İnd.');
             case 'paket_indirimi': return d != null ? 'Paket İnd.' : (sl.name || 'Paket İnd.');
             case 'tekrar_dene': return 'Tekrar Dene';
