@@ -119,6 +119,17 @@
     <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--yesil)"></span><span class="b">Gelen Kalemler</span>
       @unless ($siparis)<button type="button" class="rk-btn bos" style="margin-left:auto;padding:6px 11px" onclick="mkSatirEkle()"><span class="material-icons-outlined" style="font-size:15px">add</span> Kalem Ekle</button>@endunless</div>
 
+    @if ($siparis)
+    <div id="mkKilitBanner" style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;background:color-mix(in srgb,var(--mavi) 8%,transparent);border:1px solid color-mix(in srgb,var(--mavi) 38%,transparent);border-radius:13px;padding:12px 15px;margin-bottom:12px">
+      <span class="material-icons-outlined" style="color:var(--mavi);font-size:24px">fact_check</span>
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:800;color:var(--ink);font-size:13.5px">Sipariş ile karşılaştır — her kalemi işaretle</div>
+        <div class="rk-sub2" style="font-size:12px;margin-top:2px">Gelen malı sipariş listesiyle kalem kalem kontrol et. <b>Hepsi işaretlenmeden</b> kabul onaylanmaz.</div>
+      </div>
+      <span id="mkKilitSayac" style="font-weight:800;font-size:13px;color:var(--kirmizi);white-space:nowrap">0 / {{ $siparisKalem->count() }} işaretlendi</span>
+    </div>
+    @endif
+
     <div style="overflow-x:auto">
     <div id="mkSatirlar" style="min-width:720px">
       @php $hh='display:block;font-weight:400;font-size:9.5px;color:var(--sub2);line-height:1.2;margin-top:1px'; @endphp
@@ -177,7 +188,7 @@
       <input type="checkbox" id="mkOnay" style="margin-top:2px;width:18px;height:18px">
       <span><b>Kontrol ettim:</b> fatura bilgileri (tutarlar, VKN, tarih, kalemler) fotoğrafla aynı ve doğru. Onaylıyorum.</span>
     </label>
-    <button type="submit" class="rk-btn lg" style="background:var(--yesil);margin-top:14px"><span class="material-icons-outlined" style="color:#fff;font-size:20px">check_circle</span> Mal Kabulü Onayla (Stok Gir)</button>
+    <button type="submit" id="mkOnayBtn" class="rk-btn lg" style="background:var(--yesil);margin-top:14px"><span class="material-icons-outlined" style="color:#fff;font-size:20px">check_circle</span> Mal Kabulü Onayla (Stok Gir)</button>
   </form>
 </div>
 
@@ -436,7 +447,66 @@ function mkYasalKontrol(){
 }
 ['mkFbSaticiVkn','mkFbAliciVkn','mkFbSira','mkFbSaticiAd','mkFbAliciAd'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>{ mkYasalKontrol(); if(mkYasalVar()){ const k=document.getElementById('mkOnayKutu'); if(k)k.style.display='flex'; } }));
 
+// ================= SİPARİŞ KİLİDİ: kalem kalem kontrol (geldi/eksik/fazla/hasarlı) =================
+const MK_DURUMLAR = [
+  {k:'tam',    ad:'Tam Geldi', ik:'check_circle', renk:'var(--yesil)'},
+  {k:'eksik',  ad:'Eksik',     ik:'remove_circle', renk:'var(--amber)'},
+  {k:'fazla',  ad:'Fazla',     ik:'add_circle',    renk:'var(--mavi)'},
+  {k:'hasarli',ad:'Hasarlı',   ik:'report',        renk:'var(--kirmizi)'},
+];
+function mkKilitKur(){
+  if(!MK_SIPARIS) return;
+  const rows=[...document.querySelectorAll('.mk-satir:not(.mk-serbest)')];
+  rows.forEach(r=>{
+    if(r.dataset.kontrolKuruldu) return; r.dataset.kontrolKuruldu='1';
+    const ctrl=document.createElement('div');
+    ctrl.className='mk-kontrol-satir';
+    ctrl.style.cssText='grid-column:1 / -1;display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:-2px 0 10px;padding:7px 9px;background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:10px';
+    let btnHtml=MK_DURUMLAR.map(d=>`<button type="button" class="mk-drm" data-k="${d.k}" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border:1.5px solid var(--line);border-radius:9px;background:transparent;color:var(--sub);font-size:11.5px;font-weight:700;cursor:pointer"><span class="material-icons-outlined" style="font-size:14px">${d.ik}</span>${d.ad}</button>`).join('');
+    ctrl.innerHTML=`<span class="mk-fark-roz" style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:7px;white-space:nowrap"></span>
+      <span style="font-size:11px;color:var(--sub2)">Kontrol:</span>${btnHtml}
+      <input type="text" class="mk-drm-sebep rk-inp" placeholder="Açıklama (hasar/eksik nedeni)" style="display:none;flex:1;min-width:120px;padding:5px 8px;font-size:12px">`;
+    r.insertAdjacentElement('afterend', ctrl);
+    ctrl.querySelectorAll('.mk-drm').forEach(b=>b.addEventListener('click',()=>{
+      ctrl.querySelectorAll('.mk-drm').forEach(x=>{x.style.background='transparent';x.style.color='var(--sub)';x.style.borderColor='var(--line)';});
+      const d=MK_DURUMLAR.find(x=>x.k===b.dataset.k);
+      b.style.background='color-mix(in srgb,'+d.renk+' 15%,transparent)'; b.style.color=d.renk; b.style.borderColor=d.renk;
+      ctrl.dataset.secili=b.dataset.k;
+      const sebep=ctrl.querySelector('.mk-drm-sebep'); sebep.style.display=(b.dataset.k==='tam')?'none':'block';
+      mkKilitSay();
+    }));
+    r.dataset.ctrl=''; r._ctrl=ctrl;
+  });
+  rows.forEach(r=>mkFarkGuncelle(r));
+  mkKilitSay();
+}
+function mkFarkGuncelle(r){
+  const ctrl=r._ctrl; if(!ctrl) return;
+  const sip=parseFloat(r.dataset.sipmik)||0, gelen=parseFloat(r.querySelector('.mk-gelen')?.value)||0;
+  const roz=ctrl.querySelector('.mk-fark-roz'); const d=Math.round((gelen-sip)*1000)/1000;
+  if(d===0){ roz.textContent='Tam ('+mkNum(sip)+')'; roz.style.background='color-mix(in srgb,var(--yesil) 15%,transparent)'; roz.style.color='var(--yesil)'; }
+  else if(d<0){ roz.textContent='Eksik '+mkNum(Math.abs(d)); roz.style.background='color-mix(in srgb,var(--amber) 16%,transparent)'; roz.style.color='var(--amber)'; }
+  else { roz.textContent='Fazla '+mkNum(d); roz.style.background='color-mix(in srgb,var(--mavi) 15%,transparent)'; roz.style.color='var(--mavi)'; }
+}
+function mkNum(v){ return (v==null?0:+v).toLocaleString('tr-TR',{maximumFractionDigits:3}); }
+function mkKilitSay(){
+  const rows=[...document.querySelectorAll('.mk-satir:not(.mk-serbest)')];
+  const isar=rows.filter(r=>r._ctrl&&r._ctrl.dataset.secili).length;
+  const sayac=document.getElementById('mkKilitSayac'); const btn=document.getElementById('mkOnayBtn');
+  const tamam=(isar>=rows.length && rows.length>0);
+  if(sayac){ sayac.textContent=isar+' / '+rows.length+' işaretlendi'; sayac.style.color=tamam?'var(--yesil)':'var(--kirmizi)'; }
+  if(btn){ btn.disabled=!tamam; btn.style.opacity=tamam?'1':'.55'; btn.style.cursor=tamam?'pointer':'not-allowed'; }
+}
+document.getElementById('mkSatirlar')?.addEventListener('input', e=>{ if(e.target.classList.contains('mk-gelen')){ const r=e.target.closest('.mk-satir'); if(r&&!r.classList.contains('mk-serbest')) mkFarkGuncelle(r); } });
+mkKilitKur();
+
 document.getElementById('mkForm').addEventListener('submit',function(e){
+  // SİPARİŞ KİLİDİ: her sipariş kalemi işaretlenmeden kabul edilemez
+  if(MK_SIPARIS){
+    const rows=[...document.querySelectorAll('.mk-satir:not(.mk-serbest)')];
+    const eksik=rows.filter(r=>!(r._ctrl&&r._ctrl.dataset.secili));
+    if(eksik.length){ e.preventDefault(); alert(eksik.length+' kalem henüz kontrol edilmedi. Her kalemi (Tam/Eksik/Fazla/Hasarlı) işaretle.'); eksik[0]?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  }
   const kal=[];
   document.querySelectorAll('.mk-satir').forEach(r=>{
     let mid, birim, sipMik=null, skId=null;
@@ -445,7 +515,13 @@ document.getElementById('mkForm').addEventListener('submit',function(e){
     const gelen=parseFloat(r.querySelector('.mk-gelen').value)||0;
     const kabul=parseFloat(r.querySelector('.mk-kabul').value)|| gelen;
     if(!mid || kabul<=0) return;
-    kal.push({malzeme_id:mid,alis_birim_id:birim,siparis_kalem_id:skId,siparis_miktar:sipMik,gelen:gelen,kabul:kabul,red:Math.max(0,gelen-kabul),birim_fiyat:mkParse(r.querySelector('.mk-fiyat').value)||0,lot_no:r.querySelector('.mk-lot').value||'',skt:r.querySelector('.mk-skt').value||''});
+    let sebep='';
+    if(r._ctrl && r._ctrl.dataset.secili && r._ctrl.dataset.secili!=='tam'){
+      const drm=(MK_DURUMLAR.find(x=>x.k===r._ctrl.dataset.secili)||{}).ad||r._ctrl.dataset.secili;
+      const aciklama=(r._ctrl.querySelector('.mk-drm-sebep')?.value||'').trim();
+      sebep=drm+(aciklama?(': '+aciklama):'');
+    }
+    kal.push({malzeme_id:mid,alis_birim_id:birim,siparis_kalem_id:skId,siparis_miktar:sipMik,gelen:gelen,kabul:kabul,red:Math.max(0,gelen-kabul),red_sebep:sebep,birim_fiyat:mkParse(r.querySelector('.mk-fiyat').value)||0,lot_no:r.querySelector('.mk-lot').value||'',skt:r.querySelector('.mk-skt').value||''});
   });
   if(!kal.length){ e.preventDefault(); alert('Kabul edilen en az bir kalem girin.'); return; }
   // YASAL VERİ KAPISI: hata varsa ya da kontrol onayı yoksa kaydetme
