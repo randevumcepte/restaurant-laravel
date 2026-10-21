@@ -564,8 +564,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
         <div class="rct-field"><label>Son Kullanma (SKT)</label>
           <input type="date" id="rctYmUretSkt"></div>
       </div>
-      <div class="rct-field"><label>Barkod <span style="color:var(--sub)">(boş = otomatik üret)</span></label>
-        <input type="text" id="rctYmUretBarkod" placeholder="Okut / yaz ya da boş bırak" autocomplete="off"></div>
+      <p style="color:var(--sub2);font-size:11px;margin:-4px 0 8px">Her üretimde o partiye özel <b>barkod otomatik</b> oluşturulur (çıktısını alıp ürüne yapıştır).</p>
       <div id="rctYmPartiWrap" style="display:none;margin-top:4px">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px">Üretim Partileri <span id="rctYmUretStok" style="color:var(--sub);font-weight:500"></span></div>
         <div id="rctYmPartiler"></div>
@@ -1070,7 +1069,6 @@ function rctYmEditorAc(id) {
     _rctYmUretElle = false;
     document.getElementById('rctYmUretMiktar').value = document.getElementById('rctYmEdVerim').value;
     document.getElementById('rctYmUretSkt').value = '';
-    document.getElementById('rctYmUretBarkod').value = '';
     document.getElementById('rctYmPartiWrap').style.display = id ? 'block' : 'none';
     if (id) { _rctYmPartiYukle(id); } else { document.getElementById('rctYmPartiler').innerHTML = ''; document.getElementById('rctYmUretStok').textContent = ''; }
 
@@ -1365,9 +1363,8 @@ async function rctYmKaydet() {
             if (uretMiktar > 0 && recId) {
                 btn.textContent = 'Üretiliyor…';
                 const skt = document.getElementById('rctYmUretSkt').value;
-                const barkod = document.getElementById('rctYmUretBarkod').value.trim();
                 try {
-                    const ures = await api('/api/patron/yarimamul-uret', { recete_id: recId, miktar: uretMiktar, skt: skt, barkod: barkod });
+                    const ures = await api('/api/patron/yarimamul-uret', { recete_id: recId, miktar: uretMiktar, skt: skt });
                     if (ures && ures.ok) rctToast('Kaydedildi + üretildi ✓ · Barkod: ' + ures.barkod);
                     else rctToast('Reçete kaydedildi; üretim hatası: ' + ((ures && ures.hata) || '—'));
                 } catch(e) { rctToast('Reçete kaydedildi; üretimde bağlantı hatası'); }
