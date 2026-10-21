@@ -57,9 +57,10 @@
         <div class="rk-sub2" style="font-size:11.5px;flex:1;min-width:160px"><b style="color:var(--yesil)">Barkod okut (bedava, sınırsız)</b> — en hızlısı. Barkodsuz faturada fotoğraf çek (AI okur). Her ikisinde de sen sadece kontrol edip onaylarsın.</div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
-        <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (okuyucu ya da elle yaz + Enter)" style="max-width:300px" autocomplete="off"
+        <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (USB/Bluetooth okuyucu) + Enter" style="max-width:300px" autocomplete="off"
+               onfocus="mkBarkodBilgiIlk()"
                onkeydown="if(event.key==='Enter'){event.preventDefault();mkBarkodCoz(this.value);this.value='';}">
-        <button type="button" class="rk-btn bos" id="mkKameraBtn" style="padding:7px 12px" onclick="mkKameraAc()"><span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod</button>
+        <button type="button" class="rk-btn bos" style="padding:7px 12px" onclick="mkBarkodBilgiAc()"><span class="material-icons-outlined" style="font-size:16px">help_outline</span> Barkod okuyucu?</button>
         <label class="rk-btn bos" style="padding:7px 12px;cursor:pointer"><span class="material-icons-outlined" style="font-size:16px">photo_camera</span> İrsaliye/Fatura fotoğrafı
           <input type="file" accept="image/*" capture="environment" style="display:none" onchange="mkFotoSec(this)"></label>
         <span id="mkDurum" class="rk-sub2" style="font-size:12px"></span>
@@ -74,7 +75,6 @@
         </div>
         <div class="rk-sub2" style="font-size:11px;margin-top:6px">Bir kez bağla; bu ürünün barkodu bundan sonra hep otomatik tanınır.</div>
       </div>
-      <video id="mkKamera" playsinline muted style="display:none;width:100%;max-width:360px;border-radius:12px;margin-top:10px;background:#000"></video>
       <div id="mkFotoSar" style="display:none;margin-top:10px">
         <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır (büyütmek için tıkla):</div>
         <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="mkFotoBuyut()">
@@ -207,6 +207,24 @@
   <img id="mkFotoTamImg" alt="" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)">
 </div>
 
+{{-- Barkod okuyucu uyarı/bilgi popup --}}
+<div id="mkBarkodBilgi" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center;padding:18px">
+  <div style="background:var(--card);max-width:430px;width:100%;border-radius:16px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border:1px solid var(--line)">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+      <span class="material-icons-outlined" style="color:var(--mor1);font-size:26px">barcode_reader</span>
+      <div style="font-weight:800;font-size:17px;color:var(--ink)">Barkod Okuyucu Gerekir</div>
+    </div>
+    <div style="font-size:13px;color:var(--sub);line-height:1.7">
+      Barkod okutmak için bilgisayara <b>USB ya da Bluetooth barkod okuyucu</b> takılı olması gerekir (kurulum istemez, klavye gibi çalışır).<br><br>
+      <b>Okuyucu takılıysa:</b> barkod kutusuna bir kez tıkla, sonra ürünü okut — otomatik satıra eklenir.<br>
+      <b>Okuyucu yoksa:</b> <b>İrsaliye/Fatura fotoğrafı</b> çek ya da kalemleri <b>elle</b> gir.
+    </div>
+    <div style="text-align:right;margin-top:18px">
+      <button type="button" class="rk-btn" style="background:var(--mor1);color:#fff;padding:9px 18px" onclick="document.getElementById('mkBarkodBilgi').style.display='none';document.getElementById('mkBarkodInp')?.focus()">Anladım</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function mkFotoBuyut(){ const src=document.getElementById('mkFotoOnizle')?.src; if(!src)return; const t=document.getElementById('mkFotoTam'), ti=document.getElementById('mkFotoTamImg'); if(ti)ti.src=src; if(t)t.style.display='flex'; }
 const MK_MALZ = @json($malzemeler->map(fn($m)=>['id'=>(int)$m->id,'ad'=>$m->ad,'birim'=>(int)($m->temel_birim_id ?? 0)])->values());
@@ -287,38 +305,10 @@ async function mkBarkodBagla(){
   }catch(e){ mkDurumYaz('Bağlanamadı',false); }
 }
 
-// ---- KAMERA ile barkod: önce BarcodeDetector, yoksa ZXing (her tarayıcıda çalışır) ----
-let mkStream=null,mkDet=null,mkTaramaAcik=false,mkZxing=null;
-function mkKameraBtnYaz(acik){ const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML=acik?'<span class="material-icons-outlined" style="font-size:16px">close</span> Kamerayı kapat':'<span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod'; }
-function mkZxingYukle(){ return new Promise((resolve,reject)=>{ if(window.ZXing) return resolve(); const s=document.createElement('script'); s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'; s.onload=()=>resolve(); s.onerror=()=>reject(new Error('barkod kütüphanesi yüklenemedi (internet?)')); document.head.appendChild(s); }); }
-async function mkKameraAc(){
-  const v=document.getElementById('mkKamera');
-  if(mkTaramaAcik){ mkKameraKapat(); return; }
-  // 1) Hızlı yol: BarcodeDetector (varsa)
-  if('BarcodeDetector' in window){
-    try{
-      mkDet=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','codabar','qr_code']});
-      mkStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-      v.srcObject=mkStream; v.style.display='block'; await v.play(); mkTaramaAcik=true;
-      mkKameraBtnYaz(true); mkDurumYaz('Barkodu kameraya göster…',null);
-      const tik=async()=>{ if(!mkTaramaAcik)return;
-        try{ const kods=await mkDet.detect(v); if(kods&&kods.length){ const kod=kods[0].rawValue; mkKameraKapat(); mkBarkodCoz(kod); return; } }catch(e){}
-        requestAnimationFrame(tik); };
-      requestAnimationFrame(tik); return;
-    }catch(e){ /* kameraya erişilemedi ya da detect yok -> ZXing dene */ }
-  }
-  // 2) Her tarayıcıda: ZXing
-  try{
-    mkDurumYaz('Kamera hazırlanıyor…',null);
-    await mkZxingYukle();
-    if(!window.ZXing) throw new Error('kütüphane yok');
-    mkZxing=new ZXing.BrowserMultiFormatReader();
-    v.style.display='block'; mkTaramaAcik=true; mkKameraBtnYaz(true); mkDurumYaz('Barkodu kameraya göster…',null);
-    await mkZxing.decodeFromVideoDevice(null, v, (result)=>{ if(result && mkTaramaAcik){ const kod=result.getText(); mkKameraKapat(); mkBarkodCoz(kod); } });
-    mkStream = v.srcObject; // kapatışta durdurmak için
-  }catch(e){ mkTaramaAcik=false; mkKameraBtnYaz(false); mkDurumYaz('Kamera açılamadı: '+(e.message||e)+' — USB/Bluetooth okuyucu ya da fotoğraf kullan.',false); }
-}
-function mkKameraKapat(){ mkTaramaAcik=false; if(mkZxing){ try{ mkZxing.reset(); }catch(e){} mkZxing=null; } const v=document.getElementById('mkKamera'); if(mkStream){ try{ mkStream.getTracks().forEach(t=>t.stop()); }catch(e){} mkStream=null; } if(v){ v.srcObject=null; v.style.display='none'; } mkKameraBtnYaz(false); }
+// ---- Barkod okuyucu bilgi/uyarı popup ----
+let mkBarkodBilgiGosterildi=false;
+function mkBarkodBilgiAc(){ const p=document.getElementById('mkBarkodBilgi'); if(p)p.style.display='flex'; }
+function mkBarkodBilgiIlk(){ if(mkBarkodBilgiGosterildi) return; mkBarkodBilgiGosterildi=true; mkBarkodBilgiAc(); }
 
 // ---- IRSALIYE/FATURA FOTOGRAFI -> AI OCR ----
 function mkKucult(file,max,q){ return new Promise((resolve,reject)=>{
