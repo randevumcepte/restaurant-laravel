@@ -8329,26 +8329,37 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
         . 'binlik/ondalık dönüşümünü BİZ yapacağız. Sadece gördüğün rakamları ve ayraçları birebir kopyala. '
         . 'MİKTAR ve BİRİM: Faturadaki MİKTAR sütunundaki değeri ve o sütunun birimini kullan (Kg, Lt, Adet gibi). '
         . 'Ambalaj/Kasa/Koli adedini (ör. "50 Kasa") MİKTAR sanma; miktar ağırlık/hacim/adet sütunudur, birim de onun birimidir. '
-        . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun.';
-    $govde = [
-        'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
-        'max_tokens' => 1800,
-        'system' => $sistem,
-        'messages' => [['role' => 'user', 'content' => [
-            ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]],
-            ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki kalemleri çıkar ve şemaya uygun JSON ver.'],
-        ]]],
-    ];
+        . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun. '
+        . 'ÇOK ÖNEMLİ: Ürün/kalem tablosundaki HER SATIRI eksiksiz çıkar; tabloda kaç satır varsa o kadar kalem dönder, '
+        . 'hiçbir satırı ATLAMA (üstten, ortadan ya da alttan). Sıra numaralarını takip et; 1,2,3... kesintisiz olmalı.';
     try {
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 45,
-            CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
-        ]);
-        $yanit = curl_exec($ch);
-        $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        // Daha isabetli görsel okuma için önce güçlü model (Sonnet), erişilemezse Haiku'ya düş.
+        $ocrModel = (string) config('services.anthropic.ocr_model', '');
+        $modeller = array_values(array_unique(array_filter([
+            $ocrModel ?: 'claude-sonnet-4-6',
+            (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'claude-haiku-4-5-20251001',
+        ])));
+        $yanit = false; $kod = 0;
+        foreach ($modeller as $mdl) {
+            $govde = [
+                'model' => $mdl, 'max_tokens' => 2200, 'system' => $sistem,
+                'messages' => [['role' => 'user', 'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]],
+                    ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki TÜM kalemleri (hiç atlamadan) çıkar ve şemaya uygun JSON ver.'],
+                ]]],
+            ];
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 60,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
+            ]);
+            $yanit = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($yanit !== false && $kod === 200) break; // bu model çalıştı
+        }
         if ($yanit === false || $kod !== 200) return response()->json(['ok' => 0, 'hata' => 'AI okunamadı (HTTP ' . $kod . '). Anahtar/bakiye kontrol et.']);
         $j = json_decode($yanit, true);
         $t = '';
@@ -9319,6 +9330,70 @@ Route::post('/api/patron/siparis-onerisi-olustur', function (Request $r) {
         }
         return response()->json(['ok' => 1, 'olusan' => $olusan]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Sipariş oluşturulamadı.']); }
+});
+// ===== API (Flutter): Fatura Eşleştir (3-way) =====
+Route::get('/api/patron/fatura-bekleyen', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'kabuller' => []];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (!Schema::hasTable('mal_kabuller')) return response()->json($out);
+        $faturaliMk = Schema::hasColumn('alis_faturalari', 'mal_kabul_id') ? DB::table('alis_faturalari')->whereNotNull('mal_kabul_id')->pluck('mal_kabul_id')->map(fn ($x) => (int) $x)->all() : [];
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+        $kabuller = DB::table('mal_kabuller')->where('sube_id', $sid)->whereNotIn('id', $faturaliMk ?: [0])->orderByDesc('id')->limit(40)->get();
+        $out['kabuller'] = $kabuller->map(function ($m) use ($tedAd, $malAd, $birim) {
+            $kalemler = DB::table('mal_kabul_kalemleri')->where('mal_kabul_id', $m->id)->where('kabul_miktar', '>', 0)->get()->map(function ($k) use ($malAd, $birim) {
+                $po = $k->siparis_kalem_id ? (float) DB::table('satinalma_siparis_kalemleri')->where('id', $k->siparis_kalem_id)->value('birim_fiyat') : 0.0;
+                return ['malzeme_id' => (int) $k->malzeme_id, 'malzeme' => $malAd[$k->malzeme_id] ?? '—', 'birim' => $birim[$k->alis_birim_id] ?? '', 'alis_birim_id' => (int) ($k->alis_birim_id ?? 0), 'kabul' => (float) $k->kabul_miktar, 'birim_fiyat' => (float) $k->birim_fiyat, 'po_fiyat' => $po];
+            })->all();
+            return ['id' => (int) $m->id, 'tedarikci' => $tedAd[$m->tedarikci_id] ?? '—', 'irsaliye_no' => $m->irsaliye_no, 'tarih' => $m->tarih, 'kalemler' => $kalemler];
+        })->all();
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+Route::post('/api/patron/fatura-eslestir-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id; $mkId = (int) $r->input('mal_kabul_id');
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $mk = DB::table('mal_kabuller')->where('id', $mkId)->where('sube_id', $sid)->first();
+        if (!$mk) return response()->json(['ok' => 0, 'hata' => 'Mal kabul bulunamadı.']);
+        if (Schema::hasColumn('alis_faturalari', 'mal_kabul_id') && DB::table('alis_faturalari')->where('mal_kabul_id', $mkId)->exists()) return response()->json(['ok' => 0, 'hata' => 'Bu mal kabulün faturası zaten var.']);
+        $kalemler = $r->input('kalemler'); if (is_string($kalemler)) $kalemler = json_decode($kalemler, true);
+        if (!is_array($kalemler) || !count($kalemler)) return response()->json(['ok' => 0, 'hata' => 'Kalem yok.']);
+        $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : date('Y-m-d');
+        $vade = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('vade_tarihi')) ? $r->input('vade_tarihi') : null;
+        $genelIsk = max(0, (float) $r->input('iskonto'));
+        $ara = 0.0; $kdvT = 0.0; $farklar = []; $hazir = [];
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0); if (!$mid) continue;
+            $miktar = (float) ($k['miktar'] ?? 0); $fiyat = (float) ($k['birim_fiyat'] ?? 0); $ky = max(0, (float) ($k['kdv_yuzde'] ?? 0));
+            $net = $miktar * $fiyat; $kdv = $net * $ky / 100; $ara += $net; $kdvT += $kdv;
+            $kabul = (float) ($k['kabul_miktar'] ?? 0); $po = (float) ($k['po_fiyat'] ?? 0);
+            $ad = DB::table('malzemeler')->where('id', $mid)->value('ad') ?: ('#' . $mid);
+            if ($kabul > 0 && abs($kabul - $miktar) > 0.001) $farklar[] = $ad . ': miktar farkı';
+            if ($po > 0 && $fiyat > $po + 0.0001) $farklar[] = $ad . ': fiyat yüksek';
+            $hazir[] = ['malzeme_id' => $mid, 'alis_birim_id' => ((int) ($k['alis_birim_id'] ?? 0)) ?: null, 'miktar' => $miktar, 'birim_fiyat' => $fiyat, 'kdv_yuzde' => $ky, 'kdv_tutar' => round($kdv, 2), 'satir_toplam' => round($net, 2)];
+        }
+        if (!count($hazir)) return response()->json(['ok' => 0, 'hata' => 'Geçerli kalem yok.']);
+        $araNet = round($ara - $genelIsk, 2); $genel = round($araNet + $kdvT, 2); $eslesme = count($farklar) ? 'fark_var' : 'eslesti';
+        $frow = ['sube_id' => $sid, 'tedarikci_id' => $mk->tedarikci_id, 'fatura_no' => $r->input('fatura_no') ? (string) $r->input('fatura_no') : null, 'tarih' => $tarih, 'toplam' => $genel, 'durum' => 'onaylandi', 'giren_personel_id' => $p->id, 'onaylayan_personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now()];
+        foreach (['mal_kabul_id' => $mkId, 'siparis_id' => $mk->siparis_id, 'irsaliye_no' => $mk->irsaliye_no, 'ara_toplam' => $araNet, 'iskonto' => $genelIsk, 'kdv_toplam' => round($kdvT, 2), 'vade_tarihi' => $vade, 'eslesme_durumu' => $eslesme] as $kol => $val) { if (Schema::hasColumn('alis_faturalari', $kol)) $frow[$kol] = $val; }
+        $fid = DB::table('alis_faturalari')->insertGetId($frow);
+        foreach ($hazir as $h) {
+            $krow = ['fatura_id' => $fid, 'malzeme_id' => $h['malzeme_id'], 'alis_birim_id' => $h['alis_birim_id'], 'miktar' => $h['miktar'], 'birim_fiyat' => $h['birim_fiyat'], 'satir_toplam' => $h['satir_toplam'], 'created_at' => now(), 'updated_at' => now()];
+            foreach (['kdv_yuzde' => $h['kdv_yuzde'], 'kdv_tutar' => $h['kdv_tutar']] as $kol => $val) { if (Schema::hasColumn('alis_fatura_kalemleri', $kol)) $krow[$kol] = $val; }
+            DB::table('alis_fatura_kalemleri')->insert($krow);
+        }
+        if (Schema::hasTable('giderler')) {
+            $tedAd = $mk->tedarikci_id ? DB::table('tedarikciler')->where('id', $mk->tedarikci_id)->value('ad') : 'Tedarikçi';
+            DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => 'malzeme', 'aciklama' => $tedAd . ($r->input('fatura_no') ? ' · ' . $r->input('fatura_no') : '') . ' (fatura)', 'tutar' => $genel, 'tarih' => $tarih, 'created_by' => $p->id]);
+        }
+        return response()->json(['ok' => 1, 'eslesme' => $eslesme, 'farklar' => array_slice($farklar, 0, 5)]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Fatura kaydedilemedi.']); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
