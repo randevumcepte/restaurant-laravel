@@ -287,25 +287,38 @@ async function mkBarkodBagla(){
   }catch(e){ mkDurumYaz('Bağlanamadı',false); }
 }
 
-// ---- KAMERA ile barkod (BarcodeDetector varsa) ----
-let mkStream=null,mkDet=null,mkTaramaAcik=false;
+// ---- KAMERA ile barkod: önce BarcodeDetector, yoksa ZXing (her tarayıcıda çalışır) ----
+let mkStream=null,mkDet=null,mkTaramaAcik=false,mkZxing=null;
+function mkKameraBtnYaz(acik){ const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML=acik?'<span class="material-icons-outlined" style="font-size:16px">close</span> Kamerayı kapat':'<span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod'; }
+function mkZxingYukle(){ return new Promise((resolve,reject)=>{ if(window.ZXing) return resolve(); const s=document.createElement('script'); s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'; s.onload=()=>resolve(); s.onerror=()=>reject(new Error('barkod kütüphanesi yüklenemedi (internet?)')); document.head.appendChild(s); }); }
 async function mkKameraAc(){
   const v=document.getElementById('mkKamera');
   if(mkTaramaAcik){ mkKameraKapat(); return; }
-  if(!('BarcodeDetector' in window)){ mkDurumYaz('Bu tarayıcı kamera-barkod desteklemiyor; USB/Bluetooth okuyucu ya da fotoğraf kullan.',false); return; }
+  // 1) Hızlı yol: BarcodeDetector (varsa)
+  if('BarcodeDetector' in window){
+    try{
+      mkDet=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','codabar','qr_code']});
+      mkStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      v.srcObject=mkStream; v.style.display='block'; await v.play(); mkTaramaAcik=true;
+      mkKameraBtnYaz(true); mkDurumYaz('Barkodu kameraya göster…',null);
+      const tik=async()=>{ if(!mkTaramaAcik)return;
+        try{ const kods=await mkDet.detect(v); if(kods&&kods.length){ const kod=kods[0].rawValue; mkKameraKapat(); mkBarkodCoz(kod); return; } }catch(e){}
+        requestAnimationFrame(tik); };
+      requestAnimationFrame(tik); return;
+    }catch(e){ /* kameraya erişilemedi ya da detect yok -> ZXing dene */ }
+  }
+  // 2) Her tarayıcıda: ZXing
   try{
-    mkDet=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','codabar','qr_code']});
-    mkStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    v.srcObject=mkStream; v.style.display='block'; await v.play(); mkTaramaAcik=true;
-    const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML='<span class="material-icons-outlined" style="font-size:16px">close</span> Kamerayı kapat';
-    mkDurumYaz('Barkodu kameraya göster…',null);
-    const tik=async()=>{ if(!mkTaramaAcik)return;
-      try{ const kods=await mkDet.detect(v); if(kods&&kods.length){ const kod=kods[0].rawValue; mkKameraKapat(); mkBarkodCoz(kod); return; } }catch(e){}
-      requestAnimationFrame(tik); };
-    requestAnimationFrame(tik);
-  }catch(e){ mkDurumYaz('Kamera açılamadı: '+e.message,false); }
+    mkDurumYaz('Kamera hazırlanıyor…',null);
+    await mkZxingYukle();
+    if(!window.ZXing) throw new Error('kütüphane yok');
+    mkZxing=new ZXing.BrowserMultiFormatReader();
+    v.style.display='block'; mkTaramaAcik=true; mkKameraBtnYaz(true); mkDurumYaz('Barkodu kameraya göster…',null);
+    await mkZxing.decodeFromVideoDevice(null, v, (result)=>{ if(result && mkTaramaAcik){ const kod=result.getText(); mkKameraKapat(); mkBarkodCoz(kod); } });
+    mkStream = v.srcObject; // kapatışta durdurmak için
+  }catch(e){ mkTaramaAcik=false; mkKameraBtnYaz(false); mkDurumYaz('Kamera açılamadı: '+(e.message||e)+' — USB/Bluetooth okuyucu ya da fotoğraf kullan.',false); }
 }
-function mkKameraKapat(){ mkTaramaAcik=false; const v=document.getElementById('mkKamera'); if(mkStream){mkStream.getTracks().forEach(t=>t.stop());mkStream=null;} if(v)v.style.display='none'; const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML='<span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod'; }
+function mkKameraKapat(){ mkTaramaAcik=false; if(mkZxing){ try{ mkZxing.reset(); }catch(e){} mkZxing=null; } const v=document.getElementById('mkKamera'); if(mkStream){ try{ mkStream.getTracks().forEach(t=>t.stop()); }catch(e){} mkStream=null; } if(v){ v.srcObject=null; v.style.display='none'; } mkKameraBtnYaz(false); }
 
 // ---- IRSALIYE/FATURA FOTOGRAFI -> AI OCR ----
 function mkKucult(file,max,q){ return new Promise((resolve,reject)=>{
