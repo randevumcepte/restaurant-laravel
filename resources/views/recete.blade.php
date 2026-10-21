@@ -1415,6 +1415,23 @@ function _rctYmBirimTxt() {
 }
 // onclick içine güvenli tek-tırnaklı JS string (çift tırnak attribute'u bozmasın)
 function _q(s) { return "'" + String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
+// Üretimi geri al / sil (onay: sahip/müdür doğrudan, değilse PIN)
+function rctUretimGeriAl(partiId) {
+    if (!confirm('Bu üretim partisini GERİ AL?\n\n• Düşen malzemeler stoğa geri döner\n• Bu partinin sos stoğu silinir\n• Yalnızca satılmamış parti geri alınabilir\n\nDevam?')) return;
+    const _gonder = function(pin) {
+        const d = { parti_id: partiId };
+        if (pin) d.onay_pin = pin;
+        api('/api/patron/yarimamul-uretim-sil', d).then(function(r){
+            if (r && r.ok) { rctToast(r.mesaj || 'Geri alındı ✓'); _rctYmDegisti = true; if (_rctYmEdId) _rctYmPartiYukle(_rctYmEdId); }
+            else if (r && r.onay_gerek) {
+                const p2 = prompt((r.hata || 'Müdür/Sahip onayı gerekli') + '\n\nMüdür/Sahip PIN:');
+                if (p2 && p2.trim()) _gonder(p2.trim());
+            }
+            else { rctToast((r && r.hata) || 'Geri alınamadı'); }
+        }).catch(function(){ rctToast('Bağlantı hatası'); });
+    };
+    _gonder(null);
+}
 // Üretim sonrası: stoğa eklendi bandı + Etiket Yazdır
 function _rctYmUretSonucGoster(barkod, skt, miktar) {
     const el = document.getElementById('rctYmUretSonuc'); if (!el) return;
@@ -1479,6 +1496,7 @@ function _rctYmPartiYukle(id) {
                 + '<div style="font-size:11px;color:' + renk + '">SKT: ' + sktTxt + (uyari ? ' · ' + uyari : '') + '</div></div>'
                 + '<div style="font-size:12.5px;font-weight:700;color:var(--ink)">' + _mik(x.kalan) + '</div>'
                 + '<button onclick="rctEtiketYazdir(' + _q(x.lot_no || '') + ',' + _q(x.skt || '') + ',' + x.giris + ',' + _q(_rctYmBirimTxt()) + ',' + _q(x.giris_tarihi || '') + ')" title="Etiketi yeniden yazdır" style="background:none;border:none;cursor:pointer;color:var(--mavi);padding:2px 3px;line-height:1"><span class="material-icons-outlined" style="font-size:18px">print</span></button>'
+                + '<button onclick="rctUretimGeriAl(' + x.id + ')" title="Üretimi geri al / sil (onay gerekir)" style="background:none;border:none;cursor:pointer;color:#F43F5E;padding:2px 3px;line-height:1"><span class="material-icons-outlined" style="font-size:18px">undo</span></button>'
                 + '</div>';
         }).join('');
     }).catch(function(){ box.innerHTML = ''; });
