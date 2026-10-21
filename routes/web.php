@@ -6535,7 +6535,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
@@ -8533,6 +8533,81 @@ Route::get('/satinalma-analiz', function () {
         $d['aylik'] = $aylik;
     } catch (\Throwable $e) {}
     return view('satinalma_analiz', $d);
+});
+
+// ===== FAZ 5: Satınalma AI Asistanı (mevcut Anthropic/Haiku; anahtar/bakiye yoksa kural-özet fallback) =====
+if (!function_exists('_satinalmaBaglam')) {
+    function _satinalmaBaglam($sid)
+    {
+        $b = ['kritik' => [], 'oneri_say' => 0, 'gizli_zam' => [], 'en_cok_tedarikci' => null, 'borc_toplam' => 0];
+        try {
+            if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+            $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+            $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
+            $kol = ['id', 'ad', 'kritik_stok']; if ($hedefVar) $kol[] = 'hedef_stok';
+            $oneri = 0;
+            foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+                $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
+                if ($kritik > 0 && $mevcut <= $kritik) $b['kritik'][] = $m->ad;
+                $ref = $hedef > 0 ? $hedef : $kritik;
+                if ($ref > 0 && $mevcut < $ref) $oneri++;
+            }
+            $b['kritik'] = array_slice($b['kritik'], 0, 8); $b['oneri_say'] = $oneri;
+            if (Schema::hasTable('alis_faturalari')) {
+                $b['borc_toplam'] = round((float) DB::table('alis_faturalari')->where('sube_id', $sid)->sum('toplam'), 0);
+                $top = DB::table('alis_faturalari')->where('sube_id', $sid)->selectRaw('tedarikci_id, SUM(toplam) t')->groupBy('tedarikci_id')->orderByDesc('t')->first();
+                if ($top && $top->tedarikci_id) $b['en_cok_tedarikci'] = ['ad' => DB::table('tedarikciler')->where('id', $top->tedarikci_id)->value('ad'), 'tutar' => round((float) $top->t, 0)];
+            }
+            if (Schema::hasTable('alis_fatura_kalemleri')) {
+                $from = today()->subDays(120); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+                $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')->where('f.sube_id', $sid)->whereDate('f.tarih', '>=', $from)->orderBy('k.malzeme_id')->orderBy('f.tarih')->get(['k.malzeme_id', 'k.birim_fiyat']);
+                foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
+                    if ($g->count() < 2) continue; $ilk = (float) $g->first()->birim_fiyat; $son = (float) $g->last()->birim_fiyat;
+                    if ($ilk <= 0) continue; $y = round(($son - $ilk) / $ilk * 100, 0);
+                    if ($y >= 8) $b['gizli_zam'][] = ($malAd[$mid] ?? '?') . ' %' . $y;
+                }
+                $b['gizli_zam'] = array_slice($b['gizli_zam'], 0, 5);
+            }
+        } catch (\Throwable $e) {}
+        return $b;
+    }
+}
+if (!function_exists('_satinalmaKuralCevap')) {
+    function _satinalmaKuralCevap($soru, $b)
+    {
+        $p = [];
+        if (!empty($b['kritik'])) $p[] = 'Kritik malzemeler: ' . implode(', ', array_slice($b['kritik'], 0, 6)) . '. Önce bunları sipariş et.';
+        if (($b['oneri_say'] ?? 0) > 0) $p[] = $b['oneri_say'] . ' malzeme hedef/kritik stok altında — "Otomatik Sipariş Önerisi" ekranından tek tıkla taslak çıkar.';
+        if (!empty($b['gizli_zam'])) $p[] = 'Sinsi zam yakalananlar: ' . implode(', ', $b['gizli_zam']) . '. Bunları pazarlık kozu yap.';
+        if (!empty($b['en_cok_tedarikci'])) $p[] = 'En çok ' . $b['en_cok_tedarikci']['ad'] . ' tedarikçisine harcadın (' . number_format($b['en_cok_tedarikci']['tutar'], 0, ',', '.') . '₺).';
+        if (empty($p)) $p[] = 'Henüz yorum üretecek yeterli satınalma verisi yok; alış girdikçe zenginleşir.';
+        return "(AI bakiyesi yok — veriden özet)\n• " . implode("\n• ", $p);
+    }
+}
+Route::get('/satinalma-asistan', function () {
+    return view('satinalma_asistan');
+});
+Route::post('/satinalma-asistan/sor', function (Request $r) {
+    $sid = _webSubeId();
+    $soru = trim((string) $r->input('soru'));
+    if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    try {
+        $baglam = _satinalmaBaglam($sid);
+        $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
+        $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
+            ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
+                'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
+                'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
+            ]);
+        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        $metin = trim((string) ($resp->json('content.0.text') ?? ''));
+        if ($metin === '') $metin = _satinalmaKuralCevap($soru, $baglam);
+        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
+    }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
