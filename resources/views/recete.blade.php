@@ -525,7 +525,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
     <div class="rct-row">
       <div class="rct-field">
         <label>Verim (kaç çıkıyor)</label>
-        <input type="number" id="rctYmEdVerim" min="0.001" step="any" value="1">
+        <input type="number" id="rctYmEdVerim" min="0.001" step="any" value="1" oninput="_rctYmUretMirror()">
       </div>
       <div class="rct-field">
         <label>Verim Birimi</label>
@@ -559,8 +559,8 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
       </div>
       <p style="color:var(--sub);font-size:11.5px;margin:0 0 10px">Miktar girersen <b>kaydederken</b> hammadde stoktan düşer, bu yarı mamül <b>SKT + barkodla</b> stoğa girer. Boş bırakırsan sadece reçete kaydedilir.</p>
       <div class="rct-row">
-        <div class="rct-field"><label>Üretilen miktar <span id="rctYmUretBirim" style="color:var(--sub)"></span></label>
-          <input type="number" id="rctYmUretMiktar" min="0" step="any" placeholder="0"></div>
+        <div class="rct-field"><label>Üretilen miktar <span id="rctYmUretBirim" style="color:var(--sub)"></span> <span style="color:var(--sub2);font-weight:400;font-size:10.5px">· varsayılan: verim</span></label>
+          <input type="number" id="rctYmUretMiktar" min="0" step="any" placeholder="0" oninput="_rctYmUretElle=true"></div>
         <div class="rct-field"><label>Son Kullanma (SKT)</label>
           <input type="date" id="rctYmUretSkt"></div>
       </div>
@@ -1066,8 +1066,9 @@ function rctYmEditorAc(id) {
     document.getElementById('rctYmEdBaslik').textContent = id ? 'Yarı Mamül' : 'Yeni Yarı Mamül';
     document.getElementById('rctYmEdAd').value    = '';
     document.getElementById('rctYmEdVerim').value = '1';
-    // Üretim alanları (aynı ekranda)
-    document.getElementById('rctYmUretMiktar').value = '';
+    // Üretim alanları (aynı ekranda) — üretilen miktar varsayılan = verim (sen değiştirince takip eder)
+    _rctYmUretElle = false;
+    document.getElementById('rctYmUretMiktar').value = document.getElementById('rctYmEdVerim').value;
     document.getElementById('rctYmUretSkt').value = '';
     document.getElementById('rctYmUretBarkod').value = '';
     document.getElementById('rctYmPartiWrap').style.display = id ? 'block' : 'none';
@@ -1101,6 +1102,7 @@ function rctYmEditorAc(id) {
             const sel = document.getElementById('rctYmEdVerimBirim');
             [...sel.options].forEach(o => { if (parseInt(o.value) == _ymEdVerimBirimId) o.selected = true; });
             _rctYmUretBirimGuncelle();
+            _rctYmUretMirror();
             _ymEdKalemler = (res.kalemler || []).map(k => {
                 if (k.yarimamul || k.alt_recete_id) {
                     const ym = ymMap[k.alt_recete_id] || {};
@@ -1384,6 +1386,12 @@ async function rctYmKaydet() {
     }
 }
 
+// Üretilen miktar varsayılanı = verim (kullanıcı elle değiştirmediyse takip eder)
+let _rctYmUretElle = false;
+function _rctYmUretMirror() {
+    if (_rctYmUretElle) return;
+    document.getElementById('rctYmUretMiktar').value = document.getElementById('rctYmEdVerim').value;
+}
 // Üretim miktarı etiketine verim birimini yaz
 function _rctYmUretBirimGuncelle() {
     const sel = document.getElementById('rctYmEdVerimBirim');
