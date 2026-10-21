@@ -66,8 +66,8 @@
       </div>
       <video id="mkKamera" playsinline muted style="display:none;width:100%;max-width:360px;border-radius:12px;margin-top:10px;background:#000"></video>
       <div id="mkFotoSar" style="display:none;margin-top:10px">
-        <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır:</div>
-        <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="window.open(this.src,'_blank')">
+        <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır (büyütmek için tıkla):</div>
+        <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="mkFotoBuyut()">
       </div>
     </div>
     @endunless
@@ -192,7 +192,13 @@
   </div>
 @endif
 
+{{-- Fotoğraf büyütme (lightbox) — data: URL yeni sekmede açılmaz, sayfa içinde göster --}}
+<div id="mkFotoTam" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;align-items:center;justify-content:center;padding:18px;cursor:zoom-out">
+  <img id="mkFotoTamImg" alt="" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+</div>
+
 <script>
+function mkFotoBuyut(){ const src=document.getElementById('mkFotoOnizle')?.src; if(!src)return; const t=document.getElementById('mkFotoTam'), ti=document.getElementById('mkFotoTamImg'); if(ti)ti.src=src; if(t)t.style.display='flex'; }
 const MK_MALZ = @json($malzemeler->map(fn($m)=>['id'=>(int)$m->id,'ad'=>$m->ad,'birim'=>(int)($m->temel_birim_id ?? 0)])->values());
 const MK_BIRIM = @json($birimler->map(fn($b)=>['id'=>(int)$b->id,'ks'=>$b->kisaltma])->values());
 const MK_SIPARIS = {{ $siparis ? 'true' : 'false' }};
