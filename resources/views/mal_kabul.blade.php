@@ -126,7 +126,7 @@
           <div class="rk-sub2" style="font-size:12px">{{ $num($k->miktar) }} <span style="font-size:10px">(kalan {{ $num($k->kalan) }})</span></div>
           <input type="number" class="rk-inp mk-gelen" step="0.001" min="0" value="{{ $num($k->kalan) }}" style="padding:6px">
           <input type="number" class="rk-inp mk-kabul" step="0.001" min="0" value="{{ $num($k->kalan) }}" style="padding:6px">
-          <input type="number" class="rk-inp mk-fiyat" step="0.0001" min="0" value="{{ (float) $k->birim_fiyat }}" style="padding:6px">
+          <div style="display:flex;align-items:center;gap:4px"><input type="text" inputmode="decimal" class="rk-inp mk-fiyat" value="{{ number_format((float) $k->birim_fiyat, 2, ',', '.') }}" style="padding:6px;text-align:right;flex:1;min-width:0"><span class="rk-sub2" style="font-size:12px">₺</span></div>
           <input type="text" class="rk-inp mk-lot" placeholder="Parti no (varsa)" style="padding:6px">
           <input type="date" class="rk-inp mk-skt" style="padding:6px">
         </div>
@@ -205,7 +205,7 @@ function mkSatirEkle(pre){
     <select class="rk-inp mk-b" style="padding:6px">${mkBirimOpt()}</select>
     <input type="number" class="rk-inp mk-gelen" placeholder="Gelen" step="0.001" min="0" style="padding:6px">
     <input type="number" class="rk-inp mk-kabul" placeholder="Kabul" step="0.001" min="0" style="padding:6px">
-    <input type="number" class="rk-inp mk-fiyat" placeholder="Fiyat" step="0.0001" min="0" style="padding:6px">
+    <div style="display:flex;align-items:center;gap:4px"><input type="text" inputmode="decimal" class="rk-inp mk-fiyat" placeholder="0,00" style="padding:6px;text-align:right;flex:1;min-width:0"><span class="rk-sub2" style="font-size:12px">₺</span></div>
     <input type="text" class="rk-inp mk-lot" placeholder="Parti no (varsa)" style="padding:6px">
     <input type="date" class="rk-inp mk-skt" style="padding:6px">`;
   document.getElementById('mkSatirlar').appendChild(d);
@@ -213,7 +213,7 @@ function mkSatirEkle(pre){
     if(pre.malzeme_id){ const ms=d.querySelector('.mk-m'); ms.value=pre.malzeme_id; const b=ms.selectedOptions[0]?.dataset.birim; if(b)d.querySelector('.mk-b').value=b; }
     if(pre.birim_id){ d.querySelector('.mk-b').value=pre.birim_id; }
     if(pre.miktar!=null){ d.querySelector('.mk-gelen').value=pre.miktar; d.querySelector('.mk-kabul').value=pre.miktar; }
-    if(pre.fiyat!=null){ d.querySelector('.mk-fiyat').value=pre.fiyat; }
+    if(pre.fiyat!=null){ d.querySelector('.mk-fiyat').value=mkFmt(pre.fiyat); }
     if(pre.ad && !pre.malzeme_id){ const ms=d.querySelector('.mk-m'); ms.style.outline='2px solid var(--kirmizi)'; ms.title='Fotoğrafta "'+pre.ad+'" okundu ama eşleşen malzeme bulunamadı — elle seç'; }
   }
   return d;
@@ -236,7 +236,7 @@ async function mkBarkodCoz(kod){
       let row=[...document.querySelectorAll('.mk-serbest')].find(r=>!r.querySelector('.mk-m').value);
       if(row){ const ms=row.querySelector('.mk-m'); ms.value=j.id; const b=ms.selectedOptions[0]?.dataset.birim; if(b)row.querySelector('.mk-b').value=b; ms.style.outline=''; }
       else row=mkSatirEkle({malzeme_id:j.id});
-      if(j.maliyet>0 && !row.querySelector('.mk-fiyat').value) row.querySelector('.mk-fiyat').value=j.maliyet;
+      if(j.maliyet>0 && !row.querySelector('.mk-fiyat').value) row.querySelector('.mk-fiyat').value=mkFmt(j.maliyet);
       row.querySelector('.mk-gelen').focus();
       mkBip(true); mkDurumYaz('Eklendi: '+j.ad,true);
     } else { mkBip(false); mkDurumYaz(j.hata||'Barkod bulunamadı',false); }
@@ -324,7 +324,7 @@ function mkTutarSet(base,num){ if(num==null||num==='')return; const v=document.g
 // ---- KALEM TOPLAMI <-> FATURA ARA TOPLAMI canli karsilastirma ----
 function mkTopHesapla(){
   let t=0;
-  document.querySelectorAll('.mk-satir').forEach(r=>{ const g=parseFloat(r.querySelector('.mk-gelen')?.value)||0, f=parseFloat(r.querySelector('.mk-fiyat')?.value)||0; t+=g*f; });
+  document.querySelectorAll('.mk-satir').forEach(r=>{ const g=parseFloat(r.querySelector('.mk-gelen')?.value)||0, f=mkParse(r.querySelector('.mk-fiyat')?.value)||0; t+=g*f; });
   const ara=mkTutarNum('mkAraToplam');
   const u=document.getElementById('mkToplamUyari'); if(!u) return;
   if(ara>0){
@@ -334,6 +334,7 @@ function mkTopHesapla(){
   } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--ink)'; u.style.background='color-mix(in srgb,var(--ink) 5%,transparent)'; }
 }
 document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
+document.getElementById('mkSatirlar')?.addEventListener('focusout', e=>{ if(e.target && e.target.classList && e.target.classList.contains('mk-fiyat')){ const n=mkParse(e.target.value); e.target.value=(n==null?'':mkFmt(n)); mkTopHesapla(); } });
 mkTopHesapla();
 
 // ---- VKN/TCKN doğrulama + yasal alan kontrolü (en ufak hata yakalanır) ----
@@ -370,7 +371,7 @@ document.getElementById('mkForm').addEventListener('submit',function(e){
     const gelen=parseFloat(r.querySelector('.mk-gelen').value)||0;
     const kabul=parseFloat(r.querySelector('.mk-kabul').value)|| gelen;
     if(!mid || kabul<=0) return;
-    kal.push({malzeme_id:mid,alis_birim_id:birim,siparis_kalem_id:skId,siparis_miktar:sipMik,gelen:gelen,kabul:kabul,red:Math.max(0,gelen-kabul),birim_fiyat:parseFloat(r.querySelector('.mk-fiyat').value)||0,lot_no:r.querySelector('.mk-lot').value||'',skt:r.querySelector('.mk-skt').value||''});
+    kal.push({malzeme_id:mid,alis_birim_id:birim,siparis_kalem_id:skId,siparis_miktar:sipMik,gelen:gelen,kabul:kabul,red:Math.max(0,gelen-kabul),birim_fiyat:mkParse(r.querySelector('.mk-fiyat').value)||0,lot_no:r.querySelector('.mk-lot').value||'',skt:r.querySelector('.mk-skt').value||''});
   });
   if(!kal.length){ e.preventDefault(); alert('Kabul edilen en az bir kalem girin.'); return; }
   // YASAL VERİ KAPISI: hata varsa ya da kontrol onayı yoksa kaydetme
