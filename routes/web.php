@@ -9089,6 +9089,64 @@ Route::get('/api/patron/parti-takip', function (Request $r) {
     } catch (\Throwable $e) {}
     return response()->json($out);
 });
+// ===== API (Flutter): Hal Fiyatları (oto-çek + sen vs hal) =====
+Route::get('/api/patron/hal-fiyatlari', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'hal' => [], 'kiyas' => []];
+    try {
+        if (function_exists('_restoHalEnsure')) _restoHalEnsure();
+        if (!Schema::hasTable('hal_fiyatlari')) return response()->json($out);
+        try {
+            if (function_exists('_halCek') && !cache()->get('hal_cek_' . $sid . '_' . today()->toDateString())) {
+                cache()->put('hal_cek_' . $sid . '_' . today()->toDateString(), 1, now()->addHours(18));
+                if (!DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists()) _halCek($sid, 'izmir');
+            }
+        } catch (\Throwable $e) {}
+        $hal = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
+        $out['hal'] = $hal->map(fn ($h) => ['urun_ad' => $h->urun_ad, 'birim' => $h->birim, 'asgari' => $h->asgari, 'ortalama' => $h->ortalama, 'azami' => $h->azami, 'tarih' => $h->tarih])->all();
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('malzemeler')) {
+            $malzemeler = DB::table('malzemeler')->get(['id', 'ad']);
+            $kiyas = [];
+            foreach ($hal->groupBy('urun_ad') as $ad => $grp) {
+                $halOrt = (float) ($grp->first()->ortalama ?? 0); if ($halOrt <= 0) continue;
+                $es = $malzemeler->first(function ($m) use ($ad) { $a = mb_strtolower($m->ad); $h = mb_strtolower($ad); return str_contains($a, $h) || str_contains($h, $a); });
+                if (!$es) continue;
+                $son = (float) DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')->where('f.sube_id', $sid)->where('k.malzeme_id', $es->id)->orderByDesc('f.tarih')->orderByDesc('k.id')->value('k.birim_fiyat');
+                if ($son <= 0) continue;
+                $kiyas[] = ['malzeme' => $es->ad, 'hal_ad' => $ad, 'hal' => $halOrt, 'senin' => $son, 'fark' => (int) round(($son - $halOrt) / $halOrt * 100), 'birim' => $grp->first()->birim];
+            }
+            usort($kiyas, fn ($a, $b) => $b['fark'] <=> $a['fark']);
+            $out['kiyas'] = $kiyas;
+        }
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+// ===== API (Flutter): Satınalma AI Asistanı =====
+Route::post('/api/patron/satinalma-asistan', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $soru = trim((string) $r->input('soru'));
+    if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    try {
+        $baglam = function_exists('_satinalmaBaglam') ? _satinalmaBaglam($p->sube_id) : [];
+        $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK (en fazla 5 cümle/madde). Rakamları yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
+        $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
+            ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
+                'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
+                'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
+            ]);
+        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        $metin = trim((string) ($resp->json('content.0.text') ?? ''));
+        if ($metin === '') $metin = _satinalmaKuralCevap($soru, $baglam);
+        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
+    }
+});
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
     $sid = _webSubeId();
