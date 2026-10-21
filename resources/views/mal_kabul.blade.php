@@ -129,14 +129,21 @@
     </div>
 
     {{-- ===== FATURA TOPLAMLARI ===== --}}
-    <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--mavi)"></span><span class="b">Fatura Toplamları</span>
-      <span class="rk-sub2" style="font-size:11px;margin-left:8px">İrsaliye/fatura fotoğrafından otomatik gelir; elle de düzeltebilirsin.</span></div>
-    <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <div><label class="rk-lbl" style="margin-top:0">Ara Toplam (KDV hariç)</label><input type="number" name="ara_toplam" id="mkAraToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
-      <div><label class="rk-lbl" style="margin-top:0">KDV</label><input type="number" name="kdv_tutar" id="mkKdv" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
-      <div><label class="rk-lbl" style="margin-top:0">Genel Toplam</label><input type="number" name="genel_toplam" id="mkGenelToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
+    <div class="rk-card" style="margin-top:16px;background:color-mix(in srgb,var(--mavi) 6%,transparent);border:2px solid color-mix(in srgb,var(--mavi) 38%,transparent);padding:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span class="material-icons-outlined" style="color:var(--mavi);font-size:24px">receipt_long</span>
+        <div style="flex:1;min-width:140px">
+          <div style="font-weight:900;color:var(--ink);font-size:16px">Fatura Toplamları</div>
+          <div class="rk-sub2" style="font-size:11.5px">İrsaliye/fatura fotoğrafından otomatik gelir; elle de düzeltebilirsin.</div>
+        </div>
+      </div>
+      <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">Ara Toplam (KDV hariç)</label><input type="number" name="ara_toplam" id="mkAraToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:17px;font-weight:700;padding:11px"></div>
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">KDV</label><input type="number" name="kdv_tutar" id="mkKdv" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:17px;font-weight:700;padding:11px"></div>
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:900;color:var(--mavi)">Genel Toplam</label><input type="number" name="genel_toplam" id="mkGenelToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:19px;font-weight:900;padding:11px;border:2px solid color-mix(in srgb,var(--mavi) 45%,transparent)"></div>
+      </div>
+      <div id="mkToplamUyari" style="font-size:13px;font-weight:700;margin-top:14px;padding:11px 13px;border-radius:12px;background:color-mix(in srgb,var(--ink) 5%,transparent)">Kalem toplamı (otomatik): <b id="mkKalemToplam">0,00 ₺</b></div>
     </div>
-    <div id="mkToplamUyari" class="rk-sub2" style="font-size:12px;margin-top:8px">Kalem toplamı (otomatik): <b id="mkKalemToplam">0,00 ₺</b></div>
 
     <label class="rk-lbl">Not (opsiyonel)</label>
     <input type="text" name="notlar" placeholder="Mal kabul notu" class="rk-inp">
@@ -294,9 +301,9 @@ function mkTopHesapla(){
   const u=document.getElementById('mkToplamUyari'); if(!u) return;
   if(ara>0){
     const fark=t-ara, yuzde=Math.abs(fark)/ara*100;
-    if(yuzde<=1){ u.innerHTML='Kalem toplamı: <b>'+mkTL(t)+'</b> · fatura ara toplamıyla uyuşuyor ✓'; u.style.color='var(--yesil)'; }
-    else { u.innerHTML='Kalem toplamı <b>'+mkTL(t)+'</b> ≠ fatura ara toplamı <b>'+mkTL(ara)+'</b> (fark '+mkTL(fark)+') — kontrol et'; u.style.color='var(--kirmizi)'; }
-  } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--sub2)'; }
+    if(yuzde<=1){ u.innerHTML='Kalem toplamı: <b>'+mkTL(t)+'</b> · fatura ara toplamıyla uyuşuyor ✓'; u.style.color='var(--yesil)'; u.style.background='color-mix(in srgb,var(--yesil) 14%,transparent)'; }
+    else { u.innerHTML='Kalem toplamı <b>'+mkTL(t)+'</b> ≠ fatura ara toplamı <b>'+mkTL(ara)+'</b> (fark '+mkTL(fark)+') — kontrol et'; u.style.color='var(--kirmizi)'; u.style.background='color-mix(in srgb,var(--kirmizi) 14%,transparent)'; }
+  } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--ink)'; u.style.background='color-mix(in srgb,var(--ink) 5%,transparent)'; }
 }
 document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
 document.getElementById('mkAraToplam')?.addEventListener('input', mkTopHesapla);
