@@ -9258,6 +9258,68 @@ Route::get('/api/patron/satinalma-siparis-detay', function (Request $r) {
             'tarih' => $s->tarih, 'beklenen_teslim' => $s->beklenen_teslim, 'durum' => $s->durum, 'ara_toplam' => (float) $s->ara_toplam, 'kdv_toplam' => (float) $s->kdv_toplam, 'genel_toplam' => (float) $s->genel_toplam, 'notlar' => $s->notlar], 'kalemler' => $kalemler]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Hata']); }
 });
+// ===== API (Flutter): Otomatik Sipariş Önerisi =====
+Route::get('/api/patron/siparis-onerisi', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'oneriler' => []];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        if (!Schema::hasTable('malzemeler')) return response()->json($out);
+        $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+        $tuketim = DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'tuketim')->where('created_at', '>=', today()->subDays(30))->selectRaw('malzeme_id, SUM(-miktar) t')->groupBy('malzeme_id')->pluck('t', 'malzeme_id');
+        $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
+        $kol = ['id', 'ad', 'temel_birim_id', 'kritik_stok', 'stok_takipli', 'guncel_maliyet']; if ($hedefVar) $kol[] = 'hedef_stok';
+        $katalogVar = Schema::hasTable('tedarikci_malzeme'); $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $oner = [];
+        foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+            $mevcut = (float) ($stok[$m->id] ?? 0); $hedef = $hedefVar ? (float) $m->hedef_stok : 0; $kritik = (float) $m->kritik_stok;
+            $ref = $hedef > 0 ? $hedef : ($kritik > 0 ? $kritik * 2 : 0);
+            if ($ref <= 0 || $mevcut >= ($hedef > 0 ? $hedef : $kritik)) continue;
+            $oneri = max(0, round($ref - $mevcut, 3)); if ($oneri <= 0) continue;
+            $tid = 0; $tad = '—'; $fiyat = (float) $m->guncel_maliyet; $bid = (int) $m->temel_birim_id;
+            if ($katalogVar) {
+                $c = DB::table('tedarikci_malzeme')->where('malzeme_id', $m->id)->where('aktif', 1)->whereNotNull('guncel_fiyat')->orderBy('guncel_fiyat')->first();
+                if ($c) { $tid = (int) $c->tedarikci_id; $tad = $tedAd[$c->tedarikci_id] ?? '—'; $fiyat = (float) $c->guncel_fiyat; $bid = (int) ($c->alis_birim_id ?: $m->temel_birim_id); }
+            }
+            $oner[] = ['id' => (int) $m->id, 'ad' => $m->ad, 'birim' => $birimKis[$m->temel_birim_id] ?? '', 'mevcut' => $mevcut, 'kritik' => $kritik,
+                'gunluk' => round(((float) ($tuketim[$m->id] ?? 0)) / 30, 3), 'oneri' => $oneri, 'tedarikci_id' => $tid, 'tedarikci' => $tad, 'fiyat' => $fiyat, 'birim_id' => $bid, 'kritik_mi' => $kritik > 0 && $mevcut <= $kritik];
+        }
+        usort($oner, fn ($a, $b) => ($b['kritik_mi'] <=> $a['kritik_mi']) ?: strcmp($a['ad'], $b['ad']));
+        $out['oneriler'] = $oner;
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+Route::post('/api/patron/siparis-onerisi-olustur', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $kalemler = $r->input('kalemler'); if (is_string($kalemler)) $kalemler = json_decode($kalemler, true);
+        if (!is_array($kalemler) || !count($kalemler)) return response()->json(['ok' => 0, 'hata' => 'Ürün seçilmedi.']);
+        $grup = [];
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0); $miktar = (float) ($k['miktar'] ?? 0); if (!$mid || $miktar <= 0) continue;
+            $grup[(int) ($k['tedarikci_id'] ?? 0)][] = ['malzeme_id' => $mid, 'alis_birim_id' => ((int) ($k['birim_id'] ?? 0)) ?: null, 'miktar' => $miktar, 'birim_fiyat' => (float) ($k['fiyat'] ?? 0)];
+        }
+        if (!count($grup)) return response()->json(['ok' => 0, 'hata' => 'Geçerli kalem yok.']);
+        $olusan = 0;
+        foreach ($grup as $tid => $lines) {
+            $ara = 0.0; $kdvT = 0.0; $hazir = [];
+            foreach ($lines as $l) { $net = $l['miktar'] * $l['birim_fiyat']; $ara += $net; $kdvT += $net * 0.10; $hazir[] = $l + ['iskonto_yuzde' => 0, 'kdv_yuzde' => 10, 'satir_toplam' => round($net, 2)]; }
+            $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
+            $spid = DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'taslak',
+                'ara_toplam' => round($ara, 2), 'iskonto' => 0, 'kdv_toplam' => round($kdvT, 2), 'genel_toplam' => round($ara + $kdvT, 2), 'notlar' => 'Otomatik sipariş önerisinden', 'olusturan_personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now()]);
+            foreach ($hazir as $h) { $h['siparis_id'] = $spid; $h['created_at'] = now(); $h['updated_at'] = now(); DB::table('satinalma_siparis_kalemleri')->insert($h); }
+            $olusan++;
+        }
+        return response()->json(['ok' => 1, 'olusan' => $olusan]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Sipariş oluşturulamadı.']); }
+});
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
     $sid = _webSubeId();
