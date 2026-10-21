@@ -329,9 +329,9 @@ function mkTopHesapla(){
   const u=document.getElementById('mkToplamUyari'); if(!u) return;
   if(ara>0){
     const fark=t-ara, yuzde=Math.abs(fark)/ara*100;
-    if(yuzde<=1){ u.innerHTML='Kalem toplamı: <b>'+mkTL(t)+'</b> · fatura ara toplamıyla uyuşuyor ✓'; u.style.color='var(--yesil)'; u.style.background='color-mix(in srgb,var(--yesil) 14%,transparent)'; }
-    else { u.innerHTML='Kalem toplamı <b>'+mkTL(t)+'</b> ≠ fatura ara toplamı <b>'+mkTL(ara)+'</b> (fark '+mkTL(fark)+') — kontrol et'; u.style.color='var(--kirmizi)'; u.style.background='color-mix(in srgb,var(--kirmizi) 14%,transparent)'; }
-  } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--ink)'; u.style.background='color-mix(in srgb,var(--ink) 5%,transparent)'; }
+    if(yuzde<=1){ u.innerHTML='Kalemlerin toplamı (miktar × fiyat) = <b>'+mkTL(t)+'</b> — faturadaki Ara Toplam ile uyuşuyor, her şey yolunda ✓'; u.style.color='var(--yesil)'; u.style.background='color-mix(in srgb,var(--yesil) 14%,transparent)'; }
+    else { u.innerHTML='Kalemlerin toplamı (miktar × fiyat) = <b>'+mkTL(t)+'</b>, ama faturadaki <b>Ara Toplam '+mkTL(ara)+'</b> yazıyor. '+mkTL(Math.abs(fark))+' fark var — ya bir kalemin miktarı/fiyatı yanlış, ya da fatura tutarı hatalı. Kontrol et.'; u.style.color='var(--kirmizi)'; u.style.background='color-mix(in srgb,var(--kirmizi) 14%,transparent)'; }
+  } else { u.innerHTML='Kalemlerin toplamı (miktar × fiyat): <b>'+mkTL(t)+'</b>'; u.style.color='var(--ink)'; u.style.background='color-mix(in srgb,var(--ink) 5%,transparent)'; }
 }
 document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
 document.getElementById('mkSatirlar')?.addEventListener('focusout', e=>{ if(e.target && e.target.classList && e.target.classList.contains('mk-fiyat')){ const n=mkParse(e.target.value); e.target.value=(n==null?'':mkFmt(n)); mkTopHesapla(); } });
