@@ -9188,6 +9188,76 @@ Route::post('/api/patron/satinalma-asistan', function (Request $r) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }
 });
+// ===== API (Flutter): Satınalma Siparişi (PO) — liste / meta / ekle / detay =====
+Route::get('/api/patron/satinalma-siparisleri', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $out = ['ok' => 1, 'siparisler' => []];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (!Schema::hasTable('satinalma_siparisleri')) return response()->json($out);
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $out['siparisler'] = DB::table('satinalma_siparisleri')->where('sube_id', $p->sube_id)->orderByDesc('id')->limit(100)->get()
+            ->map(fn ($s) => ['id' => (int) $s->id, 'siparis_no' => $s->siparis_no, 'tedarikci' => $tedAd[$s->tedarikci_id] ?? '—', 'tarih' => $s->tarih, 'durum' => $s->durum, 'genel_toplam' => (float) $s->genel_toplam])->all();
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+Route::get('/api/patron/satinalma-meta', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $out = ['ok' => 1, 'tedarikciler' => [], 'malzemeler' => [], 'birimler' => []];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $out['tedarikciler'] = Schema::hasTable('tedarikciler') ? DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad'])->map(fn ($x) => ['id' => (int) $x->id, 'ad' => $x->ad])->all() : [];
+        $out['malzemeler'] = Schema::hasTable('malzemeler') ? DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id'])->map(fn ($x) => ['id' => (int) $x->id, 'ad' => $x->ad, 'birim' => (int) ($x->temel_birim_id ?? 0)])->all() : [];
+        $out['birimler'] = Schema::hasTable('birimler') ? DB::table('birimler')->get(['id', 'kisaltma'])->map(fn ($x) => ['id' => (int) $x->id, 'ks' => $x->kisaltma])->all() : [];
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+Route::post('/api/patron/satinalma-siparis-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $tedId = (int) $r->input('tedarikci_id') ?: null;
+        $kalemler = $r->input('kalemler');
+        if (is_string($kalemler)) $kalemler = json_decode($kalemler, true);
+        if (!is_array($kalemler) || !count($kalemler)) return response()->json(['ok' => 0, 'hata' => 'En az bir kalem ekleyin.']);
+        $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : date('Y-m-d');
+        $beklenen = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('beklenen_teslim')) ? $r->input('beklenen_teslim') : null;
+        $ara = 0.0; $kdvT = 0.0; $isk = 0.0; $hazir = [];
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0); if (!$mid) continue;
+            $miktar = (float) ($k['miktar'] ?? 0); $fiyat = (float) ($k['birim_fiyat'] ?? 0); if ($miktar <= 0) continue;
+            $iy = max(0, (float) ($k['iskonto_yuzde'] ?? 0)); $ky = max(0, (float) ($k['kdv_yuzde'] ?? 0));
+            $brut = $miktar * $fiyat; $iskTut = $brut * $iy / 100; $net = $brut - $iskTut; $kdvTut = $net * $ky / 100;
+            $ara += $net; $kdvT += $kdvTut; $isk += $iskTut;
+            $hazir[] = ['malzeme_id' => $mid, 'alis_birim_id' => ((int) ($k['alis_birim_id'] ?? 0)) ?: null, 'miktar' => $miktar, 'birim_fiyat' => $fiyat, 'iskonto_yuzde' => $iy, 'kdv_yuzde' => $ky, 'satir_toplam' => round($net, 2)];
+        }
+        if (!count($hazir)) return response()->json(['ok' => 0, 'hata' => 'Geçerli kalem yok.']);
+        $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
+        $spid = DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tedId, 'siparis_no' => $sno, 'tarih' => $tarih, 'beklenen_teslim' => $beklenen,
+            'durum' => $r->input('gonder') ? 'gonderildi' : 'taslak', 'ara_toplam' => round($ara, 2), 'iskonto' => round($isk, 2), 'kdv_toplam' => round($kdvT, 2), 'genel_toplam' => round($ara + $kdvT, 2),
+            'notlar' => $r->input('notlar') ? (string) $r->input('notlar') : null, 'olusturan_personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now()]);
+        foreach ($hazir as $h) { $h['siparis_id'] = $spid; $h['created_at'] = now(); $h['updated_at'] = now(); DB::table('satinalma_siparis_kalemleri')->insert($h); }
+        return response()->json(['ok' => 1, 'id' => $spid, 'siparis_no' => $sno]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Sipariş oluşturulamadı.']); }
+});
+Route::get('/api/patron/satinalma-siparis-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $s = DB::table('satinalma_siparisleri')->where('id', (int) $r->query('id'))->where('sube_id', $p->sube_id)->first();
+        if (!$s) return response()->json(['ok' => 0, 'hata' => 'Bulunamadı']);
+        $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        $kalemler = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $s->id)->get()
+            ->map(fn ($k) => ['malzeme' => $malAd[$k->malzeme_id] ?? '—', 'birim' => $birim[$k->alis_birim_id] ?? '', 'miktar' => (float) $k->miktar, 'birim_fiyat' => (float) $k->birim_fiyat, 'kdv_yuzde' => (float) $k->kdv_yuzde, 'satir_toplam' => (float) $k->satir_toplam, 'teslim_edilen' => (float) $k->teslim_edilen])->all();
+        return response()->json(['ok' => 1, 'siparis' => ['siparis_no' => $s->siparis_no, 'tedarikci' => $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->value('ad') : '—',
+            'tarih' => $s->tarih, 'beklenen_teslim' => $s->beklenen_teslim, 'durum' => $s->durum, 'ara_toplam' => (float) $s->ara_toplam, 'kdv_toplam' => (float) $s->kdv_toplam, 'genel_toplam' => (float) $s->genel_toplam, 'notlar' => $s->notlar], 'kalemler' => $kalemler]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Hata']); }
+});
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
     $sid = _webSubeId();
