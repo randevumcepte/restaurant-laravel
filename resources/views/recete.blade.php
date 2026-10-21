@@ -567,7 +567,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
       <p style="color:var(--sub2);font-size:11px;margin:-4px 0 8px">Her üretimde o partiye özel <b>barkod otomatik</b> oluşturulur (çıktısını alıp ürüne yapıştır).</p>
       <div id="rctYmUretSonuc" style="display:none;margin-bottom:10px"></div>
       <div id="rctYmPartiWrap" style="display:none;margin-top:4px">
-        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px">Üretim Partileri <span id="rctYmUretStok" style="color:var(--sub);font-weight:500"></span></div>
+        <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:6px;display:flex;align-items:center;gap:5px"><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">history</span> Üretim Geçmişi (Partiler) <span id="rctYmUretStok" style="color:var(--sub);font-weight:500"></span></div>
         <div id="rctYmPartiler"></div>
       </div>
     </div>
@@ -1375,9 +1375,9 @@ async function rctYmKaydet() {
                         document.getElementById('rctYmPartiWrap').style.display = 'block';
                         _rctYmPartiYukle(recId);
                         _rctYmUretSonucGoster(ures.barkod, _uretSkt, _uretMik);
-                        document.getElementById('rctYmUretMiktar').value = '';
-                        document.getElementById('rctYmUretSkt').value = '';
-                        _rctYmUretElle = false;
+                        document.getElementById('rctYmUretMiktar').value = ''; // 0 kalsın (yanlışlıkla tekrar üretmesin)
+                        _rctYmUretElle = true;                                // SKT'yi SİLME → tarih kaybolmuş sanılmasın
+                        try { document.getElementById('rctYmPartiWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e) {}
                         rctToast('Üretildi ✓ stoğa eklendi');
                     } else { rctToast('Reçete kaydedildi; üretim hatası: ' + ((ures && ures.hata) || '—')); }
                 } catch(e) { btn.disabled = false; btn.textContent = 'Kaydet'; rctToast('Reçete kaydedildi; üretimde bağlantı hatası'); }
