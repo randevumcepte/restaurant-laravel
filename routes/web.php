@@ -8548,6 +8548,13 @@ Route::get('/hal-fiyatlari', function () {
     try {
         if (function_exists('_restoHalEnsure')) _restoHalEnsure();
         if (!Schema::hasTable('hal_fiyatlari')) return view('hal_fiyatlari', $d);
+        // Otomatik günlük çekim — günde 1 kez dener (cache guard), bugün api kaydı yoksa
+        try {
+            if (function_exists('_halCek') && !cache()->get('hal_cek_' . $sid . '_' . today()->toDateString())) {
+                cache()->put('hal_cek_' . $sid . '_' . today()->toDateString(), 1, now()->addHours(18));
+                if (!DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists()) _halCek($sid, 'izmir');
+            }
+        } catch (\Throwable $e) {}
         $d['hal'] = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
         // "sen vs hal": her hal ürünü için ada göre eşleşen malzemenin son alış fiyatı
         if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('malzemeler')) {
@@ -8594,6 +8601,59 @@ Route::post('/hal-fiyatlari/sil', function (Request $r) {
         DB::table('hal_fiyatlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete();
         return redirect('/hal-fiyatlari')->with('hal_ok', 'Silindi.');
     } catch (\Throwable $e) { return redirect('/hal-fiyatlari')->with('hal_hata', 'Silinemedi.'); }
+});
+// Otomatik hal çekimi — belediye açık-veri API'leri (Antalya'nın açık API'si yok → en yakın referans İzmir/Balıkesir)
+if (!function_exists('_halKaynaklar')) {
+    function _halKaynaklar()
+    {
+        return [
+            'izmir'     => ['ad' => 'İzmir Büyükşehir', 'url' => 'https://openapi.izmir.bel.tr/api/ibb/halfiyatlari/sebzemeyve/{tarih}'],
+            'balikesir' => ['ad' => 'Balıkesir Büyükşehir', 'url' => 'https://acikveri.balikesir.bel.tr/api/v1/WebApi/hal-fiyatlari-sebze'],
+        ];
+    }
+}
+if (!function_exists('_halCek')) {
+    function _halCek($sid, $kaynakKod = 'izmir', $tarih = null)
+    {
+        try {
+            if (function_exists('_restoHalEnsure')) _restoHalEnsure();
+            $k = _halKaynaklar()[$kaynakKod] ?? null;
+            if (!$k) return ['ok' => 0, 'mesaj' => 'Kaynak tanımsız.'];
+            $tarih = $tarih ?: now()->toDateString();
+            $url = str_replace('{tarih}', $tarih, $k['url']);
+            $resp = \Illuminate\Support\Facades\Http::timeout(20)->acceptJson()->get($url);
+            if (!$resp->successful()) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına ulaşılamadı (' . $resp->status() . ').'];
+            $data = $resp->json();
+            $rows = [];
+            if (is_array($data)) $rows = isset($data[0]) ? $data : ($data['data'] ?? $data['result'] ?? $data['value'] ?? $data['items'] ?? []);
+            if (!is_array($rows) || !count($rows)) return ['ok' => 0, 'mesaj' => 'Veri boş geldi (API formatı farklı olabilir).'];
+            $al = function ($r, $keys) { foreach ($keys as $kk) { if (isset($r[$kk]) && $r[$kk] !== '' && $r[$kk] !== null) return $r[$kk]; } return null; };
+            DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', $tarih)->where('kaynak', 'api')->delete();
+            $eklenen = 0;
+            foreach ($rows as $r) {
+                if (!is_array($r)) continue;
+                $ad = $al($r, ['malAdi', 'mal_adi', 'MalAdi', 'ad', 'Ad', 'AD', 'urunAdi', 'UrunAdi', 'maladi']);
+                if (!$ad) continue;
+                $birim = $al($r, ['birim', 'Birim', 'BIRIM', 'olcuBirimi', 'birimi']) ?: 'kg';
+                $asg = (float) ($al($r, ['asgariUcret', 'asgari', 'AsgariUcret', 'asgariFiyat', 'minFiyat', 'min', 'enDusuk']) ?: 0);
+                $azm = (float) ($al($r, ['azamiUcret', 'azami', 'AzamiUcret', 'azamiFiyat', 'maxFiyat', 'max', 'enYuksek']) ?: 0);
+                $ort = (float) ($al($r, ['ortalamaUcret', 'ortalama', 'OrtalamaUcret', 'ortalamaFiyat', 'ortFiyat', 'ortalamaUcreti']) ?: 0);
+                if ($ort <= 0 && $asg > 0 && $azm > 0) $ort = round(($asg + $azm) / 2, 2);
+                if ($ort <= 0 && $asg <= 0 && $azm <= 0) continue;
+                DB::table('hal_fiyatlari')->insert(['sube_id' => $sid, 'urun_ad' => mb_substr((string) $ad, 0, 80), 'birim' => mb_substr((string) $birim, 0, 12),
+                    'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'api', 'created_at' => now(), 'updated_at' => now()]);
+                $eklenen++;
+            }
+            return $eklenen ? ['ok' => 1, 'mesaj' => $eklenen . ' ürün çekildi (' . $k['ad'] . ' · ' . $tarih . ').'] : ['ok' => 0, 'mesaj' => 'Eşleşen veri çıkmadı (bugün yayınlanmamış olabilir).'];
+        } catch (\Throwable $e) { return ['ok' => 0, 'mesaj' => 'Bağlantı/format hatası (sunucu dış erişime kapalı olabilir).']; }
+    }
+}
+Route::post('/hal-fiyatlari/cek', function (Request $r) {
+    $sid = _webSubeId();
+    $kaynak = in_array($r->input('kaynak'), array_keys(_halKaynaklar())) ? $r->input('kaynak') : 'izmir';
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : null;
+    $sonuc = _halCek($sid, $kaynak, $tarih);
+    return redirect('/hal-fiyatlari')->with($sonuc['ok'] ? 'hal_ok' : 'hal_hata', $sonuc['mesaj']);
 });
 
 // ===== FAZ 4/5: Satınalma Analizi — Tedarikçi Karnesi (zamanında/red) + Harcama Trendi =====

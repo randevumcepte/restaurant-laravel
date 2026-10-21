@@ -18,8 +18,23 @@
   <span class="material-icons-outlined" style="color:#059669;font-size:24px">info</span>
   <div style="flex:1">
     <div style="font-weight:800;color:var(--ink);font-size:14px">Hal fiyatı = pazarlık kozun</div>
-    <div class="rk-sub2" style="font-size:12px">Bugünkü toptan hal fiyatını gir (ya da ileride belediye açık-veri API'sinden otomatik çekeriz). Sistem senin son alış fiyatınla kıyaslayıp <b>"hal X, sen Y → %Z fazla"</b> der. <b>Not:</b> hal fiyatı komisyoncu/toptan fiyatıdır; kapına teslimde marj+nakliye eklenir — kozu <i>trend ve bant</i> olarak kullan.</div>
+    <div class="rk-sub2" style="font-size:12px">Hal fiyatı belediye açık-veri API'sinden <b>otomatik çekilir</b> (günde 1 kez). Sistem senin son alış fiyatınla kıyaslayıp <b>"hal X, sen Y → %Z fazla"</b> der. <b>Not:</b> hal fiyatı komisyoncu/toptan fiyatıdır; kapına teslimde marj+nakliye eklenir — kozu <i>trend ve bant</i> olarak kullan.</div>
   </div>
+</div>
+
+{{-- Otomatik çek --}}
+<div class="rk-card" style="margin-bottom:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:color-mix(in srgb,#059669 5%,transparent);border-color:color-mix(in srgb,#059669 25%,transparent)">
+  <form method="POST" action="/hal-fiyatlari/cek" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;flex:1">
+    @csrf
+    <div><label class="rk-lbl" style="margin-top:0">Hal kaynağı</label>
+      <select name="kaynak" class="rk-inp" style="min-width:200px">
+        <option value="izmir">İzmir Büyükşehir (önerilen)</option>
+        <option value="balikesir">Balıkesir Büyükşehir</option>
+      </select></div>
+    <div><label class="rk-lbl" style="margin-top:0">Tarih (ops.)</label><input type="date" name="tarih" class="rk-inp"></div>
+    <button type="submit" class="rk-btn" style="background:#059669;padding:11px 16px"><span class="material-icons-outlined" style="color:#fff;font-size:18px">cloud_download</span> Şimdi Çek</button>
+  </form>
+  <div class="rk-sub2" style="font-size:11px;max-width:300px">Antalya'nın açık API'si yok (sadece bülten). En yakın güvenilir referans İzmir/Balıkesir; fiyatı <b>trend/bant kozu</b> olarak kullan. Sayfayı her gün ilk açışta otomatik çekilir.</div>
 </div>
 
 {{-- "SEN vs HAL" karşılaştırma --}}
@@ -94,7 +109,7 @@
 <div class="rk-card" style="margin-top:18px;background:color-mix(in srgb,#059669 6%,transparent);border-color:color-mix(in srgb,#059669 25%,transparent)">
   <div style="display:flex;align-items:center;gap:10px">
     <span class="material-icons-outlined" style="color:#059669;font-size:22px">cloud_download</span>
-    <div style="flex:1"><div style="font-weight:700;color:var(--ink);font-size:13.5px">İleride: otomatik hal çekimi</div><div class="rk-sub2" style="font-size:12px">Belediye açık-veri API'si (İzmir/Bursa/Balıkesir JSON, Antalya hali) bağlanınca günlük fiyatlar <b>otomatik</b> düşecek. Şimdilik manuel giriş + kıyas çalışıyor.</div></div>
+    <div style="flex:1"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Otomatik hal çekimi AKTİF ✓</div><div class="rk-sub2" style="font-size:12px">İzmir Büyükşehir açık-veri API'sinden (openapi.izmir.bel.tr) günde 1 kez otomatik çekilir + "Şimdi Çek" ile manuel. Sunucu dış erişime kapalıysa manuel giriş her zaman çalışır.</div></div>
   </div>
 </div>
 @endsection
