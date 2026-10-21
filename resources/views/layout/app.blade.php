@@ -49,6 +49,7 @@
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
         'Stok & Tedarik' => [
+            ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/recete', 'menu_book', 'Reçeteler (Yarı Mamül)', '#7C3AED'],
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
@@ -62,7 +63,6 @@
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
-            ['/satinalma-talep', 'assignment', 'Satın Alma Talepleri', '#7C3AED'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
         ],
         'Kasa & Finans' => [
