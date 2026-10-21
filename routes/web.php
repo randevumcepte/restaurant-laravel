@@ -12599,6 +12599,14 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
             _restoWaGonder($sid, $tel, $msg);
         }
     } catch (\Throwable $e) {}
+    // Uygulama-içi push (ikili bildirim): şubedeki cihazlara — satın almacı/patron görür
+    try {
+        if (function_exists('_fcmSubeyeGonder')) {
+            $ks = DB::table('talep_kalemleri')->where('talep_id', $talepId)->count();
+            $baslik = ($aciliyet === 'acil' ? '🔴 ACİL satın alma talebi' : '🛒 Yeni satın alma talebi');
+            _fcmSubeyeGonder($sid, $baslik, $dept . ' · ' . $ks . ' kalem · ' . ($p->ad ?? 'Panel'), ['tur' => 'satinalma_talep', 'id' => (string) $talepId]);
+        }
+    } catch (\Throwable $e) {}
     return response()->json(['ok' => true, 'id' => $talepId]);
 });
 Route::get('/api/patron/talep-detay', function (Request $r) {
@@ -12698,6 +12706,7 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
     $eksik = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNull('onerilen_tedarikci_id')->count();
     if ($eksik > 0) return response()->json(['ok' => false, 'mesaj' => $eksik . ' kalemde öneri (⭐) yok. Her kaleme bir tedarikçi öner.']);
     DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onayda', 'updated_at' => now()]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($talep->sube_id, '📋 Onay bekleyen satın alma', $talep->departman . ' talebi onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['sahip', 'mudur']); } catch (\Throwable $e) {}
     return response()->json(['ok' => true]);
 });
 // Patron/üst yönetim: kaleme tedarikçi seç (öneriyi onayla veya override)
@@ -12733,6 +12742,7 @@ Route::post('/satinalma-talep/onayla', function (Request $r) {
     $eksik = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNull('secilen_tedarikci_id')->count();
     if ($eksik > 0) return response()->json(['ok' => false, 'mesaj' => $eksik . ' kalemde tedarikçi seçimi yok.']);
     DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onaylandi', 'updated_at' => now()]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($talep->sube_id, '✅ Talep onaylandı', $talep->departman . ' talebi onaylandı — sipariş oluşturabilirsin', ['tur' => 'satinalma_talep', 'id' => (string) $id]); } catch (\Throwable $e) {}
     return response()->json(['ok' => true]);
 });
 // Onaylı talepten tedarikçiye-gruplu satın alma siparişi (PO) oluştur
