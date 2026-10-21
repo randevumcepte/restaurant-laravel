@@ -62,6 +62,7 @@
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
+            ['/satinalma-talep', 'assignment', 'Satın Alma Talepleri', '#7C3AED'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
         ],
         'Kasa & Finans' => [
