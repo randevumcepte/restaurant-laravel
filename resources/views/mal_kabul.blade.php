@@ -39,6 +39,41 @@
     @csrf
     <input type="hidden" name="kalemler" id="mkKalemler">
     @if ($siparis)<input type="hidden" name="siparis_id" value="{{ $siparis->id }}"><input type="hidden" name="tedarikci_id" value="{{ $siparis->tedarikci_id }}">@endif
+    @unless ($siparis)
+    <div class="rk-card" style="background:color-mix(in srgb,var(--mor1) 9%,transparent);border:2px solid color-mix(in srgb,var(--mor1) 45%,transparent);border-radius:16px;margin:0 0 16px;padding:18px;box-shadow:0 3px 14px color-mix(in srgb,var(--mor1) 14%,transparent)">
+      <div style="display:flex;gap:11px;align-items:center;flex-wrap:wrap">
+        <span class="material-icons-outlined" style="color:var(--mor1);font-size:28px">bolt</span>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:900;color:var(--ink);font-size:18px">Hızlı Doldur</div>
+          <div class="rk-sub2" style="font-size:12px;margin-top:2px"><b style="color:var(--yesil)">Barkod okut (bedava, sınırsız)</b> — en hızlısı. Barkodsuz faturada fotoğraf çek (AI okur). İkisinde de sen kontrol edip onaylarsın.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center">
+        <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (USB/Bluetooth okuyucu) + Enter" style="max-width:340px;font-size:15px;padding:12px" autocomplete="off"
+               onfocus="mkBarkodBilgiIlk()"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();mkBarkodCoz(this.value);this.value='';}">
+        <button type="button" class="rk-btn bos" style="padding:10px 14px" onclick="mkBarkodBilgiAc()"><span class="material-icons-outlined" style="font-size:17px">help_outline</span> Barkod okuyucu?</button>
+        <label class="rk-btn" style="padding:10px 16px;cursor:pointer;background:var(--mor1);color:#fff;font-weight:700"><span class="material-icons-outlined" style="font-size:17px;color:#fff">photo_camera</span> İrsaliye/Fatura Fotoğrafı
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="mkFotoSec(this)"></label>
+        <span id="mkDurum" class="rk-sub2" style="font-size:12.5px;font-weight:600"></span>
+      </div>
+      {{-- Bilinmeyen barkod -> oracıkta malzemeye bağla (ekran değiştirmeden) --}}
+      <div id="mkYeniBarkod" style="display:none;margin-top:12px;padding:11px;border:1px solid var(--amber);border-radius:12px;background:color-mix(in srgb,var(--amber) 9%,transparent)">
+        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:7px">Barkod <b id="mkYbKod"></b> tanımlı değil — bu hangi malzeme?</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="mkYbSel" class="rk-inp" style="max-width:300px"></select>
+          <button type="button" class="rk-btn" style="background:var(--yesil);color:#fff;padding:7px 13px" onclick="mkBarkodBagla()">Bağla ve Ekle</button>
+          <button type="button" class="rk-btn bos" style="padding:7px 12px" onclick="document.getElementById('mkYeniBarkod').style.display='none'">İptal</button>
+        </div>
+        <div class="rk-sub2" style="font-size:11px;margin-top:6px">Bir kez bağla; bu ürünün barkodu bundan sonra hep otomatik tanınır.</div>
+      </div>
+      <div id="mkFotoSar" style="display:none;margin-top:12px">
+        <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır (büyütmek için tıkla):</div>
+        <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="mkFotoBuyut()">
+      </div>
+    </div>
+    @endunless
+
     <div class="rk-grid" style="grid-template-columns:2fr 1fr 1fr;gap:10px">
       @unless ($siparis)
         <div><label class="rk-lbl" style="margin-top:0">Tedarikçi</label><select name="tedarikci_id" class="rk-inp"><option value="">— Seç —</option>@foreach ($tedarikciler as $t)<option value="{{ $t->id }}">{{ $t->ad }}</option>@endforeach</select></div>
@@ -48,39 +83,6 @@
       <div><label class="rk-lbl" style="margin-top:0">İrsaliye No</label><input type="text" name="irsaliye_no" placeholder="İrsaliye no" class="rk-inp"></div>
       <div><label class="rk-lbl" style="margin-top:0">Tarih</label><input type="date" name="tarih" value="{{ date('Y-m-d') }}" class="rk-inp"></div>
     </div>
-
-    @unless ($siparis)
-    <div class="rk-card" style="background:color-mix(in srgb,var(--mor1) 5%,transparent);border:1px dashed color-mix(in srgb,var(--mor1) 35%,transparent);margin:14px 0 4px;padding:12px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <span class="material-icons-outlined" style="color:var(--mor1)">bolt</span>
-        <div style="font-weight:800;color:var(--ink);font-size:13px">Hızlı doldur</div>
-        <div class="rk-sub2" style="font-size:11.5px;flex:1;min-width:160px"><b style="color:var(--yesil)">Barkod okut (bedava, sınırsız)</b> — en hızlısı. Barkodsuz faturada fotoğraf çek (AI okur). Her ikisinde de sen sadece kontrol edip onaylarsın.</div>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
-        <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (USB/Bluetooth okuyucu) + Enter" style="max-width:300px" autocomplete="off"
-               onfocus="mkBarkodBilgiIlk()"
-               onkeydown="if(event.key==='Enter'){event.preventDefault();mkBarkodCoz(this.value);this.value='';}">
-        <button type="button" class="rk-btn bos" style="padding:7px 12px" onclick="mkBarkodBilgiAc()"><span class="material-icons-outlined" style="font-size:16px">help_outline</span> Barkod okuyucu?</button>
-        <label class="rk-btn bos" style="padding:7px 12px;cursor:pointer"><span class="material-icons-outlined" style="font-size:16px">photo_camera</span> İrsaliye/Fatura fotoğrafı
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="mkFotoSec(this)"></label>
-        <span id="mkDurum" class="rk-sub2" style="font-size:12px"></span>
-      </div>
-      {{-- Bilinmeyen barkod -> oracıkta malzemeye bağla (ekran değiştirmeden) --}}
-      <div id="mkYeniBarkod" style="display:none;margin-top:10px;padding:11px;border:1px solid var(--amber);border-radius:12px;background:color-mix(in srgb,var(--amber) 9%,transparent)">
-        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:7px">Barkod <b id="mkYbKod"></b> tanımlı değil — bu hangi malzeme?</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <select id="mkYbSel" class="rk-inp" style="max-width:300px"></select>
-          <button type="button" class="rk-btn" style="background:var(--yesil);color:#fff;padding:7px 13px" onclick="mkBarkodBagla()">Bağla ve Ekle</button>
-          <button type="button" class="rk-btn bos" style="padding:7px 12px" onclick="document.getElementById('mkYeniBarkod').style.display='none'">İptal</button>
-        </div>
-        <div class="rk-sub2" style="font-size:11px;margin-top:6px">Bir kez bağla; bu ürünün barkodu bundan sonra hep otomatik tanınır.</div>
-      </div>
-      <div id="mkFotoSar" style="display:none;margin-top:10px">
-        <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır (büyütmek için tıkla):</div>
-        <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="mkFotoBuyut()">
-      </div>
-    </div>
-    @endunless
 
     {{-- ===== İRSALİYE / FATURA BİLGİLERİ ===== --}}
     <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--mavi)"></span><span class="b">İrsaliye / Fatura Bilgileri</span>
