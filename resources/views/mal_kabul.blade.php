@@ -92,6 +92,16 @@
     </div>
     </div>
 
+    {{-- ===== FATURA TOPLAMLARI ===== --}}
+    <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--mavi)"></span><span class="b">Fatura Toplamları</span>
+      <span class="rk-sub2" style="font-size:11px;margin-left:8px">İrsaliye/fatura fotoğrafından otomatik gelir; elle de düzeltebilirsin.</span></div>
+    <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div><label class="rk-lbl" style="margin-top:0">Ara Toplam (KDV hariç)</label><input type="number" name="ara_toplam" id="mkAraToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
+      <div><label class="rk-lbl" style="margin-top:0">KDV</label><input type="number" name="kdv_tutar" id="mkKdv" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
+      <div><label class="rk-lbl" style="margin-top:0">Genel Toplam</label><input type="number" name="genel_toplam" id="mkGenelToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp"></div>
+    </div>
+    <div id="mkToplamUyari" class="rk-sub2" style="font-size:12px;margin-top:8px">Kalem toplamı (otomatik): <b id="mkKalemToplam">0,00 ₺</b></div>
+
     <label class="rk-lbl">Not (opsiyonel)</label>
     <input type="text" name="notlar" placeholder="Mal kabul notu" class="rk-inp">
     <button type="submit" class="rk-btn lg" style="background:var(--yesil);margin-top:14px"><span class="material-icons-outlined" style="color:#fff;font-size:20px">check_circle</span> Mal Kabulü Onayla (Stok Gir)</button>
@@ -212,16 +222,35 @@ async function mkFotoSec(input){
     if(j.irsaliye_no){ const el=document.querySelector('#mkForm [name=irsaliye_no]'); if(el)el.value=j.irsaliye_no; }
     if(j.tarih){ const el=document.querySelector('#mkForm [name=tarih]'); if(el)el.value=j.tarih; }
     if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; }
+    const stl=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null) el.value=v; };
+    stl('mkAraToplam',j.ara_toplam); stl('mkKdv',j.kdv_tutar); stl('mkGenelToplam',j.genel_toplam);
     // bos otomatik satiri temizle
     [...document.querySelectorAll('.mk-serbest')].forEach(r=>{ if(!r.querySelector('.mk-m').value && !r.querySelector('.mk-gelen').value) r.remove(); });
     let eksik=0; const kalemler=j.kalemler||[];
     kalemler.forEach(k=>{ mkSatirEkle({malzeme_id:k.malzeme_id,birim_id:k.birim_id,miktar:k.miktar,fiyat:k.birim_fiyat,ad:k.ad}); if(!k.malzeme_id) eksik++; });
     if(!document.querySelector('.mk-serbest')) mkSatirEkle();
     let msg=kalemler.length+' kalem okundu'+(eksik?(' · '+eksik+' tanesi eşleşmedi (kırmızı, elle seç)'):'')+' — miktar/fiyatı kontrol et.';
-    mkDurumYaz(msg, eksik?null:true); mkBip(true);
+    mkDurumYaz(msg, eksik?null:true); mkBip(true); mkTopHesapla();
   }catch(e){ mkDurumYaz('Hata: '+(e.message||e),false); }
   input.value='';
 }
+
+// ---- KALEM TOPLAMI <-> FATURA ARA TOPLAMI canli karsilastirma ----
+function mkTL(n){ return (n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺'; }
+function mkTopHesapla(){
+  let t=0;
+  document.querySelectorAll('.mk-satir').forEach(r=>{ const g=parseFloat(r.querySelector('.mk-gelen')?.value)||0, f=parseFloat(r.querySelector('.mk-fiyat')?.value)||0; t+=g*f; });
+  const ara=parseFloat(document.getElementById('mkAraToplam')?.value)||0;
+  const u=document.getElementById('mkToplamUyari'); if(!u) return;
+  if(ara>0){
+    const fark=t-ara, yuzde=Math.abs(fark)/ara*100;
+    if(yuzde<=1){ u.innerHTML='Kalem toplamı: <b>'+mkTL(t)+'</b> · fatura ara toplamıyla uyuşuyor ✓'; u.style.color='var(--yesil)'; }
+    else { u.innerHTML='Kalem toplamı <b>'+mkTL(t)+'</b> ≠ fatura ara toplamı <b>'+mkTL(ara)+'</b> (fark '+mkTL(fark)+') — kontrol et'; u.style.color='var(--kirmizi)'; }
+  } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--sub2)'; }
+}
+document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
+document.getElementById('mkAraToplam')?.addEventListener('input', mkTopHesapla);
+mkTopHesapla();
 document.getElementById('mkForm').addEventListener('submit',function(e){
   const kal=[];
   document.querySelectorAll('.mk-satir').forEach(r=>{
