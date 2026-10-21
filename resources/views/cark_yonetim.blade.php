@@ -78,7 +78,7 @@
 
 <script>
 const TIPLER = {puan:'Puan', yuzde:'% İndirim', tutar:'₺ İndirim', tekrar:'Tekrar Dene', bos:'Boş'};
-let dilimler = @json($dl);
+let dilimler = {!! json_encode($dl, JSON_UNESCAPED_UNICODE) !!};
 if (!dilimler.length) dilimler = [{ad:'10 Puan',renk:'#7C3AED',olasilik:30,tip:'puan',deger:10,aktif:1}];
 
 function render(){
