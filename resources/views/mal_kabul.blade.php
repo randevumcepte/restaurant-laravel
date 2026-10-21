@@ -54,7 +54,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <span class="material-icons-outlined" style="color:var(--mor1)">bolt</span>
         <div style="font-weight:800;color:var(--ink);font-size:13px">Hızlı doldur</div>
-        <div class="rk-sub2" style="font-size:11.5px;flex:1;min-width:160px">Barkod okut ya da irsaliye/fatura fotoğrafı çek — kalemler kendiliğinden gelsin, sen sadece kontrol et.</div>
+        <div class="rk-sub2" style="font-size:11.5px;flex:1;min-width:160px"><b style="color:var(--yesil)">Barkod okut (bedava, sınırsız)</b> — en hızlısı. Barkodsuz faturada fotoğraf çek (AI okur). Her ikisinde de sen sadece kontrol edip onaylarsın.</div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
         <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (okuyucu ya da elle yaz + Enter)" style="max-width:300px" autocomplete="off"
