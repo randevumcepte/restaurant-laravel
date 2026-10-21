@@ -76,7 +76,7 @@
 
     <div class="rk-grid" style="grid-template-columns:2fr 1fr 1fr;gap:10px">
       @unless ($siparis)
-        <div><label class="rk-lbl" style="margin-top:0">Tedarikçi</label><select name="tedarikci_id" class="rk-inp"><option value="">— Seç —</option>@foreach ($tedarikciler as $t)<option value="{{ $t->id }}">{{ $t->ad }}</option>@endforeach</select></div>
+        <div><label class="rk-lbl" style="margin-top:0">Tedarikçi</label><select name="tedarikci_id" id="mkTedarikci" class="rk-inp" onchange="mkTedarikciSec(this.value)"><option value="">— Seç —</option>@foreach ($tedarikciler as $t)<option value="{{ $t->id }}">{{ $t->ad }}</option>@endforeach</select></div>
       @else
         <div><label class="rk-lbl" style="margin-top:0">Sipariş</label><input class="rk-inp" value="{{ $siparis->siparis_no }}" disabled></div>
       @endunless
@@ -237,7 +237,7 @@ function mkMalzOpt(){ return '<option value="">Malzeme…</option>'+MK_MALZ.map(
 function mkSatirEkle(pre){
   const d=document.createElement('div'); d.className='mk-satir mk-serbest';
   d.style.cssText='display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1.3fr 1.3fr 1.3fr;gap:6px;align-items:center;margin-bottom:6px';
-  d.innerHTML=`<select class="rk-inp mk-m" style="padding:6px" onchange="const b=this.selectedOptions[0]?.dataset.birim;if(b)this.closest('.mk-satir').querySelector('.mk-b').value=b;this.style.outline='';">${mkMalzOpt()}</select>
+  d.innerHTML=`<select class="rk-inp mk-m" style="padding:6px" onchange="const b=this.selectedOptions[0]?.dataset.birim;if(b)this.closest('.mk-satir').querySelector('.mk-b').value=b;this.style.outline='';mkKatalogDoldur(this.closest('.mk-satir'));">${mkMalzOpt()}</select>
     <select class="rk-inp mk-b" style="padding:6px">${mkBirimOpt()}</select>
     <input type="number" class="rk-inp mk-gelen" placeholder="Gelen" step="0.001" min="0" style="padding:6px">
     <input type="number" class="rk-inp mk-kabul" placeholder="Kabul" step="0.001" min="0" style="padding:6px">
@@ -307,6 +307,28 @@ async function mkBarkodBagla(){
   }catch(e){ mkDurumYaz('Bağlanamadı',false); }
 }
 
+// ---- TEDARİKÇİ seçilince: o tedarikçinin bilinen fiyat kataloğunu çek, malzeme seçince otomatik doldur ----
+window.MK_KAT={};
+async function mkTedarikciSec(tid){
+  window.MK_KAT={}; tid=parseInt(tid)||0;
+  if(!tid){ mkDurumYaz('',null); return; }
+  try{
+    const res=await fetch('/mal-kabul/tedarikci-katalog?tedarikci_id='+tid);
+    const j=await res.json();
+    (j.katalog||[]).forEach(k=>{ MK_KAT[k.malzeme_id]={fiyat:k.fiyat,birim_id:k.birim_id}; });
+    document.querySelectorAll('.mk-satir').forEach(r=>mkKatalogDoldur(r));
+    const n=Object.keys(MK_KAT).length;
+    mkDurumYaz(n?('Bu tedarikçiden '+n+' ürün biliniyor — malzeme seçince fiyatı otomatik gelir.'):'Bu tedarikçiden henüz alış kaydı yok; fiyatları elle gir.', n?true:null);
+  }catch(e){ mkDurumYaz('',null); }
+}
+function mkKatalogDoldur(row){
+  if(!row || !window.MK_KAT) return;
+  const mid=parseInt(row.querySelector('.mk-m')?.value)||0; const k=MK_KAT[mid]; if(!k) return;
+  const f=row.querySelector('.mk-fiyat'); if(f && !f.value && k.fiyat>0) f.value=mkFmt(k.fiyat);
+  if(k.birim_id){ const b=row.querySelector('.mk-b'); if(b) b.value=k.birim_id; }
+  mkTopHesapla();
+}
+
 // ---- Barkod okuyucu bilgi/uyarı popup ----
 let mkBarkodBilgiGosterildi=false;
 function mkBarkodBilgiAc(){ const p=document.getElementById('mkBarkodBilgi'); if(p)p.style.display='flex'; }
@@ -331,7 +353,7 @@ async function mkFotoSec(input){
     if(!j.ok){ mkDurumYaz(j.hata||'Fotoğraf okunamadı',false); input.value=''; return; }
     if(j.irsaliye_no){ const el=document.querySelector('#mkForm [name=irsaliye_no]'); if(el)el.value=j.irsaliye_no; }
     if(j.tarih){ const el=document.querySelector('#mkForm [name=tarih]'); if(el)el.value=j.tarih; }
-    if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; }
+    if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; mkTedarikciSec(j.tedarikci_id); }
     const stl=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null&&v!=='') el.value=v; };
     mkTutarSet('mkAraToplam',j.ara_toplam); mkTutarSet('mkKdv',j.kdv_tutar); mkTutarSet('mkGenelToplam',j.genel_toplam);
     // irsaliye başlık bilgileri

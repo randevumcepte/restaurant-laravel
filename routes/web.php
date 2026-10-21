@@ -8322,6 +8322,22 @@ Route::post('/mal-kabul/barkod-bagla', function (Request $r) {
         return ['ok' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet];
     } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Bağlanamadı']; }
 });
+// Mal kabul: secili tedarikcinin bilinen malzeme fiyatlari (katalog) -> malzeme secince fiyat otomatik gelsin.
+Route::get('/mal-kabul/tedarikci-katalog', function (Request $r) {
+    $sid = _webSubeId();
+    $tid = (int) $r->query('tedarikci_id', 0);
+    $out = [];
+    try {
+        if ($tid && Schema::hasTable('tedarikci_malzeme')) {
+            $rows = DB::table('tedarikci_malzeme')->where('sube_id', $sid)->where('tedarikci_id', $tid)->where('aktif', 1)->get(['malzeme_id', 'alis_birim_id', 'guncel_fiyat']);
+            foreach ($rows as $x) {
+                if ((float) $x->guncel_fiyat <= 0) continue;
+                $out[] = ['malzeme_id' => (int) $x->malzeme_id, 'birim_id' => (int) ($x->alis_birim_id ?: 0), 'fiyat' => (float) $x->guncel_fiyat];
+            }
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'katalog' => $out];
+});
 // Mal kabul: irsaliye/fatura FOTOGRAFI -> AI (vision) okur, kalemleri cikarir, malzeme/birim/tedarikci esler.
 Route::post('/mal-kabul/foto-oku', function (Request $r) {
     $sid = _webSubeId();
@@ -9542,6 +9558,24 @@ Route::post('/api/patron/mal-kabul-olustur', function (Request $r) {
         $mkId = DB::transaction(function () use ($r, $sid, $tedId, $spid, $kalemler, $tarih, $p) {
             $mkRow = ['sube_id' => $sid, 'tedarikci_id' => $tedId, 'siparis_id' => $spid, 'irsaliye_no' => $r->input('irsaliye_no') ? (string) $r->input('irsaliye_no') : null,
                 'tarih' => $tarih, 'teslim_alan_personel_id' => $p->id, 'durum' => 'tam', 'notlar' => $r->input('notlar') ? (string) $r->input('notlar') : null, 'stok_islendi' => 1, 'created_at' => now(), 'updated_at' => now()];
+            $tsay = fn ($x) => ($x !== null && $x !== '' && is_numeric($x)) ? round((float) $x, 2) : null;
+            if (Schema::hasColumn('mal_kabuller', 'ara_toplam')) {
+                $mkRow['ara_toplam'] = $tsay($r->input('ara_toplam'));
+                $mkRow['kdv_tutar'] = $tsay($r->input('kdv_tutar'));
+                $mkRow['genel_toplam'] = $tsay($r->input('genel_toplam'));
+            }
+            if (Schema::hasColumn('mal_kabuller', 'fatura_bilgi')) {
+                $mt = fn ($k) => ($r->input($k) !== null && trim((string) $r->input($k)) !== '') ? mb_substr(trim((string) $r->input($k)), 0, 180) : null;
+                $vk = fn ($k) => ($r->input($k) !== null) ? (preg_replace('/\D/', '', (string) $r->input($k)) ?: null) : null;
+                $taraf = fn ($ad, $adr, $vd, $v) => array_filter(['ad' => $mt($ad), 'adres' => $mt($adr), 'vergi_dairesi' => $mt($vd), 'vkn' => $vk($v)], fn ($x) => $x !== null);
+                $fb = array_filter([
+                    'seri' => $mt('fb_seri'), 'sira_no' => $mt('fb_sira'), 'sevk_tarihi' => $mt('fb_sevk_tarihi'), 'saat' => $mt('fb_saat'),
+                    'satici' => $taraf('fb_satici_ad', 'fb_satici_adres', 'fb_satici_vd', 'fb_satici_vkn'),
+                    'alici' => $taraf('fb_alici_ad', 'fb_alici_adres', 'fb_alici_vd', 'fb_alici_vkn'),
+                    'teslim_eden' => $mt('fb_teslim_eden'),
+                ], fn ($x) => $x !== null && $x !== []);
+                $mkRow['fatura_bilgi'] = $fb ? json_encode($fb, JSON_UNESCAPED_UNICODE) : null;
+            }
             $mkId = DB::table('mal_kabuller')->insertGetId($mkRow);
             foreach ($kalemler as $k) {
                 $mid = (int) ($k['malzeme_id'] ?? 0); if (!$mid) continue;
@@ -9581,6 +9615,162 @@ Route::post('/api/patron/mal-kabul-olustur', function (Request $r) {
         });
         return response()->json(['ok' => 1, 'id' => $mkId]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Mal kabul kaydedilemedi.']); }
+});
+// API (Flutter): irsaliye/fatura FOTOGRAFI -> AI vision okur (web /mal-kabul/foto-oku birebir).
+Route::post('/api/patron/mal-kabul-foto-oku', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+    if ($anahtar === '') return response()->json(['ok' => 0, 'hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY). Sistem yöneticisine sor.']);
+    $b64 = (string) $r->input('resim', '');
+    $mime = (string) $r->input('mime', 'image/jpeg');
+    if (str_contains($b64, 'base64,')) $b64 = substr($b64, strpos($b64, 'base64,') + 7);
+    if ($b64 === '') return response()->json(['ok' => 0, 'hata' => 'Görsel alınamadı']);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'])) $mime = 'image/jpeg';
+    $sistem = 'Sen bir restoranın satın alma asistanısın. Sana bir İRSALİYE veya FATURA fotoğrafı verilir. '
+        . 'Görseldeki bilgileri oku ve SADECE geçerli JSON döndür; başka hiçbir şey yazma, açıklama ekleme. '
+        . 'Şema: {"seri":string|null,"sira_no":string|null,"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"sevk_tarihi":"YYYY-MM-DD"|null,"saat":string|null,"tedarikci":string|null,'
+        . '"satici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
+        . '"alici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
+        . '"teslim_eden":string|null,"ara_toplam":string|null,"kdv_tutar":string|null,"genel_toplam":string|null,'
+        . '"kalemler":[{"ad":string,"miktar":string|null,"birim":string|null,"birim_fiyat":string|null,"tutar":string|null}]}. '
+        . 'ALAN TANIMLARI: seri=belge serisi (ör A), sira_no=belge/sıra no (ör 000123), irsaliye_no=seri+sıra birlikte ya da belge no. '
+        . 'satici=malı GÖNDEREN/satan firma (üst başlıktaki firma), alici=MÜŞTERİ/alıcı bilgileri bölümündeki firma (malı alan). İkisini KARIŞTIRMA. '
+        . 'vkn=vergi kimlik no (10 hane) ya da TC kimlik (11 hane) — SADECE rakamları ver, boşluk/nokta koyma. '
+        . 'teslim_eden=malı teslim eden kişinin adı soyadı (varsa sürücü adı). saat=HH:MM. sevk_tarihi=sevk/çıkış tarihi. '
+        . 'ara_toplam = KDV hariç mal/hizmet toplamı (matrah), kdv_tutar = hesaplanan KDV, genel_toplam = ödenecek genel toplam. '
+        . 'SAYILAR İÇİN EN ÖNEMLİ KURAL: miktar, birim_fiyat, tutar, ara_toplam, kdv_tutar, genel_toplam değerlerini '
+        . 'faturada YAZILDIĞI GİBİ, HİÇ DEĞİŞTİRMEDEN string olarak ver. Örnek: faturada "1.000" yazıyorsa aynen "1.000" yaz, '
+        . '"25.000,00" ise "25.000,00", "25,00" ise "25,00" yaz. SAKIN kendın sayıya çevirme, noktaları/virgülleri silme; '
+        . 'binlik/ondalık dönüşümünü BİZ yapacağız. Sadece gördüğün rakamları ve ayraçları birebir kopyala. '
+        . 'MİKTAR ve BİRİM: Faturadaki MİKTAR sütunundaki değeri ve o sütunun birimini kullan (Kg, Lt, Adet gibi). '
+        . 'Ambalaj/Kasa/Koli adedini (ör. "50 Kasa") MİKTAR sanma; miktar ağırlık/hacim/adet sütunudur, birim de onun birimidir. '
+        . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun. '
+        . 'ÇOK ÖNEMLİ: Ürün/kalem tablosundaki HER SATIRI eksiksiz çıkar; tabloda kaç satır varsa o kadar kalem dönder, '
+        . 'hiçbir satırı ATLAMA (üstten, ortadan ya da alttan). Sıra numaralarını takip et; 1,2,3... kesintisiz olmalı.';
+    $gun = date('Y-m-d'); $ocrKey = 'mk_ocr_' . $sid . '_' . $gun;
+    $ocrSayac = (int) cache()->get($ocrKey, 0);
+    $ocrLimit = (int) config('services.anthropic.ocr_gunluk_limit', 40);
+    if ($ocrSayac >= $ocrLimit) return response()->json(['ok' => 0, 'hata' => 'Bugünkü fotoğraf okuma limiti doldu (' . $ocrLimit . '/gün). Kalanları barkodla okut ya da elle gir; yarın sıfırlanır.']);
+    try {
+        $ocrModel = (string) config('services.anthropic.ocr_model', '');
+        $modeller = array_values(array_unique(array_filter([
+            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'claude-haiku-4-5-20251001',
+        ])));
+        $yanit = false; $kod = 0;
+        foreach ($modeller as $mdl) {
+            $govde = [
+                'model' => $mdl, 'max_tokens' => 2200, 'system' => $sistem,
+                'messages' => [['role' => 'user', 'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]],
+                    ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki TÜM kalemleri (hiç atlamadan) çıkar ve şemaya uygun JSON ver.'],
+                ]]],
+            ];
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 60,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
+            ]);
+            $yanit = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($yanit !== false && $kod === 200) break;
+        }
+        if ($yanit === false || $kod !== 200) return response()->json(['ok' => 0, 'hata' => 'AI okunamadı (HTTP ' . $kod . '). Anahtar/bakiye kontrol et.']);
+        $j = json_decode($yanit, true);
+        $t = '';
+        foreach (($j['content'] ?? []) as $blk) if (($blk['type'] ?? '') === 'text') $t .= $blk['text'] ?? '';
+        $t = trim($t);
+        if (str_starts_with($t, '```')) { $t = preg_replace('/^```[a-zA-Z]*\s*/', '', $t); $t = preg_replace('/```\s*$/', '', $t); }
+        $s = strpos($t, '{'); $e = strrpos($t, '}');
+        if ($s === false || $e === false) return response()->json(['ok' => 0, 'hata' => 'AI yanıtı çözülemedi']);
+        $data = json_decode(substr($t, $s, $e - $s + 1), true);
+        if (!is_array($data)) return response()->json(['ok' => 0, 'hata' => 'AI yanıtı JSON değil']);
+        $norm = function ($x) {
+            $x = mb_strtolower(trim((string) $x), 'UTF-8');
+            $x = strtr($x, ['ı' => 'i', 'İ' => 'i', 'ş' => 's', 'ğ' => 'g', 'ü' => 'u', 'ö' => 'o', 'ç' => 'c', 'â' => 'a', 'î' => 'i', 'û' => 'u']);
+            return preg_replace('/\s+/', ' ', $x);
+        };
+        $malzAll = Schema::hasTable('malzemeler') ? DB::table('malzemeler')->get(['id', 'ad', 'temel_birim_id']) : collect();
+        $birimAll = Schema::hasTable('birimler') ? DB::table('birimler')->get(['id', 'ad', 'kisaltma']) : collect();
+        $tedAll = Schema::hasTable('tedarikciler') ? DB::table('tedarikciler')->get(['id', 'ad']) : collect();
+        $matchMalz = function ($ad) use ($malzAll, $norm) {
+            $q = $norm($ad); if ($q === '') return null; $best = null; $bw = -1;
+            foreach ($malzAll as $m) {
+                $mn = $norm($m->ad); $w = -1;
+                if ($mn === $q) $w = 100;
+                elseif (str_starts_with($mn, $q) || str_starts_with($q, $mn)) $w = 60 + min(mb_strlen($mn), mb_strlen($q));
+                elseif (str_contains($mn, $q) || str_contains($q, $mn)) $w = 30 + min(mb_strlen($mn), mb_strlen($q));
+                if ($w > $bw) { $bw = $w; $best = $m; }
+            }
+            return $bw >= 30 ? $best : null;
+        };
+        $matchBirim = function ($b) use ($birimAll, $norm) {
+            $q = $norm($b); if ($q === '') return null;
+            foreach ($birimAll as $x) if ($norm($x->kisaltma) === $q) return $x;
+            foreach ($birimAll as $x) if ($norm($x->ad) === $q || str_contains($norm($x->ad), $q)) return $x;
+            return null;
+        };
+        $matchTed = function ($ad) use ($tedAll, $norm) {
+            $q = $norm($ad); if ($q === '') return null;
+            foreach ($tedAll as $x) if ($norm($x->ad) === $q) return $x;
+            foreach ($tedAll as $x) if (str_contains($norm($x->ad), $q) || str_contains($q, $norm($x->ad))) return $x;
+            return null;
+        };
+        $trSayi = function ($v) {
+            if ($v === null) return null;
+            $s = preg_replace('/[^\d.,-]/', '', trim((string) $v));
+            if ($s === '' || !preg_match('/\d/', $s)) return null;
+            $hasC = strpos($s, ',') !== false; $hasD = strpos($s, '.') !== false;
+            if ($hasC && $hasD) { $s = str_replace(['.', ','], ['', '.'], $s); }
+            elseif ($hasC) { $s = str_replace(',', '.', $s); }
+            elseif ($hasD && preg_match('/^-?\d{1,3}(\.\d{3})+$/', $s)) { $s = str_replace('.', '', $s); }
+            return is_numeric($s) ? (float) $s : null;
+        };
+        $out = [];
+        foreach (($data['kalemler'] ?? []) as $k) {
+            $ad = (string) ($k['ad'] ?? ''); if (trim($ad) === '') continue;
+            $mm = $matchMalz($ad);
+            $bid = null;
+            if (!empty($k['birim'])) { $bb = $matchBirim($k['birim']); if ($bb) $bid = (int) $bb->id; }
+            if (!$bid && $mm) $bid = (int) $mm->temel_birim_id;
+            $miktar = $trSayi($k['miktar'] ?? null);
+            $fiyat = $trSayi($k['birim_fiyat'] ?? null);
+            $tutar = $trSayi($k['tutar'] ?? null);
+            if ($miktar !== null) $miktar = round($miktar, 3);
+            if (($miktar === null || $miktar <= 0) && $fiyat !== null && $fiyat > 0 && $tutar !== null && $tutar > 0) {
+                $miktar = round($tutar / $fiyat, 3);
+            }
+            $out[] = [
+                'ad' => $ad, 'malzeme_id' => $mm ? (int) $mm->id : null, 'malzeme_ad' => $mm ? $mm->ad : null,
+                'birim_id' => $bid, 'miktar' => $miktar, 'birim_fiyat' => ($fiyat !== null ? round($fiyat, 4) : null),
+            ];
+        }
+        $ted = !empty($data['tedarikci']) ? $matchTed($data['tedarikci']) : null;
+        $tarih = (!empty($data['tarih']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['tarih'])) ? $data['tarih'] : null;
+        $sevk = (!empty($data['sevk_tarihi']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['sevk_tarihi'])) ? $data['sevk_tarihi'] : null;
+        $sayi = fn ($v) => (($n = $trSayi($v)) !== null) ? round($n, 2) : null;
+        $metin = fn ($v) => (isset($v) && $v !== null && trim((string) $v) !== '') ? mb_substr(trim((string) $v), 0, 180) : null;
+        $vkn = fn ($v) => ($v !== null) ? (preg_replace('/\D/', '', (string) $v) ?: null) : null;
+        $taraf = function ($o) use ($metin, $vkn) {
+            if (!is_array($o)) return null;
+            return ['ad' => $metin($o['ad'] ?? null), 'adres' => $metin($o['adres'] ?? null),
+                'vergi_dairesi' => $metin($o['vergi_dairesi'] ?? null), 'vkn' => $vkn($o['vkn'] ?? null)];
+        };
+        cache()->put($ocrKey, $ocrSayac + 1, now()->addDay());
+        return response()->json(['ok' => 1,
+            'seri' => $metin($data['seri'] ?? null), 'sira_no' => $metin($data['sira_no'] ?? null),
+            'irsaliye_no' => $metin($data['irsaliye_no'] ?? null), 'tarih' => $tarih, 'sevk_tarihi' => $sevk, 'saat' => $metin($data['saat'] ?? null),
+            'tedarikci_id' => $ted ? (int) $ted->id : null, 'tedarikci_ad' => $data['tedarikci'] ?? null,
+            'satici' => $taraf($data['satici'] ?? null), 'alici' => $taraf($data['alici'] ?? null), 'teslim_eden' => $metin($data['teslim_eden'] ?? null),
+            'ara_toplam' => $sayi($data['ara_toplam'] ?? null), 'kdv_tutar' => $sayi($data['kdv_tutar'] ?? null), 'genel_toplam' => $sayi($data['genel_toplam'] ?? null),
+            'kalemler' => $out]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => 'İşlenemedi']);
+    }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
