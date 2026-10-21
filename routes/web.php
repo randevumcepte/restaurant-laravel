@@ -1981,6 +1981,77 @@ Route::get('/cark-kazananlar', function () {
             'm.ad as m_ad', 'm.soyad as m_soyad', 'm.telefon as m_tel']);
     return view('cark_kazananlar', compact('rows'));
 });
+// ===== ÇARKIFELEK HATIRLATMA (Randevumcepte birebir) =====
+if (!function_exists('_carkHatirlatmaKur')) {
+    function _carkHatirlatmaKur()
+    {
+        if (cache()->get('cark_hat_kur_ok1')) return;
+        if (!Schema::hasTable('cark_hatirlatma_ayarlari')) {
+            try { Schema::create('cark_hatirlatma_ayarlari', function ($t) {
+                $t->increments('id'); $t->unsignedInteger('sube_id')->unique();
+                $t->tinyInteger('aktif')->default(0);
+                $t->time('saat_1')->default('10:00:00'); $t->time('saat_2')->default('15:00:00'); $t->time('saat_3')->default('20:00:00');
+                $t->string('mesaj_1', 300)->nullable(); $t->string('mesaj_2', 300)->nullable(); $t->string('mesaj_3', 300)->nullable();
+                $t->tinyInteger('aktif_1')->default(1); $t->tinyInteger('aktif_2')->default(1); $t->tinyInteger('aktif_3')->default(1);
+                $t->string('baslik_1', 80)->nullable(); $t->string('baslik_2', 80)->nullable(); $t->string('baslik_3', 80)->nullable();
+                $t->string('altyazi_1', 120)->nullable(); $t->string('altyazi_2', 120)->nullable(); $t->string('altyazi_3', 120)->nullable();
+                $t->json('gonderim_gunleri')->nullable(); $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasTable('cark_hatirlatma_loglari')) {
+            try { Schema::create('cark_hatirlatma_loglari', function ($t) {
+                $t->increments('id'); $t->unsignedInteger('sube_id'); $t->unsignedInteger('musteri_id');
+                $t->tinyInteger('asama'); $t->date('tarih'); $t->timestamp('gonderim_tarihi')->nullable();
+                $t->string('durum', 20)->default('gonderildi'); $t->timestamps();
+                $t->index(['sube_id', 'musteri_id', 'tarih', 'asama'], 'cark_hat_log_idx');
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('cark_hat_kur_ok1', 1, now()->addHours(6));
+    }
+}
+Route::get('/cark-hatirlatma', function () {
+    if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
+    $sid = _webSubeId(); _carkHatirlatmaKur();
+    $ayar = DB::table('cark_hatirlatma_ayarlari')->where('sube_id', $sid)->first();
+    if (!$ayar) {
+        DB::table('cark_hatirlatma_ayarlari')->insert(['sube_id' => $sid, 'aktif' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $ayar = DB::table('cark_hatirlatma_ayarlari')->where('sube_id', $sid)->first();
+    }
+    // gonderim_gunleri JSON string → array (blade is_array bekliyor)
+    $ayar->gonderim_gunleri = $ayar->gonderim_gunleri ? (json_decode($ayar->gonderim_gunleri, true) ?: []) : [];
+    $bugun = DB::table('cark_hatirlatma_loglari')->where('sube_id', $sid)->whereDate('tarih', now()->toDateString())->count();
+    return view('cark_hatirlatma', compact('ayar', 'bugun'));
+});
+Route::post('/cark-hatirlatma/kaydet', function (Request $r) {
+    if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return response()->json(['success' => false, 'message' => 'Yetki gerekli'], 401); }
+    $sid = _webSubeId(); _carkHatirlatmaKur();
+    try {
+        $gun = $r->input('gonderim_gunleri');
+        $gun = is_array($gun) ? array_values(array_filter(array_map('intval', $gun), fn ($x) => $x >= 1 && $x <= 7)) : [];
+        $normSaat = function ($v, $def) { $v = trim((string) $v); return preg_match('/^\d{1,2}:\d{2}$/', $v) ? $v . ':00' : $def; };
+        DB::table('cark_hatirlatma_ayarlari')->updateOrInsert(['sube_id' => $sid], [
+            'aktif' => (int) $r->input('aktif', 0) ? 1 : 0,
+            'saat_1' => $normSaat($r->input('saat_1'), '10:00:00'),
+            'saat_2' => $normSaat($r->input('saat_2'), '15:00:00'),
+            'saat_3' => $normSaat($r->input('saat_3'), '20:00:00'),
+            'mesaj_1' => mb_substr(trim((string) $r->input('mesaj_1')), 0, 300) ?: null,
+            'mesaj_2' => mb_substr(trim((string) $r->input('mesaj_2')), 0, 300) ?: null,
+            'mesaj_3' => mb_substr(trim((string) $r->input('mesaj_3')), 0, 300) ?: null,
+            'aktif_1' => (int) $r->input('aktif_1', 1) ? 1 : 0,
+            'aktif_2' => (int) $r->input('aktif_2', 1) ? 1 : 0,
+            'aktif_3' => (int) $r->input('aktif_3', 1) ? 1 : 0,
+            'baslik_1' => mb_substr(trim((string) $r->input('baslik_1')), 0, 80) ?: null,
+            'baslik_2' => mb_substr(trim((string) $r->input('baslik_2')), 0, 80) ?: null,
+            'baslik_3' => mb_substr(trim((string) $r->input('baslik_3')), 0, 80) ?: null,
+            'altyazi_1' => mb_substr(trim((string) $r->input('altyazi_1')), 0, 120) ?: null,
+            'altyazi_2' => mb_substr(trim((string) $r->input('altyazi_2')), 0, 120) ?: null,
+            'altyazi_3' => mb_substr(trim((string) $r->input('altyazi_3')), 0, 120) ?: null,
+            'gonderim_gunleri' => json_encode($gun),
+            'updated_at' => now(),
+        ]);
+        return ['success' => true];
+    } catch (\Throwable $e) { return response()->json(['success' => false, 'message' => 'Kaydedilemedi: ' . $e->getMessage()]); }
+});
 // Patron app (Flutter, Bearer): çark ayar + dilimleri getir
 Route::get('/api/patron/cark', function (Request $r) {
     $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
@@ -8955,6 +9026,66 @@ Route::get('/api/patron/fiyat-radari', function (Request $r) {
             usort($firsat, fn ($a, $b) => $b['tasarruf'] <=> $a['tasarruf']);
             $out['firsatlar'] = $firsat;
         }
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+// ===== API (Flutter): Satınalma Analizi — tedarikçi karne + aylık harcama =====
+Route::get('/api/patron/satinalma-analiz', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'karne' => [], 'aylik' => [], 'toplam_alis' => 0];
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        if (!Schema::hasTable('alis_faturalari')) return response()->json($out);
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $alis = DB::table('alis_faturalari')->where('sube_id', $sid)->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
+        $out['toplam_alis'] = round((float) DB::table('alis_faturalari')->where('sube_id', $sid)->sum('toplam'), 0);
+        $zaman = [];
+        if (Schema::hasTable('mal_kabuller') && Schema::hasTable('satinalma_siparisleri')) {
+            foreach (DB::table('mal_kabuller as mk')->join('satinalma_siparisleri as s', 'mk.siparis_id', '=', 's.id')->where('mk.sube_id', $sid)->whereNotNull('s.beklenen_teslim')->get(['mk.tedarikci_id', 'mk.tarih as mt', 's.beklenen_teslim']) as $x) {
+                $tid = (int) $x->tedarikci_id; $zaman[$tid] = $zaman[$tid] ?? ['tam' => 0, 'top' => 0]; $zaman[$tid]['top']++;
+                if ($x->mt && $x->beklenen_teslim && $x->mt <= $x->beklenen_teslim) $zaman[$tid]['tam']++;
+            }
+        }
+        $red = [];
+        if (Schema::hasTable('mal_kabul_kalemleri') && Schema::hasTable('mal_kabuller')) {
+            foreach (DB::table('mal_kabul_kalemleri as k')->join('mal_kabuller as mk', 'k.mal_kabul_id', '=', 'mk.id')->where('mk.sube_id', $sid)->selectRaw('mk.tedarikci_id, SUM(k.red_miktar) r, SUM(k.gelen_miktar) g')->groupBy('mk.tedarikci_id')->get() as $x) {
+                $red[(int) $x->tedarikci_id] = ['r' => (float) $x->r, 'g' => (float) $x->g];
+            }
+        }
+        $karne = [];
+        foreach ($alis as $tid => $a) {
+            if (!$tid) continue;
+            $zt = $zaman[$tid] ?? null; $zm = ($zt && $zt['top'] > 0) ? (int) round($zt['tam'] / $zt['top'] * 100) : null;
+            $rd = $red[$tid] ?? null; $ro = ($rd && $rd['g'] > 0) ? round($rd['r'] / $rd['g'] * 100, 1) : 0;
+            $pn = 3.0; if ($zm !== null) $pn = 2.5 + ($zm / 100) * 2.0; $pn -= min(1.5, $ro / 10); $pn = max(1, min(5, round($pn, 1)));
+            $karne[] = ['ad' => $tedAd[$tid] ?? '—', 'toplam' => (float) $a->t, 'fatura' => (int) $a->c, 'zamaninda' => $zm, 'red_oran' => $ro, 'puan' => $pn];
+        }
+        usort($karne, fn ($x, $y) => $y['toplam'] <=> $x['toplam']);
+        $out['karne'] = $karne;
+        $out['aylik'] = DB::table('alis_faturalari')->where('sube_id', $sid)->where('tarih', '>=', today()->subMonths(6)->startOfMonth())
+            ->selectRaw("DATE_FORMAT(tarih,'%Y-%m') ay, SUM(toplam) t")->groupBy('ay')->orderBy('ay')->get()->map(fn ($x) => ['ay' => $x->ay, 't' => (float) $x->t])->all();
+    } catch (\Throwable $e) {}
+    return response()->json($out);
+});
+// ===== API (Flutter): Parti / SKT Takip =====
+Route::get('/api/patron/parti-takip', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'partiler' => [], 'yaklasan' => 0, 'gecmis' => 0, 'esik' => 7];
+    try {
+        if (function_exists('_restoPartiEnsure')) _restoPartiEnsure();
+        if (!Schema::hasTable('stok_partileri')) return response()->json($out);
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $bugun = today(); $esik = 7; $gecmis = 0; $yak = 0; $list = [];
+        foreach (DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0.0001)->orderByRaw('skt IS NULL, skt ASC')->orderBy('id')->limit(500)->get() as $pp) {
+            $durum = 'normal'; $kalanGun = null;
+            if ($pp->skt) { $kalanGun = (int) $bugun->diffInDays(\Carbon\Carbon::parse($pp->skt), false); if ($kalanGun < 0) { $durum = 'gecmis'; $gecmis++; } elseif ($kalanGun <= $esik) { $durum = 'yaklasan'; $yak++; } }
+            $list[] = ['ad' => $malAd[$pp->malzeme_id] ?? '—', 'lot' => $pp->lot_no, 'skt' => $pp->skt, 'kalan' => (float) $pp->kalan_miktar, 'tedarikci' => $tedAd[$pp->tedarikci_id] ?? null, 'durum' => $durum, 'kalan_gun' => $kalanGun];
+        }
+        $out['partiler'] = $list; $out['gecmis'] = $gecmis; $out['yaklasan'] = $yak;
     } catch (\Throwable $e) {}
     return response()->json($out);
 });
