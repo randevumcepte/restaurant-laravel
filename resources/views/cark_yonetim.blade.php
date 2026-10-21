@@ -265,6 +265,25 @@
 .ckh-tip b { color: var(--dark); }
 .ckh-done { width: 100%; margin-top: 22px; padding: 14px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--purple), var(--purple-l)); color: #fff; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 22px rgba(108,92,231,.35); transition: .2s; }
 .ckh-done:hover { transform: translateY(-2px); }
+
+/* Önerilen düzen popup — dilim listesi + aksiyonlar */
+.ckn-list { display: flex; flex-direction: column; gap: 6px; }
+.ckn-row { display: flex; align-items: center; gap: 10px; background: #f8f7ff; border: 1.5px solid #ece9ff; border-radius: 10px; padding: 8px 12px; }
+.ckn-row.win { border-color: var(--green); background: rgba(0,184,148,.07); }
+.ckn-dot { width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0; }
+.ckn-name { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--dark); }
+.ckn-badge { font-size: 11.5px; font-weight: 700; color: var(--mid); background: #fff; border: 1px solid #e5e5f0; border-radius: 20px; padding: 2px 9px; }
+.ckn-win-badge { font-size: 11px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--green), var(--teal)); border-radius: 20px; padding: 3px 9px; }
+.ckn-warn { display: flex; gap: 10px; align-items: flex-start; background: rgba(230,0,0,.05); border: 1.5px solid rgba(214,48,49,.25); border-radius: 12px; padding: 12px 14px; margin-top: 16px; font-size: 12.5px; color: #a33; line-height: 1.5; }
+.ckn-acts { display: flex; gap: 10px; margin-top: 20px; }
+.ckn-btn { flex: 1; padding: 13px; border: none; border-radius: 12px; font-size: 14.5px; font-weight: 800; cursor: pointer; transition: .2s; }
+.ckn-btn.cancel { background: #eef0f6; color: #555; }
+.ckn-btn.cancel:hover { background: #e2e5ee; }
+.ckn-btn.apply { background: linear-gradient(135deg, var(--green), var(--teal)); color: #fff; box-shadow: 0 8px 22px rgba(0,184,148,.35); }
+.ckn-btn.apply:hover { transform: translateY(-2px); }
+.ckn-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.ckn-set { font-size: 12.5px; color: var(--mid); line-height: 1.6; margin-top: 10px; }
+.ckn-set b { color: var(--dark); }
 </style>
 
 <div class="ck-page">
@@ -289,7 +308,7 @@
             <button class="ck-help-btn" type="button" onclick="ckHelpAc()">
                 <span class="material-icons-outlined" style="font-size:18px">help_outline</span> Nasıl Çalışır?
             </button>
-            <button class="ck-help-btn" type="button" style="background:linear-gradient(135deg,var(--green),var(--teal));box-shadow:0 6px 18px rgba(0,184,148,.3)" onclick="onerilenUygula()">
+            <button class="ck-help-btn" type="button" style="background:linear-gradient(135deg,var(--green),var(--teal));box-shadow:0 6px 18px rgba(0,184,148,.3)" onclick="ckOneriAc()">
                 <span class="material-icons-outlined" style="font-size:18px">auto_fix_high</span> Önerilen Düzeni Uygula
             </button>
             <div class="status-pill on" id="status-pill">
@@ -509,6 +528,41 @@
             <div class="ckh-tip"><span class="e">%</span><div><b>% mi ₺ mi:</b> yüzde büyük hesabı teşvik eder (upsell); sabit ₺ maliyeti öngörülebilir kılar. Paket/içecek için ₺ idealdir.</div></div>
 
             <button class="ckh-done" type="button" onclick="ckHelpKapat()">Anladım, başlayalım! 🚀</button>
+        </div>
+    </div>
+</div>
+
+{{-- Önerilen Düzeni Uygula Modal --}}
+<div class="ckh-ov" id="ckn-ov">
+    <div class="ckh-box" style="max-width:560px">
+        <div class="ckh-top" style="background:linear-gradient(135deg,#065f46,#059669 60%,#10b981)">
+            <button class="ckh-x" type="button" onclick="ckOneriKapat()">×</button>
+            <h2>⚡ Önerilen Restoran Düzeni</h2>
+            <p>Dilim dilim uğraşmadan, restorana uygun hazır bir çark kurar. Aşağıdaki düzen uygulanacak:</p>
+        </div>
+        <div class="ckh-body">
+            <div class="ckn-list">
+                <div class="ckn-row"><span class="ckn-dot" style="background:#FF6B6B"></span><span class="ckn-name">10 Puan</span><span class="ckn-badge">💰 Puan</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#FF922B"></span><span class="ckn-name">%10 Ürün</span><span class="ckn-badge">🍽️ Ürün</span></div>
+                <div class="ckn-row win"><span class="ckn-dot" style="background:#51CF66"></span><span class="ckn-name">25 Puan</span><span class="ckn-win-badge">★ Kazanan</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#339AF0"></span><span class="ckn-name">%5 Hesap</span><span class="ckn-badge">🧾 Hesap</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#868E96"></span><span class="ckn-name">Tekrar Dene</span><span class="ckn-badge">🔄 Tekrar</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#CC5DE8"></span><span class="ckn-name">50 Puan</span><span class="ckn-badge">💰 Puan</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#20C997"></span><span class="ckn-name">Paket 25₺</span><span class="ckn-badge">🛵 Paket</span></div>
+                <div class="ckn-row"><span class="ckn-dot" style="background:#F06595"></span><span class="ckn-name">Bedava İçecek (40₺)</span><span class="ckn-badge">🍽️ Ürün</span></div>
+            </div>
+            <div class="ckn-set">
+                ⚙️ Ayarlar: <b>Aktif</b> · çevirme aralığı <b>7 gün</b> · çark kuponu <b>7 gün</b> · puan kuponu <b>14 gün</b> geçerli.<br>
+                🏆 Kazanan dilim <b>25 Puan</b> olarak gelir — dilediğiniz zaman değiştirip kaydedebilirsiniz.
+            </div>
+            <div class="ckn-warn">
+                <span style="font-size:17px">⚠️</span>
+                <div><b>Dikkat:</b> Mevcut çark dilimleriniz bu düzenle <b>değiştirilir</b> (üzerine yazar). Kendi düzeniniz hazırsa uygulamayın.</div>
+            </div>
+            <div class="ckn-acts">
+                <button class="ckn-btn cancel" type="button" onclick="ckOneriKapat()">Vazgeç</button>
+                <button class="ckn-btn apply" type="button" id="ckn-apply" onclick="onerilenUygula()">⚡ Uygula</button>
+            </div>
         </div>
     </div>
 </div>
@@ -938,15 +992,23 @@
     window.ckHelpKapat = function () { ckhOv.classList.remove('show'); };
     if (ckhOv) ckhOv.addEventListener('click', e => { if (e.target === ckhOv) ckHelpKapat(); });
 
-    // Önerilen restoran çarkını tek tıkla uygula
+    // Önerilen düzen popup aç/kapat
+    const cknOv = document.getElementById('ckn-ov');
+    window.ckOneriAc = function () { cknOv.classList.add('show'); };
+    window.ckOneriKapat = function () { cknOv.classList.remove('show'); };
+    if (cknOv) cknOv.addEventListener('click', e => { if (e.target === cknOv) ckOneriKapat(); });
+
+    // Popup'taki "Uygula" → önerilen restoran çarkını uygula
     window.onerilenUygula = async function () {
-        if (!confirm('Mevcut çark dilimleriniz önerilen restoran düzeniyle değiştirilecek. Onaylıyor musunuz?')) return;
+        const btn = document.getElementById('ckn-apply');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Uygulanıyor...'; }
         try {
             const res = await fetch('/cark-yonetim/onerilen', { method: 'POST', headers: HEADERS, body: '{}' });
             const d = await res.json();
-            if (d.success) { showToast('Önerilen restoran çarkı uygulandı! 🎉', 'success'); loadData(); }
+            if (d.success) { ckOneriKapat(); showToast('Önerilen restoran çarkı uygulandı! 🎉', 'success'); loadData(); }
             else { showToast(d.message || 'Uygulanamadı', 'error'); }
         } catch (e) { showToast('Bağlantı hatası!', 'error'); }
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Uygula'; }
     };
     function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
     function wrapText(str, max) {
