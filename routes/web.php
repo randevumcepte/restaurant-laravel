@@ -8137,9 +8137,15 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
     $sistem = 'Sen bir restoranın satın alma asistanısın. Sana bir İRSALİYE veya FATURA fotoğrafı verilir. '
         . 'Görseldeki bilgileri oku ve SADECE geçerli JSON döndür; başka hiçbir şey yazma, açıklama ekleme. '
         . 'Şema: {"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"tedarikci":string|null,'
-        . '"kalemler":[{"ad":string,"miktar":number|null,"birim":string|null,"birim_fiyat":number|null}]}. '
-        . 'Kurallar: Sayıları ondalık NOKTA ile ver (1234.5). Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. '
-        . 'Birim kısaltması kg, g, lt, ml, ad, koli, paket gibi olsun. birim_fiyat KDV hariç birim fiyattır; net değilse null.';
+        . '"kalemler":[{"ad":string,"miktar":number|null,"birim":string|null,"birim_fiyat":number|null,"tutar":number|null}]}. '
+        . 'SAYI BİÇİMİ (ÇOK ÖNEMLİ): Türk faturalarında NOKTA binlik ayracı, VİRGÜL ondalık işaretidir. '
+        . 'Yani "1.000" = 1000, "1.234,56" = 1234.56, "25,00" = 25, "10.500,75" = 10500.75. '
+        . 'Her sayıyı bu şekilde çözüp düz sayı olarak ver; ondalık için NOKTA kullan (1000, 1234.56, 25). '
+        . 'MİKTAR ve BİRİM: Faturadaki MİKTAR sütunundaki değeri ve o sütunun birimini kullan (Kg, Lt, Adet gibi). '
+        . 'Ambalaj/Kasa/Koli adedini (ör. "50 Kasa") MİKTAR sanma; miktar ağırlık/hacim/adet sütunudur, birim de onun birimidir. '
+        . 'birim_fiyat o birimin KDV hariç birim fiyatıdır. tutar o satırın toplam tutarıdır. '
+        . 'Genelde miktar × birim_fiyat = tutar olur; emin olmak için tutarı da mutlaka ver. '
+        . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun.';
     $govde = [
         'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
         'max_tokens' => 1800,
@@ -8208,10 +8214,18 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
             $bid = null;
             if (!empty($k['birim'])) { $bb = $matchBirim($k['birim']); if ($bb) $bid = (int) $bb->id; }
             if (!$bid && $mm) $bid = (int) $mm->temel_birim_id;
+            $miktar = isset($k['miktar']) && $k['miktar'] !== null ? (float) $k['miktar'] : null;
+            $fiyat = isset($k['birim_fiyat']) && $k['birim_fiyat'] !== null ? (float) $k['birim_fiyat'] : null;
+            $tutar = isset($k['tutar']) && $k['tutar'] !== null ? (float) $k['tutar'] : null;
+            // TUTAR ÇAPRAZ DOĞRULAMA: miktar×fiyat ile satır tutarı tutmazsa (ör. "1.000" yanlış okuma) miktarı tutardan düzelt
+            if ($fiyat !== null && $fiyat > 0 && $tutar !== null && $tutar > 0) {
+                if ($miktar === null || $miktar <= 0 || abs($miktar * $fiyat - $tutar) / $tutar > 0.05) {
+                    $miktar = round($tutar / $fiyat, 3);
+                }
+            }
             $out[] = [
                 'ad' => $ad, 'malzeme_id' => $mm ? (int) $mm->id : null, 'malzeme_ad' => $mm ? $mm->ad : null,
-                'birim_id' => $bid, 'miktar' => isset($k['miktar']) && $k['miktar'] !== null ? (float) $k['miktar'] : null,
-                'birim_fiyat' => isset($k['birim_fiyat']) && $k['birim_fiyat'] !== null ? (float) $k['birim_fiyat'] : null,
+                'birim_id' => $bid, 'miktar' => $miktar, 'birim_fiyat' => $fiyat,
             ];
         }
         $ted = !empty($data['tedarikci']) ? $matchTed($data['tedarikci']) : null;
