@@ -436,7 +436,7 @@
         <div class="ckh-top">
             <button class="ckh-x" type="button" onclick="ckHelpKapat()">×</button>
             <h2>🎡 Çarkıfelek Nasıl Çalışır?</h2>
-            <p>Müşterileriniz çarkı çevirir, siz ne kazanacaklarını belirlersiniz. Puan biriktirir, indirim kazanır ve tekrar gelir. Maliyeti tamamen siz kontrol edersiniz.</p>
+            <p>Müşterileriniz çarkı çevirir, hangi dilimi kazanacaklarını siz belirlersiniz. Puan biriktirir, indirim kazanır ve tekrar gelir. Maliyeti tamamen siz kontrol edersiniz.</p>
         </div>
         <div class="ckh-body">
 
@@ -449,7 +449,7 @@
                 </div>
                 <div class="ckh-step">
                     <div class="ic">⭐</div>
-                    <b>Kazananı seç</b>
+                    <b>Kazanan dilimi seç</b>
                     <span>“★ Kazanan” işaretlediğin dilim, müşteri ne kadar döndürürse döndürsün her zaman çıkar.</span>
                 </div>
                 <div class="ckh-step">
@@ -459,7 +459,7 @@
                 </div>
             </div>
 
-            <div class="ckh-h"><span class="num">2</span> “Kazananı Seç” Mantığı (en önemli)</div>
+            <div class="ckh-h"><span class="num">2</span> “Kazanan Dilimi Seç” Mantığı (en önemli)</div>
             <div class="ckh-pick">
                 <svg width="110" height="110" viewBox="0 0 120 120" style="flex-shrink:0">
                     <g>
@@ -475,7 +475,7 @@
                     </g>
                 </svg>
                 <div class="txt">
-                    <b>Sonucu şans değil, siz belirlersiniz.</b>
+                    <b>Kazanan dilimi siz belirlersiniz.</b>
                     <p>Çark ekranda gerçekten döner (müşteriye heyecanlı bir şov) ama hangi dilimin çıkacağını <b>siz seçersiniz</b>. Böylece “bugün ne kazandıracağım?” kararı ve maliyet tamamen sizin kontrolünüzde olur. İsterseniz her gün kazananı değiştirebilirsiniz.</p>
                 </div>
             </div>
