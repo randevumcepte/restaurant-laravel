@@ -211,7 +211,7 @@
     <div class="ck-tabs">
         <a href="/cark-yonetim" class="ck-tab active"><span class="material-icons-outlined">casino</span> Çarkıfelek</a>
         <a href="/cark-kazananlar" class="ck-tab"><span class="material-icons-outlined">emoji_events</span> Çark Kazananlar</a>
-        <span class="ck-tab soon" onclick="ckToast('Hatırlatma modülü yakında eklenecek','error')"><span class="material-icons-outlined">notifications</span> Hatırlatma</span>
+        <a href="/cark-hatirlatma" class="ck-tab"><span class="material-icons-outlined">notifications</span> Hatırlatma</a>
     </div>
 
     {{-- Header --}}
