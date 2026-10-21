@@ -423,6 +423,10 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
                     <div class="ym-alt">Verim {{ $mik($ym->verim_miktar) }} {{ $ym->verim_birim ?? '' }} · {{ $ym->kalem_sayisi ?? 0 }} bileşen · {{ $tl($ym->toplam_maliyet ?? 0) }}</div>
                 </div>
                 @if ($duzenleyebilir)
+                <button onclick="event.stopPropagation();rctUretAc({{ $ym->id }}, '{{ addslashes($ym->ad) }}')" title="Üret (hammadde düş + SKT + barkod)"
+                    style="display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);cursor:pointer;color:var(--yesil);padding:6px 10px;border-radius:9px;font-size:12px;font-weight:700;margin-right:2px">
+                    <span class="material-icons-outlined" style="font-size:16px">factory</span> Üret
+                </button>
                 <button onclick="event.stopPropagation();rctYmSil({{ $ym->id }}, '{{ addslashes($ym->ad) }}')"
                     style="background:none;border:none;cursor:pointer;color:var(--sub);padding:4px;border-radius:6px">
                     <span class="material-icons-outlined" style="font-size:20px">delete_outline</span>
@@ -567,6 +571,38 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
       <input class="pick-ara" type="text" id="rctPickerAra" placeholder="Ara" oninput="rctPickerFiltre(this.value)" autofocus>
     </div>
     <div class="pick-liste" id="rctPickerListe"></div>
+  </div>
+</div>
+
+{{-- ============================================================ --}}
+{{-- YARI MAMÜL ÜRET MODALI (hammadde düş + SKT'li parti + barkod) --}}
+{{-- ============================================================ --}}
+<div class="rct-modal-bg merkez" id="rctUretBg" onclick="if(event.target===this)rctUretKapat()">
+  <div class="rct-modal" style="background:var(--card);max-width:460px">
+    <div class="cizgi"></div>
+    <div class="baslik" id="rctUretBaslik">Üret</div>
+    <div class="alt-baslik">Ürettiğin miktarı gir; hammadde stoktan düşer, bu yarı mamül SKT + barkodla stoğa girer. Satışta hammaddeye patlamaz — bu stoktan düşer.</div>
+
+    <div class="rct-row">
+      <div class="rct-field">
+        <label>Üretilen miktar <span id="rctUretBirim" style="color:var(--sub)"></span></label>
+        <input type="number" id="rctUretMiktar" min="0.001" step="any" placeholder="0">
+      </div>
+      <div class="rct-field">
+        <label>Son Kullanma (SKT)</label>
+        <input type="date" id="rctUretSkt">
+      </div>
+    </div>
+    <div class="rct-field">
+      <label>Barkod <span style="color:var(--sub)">(boş = otomatik üret)</span></label>
+      <input type="text" id="rctUretBarkod" placeholder="Okut / yaz ya da boş bırak" autocomplete="off">
+    </div>
+    <button class="rct-kaydet" id="rctUretBtn" onclick="rctUretKaydet()" style="background:var(--yesil)">Üret &amp; Stoğa Ekle</button>
+
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">Üretim Partileri <span id="rctUretStok" style="color:var(--sub);font-weight:500"></span></div>
+      <div id="rctUretPartiler"><div style="color:var(--sub);font-size:12.5px">Yükleniyor…</div></div>
+    </div>
   </div>
 </div>
 
@@ -1347,6 +1383,66 @@ function rctKalemEkleAc() {
 // ===================================================================
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ===================================================================
+// YARI MAMÜL ÜRET (hammadde düş + SKT'li parti + barkod)
+// ===================================================================
+let _rctUretId = null;
+function rctUretAc(id, ad) {
+    _rctUretId = id;
+    document.getElementById('rctUretBaslik').textContent = (ad || 'Yarı mamül') + ' — Üret';
+    document.getElementById('rctUretMiktar').value = '';
+    document.getElementById('rctUretBarkod').value = '';
+    document.getElementById('rctUretSkt').value = '';
+    const ym = ymMap[id];
+    document.getElementById('rctUretBirim').textContent = (ym && ym.verim_birim) ? '(' + ym.verim_birim + ')' : '';
+    document.getElementById('rctUretBg').classList.add('acik');
+    rctUretPartileriYukle();
+}
+function rctUretKapat() { document.getElementById('rctUretBg').classList.remove('acik'); }
+(function(){ var m = document.getElementById('rctUretBg'); if (m) m.addEventListener('click', function(e){ if (e.target === m) rctUretKapat(); }); })();
+
+function rctUretPartileriYukle() {
+    const box = document.getElementById('rctUretPartiler');
+    box.innerHTML = '<div style="color:var(--sub);font-size:12.5px">Yükleniyor…</div>';
+    api('/api/patron/yarimamul-partileri?recete_id=' + _rctUretId).then(function(r){
+        if (!r || !r.ok) { box.innerHTML = '<div style="color:var(--sub);font-size:12.5px">—</div>'; return; }
+        document.getElementById('rctUretStok').textContent = '· Toplam stok: ' + _mik(r.stok || 0);
+        const ps = (r.partiler || []).filter(function(x){ return x.kalan > 0.0001; });
+        if (!ps.length) { box.innerHTML = '<div style="color:var(--sub);font-size:12.5px">Henüz üretim partisi yok.</div>'; return; }
+        box.innerHTML = ps.map(function(x){
+            let renk = 'var(--sub)', uyari = '';
+            if (x.skt_gun !== null && x.skt_gun !== undefined) {
+                if (x.skt_gun < 0) { renk = '#F43F5E'; uyari = 'SKT GEÇTİ'; }
+                else if (x.skt_gun <= 3) { renk = '#F59E0B'; uyari = x.skt_gun + ' gün kaldı'; }
+                else { uyari = x.skt_gun + ' gün'; }
+            }
+            const sktTxt = x.skt ? x.skt.split('-').reverse().join('.') : 'SKT yok';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">'
+                + '<span class="material-icons-outlined" style="font-size:16px;color:' + renk + '">inventory_2</span>'
+                + '<div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--ink);font-weight:600">' + escHtml(x.lot_no || '-') + '</div>'
+                + '<div style="font-size:11px;color:' + renk + '">SKT: ' + sktTxt + (uyari ? ' · ' + uyari : '') + '</div></div>'
+                + '<div style="font-size:12.5px;font-weight:700;color:var(--ink)">' + _mik(x.kalan) + '</div></div>';
+        }).join('');
+    }).catch(function(){ box.innerHTML = '<div style="color:var(--sub);font-size:12.5px">Yüklenemedi</div>'; });
+}
+function rctUretKaydet() {
+    const miktar = parseFloat((document.getElementById('rctUretMiktar').value || '0').replace(',', '.')) || 0;
+    if (miktar <= 0) { rctToast('Üretilen miktarı gir'); return; }
+    const skt = document.getElementById('rctUretSkt').value;
+    const barkod = document.getElementById('rctUretBarkod').value.trim();
+    const btn = document.getElementById('rctUretBtn'); const t0 = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Üretiliyor…';
+    api('/api/patron/yarimamul-uret', { recete_id: _rctUretId, miktar: miktar, skt: skt, barkod: barkod }).then(function(r){
+        btn.disabled = false; btn.textContent = t0;
+        if (r && r.ok) {
+            rctToast('Üretildi ✓ · Barkod: ' + r.barkod);
+            document.getElementById('rctUretMiktar').value = '';
+            document.getElementById('rctUretBarkod').value = '';
+            rctUretPartileriYukle();
+        } else { rctToast((r && r.hata) || 'Üretilemedi'); }
+    }).catch(function(){ btn.disabled = false; btn.textContent = t0; rctToast('Bağlantı hatası'); });
 }
 </script>
 @endpush
