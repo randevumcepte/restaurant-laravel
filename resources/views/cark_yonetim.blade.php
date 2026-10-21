@@ -6,7 +6,7 @@
 @section('content')
 
 <style>
-:root {
+.ck-page, .ck-page ~ .modal-ov, .ck-page ~ .toast {
     --purple:   #6c5ce7;
     --purple-l: #a29bfe;
     --pink:     #fd79a8;
