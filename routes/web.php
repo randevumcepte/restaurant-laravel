@@ -11671,13 +11671,127 @@ function _restoReceteHammadde($receteId, $carpan, array &$sonuc, array $ziyaret 
             $kars = _restoBirimKarsilik($k->malzeme_id, $k->birim_id, $m->temel_birim_id);
             $sonuc[$k->malzeme_id] = ($sonuc[$k->malzeme_id] ?? 0) + (float) $k->miktar * $kars * $carpan;
         } elseif ($k->alt_recete_id) {
-            $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first(['verim_miktar']);
-            $verim = ($alt && (float) $alt->verim_miktar > 0) ? (float) $alt->verim_miktar : 1.0;
-            // ust recetede alt receteden $k->miktar (verim biriminde) kullaniliyor -> alt recetenin miktar/verim kati
-            _restoReceteHammadde($k->alt_recete_id, $carpan * ((float) $k->miktar / $verim), $sonuc, $ziyaret);
+            $alt = DB::table('receteler')->where('id', $k->alt_recete_id)->first();
+            $altMid = $alt ? ($alt->malzeme_id ?? null) : null;
+            // STOKLU yarı mamül (üretim partisi var): üretimde hammadde zaten düştü → burada AYNA MALZEME'yi düş.
+            // Çift düşme olmaz; ayna normal stok kalemi olduğu için FEFO/SKT (_partiDus) otomatik uygulanır.
+            if (!empty($altMid)) {
+                $mm = DB::table('malzemeler')->where('id', $altMid)->first(['temel_birim_id', 'stok_takipli']);
+                if ($mm && $mm->stok_takipli) {
+                    $kars = _restoBirimKarsilik((int) $altMid, $k->birim_id, $mm->temel_birim_id);
+                    $sonuc[$altMid] = ($sonuc[$altMid] ?? 0) + (float) $k->miktar * $kars * $carpan;
+                }
+            } else {
+                $verim = ($alt && (float) $alt->verim_miktar > 0) ? (float) $alt->verim_miktar : 1.0;
+                // ust recetede alt receteden $k->miktar (verim biriminde) kullaniliyor -> alt recetenin miktar/verim kati
+                _restoReceteHammadde($k->alt_recete_id, $carpan * ((float) $k->miktar / $verim), $sonuc, $ziyaret);
+            }
         }
     }
 }
+
+// ============================================================================
+// YARI MAMÜL ÜRETİM PARTİSİ: üret → hammadde düş + AYNA stok kalemi (SKT'li parti + barkod).
+// Satışta hammaddeye patlamak yerine ayna kalemi düşer (FEFO) → çift düşme YOK. Ayna = receteler.malzeme_id.
+// ============================================================================
+if (!function_exists('_yariMamulMirror')) {
+    function _yariMamulMirror($receteId)
+    {
+        try { if (!Schema::hasColumn('receteler', 'malzeme_id')) Schema::table('receteler', function ($t) { $t->unsignedBigInteger('malzeme_id')->nullable(); }); } catch (\Throwable $e) {}
+        $rec = DB::table('receteler')->where('id', $receteId)->where('tip', 'yari_mamul')->first();
+        if (!$rec) return null;
+        if (!empty($rec->malzeme_id) && DB::table('malzemeler')->where('id', $rec->malzeme_id)->exists()) return (int) $rec->malzeme_id;
+        $katId = DB::table('malzeme_kategorileri')->where('ad', 'Yarı Mamül')->value('id');
+        if (!$katId) $katId = DB::table('malzeme_kategorileri')->insertGetId(['ad' => 'Yarı Mamül']);
+        $birim = (int) ($rec->verim_birim_id ?? 0) ?: (int) DB::table('birimler')->min('id');
+        $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
+        $birimMaliyet = function_exists('_restoReceteToplamMaliyet') ? (_restoReceteToplamMaliyet($receteId) / $verim) : 0;
+        $mid = DB::table('malzemeler')->insertGetId([
+            'ad' => $rec->ad, 'kategori_id' => $katId, 'temel_birim_id' => $birim,
+            'kritik_stok' => 0, 'stok_takipli' => 1, 'guncel_maliyet' => round($birimMaliyet, 4),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('receteler')->where('id', $receteId)->update(['malzeme_id' => $mid]);
+        return (int) $mid;
+    }
+}
+// Üret: hammadde düş + ayna stoğa giriş + SKT'li parti + barkod
+Route::post('/api/patron/yarimamul-uret', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkiniz yok'], 403);
+    $recId = (int) $r->recete_id;
+    $rec = DB::table('receteler')->where('id', $recId)->where('tip', 'yari_mamul')->first();
+    if (!$rec) return ['ok' => 0, 'hata' => 'Yarı mamül bulunamadı'];
+    $uretilen = (float) str_replace(',', '.', (string) $r->miktar);
+    if ($uretilen <= 0) return ['ok' => 0, 'hata' => 'Üretilen miktar 0 olamaz'];
+    $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
+    $skt = ($r->filled('skt') && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->skt)) ? (string) $r->skt : null;
+    // 1) Hammadde düş (reçeteyi uretilen/verim ile patlat; ayna-malzemeli alt yarı mamüller kendi stoğundan düşer)
+    $ihtiyac = [];
+    _restoReceteHammadde($recId, $uretilen / $verim, $ihtiyac);
+    foreach ($ihtiyac as $malzemeId => $temelMiktar) {
+        if ($temelMiktar <= 0) continue;
+        $mm = DB::table('malzemeler')->where('id', $malzemeId)->first(['guncel_maliyet']);
+        DB::table('stok_hareketleri')->insert([
+            'sube_id' => $p->sube_id, 'malzeme_id' => (int) $malzemeId, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
+            'birim_maliyet' => $mm ? (float) $mm->guncel_maliyet : 0, 'kaynak_tip' => 'uretim', 'kaynak_id' => $recId,
+            'aciklama' => 'Yarı mamül üretim: ' . $rec->ad, 'personel_id' => $p->id, 'created_at' => now(),
+        ]);
+        if (function_exists('_partiDus')) _partiDus($p->sube_id, (int) $malzemeId, $temelMiktar);
+    }
+    // 2) Ayna malzeme: stok girişi + maliyet
+    $mid = _yariMamulMirror($recId);
+    if (!$mid) return ['ok' => 0, 'hata' => 'Ayna stok kalemi oluşturulamadı'];
+    $birimMaliyet = function_exists('_restoReceteToplamMaliyet') ? (_restoReceteToplamMaliyet($recId) / $verim) : 0;
+    DB::table('malzemeler')->where('id', $mid)->update(['guncel_maliyet' => round($birimMaliyet, 4), 'updated_at' => now()]);
+    DB::table('stok_hareketleri')->insert([
+        'sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'tip' => 'iade', 'miktar' => abs($uretilen),
+        'birim_maliyet' => round($birimMaliyet, 4), 'kaynak_tip' => 'uretim', 'kaynak_id' => $recId,
+        'aciklama' => 'Yarı mamül üretim (giriş)', 'personel_id' => $p->id, 'created_at' => now(),
+    ]);
+    // 3) Barkod (elle veya iç üret) — ayna malzemeye bağlı
+    $barkod = trim((string) $r->input('barkod', ''));
+    if (function_exists('_barkodKur')) { try { _barkodKur(); } catch (\Throwable $e) {} }
+    if ($barkod === '') $barkod = 'YM' . str_pad((string) $mid, 5, '0', STR_PAD_LEFT) . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    try {
+        if (Schema::hasTable('barkodlar') && !DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $barkod)->exists()) {
+            DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $barkod, 'tur' => 'malzeme', 'hedef_id' => $mid, 'created_at' => now()]);
+        }
+    } catch (\Throwable $e) {}
+    // 4) SKT'li parti (FEFO defteri)
+    if (function_exists('_restoPartiEnsure')) { try { _restoPartiEnsure(); } catch (\Throwable $e) {} }
+    try {
+        if (Schema::hasTable('stok_partileri')) {
+            DB::table('stok_partileri')->insert([
+                'sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'lot_no' => $barkod, 'skt' => $skt,
+                'giris_miktar' => round($uretilen, 4), 'kalan_miktar' => round($uretilen, 4),
+                'birim_maliyet' => round($birimMaliyet, 4), 'giris_tarihi' => now()->toDateString(),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'malzeme_id' => $mid, 'barkod' => $barkod, 'skt' => $skt, 'miktar' => $uretilen];
+});
+// Bir yarı mamülün üretim partileri (SKT + kalan) + toplam stok
+Route::get('/api/patron/yarimamul-partileri', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $recId = (int) $r->recete_id;
+    $rec = DB::table('receteler')->where('id', $recId)->first();
+    $mid = $rec ? ($rec->malzeme_id ?? null) : null;
+    if (!$mid || !Schema::hasTable('stok_partileri')) return ['ok' => 1, 'malzeme_id' => $mid, 'partiler' => [], 'stok' => 0];
+    $bugun = strtotime(date('Y-m-d'));
+    $partiler = DB::table('stok_partileri')->where('sube_id', $p->sube_id)->where('malzeme_id', $mid)
+        ->orderByRaw('skt IS NULL, skt ASC')->orderByDesc('id')->limit(100)->get()
+        ->map(function ($x) use ($bugun) {
+            $gun = $x->skt ? (int) floor((strtotime($x->skt) - $bugun) / 86400) : null;
+            return ['id' => (int) $x->id, 'lot_no' => $x->lot_no, 'skt' => $x->skt, 'skt_gun' => $gun,
+                'kalan' => round((float) $x->kalan_miktar, 3), 'giris' => round((float) $x->giris_miktar, 3), 'giris_tarihi' => $x->giris_tarihi];
+        });
+    $stok = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $mid)->sum('miktar');
+    return ['ok' => 1, 'malzeme_id' => (int) $mid, 'partiler' => $partiler, 'stok' => round($stok, 3)];
+});
 
 // Adisyon kapanınca reçeteden otomatik stok düşümü (tuketim). GÜVENLİ: hata olsa
 // bile satışı bozmaz (try/catch), reçetesi/malzemesi olmayan ürünü sessiz atlar,
