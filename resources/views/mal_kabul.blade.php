@@ -109,8 +109,15 @@
 
     <div style="overflow-x:auto">
     <div id="mkSatirlar" style="min-width:720px">
-      <div style="display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1.3fr 1.3fr 1.3fr;gap:6px;font-size:10.5px;font-weight:700;color:var(--sub2);text-transform:uppercase;padding:0 2px 4px">
-        <span>Malzeme</span><span>Sipariş</span><span>Gelen</span><span>Kabul</span><span>Birim Fiyat</span><span>Lot No</span><span>SKT</span>
+      @php $hh='display:block;font-weight:400;font-size:9.5px;color:var(--sub2);line-height:1.2;margin-top:1px'; @endphp
+      <div style="display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1.3fr 1.3fr 1.3fr;gap:6px;font-size:11px;font-weight:800;color:var(--ink);padding:0 2px 5px">
+        <span>Malzeme<span style="{{ $hh }}">ne geldi</span></span>
+        <span>Sipariş<span style="{{ $hh }}">istenen miktar</span></span>
+        <span>Gelen<span style="{{ $hh }}">kaç geldi</span></span>
+        <span>Kabul<span style="{{ $hh }}">kabul ettiğin</span></span>
+        <span>Birim Fiyat<span style="{{ $hh }}">adedi/kg kaça</span></span>
+        <span>Lot / Parti No<span style="{{ $hh }}">parti kodu · boş geçebilirsin</span></span>
+        <span>Son Kullanma<span style="{{ $hh }}">SKT · boş geçebilirsin</span></span>
       </div>
       @forelse ($siparisKalem as $k)
         <div class="mk-satir" style="display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1.3fr 1.3fr 1.3fr;gap:6px;align-items:center;margin-bottom:6px"
@@ -120,7 +127,7 @@
           <input type="number" class="rk-inp mk-gelen" step="0.001" min="0" value="{{ $num($k->kalan) }}" style="padding:6px">
           <input type="number" class="rk-inp mk-kabul" step="0.001" min="0" value="{{ $num($k->kalan) }}" style="padding:6px">
           <input type="number" class="rk-inp mk-fiyat" step="0.0001" min="0" value="{{ (float) $k->birim_fiyat }}" style="padding:6px">
-          <input type="text" class="rk-inp mk-lot" placeholder="Lot" style="padding:6px">
+          <input type="text" class="rk-inp mk-lot" placeholder="Parti no (varsa)" style="padding:6px">
           <input type="date" class="rk-inp mk-skt" style="padding:6px">
         </div>
       @empty
@@ -193,7 +200,7 @@ function mkSatirEkle(pre){
     <input type="number" class="rk-inp mk-gelen" placeholder="Gelen" step="0.001" min="0" style="padding:6px">
     <input type="number" class="rk-inp mk-kabul" placeholder="Kabul" step="0.001" min="0" style="padding:6px">
     <input type="number" class="rk-inp mk-fiyat" placeholder="Fiyat" step="0.0001" min="0" style="padding:6px">
-    <input type="text" class="rk-inp mk-lot" placeholder="Lot" style="padding:6px">
+    <input type="text" class="rk-inp mk-lot" placeholder="Parti no (varsa)" style="padding:6px">
     <input type="date" class="rk-inp mk-skt" style="padding:6px">`;
   document.getElementById('mkSatirlar').appendChild(d);
   if(pre){
