@@ -270,6 +270,89 @@ body.koyu .sta-kalem-satiri { background: #161C2E; }
 body.koyu #staTst { background: #e2e8f0; color: #1e293b; }
 #staTst.goruli { opacity: 1; }
 
+/* ---- Akış adımı şeridi ---- */
+#sta .sta-akis, .sta-akis {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 16px;
+  padding: 10px 12px; background: var(--card2,#f1f5f9); border-radius: 12px;
+  overflow-x: auto;
+}
+body.koyu .sta-akis { background: #161C2E; }
+.sta-akis .sa-adim {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700;
+  color: var(--sub2,#94a3b8); white-space: nowrap;
+}
+.sta-akis .sa-adim.aktif { color: var(--mor1,#7C3AED); }
+.sta-akis .sa-adim.tamam { color: var(--yesil,#10B981); }
+.sta-akis .sa-adim .material-icons-outlined { font-size: 15px; }
+.sta-akis .sa-ok { color: var(--sub2,#94a3b8); font-size: 13px; }
+
+/* ---- Detay kalem kartı (RFQ) ---- */
+.sta-kk {
+  background: var(--card2,#f1f5f9); border: 1px solid var(--line,#e2e8f0);
+  border-radius: 14px; padding: 12px; margin-bottom: 10px;
+}
+body.koyu .sta-kk { background: #161C2E; }
+.sta-kk .kk-bas { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sta-kk .kk-bas .material-icons-outlined { font-size: 18px; color: var(--mor1,#7C3AED); }
+.sta-kk .kk-ad { font-size: 14px; font-weight: 800; color: var(--ink,#1e293b); flex: 1; }
+.sta-kk .kk-mik { font-size: 13px; font-weight: 800; color: var(--ink,#1e293b); white-space: nowrap; }
+
+/* teklif satırı */
+.sta-tek {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 6px;
+  background: var(--card,#fff); border: 1.5px solid var(--line,#e2e8f0); border-radius: 10px;
+  cursor: pointer; transition: all .12s;
+}
+body.koyu .sta-tek { background: #1b2235; }
+.sta-tek.oneri { border-color: var(--amber,#F59E0B); background: color-mix(in srgb,var(--amber) 9%,transparent); }
+.sta-tek.secili { border-color: var(--yesil,#10B981); background: color-mix(in srgb,var(--yesil) 10%,transparent); }
+.sta-tek .tk-yildiz { font-size: 17px; color: var(--sub2,#cbd5e1); flex-shrink: 0; cursor: pointer; }
+.sta-tek .tk-yildiz.dolu { color: var(--amber,#F59E0B); }
+.sta-tek .tk-ted { flex: 1; min-width: 0; }
+.sta-tek .tk-ted .tk-ad { font-size: 13px; font-weight: 700; color: var(--ink,#1e293b); }
+.sta-tek .tk-ted .tk-sub { font-size: 11px; color: var(--sub,#64748b); }
+.sta-tek .tk-fiyat { font-size: 14px; font-weight: 800; color: var(--ink,#1e293b); white-space: nowrap; }
+.sta-tek .tk-sil { color: var(--sub2,#94a3b8); font-size: 16px; flex-shrink: 0; }
+.sta-tek .tk-ucuz { font-size: 9.5px; font-weight: 800; color: var(--yesil,#10B981); background: color-mix(in srgb,var(--yesil) 14%,transparent); padding: 1px 5px; border-radius: 6px; }
+
+/* mini teklif ekleme formu */
+.sta-tek-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.sta-tek-form select, .sta-tek-form input {
+  padding: 7px 9px; border: 1px solid var(--line,#e2e8f0); border-radius: 9px;
+  background: var(--card,#fff); color: var(--ink,#1e293b); font-size: 12.5px; outline: none;
+}
+body.koyu .sta-tek-form select, body.koyu .sta-tek-form input { background: #1b2235; }
+.sta-tek-form .tf-ted { flex: 2; min-width: 120px; }
+.sta-tek-form .tf-fiyat { width: 90px; }
+.sta-tek-form .tf-gun { width: 70px; }
+.sta-tek-form .tf-ekle {
+  border: none; background: var(--mor1,#7C3AED); color: #fff; border-radius: 9px;
+  padding: 7px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+
+/* gerekçe + patron not kutuları */
+.sta-gerekce {
+  margin-top: 8px; font-size: 12px; color: var(--ink,#1e293b);
+  background: color-mix(in srgb,var(--amber) 8%,transparent); border-radius: 9px; padding: 7px 10px;
+  display: flex; gap: 6px; align-items: flex-start;
+}
+.sta-gerekce .material-icons-outlined { font-size: 15px; color: var(--amber,#F59E0B); margin-top: 1px; }
+.sta-gerekce textarea {
+  width: 100%; border: 1px solid var(--line,#e2e8f0); border-radius: 8px; padding: 6px 8px;
+  font-size: 12.5px; background: var(--card,#fff); color: var(--ink,#1e293b); resize: vertical; outline: none;
+}
+body.koyu .sta-gerekce textarea { background: #1b2235; }
+
+/* aksiyon barı buton */
+.sta-aks-btn {
+  width: 100%; padding: 13px; border: none; border-radius: 13px; color: #fff;
+  font-size: 15px; font-weight: 800; cursor: pointer; transition: opacity .15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;
+}
+.sta-aks-btn:hover { opacity: .9; }
+.sta-aks-btn:disabled { opacity: .5; cursor: not-allowed; }
+.sta-aks-info { font-size: 12.5px; color: var(--sub,#64748b); text-align: center; margin-bottom: 10px; }
+
 /* Spinner */
 .sta-spin {
   display: inline-block; width: 18px; height: 18px;
@@ -393,29 +476,15 @@ body.koyu #staTst { background: #e2e8f0; color: #1e293b; }
         <span id="staDetNot"></span>
     </div>
 
-    {{-- Durum güncelleme --}}
-    <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px">Durum Değiştir</div>
-    <div class="sta-durum-guncelle" id="staDetDurumBtnler">
-        <button onclick="staDurumGuncelle('teklif')" style="border-color:#F59E0B;color:#F59E0B">
-            <span class="material-icons-outlined" style="font-size:15px">request_quote</span>Teklif Bek.
-        </button>
-        <button onclick="staDurumGuncelle('onayda')" style="border-color:#F59E0B;color:#F59E0B">
-            <span class="material-icons-outlined" style="font-size:15px">rule</span>Onaya Gönder
-        </button>
-        <button onclick="staDurumGuncelle('onaylandi')" style="border-color:#10B981;color:#10B981">
-            <span class="material-icons-outlined" style="font-size:15px">check_circle</span>Onayla
-        </button>
-        <button onclick="staDurumGuncelle('siparis')" style="border-color:#0EA5E9;color:#0EA5E9">
-            <span class="material-icons-outlined" style="font-size:15px">shopping_cart_checkout</span>Siparişe Al
-        </button>
-        <button onclick="staDurumGuncelle('tamamlandi')" style="border-color:#10B981;color:#10B981">
-            <span class="material-icons-outlined" style="font-size:15px">task_alt</span>Tamamlandı
-        </button>
-    </div>
+    {{-- Akış adımı şeridi --}}
+    <div class="sta-akis" id="staDetAkis"></div>
 
-    {{-- Kalem listesi --}}
-    <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px">Kalemler</div>
+    {{-- Kalem listesi (RFQ + öneri + seçim) --}}
+    <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px">Kalemler · Teklifler</div>
     <div id="staDetKalemler" style="margin-bottom:14px"></div>
+
+    {{-- Dinamik aksiyon barı (role + duruma göre) --}}
+    <div id="staDetAksiyon" style="margin-bottom:10px"></div>
 
     <button class="sta-kaydet-btn" style="background:var(--sub,#64748b)" onclick="staDetKapat()">
         Kapat
@@ -497,6 +566,10 @@ body.koyu #staTst { background: #e2e8f0; color: #1e293b; }
 /* ─── Veri ─────────────────────────────────────────────── */
 const malzemeler = @json($malzemeler->values());
 const birimler   = @json($birimler->values());
+const patronMu   = {{ ($patronMu ?? false) ? 'true' : 'false' }};
+let staTedarikciler = [];
+let staAktifKalemler = [];
+let staAktifDurum = null;
 const durumRenkler = {
     yeni:'#4F46E5', teklif:'#F59E0B', onayda:'#F59E0B',
     onaylandi:'#10B981', siparis:'#0EA5E9', tamamlandi:'#10B981'
@@ -688,29 +761,210 @@ window.staDetayAc = async function(id) {
             notKutu.style.display = 'none';
         }
 
-        // Kalem listesi
-        let kalemHtml = '';
-        if (kalemler.length === 0) {
-            kalemHtml = '<div style="color:var(--sub);font-size:13px;padding:8px 0">Kalem bulunamadı.</div>';
-        } else {
-            kalemler.forEach(k => {
-                kalemHtml += `
-                <div class="sta-det-kalem">
-                  <span class="material-icons-outlined">inventory_2</span>
-                  <div class="dk-ad">
-                    <div class="dk-malzeme">${escHtml(k.ad || ('Malzeme #' + k.malzeme_id))}</div>
-                  </div>
-                  <div class="dk-mik">${numFmt(k.miktar)} ${escHtml(k.birim || '')}</div>
-                </div>`;
-            });
-        }
-        document.getElementById('staDetKalemler').innerHTML = kalemHtml;
+        staTedarikciler = res.tedarikciler || [];
+        staAktifKalemler = kalemler;
+        staAktifDurum = t.durum;
+
+        staAkisCiz(t.durum);
+        staKalemleriCiz(kalemler, t.durum);
+        staAksiyonCiz(t.durum);
 
     } catch(e) {
         toast('⚠ Bağlantı hatası', '#F43F5E');
         staDetKapat();
     }
 };
+
+/* ─── Akış şeridi ──────────────────────────────────────── */
+const AKIS = [
+    {k:'yeni', ad:'Talep', ik:'assignment'},
+    {k:'teklif', ad:'Teklif', ik:'request_quote'},
+    {k:'onayda', ad:'Onayda', ik:'rule'},
+    {k:'onaylandi', ad:'Onaylandı', ik:'check_circle'},
+    {k:'siparis', ad:'Sipariş', ik:'shopping_cart_checkout'},
+];
+function staAkisCiz(durum) {
+    const sira = AKIS.map(a=>a.k);
+    let aktifIdx = sira.indexOf(durum);
+    if (durum === 'tamamlandi') aktifIdx = sira.length;
+    let html = '';
+    AKIS.forEach((a, i) => {
+        let cls = '';
+        if (i < aktifIdx) cls = 'tamam';
+        else if (i === aktifIdx) cls = 'aktif';
+        html += `<span class="sa-adim ${cls}"><span class="material-icons-outlined">${i<aktifIdx?'check':a.ik}</span>${a.ad}</span>`;
+        if (i < AKIS.length-1) html += `<span class="sa-ok">›</span>`;
+    });
+    document.getElementById('staDetAkis').innerHTML = html;
+}
+
+/* ─── Tedarikçi dropdown ───────────────────────────────── */
+function staTedDropdown(secili) {
+    let h = `<option value="">— Tedarikçi —</option>`;
+    staTedarikciler.forEach(t => {
+        h += `<option value="${t.id}"${(secili==t.id)?' selected':''}>${escHtml(t.ad)}</option>`;
+    });
+    return h;
+}
+
+/* ─── Kalem + teklif kartlarını çiz ────────────────────── */
+function staKalemleriCiz(kalemler, durum) {
+    const wrap = document.getElementById('staDetKalemler');
+    if (!kalemler.length) { wrap.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:8px 0">Kalem yok.</div>'; return; }
+    // satın almacı teklif/öneri girebilir mi? (onaylandı/sipariş sonrası kilit)
+    const duzenle = ['yeni','teklif','onayda'].includes(durum);
+    const patronSecebilir = patronMu && durum === 'onayda';
+    let html = '';
+    kalemler.forEach(k => {
+        const teklifler = k.teklifler || [];
+        const enUcuz = teklifler.length ? Math.min(...teklifler.map(x=>parseFloat(x.fiyat)||Infinity)) : null;
+        html += `<div class="sta-kk" data-kid="${k.id}">
+          <div class="kk-bas">
+            <span class="material-icons-outlined">inventory_2</span>
+            <span class="kk-ad">${escHtml(k.ad)}</span>
+            <span class="kk-mik">${numFmt(k.miktar)} ${escHtml(k.birim||'')}</span>
+          </div>`;
+        // teklifler
+        if (teklifler.length) {
+            teklifler.forEach(tk => {
+                const isOneri = (k.onerilen_tedarikci_id && tk.tedarikci_id == k.onerilen_tedarikci_id);
+                const isSecili = (k.secilen_tedarikci_id && tk.tedarikci_id == k.secilen_tedarikci_id);
+                const ucuz = (enUcuz !== null && parseFloat(tk.fiyat) === enUcuz);
+                let cls = 'sta-tek'; if (isSecili) cls += ' secili'; else if (isOneri) cls += ' oneri';
+                // yıldız: satın almacı düzenleyebilirse tıklanır
+                const yildiz = duzenle
+                    ? `<span class="material-icons-outlined tk-yildiz ${isOneri?'dolu':''}" onclick="event.stopPropagation();staOneriSec(${k.id},${tk.tedarikci_id})" title="Önerim">${isOneri?'star':'star_border'}</span>`
+                    : (isOneri ? `<span class="material-icons-outlined tk-yildiz dolu">star</span>` : '');
+                const altlar = [];
+                if (tk.vade) altlar.push('Vade: '+escHtml(tk.vade));
+                if (tk.teslim_gun) altlar.push(tk.teslim_gun+' gün');
+                html += `<div class="${cls}" ${patronSecebilir?`onclick="staPatronSec(${k.id},${tk.tedarikci_id})"`:''} style="${patronSecebilir?'cursor:pointer':''}">
+                    ${yildiz}
+                    <div class="tk-ted">
+                      <div class="tk-ad">${escHtml(tk.tedarikci_ad)} ${ucuz?'<span class="tk-ucuz">EN UCUZ</span>':''} ${isSecili?'<span class="tk-ucuz" style="color:#10B981;background:color-mix(in srgb,#10B981 14%,transparent)">SEÇİLDİ</span>':''}</div>
+                      ${altlar.length?`<div class="tk-sub">${altlar.join(' · ')}</div>`:''}
+                    </div>
+                    <div class="tk-fiyat">${numFmt(tk.fiyat)} ₺</div>
+                    ${duzenle?`<span class="material-icons-outlined tk-sil" onclick="event.stopPropagation();staTeklifSil(${tk.id})" title="Sil">close</span>`:''}
+                  </div>`;
+            });
+        } else if (!duzenle) {
+            html += `<div style="font-size:12px;color:var(--sub);padding:4px 0">Teklif girilmedi.</div>`;
+        }
+        // teklif ekleme formu (satın almacı, düzenlenebilir durumda)
+        if (duzenle) {
+            html += `<div class="sta-tek-form">
+                <select class="tf-ted">${staTedDropdown()}</select>
+                <input class="tf-fiyat" type="number" step="0.01" min="0" placeholder="Fiyat ₺">
+                <input class="tf-gun" type="number" min="0" placeholder="gün">
+                <input class="tf-vade" style="width:90px" placeholder="vade">
+                <button class="tf-ekle" onclick="staTeklifEkle(${k.id}, this)">+ Teklif</button>
+              </div>`;
+            // ⭐ öneri gerekçesi
+            html += `<div class="sta-gerekce">
+                <span class="material-icons-outlined">tips_and_updates</span>
+                <textarea rows="1" placeholder="Öneri gerekçesi (neden bu tedarikçi?)" onchange="staGerekceKaydet(${k.id}, this.value)">${escHtml(k.oneri_gerekce||'')}</textarea>
+              </div>`;
+        } else if (k.oneri_gerekce) {
+            html += `<div class="sta-gerekce"><span class="material-icons-outlined">tips_and_updates</span><div><b>Satın almacı:</b> ${escHtml(k.oneri_gerekce)}</div></div>`;
+        }
+        if (k.patron_not) {
+            html += `<div class="sta-gerekce" style="background:color-mix(in srgb,#10B981 8%,transparent)"><span class="material-icons-outlined" style="color:#10B981">verified</span><div><b>Yönetici:</b> ${escHtml(k.patron_not)}</div></div>`;
+        }
+        html += `</div>`;
+    });
+    wrap.innerHTML = html;
+}
+
+/* ─── Aksiyon barı (durum + role göre) ─────────────────── */
+function staAksiyonCiz(durum) {
+    const box = document.getElementById('staDetAksiyon');
+    let html = '';
+    if (['yeni','teklif','onayda'].includes(durum)) {
+        // satın almacı: patrona gönder
+        const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Her kaleme teklif girip ⭐ ile birini öner, sonra patrona gönder.';
+        html += `<div class="sta-aks-info">${notu}</div>`;
+        if (durum !== 'onayda')
+            html += `<button class="sta-aks-btn" style="background:#F59E0B" onclick="staPatronaGonder()"><span class="material-icons-outlined">send</span>Patrona Gönder (Onaya)</button>`;
+    }
+    if (durum === 'onayda' && patronMu) {
+        html += `<div class="sta-aks-info">Önerileri incele. İstersen bir teklife tıklayıp değiştir, sonra onayla.</div>`;
+        html += `<button class="sta-aks-btn" style="background:#10B981" onclick="staOnayla()"><span class="material-icons-outlined">check_circle</span>Onayla (seçimleri kesinleştir)</button>`;
+    }
+    if (durum === 'onaylandi') {
+        html += `<div class="sta-aks-info">Onaylandı. Satın almacı tedarikçiye-gruplu sipariş oluşturabilir.</div>`;
+        html += `<button class="sta-aks-btn" style="background:#0EA5E9" onclick="staPOOlustur()"><span class="material-icons-outlined">shopping_cart_checkout</span>Sipariş Oluştur (PO)</button>`;
+    }
+    if (durum === 'siparis') {
+        html += `<div class="sta-aks-info">✓ Sipariş oluşturuldu. Mal gelince <b>Mal Kabul</b> ekranından karşılaştır.</div>`;
+        html += `<button class="sta-aks-btn" style="background:#10B981" onclick="staDurumGuncelle('tamamlandi')"><span class="material-icons-outlined">task_alt</span>Tamamlandı İşaretle</button>`;
+    }
+    box.innerHTML = html;
+}
+
+/* ─── Teklif ekle / sil ────────────────────────────────── */
+window.staTeklifEkle = async function(kalemId, btn) {
+    const form = btn.closest('.sta-tek-form');
+    const tedId = form.querySelector('.tf-ted').value;
+    const fiyat = form.querySelector('.tf-fiyat').value;
+    const gun   = form.querySelector('.tf-gun').value;
+    const vade  = form.querySelector('.tf-vade').value;
+    if (!tedId) { toast('⚠ Tedarikçi seç', '#F43F5E'); return; }
+    if (!fiyat || parseFloat(fiyat) <= 0) { toast('⚠ Fiyat gir', '#F43F5E'); return; }
+    const res = await api('/satinalma-talep/teklif-ekle', { talep_kalem_id: kalemId, tedarikci_id: tedId, fiyat, teslim_gun: gun||null, vade: vade||null });
+    if (res.ok) { toast('✓ Teklif eklendi', '#10B981'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+window.staTeklifSil = async function(teklifId) {
+    const res = await api('/satinalma-talep/teklif-sil', { teklif_id: teklifId });
+    if (res.ok) { toast('Teklif silindi'); staDetayAc(aktifTalepId); }
+};
+
+/* ─── ⭐ Öneri seç (satın almacı) ──────────────────────── */
+window.staOneriSec = async function(kalemId, tedId) {
+    const res = await api('/satinalma-talep/oneri-kaydet', { talep_kalem_id: kalemId, onerilen_tedarikci_id: tedId });
+    if (res.ok) { toast('⭐ Önerin kaydedildi', '#F59E0B'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+window.staGerekceKaydet = async function(kalemId, metin) {
+    // mevcut öneriyi koru, sadece gerekçeyi güncelle
+    const k = staAktifKalemler.find(x => x.id == kalemId);
+    await api('/satinalma-talep/oneri-kaydet', { talep_kalem_id: kalemId, onerilen_tedarikci_id: (k && k.onerilen_tedarikci_id) || null, oneri_gerekce: metin });
+    toast('✓ Gerekçe kaydedildi', '#10B981');
+};
+
+/* ─── Patron: tedarikçi seç (öneriyi onayla/override) ──── */
+window.staPatronSec = async function(kalemId, tedId) {
+    const res = await api('/satinalma-talep/patron-sec', { talep_kalem_id: kalemId, secilen_tedarikci_id: tedId });
+    if (res.ok) { toast('✓ Seçim kaydedildi', '#10B981'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+
+/* ─── Patrona gönder / onayla / PO ─────────────────────── */
+window.staPatronaGonder = async function() {
+    const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId });
+    if (res.ok) { toast('✓ Patrona gönderildi', '#10B981'); staDetListeYenile('onayda'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+window.staOnayla = async function() {
+    const res = await api('/satinalma-talep/onayla', { id: aktifTalepId });
+    if (res.ok) { toast('✓ Onaylandı', '#10B981'); staDetListeYenile('onaylandi'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+window.staPOOlustur = async function() {
+    if (!confirm('Onaylı tedarikçilere satın alma siparişi (PO) oluşturulsun mu?')) return;
+    const res = await api('/satinalma-talep/po-olustur', { id: aktifTalepId });
+    if (res.ok) { toast('✓ Sipariş oluşturuldu: ' + (res.siparisler||[]).join(', '), '#10B981'); staDetListeYenile('siparis'); staDetayAc(aktifTalepId); }
+    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+};
+
+function staDetListeYenile(yeniDurum) {
+    const kart = document.querySelector(`#staListe .sta-kart[onclick*="(${aktifTalepId})"]`);
+    if (kart) {
+        const rz = kart.querySelector('.sta-durum-roz');
+        if (rz) { rz.textContent = durumMetinler[yeniDurum] || yeniDurum; rz.style.background = durumRenkler[yeniDurum] || '#64748b'; }
+    }
+}
 
 window.staDetKapat = function() {
     document.getElementById('staDetModal').classList.remove('acik');
