@@ -6,7 +6,7 @@
 @section('content')
 
 <style>
-.ck-page, .ck-page ~ .modal-ov, .ck-page ~ .toast {
+.ck-page, .ck-page ~ .modal-ov, .ck-page ~ .toast, .ck-page ~ .ckh-ov {
     --purple:   #6c5ce7;
     --purple-l: #a29bfe;
     --pink:     #fd79a8;
@@ -203,6 +203,68 @@
 .toast.show { transform: translateX(0); }
 .toast.success { background: linear-gradient(135deg, var(--green), var(--teal)); }
 .toast.error   { background: linear-gradient(135deg, var(--red), var(--orange)); }
+
+/* ── Nasıl Çalışır? butonu ─────────────────────── */
+.ck-help-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 50px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--purple), var(--purple-l));
+    color: #fff; font-size: 13.5px; font-weight: 700;
+    box-shadow: 0 6px 18px rgba(108,92,231,.32); transition: all .2s;
+}
+.ck-help-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(108,92,231,.42); }
+.ck-head-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ── Nasıl Çalışır? modal ──────────────────────── */
+.ckh-ov { display: none; position: fixed; inset: 0; background: rgba(15,8,35,.6); backdrop-filter: blur(6px); z-index: 10050; align-items: flex-start; justify-content: center; padding: 30px 16px; overflow-y: auto; }
+.ckh-ov.show { display: flex; }
+.ckh-box { background: #fff; border-radius: 22px; max-width: 760px; width: 100%; box-shadow: 0 32px 90px rgba(0,0,0,.3); animation: popIn .35s cubic-bezier(.34,1.56,.64,1); overflow: hidden; margin: auto; }
+.ckh-top { background: linear-gradient(135deg, #160630, #2b1a68 60%, #4c2a9e); color: #fff; padding: 26px 28px; position: relative; }
+.ckh-top h2 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.ckh-top p { font-size: 13.5px; opacity: .85; margin: 0; max-width: 560px; }
+.ckh-x { position: absolute; top: 18px; right: 18px; width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer; background: rgba(255,255,255,.15); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; transition: .2s; }
+.ckh-x:hover { background: rgba(255,255,255,.28); }
+.ckh-body { padding: 24px 28px 28px; }
+.ckh-h { font-size: 15px; font-weight: 800; color: var(--dark); margin: 22px 0 12px; display: flex; align-items: center; gap: 8px; }
+.ckh-h:first-child { margin-top: 0; }
+.ckh-h .num { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg, var(--purple), var(--purple-l)); color: #fff; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Adım kartları */
+.ckh-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media(max-width:620px){ .ckh-steps { grid-template-columns: 1fr; } }
+.ckh-step { background: #f8f7ff; border: 1.5px solid #ece9ff; border-radius: 14px; padding: 16px; text-align: center; }
+.ckh-step .ic { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 14px; background: linear-gradient(135deg, var(--purple), var(--purple-l)); color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(108,92,231,.3); }
+.ckh-step b { display: block; font-size: 14px; color: var(--dark); margin-bottom: 4px; }
+.ckh-step span { font-size: 12.5px; color: var(--mid); line-height: 1.4; }
+
+/* Kazananı seç vurgusu */
+.ckh-pick { display: flex; gap: 16px; align-items: center; background: linear-gradient(135deg, rgba(0,184,148,.08), rgba(108,92,231,.06)); border: 1.5px solid rgba(0,184,148,.25); border-radius: 16px; padding: 18px; }
+@media(max-width:560px){ .ckh-pick { flex-direction: column; text-align: center; } }
+.ckh-pick .txt b { color: var(--green); font-size: 15px; }
+.ckh-pick .txt p { font-size: 13px; color: #555; line-height: 1.5; margin: 6px 0 0; }
+
+/* Ödül tipi kartları */
+.ckh-types { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media(max-width:560px){ .ckh-types { grid-template-columns: 1fr; } }
+.ckh-type { display: flex; gap: 11px; align-items: flex-start; background: #fff; border: 1.5px solid #eee; border-radius: 12px; padding: 12px 14px; }
+.ckh-type .e { font-size: 22px; line-height: 1; }
+.ckh-type b { font-size: 13.5px; color: var(--dark); }
+.ckh-type span { display: block; font-size: 12px; color: var(--mid); margin-top: 2px; line-height: 1.4; }
+
+/* Akış */
+.ckh-flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.ckh-flow .node { flex: 1; min-width: 120px; background: #f8f7ff; border: 1.5px solid #ece9ff; border-radius: 12px; padding: 12px; text-align: center; font-size: 12.5px; color: var(--dark); font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ckh-flow .node .e { font-size: 22px; }
+.ckh-flow .arr { display: flex; align-items: center; color: var(--purple); font-size: 22px; font-weight: 800; }
+@media(max-width:620px){ .ckh-flow { flex-direction: column; } .ckh-flow .arr { transform: rotate(90deg); align-self: center; } }
+
+/* İpuçları */
+.ckh-tip { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px dashed #eee; font-size: 13px; color: #444; line-height: 1.5; }
+.ckh-tip:last-child { border-bottom: none; }
+.ckh-tip .e { font-size: 17px; flex-shrink: 0; }
+.ckh-tip b { color: var(--dark); }
+.ckh-done { width: 100%; margin-top: 22px; padding: 14px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--purple), var(--purple-l)); color: #fff; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 22px rgba(108,92,231,.35); transition: .2s; }
+.ckh-done:hover { transform: translateY(-2px); }
 </style>
 
 <div class="ck-page">
@@ -223,9 +285,17 @@
                 <p>Dilimlerinizi düzenleyin, müşterilerinize özel ödüller sunun</p>
             </div>
         </div>
-        <div class="status-pill on" id="status-pill">
-            <span class="status-dot"></span>
-            <span id="status-text">Aktif</span>
+        <div class="ck-head-right">
+            <button class="ck-help-btn" type="button" onclick="ckHelpAc()">
+                <span class="material-icons-outlined" style="font-size:18px">help_outline</span> Nasıl Çalışır?
+            </button>
+            <button class="ck-help-btn" type="button" style="background:linear-gradient(135deg,var(--green),var(--teal));box-shadow:0 6px 18px rgba(0,184,148,.3)" onclick="onerilenUygula()">
+                <span class="material-icons-outlined" style="font-size:18px">auto_fix_high</span> Önerilen Düzeni Uygula
+            </button>
+            <div class="status-pill on" id="status-pill">
+                <span class="status-dot"></span>
+                <span id="status-text">Aktif</span>
+            </div>
         </div>
     </div>
 
@@ -359,6 +429,89 @@
     </div>
 </div>
 <div class="toast" id="toast"></div>
+
+{{-- Nasıl Çalışır? Modal --}}
+<div class="ckh-ov" id="ckh-ov">
+    <div class="ckh-box">
+        <div class="ckh-top">
+            <button class="ckh-x" type="button" onclick="ckHelpKapat()">×</button>
+            <h2>🎡 Çarkıfelek Nasıl Çalışır?</h2>
+            <p>Müşterileriniz çarkı çevirir, siz ne kazanacaklarını belirlersiniz. Puan biriktirir, indirim kazanır ve tekrar gelir. Maliyeti tamamen siz kontrol edersiniz.</p>
+        </div>
+        <div class="ckh-body">
+
+            <div class="ckh-h"><span class="num">1</span> 3 Adımda Kurulum</div>
+            <div class="ckh-steps">
+                <div class="ckh-step">
+                    <div class="ic">🎨</div>
+                    <b>Dilimleri düzenle</b>
+                    <span>Her dilime renk, ad, ödül tipi (Puan/Hesap/Ürün/Paket) ve değer ver. − / + ile 6–12 dilim.</span>
+                </div>
+                <div class="ckh-step">
+                    <div class="ic">⭐</div>
+                    <b>Kazananı seç</b>
+                    <span>“★ Kazanan” işaretlediğin dilim, müşteri ne kadar döndürürse döndürsün her zaman çıkar.</span>
+                </div>
+                <div class="ckh-step">
+                    <div class="ic">💾</div>
+                    <b>Kaydet</b>
+                    <span>“Ayarı Kaydet”e bas — çark müşteri uygulamasında anında güncellenir.</span>
+                </div>
+            </div>
+
+            <div class="ckh-h"><span class="num">2</span> “Kazananı Seç” Mantığı (en önemli)</div>
+            <div class="ckh-pick">
+                <svg width="110" height="110" viewBox="0 0 120 120" style="flex-shrink:0">
+                    <g>
+                        <path d="M60 60 L60 6 A54 54 0 0 1 106 33 Z" fill="#51CF66"/>
+                        <path d="M60 60 L106 33 A54 54 0 0 1 106 87 Z" fill="#FFC107"/>
+                        <path d="M60 60 L106 87 A54 54 0 0 1 60 114 Z" fill="#FF8E53"/>
+                        <path d="M60 60 L60 114 A54 54 0 0 1 14 87 Z" fill="#CC5DE8"/>
+                        <path d="M60 60 L14 87 A54 54 0 0 1 14 33 Z" fill="#339AF0"/>
+                        <path d="M60 60 L14 33 A54 54 0 0 1 60 6 Z" fill="#F06595"/>
+                        <path d="M60 6 A54 54 0 0 1 106 33" fill="none" stroke="#FFD700" stroke-width="5"/>
+                        <circle cx="60" cy="60" r="12" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+                        <polygon points="54,2 66,2 60,16" fill="#d63031"/>
+                    </g>
+                </svg>
+                <div class="txt">
+                    <b>Sonucu şans değil, siz belirlersiniz.</b>
+                    <p>Çark ekranda gerçekten döner (müşteriye heyecanlı bir şov) ama hangi dilimin çıkacağını <b>siz seçersiniz</b>. Böylece “bugün ne kazandıracağım?” kararı ve maliyet tamamen sizin kontrolünüzde olur. İsterseniz her gün kazananı değiştirebilirsiniz.</p>
+                </div>
+            </div>
+
+            <div class="ckh-h"><span class="num">3</span> Ödül Tipleri</div>
+            <div class="ckh-types">
+                <div class="ckh-type"><span class="e">💰</span><div><b>Puan</b><span>Müşterinin puanına eklenir. Puan Ödülleri menüsünde harcanır.</span></div></div>
+                <div class="ckh-type"><span class="e">🧾</span><div><b>Hesap İndirimi</b><span>Tüm adisyona % veya ₺ indirim (masada yeme-içme).</span></div></div>
+                <div class="ckh-type"><span class="e">🍽️</span><div><b>Ürün İndirimi</b><span>Bir ürüne/ikrama indirim (ör. “Bedava İçecek” = 40₺).</span></div></div>
+                <div class="ckh-type"><span class="e">🛵</span><div><b>Paket İndirimi</b><span>Paket/gel-al siparişlere indirim.</span></div></div>
+                <div class="ckh-type"><span class="e">🔄</span><div><b>Tekrar Dene</b><span>Hak yanmaz, müşteri tekrar çevirir.</span></div></div>
+                <div class="ckh-type"><span class="e">—</span><div><b>Boş</b><span>Hiçbir şey. Restoranda önerilmez (moral bozar).</span></div></div>
+            </div>
+
+            <div class="ckh-h"><span class="num">4</span> Müşteri → Kasa Akışı</div>
+            <div class="ckh-flow">
+                <div class="node"><span class="e">🎡</span>Müşteri çarkı çevirir</div>
+                <div class="arr">→</div>
+                <div class="node"><span class="e">🎉</span>Ödülü kazanır</div>
+                <div class="arr">→</div>
+                <div class="node"><span class="e">💰/🎟️</span>Puan anında hesaba<br>veya kupon kodu</div>
+                <div class="arr">→</div>
+                <div class="node"><span class="e">🧾</span>Kasada “Ödül Doğrula” →<br>adisyona işlenir</div>
+            </div>
+            <p style="font-size:12.5px;color:var(--mid);margin-top:10px;line-height:1.5">Puan ödülü <b>anında</b> müşterinin hesabına eklenir. İndirim ödülleri bir <b>kupon kodu</b> üretir; müşteri kasada gösterir, personel <b>Ödül Doğrula</b> ekranından okutur ve indirim açık adisyona işlenir (puan düşmez).</p>
+
+            <div class="ckh-h"><span class="num">5</span> İpuçları</div>
+            <div class="ckh-tip"><span class="e">📅</span><div><b>Çevirme aralığı:</b> 7 gün önerilir — haftada 1 çevirme özel hissettirir, her gün olursa sıradanlaşır.</div></div>
+            <div class="ckh-tip"><span class="e">⏳</span><div><b>Kupon geçerlilik:</b> 7–14 gün — müşteriyi yakın zamanda geri getirir.</div></div>
+            <div class="ckh-tip"><span class="e">🎯</span><div><b>Kampanya günü:</b> kazananı cazip bir ödüle çek (ör. “Bedava İçecek”), normal günler ucuz tut (10–25 Puan).</div></div>
+            <div class="ckh-tip"><span class="e">%</span><div><b>% mi ₺ mi:</b> yüzde büyük hesabı teşvik eder (upsell); sabit ₺ maliyeti öngörülebilir kılar. Paket/içecek için ₺ idealdir.</div></div>
+
+            <button class="ckh-done" type="button" onclick="ckHelpKapat()">Anladım, başlayalım! 🚀</button>
+        </div>
+    </div>
+</div>
 
 <script>
 (function () {
@@ -778,6 +931,23 @@
     let toastTimer;
     function showToast(msg, type) { clearTimeout(toastTimer); toast.className = `toast ${type} show`; toast.textContent = msg; toastTimer = setTimeout(() => toast.classList.remove('show'), 3500); }
     window.ckToast = showToast;
+
+    // Nasıl Çalışır? modal
+    const ckhOv = document.getElementById('ckh-ov');
+    window.ckHelpAc = function () { ckhOv.classList.add('show'); };
+    window.ckHelpKapat = function () { ckhOv.classList.remove('show'); };
+    if (ckhOv) ckhOv.addEventListener('click', e => { if (e.target === ckhOv) ckHelpKapat(); });
+
+    // Önerilen restoran çarkını tek tıkla uygula
+    window.onerilenUygula = async function () {
+        if (!confirm('Mevcut çark dilimleriniz önerilen restoran düzeniyle değiştirilecek. Onaylıyor musunuz?')) return;
+        try {
+            const res = await fetch('/cark-yonetim/onerilen', { method: 'POST', headers: HEADERS, body: '{}' });
+            const d = await res.json();
+            if (d.success) { showToast('Önerilen restoran çarkı uygulandı! 🎉', 'success'); loadData(); }
+            else { showToast(d.message || 'Uygulanamadı', 'error'); }
+        } catch (e) { showToast('Bağlantı hatası!', 'error'); }
+    };
     function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
     function wrapText(str, max) {
         const words = String(str).split(' '); let lines = [], line = '';

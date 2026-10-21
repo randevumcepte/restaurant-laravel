@@ -1973,6 +1973,30 @@ Route::post('/cark-yonetim/kaydet', function (Request $r) {
         return ['success' => true];
     } catch (\Throwable $e) { return response()->json(['success' => false, 'message' => 'Kaydedilemedi: ' . $e->getMessage()]); }
 });
+// Önerilen restoran çarkını tek tıkla uygula (mevcut dilimleri değiştirir)
+Route::post('/cark-yonetim/onerilen', function () {
+    if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return response()->json(['success' => false, 'message' => 'Yetki gerekli'], 401); }
+    $sid = _webSubeId(); _carkKur();
+    try {
+        DB::table('carkifelek_ayar')->updateOrInsert(['sube_id' => $sid], [
+            'aktif' => 1, 'cevirme_araligi_gun' => 7, 'kupon_cark_gecerlilik_gun' => 7, 'kupon_puan_gecerlilik_gun' => 14, 'updated_at' => now(),
+        ]);
+        $d = [
+            ['ad' => '10 Puan',       'renk' => '#FF6B6B', 'olasilik' => 0,   'tip' => 'puan',            'deger' => 10, 'indirim_tipi' => 'yuzde'],
+            ['ad' => '%10 Ürün',      'renk' => '#FF922B', 'olasilik' => 0,   'tip' => 'urun_indirimi',   'deger' => 10, 'indirim_tipi' => 'yuzde'],
+            ['ad' => '25 Puan',       'renk' => '#51CF66', 'olasilik' => 100, 'tip' => 'puan',            'deger' => 25, 'indirim_tipi' => 'yuzde'],
+            ['ad' => '%5 Hesap',      'renk' => '#339AF0', 'olasilik' => 0,   'tip' => 'hizmet_indirimi', 'deger' => 5,  'indirim_tipi' => 'yuzde'],
+            ['ad' => 'Tekrar Dene',   'renk' => '#868E96', 'olasilik' => 0,   'tip' => 'tekrar_dene',     'deger' => 0,  'indirim_tipi' => 'yuzde'],
+            ['ad' => '50 Puan',       'renk' => '#CC5DE8', 'olasilik' => 0,   'tip' => 'puan',            'deger' => 50, 'indirim_tipi' => 'yuzde'],
+            ['ad' => 'Paket 25₺',     'renk' => '#20C997', 'olasilik' => 0,   'tip' => 'paket_indirimi',  'deger' => 25, 'indirim_tipi' => 'tutar'],
+            ['ad' => 'Bedava İçecek', 'renk' => '#F06595', 'olasilik' => 0,   'tip' => 'urun_indirimi',   'deger' => 40, 'indirim_tipi' => 'tutar'],
+        ];
+        DB::table('carkifelek_dilimleri')->where('sube_id', $sid)->delete();
+        $i = 0;
+        foreach ($d as $x) { $x['sube_id'] = $sid; $x['sira'] = $i++; $x['aktif'] = 1; $x['created_at'] = now(); $x['updated_at'] = now(); DB::table('carkifelek_dilimleri')->insert($x); }
+        return ['success' => true];
+    } catch (\Throwable $e) { return response()->json(['success' => false, 'message' => 'Uygulanamadı: ' . $e->getMessage()]); }
+});
 // Çark Kazananlar (tab) — son çevirmeler
 Route::get('/cark-kazananlar', function () {
     if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
