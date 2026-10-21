@@ -12368,43 +12368,21 @@ Route::post('/api/patron/yarimamul-uret', function (Request $r) {
     if ($uretilen <= 0) return ['ok' => 0, 'hata' => 'Üretilen miktar 0 olamaz'];
     $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
     $skt = ($r->filled('skt') && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->skt)) ? (string) $r->skt : null;
-    // 1) Hammadde düş (reçeteyi uretilen/verim ile patlat; ayna-malzemeli alt yarı mamüller kendi stoğundan düşer)
-    $ihtiyac = [];
-    _restoReceteHammadde($recId, $uretilen / $verim, $ihtiyac);
-    foreach ($ihtiyac as $malzemeId => $temelMiktar) {
-        if ($temelMiktar <= 0) continue;
-        $mm = DB::table('malzemeler')->where('id', $malzemeId)->first(['guncel_maliyet']);
-        DB::table('stok_hareketleri')->insert([
-            'sube_id' => $p->sube_id, 'malzeme_id' => (int) $malzemeId, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
-            'birim_maliyet' => $mm ? (float) $mm->guncel_maliyet : 0, 'kaynak_tip' => 'uretim', 'kaynak_id' => $recId,
-            'aciklama' => 'Yarı mamül üretim: ' . $rec->ad, 'personel_id' => $p->id, 'created_at' => now(),
-        ]);
-        if (function_exists('_partiDus')) _partiDus($p->sube_id, (int) $malzemeId, $temelMiktar);
-    }
-    // 2) Ayna malzeme: stok girişi + maliyet
+    // Ayna malzeme + birim maliyet
     $mid = _yariMamulMirror($recId);
     if (!$mid) return ['ok' => 0, 'hata' => 'Ayna stok kalemi oluşturulamadı'];
     $birimMaliyet = function_exists('_restoReceteToplamMaliyet') ? (_restoReceteToplamMaliyet($recId) / $verim) : 0;
     DB::table('malzemeler')->where('id', $mid)->update(['guncel_maliyet' => round($birimMaliyet, 4), 'updated_at' => now()]);
-    DB::table('stok_hareketleri')->insert([
-        'sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'tip' => 'iade', 'miktar' => abs($uretilen),
-        'birim_maliyet' => round($birimMaliyet, 4), 'kaynak_tip' => 'uretim', 'kaynak_id' => $recId,
-        'aciklama' => 'Yarı mamül üretim (giriş)', 'personel_id' => $p->id, 'created_at' => now(),
-    ]);
-    // 3) Barkod (elle veya iç üret) — ayna malzemeye bağlı
+    // Barkod (elle veya iç üret)
     $barkod = trim((string) $r->input('barkod', ''));
     if (function_exists('_barkodKur')) { try { _barkodKur(); } catch (\Throwable $e) {} }
     if ($barkod === '') $barkod = 'YM' . str_pad((string) $mid, 5, '0', STR_PAD_LEFT) . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-    try {
-        if (Schema::hasTable('barkodlar') && !DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $barkod)->exists()) {
-            DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $barkod, 'tur' => 'malzeme', 'hedef_id' => $mid, 'created_at' => now()]);
-        }
-    } catch (\Throwable $e) {}
-    // 4) SKT'li parti (FEFO defteri)
+    // PARTİ ÖNCE: parti_id = üretim kimliği; tüm hareketler buna bağlanır → GERİ ALINABİLİR.
+    $partiId = 0;
     if (function_exists('_restoPartiEnsure')) { try { _restoPartiEnsure(); } catch (\Throwable $e) {} }
     try {
         if (Schema::hasTable('stok_partileri')) {
-            DB::table('stok_partileri')->insert([
+            $partiId = DB::table('stok_partileri')->insertGetId([
                 'sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'lot_no' => $barkod, 'skt' => $skt,
                 'giris_miktar' => round($uretilen, 4), 'kalan_miktar' => round($uretilen, 4),
                 'birim_maliyet' => round($birimMaliyet, 4), 'giris_tarihi' => now()->toDateString(),
@@ -12412,7 +12390,71 @@ Route::post('/api/patron/yarimamul-uret', function (Request $r) {
             ]);
         }
     } catch (\Throwable $e) {}
-    return ['ok' => 1, 'malzeme_id' => $mid, 'barkod' => $barkod, 'skt' => $skt, 'miktar' => $uretilen];
+    $kaynakId = $partiId ?: $recId;
+    // 1) Hammadde düş (reçeteyi uretilen/verim ile patlat) — kaynak_id = parti_id
+    $ihtiyac = [];
+    _restoReceteHammadde($recId, $uretilen / $verim, $ihtiyac);
+    foreach ($ihtiyac as $malzemeId => $temelMiktar) {
+        if ($temelMiktar <= 0) continue;
+        $mm = DB::table('malzemeler')->where('id', $malzemeId)->first(['guncel_maliyet']);
+        DB::table('stok_hareketleri')->insert([
+            'sube_id' => $p->sube_id, 'malzeme_id' => (int) $malzemeId, 'tip' => 'tuketim', 'miktar' => -$temelMiktar,
+            'birim_maliyet' => $mm ? (float) $mm->guncel_maliyet : 0, 'kaynak_tip' => 'uretim_hammadde', 'kaynak_id' => $kaynakId,
+            'aciklama' => 'Yarı mamül üretim: ' . $rec->ad, 'personel_id' => $p->id, 'created_at' => now(),
+        ]);
+        if (function_exists('_partiDus')) _partiDus($p->sube_id, (int) $malzemeId, $temelMiktar);
+    }
+    // 2) Ayna malzeme stok girişi — kaynak_id = parti_id
+    DB::table('stok_hareketleri')->insert([
+        'sube_id' => $p->sube_id, 'malzeme_id' => $mid, 'tip' => 'iade', 'miktar' => abs($uretilen),
+        'birim_maliyet' => round($birimMaliyet, 4), 'kaynak_tip' => 'uretim', 'kaynak_id' => $kaynakId,
+        'aciklama' => 'Yarı mamül üretim (giriş)', 'personel_id' => $p->id, 'created_at' => now(),
+    ]);
+    // 3) Barkod → ayna malzeme
+    try {
+        if (Schema::hasTable('barkodlar') && !DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $barkod)->exists()) {
+            DB::table('barkodlar')->insert(['sube_id' => $p->sube_id, 'barkod' => $barkod, 'tur' => 'malzeme', 'hedef_id' => $mid, 'created_at' => now()]);
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'malzeme_id' => $mid, 'parti_id' => $partiId, 'barkod' => $barkod, 'skt' => $skt, 'miktar' => $uretilen];
+});
+// Üretimi GERİ AL / SİL — sahip/mudur direkt; değilse Müdür/Sahip PIN onayı ŞART. Satılmamış parti geri alınır.
+Route::post('/api/patron/yarimamul-uretim-sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $partiId = (int) $r->parti_id;
+    if (!$partiId || !Schema::hasTable('stok_partileri')) return ['ok' => 0, 'hata' => 'Parti bulunamadı'];
+    $parti = DB::table('stok_partileri')->where('id', $partiId)->where('sube_id', $p->sube_id)->first();
+    if (!$parti) return ['ok' => 0, 'hata' => 'Parti bulunamadı'];
+    // Onay: sahip/mudur direkt; değilse Müdür/Sahip PIN'i şart (garson sipariş iptal deseni)
+    $onaylayan = null;
+    if (in_array($p->rol, ['sahip', 'mudur'])) { $onaylayan = $p; }
+    else {
+        $pin = trim((string) $r->input('onay_pin', ''));
+        if ($pin === '') return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'Üretim geri alma için Müdür/Sahip PIN onayı gerekli.'];
+        $y = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', $pin)->where('aktif', 1)->whereIn('rol', ['sahip', 'mudur'])->first();
+        if (!$y) return ['ok' => 0, 'onay_gerek' => true, 'hata' => 'PIN geçersiz veya yetkisiz.'];
+        $onaylayan = $y;
+    }
+    // Bu partiden satış/kullanım yapılmışsa (kalan < giris) geri alınamaz
+    if ((float) $parti->kalan_miktar + 0.0001 < (float) $parti->giris_miktar) {
+        return ['ok' => 0, 'hata' => 'Bu partiden satış/kullanım yapılmış, geri alınamaz.'];
+    }
+    DB::transaction(function () use ($parti, $p, $onaylayan) {
+        $hareketler = DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)
+            ->whereIn('kaynak_tip', ['uretim', 'uretim_hammadde'])->where('kaynak_id', $parti->id)->get();
+        foreach ($hareketler as $h) {
+            DB::table('stok_hareketleri')->insert([
+                'sube_id' => $p->sube_id, 'malzeme_id' => $h->malzeme_id, 'tip' => ((float) $h->miktar) < 0 ? 'iade' : 'tuketim',
+                'miktar' => -(float) $h->miktar, 'birim_maliyet' => (float) $h->birim_maliyet, 'kaynak_tip' => 'uretim_iptal',
+                'kaynak_id' => $parti->id, 'aciklama' => 'Üretim geri alındı (onay: ' . ($onaylayan->ad ?? '') . ')', 'personel_id' => $p->id, 'created_at' => now(),
+            ]);
+        }
+        DB::table('stok_partileri')->where('id', $parti->id)->delete();
+        try { if (Schema::hasTable('barkodlar') && $parti->lot_no) DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $parti->lot_no)->delete(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('iptal_indirim_loglari')) DB::table('iptal_indirim_loglari')->insert(['sube_id' => $p->sube_id, 'adisyon_id' => null, 'tip' => 'uretim_iptal', 'tutar' => round((float) $parti->giris_miktar * (float) $parti->birim_maliyet, 2), 'sebep' => 'Yarı mamül üretim geri alındı · parti ' . ($parti->lot_no ?? $parti->id) . ' · onay: ' . ($onaylayan->ad ?? ''), 'personel_id' => $onaylayan->id ?? $p->id, 'created_at' => now()]); } catch (\Throwable $e) {}
+    });
+    return ['ok' => 1, 'mesaj' => 'Üretim geri alındı — malzemeler stoğa döndü · onay: ' . ($onaylayan->ad ?? '')];
 });
 // Bir yarı mamülün üretim partileri (SKT + kalan) + toplam stok
 Route::get('/api/patron/yarimamul-partileri', function (Request $r) {
