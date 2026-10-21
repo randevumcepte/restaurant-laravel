@@ -7890,7 +7890,7 @@ if (!function_exists('_tedarikMalzemeFiyat')) {
 if (!function_exists('_restoSatinalmaEnsure')) {
     function _restoSatinalmaEnsure()
     {
-        if (cache()->get('resto_satinalma_ensure_ok3')) return;
+        if (cache()->get('resto_satinalma_ensure_ok4')) return;
         try {
             if (!Schema::hasTable('satinalma_siparisleri')) {
                 Schema::create('satinalma_siparisleri', function ($t) {
@@ -7999,7 +7999,11 @@ if (!function_exists('_restoSatinalmaEnsure')) {
                 ];
                 foreach ($mkt as $kol => $fn) { if (!Schema::hasColumn('mal_kabuller', $kol)) Schema::table('mal_kabuller', $fn); }
             }
-            cache()->put('resto_satinalma_ensure_ok3', 1, now()->addHours(12));
+            // "Kasa" birimi (kasa/kasa fiyatıyla alım için) — yoksa ekle
+            if (Schema::hasTable('birimler') && !DB::table('birimler')->where('kisaltma', 'kasa')->exists()) {
+                DB::table('birimler')->insert(['ad' => 'Kasa', 'kisaltma' => 'kasa', 'tip' => 'adet']);
+            }
+            cache()->put('resto_satinalma_ensure_ok4', 1, now()->addHours(12));
         } catch (\Throwable $e) {}
     }
 }
@@ -11624,6 +11628,7 @@ function _restoStokSeedEnsure()
             ['ad' => 'Adet', 'kisaltma' => 'ad', 'tip' => 'adet'],
             ['ad' => 'Paket', 'kisaltma' => 'pk', 'tip' => 'adet'],
             ['ad' => 'Koli', 'kisaltma' => 'koli', 'tip' => 'adet'],
+            ['ad' => 'Kasa', 'kisaltma' => 'kasa', 'tip' => 'adet'],
             ['ad' => 'Demet', 'kisaltma' => 'demet', 'tip' => 'adet'],
         ]);
     }
