@@ -1351,6 +1351,12 @@ async function rctYmKaydet() {
     const _uretMik = parseFloat((document.getElementById('rctYmUretMiktar').value || '0').replace(',', '.')) || 0;
     const _uretSkt = document.getElementById('rctYmUretSkt').value;
     if (_uretMik > 0 && !_uretSkt) { rctToast('Üretim için Son Kullanma Tarihi (SKT) zorunlu'); document.getElementById('rctYmUretSkt').focus(); return; }
+    // TYPO KORUMASI: üretilen miktar verimden farklıysa onay iste
+    if (_uretMik > 0 && Math.abs(_uretMik - verim) > 0.0001) {
+        const bir = _rctYmBirimTxt();
+        const yuzde = Math.round(_uretMik / verim * 100);
+        if (!confirm('Reçetenin verimi ' + _mik(verim) + ' ' + bir + ', ama üretilen miktara ' + _mik(_uretMik) + ' ' + bir + ' yazdın.\n\nMalzemeler bu orana göre düşecek (yaklaşık %' + yuzde + ').\n\nTamam = bu miktarla üret · İptal = düzelt')) return;
+    }
 
     const btn = document.getElementById('rctYmKaydetBtn');
     btn.disabled = true; btn.textContent = 'Kaydediliyor…';
