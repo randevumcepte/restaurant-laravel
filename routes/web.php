@@ -12514,9 +12514,32 @@ if (!function_exists('_satinalmaTalepEnsure')) {
         } catch (\Throwable $e) {}
     }
 }
+// Kritik seviyedeki malzemeler (proaktif izleme) — önerilen sipariş miktarıyla
+if (!function_exists('_kritikStokListesi')) {
+    function _kritikStokListesi($sid)
+    {
+        $out = [];
+        try {
+            $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+            $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
+            $kol = ['id', 'ad', 'kritik_stok', 'temel_birim_id']; if ($hedefVar) $kol[] = 'hedef_stok';
+            $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+            foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+                $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
+                if ($kritik <= 0 || $mevcut > $kritik) continue;
+                $hedefRef = $hedef > 0 ? $hedef : $kritik * 2;
+                $oneri = max(0, round($hedefRef - $mevcut, 3));
+                $out[] = ['id' => (int) $m->id, 'ad' => $m->ad, 'mevcut' => round($mevcut, 3), 'kritik' => round($kritik, 3),
+                    'oneri' => $oneri ?: round($kritik, 3), 'birim' => $birim[$m->temel_birim_id] ?? ''];
+            }
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+}
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
     $sid = _webSubeId();
+    $kritikler = _kritikStokListesi($sid);
     $talepler = DB::table('satinalma_talepleri')->where('sube_id', $sid)
         ->orderByRaw("FIELD(durum,'yeni','teklif','onayda','onaylandi','siparis','tamamlandi')")
         ->orderByDesc('created_at')->limit(200)
@@ -12533,7 +12556,14 @@ Route::get('/satinalma-talep', function () {
     $pp = function_exists('_posPersonel') ? _posPersonel() : null;
     $rol = $pp->rol ?? '';
     $patronMu = in_array($rol, ['sahip', 'mudur']);
-    return view('satinalma_talep', compact('talepler', 'ozet', 'malzemeler', 'birimler', 'rol', 'patronMu'));
+    $waTel = resto_ayar_al('satinalma_wa_tel_' . $sid, '');
+    return view('satinalma_talep', compact('talepler', 'ozet', 'malzemeler', 'birimler', 'rol', 'patronMu', 'kritikler', 'waTel'));
+});
+Route::post('/satinalma-talep/wa-tel-kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    $tel = preg_replace('/[^0-9]/', '', (string) $r->input('tel', ''));
+    resto_ayar_yaz('satinalma_wa_tel_' . $sid, $tel);
+    return response()->json(['ok' => true, 'tel' => $tel]);
 });
 Route::post('/satinalma-talep/olustur', function (Request $r) {
     _satinalmaTalepEnsure();
@@ -12559,6 +12589,16 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
+    // Satın almaya bildirim (WhatsApp, best-effort — ayar yoksa/sessizce atlanır, akış kırılmaz)
+    try {
+        $tel = resto_ayar_al('satinalma_wa_tel_' . $sid, null);
+        if ($tel && function_exists('_restoWaGonder')) {
+            $ks = DB::table('talep_kalemleri')->where('talep_id', $talepId)->count();
+            $acilMetin = $aciliyet === 'acil' ? '🔴 ACİL ' : '';
+            $msg = $acilMetin . "Yeni satın alma talebi\n🏷️ " . $dept . " departmanı\n👤 " . ($p->ad ?? 'Panel') . "\n📦 " . $ks . " kalem\nPanelden incele: Satın Alma Talepleri";
+            _restoWaGonder($sid, $tel, $msg);
+        }
+    } catch (\Throwable $e) {}
     return response()->json(['ok' => true, 'id' => $talepId]);
 });
 Route::get('/api/patron/talep-detay', function (Request $r) {

@@ -8,6 +8,8 @@
     $ozet      = $ozet      ?? (object)['yeni'=>0,'onayda'=>0,'tamamlanan'=>0];
     $malzemeler = $malzemeler ?? collect();
     $birimler   = $birimler   ?? collect();
+    $kritikler  = $kritikler  ?? [];
+    $waTel      = $waTel      ?? '';
 
     $durumRenk = [
         'yeni'       => '#4F46E5',
@@ -63,6 +65,39 @@ body.koyu #sta {
   align-items: center; justify-content: center; flex-shrink: 0;
 }
 #sta .sta-rozet .sr-ikon-circ .material-icons-outlined { font-size: 20px; }
+
+/* ---- Kritik stok bekçisi banner ---- */
+#sta .sta-kritik-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: color-mix(in srgb,var(--kirmizi) 9%,transparent);
+  border: 1px solid color-mix(in srgb,var(--kirmizi) 35%,transparent);
+  border-radius: 14px; padding: 13px 16px; margin-bottom: 14px;
+}
+#sta .sta-kritik-banner .skb-sol { display: flex; align-items: center; gap: 11px; min-width: 0; }
+#sta .sta-kritik-banner .skb-sol > .material-icons-outlined { font-size: 26px; color: var(--kirmizi,#F43F5E); flex-shrink: 0; }
+#sta .sta-kritik-banner .skb-bas { font-size: 14px; font-weight: 800; color: var(--ink,#1e293b); }
+#sta .sta-kritik-banner .skb-alt { font-size: 12px; color: var(--sub,#64748b); margin-top: 2px; }
+#sta .sta-kritik-banner .skb-btn {
+  display: flex; align-items: center; gap: 6px; padding: 9px 15px; border: none; border-radius: 11px;
+  background: var(--kirmizi,#F43F5E); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+#sta .sta-kritik-banner .skb-btn:hover { opacity: .9; }
+
+/* ---- WA no ayarı ---- */
+#sta .sta-wa-ayar {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  background: var(--card,#fff); border: 1px solid var(--line,#e2e8f0);
+  border-radius: 12px; padding: 10px 14px; margin-bottom: 16px;
+}
+#sta .sta-wa-ayar input {
+  padding: 8px 11px; border: 1px solid var(--line,#e2e8f0); border-radius: 9px;
+  background: var(--card,#fff); color: var(--ink,#1e293b); font-size: 13px; outline: none;
+}
+body.koyu #sta .sta-wa-ayar input { background: #161C2E; }
+#sta .sta-wa-ayar .sta-wa-btn {
+  padding: 8px 14px; border: none; border-radius: 9px; background: #25D366; color: #fff;
+  font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
 
 /* ---- Gelen kutusu kart listesi ---- */
 #sta .sta-liste { display: flex; flex-direction: column; gap: 9px; margin-bottom: 24px; }
@@ -409,6 +444,32 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
     </div>
 </div>
 
+{{-- ─── Kritik stok bekçisi banner ─── --}}
+@if (count($kritikler))
+<div class="sta-kritik-banner">
+    <div class="skb-sol">
+        <span class="material-icons-outlined">warning_amber</span>
+        <div>
+            <div class="skb-bas">{{ count($kritikler) }} malzeme kritik seviyede</div>
+            <div class="skb-alt">{{ implode(', ', array_slice(array_map(fn($k)=>$k['ad'], $kritikler), 0, 6)) }}{{ count($kritikler) > 6 ? '…' : '' }}</div>
+        </div>
+    </div>
+    <button class="skb-btn" onclick="staKritiktenTalep()">
+        <span class="material-icons-outlined" style="font-size:18px">playlist_add</span>Kritikten Talep Oluştur
+    </button>
+</div>
+@endif
+
+{{-- ─── Satın alma WhatsApp no ayarı (patron) ─── --}}
+@if ($patronMu ?? false)
+<div class="sta-wa-ayar">
+    <span class="material-icons-outlined" style="color:#25D366">chat</span>
+    <span style="font-size:12.5px;color:var(--sub);font-weight:600">Yeni talepte bildirim gidecek WhatsApp no:</span>
+    <input id="staWaTel" type="tel" value="{{ $waTel }}" placeholder="5xxxxxxxxx" style="flex:1;min-width:120px;max-width:200px">
+    <button onclick="staWaKaydet()" class="sta-wa-btn">Kaydet</button>
+</div>
+@endif
+
 {{-- ─── Gelen kutusu listesi ─── --}}
 <div class="sta-liste" id="staListe">
 @forelse ($talepler as $talep)
@@ -567,6 +628,7 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 const malzemeler = @json($malzemeler->values());
 const birimler   = @json($birimler->values());
 const patronMu   = {{ ($patronMu ?? false) ? 'true' : 'false' }};
+const staKritikler = @json($kritikler);
 let staTedarikciler = [];
 let staAktifKalemler = [];
 let staAktifDurum = null;
@@ -603,6 +665,26 @@ window.staYeniAc = function() {
 };
 window.staYeniKapat = function() {
     document.getElementById('staYeniModal').classList.remove('acik');
+};
+
+/* ─── Kritikten tek-tık talep (bekçi) ──────────────────── */
+window.staKritiktenTalep = function() {
+    if (!staKritikler.length) { toast('Kritik malzeme yok'); return; }
+    seciliAciliyet = 'acil';
+    staAcilSec('acil');
+    document.getElementById('staDept').value = 'Mutfak';
+    document.getElementById('staNot').value = 'Kritik stok — otomatik oluşturuldu.';
+    document.getElementById('staKalemler').innerHTML = '';
+    staKritikler.forEach(k => staKalemEkle(k.id, k.oneri, k.birim));
+    document.getElementById('staYeniModal').classList.add('acik');
+    toast('⚠ ' + staKritikler.length + ' kritik kalem forma eklendi', '#F59E0B');
+};
+
+/* ─── Satın alma WA no kaydet ──────────────────────────── */
+window.staWaKaydet = async function() {
+    const tel = document.getElementById('staWaTel').value.trim();
+    const res = await api('/satinalma-talep/wa-tel-kaydet', { tel });
+    if (res.ok) toast('✓ WhatsApp no kaydedildi', '#25D366');
 };
 
 window.staAcilSec = function(v) {
