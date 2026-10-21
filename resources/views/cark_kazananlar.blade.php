@@ -14,7 +14,6 @@
     <div class="ckw-tabs">
         <a href="/cark-yonetim" class="ckw-tab"><span class="material-icons-outlined">casino</span> Çarkıfelek</a>
         <a href="/cark-kazananlar" class="ckw-tab active"><span class="material-icons-outlined">emoji_events</span> Çark Kazananlar</a>
-        <a href="/odul-raporu" class="ckw-tab"><span class="material-icons-outlined">star</span> Puan Ödülleri</a>
     </div>
 
     @php
