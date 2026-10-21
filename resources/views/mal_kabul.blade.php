@@ -49,6 +49,25 @@
       <div><label class="rk-lbl" style="margin-top:0">Tarih</label><input type="date" name="tarih" value="{{ date('Y-m-d') }}" class="rk-inp"></div>
     </div>
 
+    @unless ($siparis)
+    <div class="rk-card" style="background:color-mix(in srgb,var(--mor1) 5%,transparent);border:1px dashed color-mix(in srgb,var(--mor1) 35%,transparent);margin:14px 0 4px;padding:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <span class="material-icons-outlined" style="color:var(--mor1)">bolt</span>
+        <div style="font-weight:800;color:var(--ink);font-size:13px">Hızlı doldur</div>
+        <div class="rk-sub2" style="font-size:11.5px;flex:1;min-width:160px">Barkod okut ya da irsaliye/fatura fotoğrafı çek — kalemler kendiliğinden gelsin, sen sadece kontrol et.</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <input id="mkBarkodInp" class="rk-inp" placeholder="Barkod okut (okuyucu ya da elle yaz + Enter)" style="max-width:300px" autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();mkBarkodCoz(this.value);this.value='';}">
+        <button type="button" class="rk-btn bos" id="mkKameraBtn" style="padding:7px 12px" onclick="mkKameraAc()"><span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod</button>
+        <label class="rk-btn bos" style="padding:7px 12px;cursor:pointer"><span class="material-icons-outlined" style="font-size:16px">photo_camera</span> İrsaliye/Fatura fotoğrafı
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="mkFotoSec(this)"></label>
+        <span id="mkDurum" class="rk-sub2" style="font-size:12px"></span>
+      </div>
+      <video id="mkKamera" playsinline muted style="display:none;width:100%;max-width:360px;border-radius:12px;margin-top:10px;background:#000"></video>
+    </div>
+    @endunless
+
     <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--yesil)"></span><span class="b">Gelen Kalemler</span>
       @unless ($siparis)<button type="button" class="rk-btn bos" style="margin-left:auto;padding:6px 11px" onclick="mkSatirEkle()"><span class="material-icons-outlined" style="font-size:15px">add</span> Kalem Ekle</button>@endunless</div>
 
@@ -108,10 +127,10 @@ const MK_BIRIM = @json($birimler->map(fn($b)=>['id'=>(int)$b->id,'ks'=>$b->kisal
 const MK_SIPARIS = {{ $siparis ? 'true' : 'false' }};
 function mkBirimOpt(){ return MK_BIRIM.map(b=>`<option value="${b.id}">${b.ks}</option>`).join(''); }
 function mkMalzOpt(){ return '<option value="">Malzeme…</option>'+MK_MALZ.map(m=>`<option value="${m.id}" data-birim="${m.birim}">${m.ad}</option>`).join(''); }
-function mkSatirEkle(){
+function mkSatirEkle(pre){
   const d=document.createElement('div'); d.className='mk-satir mk-serbest';
   d.style.cssText='display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1.3fr 1.3fr 1.3fr;gap:6px;align-items:center;margin-bottom:6px';
-  d.innerHTML=`<select class="rk-inp mk-m" style="padding:6px" onchange="const b=this.selectedOptions[0]?.dataset.birim;if(b)this.closest('.mk-satir').querySelector('.mk-b').value=b;">${mkMalzOpt()}</select>
+  d.innerHTML=`<select class="rk-inp mk-m" style="padding:6px" onchange="const b=this.selectedOptions[0]?.dataset.birim;if(b)this.closest('.mk-satir').querySelector('.mk-b').value=b;this.style.outline='';">${mkMalzOpt()}</select>
     <select class="rk-inp mk-b" style="padding:6px">${mkBirimOpt()}</select>
     <input type="number" class="rk-inp mk-gelen" placeholder="Gelen" step="0.001" min="0" style="padding:6px">
     <input type="number" class="rk-inp mk-kabul" placeholder="Kabul" step="0.001" min="0" style="padding:6px">
@@ -119,8 +138,90 @@ function mkSatirEkle(){
     <input type="text" class="rk-inp mk-lot" placeholder="Lot" style="padding:6px">
     <input type="date" class="rk-inp mk-skt" style="padding:6px">`;
   document.getElementById('mkSatirlar').appendChild(d);
+  if(pre){
+    if(pre.malzeme_id){ const ms=d.querySelector('.mk-m'); ms.value=pre.malzeme_id; const b=ms.selectedOptions[0]?.dataset.birim; if(b)d.querySelector('.mk-b').value=b; }
+    if(pre.birim_id){ d.querySelector('.mk-b').value=pre.birim_id; }
+    if(pre.miktar!=null){ d.querySelector('.mk-gelen').value=pre.miktar; d.querySelector('.mk-kabul').value=pre.miktar; }
+    if(pre.fiyat!=null){ d.querySelector('.mk-fiyat').value=pre.fiyat; }
+    if(pre.ad && !pre.malzeme_id){ const ms=d.querySelector('.mk-m'); ms.style.outline='2px solid var(--kirmizi)'; ms.title='Fotoğrafta "'+pre.ad+'" okundu ama eşleşen malzeme bulunamadı — elle seç'; }
+  }
+  return d;
 }
 if(!MK_SIPARIS){ mkSatirEkle(); }
+
+// ---- CSRF + durum/bip yardimcilari ----
+function mkCsrf(){ return document.querySelector('#mkForm input[name=_token]')?.value || ''; }
+function mkDurumYaz(t,ok){ const el=document.getElementById('mkDurum'); if(!el)return; el.textContent=t; el.style.color = ok===false?'var(--kirmizi)':(ok===true?'var(--yesil)':'var(--sub2)'); }
+function mkBip(ok){ try{ const A=window.AudioContext||window.webkitAudioContext; if(!A)return; const a=new A(),o=a.createOscillator(),g=a.createGain(); o.connect(g);g.connect(a.destination); o.frequency.value=ok?880:220; g.gain.value=0.05; o.start(); setTimeout(()=>{o.stop();a.close();},120);}catch(e){} }
+
+// ---- BARKOD -> malzeme ----
+async function mkBarkodCoz(kod){
+  kod=(kod||'').trim(); if(!kod) return;
+  mkDurumYaz('Barkod aranıyor…',null);
+  try{
+    const res=await fetch('/mal-kabul/barkod-coz?kod='+encodeURIComponent(kod));
+    const j=await res.json();
+    if(j.ok&&j.bulundu){
+      let row=[...document.querySelectorAll('.mk-serbest')].find(r=>!r.querySelector('.mk-m').value);
+      if(row){ const ms=row.querySelector('.mk-m'); ms.value=j.id; const b=ms.selectedOptions[0]?.dataset.birim; if(b)row.querySelector('.mk-b').value=b; ms.style.outline=''; }
+      else row=mkSatirEkle({malzeme_id:j.id});
+      if(j.maliyet>0 && !row.querySelector('.mk-fiyat').value) row.querySelector('.mk-fiyat').value=j.maliyet;
+      row.querySelector('.mk-gelen').focus();
+      mkBip(true); mkDurumYaz('Eklendi: '+j.ad,true);
+    } else { mkBip(false); mkDurumYaz(j.hata||'Barkod bulunamadı',false); }
+  }catch(e){ mkBip(false); mkDurumYaz('Barkod çözülemedi',false); }
+}
+
+// ---- KAMERA ile barkod (BarcodeDetector varsa) ----
+let mkStream=null,mkDet=null,mkTaramaAcik=false;
+async function mkKameraAc(){
+  const v=document.getElementById('mkKamera');
+  if(mkTaramaAcik){ mkKameraKapat(); return; }
+  if(!('BarcodeDetector' in window)){ mkDurumYaz('Bu tarayıcı kamera-barkod desteklemiyor; USB/Bluetooth okuyucu ya da fotoğraf kullan.',false); return; }
+  try{
+    mkDet=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','codabar','qr_code']});
+    mkStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    v.srcObject=mkStream; v.style.display='block'; await v.play(); mkTaramaAcik=true;
+    const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML='<span class="material-icons-outlined" style="font-size:16px">close</span> Kamerayı kapat';
+    mkDurumYaz('Barkodu kameraya göster…',null);
+    const tik=async()=>{ if(!mkTaramaAcik)return;
+      try{ const kods=await mkDet.detect(v); if(kods&&kods.length){ const kod=kods[0].rawValue; mkKameraKapat(); mkBarkodCoz(kod); return; } }catch(e){}
+      requestAnimationFrame(tik); };
+    requestAnimationFrame(tik);
+  }catch(e){ mkDurumYaz('Kamera açılamadı: '+e.message,false); }
+}
+function mkKameraKapat(){ mkTaramaAcik=false; const v=document.getElementById('mkKamera'); if(mkStream){mkStream.getTracks().forEach(t=>t.stop());mkStream=null;} if(v)v.style.display='none'; const b=document.getElementById('mkKameraBtn'); if(b)b.innerHTML='<span class="material-icons-outlined" style="font-size:16px">qr_code_scanner</span> Kamera ile barkod'; }
+
+// ---- IRSALIYE/FATURA FOTOGRAFI -> AI OCR ----
+function mkKucult(file,max,q){ return new Promise((resolve,reject)=>{
+  const img=new Image(), rd=new FileReader();
+  rd.onload=()=>{ img.onload=()=>{ let w=img.naturalWidth,h=img.naturalHeight; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc);h=Math.round(h*sc);
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+    try{ const durl=c.toDataURL('image/jpeg',q); resolve({data:durl.split(',')[1],mime:'image/jpeg'}); }catch(e){ reject(e); } };
+    img.onerror=()=>reject(new Error('Görsel açılamadı')); img.src=rd.result; };
+  rd.onerror=()=>reject(new Error('Dosya okunamadı')); rd.readAsDataURL(file);
+}); }
+async function mkFotoSec(input){
+  const f=input.files&&input.files[0]; if(!f){ return; }
+  mkDurumYaz('Fotoğraf okunuyor (AI)… birkaç saniye',null);
+  try{
+    const im=await mkKucult(f,1600,0.82);
+    const res=await fetch('/mal-kabul/foto-oku',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':mkCsrf(),'Accept':'application/json'},body:JSON.stringify({resim:im.data,mime:im.mime})});
+    const j=await res.json();
+    if(!j.ok){ mkDurumYaz(j.hata||'Fotoğraf okunamadı',false); input.value=''; return; }
+    if(j.irsaliye_no){ const el=document.querySelector('#mkForm [name=irsaliye_no]'); if(el)el.value=j.irsaliye_no; }
+    if(j.tarih){ const el=document.querySelector('#mkForm [name=tarih]'); if(el)el.value=j.tarih; }
+    if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; }
+    // bos otomatik satiri temizle
+    [...document.querySelectorAll('.mk-serbest')].forEach(r=>{ if(!r.querySelector('.mk-m').value && !r.querySelector('.mk-gelen').value) r.remove(); });
+    let eksik=0; const kalemler=j.kalemler||[];
+    kalemler.forEach(k=>{ mkSatirEkle({malzeme_id:k.malzeme_id,birim_id:k.birim_id,miktar:k.miktar,fiyat:k.birim_fiyat,ad:k.ad}); if(!k.malzeme_id) eksik++; });
+    if(!document.querySelector('.mk-serbest')) mkSatirEkle();
+    let msg=kalemler.length+' kalem okundu'+(eksik?(' · '+eksik+' tanesi eşleşmedi (kırmızı, elle seç)'):'')+' — miktar/fiyatı kontrol et.';
+    mkDurumYaz(msg, eksik?null:true); mkBip(true);
+  }catch(e){ mkDurumYaz('Hata: '+(e.message||e),false); }
+  input.value='';
+}
 document.getElementById('mkForm').addEventListener('submit',function(e){
   const kal=[];
   document.querySelectorAll('.mk-satir').forEach(r=>{

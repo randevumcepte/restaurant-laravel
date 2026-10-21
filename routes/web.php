@@ -8109,6 +8109,119 @@ Route::get('/mal-kabul', function (Request $r) {
     } catch (\Throwable $e) {}
     return view('mal_kabul', $d);
 });
+// Mal kabul: barkod -> malzeme coz (web oturumu, _webSubeId). Sadece malzeme (mal kabul malzeme ister).
+Route::get('/mal-kabul/barkod-coz', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_barkodKur')) _barkodKur();
+        $kod = trim((string) $r->query('kod', ''));
+        if ($kod === '') return ['ok' => 0, 'hata' => 'Boş kod'];
+        $b = DB::table('barkodlar')->where('sube_id', $sid)->where('barkod', $kod)->first();
+        if (!$b) return ['ok' => 0, 'bulundu' => 0, 'hata' => 'Bu barkod tanımlı değil', 'barkod' => $kod];
+        if ($b->tur !== 'malzeme') return ['ok' => 0, 'bulundu' => 0, 'hata' => 'Bu barkod bir ürüne ait (malzeme değil)'];
+        $m = DB::table('malzemeler')->where('id', $b->hedef_id)->first(['id', 'ad', 'temel_birim_id', 'guncel_maliyet']);
+        if (!$m) return ['ok' => 0, 'hata' => 'Malzeme silinmiş'];
+        return ['ok' => 1, 'bulundu' => 1, 'id' => (int) $m->id, 'ad' => $m->ad, 'birim_id' => (int) $m->temel_birim_id, 'maliyet' => (float) $m->guncel_maliyet];
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Çözülemedi']; }
+});
+// Mal kabul: irsaliye/fatura FOTOGRAFI -> AI (vision) okur, kalemleri cikarir, malzeme/birim/tedarikci esler.
+Route::post('/mal-kabul/foto-oku', function (Request $r) {
+    $sid = _webSubeId();
+    $anahtar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY'));
+    if ($anahtar === '') return response()->json(['ok' => 0, 'hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY). Sistem yöneticisine sor.']);
+    $b64 = (string) $r->input('resim', '');
+    $mime = (string) $r->input('mime', 'image/jpeg');
+    if (str_contains($b64, 'base64,')) $b64 = substr($b64, strpos($b64, 'base64,') + 7);
+    if ($b64 === '') return response()->json(['ok' => 0, 'hata' => 'Görsel alınamadı']);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'])) $mime = 'image/jpeg';
+    $sistem = 'Sen bir restoranın satın alma asistanısın. Sana bir İRSALİYE veya FATURA fotoğrafı verilir. '
+        . 'Görseldeki bilgileri oku ve SADECE geçerli JSON döndür; başka hiçbir şey yazma, açıklama ekleme. '
+        . 'Şema: {"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"tedarikci":string|null,'
+        . '"kalemler":[{"ad":string,"miktar":number|null,"birim":string|null,"birim_fiyat":number|null}]}. '
+        . 'Kurallar: Sayıları ondalık NOKTA ile ver (1234.5). Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. '
+        . 'Birim kısaltması kg, g, lt, ml, ad, koli, paket gibi olsun. birim_fiyat KDV hariç birim fiyattır; net değilse null.';
+    $govde = [
+        'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+        'max_tokens' => 1800,
+        'system' => $sistem,
+        'messages' => [['role' => 'user', 'content' => [
+            ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]],
+            ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki kalemleri çıkar ve şemaya uygun JSON ver.'],
+        ]]],
+    ];
+    try {
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 45,
+            CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $anahtar, 'anthropic-version: 2023-06-01'],
+            CURLOPT_POSTFIELDS => json_encode($govde, JSON_UNESCAPED_UNICODE),
+        ]);
+        $yanit = curl_exec($ch);
+        $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($yanit === false || $kod !== 200) return response()->json(['ok' => 0, 'hata' => 'AI okunamadı (HTTP ' . $kod . '). Anahtar/bakiye kontrol et.']);
+        $j = json_decode($yanit, true);
+        $t = '';
+        foreach (($j['content'] ?? []) as $blk) if (($blk['type'] ?? '') === 'text') $t .= $blk['text'] ?? '';
+        $t = trim($t);
+        if (str_starts_with($t, '```')) { $t = preg_replace('/^```[a-zA-Z]*\s*/', '', $t); $t = preg_replace('/```\s*$/', '', $t); }
+        $s = strpos($t, '{'); $e = strrpos($t, '}');
+        if ($s === false || $e === false) return response()->json(['ok' => 0, 'hata' => 'AI yanıtı çözülemedi']);
+        $data = json_decode(substr($t, $s, $e - $s + 1), true);
+        if (!is_array($data)) return response()->json(['ok' => 0, 'hata' => 'AI yanıtı JSON değil']);
+        // --- eşleştirme ---
+        $norm = function ($x) {
+            $x = mb_strtolower(trim((string) $x), 'UTF-8');
+            $x = strtr($x, ['ı' => 'i', 'İ' => 'i', 'ş' => 's', 'ğ' => 'g', 'ü' => 'u', 'ö' => 'o', 'ç' => 'c', 'â' => 'a', 'î' => 'i', 'û' => 'u']);
+            return preg_replace('/\s+/', ' ', $x);
+        };
+        $malzAll = Schema::hasTable('malzemeler') ? DB::table('malzemeler')->get(['id', 'ad', 'temel_birim_id']) : collect();
+        $birimAll = Schema::hasTable('birimler') ? DB::table('birimler')->get(['id', 'ad', 'kisaltma']) : collect();
+        $tedAll = Schema::hasTable('tedarikciler') ? DB::table('tedarikciler')->get(['id', 'ad']) : collect();
+        $matchMalz = function ($ad) use ($malzAll, $norm) {
+            $q = $norm($ad); if ($q === '') return null; $best = null; $bw = -1;
+            foreach ($malzAll as $m) {
+                $mn = $norm($m->ad); $w = -1;
+                if ($mn === $q) $w = 100;
+                elseif (str_starts_with($mn, $q) || str_starts_with($q, $mn)) $w = 60 + min(mb_strlen($mn), mb_strlen($q));
+                elseif (str_contains($mn, $q) || str_contains($q, $mn)) $w = 30 + min(mb_strlen($mn), mb_strlen($q));
+                if ($w > $bw) { $bw = $w; $best = $m; }
+            }
+            return $bw >= 30 ? $best : null;
+        };
+        $matchBirim = function ($b) use ($birimAll, $norm) {
+            $q = $norm($b); if ($q === '') return null;
+            foreach ($birimAll as $x) if ($norm($x->kisaltma) === $q) return $x;
+            foreach ($birimAll as $x) if ($norm($x->ad) === $q || str_contains($norm($x->ad), $q)) return $x;
+            return null;
+        };
+        $matchTed = function ($ad) use ($tedAll, $norm) {
+            $q = $norm($ad); if ($q === '') return null;
+            foreach ($tedAll as $x) if ($norm($x->ad) === $q) return $x;
+            foreach ($tedAll as $x) if (str_contains($norm($x->ad), $q) || str_contains($q, $norm($x->ad))) return $x;
+            return null;
+        };
+        $out = [];
+        foreach (($data['kalemler'] ?? []) as $k) {
+            $ad = (string) ($k['ad'] ?? ''); if (trim($ad) === '') continue;
+            $mm = $matchMalz($ad);
+            $bid = null;
+            if (!empty($k['birim'])) { $bb = $matchBirim($k['birim']); if ($bb) $bid = (int) $bb->id; }
+            if (!$bid && $mm) $bid = (int) $mm->temel_birim_id;
+            $out[] = [
+                'ad' => $ad, 'malzeme_id' => $mm ? (int) $mm->id : null, 'malzeme_ad' => $mm ? $mm->ad : null,
+                'birim_id' => $bid, 'miktar' => isset($k['miktar']) && $k['miktar'] !== null ? (float) $k['miktar'] : null,
+                'birim_fiyat' => isset($k['birim_fiyat']) && $k['birim_fiyat'] !== null ? (float) $k['birim_fiyat'] : null,
+            ];
+        }
+        $ted = !empty($data['tedarikci']) ? $matchTed($data['tedarikci']) : null;
+        $tarih = (!empty($data['tarih']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['tarih'])) ? $data['tarih'] : null;
+        return response()->json(['ok' => 1, 'irsaliye_no' => $data['irsaliye_no'] ?? null, 'tarih' => $tarih,
+            'tedarikci_id' => $ted ? (int) $ted->id : null, 'tedarikci_ad' => $data['tedarikci'] ?? null, 'kalemler' => $out]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => 0, 'hata' => 'İşlenemedi: ' . $e->getMessage()]);
+    }
+});
 Route::post('/mal-kabul/olustur', function (Request $r) {
     $sid = _webSubeId();
     try {
