@@ -7792,7 +7792,7 @@ if (!function_exists('_tedarikMalzemeFiyat')) {
 if (!function_exists('_restoSatinalmaEnsure')) {
     function _restoSatinalmaEnsure()
     {
-        if (cache()->get('resto_satinalma_ensure_ok2')) return;
+        if (cache()->get('resto_satinalma_ensure_ok3')) return;
         try {
             if (!Schema::hasTable('satinalma_siparisleri')) {
                 Schema::create('satinalma_siparisleri', function ($t) {
@@ -7891,16 +7891,17 @@ if (!function_exists('_restoSatinalmaEnsure')) {
             if (Schema::hasTable('malzemeler') && !Schema::hasColumn('malzemeler', 'hedef_stok')) {
                 Schema::table('malzemeler', fn ($t) => $t->decimal('hedef_stok', 14, 3)->default(0));
             }
-            // Mal kabulde fatura toplamları (foto-OCR ile okunur; 3-way fatura eşleştirme için)
+            // Mal kabulde fatura toplamları + başlık bilgileri (foto-OCR; 3-way fatura eşleştirme için)
             if (Schema::hasTable('mal_kabuller')) {
                 $mkt = [
                     'ara_toplam'   => fn ($t) => $t->decimal('ara_toplam', 14, 2)->nullable(),
                     'kdv_tutar'    => fn ($t) => $t->decimal('kdv_tutar', 14, 2)->nullable(),
                     'genel_toplam' => fn ($t) => $t->decimal('genel_toplam', 14, 2)->nullable(),
+                    'fatura_bilgi' => fn ($t) => $t->text('fatura_bilgi')->nullable(), // seri/sıra/sevk/saat/alıcı/satıcı/teslim eden JSON
                 ];
                 foreach ($mkt as $kol => $fn) { if (!Schema::hasColumn('mal_kabuller', $kol)) Schema::table('mal_kabuller', $fn); }
             }
-            cache()->put('resto_satinalma_ensure_ok2', 1, now()->addHours(12));
+            cache()->put('resto_satinalma_ensure_ok3', 1, now()->addHours(12));
         } catch (\Throwable $e) {}
     }
 }
@@ -8210,9 +8211,15 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
     if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'])) $mime = 'image/jpeg';
     $sistem = 'Sen bir restoranın satın alma asistanısın. Sana bir İRSALİYE veya FATURA fotoğrafı verilir. '
         . 'Görseldeki bilgileri oku ve SADECE geçerli JSON döndür; başka hiçbir şey yazma, açıklama ekleme. '
-        . 'Şema: {"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"tedarikci":string|null,'
-        . '"ara_toplam":number|null,"kdv_tutar":number|null,"genel_toplam":number|null,'
+        . 'Şema: {"seri":string|null,"sira_no":string|null,"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"sevk_tarihi":"YYYY-MM-DD"|null,"saat":string|null,"tedarikci":string|null,'
+        . '"satici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
+        . '"alici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
+        . '"teslim_eden":string|null,"ara_toplam":number|null,"kdv_tutar":number|null,"genel_toplam":number|null,'
         . '"kalemler":[{"ad":string,"miktar":number|null,"birim":string|null,"birim_fiyat":number|null,"tutar":number|null}]}. '
+        . 'ALAN TANIMLARI: seri=belge serisi (ör A), sira_no=belge/sıra no (ör 000123), irsaliye_no=seri+sıra birlikte ya da belge no. '
+        . 'satici=malı GÖNDEREN/satan firma (üst başlıktaki firma), alici=MÜŞTERİ/alıcı bilgileri bölümündeki firma (malı alan). İkisini KARIŞTIRMA. '
+        . 'vkn=vergi kimlik no (10 hane) ya da TC kimlik (11 hane) — SADECE rakamları ver, boşluk/nokta koyma. '
+        . 'teslim_eden=malı teslim eden kişinin adı soyadı (varsa sürücü adı). saat=HH:MM. sevk_tarihi=sevk/çıkış tarihi. '
         . 'ara_toplam = KDV hariç mal/hizmet toplamı (matrah), kdv_tutar = hesaplanan KDV, genel_toplam = ödenecek genel toplam. '
         . 'SAYI BİÇİMİ (ÇOK ÖNEMLİ): Türk faturalarında NOKTA binlik ayracı, VİRGÜL ondalık işaretidir. '
         . 'Yani "1.000" = 1000, "1.234,56" = 1234.56, "25,00" = 25, "10.500,75" = 10500.75. '
@@ -8306,9 +8313,20 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
         }
         $ted = !empty($data['tedarikci']) ? $matchTed($data['tedarikci']) : null;
         $tarih = (!empty($data['tarih']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['tarih'])) ? $data['tarih'] : null;
+        $sevk = (!empty($data['sevk_tarihi']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['sevk_tarihi'])) ? $data['sevk_tarihi'] : null;
         $sayi = fn ($v) => (isset($v) && $v !== null && $v !== '') ? round((float) $v, 2) : null;
-        return response()->json(['ok' => 1, 'irsaliye_no' => $data['irsaliye_no'] ?? null, 'tarih' => $tarih,
+        $metin = fn ($v) => (isset($v) && $v !== null && trim((string) $v) !== '') ? mb_substr(trim((string) $v), 0, 180) : null;
+        $vkn = fn ($v) => ($v !== null) ? (preg_replace('/\D/', '', (string) $v) ?: null) : null;
+        $taraf = function ($o) use ($metin, $vkn) {
+            if (!is_array($o)) return null;
+            return ['ad' => $metin($o['ad'] ?? null), 'adres' => $metin($o['adres'] ?? null),
+                'vergi_dairesi' => $metin($o['vergi_dairesi'] ?? null), 'vkn' => $vkn($o['vkn'] ?? null)];
+        };
+        return response()->json(['ok' => 1,
+            'seri' => $metin($data['seri'] ?? null), 'sira_no' => $metin($data['sira_no'] ?? null),
+            'irsaliye_no' => $metin($data['irsaliye_no'] ?? null), 'tarih' => $tarih, 'sevk_tarihi' => $sevk, 'saat' => $metin($data['saat'] ?? null),
             'tedarikci_id' => $ted ? (int) $ted->id : null, 'tedarikci_ad' => $data['tedarikci'] ?? null,
+            'satici' => $taraf($data['satici'] ?? null), 'alici' => $taraf($data['alici'] ?? null), 'teslim_eden' => $metin($data['teslim_eden'] ?? null),
             'ara_toplam' => $sayi($data['ara_toplam'] ?? null), 'kdv_tutar' => $sayi($data['kdv_tutar'] ?? null), 'genel_toplam' => $sayi($data['genel_toplam'] ?? null),
             'kalemler' => $out]);
     } catch (\Throwable $e) {
@@ -8333,6 +8351,18 @@ Route::post('/mal-kabul/olustur', function (Request $r) {
                 $mkRow['ara_toplam'] = $tsay($r->input('ara_toplam'));
                 $mkRow['kdv_tutar'] = $tsay($r->input('kdv_tutar'));
                 $mkRow['genel_toplam'] = $tsay($r->input('genel_toplam'));
+            }
+            if (Schema::hasColumn('mal_kabuller', 'fatura_bilgi')) {
+                $mt = fn ($k) => ($r->input($k) !== null && trim((string) $r->input($k)) !== '') ? mb_substr(trim((string) $r->input($k)), 0, 180) : null;
+                $vk = fn ($k) => ($r->input($k) !== null) ? (preg_replace('/\D/', '', (string) $r->input($k)) ?: null) : null;
+                $taraf = fn ($ad, $adr, $vd, $v) => array_filter(['ad' => $mt($ad), 'adres' => $mt($adr), 'vergi_dairesi' => $mt($vd), 'vkn' => $vk($v)], fn ($x) => $x !== null);
+                $fb = array_filter([
+                    'seri' => $mt('fb_seri'), 'sira_no' => $mt('fb_sira'), 'sevk_tarihi' => $mt('fb_sevk_tarihi'), 'saat' => $mt('fb_saat'),
+                    'satici' => $taraf('fb_satici_ad', 'fb_satici_adres', 'fb_satici_vd', 'fb_satici_vkn'),
+                    'alici' => $taraf('fb_alici_ad', 'fb_alici_adres', 'fb_alici_vd', 'fb_alici_vkn'),
+                    'teslim_eden' => $mt('fb_teslim_eden'),
+                ], fn ($x) => $x !== null && $x !== []);
+                $mkRow['fatura_bilgi'] = $fb ? json_encode($fb, JSON_UNESCAPED_UNICODE) : null;
             }
             $mkId = DB::table('mal_kabuller')->insertGetId($mkRow);
             foreach ($kalemler as $k) {
@@ -8881,6 +8911,52 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
     } catch (\Throwable $e) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }
+});
+
+// ===== API (Flutter patron app) — Fiyat Radarı (native parite) =====
+Route::get('/api/patron/fiyat-radari', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id;
+    $out = ['ok' => 1, 'zamlar' => [], 'firsatlar' => [], 'toplam_etki' => 0];
+    try {
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari')) {
+            $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+            $from = today()->subDays(120);
+            $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                ->where('f.sube_id', $sid)->whereDate('f.tarih', '>=', $from)->orderBy('k.malzeme_id')->orderBy('f.tarih')->orderBy('k.id')
+                ->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar', 'f.tarih']);
+            $zamlar = [];
+            foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
+                if ($g->count() < 2) continue;
+                $ilk = (float) $g->first()->birim_fiyat; $son = (float) $g->last()->birim_fiyat;
+                if ($ilk <= 0) continue;
+                $yuzde = round(($son - $ilk) / $ilk * 100, 1);
+                if ($yuzde < 8) continue;
+                $yillik = round(($son - $ilk) * ((float) $g->sum('miktar') * (365 / 120)), 0);
+                $zamlar[] = ['ad' => $malAd[$mid] ?? '—', 'birim' => $birimKis[$g->first()->alis_birim_id] ?? '', 'ilk' => $ilk, 'son' => $son, 'yuzde' => $yuzde, 'adet' => $g->count(), 'yillik_etki' => $yillik];
+            }
+            usort($zamlar, fn ($a, $b) => $b['yillik_etki'] <=> $a['yillik_etki']);
+            $out['zamlar'] = $zamlar; $out['toplam_etki'] = round(array_sum(array_column($zamlar, 'yillik_etki')), 0);
+        }
+        if (Schema::hasTable('tedarikci_malzeme')) {
+            $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+            $kat = DB::table('tedarikci_malzeme')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('guncel_fiyat')->where('guncel_fiyat', '>', 0)->get();
+            $firsat = [];
+            foreach ($kat->groupBy('malzeme_id') as $mid => $cs) {
+                if ($cs->count() < 2) continue;
+                $s = $cs->sortBy('guncel_fiyat')->values(); $uc = $s->first(); $pa = $s->last();
+                if ((float) $pa->guncel_fiyat <= 0) continue;
+                $tas = round(((float) $pa->guncel_fiyat - (float) $uc->guncel_fiyat) / (float) $pa->guncel_fiyat * 100, 1);
+                if ($tas < 5) continue;
+                $firsat[] = ['ad' => $malAd[$mid] ?? '—', 'en_ucuz_ted' => $tedAd[$uc->tedarikci_id] ?? '—', 'en_ucuz' => (float) $uc->guncel_fiyat, 'en_pahali' => (float) $pa->guncel_fiyat, 'tasarruf' => $tas];
+            }
+            usort($firsat, fn ($a, $b) => $b['tasarruf'] <=> $a['tasarruf']);
+            $out['firsatlar'] = $firsat;
+        }
+    } catch (\Throwable $e) {}
+    return response()->json($out);
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
