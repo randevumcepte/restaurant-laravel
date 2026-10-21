@@ -65,8 +65,44 @@
         <span id="mkDurum" class="rk-sub2" style="font-size:12px"></span>
       </div>
       <video id="mkKamera" playsinline muted style="display:none;width:100%;max-width:360px;border-radius:12px;margin-top:10px;background:#000"></video>
+      <div id="mkFotoSar" style="display:none;margin-top:10px">
+        <div class="rk-sub2" style="font-size:11px;margin-bottom:4px">Okunan fotoğraf — bilgileri bununla karşılaştır:</div>
+        <img id="mkFotoOnizle" alt="İrsaliye" style="max-width:100%;max-height:440px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in" onclick="window.open(this.src,'_blank')">
+      </div>
     </div>
     @endunless
+
+    {{-- ===== İRSALİYE / FATURA BİLGİLERİ ===== --}}
+    <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--mavi)"></span><span class="b">İrsaliye / Fatura Bilgileri</span>
+      <span class="rk-sub2" style="font-size:11px;margin-left:8px">Fotoğraftan otomatik gelir; yasal veri olduğu için MUTLAKA kontrol et.</span></div>
+    <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+      <div><label class="rk-lbl" style="margin-top:0">Seri</label><input type="text" name="fb_seri" id="mkFbSeri" class="rk-inp" placeholder="A"></div>
+      <div><label class="rk-lbl" style="margin-top:0">Sıra No</label><input type="text" name="fb_sira" id="mkFbSira" class="rk-inp" placeholder="000123"></div>
+      <div><label class="rk-lbl" style="margin-top:0">Sevk Tarihi</label><input type="date" name="fb_sevk_tarihi" id="mkFbSevk" class="rk-inp"></div>
+      <div><label class="rk-lbl" style="margin-top:0">Saat</label><input type="text" name="fb_saat" id="mkFbSaat" class="rk-inp" placeholder="05:30"></div>
+    </div>
+    <div class="rk-grid" style="grid-template-columns:1fr 1fr;gap:14px;margin-top:8px">
+      <div style="border:1px solid var(--line);border-radius:12px;padding:10px">
+        <div style="font-weight:800;color:var(--ink);font-size:12.5px;margin-bottom:6px">Satıcı (Tedarikçi)</div>
+        <input type="text" name="fb_satici_ad" id="mkFbSaticiAd" class="rk-inp" placeholder="Ünvan / Ad Soyad" style="margin-bottom:6px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <input type="text" name="fb_satici_vkn" id="mkFbSaticiVkn" class="rk-inp mk-vkn" placeholder="VKN / TCKN" inputmode="numeric">
+          <input type="text" name="fb_satici_vd" id="mkFbSaticiVd" class="rk-inp" placeholder="Vergi Dairesi">
+        </div>
+        <input type="text" name="fb_satici_adres" id="mkFbSaticiAdres" class="rk-inp" placeholder="Adres">
+      </div>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:10px">
+        <div style="font-weight:800;color:var(--ink);font-size:12.5px;margin-bottom:6px">Alıcı (Müşteri / İşletme)</div>
+        <input type="text" name="fb_alici_ad" id="mkFbAliciAd" class="rk-inp" placeholder="Ünvan / Ad Soyad" style="margin-bottom:6px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <input type="text" name="fb_alici_vkn" id="mkFbAliciVkn" class="rk-inp mk-vkn" placeholder="VKN / TCKN" inputmode="numeric">
+          <input type="text" name="fb_alici_vd" id="mkFbAliciVd" class="rk-inp" placeholder="Vergi Dairesi">
+        </div>
+        <input type="text" name="fb_alici_adres" id="mkFbAliciAdres" class="rk-inp" placeholder="Adres">
+      </div>
+    </div>
+    <div style="margin-top:8px"><label class="rk-lbl" style="margin-top:0">Malı Teslim Eden (Ad Soyad)</label><input type="text" name="fb_teslim_eden" id="mkFbTeslim" class="rk-inp" placeholder="Teslim eden kişi"></div>
+    <div id="mkVknUyari" class="rk-sub2" style="font-size:12px;margin-top:6px"></div>
 
     <div class="rk-bolum" style="margin-top:14px"><span class="cubuk" style="background:var(--yesil)"></span><span class="b">Gelen Kalemler</span>
       @unless ($siparis)<button type="button" class="rk-btn bos" style="margin-left:auto;padding:6px 11px" onclick="mkSatirEkle()"><span class="material-icons-outlined" style="font-size:15px">add</span> Kalem Ekle</button>@endunless</div>
@@ -104,6 +140,11 @@
 
     <label class="rk-lbl">Not (opsiyonel)</label>
     <input type="text" name="notlar" placeholder="Mal kabul notu" class="rk-inp">
+
+    <label id="mkOnayKutu" style="display:none;gap:8px;align-items:flex-start;margin-top:14px;cursor:pointer;font-size:12.5px;color:var(--ink);background:color-mix(in srgb,var(--amber) 10%,transparent);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);border-radius:12px;padding:11px">
+      <input type="checkbox" id="mkOnay" style="margin-top:2px;width:18px;height:18px">
+      <span><b>Kontrol ettim:</b> fatura bilgileri (tutarlar, VKN, tarih, kalemler) fotoğrafla aynı ve doğru. Onaylıyorum.</span>
+    </label>
     <button type="submit" class="rk-btn lg" style="background:var(--yesil);margin-top:14px"><span class="material-icons-outlined" style="color:#fff;font-size:20px">check_circle</span> Mal Kabulü Onayla (Stok Gir)</button>
   </form>
 </div>
@@ -222,8 +263,17 @@ async function mkFotoSec(input){
     if(j.irsaliye_no){ const el=document.querySelector('#mkForm [name=irsaliye_no]'); if(el)el.value=j.irsaliye_no; }
     if(j.tarih){ const el=document.querySelector('#mkForm [name=tarih]'); if(el)el.value=j.tarih; }
     if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; }
-    const stl=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null) el.value=v; };
+    const stl=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null&&v!=='') el.value=v; };
     stl('mkAraToplam',j.ara_toplam); stl('mkKdv',j.kdv_tutar); stl('mkGenelToplam',j.genel_toplam);
+    // irsaliye başlık bilgileri
+    stl('mkFbSeri',j.seri); stl('mkFbSira',j.sira_no||j.irsaliye_no); stl('mkFbSevk',j.sevk_tarihi); stl('mkFbSaat',j.saat); stl('mkFbTeslim',j.teslim_eden);
+    const sat=j.satici||{}, ali=j.alici||{};
+    stl('mkFbSaticiAd',sat.ad||j.tedarikci_ad); stl('mkFbSaticiVkn',sat.vkn); stl('mkFbSaticiVd',sat.vergi_dairesi); stl('mkFbSaticiAdres',sat.adres);
+    stl('mkFbAliciAd',ali.ad); stl('mkFbAliciVkn',ali.vkn); stl('mkFbAliciVd',ali.vergi_dairesi); stl('mkFbAliciAdres',ali.adres);
+    // fotoğrafı göster (göz kontrolü için) + onay kutusunu aç
+    const fo=document.getElementById('mkFotoOnizle'); if(fo) fo.src='data:image/jpeg;base64,'+im.data;
+    const fsar=document.getElementById('mkFotoSar'); if(fsar) fsar.style.display='block';
+    mkYasalAc();
     // bos otomatik satiri temizle
     [...document.querySelectorAll('.mk-serbest')].forEach(r=>{ if(!r.querySelector('.mk-m').value && !r.querySelector('.mk-gelen').value) r.remove(); });
     let eksik=0; const kalemler=j.kalemler||[];
@@ -251,6 +301,32 @@ function mkTopHesapla(){
 document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
 document.getElementById('mkAraToplam')?.addEventListener('input', mkTopHesapla);
 mkTopHesapla();
+
+// ---- VKN/TCKN doğrulama + yasal alan kontrolü (en ufak hata yakalanır) ----
+function mkVknGecerli(v){
+  v=(v||'').replace(/\D/g,'');
+  if(v.length===10){ let son=+v[9], top=0; for(let i=0;i<9;i++){ let d=+v[i], t=(d+(9-i))%10; top += (t===9)?t:(t*Math.pow(2,9-i))%9; } return ((10-(top%10))%10)===son; }
+  if(v.length===11){ if(v[0]==='0') return false; const d=v.split('').map(Number); const tek=d[0]+d[2]+d[4]+d[6]+d[8], cift=d[1]+d[3]+d[5]+d[7]; const h10=((tek*7)-cift+100)%10; const h11=(d.slice(0,10).reduce((a,b)=>a+b,0))%10; return h10===d[9]&&h11===d[10]; }
+  return false;
+}
+function mkYasalVar(){
+  const n=['mkAraToplam','mkGenelToplam','mkKdv'].some(id=>parseFloat(document.getElementById(id)?.value)>0);
+  const f=['mkFbSaticiVkn','mkFbAliciVkn','mkFbSaticiAd','mkFbAliciAd','mkFbSira'].some(id=>(document.getElementById(id)?.value||'').trim()!=='');
+  return n||f;
+}
+function mkYasalAc(){ const k=document.getElementById('mkOnayKutu'); if(k&&mkYasalVar()) k.style.display='flex'; mkYasalKontrol(); }
+function mkYasalKontrol(){
+  const sorun=[];
+  document.querySelectorAll('.mk-vkn').forEach(el=>{ const v=(el.value||'').trim();
+    if(v!==''){ if(mkVknGecerli(v)){ el.style.outline=''; } else { el.style.outline='2px solid var(--kirmizi)'; sorun.push((el.id.indexOf('Satici')>-1?'Satıcı':'Alıcı')+' VKN/TCKN geçersiz'); } }
+    else el.style.outline=''; });
+  const ara=parseFloat(document.getElementById('mkAraToplam')?.value)||0, kdv=parseFloat(document.getElementById('mkKdv')?.value)||0, gen=parseFloat(document.getElementById('mkGenelToplam')?.value)||0;
+  if(ara>0&&gen>0&&Math.abs((ara+kdv)-gen)>Math.max(1,gen*0.01)) sorun.push('Ara toplam + KDV ('+mkTL(ara+kdv)+') ≠ Genel toplam ('+mkTL(gen)+')');
+  const u=document.getElementById('mkVknUyari'); if(u){ if(sorun.length){ u.innerHTML='Dikkat: '+sorun.join(' · ')+' — düzeltmeden kaydedemezsin'; u.style.color='var(--kirmizi)'; } else u.innerHTML=''; }
+  return sorun.length===0;
+}
+['mkFbSaticiVkn','mkFbAliciVkn','mkKdv','mkGenelToplam','mkAraToplam','mkFbSira','mkFbSaticiAd','mkFbAliciAd'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>{ mkYasalKontrol(); if(mkYasalVar()){ const k=document.getElementById('mkOnayKutu'); if(k)k.style.display='flex'; } }));
+
 document.getElementById('mkForm').addEventListener('submit',function(e){
   const kal=[];
   document.querySelectorAll('.mk-satir').forEach(r=>{
@@ -263,6 +339,12 @@ document.getElementById('mkForm').addEventListener('submit',function(e){
     kal.push({malzeme_id:mid,alis_birim_id:birim,siparis_kalem_id:skId,siparis_miktar:sipMik,gelen:gelen,kabul:kabul,red:Math.max(0,gelen-kabul),birim_fiyat:parseFloat(r.querySelector('.mk-fiyat').value)||0,lot_no:r.querySelector('.mk-lot').value||'',skt:r.querySelector('.mk-skt').value||''});
   });
   if(!kal.length){ e.preventDefault(); alert('Kabul edilen en az bir kalem girin.'); return; }
+  // YASAL VERİ KAPISI: hata varsa ya da kontrol onayı yoksa kaydetme
+  if(mkYasalVar()){
+    if(!mkYasalKontrol()){ e.preventDefault(); alert('Fatura bilgilerinde hata var (kırmızı uyarıya bak: VKN ya da toplamlar). Düzeltmeden kaydedemezsin.'); return; }
+    const onay=document.getElementById('mkOnay');
+    if(onay && !onay.checked){ e.preventDefault(); const k=document.getElementById('mkOnayKutu'); if(k){ k.style.display='flex'; k.scrollIntoView({behavior:'smooth',block:'center'}); } alert('Kaydetmeden önce "Kontrol ettim" kutusunu işaretle.'); return; }
+  }
   document.getElementById('mkKalemler').value=JSON.stringify(kal);
 });
 </script>
