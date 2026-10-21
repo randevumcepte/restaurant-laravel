@@ -8332,12 +8332,16 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
         . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun. '
         . 'ÇOK ÖNEMLİ: Ürün/kalem tablosundaki HER SATIRI eksiksiz çıkar; tabloda kaç satır varsa o kadar kalem dönder, '
         . 'hiçbir satırı ATLAMA (üstten, ortadan ya da alttan). Sıra numaralarını takip et; 1,2,3... kesintisiz olmalı.';
+    // GÜNLÜK LİMİT: maliyet kaçmasın. Varsayılan 40/gün (config ile değişir). Barkod okutma limitsiz/bedava.
+    $gun = date('Y-m-d'); $ocrKey = 'mk_ocr_' . $sid . '_' . $gun;
+    $ocrSayac = (int) cache()->get($ocrKey, 0);
+    $ocrLimit = (int) config('services.anthropic.ocr_gunluk_limit', 40);
+    if ($ocrSayac >= $ocrLimit) return response()->json(['ok' => 0, 'hata' => 'Bugünkü fotoğraf okuma limiti doldu (' . $ocrLimit . '/gün). Kalanları barkodla okut ya da elle gir; yarın sıfırlanır.']);
     try {
-        // Daha isabetli görsel okuma için önce güçlü model (Sonnet), erişilemezse Haiku'ya düş.
+        // Varsayılan UCUZ model (Haiku). Daha isabetli isteyen ocr_model=claude-sonnet-4-6 ayarlar; hata olursa Haiku'ya düşer.
         $ocrModel = (string) config('services.anthropic.ocr_model', '');
         $modeller = array_values(array_unique(array_filter([
-            $ocrModel ?: 'claude-sonnet-4-6',
-            (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
             'claude-haiku-4-5-20251001',
         ])));
         $yanit = false; $kod = 0;
@@ -8445,6 +8449,7 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
             return ['ad' => $metin($o['ad'] ?? null), 'adres' => $metin($o['adres'] ?? null),
                 'vergi_dairesi' => $metin($o['vergi_dairesi'] ?? null), 'vkn' => $vkn($o['vkn'] ?? null)];
         };
+        cache()->put($ocrKey, $ocrSayac + 1, now()->addDay()); // başarılı okuma -> günlük sayaç
         return response()->json(['ok' => 1,
             'seri' => $metin($data['seri'] ?? null), 'sira_no' => $metin($data['sira_no'] ?? null),
             'irsaliye_no' => $metin($data['irsaliye_no'] ?? null), 'tarih' => $tarih, 'sevk_tarihi' => $sevk, 'saat' => $metin($data['saat'] ?? null),
@@ -9394,6 +9399,53 @@ Route::post('/api/patron/fatura-eslestir-kaydet', function (Request $r) {
         }
         return response()->json(['ok' => 1, 'eslesme' => $eslesme, 'farklar' => array_slice($farklar, 0, 5)]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Fatura kaydedilemedi.']); }
+});
+// ===== API (Flutter): Tedarikçi Detay (katalog + cari) + ödeme =====
+Route::get('/api/patron/tedarikci-detay', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id; $id = (int) $r->query('id');
+    try {
+        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+        $ted = DB::table('tedarikciler')->where('id', $id)->first();
+        if (!$ted) return response()->json(['ok' => 0, 'hata' => 'Bulunamadı']);
+        $katalog = [];
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari')) {
+            $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+            $katalog = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')->join('malzemeler as m', 'k.malzeme_id', '=', 'm.id')
+                ->where('f.tedarikci_id', $id)->where('f.sube_id', $sid)
+                ->select('m.ad', 'k.malzeme_id', 'k.alis_birim_id', DB::raw('COUNT(*) adet'), DB::raw('MAX(f.tarih) son_tarih'), DB::raw('AVG(k.birim_fiyat) ort'), DB::raw('MIN(k.birim_fiyat) mn'), DB::raw('MAX(k.birim_fiyat) mx'))
+                ->groupBy('k.malzeme_id', 'm.ad', 'k.alis_birim_id')->orderBy('m.ad')->get()
+                ->map(function ($x) use ($birim, $id) {
+                    $son = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')->where('f.tedarikci_id', $id)->where('k.malzeme_id', $x->malzeme_id)->orderByDesc('f.tarih')->orderByDesc('k.id')->value('k.birim_fiyat');
+                    return ['ad' => $x->ad, 'birim' => $birim[$x->alis_birim_id] ?? '', 'son_fiyat' => (float) $son, 'ort' => (float) $x->ort, 'mn' => (float) $x->mn, 'mx' => (float) $x->mx, 'adet' => (int) $x->adet, 'son_tarih' => $x->son_tarih,
+                        'trend' => ($son > 0 && $x->ort > 0) ? round(((float) $son - (float) $x->ort) / (float) $x->ort * 100, 1) : 0.0];
+                })->all();
+        }
+        $borc = (float) (Schema::hasTable('alis_faturalari') ? DB::table('alis_faturalari')->where('tedarikci_id', $id)->where('sube_id', $sid)->sum('toplam') : 0);
+        $cid = function_exists('_tedarikciCari') ? _tedarikciCari($sid, $id) : null;
+        $odeme = ($cid && Schema::hasTable('cari_hareketler')) ? (float) DB::table('cari_hareketler')->where('cari_id', $cid)->where('tip', 'tahsilat')->sum('tutar') : 0;
+        $ek = [];
+        if (Schema::hasTable('alis_faturalari')) foreach (DB::table('alis_faturalari')->where('tedarikci_id', $id)->where('sube_id', $sid)->orderByDesc('tarih')->orderByDesc('id')->limit(60)->get(['fatura_no', 'tarih', 'toplam']) as $f) $ek[] = ['tarih' => (string) $f->tarih, 'tip' => 'borc', 'tutar' => (float) $f->toplam, 'aciklama' => 'Alış faturası' . ($f->fatura_no ? ' · ' . $f->fatura_no : '')];
+        if ($cid && Schema::hasTable('cari_hareketler')) foreach (DB::table('cari_hareketler')->where('cari_id', $cid)->where('tip', 'tahsilat')->orderByDesc('created_at')->limit(60)->get() as $h) $ek[] = ['tarih' => \Carbon\Carbon::parse($h->created_at)->toDateString(), 'tip' => 'tahsilat', 'tutar' => (float) $h->tutar, 'aciklama' => $h->aciklama ?: 'Ödeme'];
+        usort($ek, fn ($a, $b) => strcmp($b['tarih'], $a['tarih']));
+        return response()->json(['ok' => 1, 'ted' => ['id' => (int) $ted->id, 'ad' => $ted->ad, 'telefon' => $ted->telefon ?? null, 'unvan' => $ted->unvan ?? null, 'vkn_tckn' => $ted->vkn_tckn ?? null, 'vergi_dairesi' => $ted->vergi_dairesi ?? null, 'yetkili' => $ted->yetkili ?? null, 'email' => $ted->email ?? null, 'iban' => $ted->iban ?? null, 'odeme_vade_gun' => $ted->odeme_vade_gun ?? null, 'adres' => $ted->adres ?? null],
+            'katalog' => $katalog, 'borc' => round($borc, 2), 'odeme' => round($odeme, 2), 'bakiye' => round($borc - $odeme, 2), 'ekstre' => $ek]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Hata']); }
+});
+Route::post('/api/patron/tedarikci-odeme', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = $p->sube_id; $id = (int) $r->input('tedarikci_id');
+    try {
+        if (!DB::table('tedarikciler')->where('id', $id)->exists()) return response()->json(['ok' => 0, 'hata' => 'Tedarikçi bulunamadı.']);
+        $tutar = round((float) $r->input('tutar'), 2); if ($tutar <= 0) return response()->json(['ok' => 0, 'hata' => 'Geçerli tutar girin.']);
+        $cid = function_exists('_tedarikciCari') ? _tedarikciCari($sid, $id) : null;
+        if (!$cid || !Schema::hasTable('cari_hareketler')) return response()->json(['ok' => 0, 'hata' => 'Cari kurulamadı.']);
+        $sekil = in_array($r->input('odeme_sekli'), ['nakit', 'havale', 'kart']) ? $r->input('odeme_sekli') : 'nakit';
+        DB::table('cari_hareketler')->insert(['sube_id' => $sid, 'cari_id' => $cid, 'tip' => 'tahsilat', 'tutar' => $tutar, 'odeme_sekli' => $sekil, 'aciklama' => 'Tedarikçi ödemesi', 'personel_id' => $p->id, 'created_at' => now()]);
+        return response()->json(['ok' => 1]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Ödeme kaydedilemedi.']); }
 });
 // ===== WEB PANEL: Masa Yönetim (Flutter masa_yonetim_screen karşılığı) — qr_token KALICI =====
 Route::get('/masa-yonetim', function () {
