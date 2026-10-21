@@ -1407,6 +1407,8 @@ function _rctYmBirimTxt() {
     const sel = document.getElementById('rctYmEdVerimBirim');
     return (sel && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent : '';
 }
+// onclick içine güvenli tek-tırnaklı JS string (çift tırnak attribute'u bozmasın)
+function _q(s) { return "'" + String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
 // Üretim sonrası: stoğa eklendi bandı + Etiket Yazdır
 function _rctYmUretSonucGoster(barkod, skt, miktar) {
     const el = document.getElementById('rctYmUretSonuc'); if (!el) return;
@@ -1416,7 +1418,7 @@ function _rctYmUretSonucGoster(barkod, skt, miktar) {
     el.innerHTML = '<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
         + '<span class="material-icons-outlined" style="color:var(--yesil);font-size:22px">check_circle</span>'
         + '<div style="flex:1;min-width:150px;font-size:12.5px;color:var(--ink);line-height:1.4"><b>' + _mik(miktar) + ' ' + escHtml(_rctYmBirimTxt()) + '</b> üretildi, stoğa eklendi.<br>Barkod: <b>' + escHtml(barkod) + '</b> · SKT: <b>' + sktTxt + '</b></div>'
-        + '<button onclick="rctEtiketYazdir(' + JSON.stringify(barkod) + ',' + JSON.stringify(skt || '') + ',' + miktar + ',' + JSON.stringify(_rctYmBirimTxt()) + ',' + JSON.stringify(bugun) + ')" style="background:var(--mavi);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><span class="material-icons-outlined" style="font-size:16px">print</span> Etiket Yazdır</button>'
+        + '<button onclick="rctEtiketYazdir(' + _q(barkod) + ',' + _q(skt || '') + ',' + miktar + ',' + _q(_rctYmBirimTxt()) + ',' + _q(bugun) + ')" style="background:var(--mavi);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><span class="material-icons-outlined" style="font-size:16px">print</span> Etiket Yazdır</button>'
         + '</div>';
 }
 // Parti etiketi yazdır (ad + miktar + üretim + SKT + CODE128 barkod). Hasarlıysa yeniden basılır.
@@ -1470,7 +1472,7 @@ function _rctYmPartiYukle(id) {
                 + '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--ink);font-weight:600">' + escHtml(x.lot_no || '-') + '</div>'
                 + '<div style="font-size:11px;color:' + renk + '">SKT: ' + sktTxt + (uyari ? ' · ' + uyari : '') + '</div></div>'
                 + '<div style="font-size:12.5px;font-weight:700;color:var(--ink)">' + _mik(x.kalan) + '</div>'
-                + '<button onclick="rctEtiketYazdir(' + JSON.stringify(x.lot_no || '') + ',' + JSON.stringify(x.skt || '') + ',' + x.giris + ',' + JSON.stringify(_rctYmBirimTxt()) + ',' + JSON.stringify(x.giris_tarihi || '') + ')" title="Etiketi yeniden yazdır" style="background:none;border:none;cursor:pointer;color:var(--mavi);padding:2px 3px;line-height:1"><span class="material-icons-outlined" style="font-size:18px">print</span></button>'
+                + '<button onclick="rctEtiketYazdir(' + _q(x.lot_no || '') + ',' + _q(x.skt || '') + ',' + x.giris + ',' + _q(_rctYmBirimTxt()) + ',' + _q(x.giris_tarihi || '') + ')" title="Etiketi yeniden yazdır" style="background:none;border:none;cursor:pointer;color:var(--mavi);padding:2px 3px;line-height:1"><span class="material-icons-outlined" style="font-size:18px">print</span></button>'
                 + '</div>';
         }).join('');
     }).catch(function(){ box.innerHTML = ''; });
