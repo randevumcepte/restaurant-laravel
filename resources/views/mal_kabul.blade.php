@@ -145,9 +145,15 @@
         </div>
       </div>
       <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">Ara Toplam (KDV hariç)</label><input type="number" name="ara_toplam" id="mkAraToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:17px;font-weight:700;padding:11px"></div>
-        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">KDV</label><input type="number" name="kdv_tutar" id="mkKdv" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:17px;font-weight:700;padding:11px"></div>
-        <div><label class="rk-lbl" style="margin-top:0;font-weight:900;color:var(--mavi)">Genel Toplam</label><input type="number" name="genel_toplam" id="mkGenelToplam" step="0.01" min="0" placeholder="0,00" class="rk-inp" style="font-size:19px;font-weight:900;padding:11px;border:2px solid color-mix(in srgb,var(--mavi) 45%,transparent)"></div>
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">Ara Toplam (KDV hariç)</label>
+          <input type="text" inputmode="decimal" id="mkAraToplam" placeholder="0,00" class="rk-inp mk-tutar" style="font-size:17px;font-weight:700;padding:11px;text-align:right">
+          <input type="hidden" name="ara_toplam" id="mkAraToplamH"></div>
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:700">KDV</label>
+          <input type="text" inputmode="decimal" id="mkKdv" placeholder="0,00" class="rk-inp mk-tutar" style="font-size:17px;font-weight:700;padding:11px;text-align:right">
+          <input type="hidden" name="kdv_tutar" id="mkKdvH"></div>
+        <div><label class="rk-lbl" style="margin-top:0;font-weight:900;color:var(--mavi)">Genel Toplam</label>
+          <input type="text" inputmode="decimal" id="mkGenelToplam" placeholder="0,00" class="rk-inp mk-tutar" style="font-size:19px;font-weight:900;padding:11px;text-align:right;border:2px solid color-mix(in srgb,var(--mavi) 45%,transparent)">
+          <input type="hidden" name="genel_toplam" id="mkGenelToplamH"></div>
       </div>
       <div id="mkToplamUyari" style="font-size:13px;font-weight:700;margin-top:14px;padding:11px 13px;border-radius:12px;background:color-mix(in srgb,var(--ink) 5%,transparent)">Kalem toplamı (otomatik): <b id="mkKalemToplam">0,00 ₺</b></div>
     </div>
@@ -278,7 +284,7 @@ async function mkFotoSec(input){
     if(j.tarih){ const el=document.querySelector('#mkForm [name=tarih]'); if(el)el.value=j.tarih; }
     if(j.tedarikci_id){ const el=document.querySelector('#mkForm [name=tedarikci_id]'); if(el)el.value=j.tedarikci_id; }
     const stl=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null&&v!=='') el.value=v; };
-    stl('mkAraToplam',j.ara_toplam); stl('mkKdv',j.kdv_tutar); stl('mkGenelToplam',j.genel_toplam);
+    mkTutarSet('mkAraToplam',j.ara_toplam); mkTutarSet('mkKdv',j.kdv_tutar); mkTutarSet('mkGenelToplam',j.genel_toplam);
     // irsaliye başlık bilgileri
     stl('mkFbSeri',j.seri); stl('mkFbSira',j.sira_no||j.irsaliye_no); stl('mkFbSevk',j.sevk_tarihi); stl('mkFbSaat',j.saat); stl('mkFbTeslim',j.teslim_eden);
     const sat=j.satici||{}, ali=j.alici||{};
@@ -299,12 +305,27 @@ async function mkFotoSec(input){
   input.value='';
 }
 
-// ---- KALEM TOPLAMI <-> FATURA ARA TOPLAMI canli karsilastirma ----
+// ---- TÜRK SAYI BİÇİMİ: göster "44.849,40" / oku kesin sayı ----
 function mkTL(n){ return (n||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺'; }
+function mkFmt(n){ return (n==null||n==='')?'':(+n).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function mkParse(s){ s=(s==null?'':String(s)).replace(/[^\d.,-]/g,''); if(!/\d/.test(s)) return null;
+  const c=s.indexOf(',')>-1, d=s.indexOf('.')>-1;
+  if(c&&d){ s=s.replace(/\./g,'').replace(',','.'); } else if(c){ s=s.replace(',','.'); }
+  else if(d&&/^-?\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
+  const n=parseFloat(s); return isNaN(n)?null:n; }
+function mkTutarNum(base){ return parseFloat(document.getElementById(base+'H')?.value)||0; }
+function mkTutarSet(base,num){ if(num==null||num==='')return; const v=document.getElementById(base), h=document.getElementById(base+'H'); if(h)h.value=num; if(v)v.value=mkFmt(num); }
+['mkAraToplam','mkKdv','mkGenelToplam'].forEach(base=>{
+  const v=document.getElementById(base), h=document.getElementById(base+'H'); if(!v) return;
+  v.addEventListener('input',()=>{ const n=mkParse(v.value); if(h)h.value=(n==null?'':n); mkTopHesapla(); mkYasalKontrol(); if(mkYasalVar()){ const k=document.getElementById('mkOnayKutu'); if(k)k.style.display='flex'; } });
+  v.addEventListener('blur',()=>{ const n=mkParse(v.value); if(n!=null){ v.value=mkFmt(n); if(h)h.value=n; } });
+});
+
+// ---- KALEM TOPLAMI <-> FATURA ARA TOPLAMI canli karsilastirma ----
 function mkTopHesapla(){
   let t=0;
   document.querySelectorAll('.mk-satir').forEach(r=>{ const g=parseFloat(r.querySelector('.mk-gelen')?.value)||0, f=parseFloat(r.querySelector('.mk-fiyat')?.value)||0; t+=g*f; });
-  const ara=parseFloat(document.getElementById('mkAraToplam')?.value)||0;
+  const ara=mkTutarNum('mkAraToplam');
   const u=document.getElementById('mkToplamUyari'); if(!u) return;
   if(ara>0){
     const fark=t-ara, yuzde=Math.abs(fark)/ara*100;
@@ -313,7 +334,6 @@ function mkTopHesapla(){
   } else { u.innerHTML='Kalem toplamı (otomatik): <b>'+mkTL(t)+'</b>'; u.style.color='var(--ink)'; u.style.background='color-mix(in srgb,var(--ink) 5%,transparent)'; }
 }
 document.getElementById('mkSatirlar')?.addEventListener('input', mkTopHesapla);
-document.getElementById('mkAraToplam')?.addEventListener('input', mkTopHesapla);
 mkTopHesapla();
 
 // ---- VKN/TCKN doğrulama + yasal alan kontrolü (en ufak hata yakalanır) ----
@@ -324,7 +344,7 @@ function mkVknGecerli(v){
   return false;
 }
 function mkYasalVar(){
-  const n=['mkAraToplam','mkGenelToplam','mkKdv'].some(id=>parseFloat(document.getElementById(id)?.value)>0);
+  const n=['mkAraToplam','mkGenelToplam','mkKdv'].some(b=>mkTutarNum(b)>0);
   const f=['mkFbSaticiVkn','mkFbAliciVkn','mkFbSaticiAd','mkFbAliciAd','mkFbSira'].some(id=>(document.getElementById(id)?.value||'').trim()!=='');
   return n||f;
 }
@@ -334,12 +354,12 @@ function mkYasalKontrol(){
   document.querySelectorAll('.mk-vkn').forEach(el=>{ const v=(el.value||'').trim();
     if(v!==''){ if(mkVknGecerli(v)){ el.style.outline=''; } else { el.style.outline='2px solid var(--kirmizi)'; sorun.push((el.id.indexOf('Satici')>-1?'Satıcı':'Alıcı')+' VKN/TCKN geçersiz'); } }
     else el.style.outline=''; });
-  const ara=parseFloat(document.getElementById('mkAraToplam')?.value)||0, kdv=parseFloat(document.getElementById('mkKdv')?.value)||0, gen=parseFloat(document.getElementById('mkGenelToplam')?.value)||0;
+  const ara=mkTutarNum('mkAraToplam'), kdv=mkTutarNum('mkKdv'), gen=mkTutarNum('mkGenelToplam');
   if(ara>0&&gen>0&&Math.abs((ara+kdv)-gen)>Math.max(1,gen*0.01)) sorun.push('Ara toplam + KDV ('+mkTL(ara+kdv)+') ≠ Genel toplam ('+mkTL(gen)+')');
   const u=document.getElementById('mkVknUyari'); if(u){ if(sorun.length){ u.innerHTML='Dikkat: '+sorun.join(' · ')+' — düzeltmeden kaydedemezsin'; u.style.color='var(--kirmizi)'; } else u.innerHTML=''; }
   return sorun.length===0;
 }
-['mkFbSaticiVkn','mkFbAliciVkn','mkKdv','mkGenelToplam','mkAraToplam','mkFbSira','mkFbSaticiAd','mkFbAliciAd'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>{ mkYasalKontrol(); if(mkYasalVar()){ const k=document.getElementById('mkOnayKutu'); if(k)k.style.display='flex'; } }));
+['mkFbSaticiVkn','mkFbAliciVkn','mkFbSira','mkFbSaticiAd','mkFbAliciAd'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>{ mkYasalKontrol(); if(mkYasalVar()){ const k=document.getElementById('mkOnayKutu'); if(k)k.style.display='flex'; } }));
 
 document.getElementById('mkForm').addEventListener('submit',function(e){
   const kal=[];

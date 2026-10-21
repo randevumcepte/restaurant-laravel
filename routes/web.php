@@ -8312,20 +8312,19 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
         . 'Şema: {"seri":string|null,"sira_no":string|null,"irsaliye_no":string|null,"tarih":"YYYY-MM-DD"|null,"sevk_tarihi":"YYYY-MM-DD"|null,"saat":string|null,"tedarikci":string|null,'
         . '"satici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
         . '"alici":{"ad":string|null,"adres":string|null,"vergi_dairesi":string|null,"vkn":string|null}|null,'
-        . '"teslim_eden":string|null,"ara_toplam":number|null,"kdv_tutar":number|null,"genel_toplam":number|null,'
-        . '"kalemler":[{"ad":string,"miktar":number|null,"birim":string|null,"birim_fiyat":number|null,"tutar":number|null}]}. '
+        . '"teslim_eden":string|null,"ara_toplam":string|null,"kdv_tutar":string|null,"genel_toplam":string|null,'
+        . '"kalemler":[{"ad":string,"miktar":string|null,"birim":string|null,"birim_fiyat":string|null,"tutar":string|null}]}. '
         . 'ALAN TANIMLARI: seri=belge serisi (ör A), sira_no=belge/sıra no (ör 000123), irsaliye_no=seri+sıra birlikte ya da belge no. '
         . 'satici=malı GÖNDEREN/satan firma (üst başlıktaki firma), alici=MÜŞTERİ/alıcı bilgileri bölümündeki firma (malı alan). İkisini KARIŞTIRMA. '
         . 'vkn=vergi kimlik no (10 hane) ya da TC kimlik (11 hane) — SADECE rakamları ver, boşluk/nokta koyma. '
         . 'teslim_eden=malı teslim eden kişinin adı soyadı (varsa sürücü adı). saat=HH:MM. sevk_tarihi=sevk/çıkış tarihi. '
         . 'ara_toplam = KDV hariç mal/hizmet toplamı (matrah), kdv_tutar = hesaplanan KDV, genel_toplam = ödenecek genel toplam. '
-        . 'SAYI BİÇİMİ (ÇOK ÖNEMLİ): Türk faturalarında NOKTA binlik ayracı, VİRGÜL ondalık işaretidir. '
-        . 'Yani "1.000" = 1000, "1.234,56" = 1234.56, "25,00" = 25, "10.500,75" = 10500.75. '
-        . 'Her sayıyı bu şekilde çözüp düz sayı olarak ver; ondalık için NOKTA kullan (1000, 1234.56, 25). '
+        . 'SAYILAR İÇİN EN ÖNEMLİ KURAL: miktar, birim_fiyat, tutar, ara_toplam, kdv_tutar, genel_toplam değerlerini '
+        . 'faturada YAZILDIĞI GİBİ, HİÇ DEĞİŞTİRMEDEN string olarak ver. Örnek: faturada "1.000" yazıyorsa aynen "1.000" yaz, '
+        . '"25.000,00" ise "25.000,00", "25,00" ise "25,00" yaz. SAKIN kendın sayıya çevirme, noktaları/virgülleri silme; '
+        . 'binlik/ondalık dönüşümünü BİZ yapacağız. Sadece gördüğün rakamları ve ayraçları birebir kopyala. '
         . 'MİKTAR ve BİRİM: Faturadaki MİKTAR sütunundaki değeri ve o sütunun birimini kullan (Kg, Lt, Adet gibi). '
         . 'Ambalaj/Kasa/Koli adedini (ör. "50 Kasa") MİKTAR sanma; miktar ağırlık/hacim/adet sütunudur, birim de onun birimidir. '
-        . 'birim_fiyat o birimin KDV hariç birim fiyatıdır. tutar o satırın toplam tutarıdır. '
-        . 'Genelde miktar × birim_fiyat = tutar olur; emin olmak için tutarı da mutlaka ver. '
         . 'Okuyamadığın/emin olmadığın alanı null yap, UYDURMA. Birim kısaltması kg, g, lt, ml, ad, koli, kasa, paket gibi olsun.';
     $govde = [
         'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
@@ -8388,6 +8387,18 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
             foreach ($tedAll as $x) if (str_contains($norm($x->ad), $q) || str_contains($q, $norm($x->ad))) return $x;
             return null;
         };
+        // TÜRK SAYI AYRIŞTIRICI: faturadaki ham string'i ("1.000", "25.000,00", "25,00") kesin kuralla sayıya çevir.
+        // Nokta binlik, virgül ondalık. İkisi varsa: nokta sil, virgül->nokta. Sadece virgül: ondalık. Sadece nokta: 3'lü gruplama ise binlik, değilse ondalık.
+        $trSayi = function ($v) {
+            if ($v === null) return null;
+            $s = preg_replace('/[^\d.,-]/', '', trim((string) $v));
+            if ($s === '' || !preg_match('/\d/', $s)) return null;
+            $hasC = strpos($s, ',') !== false; $hasD = strpos($s, '.') !== false;
+            if ($hasC && $hasD) { $s = str_replace(['.', ','], ['', '.'], $s); }
+            elseif ($hasC) { $s = str_replace(',', '.', $s); }
+            elseif ($hasD && preg_match('/^-?\d{1,3}(\.\d{3})+$/', $s)) { $s = str_replace('.', '', $s); }
+            return is_numeric($s) ? (float) $s : null;
+        };
         $out = [];
         foreach (($data['kalemler'] ?? []) as $k) {
             $ad = (string) ($k['ad'] ?? ''); if (trim($ad) === '') continue;
@@ -8395,24 +8406,23 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
             $bid = null;
             if (!empty($k['birim'])) { $bb = $matchBirim($k['birim']); if ($bb) $bid = (int) $bb->id; }
             if (!$bid && $mm) $bid = (int) $mm->temel_birim_id;
-            $miktar = isset($k['miktar']) && $k['miktar'] !== null ? (float) $k['miktar'] : null;
-            $fiyat = isset($k['birim_fiyat']) && $k['birim_fiyat'] !== null ? (float) $k['birim_fiyat'] : null;
-            $tutar = isset($k['tutar']) && $k['tutar'] !== null ? (float) $k['tutar'] : null;
-            // TUTAR ÇAPRAZ DOĞRULAMA: miktar×fiyat ile satır tutarı tutmazsa (ör. "1.000" yanlış okuma) miktarı tutardan düzelt
-            if ($fiyat !== null && $fiyat > 0 && $tutar !== null && $tutar > 0) {
-                if ($miktar === null || $miktar <= 0 || abs($miktar * $fiyat - $tutar) / $tutar > 0.05) {
-                    $miktar = round($tutar / $fiyat, 3);
-                }
+            $miktar = $trSayi($k['miktar'] ?? null);
+            $fiyat = $trSayi($k['birim_fiyat'] ?? null);
+            $tutar = $trSayi($k['tutar'] ?? null);
+            if ($miktar !== null) $miktar = round($miktar, 3);
+            // miktar OKUNAMADIYSA tutar/fiyat'tan türet (deterministik parse sonrası okunan miktarı EZME)
+            if (($miktar === null || $miktar <= 0) && $fiyat !== null && $fiyat > 0 && $tutar !== null && $tutar > 0) {
+                $miktar = round($tutar / $fiyat, 3);
             }
             $out[] = [
                 'ad' => $ad, 'malzeme_id' => $mm ? (int) $mm->id : null, 'malzeme_ad' => $mm ? $mm->ad : null,
-                'birim_id' => $bid, 'miktar' => $miktar, 'birim_fiyat' => $fiyat,
+                'birim_id' => $bid, 'miktar' => $miktar, 'birim_fiyat' => ($fiyat !== null ? round($fiyat, 4) : null),
             ];
         }
         $ted = !empty($data['tedarikci']) ? $matchTed($data['tedarikci']) : null;
         $tarih = (!empty($data['tarih']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['tarih'])) ? $data['tarih'] : null;
         $sevk = (!empty($data['sevk_tarihi']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['sevk_tarihi'])) ? $data['sevk_tarihi'] : null;
-        $sayi = fn ($v) => (isset($v) && $v !== null && $v !== '') ? round((float) $v, 2) : null;
+        $sayi = fn ($v) => (($n = $trSayi($v)) !== null) ? round($n, 2) : null;
         $metin = fn ($v) => (isset($v) && $v !== null && trim((string) $v) !== '') ? mb_substr(trim((string) $v), 0, 180) : null;
         $vkn = fn ($v) => ($v !== null) ? (preg_replace('/\D/', '', (string) $v) ?: null) : null;
         $taraf = function ($o) use ($metin, $vkn) {
