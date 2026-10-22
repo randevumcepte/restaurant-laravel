@@ -13787,9 +13787,12 @@ Route::get('/api/patron/tedarikciler', function (Request $r) {
     if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $alis = DB::table('alis_faturalari')->where('sube_id', $p->sube_id)
         ->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c, MAX(tarih) son')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
-    $liste = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'aciklama'])->map(function ($x) use ($alis) {
+    $tedKolonlar = ['id', 'ad', 'telefon', 'aciklama'];
+    if (Schema::hasColumn('tedarikciler', 'anlasmali')) $tedKolonlar[] = 'anlasmali';
+    $liste = DB::table('tedarikciler')->orderBy('ad')->get($tedKolonlar)->map(function ($x) use ($alis) {
         $a = $alis[$x->id] ?? null;
         return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'aciklama' => $x->aciklama,
+            'anlasmali' => (int) ($x->anlasmali ?? 0),
             'toplam_alis' => $a ? (float) $a->t : 0.0, 'fatura_sayisi' => $a ? (int) $a->c : 0, 'son_alis' => $a ? $a->son : null];
     });
     return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'tedarikciler' => $liste];
@@ -13801,6 +13804,7 @@ Route::post('/api/patron/tedarikci-kaydet', function (Request $r) {
     $ad = trim((string) $r->ad);
     if ($ad === '') return ['ok' => 0, 'hata' => 'Ad boş olamaz'];
     $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'updated_at' => now()];
+    if (Schema::hasColumn('tedarikciler', 'anlasmali')) $veri['anlasmali'] = $r->input('anlasmali') ? 1 : 0;
     $id = (int) $r->id;
     if ($id > 0) { DB::table('tedarikciler')->where('id', $id)->update($veri); return ['ok' => 1, 'id' => $id]; }
     $veri['created_at'] = now();
