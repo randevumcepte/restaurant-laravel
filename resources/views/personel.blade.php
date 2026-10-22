@@ -8,10 +8,11 @@
 // Flutter personel_screen.dart BİREBİR.
 // Rol renk / etiket (Flutter _rolAd / _rolRenk ile aynı).
 // ------------------------------------------------------------------
-$rolAd = ['sahip' => 'Sahip', 'mudur' => 'Müdür', 'kasa' => 'Kasa', 'garson' => 'Garson', 'mutfak' => 'Mutfak'];
+$rolAd = ['sahip' => 'Sahip', 'mudur' => 'Müdür', 'satinalmaci' => 'Satın Almacı', 'kasa' => 'Kasa', 'garson' => 'Garson', 'mutfak' => 'Mutfak'];
 $rolRenk = [
     'sahip'  => 'var(--mor1)',
     'mudur'  => 'var(--mavi)',
+    'satinalmaci' => '#0D9488',
     'kasa'   => 'var(--amber)',
     'garson' => 'var(--yesil)',
     'mutfak' => '#D97706',
@@ -45,7 +46,7 @@ $duzenleyebilir = $duzenleyebilir ?? false;
 
 // Flutter masaüstü: role göre grupla, sabit sırayla göster.
 $rolGrup = [
-    'sahip' => 'Yöneticiler', 'mudur' => 'Yöneticiler',
+    'sahip' => 'Yöneticiler', 'mudur' => 'Yöneticiler', 'satinalmaci' => 'Yöneticiler',
     'garson' => 'Garsonlar',
     'mutfak' => 'Mutfak / Ustalar', 'usta' => 'Mutfak / Ustalar',
     'kasa' => 'Kasiyerler',

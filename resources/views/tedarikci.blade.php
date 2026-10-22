@@ -206,6 +206,9 @@ body.koyu #ted{
               <div style="display:flex;align-items:center;gap:10px;min-width:0">
                 <span class="ted-av">{{ $bas }}</span>
                 <span style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $ad }}</span>
+                @if ($t->anlasmali ?? false)
+                  <span style="flex:none;display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--yesil);background:color-mix(in srgb,var(--yesil) 14%,transparent);border:1px solid color-mix(in srgb,var(--yesil) 40%,transparent);padding:2px 8px;border-radius:999px">✓ Anlaşmalı</span>
+                @endif
               </div>
             </td>
             {{-- TELEFON --}}
@@ -261,7 +264,12 @@ body.koyu #ted{
         <span class="ted-av-mob">{{ $bas }}</span>
         {{-- Bilgi sütunu --}}
         <div class="bilgi">
-          <div class="ad">{{ $ad }}</div>
+          <div style="display:flex;align-items:center;gap:6px;min-width:0">
+            <span class="ad">{{ $ad }}</span>
+            @if ($t->anlasmali ?? false)
+              <span style="flex:none;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:var(--yesil);background:color-mix(in srgb,var(--yesil) 14%,transparent);border:1px solid color-mix(in srgb,var(--yesil) 40%,transparent);padding:1px 7px;border-radius:999px">✓ Anlaşmalı</span>
+            @endif
+          </div>
           <div class="alt">{{ $tel !== '' ? $tel . ' · ' : '' }}{{ (int) ($t->fatura_sayisi ?? 0) }} fatura</div>
         </div>
         {{-- Sağ: tutar + etiket --}}
@@ -320,6 +328,16 @@ body.koyu #ted{
       <label class="rk-lbl">Not (opsiyonel)</label>
       <input type="text" name="aciklama" id="tedAciklama" placeholder="Not (opsiyonel)" class="rk-inp">
 
+      {{-- Anlaşmalı tedarikçi onay kutusu --}}
+      <div style="margin-top:12px;display:flex;align-items:flex-start;gap:8px">
+        <input type="checkbox" name="anlasmali" id="tedAnlasmali" value="1"
+               style="width:18px;height:18px;margin-top:1px;flex:none;accent-color:var(--yesil);cursor:pointer">
+        <label for="tedAnlasmali" style="cursor:pointer;line-height:1.35">
+          <span style="font-size:13.5px;font-weight:700;color:var(--ink)">Anlaşmalı tedarikçi</span>
+          <span style="display:block;font-size:11.5px;color:var(--sub);margin-top:2px">İşaretliyse satın almacı bu tedarikçiye patron onayı olmadan direkt sipariş geçebilir.</span>
+        </label>
+      </div>
+
       {{-- ZENGİN KART: Fatura & Cari bilgileri (aç/kapa) --}}
       <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
         <div onclick="tedDetayTog()" style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--mor1);font-weight:700;font-size:13px;user-select:none">
@@ -361,6 +379,7 @@ function tedAc(o) {
   g('tedAd').value       = o.ad        || '';
   g('tedTel').value      = o.telefon   || '';
   g('tedAciklama').value = o.aciklama  || '';
+  g('tedAnlasmali').checked = !!(o.anlasmali && Number(o.anlasmali));
   g('tedUnvan').value    = o.unvan     || '';
   g('tedVkn').value      = o.vkn_tckn  || '';
   g('tedVd').value       = o.vergi_dairesi || '';
