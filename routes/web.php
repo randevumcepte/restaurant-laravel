@@ -8863,11 +8863,14 @@ Route::get('/hal-fiyatlari', function () {
     try {
         if (function_exists('_restoHalEnsure')) _restoHalEnsure();
         if (!Schema::hasTable('hal_fiyatlari')) return view('hal_fiyatlari', $d);
-        // Otomatik günlük çekim — günde 1 kez dener (cache guard), bugün api kaydı yoksa
+        // Otomatik günlük çekim — flag SADECE başarıda set edilir (başarısızsa tekrar dener)
         try {
-            if (function_exists('_halCek') && !cache()->get('hal_cek_' . $sid . '_' . today()->toDateString())) {
-                cache()->put('hal_cek_' . $sid . '_' . today()->toDateString(), 1, now()->addHours(18));
-                if (!DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists()) _halCek($sid, 'izmir');
+            $flag = 'hal_cek_' . $sid . '_' . today()->toDateString();
+            $varMi = DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists();
+            if (function_exists('_halCek') && !$varMi && !cache()->get($flag)) {
+                $res = _halCek($sid, 'izmir');
+                if (!empty($res['ok'])) cache()->put($flag, 1, now()->addHours(18));
+                else $d['hal_mesaj'] = $res['mesaj'] ?? null;
             }
         } catch (\Throwable $e) {}
         $d['hal'] = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
@@ -8940,7 +8943,7 @@ if (!function_exists('_halCek')) {
             if (!$resp->successful()) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına ulaşılamadı (' . $resp->status() . ').'];
             $data = $resp->json();
             $rows = [];
-            if (is_array($data)) $rows = isset($data[0]) ? $data : ($data['data'] ?? $data['result'] ?? $data['value'] ?? $data['items'] ?? []);
+            if (is_array($data)) $rows = isset($data[0]) ? $data : ($data['HalFiyatListesi'] ?? $data['halFiyatListesi'] ?? $data['data'] ?? $data['result'] ?? $data['value'] ?? $data['items'] ?? []);
             if (!is_array($rows) || !count($rows)) return ['ok' => 0, 'mesaj' => 'Veri boş geldi (API formatı farklı olabilir).'];
             $al = function ($r, $keys) { foreach ($keys as $kk) { if (isset($r[$kk]) && $r[$kk] !== '' && $r[$kk] !== null) return $r[$kk]; } return null; };
             DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', $tarih)->where('kaynak', 'api')->delete();
@@ -9212,14 +9215,20 @@ Route::get('/api/patron/hal-fiyatlari', function (Request $r) {
     try {
         if (function_exists('_restoHalEnsure')) _restoHalEnsure();
         if (!Schema::hasTable('hal_fiyatlari')) return response()->json($out);
+        $halMsj = null;
         try {
-            if (function_exists('_halCek') && !cache()->get('hal_cek_' . $sid . '_' . today()->toDateString())) {
-                cache()->put('hal_cek_' . $sid . '_' . today()->toDateString(), 1, now()->addHours(18));
-                if (!DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists()) _halCek($sid, 'izmir');
+            $force = (bool) $r->query('force', 0);               // "Yenile" -> zorla çek
+            $flag = 'hal_cek_' . $sid . '_' . today()->toDateString();
+            $varMi = DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists();
+            if (function_exists('_halCek') && ($force || (!$varMi && !cache()->get($flag)))) {
+                $res = _halCek($sid, 'izmir');
+                $halMsj = $res['mesaj'] ?? null;
+                if (!empty($res['ok']) || $varMi) cache()->put($flag, 1, now()->addHours(18)); // flag SADECE başarıda
             }
         } catch (\Throwable $e) {}
         $hal = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
         $out['hal'] = $hal->map(fn ($h) => ['urun_ad' => $h->urun_ad, 'birim' => $h->birim, 'asgari' => $h->asgari, 'ortalama' => $h->ortalama, 'azami' => $h->azami, 'tarih' => $h->tarih])->all();
+        if (empty($out['hal']) && $halMsj) $out['hal_mesaj'] = $halMsj;   // boşsa nedenini göster
         if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('malzemeler')) {
             $malzemeler = DB::table('malzemeler')->get(['id', 'ad']);
             $kiyas = [];
