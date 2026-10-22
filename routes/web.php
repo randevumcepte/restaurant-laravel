@@ -8836,7 +8836,7 @@ Route::get('/fiyat-radari', function () {
 if (!function_exists('_restoHalEnsure')) {
     function _restoHalEnsure()
     {
-        if (cache()->get('resto_hal_ensure_ok')) return;
+        if (cache()->get('resto_hal_ensure_ok2')) return;
         try {
             if (!Schema::hasTable('hal_fiyatlari')) {
                 Schema::create('hal_fiyatlari', function ($t) {
@@ -8853,7 +8853,95 @@ if (!function_exists('_restoHalEnsure')) {
                     $t->index(['sube_id', 'tarih']);
                 });
             }
-            cache()->put('resto_hal_ensure_ok', 1, now()->addHours(12));
+            // SİSTEM GENELİ ürün adı kataloğu (tüm restoranlar ortak kullanır; küratörlü liste + hal)
+            if (!Schema::hasTable('urun_katalogu')) {
+                Schema::create('urun_katalogu', function ($t) {
+                    $t->id();
+                    $t->string('ad', 80);                 // görünen ad (Soğan)
+                    $t->string('ad_norm', 80)->unique();  // eşleşme/tekille (soğan)
+                    $t->string('birim', 12)->nullable();  // varsayılan birim
+                    $t->string('tip', 40)->nullable();    // kategori (Et & Tavuk, Süt Ürünleri...)
+                    $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                });
+            }
+            if (Schema::hasTable('urun_katalogu')) {
+                if (function_exists('_urunKatalogSeedSistem')) _urunKatalogSeedSistem(); // küratörlü tüm kategoriler (idempotent)
+                // mevcut hal verisinden sebze/meyve isimleri (idempotent)
+                if (Schema::hasTable('hal_fiyatlari')) {
+                    foreach (DB::table('hal_fiyatlari')->select('urun_ad', 'birim')->distinct()->get() as $h) {
+                        if (function_exists('_urunKatalogEkle')) _urunKatalogEkle($h->urun_ad, 'Sebze & Meyve', $h->birim);
+                    }
+                }
+            }
+            cache()->put('resto_hal_ensure_ok2', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Ürün adı normalize (eşleşme/tekille): küçük harf + Türkçe sade + tek boşluk.
+if (!function_exists('_urunNorm')) {
+    function _urunNorm($s)
+    {
+        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        $s = preg_replace('/\s+/', ' ', $s);
+        return mb_substr($s, 0, 80);
+    }
+}
+// SİSTEM GENELİ küratörlü ürün master listesi — tüm restoran kategorileri (idempotent, toplu insert).
+if (!function_exists('_urunKatalogSeedSistem')) {
+    function _urunKatalogSeedSistem()
+    {
+        try {
+            if (!Schema::hasTable('urun_katalogu')) return;
+            $data = [
+                'Et & Tavuk' => ['Dana Kıyma', 'Dana Kuşbaşı', 'Dana Antrikot', 'Dana Bonfile', 'Dana Kontrfile', 'Dana Pirzola', 'Dana Rosto', 'Dana Haşlamalık', 'Dana Ciğer', 'Dana Yürek', 'Dana Dil', 'Kuzu Kıyma', 'Kuzu Kuşbaşı', 'Kuzu Pirzola', 'Kuzu But', 'Kuzu Kol', 'Kuzu Gerdan', 'Kuzu Ciğer', 'Karışık Kıyma', 'Köfte Harcı', 'Tavuk Göğüs', 'Tavuk But', 'Tavuk Kanat', 'Tavuk Baget', 'Tavuk Bütün', 'Tavuk Pirzola', 'Tavuk Kıyma', 'Tavuk Ciğer', 'Tavuk Şinitzel', 'Hindi Göğüs', 'Hindi But', 'Sucuk', 'Sosis', 'Salam', 'Jambon', 'Pastırma', 'Kavurma', 'Döner (Et)', 'Döner (Tavuk)'],
+                'Deniz Ürünleri' => ['Somon', 'Levrek', 'Çipura', 'Hamsi', 'İstavrit', 'Mezgit', 'Palamut', 'Lüfer', 'Barbun', 'Karides', 'Kalamar', 'Midye', 'Ahtapot', 'Ton Balığı', 'Balık Köftesi', 'Fileto Balık'],
+                'Süt Ürünleri' => ['Süt', 'Yoğurt', 'Ayran', 'Kefir', 'Beyaz Peynir', 'Kaşar Peyniri', 'Eski Kaşar', 'Tulum Peyniri', 'Lor Peyniri', 'Örgü Peyniri', 'Hellim', 'Mozzarella', 'Cheddar', 'Krem Peynir', 'Labne', 'Kaymak', 'Krema', 'Sıvı Krema', 'Tereyağı', 'Margarin', 'Süzme Yoğurt', 'Rende Peynir'],
+                'Bakliyat & Kuru Gıda' => ['Pirinç', 'Baldo Pirinç', 'Osmancık Pirinç', 'Bulgur', 'Köftelik Bulgur', 'Pilavlık Bulgur', 'Un', 'Makarna', 'Spagetti', 'Şehriye', 'Erişte', 'Kırmızı Mercimek', 'Yeşil Mercimek', 'Nohut', 'Kuru Fasulye', 'Barbunya', 'Börülce', 'Nişasta', 'İrmik', 'Yulaf', 'Mısır Nişastası', 'Toz Şeker', 'Küp Şeker', 'Pudra Şekeri', 'Tuz', 'İnce Tuz', 'Kaya Tuzu', 'Galeta Unu', 'Kuru Üzüm', 'Ceviz İçi', 'Fındık İçi', 'Badem', 'Antep Fıstığı'],
+                'Yağ' => ['Ayçiçek Yağı', 'Zeytinyağı', 'Riviera Zeytinyağı', 'Natürel Zeytinyağı', 'Mısırözü Yağı', 'Kanola Yağı', 'Fındık Yağı', 'Kızartmalık Yağ', 'Sıvı Yağ'],
+                'Un & Unlu Mamül' => ['Ekmek', 'Tam Buğday Ekmeği', 'Lavaş', 'Pide', 'Bazlama', 'Tortilla', 'Hamburger Ekmeği', 'Sandviç Ekmeği', 'Tost Ekmeği', 'Yufka', 'Milföy Hamuru', 'Baklava Yufkası', 'Kadayıf', 'Mantı', 'Pizza Hamuru'],
+                'Sebze' => ['Domates', 'Salatalık', 'Sivri Biber', 'Çarliston Biber', 'Dolmalık Biber', 'Kapya Biber', 'Patlıcan', 'Kabak', 'Soğan', 'Kuru Soğan', 'Taze Soğan', 'Sarımsak', 'Patates', 'Havuç', 'Marul', 'Kıvırcık', 'Göbek Marul', 'Roka', 'Maydanoz', 'Dereotu', 'Nane', 'Ispanak', 'Pazı', 'Lahana', 'Kırmızı Lahana', 'Brokoli', 'Karnabahar', 'Pırasa', 'Kereviz', 'Turp', 'Mantar', 'Mısır', 'Bezelye', 'Taze Fasulye', 'Bamya', 'Enginar', 'Limon', 'Avokado'],
+                'Meyve' => ['Elma', 'Armut', 'Muz', 'Portakal', 'Mandalina', 'Greyfurt', 'Çilek', 'Üzüm', 'Karpuz', 'Kavun', 'Şeftali', 'Kayısı', 'Erik', 'Kiraz', 'Vişne', 'İncir', 'Nar', 'Ananas', 'Kivi', 'Mango'],
+                'İçecek' => ['Su', 'Damacana Su', 'Soda', 'Meyveli Soda', 'Maden Suyu', 'Kola', 'Kola (Şekersiz)', 'Gazoz', 'Fanta', 'Sprite', 'Meyve Suyu', 'Vişne Suyu', 'Şeftali Suyu', 'Portakal Suyu', 'Limonata', 'Ice Tea', 'Çay', 'Yeşil Çay', 'Bitki Çayı', 'Türk Kahvesi', 'Filtre Kahve', 'Espresso Çekirdek', 'Granül Kahve', 'Sıcak Çikolata', 'Enerji İçeceği', 'Bira', 'Rakı', 'Şarap (Kırmızı)', 'Şarap (Beyaz)', 'Votka', 'Viski'],
+                'Baharat & Sos' => ['Karabiber', 'Kırmızı Pul Biber', 'Toz Kırmızı Biber', 'Kimyon', 'Nane (Kuru)', 'Kekik', 'Sumak', 'Tarçın', 'Köri', 'Zerdeçal', 'Zencefil', 'Yenibahar', 'Defne Yaprağı', 'Susam', 'Çörekotu', 'Vanilya', 'Kabartma Tozu', 'Karbonat', 'Maya', 'Ketçap', 'Mayonez', 'Hardal', 'Acı Sos', 'BBQ Sos', 'Soya Sosu', 'Sirke', 'Elma Sirkesi', 'Nar Ekşisi', 'Limon Sosu', 'Salça (Domates)', 'Salça (Biber)'],
+                'Konserve & Hazır' => ['Domates Konservesi', 'Doğranmış Domates', 'Mısır Konservesi', 'Bezelye Konservesi', 'Barbunya Konservesi', 'Ton Balığı Konservesi', 'Zeytin (Siyah)', 'Zeytin (Yeşil)', 'Turşu', 'Közlenmiş Biber', 'Hazır Çorba', 'Bulyon', 'Et Suyu', 'Tavuk Suyu'],
+                'Dondurulmuş' => ['Parmak Patates', 'Elma Dilim Patates', 'Dondurulmuş Sebze', 'Dondurulmuş Bezelye', 'Dondurulmuş Pizza', 'Nugget', 'Dondurulmuş Hamur', 'Dondurma'],
+                'Kahvaltılık' => ['Bal', 'Reçel', 'Çikolata Kreması', 'Fıstık Ezmesi', 'Tahin', 'Pekmez', 'Zeytin Ezmesi', 'Yumurta', 'Mısır Gevreği', 'Yulaf Ezmesi'],
+                'Tatlı & Pasta' => ['Çikolata', 'Kakao', 'Krem Şanti', 'Pasta Kreması', 'Jelatin', 'Puding', 'Supangle', 'Fıstık', 'Hindistan Cevizi', 'Bisküvi', 'Kek Malzemesi'],
+                'Temizlik' => ['Bulaşık Deterjanı', 'Bulaşık Makinesi Deterjanı', 'Parlatıcı', 'Çamaşır Suyu', 'Yüzey Temizleyici', 'Yağ Çözücü', 'Cam Temizleyici', 'Sıvı Sabun', 'El Dezenfektanı', 'Kağıt Havlu', 'Tuvalet Kağıdı', 'Peçete', 'Çöp Poşeti', 'Eldiven', 'Islak Mendil', 'Bulaşık Süngeri', 'Deterjan Tablet'],
+                'Ambalaj & Sarf' => ['Paket Kabı', 'Köpük Kap', 'Karton Kutu', 'Plastik Çatal', 'Plastik Kaşık', 'Plastik Bıçak', 'Karton Bardak', 'Plastik Bardak', 'Kapaklı Bardak', 'Pipet', 'Streç Film', 'Alüminyum Folyo', 'Yağlı Kağıt', 'Servis Peçetesi', 'Kürdan', 'Poşet'],
+            ];
+            $mevcut = DB::table('urun_katalogu')->pluck('ad_norm')->flip();
+            $ekle = [];
+            foreach ($data as $kat => $urunler) {
+                foreach ($urunler as $u) {
+                    $norm = _urunNorm($u);
+                    if ($norm === '' || isset($mevcut[$norm])) continue;
+                    $mevcut[$norm] = true;
+                    $ekle[] = ['ad' => mb_substr($u, 0, 80), 'ad_norm' => $norm, 'birim' => null, 'tip' => $kat, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
+                }
+            }
+            foreach (array_chunk($ekle, 100) as $c) DB::table('urun_katalogu')->insert($c);
+        } catch (\Throwable $e) {}
+    }
+}
+// Sistem geneli ürün kataloğuna ekle (yoksa). ad = ham (UPPERCASE olabilir) -> Title Case saklanır.
+if (!function_exists('_urunKatalogEkle')) {
+    function _urunKatalogEkle($ad, $tip = null, $birim = null)
+    {
+        try {
+            if (!Schema::hasTable('urun_katalogu')) return;
+            $ad = trim(preg_replace('/\s+/', ' ', (string) $ad));
+            if ($ad === '') return;
+            $norm = _urunNorm($ad);
+            if ($norm === '') return;
+            if (DB::table('urun_katalogu')->where('ad_norm', $norm)->exists()) return;
+            DB::table('urun_katalogu')->insert([
+                'ad' => mb_convert_case(mb_substr($ad, 0, 80), MB_CASE_TITLE, 'UTF-8'),
+                'ad_norm' => $norm, 'birim' => $birim ? mb_substr($birim, 0, 12) : null,
+                'tip' => $tip ? mb_substr((string) $tip, 0, 24) : null, 'aktif' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
         } catch (\Throwable $e) {}
     }
 }
@@ -8960,6 +9048,11 @@ if (!function_exists('_halCek')) {
                 if ($ort <= 0 && $asg <= 0 && $azm <= 0) continue;
                 DB::table('hal_fiyatlari')->insert(['sube_id' => $sid, 'urun_ad' => mb_substr((string) $ad, 0, 80), 'birim' => mb_substr((string) $birim, 0, 12),
                     'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'api', 'created_at' => now(), 'updated_at' => now()]);
+                // sistem geneli ürün kataloğuna da yaz (tüm restoranlar kullanır)
+                if (function_exists('_urunKatalogEkle')) {
+                    $tip = $al($r, ['MalTipAdi', 'malTipAdi', 'tip', 'Tip', 'kategori']);
+                    _urunKatalogEkle($ad, $tip ? mb_strtolower((string) $tip, 'UTF-8') : null, $birim);
+                }
                 $eklenen++;
             }
             return $eklenen ? ['ok' => 1, 'mesaj' => $eklenen . ' ürün çekildi (' . $k['ad'] . ' · ' . $tarih . ').'] : ['ok' => 0, 'mesaj' => 'Eşleşen veri çıkmadı (bugün yayınlanmamış olabilir).'];
@@ -8972,6 +9065,25 @@ Route::post('/hal-fiyatlari/cek', function (Request $r) {
     $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : null;
     $sonuc = _halCek($sid, $kaynak, $tarih);
     return redirect('/hal-fiyatlari')->with($sonuc['ok'] ? 'hal_ok' : 'hal_hata', $sonuc['mesaj']);
+});
+
+// SİSTEM GENELİ ürün kataloğu — malzeme eklerken isim önerisi (tüm restoranlar ortak).
+if (!function_exists('_urunKatalogListe')) {
+    function _urunKatalogListe()
+    {
+        try {
+            if (function_exists('_restoHalEnsure')) _restoHalEnsure(); // tabloyu kur + seed et
+            if (!Schema::hasTable('urun_katalogu')) return ['ok' => 1, 'urunler' => []];
+            $rows = DB::table('urun_katalogu')->where('aktif', 1)->orderBy('tip')->orderBy('ad')->get(['ad', 'tip', 'birim']);
+            return ['ok' => 1, 'urunler' => $rows->map(fn ($x) => ['ad' => $x->ad, 'kategori' => $x->tip, 'birim' => $x->birim])->all()];
+        } catch (\Throwable $e) { return ['ok' => 1, 'urunler' => []]; }
+    }
+}
+Route::get('/urun-katalog', fn () => response()->json(_urunKatalogListe()));          // web (datalist/autocomplete)
+Route::get('/api/patron/urun-katalog', function (Request $r) {                         // Flutter
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    return response()->json(_urunKatalogListe());
 });
 
 // ===== FAZ 4/5: Satınalma Analizi — Tedarikçi Karnesi (zamanında/red) + Harcama Trendi =====
