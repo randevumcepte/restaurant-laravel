@@ -12572,6 +12572,7 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
     $dept = trim((string) $r->input('departman', 'Diğer')) ?: 'Diğer';
     $aciliyet = in_array($r->input('aciliyet'), ['normal', 'acil']) ? $r->input('aciliyet') : 'normal';
     $kalemler = $r->input('kalemler', []);
+    if (is_string($kalemler)) $kalemler = json_decode($kalemler, true) ?: []; // mobil app JSON-string yollar
     if (empty($kalemler) || !is_array($kalemler)) return response()->json(['ok' => false, 'mesaj' => 'En az bir kalem gerekli.']);
     $talepId = DB::table('satinalma_talepleri')->insertGetId([
         'sube_id' => $sid, 'departman' => mb_substr($dept, 0, 80),
