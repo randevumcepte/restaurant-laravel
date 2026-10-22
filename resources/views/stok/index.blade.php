@@ -382,8 +382,9 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
         <div class="stk-mod-cizgi"></div>
         <div class="stk-mod-baslik" id="stkFormBaslik">Yeni Malzeme</div>
         <div class="stk-field">
-            <label>Malzeme adı</label>
-            <input type="text" id="stkFAd" placeholder="Malzeme adı">
+            <label>Malzeme adı <span style="font-weight:400;opacity:.7;font-size:11px">— yazmaya başla, listeden seç</span></label>
+            <input type="text" id="stkFAd" placeholder="Malzeme adı (hazır listeden seç ya da yaz)" list="stkUrunKatalog" autocomplete="off">
+            <datalist id="stkUrunKatalog"></datalist>
         </div>
         <div class="stk-row">
             <div class="stk-field">
@@ -483,6 +484,27 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
 // STOK / MALZEME — Flutter StokScreen web eşdeğeri
 // ──────────────────────────────────────────────
 const STK_TOKEN = '{{ $webToken }}'; // personel api_token (Bearer)
+
+// SİSTEM GENELİ ürün kataloğu -> malzeme adı için hazır öneri (datalist)
+let STK_KATALOG = {}; // ad_lower -> {ad, kategori}
+(function stkKatalogYukle(){
+  fetch('/urun-katalog').then(r=>r.json()).then(j=>{
+    if(!j || !j.urunler) return;
+    const dl=document.getElementById('stkUrunKatalog'); if(!dl) return;
+    dl.innerHTML = j.urunler.map(u=>`<option value="${(u.ad||'').replace(/"/g,'&quot;')}">${u.kategori||''}</option>`).join('');
+    j.urunler.forEach(u=>{ if(u.ad) STK_KATALOG[u.ad.toLocaleLowerCase('tr')]={ad:u.ad,kategori:u.kategori}; });
+  }).catch(()=>{});
+})();
+// Katalogdan ad seçilince, o ürünün kategorisini de otomatik seç (kategori adı eşleşirse)
+document.addEventListener('input', function(e){
+  if(e.target && e.target.id==='stkFAd'){
+    const k = STK_KATALOG[(e.target.value||'').trim().toLocaleLowerCase('tr')];
+    if(k && k.kategori){
+      const sel=document.getElementById('stkFKat');
+      if(sel){ for(const o of sel.options){ if((o.textContent||'').toLocaleLowerCase('tr')===k.kategori.toLocaleLowerCase('tr')){ sel.value=o.value; break; } } }
+    }
+  }
+});
 let stkDuzenleyebilir = {{ $duzenleyebilir ? 'true' : 'false' }};
 
 // Server-render edilen veri (JS'de detay/hareket/formlarda kullanmak için)
