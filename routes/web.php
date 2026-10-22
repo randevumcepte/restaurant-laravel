@@ -12785,6 +12785,40 @@ Route::post('/satinalma-talep/po-olustur', function (Request $r) {
     DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'siparis', 'updated_at' => now()]);
     return response()->json(['ok' => true, 'siparisler' => $siparisNolar]);
 });
+// Mobil app: satın alma talep listesi + özet + kritik stok + form verileri (Bearer)
+Route::get('/api/patron/talep-liste', function (Request $r) {
+    _satinalmaTalepEnsure();
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => false], 401);
+    $sid = $p->sube_id;
+    $talepler = DB::table('satinalma_talepleri')->where('sube_id', $sid)
+        ->orderByRaw("FIELD(durum,'yeni','teklif','onayda','onaylandi','siparis','tamamlandi')")
+        ->orderByDesc('created_at')->limit(200)
+        ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'not', 'created_at'])
+        ->map(function ($t) {
+            $t->kalem_sayisi = DB::table('talep_kalemleri')->where('talep_id', $t->id)->count();
+            return $t;
+        });
+    $ozet = [
+        'yeni' => $talepler->where('durum', 'yeni')->count(),
+        'onayda' => $talepler->whereIn('durum', ['teklif', 'onayda'])->count(),
+        'tamamlanan' => $talepler->where('durum', 'tamamlandi')->count(),
+    ];
+    $malzemeler = DB::table('malzemeler')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
+        ->orderBy('malzemeler.ad')->get(['malzemeler.id', 'malzemeler.ad', 'birimler.kisaltma as birim_kisaltma']);
+    $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
+    $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
+    return response()->json([
+        'ok' => true,
+        'talepler' => $talepler->values(),
+        'ozet' => $ozet,
+        'kritikler' => _kritikStokListesi($sid),
+        'malzemeler' => $malzemeler,
+        'birimler' => $birimler,
+        'tedarikciler' => $tedarikciler,
+        'patron' => in_array($p->rol ?? '', ['sahip', 'mudur']),
+    ]);
+});
 // Bir yarı mamülün üretim partileri (SKT + kalan) + toplam stok
 Route::get('/api/patron/yarimamul-partileri', function (Request $r) {
     $p = _apiPersonel($r);
