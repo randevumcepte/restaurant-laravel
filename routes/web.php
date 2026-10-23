@@ -7382,13 +7382,21 @@ if (!function_exists('_patronAiBriefVeri')) {
         $gun = $gun ?: \Carbon\Carbon::yesterday();
         $gecenHafta = $gun->copy()->subWeek();
         $onceki = $gun->copy()->subDay();
-        $ciroGun = function ($g) use ($sid) {
-            try { return (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
-                ->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $g->toDateString())->sum('odemeler.tutar'); }
+        // Gün HENÜZ BİTMEDİYSE (akşam=bugün) kıyası ADİL yap: karşılaştırma günlerini de AYNI SAATE kadar al.
+        $simdiSaat = $gun->isToday() ? now()->format('H:i:s') : null;
+        $ciroGun = function ($g) use ($sid, $simdiSaat) {
+            try { $q = DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+                ->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $g->toDateString());
+                if ($simdiSaat) $q->whereTime('odemeler.created_at', '<=', $simdiSaat);
+                return (float) $q->sum('odemeler.tutar'); }
             catch (\Throwable $e) { return 0.0; }
         };
         $dun = $ciroGun($gun); $gh = $ciroGun($gecenHafta); $onc = $ciroGun($onceki);
-        $kiyas = $gh > 0 ? $gh : $onc;
+        // Kıyas kaynağını ve DOĞRU ETİKETİNİ belirle (yanlış "geçen hafta" demeyelim)
+        $saatNot = $simdiSaat ? ' (aynı saate kadar)' : '';
+        if ($gh > 0) { $kiyas = $gh; $kiyasEtiket = 'geçen hafta aynı gün' . $saatNot; }
+        elseif ($onc > 0) { $kiyas = $onc; $kiyasEtiket = ($simdiSaat ? 'dün' : 'önceki gün') . $saatNot; }
+        else { $kiyas = 0; $kiyasEtiket = null; }
         $ciroYuzde = $kiyas > 0 ? round(($dun - $kiyas) / $kiyas * 100, 1) : 0.0;
         $folyo = 0; $misafir = 0;
         try {
@@ -7442,8 +7450,8 @@ if (!function_exists('_patronAiBriefVeri')) {
             try { $dk = _patronAiDisKaynak($sid); $eposta = $dk['eposta'] ?? []; $takvim = $dk['takvim'] ?? []; } catch (\Throwable $e) {}
         }
         return [
-            'tarih' => $gun->toDateString(),
-            'dun_ciro' => round($dun), 'kiyas_ciro' => round($kiyas), 'ciro_yuzde' => $ciroYuzde,
+            'tarih' => $gun->toDateString(), 'gun_tipi' => ($simdiSaat ? 'bugun' : 'dun'),
+            'dun_ciro' => round($dun), 'kiyas_ciro' => round($kiyas), 'kiyas_etiket' => $kiyasEtiket, 'ciro_yuzde' => $ciroYuzde,
             'misafir' => $misafir, 'folyo' => $folyo, 'kisi_basi' => (int) $kisiBasi,
             'food_cost_yuzde' => $fc, 'kayip' => array_map(fn ($v) => round($v), $kayip),
             'kritik_sayi' => count($kritik), 'kritik' => array_slice(array_map(fn ($k) => $k['ad'], $kritik), 0, 6),
@@ -7479,8 +7487,9 @@ if (!function_exists('_patronAiKurallar')) {
         $acilis = $tip === 'aksam' ? 'Günü senin için topladım.' : 'Dünü senin için özetledim.';
         $yuzde = $v['ciro_yuzde'] ?? 0;
         $yonK = $yuzde >= 0 ? 'yükseldi' : 'düştü';
+        $ket = $v['kiyas_etiket'] ?? null;
         $m = "$selam$hitap! $acilis ";
-        $m .= 'Ciro ' . $tl($v['dun_ciro'] ?? 0) . ' oldu (geçen haftaya göre %' . abs($yuzde) . ' ' . $yonK . '), '
+        $m .= 'Ciro ' . $tl($v['dun_ciro'] ?? 0) . ' oldu' . ($ket ? ' (' . $ket . 'e göre %' . abs($yuzde) . ' ' . $yonK . ')' : '') . ', '
             . ($v['misafir'] ?? 0) . ' misafir ağırladık, kişi başı ' . $tl($v['kisi_basi'] ?? 0) . '. ';
         $m .= 'Food-cost %' . ($v['food_cost_yuzde'] ?? 0) . ($v['food_cost_yuzde'] >= 35 ? ' — biraz yüksek, göz atmakta fayda var. ' : '. ');
         if (!empty($v['en_cok'])) $m .= 'En çok ' . $v['en_cok']['ad'] . ' sattık (' . $v['en_cok']['adet'] . ' adet). ';
@@ -7508,9 +7517,11 @@ if (!function_exists('_patronAiAnlatim')) {
         $selam = $tip === 'aksam' ? 'İyi akşamlar' : 'Günaydın';
         $yuzde = $v['ciro_yuzde'] ?? 0;
         $ok = $yuzde >= 0 ? '↑' : '↓';
+        $ket = $v['kiyas_etiket'] ?? null;
+        $gunK = ($v['gun_tipi'] ?? 'dun') === 'bugun' ? 'Bugün' : 'Dün';
         $s = [];
         $s[] = '👋 **' . $selam . ($adK ? ', ' . $adK : '') . '!** ' . ($tip === 'aksam' ? 'Günü senin için topladım.' : 'Dünü senin için özetledim.');
-        $s[] = '💰 Ciro **' . $tl($v['dun_ciro'] ?? 0) . '** — geçen haftaya göre **%' . abs($yuzde) . ' ' . $ok . '**.';
+        $s[] = '💰 Ciro **' . $tl($v['dun_ciro'] ?? 0) . '**' . ($ket ? ' — ' . $ket . 'e göre **%' . abs($yuzde) . ' ' . $ok . '**' : '') . '.';
         $s[] = '👥 **' . ($v['misafir'] ?? 0) . ' misafir**, kişi başı **' . $tl($v['kisi_basi'] ?? 0) . '**.';
         $fc = $v['food_cost_yuzde'] ?? 0;
         $s[] = '🍽️ Food-cost **%' . $fc . '**' . ($fc >= 35 ? ' — **biraz yüksek**, göz atmakta fayda var.' : ' (normal seviyede).');
@@ -7523,7 +7534,7 @@ if (!function_exists('_patronAiAnlatim')) {
             $s[] = '✅ Stok tarafı **rahat** görünüyor.';
         }
         $kayipTop = array_sum($v['kayip'] ?? []);
-        if ($kayipTop > 0) $s[] = '📉 Dün **' . $tl($kayipTop) . '** kayıp oldu (iskonto+ikram+iptal+fire).';
+        if ($kayipTop > 0) $s[] = '📉 ' . $gunK . ' **' . $tl($kayipTop) . '** kayıp oldu (iskonto+ikram+iptal+fire).';
         if (($v['eposta_bekleyen'] ?? 0) > 0) $s[] = '📨 **' . $v['eposta_bekleyen'] . ' e-posta** yanıt bekliyor.';
         if (!empty($v['takvim'] ?? [])) $s[] = '📅 Bugün **' . count($v['takvim']) . ' planın** var.';
         return $s;
@@ -7536,10 +7547,13 @@ if (!function_exists('_patronAiAnaliz')) {
         $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
         $B = [];
         $ciro = $v['dun_ciro'] ?? 0; $yuzde = $v['ciro_yuzde'] ?? 0; $mis = $v['misafir'] ?? 0; $kb = $v['kisi_basi'] ?? 0;
+        $gunK = ($v['gun_tipi'] ?? 'dun') === 'bugun' ? 'Bugün' : 'Dün';
+        $ket = $v['kiyas_etiket'] ?? null;
         // 1) CİRO & MİSAFİR
         $cd = $yuzde >= 5 ? 'iyi' : ($yuzde <= -10 ? 'risk' : ($yuzde < 0 ? 'dikkat' : 'notr'));
-        $cy = 'Dün **' . $tl($ciro) . '** ciro yaptık; geçen haftanın aynı gününe göre **%' . abs($yuzde) . ($yuzde >= 0 ? ' artış' : ' düşüş') . '**. '
-            . '**' . $mis . ' misafir** ağırladık, kişi başı ortalama harcama **' . $tl($kb) . '**. ';
+        if (!$ket) $cd = 'notr'; // kıyas verisi yoksa yargı yok
+        $cy = $gunK . ' **' . $tl($ciro) . '** ciro yapıldı' . ($ket ? '; ' . $ket . 'e göre **%' . abs($yuzde) . ($yuzde >= 0 ? ' artış' : ' düşüş') . '**' : ' (geçmiş kıyas verisi yok)') . '. '
+            . '**' . $mis . ' misafir** ağırlandı, kişi başı ortalama harcama **' . $tl($kb) . '**. ';
         if ($yuzde >= 5) $cy .= 'Ciroyu yukarı taşıyan, misafir trafiği ile sepet büyüklüğünün birlikte iyi gitmesi — sağlıklı bir büyüme.';
         elseif ($yuzde < 0) $cy .= 'Düşüşün kaynağını ayırmak kritik: misafir sayısı mı azaldı, yoksa kişi başı harcama mı? Kişi başı ' . $tl($kb) . ' makul görünüyorsa sorun daha çok **trafik** tarafındadır.';
         else $cy .= 'Hafta içi bir gün için dengeli, sürpriz olmayan bir tablo.';
@@ -7608,7 +7622,10 @@ if (!function_exists('_patronAiAnalizZengin')) {
                 . 'DEĞERLENDİRME ÖLÇÜTLERİ (restoran sektörü, durum bunlara göre): food_cost_yuzde <28 iyi, 28-35 dikkat, >35 RİSK (yüksek, kârı eritir). '
                 . 'ciro_yuzde +5 ve üstü iyi, 0 ile -10 arası dikkat, -10 ve altı risk. kayıp/ciro oranı %5 üstü dikkat, %10 üstü risk. kritik stok varsa stok durumu RİSK. '
                 // Veri alanlarının anlamı (yanlış çerçeveleme olmasın):
-                . 'VERİ ALANLARI: dun_ciro=dünkü ciro, kiyas_ciro=geçen hafta aynı günün cirosu, ciro_yuzde=geçen haftaya göre değişim yüzdesi, misafir=misafir sayısı, kisi_basi=kişi başı ortalama harcama, food_cost_yuzde=malzeme maliyetinin ciroya oranı, kritik=stoğu kritik seviyeye düşen malzemeler, riskli=az porsiyon kalan ürünler, kayip=iskonto/ikram/iptal/fire kaynaklı para kaybı (TL). '
+                . 'VERİ ALANLARI: gun_tipi — "bugun" ise rapor BUGÜNE aittir ("bugün" de, kesinlikle "dün" DEME); "dun" ise düne aittir. '
+                . 'dun_ciro=o günün cirosu, kiyas_ciro=kıyaslanan dönemin cirosu, kiyas_etiket=kıyasın hangi döneme ait olduğu (bunu aynen kullan, uydurma — örn "geçen hafta aynı gün (aynı saate kadar)" ya da "dün"), ciro_yuzde=kıyasa göre değişim yüzdesi. '
+                . 'gun_tipi "bugun" ise gün HENÜZ BİTMEDİ; ciroyu "şu ana kadar" diye değerlendir, günü erken kapatma. '
+                . 'misafir=misafir sayısı, kisi_basi=kişi başı ortalama harcama, food_cost_yuzde=malzeme maliyetinin ciroya oranı, kritik=stoğu kritik seviyeye düşen malzemeler, riskli=az porsiyon kalan ürünler, kayip=iskonto/ikram/iptal/fire kaynaklı para kaybı (TL). '
                 . 'KISA tut: ozet en fazla 2 cümle, her yorum en fazla 2 cümle, öneri 1 cümle. '
                 . 'ÇIKTIYI YALNIZCA şu JSON ile ver (öncesi/sonrası metin YOK, markdown başlık YOK, kod çiti YOK): '
                 . '{"ozet":"...","ciro":{"durum":"iyi|notr|dikkat|risk","yorum":"...","risk":"gerçek risk varsa yoksa bos","oneri":"..."},"foodcost":{"durum":"","yorum":"","risk":"","oneri":""},"stok":{"durum":"","yorum":"","risk":"","oneri":""},"kayip":{"durum":"","yorum":"","risk":"","oneri":""}}'
@@ -7667,7 +7684,7 @@ if (!function_exists('_patronAiDemoVeri')) {
     function _patronAiDemoVeri()
     {
         return [
-            'tarih' => \Carbon\Carbon::yesterday()->toDateString(),
+            'tarih' => \Carbon\Carbon::yesterday()->toDateString(), 'gun_tipi' => 'dun', 'kiyas_etiket' => 'geçen hafta aynı gün',
             'dun_ciro' => 18750, 'kiyas_ciro' => 22400, 'ciro_yuzde' => -16.3,
             'misafir' => 62, 'folyo' => 24, 'kisi_basi' => 302,
             'food_cost_yuzde' => 38.5,
