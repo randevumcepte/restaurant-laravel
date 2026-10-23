@@ -12218,6 +12218,22 @@ Route::post('/api/adim-kaydet', function (Request $r) {
     return (new \App\Services\GarsonPerformans($p->sube_id))->adimKaydet($p->id, (int) $r->input('adim'));
 });
 
+// ADIM İZNİ DURUMU: uygulama (AdimServisi) her açılışta bildirir -> patron personeller sayfasında görür.
+Route::post('/api/adim-izni', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!Schema::hasColumn('personeller', 'adim_izni')) {
+        try {
+            DB::statement("ALTER TABLE personeller ADD COLUMN adim_izni TINYINT NULL");
+            DB::statement("ALTER TABLE personeller ADD COLUMN adim_izni_at TIMESTAMP NULL");
+        } catch (\Throwable $e) {
+        }
+    }
+    DB::table('personeller')->where('id', $p->id)
+        ->update(['adim_izni' => (int) $r->input('izin'), 'adim_izni_at' => now()]);
+    return ['ok' => 1];
+});
+
 // GECICI DEMO: garson performans/isi haritasi icin sahte hareket (siparis+kalem+adim). Her garsona bir bolge yogunlugu.
 Route::get('/api/patron/demo-garson-doldur', function (Request $r) {
     $p = _apiPersonel($r);
@@ -13731,6 +13747,8 @@ function _restoPersonelKolonEnsure()
         'prim_oran' => "ALTER TABLE personeller ADD COLUMN prim_oran DECIMAL(6,2) NOT NULL DEFAULT 0",       // %
         'ise_baslama' => "ALTER TABLE personeller ADD COLUMN ise_baslama DATE NULL",
         'iban' => "ALTER TABLE personeller ADD COLUMN iban VARCHAR(40) NULL",
+        'adim_izni' => "ALTER TABLE personeller ADD COLUMN adim_izni TINYINT NULL",          // 1 verdi | 0 reddetti | null bildirmedi
+        'adim_izni_at' => "ALTER TABLE personeller ADD COLUMN adim_izni_at TIMESTAMP NULL",  // son bildirim zamani
     ];
     foreach ($ekle as $kol => $sql) {
         if (!Schema::hasColumn('personeller', $kol)) DB::statement($sql);
@@ -13815,6 +13833,9 @@ function _restoPersonelHesap($subeId, $per, $bas, $bit)
         'ciro' => round($ciro, 2), 'prim_hesap' => $primHesap, 'prim_manuel' => $primManuel,
         'avans' => $avans, 'kesinti' => $kesinti, 'ek_odeme' => $ekOdeme, 'odenen' => $odenen,
         'hakedis' => $hakedis, 'net' => $net,
+        // ADIM İZNİ: 1=verdi, 0=reddetti, null=hiç bildirmedi (uygulamaya henüz girmemiş/eski sürüm)
+        'adim_izni' => isset($per->adim_izni) ? (int) $per->adim_izni : null,
+        'adim_izni_at' => $per->adim_izni_at ?? null,
     ];
 }
 
