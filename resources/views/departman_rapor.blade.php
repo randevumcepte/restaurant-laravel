@@ -43,6 +43,9 @@
     <a href="/departman-rapor?id={{ $dep->id }}&force=1" class="rk-btn bos" style="padding:6px 10px" title="AI'yı yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
   </div>
 
+  @if (session('ok'))   <div class="rk-flash ok">{{ session('ok') }}</div> @endif
+  @if (session('hata')) <div class="rk-flash err">{{ session('hata') }}</div> @endif
+
   {{-- AI ANALİZİ --}}
   <div class="dr-blok" style="border-left:4px solid var(--mor1);{{ $aiVar ? 'background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(79,70,229,.06))' : '' }}">
     <div class="dr-h" style="color:var(--mor1)"><span class="material-icons-outlined" style="font-size:17px">{{ $aiVar ? 'auto_awesome' : 'insights' }}</span> {{ $aiVar ? 'AI Analizi' : 'Durum Özeti' }}</div>
@@ -70,6 +73,28 @@
       @endif
     @endif
   </div>
+
+  {{-- KRİTİK MALZEMELER + AKSİYON (çözüm odaklı) --}}
+  @if (($veri['aksiyon'] ?? null) === 'acil_siparis' && !empty($veri['kritik_liste']))
+  <div class="dr-blok" style="border-left:4px solid var(--kirmizi)">
+    <div class="dr-h" style="color:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:17px">warning</span> Kritik Malzemeler — Acil Sipariş Gerekli ({{ count($veri['kritik_liste']) }})</div>
+    <div style="margin-bottom:12px">
+      @foreach ($veri['kritik_liste'] as $k)
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+          <span class="material-icons-outlined" style="color:var(--kirmizi);font-size:18px">inventory_2</span>
+          <span style="flex:1;font-weight:600">{{ $k['ad'] }}</span>
+          <span class="rk-sub" style="font-size:12px">mevcut {{ $k['mevcut'] }} / kritik {{ $k['kritik'] }} {{ $k['birim'] }}</span>
+          <span class="rk-rozet" style="background:var(--mavi)">öneri {{ $k['oneri'] }} {{ $k['birim'] }}</span>
+        </div>
+      @endforeach
+    </div>
+    <form method="POST" action="/patron-ai/acil-siparis" onsubmit="return confirm('{{ count($veri['kritik_liste']) }} kritik malzeme için ACİL satın alma talebi oluşturulsun ve satın almaya iletilsin mi?')">
+      @csrf
+      <input type="hidden" name="geri" value="/departman-rapor?id={{ $dep->id }}">
+      <button type="submit" class="rk-btn" style="background:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Acil Sipariş Oluştur ({{ count($veri['kritik_liste']) }} kalem) → Satın Alma</button>
+    </form>
+  </div>
+  @endif
 
   {{-- GÜNLÜK KPI --}}
   @if (!$veri['veri_yok'] && count($veri['kpi']))

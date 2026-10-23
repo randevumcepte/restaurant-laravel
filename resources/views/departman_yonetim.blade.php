@@ -48,7 +48,8 @@
           $unvanlar = $d->unvanlar ? (json_decode($d->unvanlar, true) ?: []) : [];
           $aiEt = ['tam' => 'AI: Tam', 'kisitli' => 'AI: Kısıtlı', 'kapali' => 'AI: Kapalı'][$d->ai_erisim] ?? 'AI: Kapalı';
           $aiRenk = ['tam' => 'var(--yesil)', 'kisitli' => 'var(--amber)', 'kapali' => 'var(--sub)'][$d->ai_erisim] ?? 'var(--sub)';
-          $kartJson = ['id' => (int) $d->id, 'ad' => $d->ad, 'kod' => $d->kod, 'grup' => $d->grup, 'renk' => $d->renk, 'ikon' => $d->ikon, 'ai_erisim' => $d->ai_erisim, 'ai_gunluk_limit' => (int) $d->ai_gunluk_limit, 'aktif' => (int) $d->aktif, 'sayfa' => $acikKeys, 'ek' => $ekKeys, 'unvanlar' => $unvanlar];
+          $dkat = collect($kategoriler ?? [])->where('departman_id', $d->id)->pluck('id')->map(fn ($x) => (int) $x)->values()->all();
+          $kartJson = ['id' => (int) $d->id, 'ad' => $d->ad, 'kod' => $d->kod, 'grup' => $d->grup, 'renk' => $d->renk, 'ikon' => $d->ikon, 'ai_erisim' => $d->ai_erisim, 'ai_gunluk_limit' => (int) $d->ai_gunluk_limit, 'aktif' => (int) $d->aktif, 'sayfa' => $acikKeys, 'ek' => $ekKeys, 'unvanlar' => $unvanlar, 'katIds' => $dkat];
         @endphp
         <div class="rk-card" style="padding:14px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -165,6 +166,22 @@
           </div>
         @endforeach
 
+        @if (!empty($kategoriler) && count($kategoriler))
+        <div class="rk-bolum" style="margin:16px 0 8px">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--yesil)">restaurant_menu</span>
+          <span class="b" style="font-size:13.5px;color:var(--yesil)">Menü Kategorileri (istasyon ayrımı)</span>
+        </div>
+        <div class="rk-sub" style="font-size:11.5px;margin:-2px 2px 8px">Mutfak istasyonları için: bu departmanın hazırladığı kategorileri seç (örn. Pastane → Tatlılar). Böylece denetim raporunda sadece kendi ürünleri görünür.</div>
+        <div style="background:var(--card2);border-radius:12px;padding:4px 12px;margin-bottom:8px">
+          @foreach ($kategoriler as $kat)
+            <label class="rk-yetki-satir">
+              <input type="checkbox" name="kat_{{ $kat->id }}" data-kat="{{ $kat->id }}" class="rk-chk">
+              <span>{{ $kat->ad }}</span>
+            </label>
+          @endforeach
+        </div>
+        @endif
+
         <label class="rk-yetki-satir" style="margin-top:8px">
           <input type="checkbox" name="aktif" value="1" id="d_aktif" class="rk-chk" checked><span>Aktif</span>
         </label>
@@ -200,6 +217,10 @@ function depAc(d) {
   var ek = (d && d.ek) ? d.ek : [];
   document.querySelectorAll('#depModal input[data-ek]').forEach(function (c) {
     c.checked = ek.indexOf(c.dataset.ek) >= 0;
+  });
+  var kat = (d && d.katIds) ? d.katIds : [];
+  document.querySelectorAll('#depModal input[data-kat]').forEach(function (c) {
+    c.checked = kat.indexOf(parseInt(c.dataset.kat)) >= 0;
   });
   document.getElementById('depModal').classList.add('acik');
 }

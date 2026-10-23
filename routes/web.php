@@ -6803,6 +6803,7 @@ if (!function_exists('_departmanEnsure')) {
             ['departmanlar', 'ust_departman_id', fn ($t) => $t->unsignedBigInteger('ust_departman_id')->nullable()],
             ['departmanlar', 'sorumlu_ek', fn ($t) => $t->text('sorumlu_ek')->nullable()],
             ['departmanlar', 'unvanlar', fn ($t) => $t->text('unvanlar')->nullable()],
+            ['menu_kategorileri', 'departman_id', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()], // kategori->istasyon/departman eşleşmesi
         ] as [$tab, $kol, $cl]) {
             try { if (Schema::hasTable($tab) && !Schema::hasColumn($tab, $kol)) Schema::table($tab, $cl); } catch (\Throwable $e) {}
         }
@@ -7054,9 +7055,11 @@ Route::get('/departman-yonetim', function () {
     try { $deps = DB::table('departmanlar')->where('sube_id', $sid)->orderBy('ad')->get(); } catch (\Throwable $e) {}
     $benSahip = false;
     try { $bp = _posPersonel(); $benSahip = $bp && in_array(($bp->rol ?? ''), ['sahip', 'mudur']); } catch (\Throwable $e) {}
+    $kategoriler = collect();
+    try { $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $sid)->orderBy('ad')->get(['id', 'ad', 'departman_id']); } catch (\Throwable $e) {}
     return view('departman_yonetim', [
         'departmanlar' => $deps, 'sayfaKategori' => _panelSayfaKategori(),
-        'sablonlar' => _departmanSablonlari(), 'duzenleyebilir' => $benSahip,
+        'sablonlar' => _departmanSablonlari(), 'duzenleyebilir' => $benSahip, 'kategoriler' => $kategoriler,
     ]);
 });
 Route::post('/departman-kaydet', function (Request $r) {
@@ -7079,14 +7082,23 @@ Route::post('/departman-kaydet', function (Request $r) {
             'sayfa_yetki' => json_encode($sayfa), 'sorumlu_ek' => json_encode($sorumluEk), 'unvanlar' => json_encode($unvanlar),
             'ai_erisim' => $ai,
             'ai_gunluk_limit' => max(0, (int) $r->ai_gunluk_limit), 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
-        $pid = (int) $r->id;
-        if ($pid > 0) {
+        $pid = (int) $r->id; $yeniMi = $pid <= 0;
+        if (!$yeniMi) {
             DB::table('departmanlar')->where('id', $pid)->where('sube_id', $sid)->update($veri);
-            return redirect('/departman-yonetim')->with('ok', 'Departman güncellendi.');
+        } else {
+            $veri['sube_id'] = $sid; $veri['created_at'] = now();
+            $pid = (int) DB::table('departmanlar')->insertGetId($veri);
         }
-        $veri['sube_id'] = $sid; $veri['created_at'] = now();
-        DB::table('departmanlar')->insert($veri);
-        return redirect('/departman-yonetim')->with('ok', 'Departman oluşturuldu.');
+        // Menü kategorisi eşlemesi (mutfak istasyon ayrımı): önce bu departmanın eski eşlemelerini temizle, seçilenleri bağla.
+        if (Schema::hasColumn('menu_kategorileri', 'departman_id')) {
+            try {
+                DB::table('menu_kategorileri')->where('sube_id', $sid)->where('departman_id', $pid)->update(['departman_id' => null]);
+                $secili = [];
+                foreach (DB::table('menu_kategorileri')->where('sube_id', $sid)->pluck('id') as $kid) if ($r->has('kat_' . $kid)) $secili[] = $kid;
+                if ($secili) DB::table('menu_kategorileri')->where('sube_id', $sid)->whereIn('id', $secili)->update(['departman_id' => $pid]);
+            } catch (\Throwable $e) {}
+        }
+        return redirect('/departman-yonetim')->with('ok', $yeniMi ? 'Departman oluşturuldu.' : 'Departman güncellendi.');
     } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Kaydedilemedi.'); }
 });
 Route::post('/departman-sil', function (Request $r) {
@@ -7774,11 +7786,11 @@ Route::get('/api/patron-ai/sabah', function (Request $r) {
 // ============================ PATRON AI — DEPARTMAN DENETİMİ (her departmanı tek tek incele + AI yorum) ============================
 if (!function_exists('_departmanRaporVeri')) {
     // Bir departmanın GÜNLÜK verisi (kod'a göre ilgili alandan). durum/ozet/kpi/uyari/veri_yok döner.
-    function _departmanRaporVeri($sid, $kod, $gun, $simdiSaat = null)
+    function _departmanRaporVeri($sid, $kod, $gun, $simdiSaat = null, $depId = 0)
     {
         $sid = (int) $sid; $ds = $gun->toDateString();
         $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
-        $kpi = []; $uyari = []; $durum = 'notr'; $ozet = ''; $veriYok = false; $isAkisi = null;
+        $kpi = []; $uyari = []; $durum = 'notr'; $ozet = ''; $veriYok = false; $isAkisi = null; $kritikListe = []; $aksiyon = null;
         $ciroGun = function () use ($sid, $ds, $simdiSaat) {
             try { $q = DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
                 ->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $ds);
@@ -7799,16 +7811,27 @@ if (!function_exists('_departmanRaporVeri')) {
                     $ozet = "$ad adisyon, " . $tl($ciro) . " ciro" . ($iptal ? ", $iptal iptal kalem" : "") . ".";
                     break;
                 case 'mutfak': case 'soguk_mutfak': case 'pastane': case 'kasap':
-                    $bekleyen = 0;
-                    try { $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
-                    $gonderilen = 0;
-                    try { $gonderilen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet'); } catch (\Throwable $e) {}
-                    $fire = $fireGun();
-                    $kpi = [['Hazırlanacak', $bekleyen], ['Bugün gönderilen', $gonderilen . ' adet'], ['Fire', $tl($fire)]];
+                    // İSTASYON AYRIMI: bu departmana bağlı menü kategorilerinin ürünleri. Yoksa: 'mutfak'=tüm mutfak, diğerleri=veri yok.
+                    $katIds = [];
+                    try { if ($depId && Schema::hasColumn('menu_kategorileri', 'departman_id')) $katIds = DB::table('menu_kategorileri')->where('departman_id', (int) $depId)->pluck('id')->all(); } catch (\Throwable $e) {}
+                    $urunFiltre = null; // null = filtre yok (tüm mutfak)
+                    if ($katIds) { try { $urunFiltre = DB::table('urunler')->whereIn('kategori_id', $katIds)->pluck('id')->all(); } catch (\Throwable $e) { $urunFiltre = []; } }
+                    if (!$katIds && $kod !== 'mutfak') {
+                        $veriYok = true; $durum = 'notr';
+                        $ozet = 'Bu istasyona menü kategorisi bağlanmamış — Departman Yönetimi\'nden bu departmanı düzenleyip ilgili kategorileri seç.';
+                        break;
+                    }
+                    $bq = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor']);
+                    if ($urunFiltre !== null) $bq->whereIn('adisyon_kalemleri.urun_id', $urunFiltre);
+                    $bekleyen = 0; try { $bekleyen = (int) $bq->count(); } catch (\Throwable $e) {}
+                    $gq = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds);
+                    if ($urunFiltre !== null) $gq->whereIn('adisyon_kalemleri.urun_id', $urunFiltre);
+                    $gonderilen = 0; try { $gonderilen = (int) $gq->sum('adisyon_kalemleri.adet'); } catch (\Throwable $e) {}
+                    $kpi = [['Hazırlanacak', $bekleyen], ['Bugün gönderilen', $gonderilen . ' adet']];
+                    if ($urunFiltre === null) { $fire = $fireGun(); $kpi[] = ['Fire (mutfak geneli)', $tl($fire)]; if ($fire > 0) { $uyari[] = $tl($fire) . " fire/zayiat var — israf kontrolü gerek."; $durum = 'dikkat'; } }
                     $isAkisi = $bekleyen >= 15 ? 'yavaş' : 'normal';
-                    if ($bekleyen >= 15) { $durum = 'dikkat'; $uyari[] = "Mutfak kuyruğu yoğun ($bekleyen bekleyen ürün) — servis yavaşlıyor olabilir."; }
-                    if ($fire > 0) { $uyari[] = $tl($fire) . " fire/zayiat kaydı var — israf kontrolü gerek."; if ($durum === 'notr') $durum = 'dikkat'; }
-                    $ozet = "$gonderilen ürün hazırlandı, $bekleyen bekliyor" . ($fire > 0 ? ", " . $tl($fire) . " fire" : "") . ".";
+                    if ($bekleyen >= 15) { $durum = 'dikkat'; $uyari[] = "Kuyruk yoğun ($bekleyen bekleyen ürün) — servis yavaşlıyor olabilir."; }
+                    $ozet = "$gonderilen ürün hazırlandı, $bekleyen bekliyor" . ($urunFiltre === null ? " (mutfak geneli)" : "") . ".";
                     break;
                 case 'kasa':
                     $ciro = $ciroGun();
@@ -7820,21 +7843,23 @@ if (!function_exists('_departmanRaporVeri')) {
                     $ozet = $tl($ciro) . " tahsilat (nakit " . $tl($nakit) . " / kart " . $tl($kart) . ").";
                     break;
                 case 'satinalma':
-                    $kritik = $kritikSay();
+                    $kritikListe = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                    $kritik = count($kritikListe);
                     $acikPO = 0; $talep = 0;
                     try { if (Schema::hasTable('satinalma_siparisleri')) $acikPO = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['teslim', 'tamamlandi', 'iptal'])->count(); } catch (\Throwable $e) {}
-                    try { if (Schema::hasTable('satinalma_talepleri')) $talep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->whereIn('durum', ['beklemede', 'patrona_gonderildi', 'onay_bekliyor'])->count(); } catch (\Throwable $e) {}
+                    try { if (Schema::hasTable('satinalma_talepleri')) $talep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->whereIn('durum', ['yeni', 'teklif', 'onayda'])->count(); } catch (\Throwable $e) {}
                     $kpi = [['Kritik stok', $kritik . ' kalem'], ['Açık sipariş', $acikPO], ['Bekleyen talep', $talep]];
-                    if ($kritik > 0) { $durum = 'risk'; $uyari[] = "$kritik malzeme kritik seviyede — acil sipariş gerekiyor."; }
+                    if ($kritik > 0) { $durum = 'risk'; $uyari[] = "$kritik malzeme kritik seviyede — acil sipariş gerekiyor."; $aksiyon = 'acil_siparis'; }
                     $ozet = "$kritik kritik malzeme, $acikPO açık sipariş, $talep bekleyen talep.";
                     break;
                 case 'depo': case 'mal_kabul':
-                    $kritik = $kritikSay();
+                    $kritikListe = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                    $kritik = count($kritikListe);
                     $hareket = 0;
                     try { $hareket = (int) DB::table('stok_hareketleri')->where('sube_id', $sid)->whereDate('created_at', $ds)->count(); } catch (\Throwable $e) {}
                     $fire = $fireGun();
                     $kpi = [['Kritik stok', $kritik . ' kalem'], ['Bugün stok hareketi', $hareket], ['Fire', $tl($fire)]];
-                    if ($kritik > 0) { $durum = 'dikkat'; $uyari[] = "$kritik malzeme kritik — tedarik planla."; }
+                    if ($kritik > 0) { $durum = 'dikkat'; $uyari[] = "$kritik malzeme kritik — tedarik planla."; $aksiyon = 'acil_siparis'; }
                     if ($fire > 0) $uyari[] = $tl($fire) . " fire kaydı.";
                     $ozet = "$kritik kritik, $hareket stok hareketi" . ($fire > 0 ? ", " . $tl($fire) . " fire" : "") . ".";
                     break;
@@ -7868,19 +7893,30 @@ if (!function_exists('_departmanRaporVeri')) {
                     $ozet = "Bu departman için sistemde takip edilen operasyonel veri henüz yok.";
             }
         } catch (\Throwable $e) { $veriYok = true; $ozet = 'Veri alınamadı.'; }
-        return ['durum' => $durum, 'ozet' => $ozet, 'kpi' => $kpi, 'uyari' => $uyari, 'veri_yok' => $veriYok, 'is_akisi' => $isAkisi];
+        return ['durum' => $durum, 'ozet' => $ozet, 'kpi' => $kpi, 'uyari' => $uyari, 'veri_yok' => $veriYok, 'is_akisi' => $isAkisi,
+            'kritik_liste' => $kritikListe, 'aksiyon' => $aksiyon];
     }
 }
 if (!function_exists('_departmanHaftalik')) {
     // Son 7 günün birincil göstergesi (ciro tabanlı genel aktivite) — grafik için.
-    function _departmanHaftalik($sid, $kod)
+    function _departmanHaftalik($sid, $kod, $depId = 0)
     {
+        // Mutfak istasyonu ise bağlı kategorilerin ürünleri (yoksa tüm mutfak)
+        $urunFiltre = null;
+        if (in_array($kod, ['mutfak', 'soguk_mutfak', 'pastane', 'kasap'])) {
+            try { if ($depId && Schema::hasColumn('menu_kategorileri', 'departman_id')) {
+                $katIds = DB::table('menu_kategorileri')->where('departman_id', (int) $depId)->pluck('id')->all();
+                if ($katIds) $urunFiltre = DB::table('urunler')->whereIn('kategori_id', $katIds)->pluck('id')->all();
+            } } catch (\Throwable $e) {}
+        }
         $out = [];
         for ($i = 6; $i >= 0; $i--) {
             $g = \Carbon\Carbon::today()->subDays($i); $ds = $g->toDateString(); $v = 0;
             try {
                 if (in_array($kod, ['mutfak', 'soguk_mutfak', 'pastane', 'kasap'])) {
-                    $v = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
+                    $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds);
+                    if ($urunFiltre !== null) $q->whereIn('adisyon_kalemleri.urun_id', $urunFiltre);
+                    $v = (int) $q->sum('adisyon_kalemleri.adet');
                 } elseif (in_array($kod, ['depo', 'mal_kabul'])) {
                     $v = (int) DB::table('stok_hareketleri')->where('sube_id', (int) $sid)->whereDate('created_at', $ds)->count();
                 } else {
@@ -7902,7 +7938,7 @@ if (!function_exists('_departmanDenetim')) {
             $deps = DB::table('departmanlar')->where('sube_id', (int) $sid)->where('aktif', 1)->orderBy('grup')->orderBy('ad')->get(['id', 'ad', 'kod', 'grup', 'renk', 'ikon']);
             $simdi = $gun->isToday() ? now()->format('H:i:s') : null;
             foreach ($deps as $d) {
-                $r = _departmanRaporVeri($sid, $d->kod ?? '', $gun, $simdi);
+                $r = _departmanRaporVeri($sid, $d->kod ?? '', $gun, $simdi, (int) $d->id);
                 $list[] = ['id' => (int) $d->id, 'ad' => $d->ad, 'grup' => $d->grup, 'renk' => $d->renk, 'ikon' => $d->ikon,
                     'durum' => $r['durum'], 'ozet' => $r['ozet'], 'uyari_say' => count($r['uyari']), 'veri_yok' => $r['veri_yok']];
             }
@@ -7919,10 +7955,12 @@ if (!function_exists('_departmanAiYorum')) {
         $ck = 'patron_ai_dep:' . (int) $sid . ':' . $kod . ':' . now()->toDateString();
         if ($force) \Illuminate\Support\Facades\Cache::forget($ck);
         return \Illuminate\Support\Facades\Cache::remember($ck, now()->addHours(3), function () use ($sid, $dad, $kod, $veri, $personeller, $sonuc) {
-            $paket = ['departman' => $dad, 'kpi' => $veri['kpi'], 'uyarilar' => $veri['uyari'], 'is_akisi' => $veri['is_akisi'], 'personel' => $personeller];
+            $kritikAd = array_map(fn ($x) => ($x['ad'] ?? '') . ' (' . ($x['mevcut'] ?? 0) . '/' . ($x['kritik'] ?? 0) . ' ' . ($x['birim'] ?? '') . ')', array_slice($veri['kritik_liste'] ?? [], 0, 12));
+            $paket = ['departman' => $dad, 'kpi' => $veri['kpi'], 'uyarilar' => $veri['uyari'], 'is_akisi' => $veri['is_akisi'], 'personel' => $personeller, 'kritik_malzemeler' => $kritikAd];
             $sys = 'Sen bir restoranın kıdemli operasyon müdürüsün. "' . $dad . '" departmanının bugünkü durumunu bir patrona DEĞERLENDİR. '
                 . 'SADECE doğal, akıcı, profesyonel TÜRKÇE yaz; yabancı kelime kullanma. Sadece verilen veriyi kullan, UYDURMA. '
-                . 'Şunları yap: işler yolunda mı söyle; aksayan/geciken/hatalı bir şey varsa yakala ve açıkla; iş akışı normal mi yavaş mı değerlendir; personel performansına kısaca değin; sonunda net öneri ver. '
+                . 'Şunları yap: işler yolunda mı söyle; aksayan/geciken/hatalı bir şey varsa yakala ve açıkla; iş akışı normal mi yavaş mı değerlendir; personel performansına kısaca değin; sonunda ÇÖZÜM ODAKLI net öneri ver. '
+                . 'kritik_malzemeler listesi doluysa bu malzemeleri İSİMLERİYLE say ve "acil sipariş verilmeli" de. '
                 . 'ÇIKTIYI YALNIZCA şu JSON ile ver (başka metin yok): {"yorum":"3-5 cümle değerlendirme","sorunlar":["varsa kısa madde"],"oneriler":["1-2 somut öneri"]}'
                 . "\n--- VERİ ---\n" . json_encode($paket, JSON_UNESCAPED_UNICODE);
             $ai = _patronAiCagir($sys, 'Bu departmanı değerlendir, sadece JSON döndür.', 900, null, $sid);
@@ -7948,8 +7986,8 @@ Route::get('/departman-rapor', function () {
     if (!$dep) return redirect('/patron-ai');
     $gun = \Carbon\Carbon::yesterday(); // dünkü rapor
     $simdi = null;
-    $veri = _departmanRaporVeri($sid, $dep->kod ?? '', $gun, $simdi);
-    $haftalik = _departmanHaftalik($sid, $dep->kod ?? '');
+    $veri = _departmanRaporVeri($sid, $dep->kod ?? '', $gun, $simdi, (int) $dep->id);
+    $haftalik = _departmanHaftalik($sid, $dep->kod ?? '', (int) $dep->id);
     // Bu departmana bağlı personel + bugünkü aktivitesi
     $personeller = [];
     try {
@@ -7961,6 +7999,34 @@ Route::get('/departman-rapor', function () {
     $aiPers = array_map(fn ($x) => ['ad' => $x['ad'], 'unvan' => $x['unvan'] ?: $x['rol'], 'adisyon' => $x['adisyon']], $personeller);
     $ai = _departmanAiYorum($sid, $dep->ad, $dep->kod ?? '', $veri, $aiPers, request()->boolean('force'));
     return view('departman_rapor', ['dep' => $dep, 'veri' => $veri, 'haftalik' => $haftalik, 'personeller' => $personeller, 'ai' => $ai, 'tarih' => $gun->toDateString()]);
+});
+
+// AKSİYON: AI'nın yakaladığı kritik stoğu TEK TIKLA acil satın alma talebine çevir (çözüm odaklı).
+Route::post('/patron-ai/acil-siparis', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    $geri = request('geri', '/patron-ai');
+    if (function_exists('_satinalmaTalepEnsure')) _satinalmaTalepEnsure();
+    $kritik = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+    if (!$kritik) return redirect($geri)->with('ok', 'Şu an kritik stok yok, sipariş gerekmiyor.');
+    try {
+        $talepId = DB::table('satinalma_talepleri')->insertGetId([
+            'sube_id' => $sid, 'departman' => 'Patron AI (acil)', 'isteyen_id' => $bp->id, 'isteyen_ad' => $bp->ad ?? 'Patron AI',
+            'aciliyet' => 'acil', 'durum' => 'yeni', 'not' => 'Patron AI tarafından kritik stoktan otomatik oluşturuldu.',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach ($kritik as $k) {
+            DB::table('talep_kalemleri')->insert([
+                'talep_id' => $talepId, 'malzeme_id' => $k['id'], 'ad' => $k['ad'],
+                'miktar' => $k['oneri'] ?? $k['kritik'], 'birim' => $k['birim'] ?? null,
+                'oneri_gerekce' => 'Kritik stok: mevcut ' . $k['mevcut'] . ' / kritik eşik ' . $k['kritik'],
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🛒 Acil Satın Alma Talebi', count($kritik) . ' kritik malzeme için Patron AI acil talep oluşturdu.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Talep oluşturulamadı: ' . $e->getMessage()); }
+    return redirect('/satinalma-talep')->with('ok', count($kritik) . ' kritik malzeme için ACİL satın alma talebi oluşturuldu (#' . $talepId . '). Satın almaya iletildi.');
 });
 
 // WEB: Patron AI sayfası
