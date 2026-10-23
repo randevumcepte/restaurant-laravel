@@ -8038,6 +8038,84 @@ Route::post('/patron-ai/acil-siparis', function (Request $r) {
     return redirect($geri)->with('ok', count($kritik) . ' kritik malzeme için ACİL satın alma talebi oluşturuldu (#' . $talepId . ') ve Satın Alma\'ya iletildi. Talebi görmek için: /satinalma-talep');
 });
 
+// HEMEN SİPARİŞ ET — düzenlenebilir sipariş ekranı (ürün + tedarikçi seçici + miktar) → tedarikçiye gruplu PO + WhatsApp
+Route::get('/acil-siparis-hazirla', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+    $talepId = (int) request('talep');
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $items = [];
+    if ($talepId) {
+        try { foreach (DB::table('talep_kalemleri')->where('talep_id', $talepId)->get() as $k) {
+            $items[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim];
+        } } catch (\Throwable $e) {}
+    }
+    if (!$items) {
+        foreach ((function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []) as $k) {
+            $items[] = ['malzeme_id' => $k['id'], 'ad' => $k['ad'], 'miktar' => $k['oneri'], 'birim' => $k['birim']];
+        }
+    }
+    // Her malzeme için en uygun tedarikçi (önce anlaşmalı, sonra en ucuz)
+    $bestTed = function ($mid) {
+        try { $b = DB::table('tedarici_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $mid)->where('t.aktif', 1)->orderByDesc('t.anlasmali')->orderBy('tm.guncel_fiyat')->first(['t.id']);
+            return $b ? (int) $b->id : 0; } catch (\Throwable $e) { return 0; }
+    };
+    foreach ($items as &$it) { $it['secili'] = $bestTed($it['malzeme_id']); $it['birim'] = $it['birim'] ?: ''; }
+    unset($it);
+    $tumTedarikci = DB::table('tedarikciler')->where('aktif', 1)->orderByDesc('anlasmali')->orderBy('ad')->get(['id', 'ad', 'anlasmali']);
+    $tumMalzeme = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+    return view('acil_siparis_hazirla', ['satirlar' => $items, 'tumTedarikci' => $tumTedarikci, 'tumMalzeme' => $tumMalzeme, 'birimler' => $birim, 'talepId' => $talepId]);
+});
+Route::post('/acil-siparis-gec', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+    $lines = json_decode((string) $r->input('lines'), true);
+    if (!is_array($lines) || !count($lines)) return redirect('/acil-siparis-hazirla')->with('hata', 'Sipariş satırı yok.');
+    $grup = [];
+    foreach ($lines as $l) {
+        $mid = (int) ($l['malzeme_id'] ?? 0); $tid = (int) ($l['tedarikci_id'] ?? 0);
+        $miktar = (float) str_replace(',', '.', (string) ($l['miktar'] ?? 0));
+        if (!$mid || !$tid || $miktar <= 0) continue;
+        $fiyat = 0.0; $birimId = null;
+        try { $tm = DB::table('tedarici_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->first(); if ($tm) { $fiyat = (float) $tm->guncel_fiyat; $birimId = ((int) ($tm->alis_birim_id ?? 0)) ?: null; } } catch (\Throwable $e) {}
+        if ($fiyat <= 0) { try { $fiyat = (float) DB::table('malzemeler')->where('id', $mid)->value('guncel_maliyet'); } catch (\Throwable $e) {} }
+        if (!$birimId) { try { $birimId = (int) DB::table('malzemeler')->where('id', $mid)->value('temel_birim_id'); } catch (\Throwable $e) {} }
+        $grup[$tid][] = ['malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'miktar' => $miktar, 'birim_fiyat' => $fiyat];
+    }
+    if (!count($grup)) return redirect('/acil-siparis-hazirla')->with('hata', 'Geçerli satır yok (tedarikçi/miktar eksik).');
+    $birimKis = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    $olusan = 0; $noList = []; $waGitti = 0;
+    foreach ($grup as $tid => $ls) {
+        $ara = 0.0; $kdv = 0.0; $hazir = [];
+        foreach ($ls as $l) { $net = $l['miktar'] * $l['birim_fiyat']; $ara += $net; $kdv += $net * 0.10; $hazir[] = $l + ['iskonto_yuzde' => 0, 'kdv_yuzde' => 10, 'satir_toplam' => round($net, 2)]; }
+        $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->count() + 1), 3, '0', STR_PAD_LEFT);
+        $spid = DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'siparis',
+            'ara_toplam' => round($ara, 2), 'iskonto' => 0, 'kdv_toplam' => round($kdv, 2), 'genel_toplam' => round($ara + $kdv, 2), 'notlar' => 'Patron AI acil sipariş', 'olusturan_personel_id' => $bp->id, 'created_at' => now(), 'updated_at' => now()]);
+        foreach ($hazir as $h) { $h['siparis_id'] = $spid; $h['created_at'] = now(); $h['updated_at'] = now(); DB::table('satinalma_siparis_kalemleri')->insert($h); }
+        $olusan++; $noList[] = $sno;
+        try {
+            $ted = DB::table('tedarikciler')->where('id', $tid)->first();
+            if ($ted && !empty($ted->telefon) && function_exists('_restoWaGonder')) {
+                $satir = '';
+                foreach ($ls as $l) { $satir .= "\n• " . ($malAd[$l['malzeme_id']] ?? '') . " — " . rtrim(rtrim(number_format($l['miktar'], 2, ',', '.'), '0'), ',') . " " . ($birimKis[$l['alis_birim_id']] ?? ''); }
+                $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için sipariş (" . $sno . "):" . $satir . "\n\nEn kısa sürede teslim rica ederiz. Teşekkürler.";
+                if (_restoWaGonder($sid, $ted->telefon, $msg)) $waGitti++;
+            }
+        } catch (\Throwable $e) {}
+    }
+    $talepId = (int) $r->input('talep');
+    if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'siparis', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+    return redirect('/satinalma-siparis')->with('ok', $olusan . ' tedarikçiye sipariş geçildi (' . implode(', ', $noList) . ')' . ($waGitti ? ', ' . $waGitti . ' tanesi WhatsApp ile iletildi' : '') . '.');
+});
+
 // WEB: Patron AI sayfası
 Route::get('/patron-ai', function () {
     $bp = null;

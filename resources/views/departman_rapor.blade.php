@@ -94,11 +94,10 @@
         </div>
       @endforeach
     </div>
-    <form method="POST" action="/patron-ai/acil-siparis" onsubmit="return rkOnayForm(this, '{{ count($veri['kritik_liste']) }} kritik malzeme için ACİL satın alma talebi oluşturulsun ve Satın Alma\'ya iletilsin mi?', 'var(--kirmizi)', 'Evet, oluştur')">
-      @csrf
-      <input type="hidden" name="geri" value="/departman-rapor?id={{ $dep->id }}">
-      <button type="submit" class="rk-btn" style="background:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Acil Sipariş Oluştur ({{ count($veri['kritik_liste']) }} kalem) → Satın Alma</button>
-    </form>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="/acil-siparis-hazirla" class="rk-btn" style="background:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Hemen Sipariş Hazırla ({{ count($veri['kritik_liste']) }} ürün)</a>
+      <button type="button" class="rk-btn bos" onclick="rkOnay('Fiyat Araştır: ürünlere bağlı tedarikçilerden otomatik fiyat teklifi isteme (mail + WhatsApp) ve gelen teklifleri AI okuma — bir sonraki adımda ekleniyor.', null, 'var(--mavi)', 'Anladım')"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> Fiyat Araştır</button>
+    </div>
   </div>
   @endif
 
