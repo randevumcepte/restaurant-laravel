@@ -6718,6 +6718,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/departman-yonetim' => 'gor_personel', // departman/yetki yönetimi: personel yetkisi olana görünür (/bildirim-ayar haritada YOK = herkese açık)
             '/patron-ai' => 'gor_copilot',          // Patron AI sabah brifingi: copilot yetkisi olana (sahip/müdür)
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
+            '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
         ];
     }
 }
@@ -7470,6 +7471,7 @@ if (!function_exists('_patronAiBriefVeri')) {
             'riskli' => array_slice(array_map(fn ($k) => ['urun' => $k['urun'], 'porsiyon' => $k['yapilabilir']], $riskli), 0, 3),
             'acik_adisyon' => $acik, 'en_cok' => $enCok,
             'eposta_bekleyen' => count($eposta), 'eposta' => array_slice($eposta, 0, 5), 'takvim' => $takvim,
+            'geciken_siparis' => (function_exists('_gecikenSiparisler') ? _gecikenSiparisler($sid) : 0),
         ];
     }
 }
@@ -7547,6 +7549,7 @@ if (!function_exists('_patronAiAnlatim')) {
         }
         $kayipTop = array_sum($v['kayip'] ?? []);
         if ($kayipTop > 0) $s[] = '📉 ' . $gunK . ' **' . $tl($kayipTop) . '** kayıp oldu (iskonto+ikram+iptal+fire).';
+        if (($v['geciken_siparis'] ?? 0) > 0) $s[] = '⏰ **' . $v['geciken_siparis'] . ' satın alma siparişi** teslimde gecikti — tedarikçileri ara.';
         if (($v['eposta_bekleyen'] ?? 0) > 0) $s[] = '📨 **' . $v['eposta_bekleyen'] . ' e-posta** yanıt bekliyor.';
         if (!empty($v['takvim'] ?? [])) $s[] = '📅 Bugün **' . count($v['takvim']) . ' planın** var.';
         return $s;
@@ -8570,6 +8573,608 @@ Route::get('/entegrasyonlar', function () {
     $google = _baglantiGetir($sid, 'google'); $graph = _baglantiGetir($sid, 'graph');
     return view('entegrasyonlar', ['google' => $google, 'graph' => $graph,
         'googleVar' => (bool) config('services.google_oauth.client_id'), 'graphVar' => (bool) config('services.graph_oauth.client_id')]);
+});
+
+// ============================ ÇOKLU E-POSTA HESABI (RFQ/sipariş maili gönderimi) — SMTP (kurumsal/Gmail/Outlook) ============================
+if (!function_exists('_epostaHesapEnsure')) {
+    function _epostaHesapEnsure()
+    {
+        if (cache()->get('eposta_hesap_ensure_ok')) return;
+        if (!Schema::hasTable('eposta_hesaplari')) {
+            try { Schema::create('eposta_hesaplari', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 80); $t->string('gonderen_ad', 120)->nullable(); $t->string('email', 160);
+                $t->string('smtp_host', 120); $t->integer('smtp_port')->default(587);
+                $t->string('smtp_user', 160)->nullable(); $t->text('smtp_sifre')->nullable(); // şifreli
+                $t->string('smtp_guvenlik', 8)->default('tls'); // tls|ssl|yok
+                $t->tinyInteger('varsayilan')->default(0); $t->tinyInteger('aktif')->default(1);
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('eposta_hesap_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_epostaVarsayilan')) {
+    function _epostaVarsayilan($sid)
+    {
+        _epostaHesapEnsure();
+        try { return DB::table('eposta_hesaplari')->where('sube_id', (int) $sid)->where('aktif', 1)->orderByDesc('varsayilan')->orderBy('id')->first(); } catch (\Throwable $e) { return null; }
+    }
+}
+if (!function_exists('_epostaGonder')) {
+    // SMTP ile mail gönder (Laravel dinamik mailer). Hesap yoksa/hata -> false (graceful; RFQ WhatsApp ile yine gider).
+    function _epostaGonder($sid, $to, $konu, $govde, $hesapId = null)
+    {
+        if (empty($to)) return false;
+        _epostaHesapEnsure();
+        $h = null;
+        try { $h = $hesapId ? DB::table('eposta_hesaplari')->where('id', (int) $hesapId)->where('sube_id', (int) $sid)->first() : _epostaVarsayilan($sid); } catch (\Throwable $e) {}
+        if (!$h || empty($h->smtp_host) || empty($h->email)) return false;
+        try {
+            $sifre = $h->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($h->smtp_sifre) : '';
+            config(['mail.mailers.rfq_dyn' => [
+                'transport' => 'smtp', 'host' => $h->smtp_host, 'port' => (int) $h->smtp_port,
+                'encryption' => ($h->smtp_guvenlik === 'yok' ? null : $h->smtp_guvenlik),
+                'username' => $h->smtp_user ?: $h->email, 'password' => $sifre, 'timeout' => 12,
+            ]]);
+            \Illuminate\Support\Facades\Mail::mailer('rfq_dyn')->raw($govde, function ($m) use ($to, $konu, $h) {
+                $m->to($to)->subject($konu)->from($h->email, $h->gonderen_ad ?: $h->email);
+            });
+            return true;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+Route::get('/eposta-hesaplari', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    _epostaHesapEnsure();
+    $sid = _webSubeId();
+    $hesaplar = collect(); try { $hesaplar = DB::table('eposta_hesaplari')->where('sube_id', $sid)->orderByDesc('varsayilan')->orderBy('id')->get(); } catch (\Throwable $e) {}
+    $benSahip = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
+    return view('eposta_hesaplari', ['hesaplar' => $hesaplar, 'duzenleyebilir' => $benSahip]);
+});
+Route::post('/eposta-hesap-kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/eposta-hesaplari')->with('hata', 'Yalnızca sahip/müdür.');
+    _epostaHesapEnsure(); $sid = _webSubeId();
+    $email = trim((string) $r->email); if ($email === '') return redirect('/eposta-hesaplari')->with('hata', 'E-posta zorunlu.');
+    $veri = ['ad' => trim((string) $r->ad) ?: $email, 'gonderen_ad' => $r->gonderen_ad ?: null, 'email' => $email,
+        'smtp_host' => trim((string) $r->smtp_host), 'smtp_port' => (int) ($r->smtp_port ?: 587), 'smtp_user' => $r->smtp_user ?: null,
+        'smtp_guvenlik' => in_array($r->smtp_guvenlik, ['tls', 'ssl', 'yok']) ? $r->smtp_guvenlik : 'tls',
+        'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
+    if ($r->filled('smtp_sifre')) $veri['smtp_sifre'] = \Illuminate\Support\Facades\Crypt::encryptString((string) $r->smtp_sifre);
+    try {
+        $pid = (int) $r->id;
+        if ($pid > 0) { DB::table('eposta_hesaplari')->where('id', $pid)->where('sube_id', $sid)->update($veri); }
+        else { $veri['sube_id'] = $sid; $veri['varsayilan'] = DB::table('eposta_hesaplari')->where('sube_id', $sid)->count() == 0 ? 1 : 0; $veri['created_at'] = now(); $pid = (int) DB::table('eposta_hesaplari')->insertGetId($veri); }
+        if ($r->has('varsayilan')) { DB::table('eposta_hesaplari')->where('sube_id', $sid)->update(['varsayilan' => 0]); DB::table('eposta_hesaplari')->where('id', $pid)->update(['varsayilan' => 1]); }
+    } catch (\Throwable $e) { return redirect('/eposta-hesaplari')->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/eposta-hesaplari')->with('ok', 'E-posta hesabı kaydedildi.');
+});
+Route::post('/eposta-hesap-sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || ($bp->rol ?? '') !== 'sahip') return redirect('/eposta-hesaplari')->with('hata', 'Yalnızca sahip silebilir.');
+    try { DB::table('eposta_hesaplari')->where('id', (int) $r->id)->where('sube_id', _webSubeId())->delete(); } catch (\Throwable $e) {}
+    return redirect('/eposta-hesaplari')->with('ok', 'Hesap silindi.');
+});
+Route::post('/eposta-hesap-test', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/eposta-hesaplari')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    $to = trim((string) $r->test_to);
+    if ($to === '') { $h = DB::table('eposta_hesaplari')->where('id', (int) $r->id)->first(); $to = $h->email ?? ''; }
+    $ok = _epostaGonder($sid, $to, 'ResteOS test e-postası', "Bu bir test e-postasıdır.\n\nE-posta gönderimi çalışıyor. ✅", (int) $r->id);
+    return redirect('/eposta-hesaplari')->with($ok ? 'ok' : 'hata', $ok ? ('Test maili gönderildi → ' . $to) : 'Gönderilemedi — SMTP ayarlarını/şifreyi kontrol et (Gmail/Outlook için uygulama şifresi gerekir).');
+});
+
+// ============================ P2 — FİYAT ARAŞTIR (RFQ): tedarikçilere mail + WhatsApp fiyat isteği ============================
+if (!function_exists('_rfqEnsure')) {
+    function _rfqEnsure()
+    {
+        if (cache()->get('rfq_ensure_ok')) return;
+        if (!Schema::hasTable('rfq_gonderim')) {
+            try { Schema::create('rfq_gonderim', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('talep_id')->nullable();
+                $t->unsignedBigInteger('tedarikci_id')->index();
+                $t->string('kod', 20)->index();        // RFQ-123 (yanıt eşleştirme)
+                $t->text('kalemler_json')->nullable();   // [{malzeme_id,ad,miktar,birim}]
+                $t->string('kanal', 16)->nullable();     // mail / wa / mail+wa
+                $t->string('durum', 16)->default('gonderildi'); // gonderildi | teklif_geldi
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('rfq_ensure_ok', 1, now()->addHours(12));
+    }
+}
+Route::post('/fiyat-arastir', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $geri = $r->input('geri', '/satinalma-talep');
+    _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $talepId = (int) $r->input('talep');
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $mats = [];
+    if ($talepId) { try { foreach (DB::table('talep_kalemleri')->where('talep_id', $talepId)->get() as $k) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim]; } catch (\Throwable $e) {} }
+    if (!$mats) { foreach ((function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []) as $k) $mats[] = ['malzeme_id' => $k['id'], 'ad' => $k['ad'], 'miktar' => $k['oneri'], 'birim' => $k['birim']]; }
+    if (!$mats) return redirect($geri)->with('hata', 'Fiyat istenecek ürün yok.');
+    // Ürünleri tedarikçilere göre grupla (her tedarikçi kendi sağladığı ürünleri alır)
+    $supMap = [];
+    foreach ($mats as $m) {
+        try { $sups = DB::table('tedarici_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $m['malzeme_id'])->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
+            foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
+    }
+    if (!$supMap) return redirect($geri)->with('hata', 'Bu ürünlere bağlı tedarikçi yok (malzeme-tedarikçi kataloğu boş). Önce tedarikçilere ürün ekle.');
+    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    $gonderilen = 0; $mailSay = 0; $waSay = 0;
+    foreach ($supMap as $tid => $items) {
+        $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
+        $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
+        $kod = 'RFQ-' . $rfqId;
+        $satir = '';
+        foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
+        $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
+        $kanal = [];
+        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg)) { $kanal[] = 'mail'; $mailSay++; }
+        if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
+        DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
+        $gonderilen++;
+    }
+    if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+    return redirect($geri)->with('ok', $gonderilen . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $mailSay . ', WhatsApp: ' . $waSay . '). Gelen teklifler otomatik okunacak.');
+});
+
+// ============================ P3 — GELEN TEKLİFLERİ AI OKU (WhatsApp + Gmail) ============================
+if (!function_exists('_rfqTeklifEnsure')) {
+    function _rfqTeklifEnsure()
+    {
+        if (cache()->get('rfq_teklif_ensure_ok')) return;
+        if (!Schema::hasTable('rfq_teklif')) {
+            try { Schema::create('rfq_teklif', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('rfq_id')->nullable()->index(); $t->unsignedBigInteger('tedarikci_id')->nullable();
+                $t->unsignedBigInteger('malzeme_id')->nullable(); $t->string('urun_ad', 160)->nullable();
+                $t->decimal('fiyat', 14, 2)->default(0); $t->text('ham_metin')->nullable();
+                $t->string('kaynak', 10)->nullable(); $t->string('kaynak_ref', 120)->nullable();
+                $t->timestamps();
+                $t->index(['rfq_id', 'kaynak_ref']);
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('rfq_teklif_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_rfqTeklifIsle')) {
+    // Bir mesaj metninden RFQ kodu bul, fiyatları AI ile çıkar, kaydet, satınalmacıya bildir. Zaten işlendiyse atla.
+    function _rfqTeklifIsle($sid, $metin, $kaynak, $ref, $tedId = null)
+    {
+        $metin = (string) $metin; if ($metin === '') return 0;
+        if (!preg_match('/RFQ-(\d+)/i', $metin, $mm)) return 0;
+        $rfqId = (int) $mm[1];
+        _rfqEnsure(); _rfqTeklifEnsure();
+        $rfq = DB::table('rfq_gonderim')->where('id', $rfqId)->where('sube_id', (int) $sid)->first();
+        if (!$rfq) return 0;
+        if (DB::table('rfq_teklif')->where('rfq_id', $rfqId)->where('kaynak_ref', $ref)->exists()) return 0; // dedup
+        $ai = _patronAiCagir(
+            'Bir tedarikçiden gelen fiyat teklifi mesajından ürün adı ve birim fiyatı çiftlerini çıkar. SADECE JSON dizi döndür (başka metin yok): [{"urun":"...","fiyat":123.45}]. Fiyat bulamazsan boş dizi [] döndür. Para birimi TL varsay.' . "\n--- MESAJ ---\n" . mb_substr($metin, 0, 1500),
+            'Sadece JSON dizi döndür.', 600, null, $sid);
+        if (!$ai) return 0;
+        $s = strpos($ai, '['); $e = strrpos($ai, ']'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true); if (!is_array($j) || !count($j)) return 0;
+        $kalemler = json_decode($rfq->kalemler_json ?? '[]', true) ?: [];
+        $say = 0;
+        foreach ($j as $x) {
+            $urun = trim((string) ($x['urun'] ?? '')); $fiyat = (float) str_replace(',', '.', (string) ($x['fiyat'] ?? 0));
+            if ($urun === '' || $fiyat <= 0) continue;
+            $mid = null;
+            foreach ($kalemler as $k) { if (mb_stripos($urun, mb_substr($k['ad'], 0, 6)) !== false || mb_stripos($k['ad'], $urun) !== false) { $mid = (int) $k['malzeme_id']; break; } }
+            try { DB::table('rfq_teklif')->insert(['sube_id' => (int) $sid, 'rfq_id' => $rfqId, 'tedarikci_id' => $tedId ?: $rfq->tedarikci_id, 'malzeme_id' => $mid, 'urun_ad' => mb_substr($urun, 0, 160), 'fiyat' => $fiyat, 'ham_metin' => mb_substr($metin, 0, 500), 'kaynak' => $kaynak, 'kaynak_ref' => $ref, 'created_at' => now(), 'updated_at' => now()]); $say++; } catch (\Throwable $e) {}
+        }
+        if ($say) {
+            try { DB::table('rfq_gonderim')->where('id', $rfqId)->update(['durum' => 'teklif_geldi', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
+            try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat gönderdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfqId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+        }
+        return $say;
+    }
+}
+// CRON: gelen WhatsApp + Gmail teklifleri oku. curl "/api/patron-ai/teklif-oku?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $n = 0;
+    foreach (DB::table('subeler')->pluck('id') as $sid) {
+        // WhatsApp gelen (son 2 gün)
+        try { if (Schema::hasTable('wa_mesaj_loglari')) {
+            foreach (DB::table('wa_mesaj_loglari')->where('sube_id', $sid)->where('yon', 'gelen')->where('created_at', '>=', now()->subDays(2))->orderByDesc('id')->limit(50)->get() as $m) {
+                $n += _rfqTeklifIsle($sid, $m->mesaj, 'wa', 'wa:' . $m->id);
+            }
+        } } catch (\Throwable $e) {}
+        // Gmail gelen (bağlıysa)
+        try {
+            if (function_exists('_baglantiGetir') && _baglantiGetir($sid, 'google') && function_exists('_oauthAccessToken')) {
+                $tok = _oauthAccessToken($sid, 'google');
+                if ($tok) {
+                    $liste = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' . rawurlencode('RFQ- newer_than:2d') . '&maxResults=15', $tok);
+                    foreach (($liste['messages'] ?? []) as $mm) {
+                        $msg = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages/' . $mm['id'] . '?format=full', $tok);
+                        $body = '';
+                        $parts = $msg['payload']['parts'] ?? [[$msg['payload']]];
+                        foreach (($msg['payload']['parts'] ?? []) as $p) { if (!empty($p['body']['data'])) $body .= base64_decode(strtr($p['body']['data'], '-_', '+/')); }
+                        if ($body === '' && !empty($msg['payload']['body']['data'])) $body = base64_decode(strtr($msg['payload']['body']['data'], '-_', '+/'));
+                        $snippet = $body ?: ($msg['snippet'] ?? '');
+                        $n += _rfqTeklifIsle($sid, $snippet, 'mail', 'mail:' . $mm['id']);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'teklif' => $n];
+});
+
+// ============================ P4 — TESLİM TAKİBİ (hatırlatma + gecikme) ============================
+if (!function_exists('_gecikenSiparisler')) {
+    function _gecikenSiparisler($sid)
+    {
+        try { return DB::table('satinalma_siparisleri')->where('sube_id', (int) $sid)->whereIn('durum', ['siparis', 'onaylandi'])
+            ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count(); } catch (\Throwable $e) { return 0; }
+    }
+}
+// CRON: teslim takibi. curl "/api/patron-ai/teslim-takip?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/teslim-takip', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $hat = 0; $gec = 0;
+    foreach (DB::table('subeler')->pluck('id') as $sid) {
+        $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+        try {
+            $acik = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'onaylandi'])->whereNotNull('beklenen_teslim')->get();
+            foreach ($acik as $s) {
+                $ted = DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first();
+                $gun = \Carbon\Carbon::parse($s->beklenen_teslim);
+                // 1 gün önce hatırlatma (günde 1)
+                if ($gun->isTomorrow()) {
+                    $ck = 'teslim_hat:' . $s->id . ':' . today()->toDateString();
+                    if (!cache()->get($ck)) {
+                        $msg = ($ted && $ted->yetkili ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . ' siparişi (' . $s->siparis_no . ') için YARIN teslim bekliyoruz. Teşekkürler.';
+                        if ($ted && !empty($ted->telefon) && function_exists('_restoWaGonder')) _restoWaGonder($sid, $ted->telefon, $msg);
+                        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📦 Teslim Yarın', ($ted->ad ?? 'Tedarikçi') . ' siparişi (' . $s->siparis_no . ') yarın teslim edilmeli.', ['tur' => 'teslim', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci']);
+                        cache()->put($ck, 1, now()->addDay()); $hat++;
+                    }
+                }
+                // Gecikme (günde 1 patrona)
+                if ($gun->lt(today())) {
+                    $ck = 'teslim_gec:' . $s->id . ':' . today()->toDateString();
+                    if (!cache()->get($ck)) {
+                        $kacGun = (int) $gun->diffInDays(today());
+                        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⏰ Teslimat Gecikti', ($ted->ad ?? 'Tedarikçi') . ' siparişi (' . $s->siparis_no . ') ' . $kacGun . ' gün gecikti.', ['tur' => 'teslim_gec', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci'], 'gec_tedarik');
+                        if ($ted && !empty($ted->telefon) && function_exists('_restoWaGonder')) _restoWaGonder($sid, $ted->telefon, ($ted->yetkili ? $ted->yetkili . ' Bey/Hanım, ' : 'Merhaba, ') . $subeAd . ' siparişi (' . $s->siparis_no . ') ' . $kacGun . ' gün gecikti; durum bilgisi rica ederiz.');
+                        cache()->put($ck, 1, now()->addDay()); $gec++;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'hatirlatma' => $hat, 'gecikme' => $gec];
+});
+
+// ============================ P5 — FİYAT RE-ONAY DÖNGÜSÜ (satınalmacı → üst yönetici → geri) ============================
+Route::post('/satinalma-fiyat-onaya', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-talep')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $id = (int) $r->input('talep');
+    try {
+        $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$t) return redirect('/satinalma-talep')->with('hata', 'Talep bulunamadı.');
+        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'fiyat_onay', 'not' => trim(($t->not ?? '') . "\n[Fiyat onayına gönderildi: " . ($bp->ad ?? '') . ']'), 'updated_at' => now()]);
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💰 Fiyat Onayı Bekliyor', ($t->departman ?? 'Talep') . ' için satın alma fiyat onayınızı bekliyor.', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['sahip', 'mudur']);
+    } catch (\Throwable $e) { return redirect('/satinalma-talep')->with('hata', 'İşlem başarısız.'); }
+    return redirect('/satinalma-talep')->with('ok', 'Talep üst yönetici fiyat onayına gönderildi.');
+});
+Route::post('/satinalma-fiyat-onayla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/satinalma-talep')->with('hata', 'Yalnızca üst yönetici.');
+    $sid = _webSubeId(); $id = (int) $r->input('talep'); $karar = $r->input('karar') === 'ret' ? 'ret' : 'onay';
+    try {
+        $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$t) return redirect('/satinalma-talep')->with('hata', 'Talep bulunamadı.');
+        $yeni = $karar === 'onay' ? 'onaylandi' : 'teklif';
+        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => $yeni, 'not' => trim(($t->not ?? '') . "\n[Fiyat " . ($karar === 'onay' ? 'ONAYLANDI' : 'REDDEDİLDİ') . ': ' . ($bp->ad ?? '') . ']'), 'updated_at' => now()]);
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, ($karar === 'onay' ? '✅ Fiyat Onaylandı' : '❌ Fiyat Reddedildi'), ($t->departman ?? 'Talep') . ' fiyatı ' . ($karar === 'onay' ? 'onaylandı — sipariş geçebilirsin' : 'reddedildi — tekrar fiyat araştır') . '.', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['satinalmaci', 'sahip', 'mudur']);
+    } catch (\Throwable $e) { return redirect('/satinalma-talep')->with('hata', 'İşlem başarısız.'); }
+    return redirect('/satinalma-talep')->with('ok', 'Fiyat ' . ($karar === 'onay' ? 'onaylandı' : 'reddedildi') . '.');
+});
+
+// ============================ P1 — ÇOKLU E-POSTA HESABI (RFQ/sipariş gönderimi) ============================
+if (!function_exists('_epostaHesapEnsure')) {
+    function _epostaHesapEnsure()
+    {
+        if (cache()->get('eposta_hesap_ensure_ok')) return;
+        if (!Schema::hasTable('eposta_hesaplari')) {
+            try { Schema::create('eposta_hesaplari', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 80)->nullable(); $t->string('gonderen_ad', 120)->nullable();
+                $t->string('email', 160); $t->string('smtp_host', 160)->nullable();
+                $t->integer('smtp_port')->default(587); $t->string('smtp_user', 160)->nullable();
+                $t->text('smtp_sifre')->nullable(); $t->string('smtp_guvenlik', 8)->default('tls');
+                $t->boolean('varsayilan')->default(0); $t->boolean('aktif')->default(1);
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('eposta_hesap_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_epostaVarsayilan')) {
+    function _epostaVarsayilan($sid)
+    {
+        _epostaHesapEnsure();
+        return DB::table('eposta_hesaplari')->where('sube_id', (int) $sid)->where('aktif', 1)
+            ->orderByDesc('varsayilan')->orderBy('id')->first();
+    }
+}
+if (!function_exists('_epostaGonder')) {
+    // RFQ/sipariş e-postası gönderir. Hesap yoksa / SMTP başarısızsa sessizce false döner (akışı bozmaz).
+    function _epostaGonder($sid, $to, $konu, $govde, $hesapId = null)
+    {
+        try {
+            _epostaHesapEnsure();
+            $h = $hesapId ? DB::table('eposta_hesaplari')->where('id', (int) $hesapId)->where('sube_id', (int) $sid)->first() : _epostaVarsayilan($sid);
+            if (!$h || empty($h->smtp_host) || empty($h->email)) return false;
+            $sifre = ''; try { $sifre = $h->smtp_sifre ? \Crypt::decryptString($h->smtp_sifre) : ''; } catch (\Throwable $e) { $sifre = (string) $h->smtp_sifre; }
+            config(['mail.mailers.rfq_dyn' => [
+                'transport' => 'smtp', 'host' => $h->smtp_host, 'port' => (int) $h->smtp_port,
+                'encryption' => ($h->smtp_guvenlik === 'yok' ? null : $h->smtp_guvenlik),
+                'username' => $h->smtp_user ?: $h->email, 'password' => $sifre, 'timeout' => 12,
+            ]]);
+            \Mail::mailer('rfq_dyn')->raw($govde, function ($m) use ($to, $konu, $h) {
+                $m->to($to)->subject($konu)->from($h->email, $h->gonderen_ad ?: ($h->ad ?: $h->email));
+            });
+            return true;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+Route::get('/eposta-hesaplari', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    _epostaHesapEnsure(); $sid = _webSubeId();
+    $hesaplar = DB::table('eposta_hesaplari')->where('sube_id', $sid)->orderByDesc('varsayilan')->orderBy('id')->get();
+    return view('eposta_hesaplari', ['hesaplar' => $hesaplar, 'duzenleyebilir' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::post('/eposta-hesap-kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/eposta-hesaplari')->with('hata', 'Yetkisiz.');
+    _epostaHesapEnsure(); $sid = _webSubeId(); $id = (int) $r->input('id');
+    $d = ['sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'E-posta', 'gonderen_ad' => trim((string) $r->input('gonderen_ad')) ?: null,
+        'email' => trim((string) $r->input('email')), 'smtp_host' => trim((string) $r->input('smtp_host')) ?: null,
+        'smtp_port' => (int) ($r->input('smtp_port') ?: 587), 'smtp_user' => trim((string) $r->input('smtp_user')) ?: null,
+        'smtp_guvenlik' => in_array($r->input('smtp_guvenlik'), ['tls', 'ssl', 'yok']) ? $r->input('smtp_guvenlik') : 'tls',
+        'varsayilan' => $r->input('varsayilan') ? 1 : 0, 'aktif' => $r->input('aktif') ? 1 : 0, 'updated_at' => now()];
+    if (!filter_var($d['email'], FILTER_VALIDATE_EMAIL)) return redirect('/eposta-hesaplari')->with('hata', 'Geçerli bir e-posta adresi gir.');
+    $pass = (string) $r->input('smtp_sifre'); if ($pass !== '') { try { $d['smtp_sifre'] = \Crypt::encryptString($pass); } catch (\Throwable $e) {} }
+    if ($d['varsayilan']) DB::table('eposta_hesaplari')->where('sube_id', $sid)->update(['varsayilan' => 0]);
+    if ($id) { DB::table('eposta_hesaplari')->where('id', $id)->where('sube_id', $sid)->update($d); }
+    else { $d['created_at'] = now(); DB::table('eposta_hesaplari')->insert($d); }
+    return redirect('/eposta-hesaplari')->with('ok', 'E-posta hesabı kaydedildi.');
+});
+Route::post('/eposta-hesap-sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || ($bp->rol ?? '') !== 'sahip') return redirect('/eposta-hesaplari')->with('hata', 'Yalnızca sahip silebilir.');
+    $sid = _webSubeId(); DB::table('eposta_hesaplari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete();
+    return redirect('/eposta-hesaplari')->with('ok', 'Hesap silindi.');
+});
+Route::post('/eposta-hesap-test', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/eposta-hesaplari')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $h = DB::table('eposta_hesaplari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+    if (!$h) return redirect('/eposta-hesaplari')->with('hata', 'Hesap bulunamadı.');
+    $ok = _epostaGonder($sid, $h->email, 'ResteOS Test E-postası', "Bu bir test e-postasıdır. SMTP ayarların çalışıyor.\n\n— ResteOS Satın Alma", $h->id);
+    return redirect('/eposta-hesaplari')->with($ok ? 'ok' : 'hata', $ok ? ('Test e-postası ' . $h->email . ' adresine gönderildi.') : 'Gönderilemedi — SMTP sunucu/port/şifre ayarlarını kontrol et.');
+});
+
+// ============================ P2 — FİYAT ARAŞTIR (RFQ): tedarikçilere mail + WhatsApp fiyat isteği ============================
+if (!function_exists('_rfqEnsure')) {
+    function _rfqEnsure()
+    {
+        if (cache()->get('rfq_ensure_ok')) return;
+        if (!Schema::hasTable('rfq_gonderim')) {
+            try { Schema::create('rfq_gonderim', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('talep_id')->nullable(); $t->unsignedBigInteger('tedarikci_id')->index();
+                $t->string('kod', 20)->index(); $t->text('kalemler_json')->nullable();
+                $t->string('kanal', 16)->nullable(); $t->string('durum', 16)->default('gonderildi');
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('rfq_ensure_ok', 1, now()->addHours(12));
+    }
+}
+Route::post('/fiyat-arastir', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $geri = $r->input('geri', '/satinalma-talep');
+    _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $talepId = (int) $r->input('talep');
+    $mats = [];
+    if ($talepId) { try { foreach (DB::table('talep_kalemleri')->where('talep_id', $talepId)->get() as $k) if ($k->malzeme_id) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim]; } catch (\Throwable $e) {} }
+    if (!$mats) { foreach ((function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []) as $k) $mats[] = ['malzeme_id' => $k['id'], 'ad' => $k['ad'], 'miktar' => $k['oneri'], 'birim' => $k['birim']]; }
+    if (!$mats) return redirect($geri)->with('hata', 'Fiyat istenecek ürün yok.');
+    // Ürünleri tedarikçilere göre grupla (her tedarikçi yalnız sağladığı ürünleri alır)
+    $supMap = [];
+    foreach ($mats as $m) {
+        try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $m['malzeme_id'])->where('tm.aktif', 1)->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
+            foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
+    }
+    if (!$supMap) return redirect($geri)->with('hata', 'Bu ürünlere bağlı tedarikçi yok (tedarikçi-malzeme kataloğu boş). Önce tedarikçilere ürün/fiyat ekle.');
+    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    $gonderilen = 0; $mailSay = 0; $waSay = 0;
+    foreach ($supMap as $tid => $items) {
+        $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
+        $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
+        $kod = 'RFQ-' . $rfqId;
+        $satir = '';
+        foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
+        $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
+        $kanal = [];
+        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg)) { $kanal[] = 'mail'; $mailSay++; }
+        if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
+        DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
+        $gonderilen++;
+    }
+    if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+    return redirect($geri)->with('ok', $gonderilen . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $mailSay . ', WhatsApp: ' . $waSay . '). Gelen teklifler otomatik okunacak.');
+});
+
+// ============================ P3 — GELEN TEKLİFLERİ AI OKU (WhatsApp + Gmail) ============================
+if (!function_exists('_rfqTeklifEnsure')) {
+    function _rfqTeklifEnsure()
+    {
+        if (cache()->get('rfq_teklif_ensure_ok')) return;
+        if (!Schema::hasTable('rfq_teklif')) {
+            try { Schema::create('rfq_teklif', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('rfq_id')->nullable()->index(); $t->unsignedBigInteger('tedarikci_id')->nullable();
+                $t->unsignedBigInteger('malzeme_id')->nullable(); $t->string('urun_ad', 160)->nullable();
+                $t->decimal('fiyat', 14, 2)->default(0); $t->text('ham_metin')->nullable();
+                $t->string('kaynak', 10)->nullable(); $t->string('kaynak_ref', 120)->nullable();
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('rfq_teklif_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_rfqTeklifIsle')) {
+    // Mesaj metninde RFQ kodu bul, fiyatları AI ile çıkar, kaydet, satınalmacıya bildir. İşlendiyse atla.
+    function _rfqTeklifIsle($sid, $metin, $kaynak, $ref)
+    {
+        $metin = (string) $metin; if ($metin === '') return 0;
+        if (!preg_match('/RFQ-(\d+)/i', $metin, $mm)) return 0;
+        $rfqId = (int) $mm[1];
+        _rfqEnsure(); _rfqTeklifEnsure();
+        $rfq = DB::table('rfq_gonderim')->where('id', $rfqId)->where('sube_id', (int) $sid)->first();
+        if (!$rfq) return 0;
+        if (DB::table('rfq_teklif')->where('rfq_id', $rfqId)->where('kaynak_ref', $ref)->exists()) return 0;
+        $ai = _patronAiCagir(
+            'Sen tedarikçi fiyat tekliflerini ayrıştıran bir asistansın. Yanıtın SADECE geçerli bir JSON dizi olacak, başka hiçbir metin yazma.',
+            'Aşağıdaki tedarikçi mesajından ürün adı ve birim fiyat çiftlerini çıkar. JSON formatı: [{"urun":"...","fiyat":123.45}]. Fiyat yoksa [] döndür. Para birimi TL.' . "\n--- MESAJ ---\n" . mb_substr($metin, 0, 1500),
+            700, null, $sid);
+        if (!$ai) return 0;
+        $s = strpos($ai, '['); $e = strrpos($ai, ']'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true); if (!is_array($j) || !count($j)) return 0;
+        $kalemler = json_decode($rfq->kalemler_json ?? '[]', true) ?: [];
+        $say = 0;
+        foreach ($j as $x) {
+            $urun = trim((string) ($x['urun'] ?? '')); $fiyat = (float) str_replace(',', '.', (string) ($x['fiyat'] ?? 0));
+            if ($urun === '' || $fiyat <= 0) continue;
+            $mid = null;
+            foreach ($kalemler as $k) { if (mb_stripos($urun, mb_substr($k['ad'], 0, 6)) !== false || mb_stripos($k['ad'], $urun) !== false) { $mid = (int) $k['malzeme_id']; break; } }
+            try { DB::table('rfq_teklif')->insert(['sube_id' => (int) $sid, 'rfq_id' => $rfqId, 'tedarikci_id' => $rfq->tedarikci_id, 'malzeme_id' => $mid, 'urun_ad' => mb_substr($urun, 0, 160), 'fiyat' => $fiyat, 'ham_metin' => mb_substr($metin, 0, 500), 'kaynak' => $kaynak, 'kaynak_ref' => $ref, 'created_at' => now(), 'updated_at' => now()]); $say++; } catch (\Throwable $e) {}
+        }
+        if ($say) {
+            try { DB::table('rfq_gonderim')->where('id', $rfqId)->update(['durum' => 'teklif_geldi', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
+            try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat gönderdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfqId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+        }
+        return $say;
+    }
+}
+// CRON: gelen WhatsApp + Gmail teklifleri oku. curl "/api/patron-ai/teklif-oku?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $n = 0;
+    foreach (DB::table('subeler')->pluck('id') as $sid) {
+        try { if (Schema::hasTable('wa_mesaj_loglari')) {
+            foreach (DB::table('wa_mesaj_loglari')->where('sube_id', $sid)->where('yon', 'gelen')->where('created_at', '>=', now()->subDays(2))->orderByDesc('id')->limit(50)->get() as $m) {
+                $n += _rfqTeklifIsle($sid, ($m->mesaj ?? ''), 'wa', 'wa:' . $m->id);
+            }
+        } } catch (\Throwable $e) {}
+        try {
+            if (function_exists('_baglantiGetir') && _baglantiGetir($sid, 'google') && function_exists('_oauthAccessToken')) {
+                $tok = _oauthAccessToken($sid, 'google');
+                if ($tok) {
+                    $liste = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' . rawurlencode('RFQ- newer_than:2d') . '&maxResults=15', $tok);
+                    foreach (($liste['messages'] ?? []) as $mm) {
+                        $msg = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages/' . $mm['id'] . '?format=full', $tok);
+                        $body = '';
+                        foreach (($msg['payload']['parts'] ?? []) as $p) { if (!empty($p['body']['data'])) $body .= base64_decode(strtr($p['body']['data'], '-_', '+/')); }
+                        if ($body === '' && !empty($msg['payload']['body']['data'])) $body = base64_decode(strtr($msg['payload']['body']['data'], '-_', '+/'));
+                        $snippet = $body ?: ($msg['snippet'] ?? '');
+                        $n += _rfqTeklifIsle($sid, $snippet, 'mail', 'mail:' . $mm['id']);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'teklif' => $n];
+});
+
+// ============================ P4 — TESLİM TAKİBİ (hatırlatma + gecikme) ============================
+if (!function_exists('_gecikenSiparisler')) {
+    function _gecikenSiparisler($sid)
+    {
+        try { return DB::table('satinalma_siparisleri')->where('sube_id', (int) $sid)->whereIn('durum', ['siparis', 'gonderildi', 'kismi', 'onaylandi'])
+            ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count(); } catch (\Throwable $e) { return 0; }
+    }
+}
+// CRON: teslim takibi. curl "/api/patron-ai/teslim-takip?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/teslim-takip', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $hat = 0; $gec = 0;
+    foreach (DB::table('subeler')->pluck('id') as $sid) {
+        $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+        try {
+            if (!Schema::hasTable('satinalma_siparisleri')) continue;
+            $acik = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'kismi', 'onaylandi'])->whereNotNull('beklenen_teslim')->get();
+            foreach ($acik as $s) {
+                $ted = DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first();
+                $gun = \Carbon\Carbon::parse($s->beklenen_teslim);
+                if ($gun->isTomorrow()) {
+                    $ck = 'teslim_hat:' . $s->id . ':' . today()->toDateString();
+                    if (!cache()->get($ck)) {
+                        $msg = ($ted && $ted->yetkili ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . ' siparişi (' . $s->siparis_no . ') için YARIN teslim bekliyoruz. Teşekkürler.';
+                        if ($ted && !empty($ted->telefon) && function_exists('_restoWaGonder')) _restoWaGonder($sid, $ted->telefon, $msg);
+                        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📦 Teslim Yarın', (($ted->ad ?? null) ?: 'Tedarikçi') . ' siparişi (' . $s->siparis_no . ') yarın teslim edilmeli.', ['tur' => 'teslim', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci']);
+                        cache()->put($ck, 1, now()->addDay()); $hat++;
+                    }
+                }
+                if ($gun->lt(today())) {
+                    $ck = 'teslim_gec:' . $s->id . ':' . today()->toDateString();
+                    if (!cache()->get($ck)) {
+                        $kacGun = (int) $gun->diffInDays(today());
+                        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⏰ Teslimat Gecikti', (($ted->ad ?? null) ?: 'Tedarikçi') . ' siparişi (' . $s->siparis_no . ') ' . $kacGun . ' gün gecikti.', ['tur' => 'teslim_gec', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci'], 'gec_tedarik');
+                        if ($ted && !empty($ted->telefon) && function_exists('_restoWaGonder')) _restoWaGonder($sid, $ted->telefon, ($ted->yetkili ? $ted->yetkili . ' Bey/Hanım, ' : 'Merhaba, ') . $subeAd . ' siparişi (' . $s->siparis_no . ') ' . $kacGun . ' gün gecikti; durum bilgisi rica ederiz.');
+                        cache()->put($ck, 1, now()->addDay()); $gec++;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'hatirlatma' => $hat, 'gecikme' => $gec];
+});
+
+// ============================ P5 — FİYAT RE-ONAY DÖNGÜSÜ (satınalmacı → üst yönetici → geri) ============================
+Route::post('/satinalma-fiyat-onaya', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-talep')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $id = (int) $r->input('talep');
+    try {
+        $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$t) return redirect('/satinalma-talep')->with('hata', 'Talep bulunamadı.');
+        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'fiyat_onay', 'not' => trim(($t->not ?? '') . "\n[Fiyat onayına gönderildi: " . ($bp->ad ?? '') . ']'), 'updated_at' => now()]);
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💰 Fiyat Onayı Bekliyor', ($t->departman ?? 'Talep') . ' için satın alma fiyat onayınızı bekliyor.', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['sahip', 'mudur']);
+    } catch (\Throwable $e) { return redirect('/satinalma-talep')->with('hata', 'İşlem başarısız.'); }
+    return redirect('/satinalma-talep')->with('ok', 'Talep üst yönetici fiyat onayına gönderildi.');
+});
+Route::post('/satinalma-fiyat-onayla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/satinalma-talep')->with('hata', 'Yalnızca üst yönetici.');
+    $sid = _webSubeId(); $id = (int) $r->input('talep'); $karar = $r->input('karar') === 'ret' ? 'ret' : 'onay';
+    try {
+        $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$t) return redirect('/satinalma-talep')->with('hata', 'Talep bulunamadı.');
+        $yeni = $karar === 'onay' ? 'onaylandi' : 'teklif';
+        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => $yeni, 'not' => trim(($t->not ?? '') . "\n[Fiyat " . ($karar === 'onay' ? 'ONAYLANDI' : 'REDDEDİLDİ') . ': ' . ($bp->ad ?? '') . ']'), 'updated_at' => now()]);
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, ($karar === 'onay' ? '✅ Fiyat Onaylandı' : '❌ Fiyat Reddedildi'), ($t->departman ?? 'Talep') . ' fiyatı ' . ($karar === 'onay' ? 'onaylandı — sipariş geçebilirsin' : 'reddedildi — tekrar fiyat araştır') . '.', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['satinalmaci', 'sahip', 'mudur']);
+    } catch (\Throwable $e) { return redirect('/satinalma-talep')->with('hata', 'İşlem başarısız.'); }
+    return redirect('/satinalma-talep')->with('ok', 'Fiyat ' . ($karar === 'onay' ? 'onaylandı' : 'reddedildi') . '.');
 });
 
 // Yetki kolonlarini kur + varsayilanlari doldur (tek sefer, migrate beklemeden)
