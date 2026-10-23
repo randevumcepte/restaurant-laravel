@@ -22,6 +22,7 @@
 
   <div class="rk-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
     @forelse ($hesaplar as $h)
+      @php $hj = ["id"=>(int)$h->id,"ad"=>$h->ad,"gonderen_ad"=>$h->gonderen_ad,"email"=>$h->email,"smtp_host"=>$h->smtp_host,"smtp_port"=>(int)$h->smtp_port,"smtp_user"=>$h->smtp_user,"smtp_guvenlik"=>$h->smtp_guvenlik,"varsayilan"=>(int)$h->varsayilan,"aktif"=>(int)$h->aktif]; @endphp
       <div class="rk-card" style="padding:14px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <span class="material-icons-outlined" style="font-size:24px;color:var(--mor1)">alternate_email</span>
@@ -32,7 +33,7 @@
         <div class="rk-sub" style="font-size:11.5px;margin-bottom:10px">{{ $h->smtp_host }}:{{ $h->smtp_port }} ({{ strtoupper($h->smtp_guvenlik) }})</div>
         @if ($duzenleyebilir)
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="rk-btn bos" style="padding:5px 10px" onclick='hesapAc(@json(["id"=>(int)$h->id,"ad"=>$h->ad,"gonderen_ad"=>$h->gonderen_ad,"email"=>$h->email,"smtp_host"=>$h->smtp_host,"smtp_port"=>(int)$h->smtp_port,"smtp_user"=>$h->smtp_user,"smtp_guvenlik"=>$h->smtp_guvenlik,"varsayilan"=>(int)$h->varsayilan,"aktif"=>(int)$h->aktif]))'>Düzenle</button>
+          <button class="rk-btn bos" style="padding:5px 10px" onclick='hesapAc(@json($hj))'>Düzenle</button>
           <form method="POST" action="/eposta-hesap-test" style="display:inline">@csrf<input type="hidden" name="id" value="{{ $h->id }}"><button class="rk-btn bos" style="padding:5px 10px;color:var(--mavi)" type="submit">Test Gönder</button></form>
           <form method="POST" action="/eposta-hesap-sil" style="display:inline" onsubmit="return rkOnayForm(this, 'Bu e-posta hesabı silinsin mi?', 'var(--kirmizi)', 'Evet, sil')">@csrf<input type="hidden" name="id" value="{{ $h->id }}"><button class="rk-btn bos" style="padding:5px 8px;color:var(--kirmizi)" type="submit">✕</button></form>
         </div>
