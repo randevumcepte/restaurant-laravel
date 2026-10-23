@@ -123,6 +123,32 @@
       </div>
     @endforeach
 
+    {{-- DEPARTMAN DENETİMİ — her departmanı tek tek incele --}}
+    @php $denetimL = $denetim ?? []; @endphp
+    @if (count($denetimL))
+    <div class="pai-blok">
+      <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">apartment</span> Departman Denetimi</h4>
+      @php $sonGrup = null; @endphp
+      @foreach ($denetimL as $dn)
+        @php [$det,$drk] = $vd[$dn['durum']] ?? $vd['notr']; @endphp
+        @if (($dn['grup'] ?? null) !== $sonGrup)
+          <div style="font-size:11px;font-weight:700;color:var(--sub2);margin:10px 2px 4px;text-transform:uppercase">{{ $dn['grup'] ?: 'Diğer' }}</div>
+          @php $sonGrup = $dn['grup'] ?? null; @endphp
+        @endif
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+          <span class="material-icons-outlined" style="color:{{ $dn['renk']?:'var(--mavi)' }};font-size:20px">{{ $dn['ikon']?:'badge' }}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13.5px">{{ $dn['ad'] }}</div>
+            <div class="rk-sub" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $dn['ozet'] }}</div>
+          </div>
+          @if (!empty($dn['uyari_say']))<span class="rk-rozet" style="background:var(--amber)">{{ $dn['uyari_say'] }} uyarı</span>@endif
+          <span class="pai-vd" style="background:{{ $drk }}">{{ $det }}</span>
+          <a href="/departman-rapor?id={{ $dn['id'] }}" class="rk-btn bos" style="padding:4px 12px;white-space:nowrap">Detay →</a>
+        </div>
+      @endforeach
+    </div>
+    @endif
+
     {{-- DÜNDEN DEVAM (süreklilik) --}}
     @php $sk = $sureklilik ?? ['acik'=>[],'kapanan'=>[]]; @endphp
     @if (count($sk['acik']) || count($sk['kapanan']))
