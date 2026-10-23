@@ -7271,7 +7271,7 @@ if (!function_exists('_patronAiCagir')) {
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 14, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
-                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'system' => $system,
+                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'temperature' => 0.4, 'system' => $system,
                     'messages' => [['role' => 'user', 'content' => $user]]], JSON_UNESCAPED_UNICODE),
             ]);
             $res = curl_exec($ch);
@@ -7589,18 +7589,26 @@ if (!function_exists('_patronAiAnaliz')) {
 if (!function_exists('_patronAiAnalizZengin')) {
     // AI AÇIKSA: her analiz bloğunun yorum/risk/öneri/durum'unu Haiku ÖZGÜN yazar (kalıp değil) + genel özet.
     // Kapalıysa/başarısızsa kural şablonuna düşer. Günde 1 AI çağrısı (3 saat önbellek; force bypass).
-    function _patronAiAnalizZengin($sid, $veri, $tip = 'sabah', $ad = null, $force = false)
+    function _patronAiAnalizZengin($sid, $veri, $tip = 'sabah', $ad = null, $force = false, $demo = false)
     {
         $base = _patronAiAnaliz($veri, $tip, $ad);
         $sonuc = ['bloklar' => $base, 'ozet' => null, 'kaynak' => 'kural'];
         if (!config('services.resteos.patron_ai_v2', false)) return $sonuc;
-        $ck = 'patron_ai_analizz:' . (int) $sid . ':' . now()->toDateString() . ':' . $tip;
+        $ck = 'patron_ai_analizz:' . (int) $sid . ':' . now()->toDateString() . ':' . $tip . ($demo ? ':demo' : '');
         if ($force) \Illuminate\Support\Facades\Cache::forget($ck);
         return \Illuminate\Support\Facades\Cache::remember($ck, now()->addHours(3), function () use ($sid, $veri, $tip, $ad, $base, $sonuc) {
             $hitap = $ad ? trim(explode(' ', trim($ad))[0]) : 'patron';
-            $sys = 'Sen "' . $hitap . '" adlı restoran patronunun iş analistisin (tecrübeli genel müdür / CEO danışmanı). '
-                . 'Verideki her göstergeyi DERİNLEMESİNE ve ÖZGÜN cümlelerle yorumla — ASLA kalıp/şablon cümle kurma, her defasında farklı, bağlamsal, zeki yaz. '
-                . 'Sadece verideki sayıları kullan, UYDURMA; rakamları yorumla (oran/kıyas). Önemli kelimeleri **çift yıldızla** vurgula. '
+            $sys = 'Sen "' . $hitap . '" adlı restoran sahibinin kıdemli iş danışmanısın (deneyimli bir genel müdür gibi). '
+                // DİL — en kritik kural:
+                . 'DİL KURALI (ÇOK ÖNEMLİ): SADECE doğal, akıcı, profesyonel TÜRKÇE yaz. İngilizce ya da yabancı kelime KULLANMA (örn. "rationalize", "index", "momentum", "revenue" gibi kelimeler kesinlikle YASAK). '
+                . 'Çeviriden çıkmış gibi duran, bozuk, devrik ya da anlamsız cümle kurma. Bir Türk restoran danışmanı günlük hayatta nasıl konuşursa öyle, net ve anlaşılır yaz. '
+                . 'Önerilerin MANTIKLI ve gerçekten uygulanabilir olsun; çelişkili/ters tavsiye verme (örn. "iskontoyu iki katına çıkar" gibi yanlış şeyler yazma — kaybı azaltmak için iskontoyu SIKILAŞTIRMAK gerekir). '
+                . 'Her göstergeyi kısaca yorumla: iyi mi kötü mü, kısa nedeni, varsa risk, net öneri. Rakamları yorumla ama ASLA uydurma; yalnızca aşağıdaki veriyi kullan. Önemli kelimeleri **çift yıldızla** vurgula. '
+                // Doğru yargı için sektör ölçütleri (durum bu ölçütlere göre atanmalı):
+                . 'DEĞERLENDİRME ÖLÇÜTLERİ (restoran sektörü, durum bunlara göre): food_cost_yuzde <28 iyi, 28-35 dikkat, >35 RİSK (yüksek, kârı eritir). '
+                . 'ciro_yuzde +5 ve üstü iyi, 0 ile -10 arası dikkat, -10 ve altı risk. kayıp/ciro oranı %5 üstü dikkat, %10 üstü risk. kritik stok varsa stok durumu RİSK. '
+                // Veri alanlarının anlamı (yanlış çerçeveleme olmasın):
+                . 'VERİ ALANLARI: dun_ciro=dünkü ciro, kiyas_ciro=geçen hafta aynı günün cirosu, ciro_yuzde=geçen haftaya göre değişim yüzdesi, misafir=misafir sayısı, kisi_basi=kişi başı ortalama harcama, food_cost_yuzde=malzeme maliyetinin ciroya oranı, kritik=stoğu kritik seviyeye düşen malzemeler, riskli=az porsiyon kalan ürünler, kayip=iskonto/ikram/iptal/fire kaynaklı para kaybı (TL). '
                 . 'KISA tut: ozet en fazla 2 cümle, her yorum en fazla 2 cümle, öneri 1 cümle. '
                 . 'ÇIKTIYI YALNIZCA şu JSON ile ver (öncesi/sonrası metin YOK, markdown başlık YOK, kod çiti YOK): '
                 . '{"ozet":"...","ciro":{"durum":"iyi|notr|dikkat|risk","yorum":"...","risk":"gerçek risk varsa yoksa bos","oneri":"..."},"foodcost":{"durum":"","yorum":"","risk":"","oneri":""},"stok":{"durum":"","yorum":"","risk":"","oneri":""},"kayip":{"durum":"","yorum":"","risk":"","oneri":""}}'
@@ -7653,11 +7661,42 @@ if (!function_exists('_patronAiBriefUret')) {
         return ['tarih' => $bugun, 'tip' => $tip, 'veri' => $veri, 'oncelikler' => $kural['oncelikler'], 'metin' => $metin, 'kaynak' => $kaynak, 'onbellek' => false];
     }
 }
-// API: sabah brifingi (sahip/müdür). ?force=1 yeniden üretir.
+if (!function_exists('_patronAiDemoVeri')) {
+    // GERÇEKÇİ sahte veri (DB'ye DOKUNMAZ) — sistemde veri yokken AI'ın nasıl yorumladığını göstermek için.
+    // Bilerçe çeşitli durumlar: ciro DÜŞÜŞ, food-cost YÜKSEK, stok RİSK, kayıp YÜKSEK → zengin çok-durumlu brifing.
+    function _patronAiDemoVeri()
+    {
+        return [
+            'tarih' => \Carbon\Carbon::yesterday()->toDateString(),
+            'dun_ciro' => 18750, 'kiyas_ciro' => 22400, 'ciro_yuzde' => -16.3,
+            'misafir' => 62, 'folyo' => 24, 'kisi_basi' => 302,
+            'food_cost_yuzde' => 38.5,
+            'kayip' => ['iskonto' => 620, 'ikram' => 240, 'iptal' => 410, 'fire' => 180],
+            'kritik_sayi' => 4, 'kritik' => ['Dana Antrikot', 'Somon', 'Mozzarella', 'Taze Fesleğen'],
+            'riskli' => [['urun' => 'Margherita Pizza', 'porsiyon' => 3], ['urun' => 'Somon Izgara', 'porsiyon' => 2]],
+            'acik_adisyon' => 5, 'en_cok' => ['ad' => 'Margherita Pizza', 'adet' => 28],
+            'eposta_bekleyen' => 0, 'eposta' => [], 'takvim' => [],
+        ];
+    }
+}
+if (!function_exists('_patronAiBriefDemo')) {
+    function _patronAiBriefDemo($sid, $ad = null)
+    {
+        $veri = _patronAiDemoVeri();
+        $kural = _patronAiKurallar($veri, 'sabah', $ad);
+        $az = _patronAiAnalizZengin($sid, $veri, 'sabah', $ad, true, true);
+        return ['ok' => 1, 'demo' => true, 'ad' => $ad, 'tarih' => $veri['tarih'], 'tip' => 'sabah',
+            'veri' => $veri, 'oncelikler' => $kural['oncelikler'], 'metin' => $kural['metin'],
+            'analiz' => $az['bloklar'], 'ai_ozet' => $az['ozet'], 'ai_var' => ($az['kaynak'] === 'ai'), 'kaynak' => $az['kaynak'],
+            'tuketim' => _aiKrediDurum($sid), 'sureklilik' => ['acik' => [], 'kapanan' => []], 'whatsapp' => ['giden' => 0, 'gelen' => []]];
+    }
+}
+// API: sabah brifingi (sahip/müdür). ?force=1 yeniden üretir. ?demo=1 sahte veriyle önizleme.
 Route::get('/api/patron-ai/brief', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Bu ekrana yetkiniz yok'], 403);
+    if ($r->boolean('demo')) return array_merge(_patronAiBriefDemo($p->sube_id, $p->ad ?? null), ['ai_erisim' => _aiErisim($p)]);
     $tip = $r->input('tip') === 'aksam' ? 'aksam' : 'sabah';
     $b = _patronAiBriefUret($p->sube_id, $tip, $r->boolean('force'), $p->ad ?? null);
     $az = _patronAiAnalizZengin($p->sube_id, $b['veri'] ?? [], $tip, $p->ad ?? null, $r->boolean('force'));
@@ -7723,6 +7762,13 @@ Route::get('/patron-ai', function () {
     $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
     $tip = request('tip') === 'aksam' ? 'aksam' : 'sabah';
     $ad = $bp->ad ?? null;
+    $demo = request()->boolean('demo');
+    if ($demo) {
+        $b = _patronAiBriefDemo($sid, $ad);
+        return view('patron_ai', ['brief' => $b, 'personel' => $bp, 'ad' => $ad, 'tuketim' => $b['tuketim'],
+            'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'], 'tip' => 'sabah', 'anlatim' => [],
+            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'demo' => true]);
+    }
     try { $brief = _patronAiBriefUret($sid, $tip, request()->boolean('force'), $ad); } catch (\Throwable $e) {}
     try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}

@@ -44,6 +44,7 @@
     $analizL = $analiz ?? [];
     $aiVar = $aiVar ?? false;
     $aiOzet = $aiOzet ?? null;
+    $demo = $demo ?? false;
     $vd = ['iyi' => ['İYİ', 'var(--yesil)'], 'notr' => ['NÖTR', 'var(--sub)'], 'dikkat' => ['DİKKAT', 'var(--amber)'], 'risk' => ['RİSK', 'var(--kirmizi)']];
     // öneriye akıllı buton
     $oneriLink = function ($o) {
@@ -64,11 +65,20 @@
       <div class="rk-sub" style="font-size:12.5px">{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }} · {{ ($tip ?? 'sabah') === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }} @if($brief)· <span style="color:{{ $aiVar?'var(--mor1)':'var(--sub)' }}">{{ $aiVar?'✨ AI yazdı':'kural motoru' }}</span>@endif</div>
     </div>
     <div style="display:flex;gap:6px">
-      <a href="/patron-ai?tip=sabah" class="rk-btn {{ ($tip??'sabah')==='sabah'?'':'bos' }}" style="padding:6px 12px;{{ ($tip??'sabah')==='sabah'?'background:var(--mor1)':'' }}">Sabah</a>
-      <a href="/patron-ai?tip=aksam" class="rk-btn {{ ($tip??'')==='aksam'?'':'bos' }}" style="padding:6px 12px;{{ ($tip??'')==='aksam'?'background:var(--mor1)':'' }}">Akşam</a>
-      <a href="/patron-ai?tip={{ $tip??'sabah' }}&force=1" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
+      <a href="/patron-ai?tip=sabah" class="rk-btn {{ (!$demo && ($tip??'sabah')==='sabah')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'sabah')==='sabah')?'background:var(--mor1)':'' }}">Sabah</a>
+      <a href="/patron-ai?tip=aksam" class="rk-btn {{ (!$demo && ($tip??'')==='aksam')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'')==='aksam')?'background:var(--mor1)':'' }}">Akşam</a>
+      <a href="/patron-ai?demo=1" class="rk-btn {{ $demo?'':'bos' }}" style="padding:6px 12px;{{ $demo?'background:var(--amber)':'' }}" title="Sahte veriyle önizleme">🎭 Demo</a>
+      <a href="/patron-ai?{{ $demo?'demo=1':'tip='.($tip??'sabah').'&force=1' }}" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
     </div>
   </div>
+
+  @if ($demo)
+  <div style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:12px;padding:10px 14px;margin:4px 2px 14px;font-size:12.5px;color:var(--amber)">
+    <span class="material-icons-outlined" style="font-size:18px">theater_comedy</span>
+    <span style="flex:1;color:var(--sub2)"><b style="color:var(--amber)">DEMO VERİ</b> — bunlar gerçek değil; AI'ın sistemde veri olunca nasıl yorumlayacağını göstermek içindir.</span>
+    <a href="/patron-ai" class="rk-btn bos" style="padding:4px 12px">Gerçek veriye dön</a>
+  </div>
+  @endif
 
   @if (!empty($tuketim))
     @php $yz=$tuketim['yuzde']??0; $br=$yz>=90?'var(--kirmizi)':($yz>=70?'var(--amber)':'var(--yesil)'); @endphp
