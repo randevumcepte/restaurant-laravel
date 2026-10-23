@@ -8063,7 +8063,7 @@ Route::get('/acil-siparis-hazirla', function () {
     }
     // Her malzeme için en uygun tedarikçi (önce anlaşmalı, sonra en ucuz)
     $bestTed = function ($mid) {
-        try { $b = DB::table('tedarici_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+        try { $b = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
             ->where('tm.malzeme_id', $mid)->where('t.aktif', 1)->orderByDesc('t.anlasmali')->orderBy('tm.guncel_fiyat')->first(['t.id']);
             return $b ? (int) $b->id : 0; } catch (\Throwable $e) { return 0; }
     };
@@ -8087,7 +8087,7 @@ Route::post('/acil-siparis-gec', function (Request $r) {
         $miktar = (float) str_replace(',', '.', (string) ($l['miktar'] ?? 0));
         if (!$mid || !$tid || $miktar <= 0) continue;
         $fiyat = 0.0; $birimId = null;
-        try { $tm = DB::table('tedarici_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->first(); if ($tm) { $fiyat = (float) $tm->guncel_fiyat; $birimId = ((int) ($tm->alis_birim_id ?? 0)) ?: null; } } catch (\Throwable $e) {}
+        try { $tm = DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->first(); if ($tm) { $fiyat = (float) $tm->guncel_fiyat; $birimId = ((int) ($tm->alis_birim_id ?? 0)) ?: null; } } catch (\Throwable $e) {}
         if ($fiyat <= 0) { try { $fiyat = (float) DB::table('malzemeler')->where('id', $mid)->value('guncel_maliyet'); } catch (\Throwable $e) {} }
         if (!$birimId) { try { $birimId = (int) DB::table('malzemeler')->where('id', $mid)->value('temel_birim_id'); } catch (\Throwable $e) {} }
         $grup[$tid][] = ['malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'miktar' => $miktar, 'birim_fiyat' => $fiyat];
@@ -8701,7 +8701,7 @@ Route::post('/fiyat-arastir', function (Request $r) {
     // Ürünleri tedarikçilere göre grupla (her tedarikçi kendi sağladığı ürünleri alır)
     $supMap = [];
     foreach ($mats as $m) {
-        try { $sups = DB::table('tedarici_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+        try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
             ->where('tm.malzeme_id', $m['malzeme_id'])->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
             foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
     }
