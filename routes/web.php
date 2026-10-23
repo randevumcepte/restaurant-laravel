@@ -7586,6 +7586,48 @@ if (!function_exists('_patronAiAnaliz')) {
         return $B;
     }
 }
+if (!function_exists('_patronAiAnalizZengin')) {
+    // AI AÇIKSA: her analiz bloğunun yorum/risk/öneri/durum'unu Haiku ÖZGÜN yazar (kalıp değil) + genel özet.
+    // Kapalıysa/başarısızsa kural şablonuna düşer. Günde 1 AI çağrısı (3 saat önbellek; force bypass).
+    function _patronAiAnalizZengin($sid, $veri, $tip = 'sabah', $ad = null, $force = false)
+    {
+        $base = _patronAiAnaliz($veri, $tip, $ad);
+        $sonuc = ['bloklar' => $base, 'ozet' => null, 'kaynak' => 'kural'];
+        if (!config('services.resteos.patron_ai_v2', false)) return $sonuc;
+        $ck = 'patron_ai_analizz:' . (int) $sid . ':' . now()->toDateString() . ':' . $tip;
+        if ($force) \Illuminate\Support\Facades\Cache::forget($ck);
+        return \Illuminate\Support\Facades\Cache::remember($ck, now()->addHours(3), function () use ($sid, $veri, $tip, $ad, $base, $sonuc) {
+            $hitap = $ad ? trim(explode(' ', trim($ad))[0]) : 'patron';
+            $sys = 'Sen "' . $hitap . '" adlı restoran patronunun iş analistisin (tecrübeli genel müdür / CEO danışmanı). '
+                . 'Verideki her göstergeyi DERİNLEMESİNE ve ÖZGÜN cümlelerle yorumla — ASLA kalıp/şablon cümle kurma, her defasında farklı, bağlamsal, zeki yaz. '
+                . 'Sadece verideki sayıları kullan, UYDURMA; rakamları yorumla (oran/kıyas). Önemli kelimeleri **çift yıldızla** vurgula. '
+                . 'KISA tut: ozet en fazla 2 cümle, her yorum en fazla 2 cümle, öneri 1 cümle. '
+                . 'ÇIKTIYI YALNIZCA şu JSON ile ver (öncesi/sonrası metin YOK, markdown başlık YOK, kod çiti YOK): '
+                . '{"ozet":"...","ciro":{"durum":"iyi|notr|dikkat|risk","yorum":"...","risk":"gerçek risk varsa yoksa bos","oneri":"..."},"foodcost":{"durum":"","yorum":"","risk":"","oneri":""},"stok":{"durum":"","yorum":"","risk":"","oneri":""},"kayip":{"durum":"","yorum":"","risk":"","oneri":""}}'
+                . "\n--- VERİ ---\n" . json_encode($veri, JSON_UNESCAPED_UNICODE);
+            $ai = _patronAiCagir($sys, 'Bu veriye göre JSON analizini üret. Sadece geçerli JSON döndür, kısa tut.', 1800, null, $sid);
+            if (!$ai) return $sonuc;
+            // İlk { ... son } arasını al (önsöz/kod-çiti/sonek temizle) — sağlam JSON ayıklama
+            $s = strpos($ai, '{'); $e = strrpos($ai, '}');
+            if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+            $j = json_decode($ai, true);
+            if (!is_array($j)) return $sonuc;
+            $map = ['Ciro & Misafir' => 'ciro', 'Food-Cost (Maliyet)' => 'foodcost', 'Stok Riski' => 'stok', 'Stok' => 'stok', 'Kayıp / Zayiat' => 'kayip'];
+            $gecerli = ['iyi', 'notr', 'dikkat', 'risk'];
+            foreach ($base as $i => $blk) {
+                $k = $map[$blk['baslik']] ?? null;
+                if ($k && isset($j[$k]) && is_array($j[$k])) {
+                    $x = $j[$k];
+                    if (!empty($x['yorum'])) $base[$i]['yorum'] = (string) $x['yorum'];
+                    if (array_key_exists('risk', $x)) $base[$i]['risk'] = (!empty($x['risk']) ? (string) $x['risk'] : null);
+                    if (!empty($x['oneri'])) $base[$i]['oneri'] = (string) $x['oneri'];
+                    if (!empty($x['durum']) && in_array($x['durum'], $gecerli)) $base[$i]['durum'] = $x['durum'];
+                }
+            }
+            return ['bloklar' => $base, 'ozet' => (!empty($j['ozet']) ? (string) $j['ozet'] : null), 'kaynak' => 'ai'];
+        });
+    }
+}
 if (!function_exists('_patronAiBriefUret')) {
     function _patronAiBriefUret($sid, $tip = 'sabah', $force = false, $ad = null)
     {
@@ -7599,19 +7641,8 @@ if (!function_exists('_patronAiBriefUret')) {
         $gun = $tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday();
         $veri = _patronAiBriefVeri($sid, $gun, true);
         $kural = _patronAiKurallar($veri, $tip, $ad);
+        // metin = kural (FCM push özeti için kısa); AI zenginleştirme ANALİZ bloklarında (_patronAiAnalizZengin).
         $metin = $kural['metin']; $kaynak = 'kural';
-        $etiket = $tip === 'aksam' ? 'AKŞAM RAPORU (günün sonu)' : 'SABAH BRİFİNGİ';
-        $hitapAd = $ad ? (trim(explode(' ', trim($ad))[0])) : 'patron';
-        $istek = $tip === 'aksam'
-            ? 'Akşam değerlendirmesini yaz: günü analiz et, neyin iyi/kötü gittiğini NEDENLERİYLE açıkla, yarına taşınacak riskleri ve 2-3 somut aksiyon önerisini ver.'
-            : 'Sabah değerlendirmesini yaz: her önemli göstergeyi (ciro, food-cost, stok, kayıp) kısaca YORUMLA — iyi mi kötü mü, NEDEN, hangi RİSK var ve NE YAPMALI. Önerilerini net ve uygulanabilir ver.';
-        $ai = _patronAiCagir(
-            'Sen "' . $hitapAd . '" adlı restoran patronunun kişisel iş analistisin — tecrübeli bir genel müdür/CEO danışmanı gibi. '
-            . 'Ona adıyla, sıcak ama PROFESYONEL hitap et (sen dili). Veriyi sadece listelemek YASAK; her sayının ANLAMINI, iyi/kötü olduğunu, nedenini, RİSKİNİ ve ÖNERİNİ yaz — bir CEO\'nun duymak isteyeceği derinlikte. '
-            . 'Rakamları yorumla (oran/kıyas kur). SADECE aşağıdaki JSON verisini kullan, ASLA sayı uydurma. Türkçe, akıcı, 6-9 cümle. ' . $etiket . '.'
-            . "\n--- VERİ ---\n" . json_encode($veri, JSON_UNESCAPED_UNICODE),
-            $istek, 650, null, $sid);
-        if ($ai) { $metin = $ai; $kaynak = 'ai'; }
         try {
             DB::table('patron_ai_brief')->insert(['sube_id' => $sid, 'tarih' => $bugun, 'tip' => $tip,
                 'ozet_json' => json_encode($veri, JSON_UNESCAPED_UNICODE), 'oncelikler_json' => json_encode($kural['oncelikler'], JSON_UNESCAPED_UNICODE),
@@ -7629,11 +7660,11 @@ Route::get('/api/patron-ai/brief', function (Request $r) {
     if (!in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Bu ekrana yetkiniz yok'], 403);
     $tip = $r->input('tip') === 'aksam' ? 'aksam' : 'sabah';
     $b = _patronAiBriefUret($p->sube_id, $tip, $r->boolean('force'), $p->ad ?? null);
-    return array_merge(['ok' => 1, 'ad' => $p->ad ?? null, 'ai_erisim' => _aiErisim($p),
-        'anlatim' => _patronAiAnlatim($b['veri'] ?? [], $tip, $p->ad ?? null),
-        'analiz' => _patronAiAnaliz($b['veri'] ?? [], $tip, $p->ad ?? null),
+    $az = _patronAiAnalizZengin($p->sube_id, $b['veri'] ?? [], $tip, $p->ad ?? null, $r->boolean('force'));
+    return array_merge($b, ['ok' => 1, 'ad' => $p->ad ?? null, 'ai_erisim' => _aiErisim($p),
+        'analiz' => $az['bloklar'], 'ai_ozet' => $az['ozet'], 'ai_var' => ($az['kaynak'] === 'ai'), 'kaynak' => $az['kaynak'],
         'tuketim' => _aiKrediDurum($p->sube_id), 'sureklilik' => _patronAiSureklilik($p->sube_id),
-        'whatsapp' => _patronAiWhatsapp($p->sube_id)], $b);
+        'whatsapp' => _patronAiWhatsapp($p->sube_id)]);
 });
 // API: AI tüketim durumu (abonelik-gömülü aylık hak + kullanım) — sahip/müdür.
 Route::get('/api/patron-ai/tuketim', function (Request $r) {
@@ -7696,10 +7727,15 @@ Route::get('/patron-ai', function () {
     try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
     try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
-    $anlatim = []; $analiz = [];
-    try { if ($brief) { $anlatim = _patronAiAnlatim($brief['veri'] ?? [], $tip, $ad); $analiz = _patronAiAnaliz($brief['veri'] ?? [], $tip, $ad); } } catch (\Throwable $e) {}
+    $anlatim = []; $analiz = []; $aiOzet = null; $aiVar = false;
+    try { if ($brief) {
+        $anlatim = _patronAiAnlatim($brief['veri'] ?? [], $tip, $ad);
+        $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, request()->boolean('force'));
+        $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
+    } } catch (\Throwable $e) {}
     return view('patron_ai', ['brief' => $brief, 'personel' => $bp, 'ad' => $ad, 'tuketim' => $tuketim,
-        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'anlatim' => $anlatim, 'analiz' => $analiz]);
+        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'anlatim' => $anlatim, 'analiz' => $analiz,
+        'aiOzet' => $aiOzet, 'aiVar' => $aiVar]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================

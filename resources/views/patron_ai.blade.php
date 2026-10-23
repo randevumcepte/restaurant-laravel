@@ -42,6 +42,8 @@
     $bold = fn ($s) => preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', e($s));
     $anlatimL = $anlatim ?? [];
     $analizL = $analiz ?? [];
+    $aiVar = $aiVar ?? false;
+    $aiOzet = $aiOzet ?? null;
     $vd = ['iyi' => ['İYİ', 'var(--yesil)'], 'notr' => ['NÖTR', 'var(--sub)'], 'dikkat' => ['DİKKAT', 'var(--amber)'], 'risk' => ['RİSK', 'var(--kirmizi)']];
     // öneriye akıllı buton
     $oneriLink = function ($o) {
@@ -59,7 +61,7 @@
     <div class="pai-orb"><span class="material-icons-outlined" style="color:#fff;font-size:26px">auto_awesome</span></div>
     <div style="flex:1">
       <div style="font-size:20px;font-weight:800;color:var(--ink)">{{ $selam }}{{ $adK ? ', '.$adK : '' }} 👋</div>
-      <div class="rk-sub" style="font-size:12.5px">{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }} · {{ ($tip ?? 'sabah') === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }} @if($brief)· <span style="color:{{ $kaynak==='ai'?'var(--mor1)':'var(--sub)' }}">{{ $kaynak==='ai'?'AI yazdı':'kural motoru' }}</span>@endif</div>
+      <div class="rk-sub" style="font-size:12.5px">{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }} · {{ ($tip ?? 'sabah') === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }} @if($brief)· <span style="color:{{ $aiVar?'var(--mor1)':'var(--sub)' }}">{{ $aiVar?'✨ AI yazdı':'kural motoru' }}</span>@endif</div>
     </div>
     <div style="display:flex;gap:6px">
       <a href="/patron-ai?tip=sabah" class="rk-btn {{ ($tip??'sabah')==='sabah'?'':'bos' }}" style="padding:6px 12px;{{ ($tip??'sabah')==='sabah'?'background:var(--mor1)':'' }}">Sabah</a>
@@ -81,11 +83,11 @@
   @if (!$brief)
     <div class="pai-blok" style="text-align:center;color:var(--sub)">Brifing üretilemedi.</div>
   @else
-    {{-- AI DEĞERLENDİRMESİ (anahtar açıkken Haiku'nun derin yorumu) --}}
-    @if ($kaynak === 'ai' && !empty($brief['metin']))
+    {{-- AI DEĞERLENDİRMESİ (anahtar açıkken Haiku'nun özgün genel yorumu) --}}
+    @if ($aiVar && !empty($aiOzet))
     <div class="pai-blok pai-ai">
       <h4 style="color:var(--mor1)"><span class="material-icons-outlined" style="font-size:17px">auto_awesome</span> AI Değerlendirmesi</h4>
-      <div style="font-size:14.5px;line-height:1.65;color:var(--ink);white-space:pre-line">{{ $brief['metin'] }}</div>
+      <div style="font-size:14.5px;line-height:1.65;color:var(--ink);white-space:pre-line">{!! $bold($aiOzet) !!}</div>
     </div>
     @endif
 
