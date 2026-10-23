@@ -95,6 +95,16 @@
             ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
         ],
     ];
+    // DEPARTMAN + BİLDİRİM (additif, flag ile). gor_personel yetkisi olan departmanı görür; bildirim herkese açık.
+    if (config('services.resteos.departman_acik', true)) {
+        $gruplar['Personel'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
+        $gruplar['Ayarlar & Entegrasyon'][] = ['/bildirim-ayar', 'notifications_active', 'Bildirim Ayarları', '#0EA5E9'];
+    }
+    // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
+    $gruplar = ['Patron AI' => [
+        ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
+        ['/entegrasyonlar', 'hub', 'Entegrasyonlar (Gmail/Takvim)', '#4F46E5'],
+    ]] + $gruplar;
     $path = '/' . trim(request()->path(), '/');
     $aktifSubeAd = 'ResteOS';
     try { if (function_exists('_aktifSubeId')) { $aktifSubeAd = optional(\DB::table('subeler')->where('id', _aktifSubeId())->first())->ad ?: 'ResteOS'; } } catch (\Throwable $e) {}

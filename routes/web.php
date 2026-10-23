@@ -5456,7 +5456,8 @@ if (!function_exists('_fcmGonder')) {
 }
 if (!function_exists('_fcmSubeyeGonder')) {
     // Kolaylik: bir subedeki personel cihazlarina (opsiyonel role filtresi) push.
-    function _fcmSubeyeGonder($subeId, $baslik, $govde, $data = [], $roller = null)
+    // $tip verilirse: o bildirim tipini KAPATAN personele gonderilmez (kisiye ozel tercih — ADDITIF, eski cagrilar etkilenmez).
+    function _fcmSubeyeGonder($subeId, $baslik, $govde, $data = [], $roller = null, $tip = null)
     {
         _fcmTokenEnsure();
         try {
@@ -5466,7 +5467,16 @@ if (!function_exists('_fcmSubeyeGonder')) {
                 if (!$ids) return false;
                 $q->whereIn('personel_id', $ids);
             }
-            $tokenlar = $q->pluck('token')->all();
+            if ($tip && function_exists('_bildirimTercihKapali')) {
+                $rows = $q->get(['token', 'personel_id']);
+                $tokenlar = [];
+                foreach ($rows as $row) {
+                    if ($row->personel_id && _bildirimTercihKapali($row->personel_id, $tip)) continue;
+                    $tokenlar[] = $row->token;
+                }
+            } else {
+                $tokenlar = $q->pluck('token')->all();
+            }
         } catch (\Throwable $e) {
             return false;
         }
@@ -6705,6 +6715,9 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
             '/yazici-ayarlari' => 'gor_yazici', '/bagli-cihazlar' => 'gor_bagli_cihaz', '/isletme-konum' => 'gor_isletme_konum',
             '/sebep-yonetimi' => 'gor_sebep', '/odeme-ayar' => 'gor_odeme_ayar', '/copilot' => 'gor_copilot',
+            '/departman-yonetim' => 'gor_personel', // departman/yetki yönetimi: personel yetkisi olana görünür (/bildirim-ayar haritada YOK = herkese açık)
+            '/patron-ai' => 'gor_copilot',          // Patron AI sabah brifingi: copilot yetkisi olana (sahip/müdür)
+            '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
         ];
     }
 }
@@ -6754,6 +6767,1365 @@ if (!function_exists('_panelYetkiVar')) {
         return in_array($sayfaKey, _kademeSayfalar($kademe));
     }
 }
+
+// ============================ DEPARTMAN + BİLDİRİM TERCİHİ + AI ERİŞİM (Patron AI Faz 1-2) ============================
+// TAMAMEN ADDITIF: mevcut kademe/sayfa_yetki/_panelYetkiVar sistemine DOKUNMAZ.
+// Departman = sayfa_yetki anahtarlarının yeniden kullanılabilir ŞABLONU (preset). Departman seçince
+// kişinin sayfa_yetki'si şablondan dolar (kademeUygula mantığının departman hali). İki departman AYNI
+// anahtarı taşıyabilir -> ikisi de aynı veriyi görür. departman_id boşsa davranış BİRE BİR eski haliyle kalır.
+if (!function_exists('_departmanEnsure')) {
+    function _departmanEnsure()
+    {
+        if (cache()->get('departman_ensure_ok')) return;
+        if (!Schema::hasTable('departmanlar')) {
+            try { Schema::create('departmanlar', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 80);
+                $t->string('kod', 32)->nullable();
+                $t->string('grup', 40)->nullable();             // üst grup (ağaç): "Mutfak (BOH)", "İdari Ofis"...
+                $t->unsignedBigInteger('ust_departman_id')->nullable(); // opsiyonel özel iç içe departman
+                $t->string('renk', 16)->nullable();
+                $t->string('ikon', 40)->nullable();
+                $t->text('sayfa_yetki')->nullable();            // JSON {gor_stok:1, ...} ÜYE varsayılanı (en alt kademe)
+                $t->text('sorumlu_ek')->nullable();             // JSON [gor_raporlar,...] SORUMLU'ya eklenen yönetim sayfaları
+                $t->text('unvanlar')->nullable();               // JSON ["Mutfak Şefi", "Sous Chef", ...] (en üst sorumlu önce)
+                $t->text('islem_yetki')->nullable();            // JSON {iskonto:1, ...} (opsiyonel işlem yetkileri)
+                $t->string('ai_erisim', 12)->default('kapali'); // tam|kisitli|kapali
+                $t->integer('ai_gunluk_limit')->default(0);     // kisitli ise kişi başı günlük Haiku tavanı
+                $t->tinyInteger('aktif')->default(1);
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        // Tablo ÖNCEDEN kurulduysa yeni kolonları guard'lı ekle (hiyerarşi/ünvan için).
+        foreach ([
+            ['departmanlar', 'grup', fn ($t) => $t->string('grup', 40)->nullable()],
+            ['departmanlar', 'ust_departman_id', fn ($t) => $t->unsignedBigInteger('ust_departman_id')->nullable()],
+            ['departmanlar', 'sorumlu_ek', fn ($t) => $t->text('sorumlu_ek')->nullable()],
+            ['departmanlar', 'unvanlar', fn ($t) => $t->text('unvanlar')->nullable()],
+        ] as [$tab, $kol, $cl]) {
+            try { if (Schema::hasTable($tab) && !Schema::hasColumn($tab, $kol)) Schema::table($tab, $cl); } catch (\Throwable $e) {}
+        }
+        // personeller: departman_id + ünvan + sorumlu bayrağı — hepsi guard'lı, nullable. Yoksa eski davranış.
+        try { if (!Schema::hasColumn('personeller', 'departman_id')) Schema::table('personeller', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()->index()); } catch (\Throwable $e) {}
+        try { if (!Schema::hasColumn('personeller', 'departman_unvan')) Schema::table('personeller', fn ($t) => $t->string('departman_unvan', 60)->nullable()); } catch (\Throwable $e) {}
+        try { if (!Schema::hasColumn('personeller', 'departman_sorumlu')) Schema::table('personeller', fn ($t) => $t->tinyInteger('departman_sorumlu')->default(0)); } catch (\Throwable $e) {}
+        cache()->put('departman_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_departmanGetir')) {
+    // Tek departmanı request içinde cache'le (her yetki kontrolünde DB'ye gitme).
+    function _departmanGetir($departmanId)
+    {
+        static $bellek = [];
+        $departmanId = (int) $departmanId;
+        if ($departmanId <= 0) return null;
+        if (array_key_exists($departmanId, $bellek)) return $bellek[$departmanId];
+        _departmanEnsure();
+        $d = null;
+        try { $d = DB::table('departmanlar')->where('id', $departmanId)->first(); } catch (\Throwable $e) {}
+        return $bellek[$departmanId] = $d;
+    }
+}
+if (!function_exists('_departmanSablonlari')) {
+    // Hazır departman şablonları (patron tek tık oluşturur). kod => [ad, ikon(Material), renk, açık sayfa anahtarları, ai].
+    // KAPSAMLI restoran organizasyonu: Ön Salon (FOH) + Mutfak/Arka (BOH) + Yönetim/İdari + Teknik/Destek.
+    // Geçersiz anahtarlar seed'de array_key_exists ile güvenle atlanır (mevcut sayfa listesi değişse bile patlamaz).
+    function _departmanSablonlari()
+    {
+        // Sorumlu (en üst kademe) için eklenecek ortak yönetim sayfaları. ÜYE varsayılanına eklenir.
+        $yon = ['gor_raporlar', 'gor_puantaj', 'gor_hareketler'];
+        return [
+            // ===== YÖNETİM =====
+            'ust_yonetim' => ['ad' => 'Üst Yönetim', 'grup' => 'Yönetim', 'ikon' => 'admin_panel_settings', 'renk' => '#7C3AED', 'ai' => 'tam',
+                'unvan' => ['Genel Müdür', 'İşletme Sahibi', 'Yönetici'], 'sorumlu_ek' => [],
+                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_raporlar', 'gor_z_raporu', 'gor_cari', 'gor_muhasebe', 'gor_personel', 'gor_stok', 'gor_hareketler', 'gor_copilot']],
+            'operasyon' => ['ad' => 'İşletme / Operasyon', 'grup' => 'Yönetim', 'ikon' => 'manage_accounts', 'renk' => '#4F46E5', 'ai' => 'tam',
+                'unvan' => ['Operasyon Müdürü', 'Müdür Yardımcısı', 'Vardiya Amiri'], 'sorumlu_ek' => [],
+                'sayfa' => ['gor_dashboard', 'gor_pos', 'gor_mutfak', 'gor_rezervasyon', 'gor_paket', 'gor_kasa', 'gor_stok', 'gor_personel', 'gor_puantaj', 'gor_raporlar', 'gor_garson_cagri', 'gor_garson_perf', 'gor_copilot']],
+            // ===== ÖN SALON (FOH) =====
+            'servis' => ['ad' => 'Servis / Garson', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'room_service', 'renk' => '#64748B', 'ai' => 'kapali',
+                'unvan' => ['Servis Şefi (Maître)', 'Kaptan Garson', 'Garson', 'Komi'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_mutfak']],
+            'karsilama' => ['ad' => 'Karşılama / Host', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'co_present', 'renk' => '#0EA5E9', 'ai' => 'kapali',
+                'unvan' => ['Host Şefi', 'Host / Hostess'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_rezervasyon', 'gor_masa_yonetim', 'gor_salon_sema', 'gor_garson_cagri']],
+            'bar' => ['ad' => 'Bar / Barmen', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'local_bar', 'renk' => '#8B5CF6', 'ai' => 'kisitli',
+                'unvan' => ['Bar Şefi', 'Barmen', 'Barback'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_pos', 'gor_mutfak', 'gor_stok', 'gor_garson_cagri']],
+            'kasa' => ['ad' => 'Kasa / Ön Büro', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'point_of_sale', 'renk' => '#D97706', 'ai' => 'kapali',
+                'unvan' => ['Kasa Sorumlusu', 'Kasiyer'], 'sorumlu_ek' => ['gor_raporlar', 'gor_z_raporu', 'gor_hareketler'],
+                'sayfa' => ['gor_pos', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_cari', 'gor_paket', 'gor_rezervasyon', 'gor_masa_yonetim']],
+            // ===== MUTFAK (BOH) ===== (üst: Mutfak Şefi; alt departmanlar aynı grupta)
+            'mutfak' => ['ad' => 'Mutfak (Sıcak)', 'grup' => 'Mutfak (BOH)', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'ai' => 'kisitli',
+                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_mutfak', 'gor_stok', 'gor_garson_cagri']],
+            'soguk_mutfak' => ['ad' => 'Soğuk Mutfak / Garde Manger', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kitchen', 'renk' => '#10B981', 'ai' => 'kisitli',
+                'unvan' => ['Soğuk Mutfak Şefi (Garde Manger)', 'Soğukçu', 'Komi'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_mutfak', 'gor_stok']],
+            'pastane' => ['ad' => 'Pastane / Tatlı', 'grup' => 'Mutfak (BOH)', 'ikon' => 'cake', 'renk' => '#EC4899', 'ai' => 'kisitli',
+                'unvan' => ['Pastane Şefi (Pastry Chef)', 'Pastacı', 'Komi'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_mutfak', 'gor_stok']],
+            'kasap' => ['ad' => 'Kasap / Et Hazırlık', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kebab_dining', 'renk' => '#DC2626', 'ai' => 'kisitli',
+                'unvan' => ['Kasap Ustası', 'Kasap Yardımcısı'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_mutfak', 'gor_stok']],
+            'bulasik' => ['ad' => 'Bulaşıkhane / Steward', 'grup' => 'Mutfak (BOH)', 'ikon' => 'wash', 'renk' => '#06B6D4', 'ai' => 'kapali',
+                'unvan' => ['Bulaşıkhane Sorumlusu (Chief Steward)', 'Bulaşıkçı / Steward'], 'sorumlu_ek' => ['gor_puantaj'],
+                'sayfa' => ['gor_mutfak']],
+            // ===== TEDARİK & DEPO =====
+            'satinalma' => ['ad' => 'Satın Alma', 'grup' => 'Tedarik & Depo', 'ikon' => 'inventory_2', 'renk' => '#0EA5E9', 'ai' => 'kisitli',
+                'unvan' => ['Satın Alma Müdürü', 'Satın Alma Uzmanı', 'Satın Alma Elemanı'], 'sorumlu_ek' => $yon,
+                'sayfa' => ['gor_dashboard', 'gor_stok', 'gor_cari', 'gor_raporlar', 'gor_copilot']],
+            'depo' => ['ad' => 'Depo / Ambar', 'grup' => 'Tedarik & Depo', 'ikon' => 'warehouse', 'renk' => '#78716C', 'ai' => 'kisitli',
+                'unvan' => ['Depo Sorumlusu', 'Depo Görevlisi'], 'sorumlu_ek' => ['gor_raporlar', 'gor_hareketler'],
+                'sayfa' => ['gor_stok']],
+            'mal_kabul' => ['ad' => 'Mal Kabul / İrsaliye', 'grup' => 'Tedarik & Depo', 'ikon' => 'local_shipping', 'renk' => '#059669', 'ai' => 'kapali',
+                'unvan' => ['Mal Kabul Sorumlusu', 'Mal Kabul Görevlisi'], 'sorumlu_ek' => ['gor_hareketler'],
+                'sayfa' => ['gor_stok']],
+            // ===== İDARİ OFİS ===== (grup; altında İK ve Finans AYRI işler)
+            'ik' => ['ad' => 'İnsan Kaynakları', 'grup' => 'İdari Ofis', 'ikon' => 'groups', 'renk' => '#10B981', 'ai' => 'kisitli',
+                'unvan' => ['İK Müdürü', 'İK Uzmanı', 'İK Asistanı'], 'sorumlu_ek' => ['gor_hareketler'],
+                'sayfa' => ['gor_personel', 'gor_puantaj', 'gor_garson_perf']],
+            'finans' => ['ad' => 'Finans / Muhasebe', 'grup' => 'İdari Ofis', 'ikon' => 'account_balance', 'renk' => '#4F46E5', 'ai' => 'kisitli',
+                'unvan' => ['Mali İşler Müdürü', 'Muhasebeci', 'Muhasebe Asistanı'], 'sorumlu_ek' => [],
+                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_gider', 'gor_cari', 'gor_muhasebe', 'gor_raporlar', 'gor_z_raporu', 'gor_hareketler', 'gor_copilot']],
+            'pazarlama' => ['ad' => 'Pazarlama / Sosyal Medya', 'grup' => 'İdari Ofis', 'ikon' => 'campaign', 'renk' => '#F43F5E', 'ai' => 'kisitli',
+                'unvan' => ['Pazarlama Müdürü', 'Sosyal Medya Uzmanı', 'İçerik Editörü'], 'sorumlu_ek' => ['gor_raporlar'],
+                'sayfa' => ['gor_app_yonetim', 'gor_indirimler', 'gor_odul_raporu', 'gor_whatsapp', 'gor_menu']],
+            'satis_etkinlik' => ['ad' => 'Satış / Rezervasyon & Etkinlik', 'grup' => 'İdari Ofis', 'ikon' => 'celebration', 'renk' => '#A855F7', 'ai' => 'kisitli',
+                'unvan' => ['Satış Müdürü', 'Etkinlik Koordinatörü', 'Rezervasyon Uzmanı'], 'sorumlu_ek' => ['gor_raporlar'],
+                'sayfa' => ['gor_rezervasyon', 'gor_cari', 'gor_raporlar', 'gor_masa_yonetim']],
+            'crm' => ['ad' => 'CRM / Müşteri İlişkileri', 'grup' => 'İdari Ofis', 'ikon' => 'support_agent', 'renk' => '#14B8A6', 'ai' => 'kisitli',
+                'unvan' => ['CRM Müdürü', 'Müşteri İlişkileri Uzmanı'], 'sorumlu_ek' => ['gor_raporlar'],
+                'sayfa' => ['gor_odul_dogrula', 'gor_odul_raporu', 'gor_rezervasyon', 'gor_whatsapp']],
+            'it' => ['ad' => 'IT / Bilgi İşlem', 'grup' => 'İdari Ofis', 'ikon' => 'dns', 'renk' => '#6366F1', 'ai' => 'kisitli',
+                'unvan' => ['IT Müdürü', 'Sistem Yöneticisi', 'IT Destek'], 'sorumlu_ek' => ['gor_hareketler'],
+                'sayfa' => ['gor_bagli_cihaz', 'gor_yazici', 'gor_app_yonetim', 'gor_whatsapp', 'gor_isletme_konum']],
+            // ===== LOJİSTİK =====
+            'paket_kurye' => ['ad' => 'Paket / Kurye / Dağıtım', 'grup' => 'Lojistik', 'ikon' => 'delivery_dining', 'renk' => '#22C55E', 'ai' => 'kapali',
+                'unvan' => ['Dağıtım Sorumlusu', 'Kurye'], 'sorumlu_ek' => ['gor_raporlar'],
+                'sayfa' => ['gor_paket', 'gor_kurye', 'gor_garson_cagri']],
+            // ===== TEKNİK & DESTEK =====
+            'teknik' => ['ad' => 'Teknik Servis / Bakım-Onarım', 'grup' => 'Teknik & Destek', 'ikon' => 'build', 'renk' => '#F97316', 'ai' => 'kapali',
+                'unvan' => ['Teknik Müdür', 'Tekniker', 'Bakım Görevlisi'], 'sorumlu_ek' => ['gor_hareketler'],
+                'sayfa' => ['gor_bagli_cihaz', 'gor_yazici', 'gor_isletme_konum']],
+            'temizlik' => ['ad' => 'Temizlik / Hijyen', 'grup' => 'Teknik & Destek', 'ikon' => 'cleaning_services', 'renk' => '#0EA5E9', 'ai' => 'kapali',
+                'unvan' => ['Temizlik Sorumlusu', 'Temizlik Görevlisi'], 'sorumlu_ek' => ['gor_puantaj'],
+                'sayfa' => ['gor_garson_cagri']],
+            'guvenlik' => ['ad' => 'Güvenlik', 'grup' => 'Teknik & Destek', 'ikon' => 'security', 'renk' => '#475569', 'ai' => 'kapali',
+                'unvan' => ['Güvenlik Amiri', 'Güvenlik Görevlisi'], 'sorumlu_ek' => ['gor_puantaj'],
+                'sayfa' => ['gor_bagli_cihaz', 'gor_isletme_konum', 'gor_hareketler']],
+            'kalite' => ['ad' => 'Kalite / Gıda Güvenliği (HACCP)', 'grup' => 'Teknik & Destek', 'ikon' => 'verified_user', 'renk' => '#16A34A', 'ai' => 'kisitli',
+                'unvan' => ['Kalite / Gıda Güvenliği Müdürü (HACCP)', 'Kalite Uzmanı'], 'sorumlu_ek' => [],
+                'sayfa' => ['gor_stok', 'gor_sebep', 'gor_hareketler', 'gor_raporlar']],
+        ];
+    }
+}
+if (!function_exists('_departmanSayfaAcik')) {
+    // Departmanın açık sayfa anahtarları (preset) — JSON {key:bool} içinden sadece açık olanlar.
+    function _departmanSayfaAcik($departman)
+    {
+        if (!$departman || empty($departman->sayfa_yetki)) return [];
+        $j = json_decode($departman->sayfa_yetki, true);
+        if (!is_array($j)) return [];
+        return array_values(array_filter(array_keys($j), fn ($k) => !empty($j[$k])));
+    }
+}
+if (!function_exists('_panelYetkiListesi')) {
+    // Personelin ETKİN açık sayfa anahtarları (Flutter ekran kapısı için). /personel map ile AYNI mantık.
+    function _panelYetkiListesi($personel)
+    {
+        if (!$personel) return [];
+        $rol = $personel->rol ?? '';
+        $tum = _panelSayfaKeys();
+        if ($rol === 'sahip') return $tum;
+        $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
+        $kademe = $personel->kademe ?? _rolKademe($rol);
+        $acik = [];
+        foreach ($tum as $k) {
+            if (is_array($sy) && array_key_exists($k, $sy)) { if (!empty($sy[$k])) $acik[] = $k; }
+            elseif (in_array($k, _kademeSayfalar($kademe))) $acik[] = $k;
+        }
+        return $acik;
+    }
+}
+if (!function_exists('_aiErisim')) {
+    // Patron/müdür -> 'tam' (kısıtsız); departman varsa onun politikası; yoksa alt personel 'kisitli'.
+    function _aiErisim($personel)
+    {
+        if (!$personel) return 'kapali';
+        $rol = $personel->rol ?? '';
+        if (in_array($rol, ['sahip', 'mudur'])) return 'tam';
+        $did = (int) ($personel->departman_id ?? 0);
+        if ($did > 0) { $d = _departmanGetir($did); if ($d && !empty($d->ai_erisim)) return $d->ai_erisim; }
+        return 'kisitli';
+    }
+}
+// ---- Bildirim tercihleri (kişiye özel push aç/kapat) ----
+if (!function_exists('_bildirimTipleri')) {
+    // tip => [etiket, varsayilan_acik, gorebilen_roller(null=herkes), varsayilan_personel_gorsun(bool)]
+    function _bildirimTipleri()
+    {
+        return [
+            'sabah_brief'      => ['Günlük sabah brifingi (Patron AI)', 1, ['sahip', 'mudur']],
+            'aksam_rapor'      => ['Akşam raporu (gün sonu özeti)', 1, ['sahip', 'mudur']],
+            'ciro_dususu'      => ['Ciro belirlenen eşiğin altına düştü', 1, ['sahip', 'mudur']],
+            'hedef_gerisi'     => ['Günlük hedefin belirgin gerisinde', 1, ['sahip', 'mudur']],
+            'buyuk_iskonto'    => ['Büyük iskonto / ikram yapıldı', 1, ['sahip', 'mudur']],
+            'kritik_stok'      => ['Kritik stok uyarısı', 1, ['sahip', 'mudur', 'satinalmaci']],
+            'gec_tedarik'      => ['Geciken tedarikçi siparişi', 1, ['sahip', 'mudur', 'satinalmaci']],
+            'uretim_riski'     => ['Üretim riski (malzeme bitti/bitiyor)', 1, ['sahip', 'mudur', 'satinalmaci']],
+            'kritik_eposta'    => ['Yanıt bekleyen kritik e-posta (AI)', 1, ['sahip', 'mudur']],
+            'yeni_rezervasyon' => ['Yeni rezervasyon', 1, null],
+            'garson_cagri'     => ['Garson / masa çağrısı', 1, null],
+            'yeni_paket'       => ['Yeni paket sipariş', 1, null],
+        ];
+    }
+}
+if (!function_exists('_bildirimTercihEnsure')) {
+    function _bildirimTercihEnsure()
+    {
+        if (cache()->get('bildirim_tercih_ensure_ok')) return;
+        if (!Schema::hasTable('bildirim_tercihleri')) {
+            try { Schema::create('bildirim_tercihleri', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('personel_id')->index();
+                $t->string('tip', 40);
+                $t->tinyInteger('acik')->default(1);
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('bildirim_tercih_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_bildirimTercihMap')) {
+    function _bildirimTercihMap($personelId)
+    {
+        static $bellek = [];
+        $personelId = (int) $personelId;
+        if (array_key_exists($personelId, $bellek)) return $bellek[$personelId];
+        _bildirimTercihEnsure();
+        $m = [];
+        try { $m = DB::table('bildirim_tercihleri')->where('personel_id', $personelId)->pluck('acik', 'tip')->all(); } catch (\Throwable $e) {}
+        return $bellek[$personelId] = $m;
+    }
+}
+if (!function_exists('_bildirimTercihKapali')) {
+    // true => kişi bu tipi KAPATMIŞ (gönderme). Kayıt yoksa varsayılan AÇIK kabul edilir (geriye uyumlu).
+    function _bildirimTercihKapali($personelId, $tip)
+    {
+        if (!$tip) return false;
+        $m = _bildirimTercihMap($personelId);
+        if (!array_key_exists($tip, $m)) return false;
+        return (int) $m[$tip] === 0;
+    }
+}
+
+// ---- API: giriş yapanın etkin yetkileri + departman + AI erişimi (Flutter ekran kapısı) ----
+Route::get('/api/yetkilerim', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanEnsure();
+    $dep = null;
+    $did = (int) ($p->departman_id ?? 0);
+    if ($did > 0) { $d = _departmanGetir($did); if ($d) $dep = ['id' => (int) $d->id, 'ad' => $d->ad, 'grup' => $d->grup ?? null, 'renk' => $d->renk, 'ikon' => $d->ikon, 'kod' => $d->kod,
+        'unvan' => $p->departman_unvan ?? null, 'sorumlu' => (int) ($p->departman_sorumlu ?? 0)]; }
+    return ['ok' => 1, 'rol' => $p->rol ?? '', 'kademe' => $p->kademe ?? _rolKademe($p->rol ?? ''),
+        'yetkiler' => _panelYetkiListesi($p), 'ai_erisim' => _aiErisim($p), 'departman' => $dep,
+        'departman_acik' => (bool) config('services.resteos.departman_acik', true)];
+});
+
+// ---- API: şubenin departman listesi (editör + yönetim) ----
+Route::get('/api/departmanlar', function (Request $r) {
+    $p = _apiPersonel($r);
+    $sid = $p ? (int) $p->sube_id : _webSubeId();
+    _departmanEnsure();
+    $list = [];
+    try { $list = DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'kod', 'renk', 'ikon', 'ai_erisim']); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'departmanlar' => $list];
+});
+
+// ---- WEB: Departman Yönetimi (oluştur / yetki şablonu / sil) ----
+Route::get('/departman-yonetim', function () {
+    _departmanEnsure();
+    $sid = _webSubeId();
+    $deps = collect();
+    try { $deps = DB::table('departmanlar')->where('sube_id', $sid)->orderBy('ad')->get(); } catch (\Throwable $e) {}
+    $benSahip = false;
+    try { $bp = _posPersonel(); $benSahip = $bp && in_array(($bp->rol ?? ''), ['sahip', 'mudur']); } catch (\Throwable $e) {}
+    return view('departman_yonetim', [
+        'departmanlar' => $deps, 'sayfaKategori' => _panelSayfaKategori(),
+        'sablonlar' => _departmanSablonlari(), 'duzenleyebilir' => $benSahip,
+    ]);
+});
+Route::post('/departman-kaydet', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+        if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür düzenleyebilir.');
+        _departmanEnsure();
+        $ad = trim((string) $r->ad);
+        if ($ad === '') return redirect('/departman-yonetim')->with('hata', 'Departman adı boş olamaz.');
+        $sayfa = [];
+        foreach (_panelSayfaKeys() as $k) $sayfa[$k] = $r->has('sayfa_' . $k);
+        $sorumluEk = [];
+        foreach (_panelSayfaKeys() as $k) if ($r->has('sorumlu_' . $k)) $sorumluEk[] = $k;
+        $unvanlar = array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $r->unvanlar))));
+        $ai = in_array($r->ai_erisim, ['tam', 'kisitli', 'kapali']) ? $r->ai_erisim : 'kapali';
+        $veri = ['ad' => $ad, 'kod' => $r->kod ? mb_substr(preg_replace('/\s+/', '_', mb_strtolower((string) $r->kod)), 0, 32) : null,
+            'grup' => $r->grup ? mb_substr((string) $r->grup, 0, 40) : null,
+            'renk' => $r->renk ?: '#4F46E5', 'ikon' => $r->ikon ?: 'badge',
+            'sayfa_yetki' => json_encode($sayfa), 'sorumlu_ek' => json_encode($sorumluEk), 'unvanlar' => json_encode($unvanlar),
+            'ai_erisim' => $ai,
+            'ai_gunluk_limit' => max(0, (int) $r->ai_gunluk_limit), 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
+        $pid = (int) $r->id;
+        if ($pid > 0) {
+            DB::table('departmanlar')->where('id', $pid)->where('sube_id', $sid)->update($veri);
+            return redirect('/departman-yonetim')->with('ok', 'Departman güncellendi.');
+        }
+        $veri['sube_id'] = $sid; $veri['created_at'] = now();
+        DB::table('departmanlar')->insert($veri);
+        return redirect('/departman-yonetim')->with('ok', 'Departman oluşturuldu.');
+    } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Kaydedilemedi.'); }
+});
+Route::post('/departman-sil', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+        if (!$bp || ($bp->rol ?? '') !== 'sahip') return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip silebilir.');
+        $pid = (int) $r->id;
+        // Silinen departmana bağlı personelin departman_id'sini boşalt (erişim eski sayfa_yetki ile devam eder — kesinti olmaz).
+        try { DB::table('personeller')->where('sube_id', $sid)->where('departman_id', $pid)->update(['departman_id' => null]); } catch (\Throwable $e) {}
+        DB::table('departmanlar')->where('id', $pid)->where('sube_id', $sid)->delete();
+        return redirect('/departman-yonetim')->with('ok', 'Departman silindi.');
+    } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Silinemedi.'); }
+});
+// Hazır departman şablonlarını tek tıkla oluştur (varsa atlar)
+Route::post('/departman-sablon-kur', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+        if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür.');
+        _departmanEnsure();
+        $n = 0;
+        $tumKeys = _panelSayfaKeys();
+        foreach (_departmanSablonlari() as $kod => $s) {
+            $var = DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->exists();
+            if ($var) continue;
+            $sayfa = array_fill_keys($tumKeys, false);
+            foreach ($s['sayfa'] as $k) if (array_key_exists($k, $sayfa)) $sayfa[$k] = true;
+            $sorumluEk = array_values(array_filter($s['sorumlu_ek'] ?? [], fn ($k) => in_array($k, $tumKeys)));
+            DB::table('departmanlar')->insert(['sube_id' => $sid, 'ad' => $s['ad'], 'kod' => $kod,
+                'grup' => $s['grup'] ?? null, 'renk' => $s['renk'], 'ikon' => $s['ikon'],
+                'sayfa_yetki' => json_encode($sayfa), 'sorumlu_ek' => json_encode($sorumluEk),
+                'unvanlar' => json_encode($s['unvan'] ?? []), 'ai_erisim' => $s['ai'], 'ai_gunluk_limit' => 30,
+                'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $n++;
+        }
+        return redirect('/departman-yonetim')->with('ok', "$n hazır departman oluşturuldu.");
+    } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Oluşturulamadı.'); }
+});
+
+// ---- WEB: Bildirim Ayarları (kişiye özel) ----
+Route::get('/bildirim-ayar', function () {
+    _bildirimTercihEnsure();
+    $bp = null;
+    try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    $tipler = _bildirimTipleri();
+    $mevcut = $bp ? _bildirimTercihMap($bp->id) : [];
+    return view('bildirim_ayar', ['tipler' => $tipler, 'mevcut' => $mevcut, 'personel' => $bp]);
+});
+Route::get('/api/bildirim/tercih', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    $tipler = _bildirimTipleri();
+    $mevcut = _bildirimTercihMap($p->id);
+    $out = [];
+    foreach ($tipler as $tip => $info) {
+        $roller = $info[2] ?? null;
+        if ($roller && !in_array(($p->rol ?? ''), $roller)) continue; // bu role görünmeyen tipi gizle
+        $acik = array_key_exists($tip, $mevcut) ? ((int) $mevcut[$tip] === 1) : ((int) ($info[1] ?? 1) === 1);
+        $out[] = ['tip' => $tip, 'etiket' => $info[0], 'acik' => $acik];
+    }
+    return ['ok' => 1, 'tercihler' => $out];
+});
+Route::post('/api/bildirim/tercih-kaydet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _bildirimTercihEnsure();
+    $tip = (string) $r->input('tip');
+    $acik = (int) $r->input('acik') === 1 ? 1 : 0;
+    if (!array_key_exists($tip, _bildirimTipleri())) return ['ok' => 0, 'hata' => 'Geçersiz tip'];
+    try {
+        $var = DB::table('bildirim_tercihleri')->where('personel_id', $p->id)->where('tip', $tip)->first();
+        if ($var) DB::table('bildirim_tercihleri')->where('id', $var->id)->update(['acik' => $acik, 'updated_at' => now()]);
+        else DB::table('bildirim_tercihleri')->insert(['sube_id' => (int) $p->sube_id, 'personel_id' => (int) $p->id, 'tip' => $tip, 'acik' => $acik, 'created_at' => now(), 'updated_at' => now()]);
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Kaydedilemedi']; }
+    return ['ok' => 1];
+});
+// Web formu (toplu kaydet)
+Route::post('/bildirim-ayar-kaydet', function (Request $r) {
+    $bp = null;
+    try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/bildirim-ayar')->with('hata', 'Oturum bulunamadı.');
+    _bildirimTercihEnsure();
+    try {
+        foreach (_bildirimTipleri() as $tip => $info) {
+            $roller = $info[2] ?? null;
+            if ($roller && !in_array(($bp->rol ?? ''), $roller)) continue;
+            $acik = $r->has('tip_' . $tip) ? 1 : 0;
+            $var = DB::table('bildirim_tercihleri')->where('personel_id', $bp->id)->where('tip', $tip)->first();
+            if ($var) DB::table('bildirim_tercihleri')->where('id', $var->id)->update(['acik' => $acik, 'updated_at' => now()]);
+            else DB::table('bildirim_tercihleri')->insert(['sube_id' => (int) $bp->sube_id, 'personel_id' => (int) $bp->id, 'tip' => $tip, 'acik' => $acik, 'created_at' => now(), 'updated_at' => now()]);
+        }
+    } catch (\Throwable $e) { return redirect('/bildirim-ayar')->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/bildirim-ayar')->with('ok', 'Bildirim tercihleri kaydedildi.');
+});
+
+// ---- API: Jenerik Departman Paneli (Faz 2) — kişinin yetkili olduğu KPI kartları (mevcut /api/patron/ozet yeniden kullanılır) ----
+Route::get('/api/departman/panel', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $yetki = _panelYetkiListesi($p);
+    $sahip = in_array(($p->rol ?? ''), ['sahip', 'mudur']);
+    $var = fn ($k) => $sahip || in_array($k, $yetki);
+    $kartlar = [];
+    // Her kart bir yetki anahtarına bağlı. İçerik mevcut servis/sorgulardan DARALTILARAK çekilir (çift hesap YOK).
+    try {
+        $sid = (int) $p->sube_id;
+        // Satış/ciro (yalnız finans/dashboard yetkisi olana)
+        if ($var('gor_dashboard') || $var('gor_finans')) {
+            $bugun = (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+                ->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', today())->sum('odemeler.tutar');
+            $kartlar[] = ['anahtar' => 'ciro', 'baslik' => 'Bugünkü Ciro', 'deger' => $bugun, 'tip' => 'para', 'ikon' => 'payments', 'renk' => '#10B981'];
+        }
+        // Stok: kritik malzeme sayısı (satın alma/mutfak)
+        if ($var('gor_stok')) {
+            $kritik = 0;
+            try { if (function_exists('_restoUretimRiski')) { $risk = _restoUretimRiski($sid, 0); $kritik = is_array($risk) ? count($risk['kritik'] ?? []) : 0; } } catch (\Throwable $e) {}
+            $kartlar[] = ['anahtar' => 'kritik_stok', 'baslik' => 'Kritik Stok', 'deger' => $kritik, 'tip' => 'adet', 'ikon' => 'inventory_2', 'renk' => $kritik > 0 ? '#F43F5E' : '#10B981', 'yon' => '/stok'];
+        }
+        // Açık adisyon (servis/kasa)
+        if ($var('gor_pos') || $var('gor_kasa')) {
+            $acik = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->count();
+            $kartlar[] = ['anahtar' => 'acik_adisyon', 'baslik' => 'Açık Adisyon', 'deger' => $acik, 'tip' => 'adet', 'ikon' => 'receipt_long', 'renk' => '#4F46E5', 'yon' => '/pos'];
+        }
+        // Mutfak kuyruğu
+        if ($var('gor_mutfak')) {
+            $bekleyen = 0;
+            try { $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')
+                ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
+            $kartlar[] = ['anahtar' => 'mutfak', 'baslik' => 'Hazırlanacak Kalem', 'deger' => $bekleyen, 'tip' => 'adet', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'yon' => '/mutfak'];
+        }
+        // Personel (İK)
+        if ($var('gor_personel') || $var('gor_puantaj')) {
+            $mesaide = 0;
+            try { $mesaide = (int) DB::table('personel_mesai')->where('sube_id', $sid)->whereNull('cikis_at')->count(); } catch (\Throwable $e) {}
+            $kartlar[] = ['anahtar' => 'mesaide', 'baslik' => 'Mesaide Personel', 'deger' => $mesaide, 'tip' => 'adet', 'ikon' => 'groups', 'renk' => '#10B981', 'yon' => '/puantaj'];
+        }
+    } catch (\Throwable $e) {}
+    $dep = null;
+    $did = (int) ($p->departman_id ?? 0);
+    if ($did > 0) { $d = _departmanGetir($did); if ($d) $dep = ['ad' => $d->ad, 'grup' => $d->grup ?? null, 'renk' => $d->renk, 'ikon' => $d->ikon,
+        'unvan' => $p->departman_unvan ?? null, 'sorumlu' => (int) ($p->departman_sorumlu ?? 0)]; }
+    return ['ok' => 1, 'ad' => $p->ad ?? '', 'rol' => $p->rol ?? '', 'departman' => $dep, 'ai_erisim' => _aiErisim($p), 'kartlar' => $kartlar];
+});
+
+// ============================ PATRON AI — SABAH BRİFİNGİ (Faz 3) ============================
+// İKİ KATMAN: (1) kural motoru = BEDAVA, her zaman çalışır (anahtar gerekmez). (2) Haiku anlatımı = opsiyonel,
+// yalnız config patron_ai_v2 + ANTHROPIC_API_KEY varsa; yoksa sessizce kural metnine döner. Mevcut sistem bozulmaz.
+if (!function_exists('_patronAiEnsure')) {
+    function _patronAiEnsure()
+    {
+        if (cache()->get('patron_ai_ensure_ok')) return;
+        if (!Schema::hasTable('patron_ai_brief')) {
+            try { Schema::create('patron_ai_brief', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->date('tarih')->index();
+                $t->string('tip', 12)->default('sabah'); // sabah | aksam
+                $t->text('ozet_json')->nullable();        // hesaplanan ham veri (şirket hafızası)
+                $t->text('oncelikler_json')->nullable();
+                $t->text('metin')->nullable();            // anlatı (kural veya AI)
+                $t->string('kaynak', 10)->default('kural');// kural | ai
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('patron_ai_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_patronAiCagir')) {
+    // Anthropic (Haiku). Flag kapalı / anahtar yok / İZİN yok / hata -> null (çağıran kural metnine düşer = SOFT LANDING).
+    // $personel verilirse izin+günlük limit kontrol edilir; başarılı çağrı AYLIK HAVUZA işlenir (metreleme).
+    function _patronAiCagir($system, $user, $maxTokens = 400, $personel = null, $subeId = null)
+    {
+        if (!config('services.resteos.patron_ai_v2', false)) return null;
+        $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$key) return null;
+        // İzin: departman/pool/günlük limit. Sistem (brief/cron) = $personel null -> izinli.
+        if (function_exists('_aiIzin')) { $izin = _aiIzin($personel); if (!($izin['ok'] ?? true)) return null; }
+        $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        try {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 14, CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'system' => $system,
+                    'messages' => [['role' => 'user', 'content' => $user]]], JSON_UNESCAPED_UNICODE),
+            ]);
+            $res = curl_exec($ch);
+            $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($kod < 200 || $kod >= 300) return null;
+            $d = json_decode((string) $res, true);
+            $txt = '';
+            if (isset($d['content']) && is_array($d['content'])) foreach ($d['content'] as $b) if (($b['type'] ?? '') === 'text') $txt .= $b['text'];
+            $txt = trim($txt);
+            if ($txt === '') return null;
+            // Metreleme: gerçek Haiku çağrısı 1 birim (kural/önbellek 0 — buraya hiç gelmez).
+            $sid = $subeId ?: ($personel->sube_id ?? null);
+            if ($sid && function_exists('_aiKrediKullan')) _aiKrediKullan((int) $sid, $personel->id ?? null);
+            return $txt;
+        } catch (\Throwable $e) { return null; }
+    }
+}
+// ---- AI KREDİ / TÜKETİM (abonelik-gömülü fair-use) ----
+if (!function_exists('_patronAiTuketimEnsure')) {
+    function _patronAiTuketimEnsure()
+    {
+        if (cache()->get('patron_ai_tuketim_ensure_ok')) return;
+        if (!Schema::hasTable('patron_ai_tuketim')) {
+            try { Schema::create('patron_ai_tuketim', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('yil_ay', 7)->index();         // 2026-10
+                $t->unsignedBigInteger('personel_id')->default(0); // 0 = sistem/brief
+                $t->integer('kullanim')->default(0);       // bu ay tüketilen AI yanıt birimi
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('patron_ai_tuketim_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_aiAylikHak')) {
+    // Abonelik paketine göre AYLIK dahil AI yanıt hakkı (fair-use). ayarlar ile override edilebilir.
+    function _aiAylikHak($sube)
+    {
+        $sid = is_object($sube) ? (int) ($sube->id ?? 0) : (int) $sube;
+        $ov = (int) (function_exists('resto_ayar_al') ? resto_ayar_al('ai_aylik_hak_' . $sid, 0) : 0);
+        if ($ov > 0) return $ov;
+        $tur = is_object($sube) ? ($sube->uyelik_turu ?? '') : '';
+        return ['demo' => 50, 'baslangic' => 300, 'standart' => 1000, 'pro' => 3000][$tur] ?? 1000;
+    }
+}
+if (!function_exists('_aiKrediDurum')) {
+    function _aiKrediDurum($subeId)
+    {
+        _patronAiTuketimEnsure();
+        $subeId = (int) $subeId;
+        $sube = DB::table('subeler')->where('id', $subeId)->first();
+        $hak = _aiAylikHak($sube);
+        $ay = now()->format('Y-m');
+        $kullanim = 0;
+        try { $kullanim = (int) DB::table('patron_ai_tuketim')->where('sube_id', $subeId)->where('yil_ay', $ay)->sum('kullanim'); } catch (\Throwable $e) {}
+        $kalan = max(0, $hak - $kullanim);
+        return ['yil_ay' => $ay, 'hak' => $hak, 'kullanim' => $kullanim, 'kalan' => $kalan,
+            'yuzde' => $hak > 0 ? min(100, (int) round($kullanim / $hak * 100)) : 0,
+            'paket' => is_object($sube) ? ($sube->uyelik_turu ?? '—') : '—'];
+    }
+}
+if (!function_exists('_aiKrediKullan')) {
+    function _aiKrediKullan($subeId, $personelId = null, $adet = 1)
+    {
+        _patronAiTuketimEnsure();
+        $subeId = (int) $subeId; $pid = (int) ($personelId ?: 0); $ay = now()->format('Y-m');
+        try {
+            if ($pid > 0) { // kişi başı günlük sayaç (kısıtlı limit için)
+                $k = 'ai_gun:' . $subeId . ':' . $pid . ':' . now()->toDateString();
+                cache()->put($k, (int) cache()->get($k, 0) + $adet, now()->endOfDay());
+            }
+            $row = DB::table('patron_ai_tuketim')->where('sube_id', $subeId)->where('yil_ay', $ay)->where('personel_id', $pid)->first();
+            if ($row) DB::table('patron_ai_tuketim')->where('id', $row->id)->update(['kullanim' => (int) $row->kullanim + $adet, 'updated_at' => now()]);
+            else DB::table('patron_ai_tuketim')->insert(['sube_id' => $subeId, 'yil_ay' => $ay, 'personel_id' => $pid, 'kullanim' => $adet, 'created_at' => now(), 'updated_at' => now()]);
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_aiIzin')) {
+    // AI (Haiku) çağrısına izin var mı? Patron/müdür SINIRSIZ. Alt personel: departman politikası + günlük limit + aylık havuz.
+    function _aiIzin($personel)
+    {
+        if (!$personel) return ['ok' => true]; // sistem (brief/cron)
+        $rol = $personel->rol ?? '';
+        if (in_array($rol, ['sahip', 'mudur'])) return ['ok' => true]; // fair-use, bloklanmaz
+        $erisim = function_exists('_aiErisim') ? _aiErisim($personel) : 'kapali';
+        if ($erisim === 'kapali') return ['ok' => false, 'neden' => 'Departmanınız için AI kapalı'];
+        $durum = _aiKrediDurum($personel->sube_id);
+        if ($durum['kalan'] <= 0) return ['ok' => false, 'neden' => 'Bu ayki AI hakkı doldu — temel (kural) yanıtlar sürüyor'];
+        if ($erisim === 'kisitli') {
+            $did = (int) ($personel->departman_id ?? 0); $lim = 0;
+            if ($did > 0) { $d = _departmanGetir($did); $lim = (int) ($d->ai_gunluk_limit ?? 0); }
+            if ($lim > 0) {
+                $k = 'ai_gun:' . (int) $personel->sube_id . ':' . (int) $personel->id . ':' . now()->toDateString();
+                if ((int) cache()->get($k, 0) >= $lim) return ['ok' => false, 'neden' => 'Günlük AI soru limitiniz doldu (' . $lim . ')'];
+            }
+        }
+        return ['ok' => true];
+    }
+}
+if (!function_exists('_patronAiBriefVeri')) {
+    // Kompakt brief verisi (varsayılan DÜN; akşam raporu için BUGÜN geçilebilir) — mevcut helper'larla; çift hesap motoru kurmaz.
+    // $disDahil=true ise bağlı Gmail/Takvim özeti de eklenir (sadece brief'te; zincir özetinde kapalı — hız).
+    function _patronAiBriefVeri($sid, $gun = null, $disDahil = false)
+    {
+        $sid = (int) $sid;
+        $gun = $gun ?: \Carbon\Carbon::yesterday();
+        $gecenHafta = $gun->copy()->subWeek();
+        $onceki = $gun->copy()->subDay();
+        $ciroGun = function ($g) use ($sid) {
+            try { return (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+                ->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $g->toDateString())->sum('odemeler.tutar'); }
+            catch (\Throwable $e) { return 0.0; }
+        };
+        $dun = $ciroGun($gun); $gh = $ciroGun($gecenHafta); $onc = $ciroGun($onceki);
+        $kiyas = $gh > 0 ? $gh : $onc;
+        $ciroYuzde = $kiyas > 0 ? round(($dun - $kiyas) / $kiyas * 100, 1) : 0.0;
+        $folyo = 0; $misafir = 0;
+        try {
+            $folyo = (int) DB::table('adisyonlar')->where('sube_id', $sid)->whereDate('created_at', $gun->toDateString())->count();
+            $misafir = (int) DB::table('adisyonlar')->where('sube_id', $sid)->whereDate('created_at', $gun->toDateString())->sum('misafir_sayisi');
+        } catch (\Throwable $e) {}
+        $kisiBasi = $misafir > 0 ? round($dun / $misafir) : ($folyo > 0 ? round($dun / $folyo) : 0);
+        // Food-cost (dün): mevcut reçete maliyet haritası ile
+        $fc = 0; $maliyet = 0;
+        try {
+            $map = function_exists('_restoUrunMaliyetMap') ? (_restoUrunMaliyetMap($sid)['id'] ?? []) : [];
+            if ($map) {
+                $kalem = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')
+                    ->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $gun->toDateString())
+                    ->get(['adisyon_kalemleri.urun_id', 'adisyon_kalemleri.adet']);
+                foreach ($kalem as $k) $maliyet += (float) ($map[$k->urun_id] ?? 0) * (float) $k->adet;
+                $fc = $dun > 0 ? round($maliyet / $dun * 100, 1) : 0;
+            }
+        } catch (\Throwable $e) {}
+        // Kayıp (dün)
+        $kayip = ['iskonto' => 0.0, 'ikram' => 0.0, 'iptal' => 0.0, 'fire' => 0.0];
+        try {
+            foreach (DB::table('iptal_indirim_loglari')->where('sube_id', $sid)->whereDate('created_at', $gun->toDateString())
+                ->selectRaw('tip, SUM(tutar) t')->groupBy('tip')->get() as $r) {
+                $t = (float) $r->t;
+                if ($r->tip === 'indirim') $kayip['iskonto'] += $t;
+                elseif ($r->tip === 'ikram') $kayip['ikram'] += $t;
+                else $kayip['iptal'] += $t;
+            }
+        } catch (\Throwable $e) {}
+        try {
+            $fire = DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')
+                ->whereDate('created_at', $gun->toDateString())->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t');
+            $kayip['fire'] = (float) ($fire ?? 0);
+        } catch (\Throwable $e) {}
+        // Kritik stok + üretim riski
+        $kritik = []; $riskli = [];
+        try { if (function_exists('_restoUretimRiski')) { $risk = _restoUretimRiski($sid, 5); $kritik = $risk['kritik'] ?? []; $riskli = $risk['riskli'] ?? []; } } catch (\Throwable $e) {}
+        $acik = 0;
+        try { $acik = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->count(); } catch (\Throwable $e) {}
+        $enCok = null;
+        try {
+            $ec = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')
+                ->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $gun->toDateString())
+                ->selectRaw('adisyon_kalemleri.urun_adi ad, SUM(adisyon_kalemleri.adet) a')->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('a')->first();
+            if ($ec) $enCok = ['ad' => $ec->ad, 'adet' => (int) $ec->a];
+        } catch (\Throwable $e) {}
+        // Dış kaynak (bağlıysa): yalnız konu+gönderen+sayı (gövde YOK).
+        $eposta = []; $takvim = [];
+        if ($disDahil && function_exists('_patronAiDisKaynak')) {
+            try { $dk = _patronAiDisKaynak($sid); $eposta = $dk['eposta'] ?? []; $takvim = $dk['takvim'] ?? []; } catch (\Throwable $e) {}
+        }
+        return [
+            'tarih' => $gun->toDateString(),
+            'dun_ciro' => round($dun), 'kiyas_ciro' => round($kiyas), 'ciro_yuzde' => $ciroYuzde,
+            'misafir' => $misafir, 'folyo' => $folyo, 'kisi_basi' => (int) $kisiBasi,
+            'food_cost_yuzde' => $fc, 'kayip' => array_map(fn ($v) => round($v), $kayip),
+            'kritik_sayi' => count($kritik), 'kritik' => array_slice(array_map(fn ($k) => $k['ad'], $kritik), 0, 6),
+            'riskli' => array_slice(array_map(fn ($k) => ['urun' => $k['urun'], 'porsiyon' => $k['yapilabilir']], $riskli), 0, 3),
+            'acik_adisyon' => $acik, 'en_cok' => $enCok,
+            'eposta_bekleyen' => count($eposta), 'eposta' => array_slice($eposta, 0, 5), 'takvim' => $takvim,
+        ];
+    }
+}
+if (!function_exists('_patronAiKurallar')) {
+    // BEDAVA kural motoru: öncelik listesi + SICAK/SAMİMİ anlatı (LLM gerekmez). $tip: sabah|aksam. $ad: hitap.
+    function _patronAiKurallar($v, $tip = 'sabah', $ad = null)
+    {
+        $tl = fn ($n) => number_format((float) $n, 0, ',', '.') . '₺';
+        $onc = [];
+        if (($v['ciro_yuzde'] ?? 0) <= -10)
+            $onc[] = 'Dün ciro geçen haftaya göre %' . abs($v['ciro_yuzde']) . ' düştü — misafir sayısı (' . $v['misafir'] . ') mı yoksa kişi başı (' . $tl($v['kisi_basi']) . ') mı değişti, kontrol et.';
+        if (($v['food_cost_yuzde'] ?? 0) >= 35)
+            $onc[] = 'Food-cost %' . $v['food_cost_yuzde'] . ' yüksek — reçete/porsiyon ve fire kontrolü yap.';
+        if (($v['kritik_sayi'] ?? 0) > 0)
+            $onc[] = $v['kritik_sayi'] . ' malzeme kritik seviyede' . ($v['kritik'] ? ' (' . implode(', ', $v['kritik']) . ')' : '') . ' — sipariş oluştur.';
+        $kayipTop = array_sum($v['kayip'] ?? []);
+        if ($kayipTop > 0 && ($v['dun_ciro'] ?? 0) > 0 && $kayipTop / $v['dun_ciro'] >= 0.1)
+            $onc[] = 'Dün kayıp (iskonto+ikram+iptal+fire) ' . $tl($kayipTop) . ' — cironun %' . round($kayipTop / $v['dun_ciro'] * 100) . "'i; sebep/yetki kontrolü.";
+        if (!empty($v['riskli'])) { $r = $v['riskli'][0]; $onc[] = $r['urun'] . ' için yaklaşık ' . $r['porsiyon'] . ' porsiyonluk stok kaldı.'; }
+        if (($v['eposta_bekleyen'] ?? 0) > 0) $onc[] = $v['eposta_bekleyen'] . ' yanıt bekleyen e-posta var — önemli olanlara bak.';
+        if (!empty($v['takvim'] ?? [])) { $ilk = $v['takvim'][0]; $onc[] = 'Bugün ' . count($v['takvim']) . ' takvim etkinliği (örn. ' . trim(($ilk['saat'] ?? '') . ' ' . ($ilk['baslik'] ?? '')) . ').'; }
+        if (empty($onc)) $onc[] = 'Dün tablo dengeli görünüyor — şu an açık adisyon ' . ($v['acik_adisyon'] ?? 0) . ', kritik stok yok.';
+        $onc = array_slice($onc, 0, 3);
+        // --- SICAK / SAMİMİ anlatı (asistan ağzından, isimle hitap) ---
+        $hitap = $ad ? (', ' . trim(explode(' ', trim($ad))[0])) : '';
+        $selam = $tip === 'aksam' ? 'İyi akşamlar' : 'Günaydın';
+        $acilis = $tip === 'aksam' ? 'Günü senin için topladım.' : 'Dünü senin için özetledim.';
+        $yuzde = $v['ciro_yuzde'] ?? 0;
+        $yonK = $yuzde >= 0 ? 'yükseldi' : 'düştü';
+        $m = "$selam$hitap! $acilis ";
+        $m .= 'Ciro ' . $tl($v['dun_ciro'] ?? 0) . ' oldu (geçen haftaya göre %' . abs($yuzde) . ' ' . $yonK . '), '
+            . ($v['misafir'] ?? 0) . ' misafir ağırladık, kişi başı ' . $tl($v['kisi_basi'] ?? 0) . '. ';
+        $m .= 'Food-cost %' . ($v['food_cost_yuzde'] ?? 0) . ($v['food_cost_yuzde'] >= 35 ? ' — biraz yüksek, göz atmakta fayda var. ' : '. ');
+        if (!empty($v['en_cok'])) $m .= 'En çok ' . $v['en_cok']['ad'] . ' sattık (' . $v['en_cok']['adet'] . ' adet). ';
+        if (($v['kritik_sayi'] ?? 0) > 0) {
+            $m .= 'Ama dikkat etmen gereken bir konu var: ' . $v['kritik_sayi'] . ' malzeme kritik seviyede';
+            if (!empty($v['riskli'])) $m .= ' ve ' . $v['riskli'][0]['urun'] . ' bugün tükenebilir';
+            $m .= '. ';
+        } else {
+            $m .= 'Stok tarafı rahat görünüyor. ';
+        }
+        $kuyruk = [];
+        if (($v['eposta_bekleyen'] ?? 0) > 0) $kuyruk[] = $v['eposta_bekleyen'] . ' e-posta yanıt bekliyor';
+        if (!empty($v['takvim'] ?? [])) $kuyruk[] = 'bugün ' . count($v['takvim']) . ' planın var';
+        if ($kuyruk) $m .= 'Bir de ' . implode(', ', $kuyruk) . '. ';
+        $m .= 'Önceliklerini aşağıya çıkardım.';
+        return ['oncelikler' => $onc, 'metin' => trim($m)];
+    }
+}
+if (!function_exists('_patronAiAnlatim')) {
+    // ANLATI = madde madde + **bold** vurgulu satırlar (UI'da taranabilir, önemli yerler koyu). Veriden deterministik.
+    function _patronAiAnlatim($v, $tip = 'sabah', $ad = null)
+    {
+        $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
+        $adK = $ad ? trim(explode(' ', trim($ad))[0]) : null;
+        $selam = $tip === 'aksam' ? 'İyi akşamlar' : 'Günaydın';
+        $yuzde = $v['ciro_yuzde'] ?? 0;
+        $ok = $yuzde >= 0 ? '↑' : '↓';
+        $s = [];
+        $s[] = '👋 **' . $selam . ($adK ? ', ' . $adK : '') . '!** ' . ($tip === 'aksam' ? 'Günü senin için topladım.' : 'Dünü senin için özetledim.');
+        $s[] = '💰 Ciro **' . $tl($v['dun_ciro'] ?? 0) . '** — geçen haftaya göre **%' . abs($yuzde) . ' ' . $ok . '**.';
+        $s[] = '👥 **' . ($v['misafir'] ?? 0) . ' misafir**, kişi başı **' . $tl($v['kisi_basi'] ?? 0) . '**.';
+        $fc = $v['food_cost_yuzde'] ?? 0;
+        $s[] = '🍽️ Food-cost **%' . $fc . '**' . ($fc >= 35 ? ' — **biraz yüksek**, göz atmakta fayda var.' : ' (normal seviyede).');
+        if (!empty($v['en_cok'])) $s[] = '🏆 En çok **' . $v['en_cok']['ad'] . '** sattık (' . $v['en_cok']['adet'] . ' adet).';
+        if (($v['kritik_sayi'] ?? 0) > 0) {
+            $l = '⚠️ **Dikkat:** ' . $v['kritik_sayi'] . ' malzeme **kritik seviyede** (' . implode(', ', $v['kritik'] ?? []) . ')';
+            if (!empty($v['riskli'])) $l .= '; **' . $v['riskli'][0]['urun'] . ' bugün tükenebilir**';
+            $s[] = $l . '.';
+        } else {
+            $s[] = '✅ Stok tarafı **rahat** görünüyor.';
+        }
+        $kayipTop = array_sum($v['kayip'] ?? []);
+        if ($kayipTop > 0) $s[] = '📉 Dün **' . $tl($kayipTop) . '** kayıp oldu (iskonto+ikram+iptal+fire).';
+        if (($v['eposta_bekleyen'] ?? 0) > 0) $s[] = '📨 **' . $v['eposta_bekleyen'] . ' e-posta** yanıt bekliyor.';
+        if (!empty($v['takvim'] ?? [])) $s[] = '📅 Bugün **' . count($v['takvim']) . ' planın** var.';
+        return $s;
+    }
+}
+if (!function_exists('_patronAiAnaliz')) {
+    // CEO/genel müdür seviyesi ANALİZ blokları: her konu -> durum(iyi|notr|dikkat|risk) + yorum(oran+neden) + öneri + risk.
+    function _patronAiAnaliz($v, $tip = 'sabah', $ad = null)
+    {
+        $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
+        $B = [];
+        $ciro = $v['dun_ciro'] ?? 0; $yuzde = $v['ciro_yuzde'] ?? 0; $mis = $v['misafir'] ?? 0; $kb = $v['kisi_basi'] ?? 0;
+        // 1) CİRO & MİSAFİR
+        $cd = $yuzde >= 5 ? 'iyi' : ($yuzde <= -10 ? 'risk' : ($yuzde < 0 ? 'dikkat' : 'notr'));
+        $cy = 'Dün **' . $tl($ciro) . '** ciro yaptık; geçen haftanın aynı gününe göre **%' . abs($yuzde) . ($yuzde >= 0 ? ' artış' : ' düşüş') . '**. '
+            . '**' . $mis . ' misafir** ağırladık, kişi başı ortalama harcama **' . $tl($kb) . '**. ';
+        if ($yuzde >= 5) $cy .= 'Ciroyu yukarı taşıyan, misafir trafiği ile sepet büyüklüğünün birlikte iyi gitmesi — sağlıklı bir büyüme.';
+        elseif ($yuzde < 0) $cy .= 'Düşüşün kaynağını ayırmak kritik: misafir sayısı mı azaldı, yoksa kişi başı harcama mı? Kişi başı ' . $tl($kb) . ' makul görünüyorsa sorun daha çok **trafik** tarafındadır.';
+        else $cy .= 'Hafta içi bir gün için dengeli, sürpriz olmayan bir tablo.';
+        $co = $yuzde >= 5 ? ('Bu ivmeyi korumak için bugün de en çok satan ürünü (' . ($v['en_cok']['ad'] ?? '—') . ') öne çıkar; yoğun saatte personeli güçlendir.')
+            : 'Saatlik satış dağılımına bak; düşük saatlerde hızlı bir kampanya/çağrı ile trafik yarat.';
+        $B[] = ['ikon' => 'payments', 'baslik' => 'Ciro & Misafir', 'deger' => $tl($ciro), 'durum' => $cd, 'yorum' => $cy, 'oneri' => $co, 'risk' => null, 'link' => '/dashboard', 'lbl' => 'Özet'];
+        // 2) FOOD-COST
+        $fc = $v['food_cost_yuzde'] ?? 0;
+        $fd = $fc <= 0 ? 'notr' : ($fc < 28 ? 'iyi' : ($fc <= 35 ? 'dikkat' : 'risk'));
+        $fy = 'Food-cost **%' . $fc . '** — yani her **100₺** ciroda **' . round($fc) . '₺** malzeme maliyeti. ';
+        if ($fc > 0 && $fc < 28) $fy .= 'Bu seviye **sağlıklı**; brüt marjın güçlü ve rekabetçi.';
+        elseif ($fc >= 28 && $fc <= 35) $fy .= 'Hedef aralığın **üst sınırında**; buradan küçük sapmalar bile kârı hızlı eritir.';
+        elseif ($fc > 35) $fy .= '**Yüksek.** Muhtemel nedenler: tabak gramajının reçeteyi aşması, fire/zayiat kaçağı veya tedarik fiyat artışı.';
+        else $fy .= 'Dün maliyeti hesaplanabilir yeterli satış yok ya da reçeteler tam tanımlı değil.';
+        $fo = $fc >= 28 ? 'En çok satan 5 üründe **teorik vs gerçek** porsiyonu karşılaştır (sayım), fire ve ikramı denetle. %1-2 düşüş bile ay sonunda ciddi kâr.' : 'Porsiyon disiplinini koru; tedarikçi fiyatlarını takip et.';
+        $B[] = ['ikon' => 'restaurant', 'baslik' => 'Food-Cost (Maliyet)', 'deger' => '%' . $fc, 'durum' => $fd, 'yorum' => $fy, 'oneri' => $fo,
+            'risk' => ($fc > 35 ? 'Hedefin ~%' . round($fc - 30) . ' üstündesin; bu fark aylık ciroya oranlandığında net kârın önemli kısmını götürür.' : null), 'link' => '/sayim', 'lbl' => 'Sayım'];
+        // 3) STOK / KRİTİK
+        if (($v['kritik_sayi'] ?? 0) > 0) {
+            $kl = implode(', ', $v['kritik'] ?? []);
+            $sy = '**' . $v['kritik_sayi'] . ' malzeme kritik seviyede**: ' . $kl . '. ';
+            $risk = null;
+            if (!empty($v['riskli'])) { $r = $v['riskli'][0]; $sy .= 'Özellikle **' . $r['urun'] . '** için sadece **~' . $r['porsiyon'] . ' porsiyonluk** stok kaldı — akşam servisinde tükenmesi çok olası. ';
+                $risk = $r['urun'] . ' bugün tükenirse o satışları komple kaçırırsın, üstüne müşteri memnuniyetsizliği yaşarsın.'; }
+            $sy .= 'Bunlar bitmeden tedarik şart.';
+            $B[] = ['ikon' => 'inventory_2', 'baslik' => 'Stok Riski', 'deger' => $v['kritik_sayi'] . ' kalem', 'durum' => 'risk', 'yorum' => $sy,
+                'oneri' => 'Günün **ilk işi** bu kalemleri sipariş et; mümkünse acil tedarikçiye yönel. Oto-sipariş önerisi hazır.', 'risk' => $risk, 'link' => '/siparis-onerisi', 'lbl' => 'Sipariş ver'];
+        } else {
+            $B[] = ['ikon' => 'inventory_2', 'baslik' => 'Stok', 'deger' => 'Sorun yok', 'durum' => 'iyi',
+                'yorum' => 'Kritik seviyeye düşen malzeme yok, üretim riski görünmüyor. Mutfak bugün rahat çalışır.', 'oneri' => 'Par-seviye kontrolünü sürdür; yaklaşan SKT\'leri gözden kaçırma.', 'risk' => null, 'link' => '/stok', 'lbl' => 'Stok'];
+        }
+        // 4) KAYIP / ZAYİAT
+        $kt = array_sum($v['kayip'] ?? []); $kor = $ciro > 0 ? round($kt / $ciro * 100, 1) : 0;
+        if ($kt > 0) {
+            $kap = $v['kayip'] ?? []; arsort($kap); $enB = (string) key($kap);
+            $enAd = ['iskonto' => 'iskonto', 'ikram' => 'ikram', 'iptal' => 'iptal', 'fire' => 'fire/zayiat'][$enB] ?? $enB;
+            $zy = 'Dün toplam **' . $tl($kt) . '** kayıp — bu **cironun %' . $kor . '**\'i. En büyük kalem **' . $enAd . '** (' . $tl($kap[$enB] ?? 0) . '). ';
+            $zy .= $kor >= 5 ? 'Bu oran **dikkat çekici**; küçük sızıntılar ay sonunda büyük rakama döner.' : 'Oran makul seviyede, kontrol altında.';
+            $zo = $enB === 'fire' ? 'Fire kayıtlarını, porsiyon ve saklama koşullarını denetle; en çok hangi üründe fire var bul.'
+                : (($enB === 'iskonto' || $enB === 'ikram') ? 'İskonto/ikram yetkilerini ve sebeplerini gözden geçir, kişi başı limit koy.' : 'İptal nedenlerini incele — mutfak/servis gecikmesi veya sipariş hatası olabilir.');
+            $B[] = ['ikon' => 'trending_down', 'baslik' => 'Kayıp / Zayiat', 'deger' => $tl($kt), 'durum' => ($kor >= 10 ? 'risk' : ($kor >= 5 ? 'dikkat' : 'notr')), 'yorum' => $zy, 'oneri' => $zo,
+                'risk' => ($kor >= 10 ? 'Aylıklandığında bu oran net kârın önemli bir dilimini götürür — acil müdahale konusu.' : null), 'link' => '/hareketler', 'lbl' => 'Hareketler'];
+        }
+        return $B;
+    }
+}
+if (!function_exists('_patronAiBriefUret')) {
+    function _patronAiBriefUret($sid, $tip = 'sabah', $force = false, $ad = null)
+    {
+        _patronAiEnsure();
+        $sid = (int) $sid; $bugun = now()->toDateString();
+        if (!$force) {
+            $row = DB::table('patron_ai_brief')->where('sube_id', $sid)->where('tarih', $bugun)->where('tip', $tip)->orderByDesc('id')->first();
+            if ($row) return ['tarih' => $row->tarih, 'tip' => $row->tip, 'veri' => json_decode($row->ozet_json, true),
+                'oncelikler' => json_decode($row->oncelikler_json, true), 'metin' => $row->metin, 'kaynak' => $row->kaynak, 'onbellek' => true];
+        }
+        $gun = $tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday();
+        $veri = _patronAiBriefVeri($sid, $gun, true);
+        $kural = _patronAiKurallar($veri, $tip, $ad);
+        $metin = $kural['metin']; $kaynak = 'kural';
+        $etiket = $tip === 'aksam' ? 'AKŞAM RAPORU (günün sonu)' : 'SABAH BRİFİNGİ';
+        $hitapAd = $ad ? (trim(explode(' ', trim($ad))[0])) : 'patron';
+        $istek = $tip === 'aksam'
+            ? 'Akşam değerlendirmesini yaz: günü analiz et, neyin iyi/kötü gittiğini NEDENLERİYLE açıkla, yarına taşınacak riskleri ve 2-3 somut aksiyon önerisini ver.'
+            : 'Sabah değerlendirmesini yaz: her önemli göstergeyi (ciro, food-cost, stok, kayıp) kısaca YORUMLA — iyi mi kötü mü, NEDEN, hangi RİSK var ve NE YAPMALI. Önerilerini net ve uygulanabilir ver.';
+        $ai = _patronAiCagir(
+            'Sen "' . $hitapAd . '" adlı restoran patronunun kişisel iş analistisin — tecrübeli bir genel müdür/CEO danışmanı gibi. '
+            . 'Ona adıyla, sıcak ama PROFESYONEL hitap et (sen dili). Veriyi sadece listelemek YASAK; her sayının ANLAMINI, iyi/kötü olduğunu, nedenini, RİSKİNİ ve ÖNERİNİ yaz — bir CEO\'nun duymak isteyeceği derinlikte. '
+            . 'Rakamları yorumla (oran/kıyas kur). SADECE aşağıdaki JSON verisini kullan, ASLA sayı uydurma. Türkçe, akıcı, 6-9 cümle. ' . $etiket . '.'
+            . "\n--- VERİ ---\n" . json_encode($veri, JSON_UNESCAPED_UNICODE),
+            $istek, 650, null, $sid);
+        if ($ai) { $metin = $ai; $kaynak = 'ai'; }
+        try {
+            DB::table('patron_ai_brief')->insert(['sube_id' => $sid, 'tarih' => $bugun, 'tip' => $tip,
+                'ozet_json' => json_encode($veri, JSON_UNESCAPED_UNICODE), 'oncelikler_json' => json_encode($kural['oncelikler'], JSON_UNESCAPED_UNICODE),
+                'metin' => $metin, 'kaynak' => $kaynak, 'created_at' => now(), 'updated_at' => now()]);
+        } catch (\Throwable $e) {}
+        // Akşam raporu: öncelikleri ŞİRKET HAFIZASINA (takip) aç — yarın devam eder.
+        if ($tip === 'aksam' && function_exists('_patronAiTakipEkle')) _patronAiTakipEkle($sid, $kural['oncelikler'], 'aksam');
+        return ['tarih' => $bugun, 'tip' => $tip, 'veri' => $veri, 'oncelikler' => $kural['oncelikler'], 'metin' => $metin, 'kaynak' => $kaynak, 'onbellek' => false];
+    }
+}
+// API: sabah brifingi (sahip/müdür). ?force=1 yeniden üretir.
+Route::get('/api/patron-ai/brief', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Bu ekrana yetkiniz yok'], 403);
+    $tip = $r->input('tip') === 'aksam' ? 'aksam' : 'sabah';
+    $b = _patronAiBriefUret($p->sube_id, $tip, $r->boolean('force'), $p->ad ?? null);
+    return array_merge(['ok' => 1, 'ad' => $p->ad ?? null, 'ai_erisim' => _aiErisim($p),
+        'anlatim' => _patronAiAnlatim($b['veri'] ?? [], $tip, $p->ad ?? null),
+        'analiz' => _patronAiAnaliz($b['veri'] ?? [], $tip, $p->ad ?? null),
+        'tuketim' => _aiKrediDurum($p->sube_id), 'sureklilik' => _patronAiSureklilik($p->sube_id),
+        'whatsapp' => _patronAiWhatsapp($p->sube_id)], $b);
+});
+// API: AI tüketim durumu (abonelik-gömülü aylık hak + kullanım) — sahip/müdür.
+Route::get('/api/patron-ai/tuketim', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    if (!in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $durum = _aiKrediDurum($p->sube_id);
+    // Bu ay en çok tüketen personeller (şeffaflık)
+    $ay = now()->format('Y-m'); $top = [];
+    try {
+        $rows = DB::table('patron_ai_tuketim')->where('sube_id', $p->sube_id)->where('yil_ay', $ay)->where('personel_id', '>', 0)
+            ->orderByDesc('kullanim')->limit(5)->get();
+        $adlar = DB::table('personeller')->whereIn('id', $rows->pluck('personel_id')->all())->pluck('ad', 'id');
+        foreach ($rows as $x) $top[] = ['ad' => $adlar[$x->personel_id] ?? ('#' . $x->personel_id), 'kullanim' => (int) $x->kullanim];
+    } catch (\Throwable $e) {}
+    return array_merge(['ok' => 1, 'ai_erisim' => _aiErisim($p), 'top' => $top], $durum);
+});
+// API: çok şubeli zincir özeti (aynı markanın/app_bundle şubeleri — tenant güvenli).
+Route::get('/api/patron-ai/zincir-ozet', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || ($p->rol ?? '') !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $subem = DB::table('subeler')->where('id', $p->sube_id)->first();
+    $q = DB::table('subeler');
+    $bundle = (Schema::hasColumn('subeler', 'app_bundle') && !empty($subem->app_bundle)) ? $subem->app_bundle : null;
+    if ($bundle) $q->where('app_bundle', $bundle); else $q->where('id', $p->sube_id);
+    $liste = [];
+    foreach ($q->orderBy('id')->get(['id', 'ad']) as $s) {
+        $v = _patronAiBriefVeri($s->id);
+        $durum = ($v['kritik_sayi'] > 0 || $v['ciro_yuzde'] <= -10) ? 'uyari' : (($v['food_cost_yuzde'] >= 35) ? 'dikkat' : 'iyi');
+        $liste[] = ['id' => (int) $s->id, 'ad' => $s->ad, 'dun_ciro' => $v['dun_ciro'], 'ciro_yuzde' => $v['ciro_yuzde'],
+            'food_cost' => $v['food_cost_yuzde'], 'kritik' => $v['kritik_sayi'], 'durum' => $durum];
+    }
+    return ['ok' => 1, 'subeler' => $liste, 'cok_sube' => count($liste) > 1];
+});
+// CRON: sabah brifingi üret + sahip/müdüre FCM. OS cron: curl "/api/patron-ai/sabah?key=SANTRAL_SECRET[&sube=ID]"
+Route::get('/api/patron-ai/sabah', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $sid = (int) $r->input('sube', 0);
+    $hedef = $sid > 0 ? [$sid] : DB::table('subeler')->pluck('id')->all();
+    $n = 0;
+    foreach ($hedef as $s) {
+        try {
+            $b = _patronAiBriefUret($s, 'sabah', true);
+            $ozet = mb_substr(trim(preg_replace('/\s+/', ' ', (string) $b['metin'])), 0, 180);
+            if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($s, '☀️ Sabah Brifingi', $ozet, ['tur' => 'patron_ai_brief'], ['sahip', 'mudur'], 'sabah_brief');
+            $n++;
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'uretildi' => $n];
+});
+// WEB: Patron AI sayfası
+Route::get('/patron-ai', function () {
+    $bp = null;
+    try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    $sid = _webSubeId();
+    $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
+    $tip = request('tip') === 'aksam' ? 'aksam' : 'sabah';
+    $ad = $bp->ad ?? null;
+    try { $brief = _patronAiBriefUret($sid, $tip, request()->boolean('force'), $ad); } catch (\Throwable $e) {}
+    try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
+    try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
+    try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
+    $anlatim = []; $analiz = [];
+    try { if ($brief) { $anlatim = _patronAiAnlatim($brief['veri'] ?? [], $tip, $ad); $analiz = _patronAiAnaliz($brief['veri'] ?? [], $tip, $ad); } } catch (\Throwable $e) {}
+    return view('patron_ai', ['brief' => $brief, 'personel' => $bp, 'ad' => $ad, 'tuketim' => $tuketim,
+        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'anlatim' => $anlatim, 'analiz' => $analiz]);
+});
+
+// ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
+if (!function_exists('_patronAiTakipEnsure')) {
+    function _patronAiTakipEnsure()
+    {
+        if (cache()->get('patron_ai_takip_ensure_ok')) return;
+        if (!Schema::hasTable('patron_ai_takip')) {
+            try { Schema::create('patron_ai_takip', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('konu', 300);
+                $t->string('durum', 12)->default('acik'); // acik | cozuldu | devredildi
+                $t->string('kaynak', 20)->nullable();      // aksam | manuel | tetik
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        if (!Schema::hasTable('patron_ai_tetik_log')) {
+            try { Schema::create('patron_ai_tetik_log', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('tip', 30);
+                $t->string('imza', 40);  // aynı uyarıyı tekrar basmamak için parmak izi
+                $t->timestamp('created_at')->nullable();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('patron_ai_takip_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_patronAiTakipEkle')) {
+    // Konuları şirket hafızasına 'acik' ekle (aynı açık konu varsa tekrar ekleme).
+    function _patronAiTakipEkle($sid, $konular, $kaynak = 'aksam')
+    {
+        _patronAiTakipEnsure();
+        foreach ((array) $konular as $k) {
+            $k = trim((string) $k);
+            if ($k === '') continue;
+            try {
+                $var = DB::table('patron_ai_takip')->where('sube_id', (int) $sid)->where('konu', mb_substr($k, 0, 300))->where('durum', 'acik')->exists();
+                if (!$var) DB::table('patron_ai_takip')->insert(['sube_id' => (int) $sid, 'konu' => mb_substr($k, 0, 300), 'durum' => 'acik', 'kaynak' => $kaynak, 'created_at' => now(), 'updated_at' => now()]);
+            } catch (\Throwable $e) {}
+        }
+    }
+}
+if (!function_exists('_patronAiSureklilik')) {
+    // Şirket hafızası: açık konular (yaş gün ile) + son 24s çözülen/devredilen. Asistanın "dünden devam" bloğu.
+    function _patronAiSureklilik($sid)
+    {
+        _patronAiTakipEnsure();
+        $acik = []; $kapanan = [];
+        try {
+            foreach (DB::table('patron_ai_takip')->where('sube_id', (int) $sid)->where('durum', 'acik')->orderBy('created_at')->limit(10)->get(['id', 'konu', 'created_at']) as $t) {
+                $gun = $t->created_at ? (int) \Carbon\Carbon::parse($t->created_at)->diffInDays(now()) : 0;
+                $acik[] = ['id' => (int) $t->id, 'konu' => $t->konu, 'gun' => $gun];
+            }
+            foreach (DB::table('patron_ai_takip')->where('sube_id', (int) $sid)->whereIn('durum', ['cozuldu', 'devredildi'])
+                ->where('updated_at', '>=', now()->subDay())->orderByDesc('updated_at')->limit(8)->get(['konu', 'durum']) as $t) {
+                $kapanan[] = ['konu' => $t->konu, 'durum' => $t->durum];
+            }
+        } catch (\Throwable $e) {}
+        return ['acik' => $acik, 'kapanan' => $kapanan];
+    }
+}
+if (!function_exists('_patronAiWhatsapp')) {
+    // Sistemden giden (bugün) + son gelen WhatsApp mesajları özeti (wa_mesaj_loglari). Köprü yoksa boş.
+    function _patronAiWhatsapp($sid)
+    {
+        $giden = 0; $gelen = [];
+        try {
+            if (Schema::hasTable('wa_mesaj_loglari')) {
+                $giden = (int) DB::table('wa_mesaj_loglari')->where('sube_id', (int) $sid)->where('yon', 'giden')
+                    ->whereDate('created_at', today())->count();
+                foreach (DB::table('wa_mesaj_loglari')->where('sube_id', (int) $sid)->where('yon', 'gelen')
+                    ->where('created_at', '>=', now()->subDay())->orderByDesc('id')->limit(5)->get(['telefon', 'mesaj', 'created_at']) as $m) {
+                    $gelen[] = ['telefon' => $m->telefon, 'mesaj' => mb_substr((string) $m->mesaj, 0, 90),
+                        'saat' => $m->created_at ? \Carbon\Carbon::parse($m->created_at)->format('H:i') : ''];
+                }
+            }
+        } catch (\Throwable $e) {}
+        return ['giden' => $giden, 'gelen' => $gelen];
+    }
+}
+if (!function_exists('_patronAiTetikGonder')) {
+    // Bastırmalı FCM: aynı (sube,tip,imza) $saatPencere içinde tekrar gönderilmez.
+    function _patronAiTetikGonder($sid, $tip, $imza, $baslik, $govde, $roller, $bildirimTip, $saatPencere = 6)
+    {
+        _patronAiTakipEnsure();
+        try {
+            $son = DB::table('patron_ai_tetik_log')->where('sube_id', (int) $sid)->where('tip', $tip)->where('imza', $imza)
+                ->where('created_at', '>=', now()->subHours($saatPencere))->exists();
+            if ($son) return false;
+            if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, $baslik, $govde, ['tur' => 'patron_ai_tetik', 'tip' => $tip], $roller, $bildirimTip);
+            DB::table('patron_ai_tetik_log')->insert(['sube_id' => (int) $sid, 'tip' => $tip, 'imza' => $imza, 'created_at' => now()]);
+            return true;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+if (!function_exists('_patronAiTetikKontrol')) {
+    // Eşik olaylarını kontrol et, tetiklenenleri (bastırmalı) push'la. Sinyaller mevcut verilerden.
+    function _patronAiTetikKontrol($sid)
+    {
+        $sid = (int) $sid; $gonderilen = 0;
+        $kritik = []; $riskli = [];
+        try { if (function_exists('_restoUretimRiski')) { $risk = _restoUretimRiski($sid, 3); $kritik = $risk['kritik'] ?? []; $riskli = $risk['riskli'] ?? []; } } catch (\Throwable $e) {}
+        // Kritik stok
+        if (!empty($kritik)) {
+            $adlar = array_slice(array_map(fn ($k) => $k['ad'], $kritik), 0, 5);
+            $imza = md5(implode('|', $adlar));
+            if (_patronAiTetikGonder($sid, 'kritik_stok', $imza, '⚠️ Kritik Stok', count($kritik) . ' malzeme kritik: ' . implode(', ', $adlar), ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok')) $gonderilen++;
+        }
+        // Üretim riski (porsiyon azaldı)
+        if (!empty($riskli)) {
+            $r = $riskli[0];
+            $imza = md5($r['urun'] . ':' . $r['yapilabilir']);
+            if (_patronAiTetikGonder($sid, 'uretim_riski', $imza, '📉 Üretim Riski', $r['urun'] . ' için ~' . $r['yapilabilir'] . ' porsiyon kaldı (' . $r['darbogaz'] . ')', ['sahip', 'mudur', 'satinalmaci'], 'uretim_riski')) $gonderilen++;
+        }
+        return $gonderilen;
+    }
+}
+// CRON: gün içi tetik kontrolü. OS cron (örn. saatte bir): curl "/api/patron-ai/tetik?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/tetik', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $sid = (int) $r->input('sube', 0);
+    $hedef = $sid > 0 ? [$sid] : DB::table('subeler')->pluck('id')->all();
+    $n = 0;
+    foreach ($hedef as $s) { try { $n += _patronAiTetikKontrol($s); } catch (\Throwable $e) {} }
+    return ['ok' => 1, 'gonderilen' => $n];
+});
+// CRON: akşam raporu. OS cron (örn. 23:30): curl "/api/patron-ai/aksam?key=SANTRAL_SECRET"
+Route::get('/api/patron-ai/aksam', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $sid = (int) $r->input('sube', 0);
+    $hedef = $sid > 0 ? [$sid] : DB::table('subeler')->pluck('id')->all();
+    $n = 0;
+    foreach ($hedef as $s) {
+        try {
+            $b = _patronAiBriefUret($s, 'aksam', true);
+            $ozet = mb_substr(trim(preg_replace('/\s+/', ' ', (string) $b['metin'])), 0, 180);
+            if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($s, '🌙 Akşam Raporu', $ozet, ['tur' => 'patron_ai_brief', 'tip' => 'aksam'], ['sahip', 'mudur'], 'aksam_rapor');
+            $n++;
+        } catch (\Throwable $e) {}
+    }
+    return ['ok' => 1, 'uretildi' => $n];
+});
+// API: açık konular (şirket hafızası) — sahip/müdür.
+Route::get('/api/patron-ai/takip', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    _patronAiTakipEnsure();
+    $liste = [];
+    try { $liste = DB::table('patron_ai_takip')->where('sube_id', $p->sube_id)->where('durum', 'acik')->orderByDesc('id')->limit(30)->get(['id', 'konu', 'kaynak', 'created_at']); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'takipler' => $liste];
+});
+Route::post('/api/patron-ai/takip-durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    _patronAiTakipEnsure();
+    $id = (int) $r->input('id'); $durum = in_array($r->input('durum'), ['acik', 'cozuldu', 'devredildi']) ? $r->input('durum') : 'cozuldu';
+    try { DB::table('patron_ai_takip')->where('id', $id)->where('sube_id', $p->sube_id)->update(['durum' => $durum, 'updated_at' => now()]); } catch (\Throwable $e) { return ['ok' => 0]; }
+    return ['ok' => 1];
+});
+Route::post('/api/patron-ai/takip-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p || !in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $konu = trim((string) $r->input('konu'));
+    if ($konu === '') return ['ok' => 0, 'hata' => 'Konu boş'];
+    _patronAiTakipEkle($p->sube_id, [$konu], 'manuel');
+    return ['ok' => 1];
+});
+
+// ============================ PATRON AI — DIŞ KAYNAK (Gmail / Takvim / M365, SALT OKUNUR) (Faz 6) ============================
+// OAuth client_id yoksa tüm özellik sessizce kapalı. Token'lar ŞİFRELİ saklanır. E-posta GÖVDESİ asla okunmaz/LLM'e gitmez;
+// sadece konu+gönderen+sayı alınır (prompt injection yüzeyi minimum).
+if (!function_exists('_baglantiEnsure')) {
+    function _baglantiEnsure()
+    {
+        if (cache()->get('patron_ai_baglanti_ensure_ok')) return;
+        if (!Schema::hasTable('patron_ai_baglantilar')) {
+            try { Schema::create('patron_ai_baglantilar', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('saglayici', 16);          // google | graph
+                $t->string('hesap_email', 160)->nullable();
+                $t->text('erisim_token')->nullable();  // şifreli
+                $t->text('yenileme_token')->nullable();// şifreli
+                $t->text('kapsam')->nullable();
+                $t->timestamp('gecerlilik')->nullable();
+                $t->string('durum', 12)->default('aktif');
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('patron_ai_baglanti_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_baglantiKaydet')) {
+    function _baglantiKaydet($sid, $saglayici, $email, $access, $refresh, $scope, $expSec)
+    {
+        _baglantiEnsure();
+        try {
+            $enc = fn ($v) => $v ? \Illuminate\Support\Facades\Crypt::encryptString($v) : null;
+            $veri = ['hesap_email' => $email, 'erisim_token' => $enc($access), 'kapsam' => $scope,
+                'gecerlilik' => now()->addSeconds(max(60, (int) $expSec)), 'durum' => 'aktif', 'updated_at' => now()];
+            if ($refresh) $veri['yenileme_token'] = $enc($refresh); // refresh sadece ilk onayda gelir; varsa güncelle
+            $row = DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->first();
+            if ($row) DB::table('patron_ai_baglantilar')->where('id', $row->id)->update($veri);
+            else { $veri['sube_id'] = (int) $sid; $veri['saglayici'] = $saglayici; $veri['created_at'] = now(); DB::table('patron_ai_baglantilar')->insert($veri); }
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_baglantiGetir')) {
+    function _baglantiGetir($sid, $saglayici)
+    {
+        _baglantiEnsure();
+        try { return DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->where('durum', 'aktif')->first(); } catch (\Throwable $e) { return null; }
+    }
+}
+if (!function_exists('_oauthAccessToken')) {
+    // Geçerli access token döndür; süresi dolduysa refresh token ile yenile. Yoksa null.
+    function _oauthAccessToken($sid, $saglayici)
+    {
+        $row = _baglantiGetir($sid, $saglayici);
+        if (!$row) return null;
+        try {
+            $dec = fn ($v) => $v ? \Illuminate\Support\Facades\Crypt::decryptString($v) : null;
+            if ($row->gecerlilik && now()->lt(\Carbon\Carbon::parse($row->gecerlilik)->subSeconds(60))) return $dec($row->erisim_token);
+            $refresh = $dec($row->yenileme_token);
+            if (!$refresh) return $dec($row->erisim_token); // yenileme yoksa eldekini dene
+            if ($saglayici === 'google') {
+                $cid = config('services.google_oauth.client_id'); $sec = config('services.google_oauth.client_secret');
+                $url = 'https://oauth2.googleapis.com/token';
+                $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token'];
+            } else {
+                $tenant = config('services.graph_oauth.tenant', 'common');
+                $cid = config('services.graph_oauth.client_id'); $sec = config('services.graph_oauth.client_secret');
+                $url = 'https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token';
+                $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token', 'scope' => 'offline_access Mail.Read Calendars.Read User.Read'];
+            }
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query($body)]);
+            $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+            if ($kod < 200 || $kod >= 300) return null;
+            $d = json_decode((string) $res, true);
+            if (empty($d['access_token'])) return null;
+            _baglantiKaydet($sid, $saglayici, $row->hesap_email, $d['access_token'], $d['refresh_token'] ?? null, $row->kapsam, $d['expires_in'] ?? 3600);
+            return $d['access_token'];
+        } catch (\Throwable $e) { return null; }
+    }
+}
+if (!function_exists('_oauthHttpGet')) {
+    function _oauthHttpGet($url, $token)
+    {
+        try {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Accept: application/json']]);
+            $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+            if ($kod < 200 || $kod >= 300) return null;
+            return json_decode((string) $res, true);
+        } catch (\Throwable $e) { return null; }
+    }
+}
+// ---- Connector'lar: yalnız konu+gönderen+sayı (gövde YOK) ----
+if (!function_exists('_gmailOzet')) {
+    function _gmailOzet($sid)
+    {
+        $tok = _oauthAccessToken($sid, 'google'); if (!$tok) return [];
+        $liste = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' . rawurlencode('is:unread -category:promotions -category:social') . '&maxResults=6', $tok);
+        if (!$liste || empty($liste['messages'])) return [];
+        $out = [];
+        foreach (array_slice($liste['messages'], 0, 6) as $m) {
+            $msg = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages/' . $m['id'] . '?format=metadata&metadataHeaders=From&metadataHeaders=Subject', $tok);
+            if (!$msg) continue;
+            $h = [];
+            foreach ($msg['payload']['headers'] ?? [] as $hd) $h[strtolower($hd['name'])] = $hd['value'];
+            $out[] = ['from' => mb_substr($h['from'] ?? '', 0, 80), 'subject' => mb_substr($h['subject'] ?? '(konu yok)', 0, 120),
+                'link' => 'https://mail.google.com/mail/u/0/#inbox/' . $m['id']];
+        }
+        return $out;
+    }
+}
+if (!function_exists('_takvimOzet')) {
+    function _takvimOzet($sid)
+    {
+        $tok = _oauthAccessToken($sid, 'google'); if (!$tok) return [];
+        $min = now()->startOfDay()->toRfc3339String(); $max = now()->endOfDay()->toRfc3339String();
+        $d = _oauthHttpGet('https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=' . rawurlencode($min) . '&timeMax=' . rawurlencode($max) . '&maxResults=10', $tok);
+        if (!$d || empty($d['items'])) return [];
+        $out = [];
+        foreach ($d['items'] as $ev) {
+            $bas = $ev['start']['dateTime'] ?? ($ev['start']['date'] ?? null);
+            $saat = $bas ? \Carbon\Carbon::parse($bas)->format('H:i') : '';
+            $out[] = ['baslik' => mb_substr($ev['summary'] ?? '(başlıksız)', 0, 100), 'saat' => $saat,
+                'konum' => mb_substr($ev['location'] ?? '', 0, 80), 'not' => mb_substr(trim($ev['description'] ?? ''), 0, 160)];
+        }
+        return $out;
+    }
+}
+if (!function_exists('_graphMailOzet')) {
+    function _graphMailOzet($sid)
+    {
+        $tok = _oauthAccessToken($sid, 'graph'); if (!$tok) return [];
+        $d = _oauthHttpGet('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=isRead%20eq%20false&$top=6&$select=subject,from,webLink', $tok);
+        if (!$d || empty($d['value'])) return [];
+        $out = [];
+        foreach ($d['value'] as $m) {
+            $out[] = ['from' => mb_substr($m['from']['emailAddress']['address'] ?? '', 0, 80), 'subject' => mb_substr($m['subject'] ?? '(konu yok)', 0, 120), 'link' => $m['webLink'] ?? '#'];
+        }
+        return $out;
+    }
+}
+if (!function_exists('_graphTakvimOzet')) {
+    function _graphTakvimOzet($sid)
+    {
+        $tok = _oauthAccessToken($sid, 'graph'); if (!$tok) return [];
+        $min = now()->startOfDay()->toIso8601String(); $max = now()->endOfDay()->toIso8601String();
+        $d = _oauthHttpGet('https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=' . rawurlencode($min) . '&endDateTime=' . rawurlencode($max) . '&$select=subject,start,location,bodyPreview&$top=10&$orderby=start/dateTime', $tok);
+        if (!$d || empty($d['value'])) return [];
+        $out = [];
+        foreach ($d['value'] as $ev) {
+            $bas = $ev['start']['dateTime'] ?? null;
+            $out[] = ['baslik' => mb_substr($ev['subject'] ?? '(başlıksız)', 0, 100), 'saat' => $bas ? \Carbon\Carbon::parse($bas)->format('H:i') : '',
+                'konum' => mb_substr($ev['location']['displayName'] ?? '', 0, 80), 'not' => mb_substr(trim($ev['bodyPreview'] ?? ''), 0, 160)];
+        }
+        return $out;
+    }
+}
+if (!function_exists('_patronAiDisKaynak')) {
+    // Bağlı sağlayıcıdan e-posta + takvim özeti (10 dk önbellek). Hiçbiri bağlı değilse boş.
+    function _patronAiDisKaynak($sid)
+    {
+        $sid = (int) $sid;
+        return \Illuminate\Support\Facades\Cache::remember('patron_ai_dis:' . $sid, now()->addMinutes(10), function () use ($sid) {
+            $eposta = []; $takvim = []; $kaynak = null;
+            if (_baglantiGetir($sid, 'google')) { $eposta = _gmailOzet($sid); $takvim = _takvimOzet($sid); $kaynak = 'google'; }
+            elseif (_baglantiGetir($sid, 'graph')) { $eposta = _graphMailOzet($sid); $takvim = _graphTakvimOzet($sid); $kaynak = 'graph'; }
+            return ['eposta' => $eposta, 'takvim' => $takvim, 'kaynak' => $kaynak];
+        });
+    }
+}
+
+// ---- OAuth akış route'ları (web panel; sahip/müdür) ----
+if (!function_exists('_baglantiYetki')) {
+    function _baglantiYetki() { try { $bp = _posPersonel(); return $bp && in_array(($bp->rol ?? ''), ['sahip', 'mudur']); } catch (\Throwable $e) { return false; } }
+}
+Route::get('/baglanti/google', function () {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
+    $cid = config('services.google_oauth.client_id');
+    if (!$cid) return redirect('/entegrasyonlar')->with('hata', 'Google OAuth yapılandırılmamış (GOOGLE_OAUTH_CLIENT_ID).');
+    $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
+    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state]);
+    $q = http_build_query([
+        'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
+        'scope' => 'openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+        'access_type' => 'offline', 'prompt' => 'consent', 'state' => $state,
+    ]);
+    return redirect('https://accounts.google.com/o/oauth2/v2/auth?' . $q);
+});
+Route::get('/baglanti/google/callback', function (Request $r) {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
+    if ($r->input('state') !== session('oauth_state')) return redirect('/entegrasyonlar')->with('hata', 'Oturum doğrulaması başarısız.');
+    $code = (string) $r->input('code'); if ($code === '') return redirect('/entegrasyonlar')->with('hata', 'Yetki iptal edildi.');
+    $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
+    try {
+        $ch = curl_init('https://oauth2.googleapis.com/token');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query([
+            'code' => $code, 'client_id' => config('services.google_oauth.client_id'), 'client_secret' => config('services.google_oauth.client_secret'),
+            'redirect_uri' => $redirect, 'grant_type' => 'authorization_code'])]);
+        $res = curl_exec($ch); curl_close($ch);
+        $d = json_decode((string) $res, true);
+        if (empty($d['access_token'])) return redirect('/entegrasyonlar')->with('hata', 'Token alınamadı.');
+        $email = null;
+        $ui = _oauthHttpGet('https://www.googleapis.com/oauth2/v2/userinfo', $d['access_token']);
+        if ($ui) $email = $ui['email'] ?? null;
+        _baglantiKaydet(_webSubeId(), 'google', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600);
+        \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId());
+    } catch (\Throwable $e) { return redirect('/entegrasyonlar')->with('hata', 'Bağlantı hatası.'); }
+    return redirect('/entegrasyonlar')->with('ok', 'Google (Gmail + Takvim) bağlandı.');
+});
+Route::get('/baglanti/graph', function () {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
+    $cid = config('services.graph_oauth.client_id');
+    if (!$cid) return redirect('/entegrasyonlar')->with('hata', 'Microsoft OAuth yapılandırılmamış (GRAPH_OAUTH_CLIENT_ID).');
+    $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
+    $tenant = config('services.graph_oauth.tenant', 'common');
+    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state]);
+    $q = http_build_query([
+        'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
+        'scope' => 'offline_access openid email Mail.Read Calendars.Read User.Read', 'state' => $state, 'prompt' => 'consent',
+    ]);
+    return redirect('https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/authorize?' . $q);
+});
+Route::get('/baglanti/graph/callback', function (Request $r) {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
+    if ($r->input('state') !== session('oauth_state')) return redirect('/entegrasyonlar')->with('hata', 'Oturum doğrulaması başarısız.');
+    $code = (string) $r->input('code'); if ($code === '') return redirect('/entegrasyonlar')->with('hata', 'Yetki iptal edildi.');
+    $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
+    $tenant = config('services.graph_oauth.tenant', 'common');
+    try {
+        $ch = curl_init('https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query([
+            'code' => $code, 'client_id' => config('services.graph_oauth.client_id'), 'client_secret' => config('services.graph_oauth.client_secret'),
+            'redirect_uri' => $redirect, 'grant_type' => 'authorization_code', 'scope' => 'offline_access openid email Mail.Read Calendars.Read User.Read'])]);
+        $res = curl_exec($ch); curl_close($ch);
+        $d = json_decode((string) $res, true);
+        if (empty($d['access_token'])) return redirect('/entegrasyonlar')->with('hata', 'Token alınamadı.');
+        $email = null;
+        $me = _oauthHttpGet('https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName', $d['access_token']);
+        if ($me) $email = $me['mail'] ?? ($me['userPrincipalName'] ?? null);
+        _baglantiKaydet(_webSubeId(), 'graph', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600);
+        \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId());
+    } catch (\Throwable $e) { return redirect('/entegrasyonlar')->with('hata', 'Bağlantı hatası.'); }
+    return redirect('/entegrasyonlar')->with('ok', 'Microsoft 365 (Outlook + Takvim) bağlandı.');
+});
+Route::post('/baglanti/kaldir', function (Request $r) {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
+    $s = in_array($r->input('saglayici'), ['google', 'graph']) ? $r->input('saglayici') : null;
+    if ($s) { try { DB::table('patron_ai_baglantilar')->where('sube_id', _webSubeId())->where('saglayici', $s)->delete(); \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId()); } catch (\Throwable $e) {} }
+    return redirect('/entegrasyonlar')->with('ok', 'Bağlantı kaldırıldı.');
+});
+// WEB: Entegrasyonlar (bağlantı yönetimi)
+Route::get('/entegrasyonlar', function () {
+    _baglantiEnsure();
+    $sid = _webSubeId();
+    $google = _baglantiGetir($sid, 'google'); $graph = _baglantiGetir($sid, 'graph');
+    return view('entegrasyonlar', ['google' => $google, 'graph' => $graph,
+        'googleVar' => (bool) config('services.google_oauth.client_id'), 'graphVar' => (bool) config('services.graph_oauth.client_id')]);
+});
 
 // Yetki kolonlarini kur + varsayilanlari doldur (tek sefer, migrate beklemeden)
 Route::get('/yetki-kur', function () {
@@ -7289,11 +8661,14 @@ Route::get('/personel', function () {
         if (!Schema::hasColumn('personeller', 'ikram_limit')) Schema::table('personeller', fn ($t) => $t->decimal('ikram_limit', 12, 2)->nullable());
     } catch (\Throwable $e) {}
     _panelYetkiEnsure();
+    _departmanEnsure();
     $benSahip = false;
     try { $bp = _posPersonel(); $benSahip = $bp && ($bp->rol ?? '') === 'sahip'; } catch (\Throwable $e) {}
+    $kolonlar = ['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit', 'kademe', 'sayfa_yetki'];
+    foreach (['departman_id', 'departman_unvan', 'departman_sorumlu'] as $dk) if (Schema::hasColumn('personeller', $dk)) $kolonlar[] = $dk;
     $personeller = DB::table('personeller')->where('sube_id', $sid)
         ->orderByRaw("FIELD(rol,'sahip','mudur','satinalmaci','kasa','garson','mutfak')")->orderBy('ad')
-        ->get(['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit', 'kademe', 'sayfa_yetki'])
+        ->get($kolonlar)
         ->map(function ($x) {
             $y = $x->yetkiler ? json_decode($x->yetkiler, true) : _restoYetkiVarsayilan($x->rol)['yetkiler'];
             $y = array_merge(array_fill_keys(_restoYetkiKeys(), false), is_array($y) ? $y : []);
@@ -7308,12 +8683,25 @@ Route::get('/personel', function () {
             return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'rol' => $x->rol, 'pin' => $x->pin,
                 'aktif' => (int) $x->aktif, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit,
                 'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit,
-                'kademe' => $kademe, 'sayfa' => $sayfa];
+                'kademe' => $kademe, 'sayfa' => $sayfa, 'departman_id' => (int) ($x->departman_id ?? 0),
+                'departman_unvan' => $x->departman_unvan ?? '', 'departman_sorumlu' => (int) ($x->departman_sorumlu ?? 0)];
         })->toArray();
     $kademeSayfa = [];
     foreach (array_keys(_panelKademeler()) as $kd) $kademeSayfa[$kd] = _kademeSayfalar($kd);
+    $departmanlar = collect();
+    try { $departmanlar = DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)->orderBy('grup')->orderBy('ad')->get(['id', 'ad', 'grup', 'renk', 'sayfa_yetki', 'sorumlu_ek', 'unvanlar']); } catch (\Throwable $e) {}
+    // Editör haritaları: departman -> üye sayfaları / sorumlu ek sayfaları / ünvan listesi
+    $departmanSayfa = []; $departmanEk = []; $departmanUnvan = [];
+    foreach ($departmanlar as $d) {
+        $departmanSayfa[(int) $d->id] = _departmanSayfaAcik($d);
+        $ek = $d->sorumlu_ek ? json_decode($d->sorumlu_ek, true) : [];
+        $departmanEk[(int) $d->id] = is_array($ek) ? array_values($ek) : [];
+        $uv = $d->unvanlar ? json_decode($d->unvanlar, true) : [];
+        $departmanUnvan[(int) $d->id] = is_array($uv) ? array_values($uv) : [];
+    }
     return view('personel', ['personeller' => $personeller, 'duzenleyebilir' => $benSahip,
-        'kademeler' => _panelKademeler(), 'sayfaKategori' => _panelSayfaKategori(), 'kademeSayfa' => $kademeSayfa, 'tumSayfa' => _panelSayfaKeys()]);
+        'kademeler' => _panelKademeler(), 'sayfaKategori' => _panelSayfaKategori(), 'kademeSayfa' => $kademeSayfa, 'tumSayfa' => _panelSayfaKeys(),
+        'departmanlar' => $departmanlar, 'departmanSayfa' => $departmanSayfa, 'departmanEk' => $departmanEk, 'departmanUnvan' => $departmanUnvan]);
 });
 Route::post('/personel/kaydet', function (Request $r) {
     $sid = _webSubeId();
@@ -7367,9 +8755,20 @@ Route::post('/personel/yetki', function (Request $r) {
         $kademe = in_array($r->kademe, array_keys(_panelKademeler())) ? $r->kademe : _rolKademe($hedef->rol);
         $sayfa = [];
         foreach (_panelSayfaKeys() as $k) $sayfa[$k] = $r->has('sayfa_' . $k);
-        DB::table('personeller')->where('id', (int) $r->id)->update(['yetkiler' => json_encode($temiz),
+        $guncelle = ['yetkiler' => json_encode($temiz),
             'kademe' => $kademe, 'sayfa_yetki' => json_encode($sayfa),
-            'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)), 'ikram_limit' => max(0, (float) $r->ikram_limit), 'updated_at' => now()]);
+            'iskonto_limit' => max(0, min(100, (float) $r->iskonto_limit)), 'ikram_limit' => max(0, (float) $r->ikram_limit), 'updated_at' => now()];
+        // Departman ataması (additif) — yalnız kolon varsa ve geçerli departman ise
+        if (Schema::hasColumn('personeller', 'departman_id')) {
+            $did = (int) $r->departman_id;
+            $gecerli = $did > 0 && DB::table('departmanlar')->where('id', $did)->where('sube_id', $sid)->exists();
+            $guncelle['departman_id'] = $gecerli ? $did : null;
+            if (Schema::hasColumn('personeller', 'departman_unvan'))
+                $guncelle['departman_unvan'] = ($gecerli && $r->filled('departman_unvan')) ? mb_substr((string) $r->departman_unvan, 0, 60) : null;
+            if (Schema::hasColumn('personeller', 'departman_sorumlu'))
+                $guncelle['departman_sorumlu'] = ($gecerli && $r->has('departman_sorumlu')) ? 1 : 0;
+        }
+        DB::table('personeller')->where('id', (int) $r->id)->update($guncelle);
         return redirect('/personel')->with('ok', 'Yetkiler kaydedildi.');
     } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Yetki kaydedilemedi.'); }
 });

@@ -63,6 +63,27 @@ return [
         'soz_esik'             => (int) env('SEF_GARSON_SOZ_ESIK', 2),           // bu kadar "anladim ama yapmadi" -> yoneticiye
     ],
 
+    // DEPARTMAN + PATRON AI (Faz 1+). Hepsi ADDITIF; kapali/varsayilan iken sistem BIRE BIR eski haliyle calisir.
+    'resteos' => [
+        'departman_acik' => (bool) env('RESTEOS_DEPARTMAN', true),   // departman/yetki/bildirim menuleri gorunur
+        'patron_ai_v2'   => (bool) env('RESTEOS_PATRON_AI_V2', false), // yeni Patron AI brief/kredi katmani (Faz 3+)
+    ],
+
+    // PATRON AI DIS KAYNAK OAuth (Faz 6) — SALT OKUNUR. client_id bos ise ozellik sessizce kapali.
+    // Google (Gmail + Takvim okuma): en dar scope. redirect bos ise url('/baglanti/google/callback') kullanilir.
+    'google_oauth' => [
+        'client_id' => env('GOOGLE_OAUTH_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_OAUTH_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_OAUTH_REDIRECT'),
+    ],
+    // Microsoft 365 / Graph (Outlook mail + takvim okuma). tenant varsayilan 'common'.
+    'graph_oauth' => [
+        'client_id' => env('GRAPH_OAUTH_CLIENT_ID'),
+        'client_secret' => env('GRAPH_OAUTH_CLIENT_SECRET'),
+        'tenant' => env('GRAPH_OAUTH_TENANT', 'common'),
+        'redirect' => env('GRAPH_OAUTH_REDIRECT'),
+    ],
+
     // Google Cloud TTS (musteri QR asistani icin kaliteli ERKEK ses). Randevumcepte ile AYNI anahtar.
     // Erkek Turkce WaveNet: tr-TR-Wavenet-D (varsayilan). Anahtar yoksa taray. sesine duser.
     'google_tts' => [

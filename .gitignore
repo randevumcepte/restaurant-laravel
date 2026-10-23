@@ -22,6 +22,10 @@
 /storage/pail
 /vendor
 _ide_helper.php
+# Yerel test tohumlari (SADECE yerel sandbox; sunucuya gitmez)
+_seed_local.php
+_seed_demo.php
+/database/*.sqlite
 Homestead.json
 Homestead.yaml
 Thumbs.db

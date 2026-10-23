@@ -638,6 +638,31 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
         </select>
         <div class="rk-sub" style="font-size:11.5px;margin:6px 0 16px">Seviye seçince aşağıdaki sayfalar otomatik işaretlenir; istediğini tek tek açıp kapatabilirsin.</div>
 
+        {{-- Departman (sayfa yetki şablonu) --}}
+        @if (!empty($departmanlar) && count($departmanlar))
+        <div class="rk-bolum" style="margin:2px 0 8px">
+          <span class="material-icons-outlined" style="font-size:18px;color:var(--mavi)">groups</span>
+          <span class="b" style="font-size:13.5px;color:var(--mavi)">Departman</span>
+        </div>
+        <select name="departman_id" id="y_departman" class="rk-inp" onchange="departmanDegisti()">
+          <option value="0">— Departman yok —</option>
+          @foreach ($departmanlar as $d)
+            <option value="{{ $d->id }}">{{ $d->grup ? $d->grup.' › ' : '' }}{{ $d->ad }}</option>
+          @endforeach
+        </select>
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <div style="flex:1">
+            <label class="rk-lbl" style="font-size:12px">Ünvan / Kademe</label>
+            <select name="departman_unvan" id="y_unvan" class="rk-inp"><option value="">—</option></select>
+          </div>
+          <label class="rk-yetki-satir" style="align-self:flex-end;padding-bottom:10px">
+            <input type="checkbox" name="departman_sorumlu" id="y_sorumlu" class="rk-chk" onchange="departmanUygula()">
+            <span>Departman Sorumlusu</span>
+          </label>
+        </div>
+        <div class="rk-sub" style="font-size:11.5px;margin:6px 0 16px">Departman seçince o departmanın sayfaları otomatik işaretlenir; <b>Sorumlu</b> işaretlenirse yönetim sayfaları da eklenir (en üst kademe). İki departman aynı sayfayı paylaşabilir; sonra elle ince ayar yapabilirsin. <a href="/departman-yonetim" style="color:var(--mavi)">Departmanları düzenle</a></div>
+        @endif
+
         {{-- Sayfa (menü) yetkileri --}}
         <div class="rk-bolum" style="margin:2px 0 8px">
           <span class="material-icons-outlined" style="font-size:18px;color:var(--mor1)">visibility</span>
@@ -732,6 +757,9 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
 var DUZENLEYEBILIR = {{ $duzenleyebilir ? 'true' : 'false' }};
 var AY_KEY         = '{{ $ayKey }}';
 var KADEME_SAYFA   = @json($kademeSayfa ?? []);
+var DEPARTMAN_SAYFA= @json($departmanSayfa ?? []);
+var DEPARTMAN_EK   = @json($departmanEk ?? []);
+var DEPARTMAN_UNVAN= @json($departmanUnvan ?? []);
 var ROL_RENK       = @json($rolRenk);
 var ROL_AD         = @json($rolAd);
 var WEB_API_TOKEN  = @json($webApiToken); // POS session'dan (sahip) — hareket AJAX için
@@ -906,6 +934,33 @@ function kademeUygula() {
         el.checked = hepsi || liste.indexOf(el.dataset.sayfa) >= 0;
     });
 }
+// Departman seçimi değişince: ünvan listesini doldur + sayfaları uygula.
+function departmanDegisti() {
+    var el = document.getElementById('y_departman');
+    var uv = document.getElementById('y_unvan');
+    if (uv) {
+        var did0 = el ? el.value : '0';
+        var liste = DEPARTMAN_UNVAN[did0] || [];
+        uv.innerHTML = '<option value="">—</option>';
+        liste.forEach(function (u, i) {
+            var o = document.createElement('option'); o.value = u; o.textContent = (i === 0 ? '★ ' : '') + u; uv.appendChild(o);
+        });
+    }
+    departmanUygula();
+}
+// Departmanın ÜYE sayfaları + (Sorumlu işaretliyse) yönetim ek sayfalarını işaretle.
+function departmanUygula() {
+    var el = document.getElementById('y_departman');
+    if (!el) return;
+    var did = el.value;
+    if (!did || did === '0') return; // "yok" seçilince mevcut işaretler korunur
+    var liste = (DEPARTMAN_SAYFA[did] || []).slice();
+    var sorumlu = document.getElementById('y_sorumlu');
+    if (sorumlu && sorumlu.checked) (DEPARTMAN_EK[did] || []).forEach(function (k) { if (liste.indexOf(k) < 0) liste.push(k); });
+    document.querySelectorAll('#yetkiModal input[data-sayfa]').forEach(function (c) {
+        c.checked = liste.indexOf(c.dataset.sayfa) >= 0;
+    });
+}
 function yetkiAc(p) {
     document.getElementById('y_id').value = p.id;
     document.getElementById('yetkiModalAd').textContent = p.ad || 'Personel';
@@ -914,6 +969,22 @@ function yetkiAc(p) {
         el.checked = y[el.dataset.yetki] === true;
     });
     document.getElementById('y_kademe').value = p.kademe || 'personel';
+    var dep = document.getElementById('y_departman');
+    if (dep) {
+        dep.value = (p.departman_id && p.departman_id > 0) ? String(p.departman_id) : '0';
+        // Ünvan listesini bu departmana göre doldur (uygulamadan; sayfa işaretlerini DEĞİŞTİRME).
+        var uv = document.getElementById('y_unvan');
+        if (uv) {
+            var liste = DEPARTMAN_UNVAN[dep.value] || [];
+            uv.innerHTML = '<option value="">—</option>';
+            liste.forEach(function (u, i) {
+                var o = document.createElement('option'); o.value = u; o.textContent = (i === 0 ? '★ ' : '') + u; uv.appendChild(o);
+            });
+            uv.value = p.departman_unvan || '';
+        }
+        var sor = document.getElementById('y_sorumlu');
+        if (sor) sor.checked = p.departman_sorumlu === 1;
+    }
     var sf = p.sayfa || {};
     document.querySelectorAll('#yetkiModal input[data-sayfa]').forEach(function (el) {
         el.checked = sf[el.dataset.sayfa] === true;
