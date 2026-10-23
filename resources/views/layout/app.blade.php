@@ -209,6 +209,40 @@
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {})); }
 </script>
+{{-- ORTAK ONAY POPUP — native confirm() yerine sistem içi şık onay (rkOnay / rkOnayForm) --}}
+<div id="rkOnayModal" class="rk-modal-arka" onclick="if(event.target===this)rkOnayKapat()">
+  <div class="rk-modal" style="max-width:400px">
+    <div class="rk-modal-govde" style="padding:24px 22px 6px;text-align:center">
+      <div id="rkOnayIco" style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <span class="material-icons-outlined" style="color:#fff;font-size:28px">help_outline</span>
+      </div>
+      <div id="rkOnayMsg" style="font-size:14.5px;line-height:1.55;color:var(--ink)"></div>
+    </div>
+    <div class="rk-modal-foot" style="justify-content:center;gap:10px;padding:16px 22px 20px">
+      <button type="button" class="rk-btn bos" onclick="rkOnayKapat()">Vazgeç</button>
+      <button type="button" class="rk-btn" id="rkOnayOk" style="background:var(--mor1)">Onayla</button>
+    </div>
+  </div>
+</div>
+<script>
+  var _rkOnayCb = null;
+  function rkOnay(mesaj, cb, renk, okLabel){
+    _rkOnayCb = cb || null;
+    document.getElementById('rkOnayMsg').textContent = mesaj;
+    var b = document.getElementById('rkOnayOk');
+    b.style.background = renk || 'var(--mor1)';
+    b.textContent = okLabel || 'Onayla';
+    try { document.getElementById('rkOnayIco').style.background = (renk && renk.indexOf('kirmizi')>=0) ? 'var(--kirmizi)' : 'linear-gradient(135deg,var(--mor1),var(--mavi))'; } catch(e){}
+    document.getElementById('rkOnayModal').classList.add('acik');
+    return false;
+  }
+  // Form onsubmit için: return rkOnayForm(this, 'mesaj', 'renk', 'OK etiketi')
+  function rkOnayForm(form, mesaj, renk, okLabel){
+    return rkOnay(mesaj, function(){ HTMLFormElement.prototype.submit.call(form); }, renk, okLabel);
+  }
+  function rkOnayKapat(){ document.getElementById('rkOnayModal').classList.remove('acik'); _rkOnayCb = null; }
+  document.getElementById('rkOnayOk').addEventListener('click', function(){ var cb = _rkOnayCb; rkOnayKapat(); if (cb) cb(); });
+</script>
 @stack('scripts')
 </body>
 </html>

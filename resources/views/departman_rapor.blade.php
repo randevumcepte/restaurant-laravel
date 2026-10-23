@@ -74,8 +74,14 @@
     @endif
   </div>
 
-  {{-- KRİTİK MALZEMELER + AKSİYON (çözüm odaklı) --}}
-  @if (($veri['aksiyon'] ?? null) === 'acil_siparis' && !empty($veri['kritik_liste']))
+  {{-- KRİTİK MALZEMELER + AKSİYONLAR (çözüm odaklı) --}}
+  @php
+    $aks = $veri['aksiyonlar'] ?? [];
+    $acilVar = collect($aks)->firstWhere('tip', 'acil_siparis');
+    $linkler = array_values(array_filter($aks, fn ($a) => ($a['tip'] ?? '') === 'link'));
+    $renkMap = ['kirmizi'=>'var(--kirmizi)','amber'=>'var(--amber)','mavi'=>'var(--mavi)','yesil'=>'var(--yesil)','mor'=>'var(--mor1)'];
+  @endphp
+  @if ($acilVar && !empty($veri['kritik_liste']))
   <div class="dr-blok" style="border-left:4px solid var(--kirmizi)">
     <div class="dr-h" style="color:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:17px">warning</span> Kritik Malzemeler — Acil Sipariş Gerekli ({{ count($veri['kritik_liste']) }})</div>
     <div style="margin-bottom:12px">
@@ -88,11 +94,22 @@
         </div>
       @endforeach
     </div>
-    <form method="POST" action="/patron-ai/acil-siparis" onsubmit="return confirm('{{ count($veri['kritik_liste']) }} kritik malzeme için ACİL satın alma talebi oluşturulsun ve satın almaya iletilsin mi?')">
+    <form method="POST" action="/patron-ai/acil-siparis" onsubmit="return rkOnayForm(this, '{{ count($veri['kritik_liste']) }} kritik malzeme için ACİL satın alma talebi oluşturulsun ve Satın Alma\'ya iletilsin mi?', 'var(--kirmizi)', 'Evet, oluştur')">
       @csrf
       <input type="hidden" name="geri" value="/departman-rapor?id={{ $dep->id }}">
       <button type="submit" class="rk-btn" style="background:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Acil Sipariş Oluştur ({{ count($veri['kritik_liste']) }} kalem) → Satın Alma</button>
     </form>
+  </div>
+  @endif
+
+  @if (count($linkler))
+  <div class="dr-blok">
+    <div class="dr-h"><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">bolt</span> Hızlı Aksiyonlar</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      @foreach ($linkler as $a)
+        <a href="{{ $a['url'] }}" class="rk-btn bos" style="padding:7px 14px;color:{{ $renkMap[$a['renk']??'mavi']??'var(--mavi)' }}"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">{{ $a['ikon']??'arrow_forward' }}</span> {{ $a['lbl'] }} →</a>
+      @endforeach
+    </div>
   </div>
   @endif
 

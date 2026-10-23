@@ -70,7 +70,7 @@
             <button class="rk-btn bos" style="flex:1;padding:7px" onclick='depAc(@json($kartJson))'>
               <span class="material-icons-outlined" style="font-size:16px">edit</span> Düzenle
             </button>
-            <form method="POST" action="/departman-sil" onsubmit="return confirm('{{ $d->ad }} silinsin mi? (Bağlı personelin erişimi mevcut yetkileriyle devam eder)')" style="display:inline">
+            <form method="POST" action="/departman-sil" onsubmit="return rkOnayForm(this, '{{ addslashes($d->ad) }} departmanı silinsin mi? (Bağlı personelin erişimi mevcut yetkileriyle devam eder)', 'var(--kirmizi)', 'Evet, sil')" style="display:inline">
               @csrf <input type="hidden" name="id" value="{{ $d->id }}">
               <button class="rk-btn bos" style="padding:7px;color:var(--kirmizi)" type="submit"><span class="material-icons-outlined" style="font-size:16px">delete</span></button>
             </form>
