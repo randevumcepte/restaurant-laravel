@@ -11,8 +11,24 @@
   #saChat .sa-h{display:inline-block;font-weight:700;font-size:14px;color:var(--mor1,#7C3AED);margin:6px 0 2px;letter-spacing:.2px}
   #saChat b{font-weight:600;color:inherit}
   #saChat .sa-mad{color:var(--mor1,#7C3AED);font-weight:700}
+  /* AI yazıyor göstergesi (renkli + animasyonlu) */
+  #saChat .sa-yaziyor{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:14px;border-bottom-left-radius:4px;padding:9px 14px;box-shadow:0 1px 4px rgba(0,0,0,.05);scroll-margin-bottom:110px}
+  #saChat .sa-yaziyor .sa-orb{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#4F46E5);display:flex;align-items:center;justify-content:center;animation:saPulse 1.5s ease-in-out infinite}
+  #saChat .sa-yaziyor .sa-orb .material-icons-outlined{font-size:15px;color:#fff}
+  #saChat .sa-yaziyor .sa-yz-txt{font-size:12.5px;font-weight:700;background:linear-gradient(90deg,#7C3AED,#4F46E5,#EC4899,#7C3AED);background-size:200% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:saShine 2.2s linear infinite}
+  #saChat .sa-yaziyor .sa-dots{display:inline-flex;gap:3px}
+  #saChat .sa-yaziyor .sa-dots i{width:6px;height:6px;border-radius:50%;display:inline-block;animation:saBounce 1.2s infinite}
+  #saChat .sa-yaziyor .sa-dots i:nth-child(1){background:#7C3AED}
+  #saChat .sa-yaziyor .sa-dots i:nth-child(2){background:#4F46E5;animation-delay:.18s}
+  #saChat .sa-yaziyor .sa-dots i:nth-child(3){background:#EC4899;animation-delay:.36s}
+  @keyframes saBounce{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}
+  @keyframes saPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{transform:scale(1.1);box-shadow:0 0 0 7px rgba(124,58,237,0)}}
+  @keyframes saShine{to{background-position:200% center}}
+  /* Mesajlar sticky input'un altında kalmasın */
+  #saChat>div{scroll-margin-bottom:110px}
+  #saWrap{padding-bottom:30px}
 </style>
-<div style="max-width:760px;margin:0 auto">
+<div id="saWrap" style="max-width:760px;margin:0 auto">
   <div class="rk-card" style="margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">
     <span class="material-icons-outlined" style="color:var(--mor1);font-size:24px">smart_toy</span>
     <div style="flex:1"><div style="font-weight:800;color:var(--ink);font-size:14px">Sor, veriden cevaplasın</div>
@@ -32,7 +48,7 @@
   </div>
 
   {{-- Sohbet --}}
-  <div id="saChat" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;min-height:60px"></div>
+  <div id="saChat" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;min-height:60px;padding-bottom:120px"></div>
 
   <div class="rk-card" style="position:sticky;bottom:10px;display:flex;gap:8px;align-items:center;padding:10px 12px">
     <input type="text" id="saInput" placeholder="Satınalma sorunu yaz…" class="rk-inp" style="flex:1" onkeydown="if(event.key==='Enter')saSor()">
@@ -51,6 +67,17 @@ function saFormat(t){
   h=h.replace(/__([^_]+?)__/g,'<b>$1</b>');                                     // __kalın__
   h=h.replace(/^[ \t]*[-*•]\s+/gm,'<span class="sa-mad">•</span> ');            // madde imi
   return h;
+}
+// Renkli + animasyonlu "AI yazıyor" göstergesi
+function saYaziyor(){
+  const d=document.createElement('div');
+  d.className='sa-yaziyor';
+  d.innerHTML='<span class="sa-orb"><span class="material-icons-outlined">auto_awesome</span></span>'+
+    '<span class="sa-yz-txt">AI düşünüyor</span>'+
+    '<span class="sa-dots"><i></i><i></i><i></i></span>';
+  document.getElementById('saChat').appendChild(d);
+  d.scrollIntoView({behavior:'smooth',block:'end'});
+  return d;
 }
 function saBubble(metin, ben){
   const d=document.createElement('div');
@@ -128,7 +155,7 @@ async function saSor(metin){
   }
   saBubble(soru,true);
   saBusy=true;
-  const bekle=saBubble('…',false); bekle.style.opacity='.6';
+  const bekle=saYaziyor();
   try{
     const r=await fetch('/satinalma-asistan/sor',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({soru})});
     const j=await r.json();
