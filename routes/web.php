@@ -10349,10 +10349,11 @@ Route::get('/personel', function () {
     } catch (\Throwable $e) {}
     _panelYetkiEnsure();
     _departmanEnsure();
+    try { _restoPersonelKolonEnsure(); } catch (\Throwable $e) {} // maaş/prim/iban + özlük (doğum/tc/işe başlama/acil) kolonları
     $benSahip = false;
     try { $bp = _posPersonel(); $benSahip = $bp && ($bp->rol ?? '') === 'sahip'; } catch (\Throwable $e) {}
     $kolonlar = ['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit', 'kademe', 'sayfa_yetki'];
-    foreach (['departman_id', 'departman_unvan', 'departman_sorumlu'] as $dk) if (Schema::hasColumn('personeller', $dk)) $kolonlar[] = $dk;
+    foreach (['departman_id', 'departman_unvan', 'departman_sorumlu', 'maas', 'maas_tipi', 'prim_tipi', 'prim_oran', 'iban', 'ise_baslama', 'dogum_tarihi', 'tc', 'acil_kisi', 'acil_tel'] as $dk) if (Schema::hasColumn('personeller', $dk)) $kolonlar[] = $dk;
     $personeller = DB::table('personeller')->where('sube_id', $sid)
         ->orderByRaw("FIELD(rol,'sahip','mudur','satinalmaci','kasa','garson','mutfak')")->orderBy('ad')
         ->get($kolonlar)
@@ -10371,7 +10372,11 @@ Route::get('/personel', function () {
                 'aktif' => (int) $x->aktif, 'yetkiler' => $y, 'iskonto_limit' => (float) $x->iskonto_limit,
                 'ikram_limit' => $x->ikram_limit === null ? (float) _restoYetkiVarsayilan($x->rol)['ikram_limit'] : (float) $x->ikram_limit,
                 'kademe' => $kademe, 'sayfa' => $sayfa, 'departman_id' => (int) ($x->departman_id ?? 0),
-                'departman_unvan' => $x->departman_unvan ?? '', 'departman_sorumlu' => (int) ($x->departman_sorumlu ?? 0)];
+                'departman_unvan' => $x->departman_unvan ?? '', 'departman_sorumlu' => (int) ($x->departman_sorumlu ?? 0),
+                'maas' => (float) ($x->maas ?? 0), 'maas_tipi' => $x->maas_tipi ?? 'aylik',
+                'prim_tipi' => $x->prim_tipi ?? 'yok', 'prim_oran' => (float) ($x->prim_oran ?? 0), 'iban' => $x->iban ?? '',
+                'ise_baslama' => $x->ise_baslama ?? '', 'dogum_tarihi' => $x->dogum_tarihi ?? '', 'tc' => $x->tc ?? '',
+                'acil_kisi' => $x->acil_kisi ?? '', 'acil_tel' => $x->acil_tel ?? ''];
         })->toArray();
     $kademeSayfa = [];
     foreach (array_keys(_panelKademeler()) as $kd) $kademeSayfa[$kd] = _kademeSayfalar($kd);
@@ -10402,6 +10407,14 @@ Route::post('/personel/kaydet', function (Request $r) {
         $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak', 'satinalmaci']) ? $r->rol : 'garson';
         $pin = preg_replace('/\D/', '', (string) $r->pin);
         $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'rol' => $rol, 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
+        // ÖZLÜK (İK) — kolon varsa ve form gönderdiyse kaydet. Maaş/prim'e dokunma (Flutter API'den yönetiliyor).
+        try { _restoPersonelKolonEnsure(); } catch (\Throwable $e) {}
+        if ($r->has('iban') && Schema::hasColumn('personeller', 'iban')) $veri['iban'] = trim((string) $r->iban) ?: null;
+        if ($r->has('tc') && Schema::hasColumn('personeller', 'tc')) $veri['tc'] = preg_replace('/\D/', '', (string) $r->tc) ?: null;
+        if ($r->has('dogum_tarihi') && Schema::hasColumn('personeller', 'dogum_tarihi')) $veri['dogum_tarihi'] = $r->filled('dogum_tarihi') ? $r->dogum_tarihi : null;
+        if ($r->has('ise_baslama') && Schema::hasColumn('personeller', 'ise_baslama')) $veri['ise_baslama'] = $r->filled('ise_baslama') ? $r->ise_baslama : null;
+        if ($r->has('acil_kisi') && Schema::hasColumn('personeller', 'acil_kisi')) $veri['acil_kisi'] = trim((string) $r->acil_kisi) ?: null;
+        if ($r->has('acil_tel') && Schema::hasColumn('personeller', 'acil_tel')) $veri['acil_tel'] = trim((string) $r->acil_tel) ?: null;
         if ($pin !== '') {
             if (strlen($pin) < 4) return redirect('/personel')->with('hata', 'PIN en az 4 haneli olmalı.');
             $cak = DB::table('personeller')->where('sube_id', $sid)->where('pin', $pin)->where('id', '!=', $pid)->exists();

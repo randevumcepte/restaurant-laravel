@@ -606,6 +606,35 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
           <input type="text" name="iban" id="f_iban" class="rk-inp" placeholder="TR...">
         </div>
 
+        {{-- ÖZLÜK (İK) — doğum günü / kıdem-izin / eksik belge takibi + acil durum --}}
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)">
+          <div class="rk-sub2" style="font-size:12px;font-weight:700;color:var(--sub);margin-bottom:8px;display:flex;align-items:center;gap:6px"><span class="material-icons-outlined" style="font-size:16px">badge</span> Özlük Bilgileri (İK)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <label class="rk-lbl">İşe Başlama</label>
+              <input type="date" name="ise_baslama" id="f_ise_baslama" class="rk-inp">
+            </div>
+            <div>
+              <label class="rk-lbl">Doğum Tarihi</label>
+              <input type="date" name="dogum_tarihi" id="f_dogum_tarihi" class="rk-inp">
+            </div>
+          </div>
+          <div style="margin-top:4px">
+            <label class="rk-lbl">TC Kimlik No <span class="rk-sub" style="font-weight:400">(opsiyonel)</span></label>
+            <input type="text" name="tc" id="f_tc" class="rk-inp" inputmode="numeric" maxlength="11" placeholder="11 hane">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+            <div>
+              <label class="rk-lbl">Acil Durum Kişisi</label>
+              <input type="text" name="acil_kisi" id="f_acil_kisi" class="rk-inp" placeholder="Ad Soyad">
+            </div>
+            <div>
+              <label class="rk-lbl">Acil Durum Telefonu</label>
+              <input type="text" name="acil_tel" id="f_acil_tel" class="rk-inp" inputmode="tel" placeholder="05..">
+            </div>
+          </div>
+        </div>
+
       </div>
       <div class="rk-modal-foot">
         <button type="button" class="rk-btn bos" onclick="personelKapat()">Vazgeç</button>
@@ -913,6 +942,11 @@ function personelAc(p) {
     document.getElementById('f_prim_tipi').value= p ? (p.prim_tipi||'yok') : 'yok';
     document.getElementById('f_prim_oran').value= p ? (parseFloat(p.prim_oran)||0) : '';
     document.getElementById('f_iban').value     = p ? (p.iban || '') : '';
+    document.getElementById('f_ise_baslama').value  = p ? ((p.ise_baslama||'').substr(0,10)) : '';
+    document.getElementById('f_dogum_tarihi').value = p ? ((p.dogum_tarihi||'').substr(0,10)) : '';
+    document.getElementById('f_tc').value           = p ? (p.tc || '') : '';
+    document.getElementById('f_acil_kisi').value    = p ? (p.acil_kisi || '') : '';
+    document.getElementById('f_acil_tel').value     = p ? (p.acil_tel || '') : '';
     primTipiDegis();
     document.getElementById('personelModal').classList.add('acik');
 }

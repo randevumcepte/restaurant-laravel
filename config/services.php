@@ -67,6 +67,7 @@ return [
     'resteos' => [
         'departman_acik' => (bool) env('RESTEOS_DEPARTMAN', true),   // departman/yetki/bildirim menuleri gorunur
         'patron_ai_v2'   => (bool) env('RESTEOS_PATRON_AI_V2', false), // yeni Patron AI brief/kredi katmani (Faz 3+)
+        'ik_acik'        => (bool) env('RESTEOS_IK', true),          // Insan Kaynaklari ozet + izin yonetimi menuleri gorunur
     ],
 
     // PATRON AI DIS KAYNAK OAuth (Faz 6) — SALT OKUNUR. client_id bos ise ozellik sessizce kapali.
