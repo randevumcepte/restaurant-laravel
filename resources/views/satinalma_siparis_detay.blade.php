@@ -10,8 +10,8 @@
   $kalemler = $kalemler ?? collect();
   $tedarikci = $tedarikci ?? null;
   $tl = fn($v) => number_format((float) $v, 2, ',', '.') . '₺';
-  $durumRenk = ['taslak'=>'var(--sub)','gonderildi'=>'var(--mavi)','kismi'=>'var(--amber)','tamamlandi'=>'var(--yesil)','iptal'=>'var(--kirmizi)'];
-  $durumAd = ['taslak'=>'Taslak','gonderildi'=>'Gönderildi','kismi'=>'Kısmi Teslim','tamamlandi'=>'Tamamlandı','iptal'=>'İptal'];
+  $durumRenk = ['taslak'=>'var(--sub)','siparis'=>'var(--mor1)','gonderildi'=>'var(--mavi)','kismi'=>'var(--amber)','tamamlandi'=>'var(--yesil)','iptal'=>'var(--kirmizi)'];
+  $durumAd = ['taslak'=>'Taslak','siparis'=>'Sipariş','gonderildi'=>'Tedarikçiye Gönderildi','kismi'=>'Kısmi Teslim','tamamlandi'=>'Tamamlandı','iptal'=>'İptal'];
   $dr = $durumRenk[$s->durum ?? ''] ?? 'var(--sub)';
 @endphp
 
@@ -21,7 +21,13 @@
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
   <a href="/satinalma-siparis" class="rk-btn bos" style="padding:8px 13px"><span class="material-icons-outlined" style="font-size:17px">arrow_back</span> Siparişler</a>
   <span class="rk-rozet" style="color:{{ $dr }};background:color-mix(in srgb,{{ $dr }} 13%,transparent);border-color:color-mix(in srgb,{{ $dr }} 40%,transparent)">{{ $durumAd[$s->durum] ?? $s->durum }}</span>
-  <div style="margin-left:auto;display:flex;gap:6px">
+  <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+    @if ($tedarikci && (!empty($tedarikci->email) || !empty($tedarikci->telefon)) && !in_array($s->durum ?? '', ['tamamlandi','iptal']))
+      <form method="POST" action="/satinalma-siparis/gonder" style="margin:0" onsubmit="return rkOnayForm(this, 'Bu sipariş tedarikçiye (e-posta{{ $tedarikci->telefon ? ' + WhatsApp' : '' }}) gönderilsin mi?', 'var(--mavi)', 'Evet, gönder')">@csrf
+        <input type="hidden" name="id" value="{{ $s->id }}">
+        <button class="rk-btn" style="background:var(--mavi);padding:7px 13px"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">send</span> Tedarikçiye Gönder</button>
+      </form>
+    @endif
     @foreach (['gonderildi'=>'Gönderildi İşaretle','tamamlandi'=>'Tamamlandı','iptal'=>'İptal Et'] as $dk => $et)
       @if (($s->durum ?? '') !== $dk)
         <form method="POST" action="/satinalma-siparis/durum" style="margin:0">@csrf

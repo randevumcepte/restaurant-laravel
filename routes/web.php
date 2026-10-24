@@ -9337,13 +9337,14 @@ Route::post('/gelen-teklifler/siparis', function (Request $r) {
         $grup[(int) $t->tedarikci_id][] = ['malzeme_id' => (int) $t->malzeme_id, 'miktar' => $miktar, 'fiyat' => (float) $t->fiyat];
     }
     if (!$grup) return redirect('/gelen-teklifler')->with('hata', 'Seçilen teklifler stok malzemesine bağlı değil, sipariş oluşturulamadı.');
+    $teslim = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('beklenen_teslim')) ? $r->input('beklenen_teslim') : null;
     $olusan = 0; $pid = $bp->id ?? null;
     foreach ($grup as $tid => $kalemler) {
         try {
             $ara = 0; foreach ($kalemler as $k) $ara += $k['miktar'] * $k['fiyat'];
             $kdv = round($ara * 0.10, 2); $genel = round($ara + $kdv, 2);
             $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
-            $spid = (int) DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'siparis', 'ara_toplam' => round($ara, 2), 'kdv_toplam' => $kdv, 'genel_toplam' => $genel, 'notlar' => 'Gelen tekliften oluşturuldu', 'olusturan_personel_id' => $pid, 'created_at' => now(), 'updated_at' => now()]);
+            $spid = (int) DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'beklenen_teslim' => $teslim, 'durum' => 'siparis', 'ara_toplam' => round($ara, 2), 'kdv_toplam' => $kdv, 'genel_toplam' => $genel, 'notlar' => 'Gelen tekliften oluşturuldu', 'olusturan_personel_id' => $pid, 'created_at' => now(), 'updated_at' => now()]);
             foreach ($kalemler as $k) {
                 DB::table('satinalma_siparis_kalemleri')->insert(['siparis_id' => $spid, 'malzeme_id' => $k['malzeme_id'], 'miktar' => $k['miktar'], 'birim_fiyat' => $k['fiyat'], 'kdv_yuzde' => 10, 'satir_toplam' => round($k['miktar'] * $k['fiyat'] * 1.10, 2), 'created_at' => now(), 'updated_at' => now()]);
             }
@@ -10977,6 +10978,31 @@ Route::post('/satinalma-siparis/durum', function (Request $r) {
         DB::table('satinalma_siparisleri')->where('id', $s->id)->update(['durum' => $durum, 'updated_at' => now()]);
         return redirect('/satinalma-siparis-detay?id=' . $s->id)->with('sa_ok', 'Durum güncellendi.');
     } catch (\Throwable $e) { return redirect('/satinalma-siparis')->with('sa_hata', 'Güncellenemedi.'); }
+});
+Route::post('/satinalma-siparis/gonder', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-siparis')->with('sa_hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $id = (int) $r->input('id'); $geri = '/satinalma-siparis-detay?id=' . $id;
+    $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$s) return redirect('/satinalma-siparis')->with('sa_hata', 'Sipariş bulunamadı.');
+    $ted = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
+    if (!$ted) return redirect($geri)->with('sa_hata', 'Tedarikçi tanımlı değil.');
+    if (empty($ted->email) && empty($ted->telefon)) return redirect($geri)->with('sa_hata', 'Tedarikçinin e-postası/telefonu yok. Tedarikçi kartına ekle.');
+    $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $kalemler = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->get();
+    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    $satir = '';
+    foreach ($kalemler as $k) {
+        $ad = $malAd[$k->malzeme_id] ?? 'Ürün'; $br = $birim[$k->alis_birim_id] ?? '';
+        $satir .= "\n- " . $ad . ' ' . rtrim(rtrim(number_format((float) $k->miktar, 2, ',', ''), '0'), ',') . ' ' . $br . ' × ' . number_format((float) $k->birim_fiyat, 2, ',', '.') . ' ₺';
+    }
+    $teslim = $s->beklenen_teslim ? ("\nİstenen teslim tarihi: " . \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y')) : '';
+    $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " olarak aşağıdaki ürünleri sipariş ediyoruz:" . $satir . "\n\nGenel toplam: " . number_format((float) $s->genel_toplam, 2, ',', '.') . " ₺ (KDV dahil)." . "\nSipariş no: " . $s->siparis_no . $teslim . "\n\nTeşekkürler.";
+    $kanal = [];
+    if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Satın Alma Siparişi — ' . $s->siparis_no, $msg)) $kanal[] = 'e-posta';
+    if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) $kanal[] = 'WhatsApp';
+    if ($kanal) { try { DB::table('satinalma_siparisleri')->where('id', $id)->update(['durum' => 'gonderildi', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+    return redirect($geri)->with($kanal ? 'sa_ok' : 'sa_hata', $kanal ? ('✅ Sipariş tedarikçiye gönderildi (' . implode(' + ', $kanal) . ').') : 'Gönderilemedi — tedarikçi e-postası veya SMTP ayarını kontrol et.');
 });
 Route::get('/satinalma-siparis-detay', function (Request $r) {
     $sid = _webSubeId(); $id = (int) $r->query('id');
