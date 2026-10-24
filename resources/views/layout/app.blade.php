@@ -51,6 +51,15 @@
             ['/karsilama', 'co_present', 'Karşılama / Host (Bekleme + Oturt)', '#0EA5E9'],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
         ],
+        'Departman Operasyon' => [
+            ['/kalite', 'verified_user', 'Kalite / Gıda Güvenliği (HACCP)', '#16A34A'],
+            ['/temizlik', 'cleaning_services', 'Temizlik / Hijyen', '#0EA5E9'],
+            ['/guvenlik', 'security', 'Güvenlik', '#475569'],
+            ['/teknik', 'build', 'Teknik Servis / Bakım', '#F97316'],
+            ['/it-destek', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
+            ['/bulasik', 'wash', 'Bulaşıkhane / Steward', '#06B6D4'],
+            ['/etkinlik', 'celebration', 'Satış / Etkinlik', '#A855F7'],
+        ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
             ['/app-yonetim', 'palette', 'App Kartları / QR Menü', '#F6CE63'],
