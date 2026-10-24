@@ -13357,7 +13357,7 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
     }
     try {
         $baglam = _satinalmaBaglam($sid);
-        $teklif = _satinalmaRaporSorusuMu($soru); // rapor/veri sorusuysa -> AI "Excel'e aktarayım mı?" teklif etsin
+        $teklif = _satinalmaRaporSorusuMu($soru) ? _satinalmaRaporTipi($soru) : false; // rapor sorusuysa ilgili rapor tipi, değilse false
         $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
         $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
@@ -13393,6 +13393,19 @@ if (!function_exists('_satinalmaRaporSorusuMu')) {
     function _satinalmaRaporSorusuMu($soru)
     {
         return (bool) preg_match('/rapor|liste|listele|dökü|döküm|kritik|stok|zam|fiyat|tedarik|harca|sipariş|siparis|talep|özet|ozet|hangi|ne kadar|kaç|kac/iu', (string) $soru);
+    }
+}
+if (!function_exists('_satinalmaRaporTipi')) {
+    // Sorudan en uygun rapor tipini seç (Evet -> direkt o raporu indir)
+    function _satinalmaRaporTipi($soru)
+    {
+        $s = mb_strtolower((string) $soru, 'UTF-8');
+        if (preg_match('/zam|pahal|fiyat art|artış|artis/u', $s)) return 'zam';
+        if (preg_match('/tedarik|satıcı|satici|firma/u', $s)) return 'tedarikci';
+        if (preg_match('/harca|bütçe|butce|gider|maliyet|ne kadar/u', $s)) return 'harcama';
+        if (preg_match('/sipariş|siparis|\bpo\b/u', $s)) return 'siparis';
+        if (preg_match('/talep/u', $s)) return 'talep';
+        return 'kritik'; // varsayılan: kritik stok
     }
 }
 if (!function_exists('_satinalmaExportUret')) {
