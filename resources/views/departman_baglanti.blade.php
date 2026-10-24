@@ -100,6 +100,17 @@
         <div style="flex:1;min-width:160px"><label class="rk-lbl">Kullanıcı Adı</label><input class="rk-inp" name="smtp_user" value="{{ $smtp->smtp_user ?? '' }}" placeholder="genelde e-posta adresi"></div>
         <div style="flex:1;min-width:160px"><label class="rk-lbl">Şifre / Uygulama Şifresi</label><input class="rk-inp" name="smtp_sifre" type="password" placeholder="{{ $smtp ? 'değiştirmezsen boş bırak' : '' }}"></div>
       </div>
+      <div style="border-top:1px dashed var(--line);margin:12px 0 10px;padding-top:10px">
+        <div class="rk-lbl" style="margin-bottom:4px">📥 Gelen Mail Okuma (IMAP) — AI tedarikçi yanıtlarını buradan okur</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:2;min-width:200px"><label class="rk-lbl">IMAP Sunucu</label><input class="rk-inp" name="imap_host" value="{{ $smtp->imap_host ?? '' }}" placeholder="imap.gmail.com / outlook.office365.com"></div>
+          <div style="width:90px"><label class="rk-lbl">Port</label><input class="rk-inp" name="imap_port" type="number" value="{{ $smtp->imap_port ?? 993 }}"></div>
+          <div style="width:110px"><label class="rk-lbl">Güvenlik</label><select class="rk-inp" name="imap_guvenlik">
+            @foreach (['ssl'=>'SSL','tls'=>'TLS','yok'=>'Yok'] as $k=>$v)<option value="{{ $k }}" @selected(($smtp->imap_guvenlik ?? 'ssl')===$k)>{{ $v }}</option>@endforeach
+          </select></div>
+        </div>
+        <div class="rk-sub" style="font-size:11px;margin-top:4px">Boş bırakırsan AI yalnız gönderir, okumaz. Gmail: imap.gmail.com · 993 · SSL</div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="rk-btn db-btn-s" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">save</span> Kaydet</button>
         @if ($smtp)

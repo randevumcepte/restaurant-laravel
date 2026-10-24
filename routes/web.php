@@ -6777,6 +6777,11 @@ if (!function_exists('_panelYetkiVar')) {
 if (!function_exists('_departmanEnsure')) {
     function _departmanEnsure()
     {
+        // wa_numara: ayrı cache anahtarı — departman zaten canlı olan kurulumlarda da eklenir (ana bayrak set olsa bile)
+        if (!cache()->get('departman_wa_ok')) {
+            try { if (Schema::hasTable('departmanlar') && !Schema::hasColumn('departmanlar', 'wa_numara')) Schema::table('departmanlar', fn ($t) => $t->string('wa_numara', 24)->nullable()); } catch (\Throwable $e) {}
+            cache()->put('departman_wa_ok', 1, now()->addHours(12));
+        }
         if (cache()->get('departman_ensure_ok')) return;
         if (!Schema::hasTable('departmanlar')) {
             try { Schema::create('departmanlar', function ($t) {
@@ -8644,7 +8649,10 @@ Route::post('/departman-baglanti/smtp', function (Request $r) {
     $email = trim((string) $r->email); if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return redirect($geri)->with('hata', 'Geçerli e-posta gir.');
     $veri = ['sube_id' => $sid, 'departman_id' => $depId, 'ad' => (trim((string) $r->ad) ?: $email), 'gonderen_ad' => $r->gonderen_ad ?: null,
         'email' => $email, 'smtp_host' => trim((string) $r->smtp_host), 'smtp_port' => (int) ($r->smtp_port ?: 587), 'smtp_user' => $r->smtp_user ?: null,
-        'smtp_guvenlik' => in_array($r->smtp_guvenlik, ['tls', 'ssl', 'yok']) ? $r->smtp_guvenlik : 'tls', 'aktif' => 1, 'updated_at' => now()];
+        'smtp_guvenlik' => in_array($r->smtp_guvenlik, ['tls', 'ssl', 'yok']) ? $r->smtp_guvenlik : 'tls',
+        'imap_host' => trim((string) $r->imap_host) ?: null, 'imap_port' => (int) ($r->imap_port ?: 993),
+        'imap_guvenlik' => in_array($r->imap_guvenlik, ['ssl', 'tls', 'yok']) ? $r->imap_guvenlik : 'ssl',
+        'aktif' => 1, 'updated_at' => now()];
     if ($r->filled('smtp_sifre')) $veri['smtp_sifre'] = \Illuminate\Support\Facades\Crypt::encryptString((string) $r->smtp_sifre);
     try {
         $ex = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first();
