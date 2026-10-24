@@ -8793,7 +8793,7 @@ if (!function_exists('_epostaHesapEnsure')) {
             }); } catch (\Throwable $e) {}
         }
         cache()->put('eposta_hesap_ensure_ok', 1, now()->addHours(12));
-        if (!cache()->get('eposta_hesap_dep_ok')) {
+        if (!cache()->get('eposta_hesap_dep_ok2')) {
             foreach ([
                 ['departman_id', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()->index()],
                 ['imap_host', fn ($t) => $t->string('imap_host', 120)->nullable()],   // gelen mail okuma (IMAP)
@@ -8805,7 +8805,7 @@ if (!function_exists('_epostaHesapEnsure')) {
             ] as [$kol, $cl]) {
                 try { if (Schema::hasTable('eposta_hesaplari') && !Schema::hasColumn('eposta_hesaplari', $kol)) Schema::table('eposta_hesaplari', $cl); } catch (\Throwable $e) {}
             }
-            cache()->put('eposta_hesap_dep_ok', 1, now()->addHours(12));
+            cache()->put('eposta_hesap_dep_ok2', 1, now()->addHours(12));
         }
     }
 }
