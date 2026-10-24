@@ -8691,8 +8691,11 @@ if (!function_exists('_epostaHesapTest')) {
         }
         $imap = 'atlandi';
         if (!empty($hesap->imap_host)) {
-            if (!function_exists('imap_open')) $imap = 'eksik';
-            else {
+            if (!function_exists('imap_open')) {
+                $pass = ''; try { $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : ''; } catch (\Throwable $e) {}
+                $r = _imapSafFetch($hesap->imap_host, $hesap->imap_port, ($hesap->smtp_user ?: $hesap->email), $pass, 1, true);
+                $imap = empty($r['hata']) ? 'ok' : 'hata';
+            } else {
                 try {
                     $sec = $hesap->imap_guvenlik ?: 'ssl';
                     $bayrak = '/imap' . ($sec === 'ssl' ? '/ssl' : ($sec === 'tls' ? '/tls' : '/notls')) . '/novalidate-cert';
@@ -8742,12 +8745,99 @@ Route::post('/departman-baglanti/smtp-test', function (Request $r) {
     $t = _epostaHesapTest($sid, $hesap);
     return redirect($geri)->with($t['ok'] ? 'ok' : 'hata', ($t['ok'] ? '✅ Test başarılı — ' : '❌ Test başarısız — ') . $t['not']);
 });
+if (!function_exists('_imapSafFetch')) {
+    // SAF-PHP IMAP okuyucu (ext-imap GEREKMEZ) — SSL/993 soket. Son N maili getirir: uid, konu, from, ham(raw).
+    function _imapSafFetch($host, $port, $user, $pass, $n = 10, $sadeceBaslik = false)
+    {
+        $port = (int) ($port ?: 993);
+        $ctx = stream_context_create(['ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'peer_name' => $host]]);
+        $errno = 0; $errstr = '';
+        $fp = @stream_socket_client('ssl://' . $host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
+        if (!$fp) return ['hata' => 'bağlanılamadı (' . trim($errstr) . ')'];
+        stream_set_timeout($fp, 20);
+        @fgets($fp, 8192); // greeting
+        $tag = 0;
+        $komut = function ($line) use ($fp, &$tag) { $tag++; $t = 'A' . $tag; @fwrite($fp, $t . ' ' . $line . "\r\n"); return $t; };
+        $oku = function ($t) use ($fp) {
+            $buf = ''; $bitti = microtime(true) + 25;
+            while (!feof($fp) && microtime(true) < $bitti) {
+                $line = fgets($fp, 8192);
+                if ($line === false) { $inf = stream_get_meta_data($fp); if (!empty($inf['timed_out'])) break; continue; }
+                $buf .= $line;
+                if (preg_match('/\{(\d+)\}\r\n$/', $line, $m)) {
+                    $len = (int) $m[1]; $got = '';
+                    while (strlen($got) < $len && !feof($fp)) { $chunk = fread($fp, min(8192, $len - strlen($got))); if ($chunk === false || $chunk === '') break; $got .= $chunk; }
+                    $buf .= $got; continue;
+                }
+                if (preg_match('/^' . $t . ' (OK|NO|BAD)/i', $line, $mm)) return [strtoupper($mm[1]), $buf];
+            }
+            return ['TIMEOUT', $buf];
+        };
+        $t = $komut('LOGIN "' . addcslashes($user, '"\\') . '" "' . addcslashes($pass, '"\\') . '"');
+        [$st, ] = $oku($t);
+        if ($st !== 'OK') { @fwrite($fp, "AX LOGOUT\r\n"); @fclose($fp); return ['hata' => 'kimlik reddedildi (kullanıcı/şifre ya da IMAP erişimi kapalı)']; }
+        $t = $komut('SELECT INBOX'); [$st, $resp] = $oku($t);
+        if ($st !== 'OK') { @fwrite($fp, "AX LOGOUT\r\n"); @fclose($fp); return ['hata' => 'INBOX açılamadı']; }
+        $toplam = 0; if (preg_match('/\* (\d+) EXISTS/', $resp, $m)) $toplam = (int) $m[1];
+        $mesajlar = [];
+        if ($toplam > 0) {
+            $start = max(1, $toplam - $n + 1); $end = $toplam;
+            $item = $sadeceBaslik ? 'BODY.PEEK[HEADER.FIELDS (SUBJECT FROM)]' : 'BODY.PEEK[]';
+            $t = $komut('FETCH ' . $start . ':' . $end . ' (UID ' . $item . ')');
+            [$st, $buf] = $oku($t);
+            $off = 0;
+            while (preg_match('/\* (\d+) FETCH \(/', $buf, $fm, PREG_OFFSET_CAPTURE, $off)) {
+                $segBas = $fm[0][1] + strlen($fm[0][0]);
+                $uid = 0; if (preg_match('/UID (\d+)/', substr($buf, $segBas, 80), $um)) $uid = (int) $um[1];
+                if (!preg_match('/\{(\d+)\}\r\n/', $buf, $lm, PREG_OFFSET_CAPTURE, $segBas)) { $off = $segBas + 1; continue; }
+                $llen = (int) $lm[1][0]; $cstart = $lm[0][1] + strlen($lm[0][0]);
+                $ham = substr($buf, $cstart, $llen);
+                $konu = ''; $from = '';
+                if (preg_match('/^Subject:\s*(.*)$/mi', $ham, $sm)) $konu = trim($sm[1]);
+                if (preg_match('/^From:\s*(.*)$/mi', $ham, $frm)) $from = trim($frm[1]);
+                if (function_exists('iconv_mime_decode')) { $k2 = @iconv_mime_decode($konu, 2, 'UTF-8'); if ($k2 !== false) $konu = $k2; $f2 = @iconv_mime_decode($from, 2, 'UTF-8'); if ($f2 !== false) $from = $f2; }
+                $mesajlar[] = ['uid' => $uid, 'konu' => $konu, 'from' => mb_substr($from, 0, 60), 'ham' => $ham];
+                $off = $cstart + $llen;
+            }
+        }
+        @fwrite($fp, "AX LOGOUT\r\n"); @fclose($fp);
+        return ['toplam' => $toplam, 'mesajlar' => array_reverse($mesajlar)];
+    }
+}
+if (!function_exists('_mailGovdeMetni')) {
+    // Ham MIME maildan okunur düz metin çıkar (base64/qp + text/plain parça) — en iyi çaba.
+    function _mailGovdeMetni($ham)
+    {
+        $ham = (string) $ham;
+        $p = strpos($ham, "\r\n\r\n"); $baslik = $p !== false ? substr($ham, 0, $p) : $ham; $govde = $p !== false ? substr($ham, $p + 4) : '';
+        if (preg_match('/Content-Type:\s*multipart\/[^;]+;\s*boundary="?([^";\r\n]+)"?/i', $baslik, $bm)) {
+            foreach (explode('--' . $bm[1], $ham) as $pp) {
+                if (stripos($pp, 'text/plain') !== false) {
+                    $q = strpos($pp, "\r\n\r\n"); if ($q === false) continue; $pp2 = substr($pp, $q + 4);
+                    $enc = ''; if (preg_match('/Content-Transfer-Encoding:\s*(\S+)/i', $pp, $em)) $enc = strtolower($em[1]);
+                    if ($enc === 'base64') $pp2 = base64_decode(preg_replace('/\s+/', '', $pp2));
+                    elseif ($enc === 'quoted-printable') $pp2 = quoted_printable_decode($pp2);
+                    return trim($pp2);
+                }
+            }
+        }
+        $enc = ''; if (preg_match('/Content-Transfer-Encoding:\s*(\S+)/i', $baslik, $em)) $enc = strtolower($em[1]);
+        if ($enc === 'base64') $govde = base64_decode(preg_replace('/\s+/', '', $govde));
+        elseif ($enc === 'quoted-printable') $govde = quoted_printable_decode($govde);
+        return trim($govde);
+    }
+}
 if (!function_exists('_imapSonMesajlar')) {
-    // Gelen kutusundan son N mailin konusunu getir (okuma kanıtı). ext-imap yoksa/host yoksa açıklayıcı hata.
+    // Gelen kutusundan son N mailin konusunu getir (okuma kanıtı). ext-imap yoksa SAF-PHP okuyucuya düşer.
     function _imapSonMesajlar($hesap, $n = 5)
     {
-        if (!function_exists('imap_open')) return ['hata' => 'Sunucuda imap eklentisi yok — hosting panelinden php-imap aç.'];
         if (empty($hesap->imap_host)) return ['hata' => 'IMAP sunucusu girilmemiş (okuma kapalı).'];
+        if (!function_exists('imap_open')) {
+            $pass = ''; try { $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : ''; } catch (\Throwable $e) {}
+            $r = _imapSafFetch($hesap->imap_host, $hesap->imap_port, ($hesap->smtp_user ?: $hesap->email), $pass, $n, true);
+            if (!empty($r['hata'])) return ['hata' => $r['hata']];
+            return ['toplam' => $r['toplam'], 'mesajlar' => array_map(fn ($m) => ['konu' => $m['konu'], 'from' => $m['from']], $r['mesajlar'])];
+        }
         try {
             $port = (int) ($hesap->imap_port ?: 993); $sec = $hesap->imap_guvenlik ?: 'ssl';
             $bayrak = '/imap' . ($sec === 'ssl' ? '/ssl' : ($sec === 'tls' ? '/tls' : '/notls')) . '/novalidate-cert';
@@ -8898,7 +8988,15 @@ if (!function_exists('_imapOku')) {
     // $hesap = eposta_hesaplari satırı (imap_host + smtp_user/smtp_sifre aynı kimlikle kullanılır).
     function _imapOku($hesap, $gunGeri = 2, $max = 30)
     {
-        if (!function_exists('imap_open') || empty($hesap->imap_host)) return [];
+        if (empty($hesap->imap_host)) return [];
+        if (!function_exists('imap_open')) {
+            $pass = ''; try { $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : ''; } catch (\Throwable $e) {}
+            $r = _imapSafFetch($hesap->imap_host, $hesap->imap_port, ($hesap->smtp_user ?: $hesap->email), $pass, $max, false);
+            if (!empty($r['hata']) || empty($r['mesajlar'])) return [];
+            $out = [];
+            foreach ($r['mesajlar'] as $m) $out[] = ['ref' => 'simap:' . $hesap->id . ':' . $m['uid'], 'metin' => trim($m['konu'] . "\n" . _mailGovdeMetni($m['ham']))];
+            return $out;
+        }
         $imap = null;
         try {
             $port = (int) ($hesap->imap_port ?: 993);
