@@ -162,6 +162,42 @@
       <div class="rk-sub" style="font-size:13px">Henüz izin kaydı yok. Yukarıdan ekleyebilirsin.</div>
     @endif
   </div>
+
+  {{-- AVANS TALEPLERİ (mobil self-servis) --}}
+  <div class="iz-blok">
+    <div class="iz-h"><span class="material-icons-outlined" style="font-size:17px;color:var(--amber)">payments</span> Avans Talepleri <span class="rk-sub" style="text-transform:none;font-weight:500;margin-left:6px">— personelin uygulamadan gönderdiği talepler</span></div>
+    @if (count($avansTalepleri ?? []))
+    <table class="iz-tablo">
+      <thead><tr><th>Personel</th><th>Tutar</th><th>Açıklama</th><th>Tarih</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        @foreach ($avansTalepleri as $at)
+          @php [$dr,$drk] = $durumR[$at->durum] ?? $durumR['talep']; @endphp
+          <tr>
+            <td style="font-weight:600">{{ $at->personel_ad }}</td>
+            <td><b>{{ number_format($at->tutar,0,',','.') }}₺</b></td>
+            <td class="rk-sub" style="font-size:12px">{{ $at->aciklama ?: '—' }}</td>
+            <td>{{ \Carbon\Carbon::parse($at->created_at)->format('d.m.Y') }}</td>
+            <td><span class="iz-rozet" style="background:{{ $drk }}">{{ $dr }}</span></td>
+            <td style="white-space:nowrap;text-align:right">
+              @if ($yonetici && $at->durum==='talep')
+                <form method="POST" action="/ik-avans-karar" style="display:inline" onsubmit="return rkOnayForm(this,'{{ $at->personel_ad }} için {{ number_format($at->tutar,0,',','.') }}₺ avans onaylansın mı? (kasadan çıkış + gider işlenir)','var(--yesil)','Onayla')">
+                  @csrf<input type="hidden" name="id" value="{{ $at->id }}"><input type="hidden" name="karar" value="onay">
+                  <button class="rk-btn bos" style="padding:4px 10px;color:var(--yesil)" title="Onayla"><span class="material-icons-outlined" style="font-size:17px">check</span></button>
+                </form>
+                <form method="POST" action="/ik-avans-karar" style="display:inline" onsubmit="return rkOnayForm(this,'Avans talebi reddedilsin mi?','var(--kirmizi)','Reddet')">
+                  @csrf<input type="hidden" name="id" value="{{ $at->id }}"><input type="hidden" name="karar" value="ret">
+                  <button class="rk-btn bos" style="padding:4px 10px;color:var(--kirmizi)" title="Reddet"><span class="material-icons-outlined" style="font-size:17px">close</span></button>
+                </form>
+              @endif
+            </td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+    @else
+      <div class="rk-sub" style="font-size:13px">Bekleyen avans talebi yok. Personel, mobil uygulamadan avans talebi gönderebilir.</div>
+    @endif
+  </div>
 </div>
 </div>
 

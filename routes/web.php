@@ -6718,6 +6718,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
+            '/kalite' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
 
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -8340,7 +8341,13 @@ Route::get('/ik-izin', function () {
         ->orderByRaw("CASE personel_izinler.durum WHEN 'talep' THEN 0 WHEN 'onay' THEN 1 ELSE 2 END")
         ->orderByDesc('personel_izinler.baslangic')
         ->select('personel_izinler.*', 'personeller.ad as personel_ad')->limit(200)->get();
-    return view('ik_izin', ['personeller' => $personeller, 'haklar' => $haklar, 'izinler' => $izinler, 'buYil' => $buYil]);
+    // mobil self-servis avans talepleri
+    _ikSelfTalepEnsure();
+    $avansTalepleri = DB::table('ik_self_talep')->join('personeller', 'personeller.id', '=', 'ik_self_talep.personel_id')
+        ->where('ik_self_talep.sube_id', $sid)->where('ik_self_talep.tip', 'avans')
+        ->orderByRaw("CASE ik_self_talep.durum WHEN 'talep' THEN 0 WHEN 'onay' THEN 1 ELSE 2 END")->orderByDesc('ik_self_talep.id')
+        ->select('ik_self_talep.*', 'personeller.ad as personel_ad')->limit(100)->get();
+    return view('ik_izin', ['personeller' => $personeller, 'haklar' => $haklar, 'izinler' => $izinler, 'buYil' => $buYil, 'avansTalepleri' => $avansTalepleri]);
 });
 Route::post('/ik-izin/kaydet', function (Request $r) {
     if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
@@ -8882,6 +8889,131 @@ Route::get('/ik-cv-indir', function () {
         if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($a->cv_dosya)) abort(404);
         return \Illuminate\Support\Facades\Storage::disk('public')->download($a->cv_dosya, 'CV-' . $a->ad . '.' . pathinfo($a->cv_dosya, PATHINFO_EXTENSION));
     } catch (\Throwable $e) { abort(404); }
+});
+
+// ===== İK: MOBİL SELF-SERVİS (personel kendi: vardiya + izin talebi + avans talebi + bordro özeti) =====
+if (!function_exists('_ikSelfTalepEnsure')) {
+    function _ikSelfTalepEnsure()
+    {
+        if (Schema::hasTable('ik_self_talep')) return;
+        Schema::create('ik_self_talep', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('personel_id');
+            $t->string('tip', 12)->default('avans');   // avans (izin -> personel_izinler)
+            $t->decimal('tutar', 12, 2)->default(0);
+            $t->string('aciklama')->nullable();
+            $t->string('durum', 10)->default('talep');  // talep|onay|ret
+            $t->unsignedBigInteger('karar_veren')->nullable();
+            $t->timestamp('karar_at')->nullable();
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'personel_id', 'durum']);
+        });
+    }
+}
+// Personelin kendi İK özeti (Bearer token ile) — mobil self-servis ana ekranı
+Route::get('/api/ik/self', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _ikIzinEnsure(); _ikVardiyaEnsure(); _ikSelfTalepEnsure(); _restoPersonelKolonEnsure(); _restoPersonelHareketEnsure();
+    $sid = (int) $p->sube_id; $pid = (int) $p->id;
+    $gunAd = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    // bu hafta vardiyalarım
+    $hb = \Carbon\Carbon::now()->startOfWeek(\Carbon\Carbon::MONDAY);
+    $vardiya = [];
+    try {
+        foreach (DB::table('personel_vardiya')->where('sube_id', $sid)->where('personel_id', $pid)
+            ->whereBetween('tarih', [$hb->toDateString(), $hb->copy()->addDays(6)->toDateString()])->orderBy('tarih')->orderBy('baslangic')->get() as $v) {
+            $c = \Carbon\Carbon::parse($v->tarih);
+            $vardiya[] = ['tarih' => $v->tarih, 'gun' => $gunAd[$c->dayOfWeekIso - 1] ?? '', 'tarih_kisa' => $c->format('d.m'),
+                'bas' => substr($v->baslangic, 0, 5), 'bit' => substr($v->bitis, 0, 5), 'pozisyon' => $v->pozisyon];
+        }
+    } catch (\Throwable $e) {}
+    // izin hakkım
+    $buYil = (int) now()->year;
+    $hak = _ikYillikHak($p->ise_baslama ?? null);
+    $kullanilan = _ikIzinKullanilan($sid, $pid, $buYil);
+    $izinGecmis = [];
+    try {
+        foreach (DB::table('personel_izinler')->where('sube_id', $sid)->where('personel_id', $pid)->orderByDesc('baslangic')->limit(15)->get() as $iz) {
+            $izinGecmis[] = ['tip' => $iz->tip, 'baslangic' => $iz->baslangic, 'bitis' => $iz->bitis, 'gun' => (float) $iz->gun, 'durum' => $iz->durum];
+        }
+    } catch (\Throwable $e) {}
+    // bordro özetim (bu ay)
+    [$ay, $bas, $bit] = _restoAyAralik(null);
+    $h = _restoPersonelHesap($sid, $p, $bas, $bit);
+    // avans taleplerim
+    $avansTalepleri = [];
+    try {
+        foreach (DB::table('ik_self_talep')->where('sube_id', $sid)->where('personel_id', $pid)->where('tip', 'avans')->orderByDesc('id')->limit(10)->get() as $t) {
+            $avansTalepleri[] = ['tutar' => (float) $t->tutar, 'aciklama' => $t->aciklama, 'durum' => $t->durum, 'tarih' => substr($t->created_at, 0, 10)];
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1,
+        'personel' => ['ad' => $p->ad, 'rol' => $p->rol],
+        'vardiya' => $vardiya,
+        'izin' => ['hak' => $hak, 'kullanilan' => $kullanilan, 'kalan' => max(0, $hak - $kullanilan), 'gecmis' => $izinGecmis],
+        'bordro' => ['ay' => $ay, 'maas' => $h['maas'], 'hakedis' => $h['hakedis'], 'avans' => $h['avans'], 'odenen' => $h['odenen'], 'net' => $h['net']],
+        'avans_talepleri' => $avansTalepleri,
+    ];
+});
+// İzin talebi oluştur (personel kendi) — /ik-izin'de yönetici onaylar
+Route::post('/api/ik/self/izin', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _ikIzinEnsure();
+    $tip = in_array($r->tip, ['yillik', 'hastalik', 'ucretsiz', 'mazeret', 'dogum', 'diger']) ? $r->tip : 'yillik';
+    try {
+        $b = \Carbon\Carbon::parse($r->baslangic); $s = \Carbon\Carbon::parse($r->bitis);
+        if ($s->lt($b)) return ['ok' => 0, 'hata' => 'Bitiş başlangıçtan önce olamaz'];
+        $gun = $r->filled('gun') && (float) $r->gun > 0 ? (float) $r->gun : ($b->diffInDays($s) + 1);
+        DB::table('personel_izinler')->insert([
+            'sube_id' => (int) $p->sube_id, 'personel_id' => (int) $p->id, 'tip' => $tip,
+            'baslangic' => $b->toDateString(), 'bitis' => $s->toDateString(), 'gun' => $gun,
+            'durum' => 'talep', 'aciklama' => trim((string) $r->aciklama) ?: null, 'created_by' => (int) $p->id, 'created_at' => now(),
+        ]);
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder((int) $p->sube_id, 'İzin talebi', $p->ad . ' ' . $b->format('d.m') . '–' . $s->format('d.m') . ' izin istedi', ['tip' => 'ik_izin_talep'], ['sahip', 'mudur']); } catch (\Throwable $e) {}
+        return ['ok' => 1];
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Talep oluşturulamadı']; }
+});
+// Avans talebi oluştur (personel kendi)
+Route::post('/api/ik/self/avans', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _ikSelfTalepEnsure();
+    $tutar = round((float) $r->tutar, 2);
+    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Tutar 0’dan büyük olmalı'];
+    try {
+        DB::table('ik_self_talep')->insert([
+            'sube_id' => (int) $p->sube_id, 'personel_id' => (int) $p->id, 'tip' => 'avans', 'tutar' => $tutar,
+            'aciklama' => trim((string) $r->aciklama) ?: null, 'durum' => 'talep', 'created_at' => now(),
+        ]);
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder((int) $p->sube_id, 'Avans talebi', $p->ad . ' ' . number_format($tutar, 0, ',', '.') . '₺ avans istedi', ['tip' => 'ik_avans_talep'], ['sahip', 'mudur']); } catch (\Throwable $e) {}
+        return ['ok' => 1];
+    } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Talep oluşturulamadı']; }
+});
+// WEB: avans talebi onay/ret (yönetici). Onay -> personel_hareketleri avans + gider + kasa.
+Route::post('/ik-avans-karar', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/ik-izin')->with('hata', 'Avans onayını sadece yönetici yapabilir.');
+    _ikSelfTalepEnsure(); _restoPersonelHareketEnsure(); _restoGiderEnsure();
+    $sid = _webSubeId();
+    try {
+        $t = DB::table('ik_self_talep')->where('id', (int) $r->id)->where('sube_id', $sid)->where('tip', 'avans')->first();
+        if (!$t || $t->durum !== 'talep') return redirect('/ik-izin')->with('hata', 'Talep bulunamadı.');
+        $per = DB::table('personeller')->where('id', $t->personel_id)->where('sube_id', $sid)->first();
+        $karar = $r->karar === 'ret' ? 'ret' : 'onay';
+        if ($karar === 'onay' && $per) {
+            $tarih = now()->toDateString();
+            DB::table('personel_hareketleri')->insert(['sube_id' => $sid, 'personel_id' => $per->id, 'tur' => 'avans', 'tutar' => (float) $t->tutar, 'aciklama' => 'Avans talebi (self-servis onay)', 'tarih' => $tarih, 'created_by' => (int) $bp->id]);
+            DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => 'maas', 'aciklama' => $per->ad . ' — Avans', 'tutar' => (float) $t->tutar, 'tarih' => $tarih, 'created_by' => (int) $bp->id]);
+            try { if (function_exists('_kasaYaz')) _kasaYaz($sid, 'personel', 'cikis', (float) $t->tutar, $per->ad . ' — Avans', 'personel', $per->id, (int) $bp->id); } catch (\Throwable $e) {}
+        }
+        DB::table('ik_self_talep')->where('id', $t->id)->update(['durum' => $karar, 'karar_veren' => (int) $bp->id, 'karar_at' => now()]);
+        try { if (function_exists('_fcmKisiyeGonder') && $per) _fcmKisiyeGonder($per->id, 'Avans talebin ' . ($karar === 'onay' ? 'onaylandı ✓' : 'reddedildi'), '', ['tip' => 'ik_avans_sonuc']); } catch (\Throwable $e) {}
+        return redirect('/ik-izin')->with('ok', 'Avans talebi ' . ($karar === 'onay' ? 'onaylandı ✓ (kasadan çıkış + gider işlendi)' : 'reddedildi.'));
+    } catch (\Throwable $e) { return redirect('/ik-izin')->with('hata', 'İşlem başarısız.'); }
 });
 
 // AKSİYON: AI'nın yakaladığı kritik stoğu TEK TIKLA acil satın alma talebine çevir (çözüm odaklı).
@@ -20151,6 +20283,183 @@ Route::get('/karsilama', function () {
     $pp = function_exists('_posPersonel') ? _posPersonel() : null;
     return view('karsilama', ['ad' => $pp->ad ?? '']);
 });
+
+// ============================ GENERIC DEPARTMAN İŞ / KONTROL / OLAY TAKİBİ (Grup B mini-modül) ============================
+// Tek esnek motor: görev + kontrol listesi (HACCP sıcaklık ölçümü) + olay/kayıt + arıza/iş emri + periyodik bakım + etkinlik.
+// departman_kod ile süzülür; her departmana preset şablon (hızlı ekle). Periyodik (tekrar) işler tamamlanınca bir sonrakini üretir.
+if (!function_exists('_departmanIsEnsure')) {
+    function _departmanIsEnsure()
+    {
+        if (Schema::hasTable('departman_isler')) return;
+        try {
+            Schema::create('departman_isler', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('departman_kod', 40)->index();
+                $t->string('tip', 20)->default('gorev');     // gorev | kontrol | olay | ariza | bakim | etkinlik | kayit
+                $t->string('baslik', 200);
+                $t->text('aciklama')->nullable();
+                $t->string('durum', 20)->default('acik');     // acik | yapiliyor | tamam | iptal
+                $t->string('oncelik', 10)->default('orta');   // dusuk | orta | yuksek
+                $t->string('deger', 60)->nullable();          // ölçüm (ör. sıcaklık °C) / serbest değer
+                $t->date('son_tarih')->nullable();
+                $t->string('tekrar', 10)->nullable();         // gunluk | haftalik | aylik (periyodik)
+                $t->unsignedBigInteger('atanan_id')->nullable();
+                $t->string('atanan_ad', 120)->nullable();
+                $t->unsignedBigInteger('olusturan_id')->nullable();
+                $t->string('olusturan_ad', 120)->nullable();
+                $t->timestamp('tamamlanan_at')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+                $t->timestamp('updated_at')->nullable();
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_departmanIsPresetleri')) {
+    // kod => [ ['tip'=>, 'baslik'=>, 'oncelik'=>?, 'tekrar'=>?, 'deger'=>1?(ölçüm ister)] ... ]
+    function _departmanIsPresetleri($kod)
+    {
+        $P = [
+            'kalite' => [
+                ['tip' => 'kontrol', 'baslik' => 'Buzdolabı sıcaklık (°C)', 'deger' => 1, 'tekrar' => 'gunluk'],
+                ['tip' => 'kontrol', 'baslik' => 'Derin dondurucu sıcaklık (°C)', 'deger' => 1, 'tekrar' => 'gunluk'],
+                ['tip' => 'kontrol', 'baslik' => 'Sıcak tutma ünitesi sıcaklık (°C)', 'deger' => 1, 'tekrar' => 'gunluk'],
+                ['tip' => 'kontrol', 'baslik' => 'El yıkama / personel hijyen kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'kontrol', 'baslik' => 'Yüzey & ekipman temizlik kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'olay', 'baslik' => 'Uygunsuzluk / düzeltici aksiyon', 'oncelik' => 'yuksek'],
+            ],
+            'temizlik' => [
+                ['tip' => 'gorev', 'baslik' => 'WC temizliği', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Salon zemin paspas', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Mutfak kapanış temizliği', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Çöp toplama / ayrıştırma', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Davlumbaz / filtre temizliği', 'tekrar' => 'haftalik'],
+            ],
+            'guvenlik' => [
+                ['tip' => 'kayit', 'baslik' => 'Açılış kontrolü (kapı/alarm)', 'tekrar' => 'gunluk'],
+                ['tip' => 'kayit', 'baslik' => 'Kapanış devriyesi', 'tekrar' => 'gunluk'],
+                ['tip' => 'kayit', 'baslik' => 'Kamera kayıt kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'olay', 'baslik' => 'Güvenlik olayı / tutanak', 'oncelik' => 'yuksek'],
+            ],
+            'teknik' => [
+                ['tip' => 'ariza', 'baslik' => 'Arıza bildirimi', 'oncelik' => 'yuksek'],
+                ['tip' => 'bakim', 'baslik' => 'Klima periyodik bakımı', 'tekrar' => 'aylik'],
+                ['tip' => 'bakim', 'baslik' => 'Davlumbaz motor bakımı', 'tekrar' => 'aylik'],
+                ['tip' => 'bakim', 'baslik' => 'Soğutucu / dolap bakımı', 'tekrar' => 'aylik'],
+                ['tip' => 'bakim', 'baslik' => 'Yangın tüpü / güvenlik ekipmanı kontrolü', 'tekrar' => 'aylik'],
+            ],
+            'it' => [
+                ['tip' => 'ariza', 'baslik' => 'Cihaz / yazıcı arızası', 'oncelik' => 'yuksek'],
+                ['tip' => 'gorev', 'baslik' => 'Yedekleme kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'İnternet / ağ kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'kayit', 'baslik' => 'Cihaz envanteri güncelle'],
+            ],
+            'bulasik' => [
+                ['tip' => 'gorev', 'baslik' => 'Bulaşık makinesi temizliği', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Tabak / çatal stok kontrolü', 'tekrar' => 'gunluk'],
+                ['tip' => 'gorev', 'baslik' => 'Çöp / atık boşaltma', 'tekrar' => 'gunluk'],
+            ],
+            'satis_etkinlik' => [
+                ['tip' => 'etkinlik', 'baslik' => 'Özel etkinlik / grup rezervasyon talebi'],
+                ['tip' => 'gorev', 'baslik' => 'Teklif / sözleşme hazırla'],
+                ['tip' => 'gorev', 'baslik' => 'Menü & fiyat onayı'],
+            ],
+        ];
+        return $P[$kod] ?? [];
+    }
+}
+// Panel: departmanın açık işleri + özet + preset şablonları
+Route::get('/api/departman-is/panel', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanIsEnsure();
+    $sube = (int) $p->sube_id; $kod = preg_replace('/[^a-z_]/', '', (string) $r->get('kod'));
+    if ($kod === '') return ['ok' => 0, 'hata' => 'Departman belirtilmedi.'];
+    $bugun = today()->toDateString(); $now = now();
+    $isler = collect();
+    try {
+        $isler = DB::table('departman_isler')->where('sube_id', $sube)->where('departman_kod', $kod)->whereIn('durum', ['acik', 'yapiliyor'])
+            ->orderByRaw("CASE oncelik WHEN 'yuksek' THEN 1 WHEN 'orta' THEN 2 ELSE 3 END")
+            ->orderByRaw("CASE WHEN son_tarih IS NULL THEN 1 ELSE 0 END")->orderBy('son_tarih')->orderBy('created_at')
+            ->limit(300)->get();
+    } catch (\Throwable $e) {}
+    $bugunTamam = 0; $geciken = 0;
+    try { $bugunTamam = (int) DB::table('departman_isler')->where('sube_id', $sube)->where('departman_kod', $kod)->where('durum', 'tamam')->whereDate('tamamlanan_at', $bugun)->count(); } catch (\Throwable $e) {}
+    try { $geciken = (int) DB::table('departman_isler')->where('sube_id', $sube)->where('departman_kod', $kod)->whereIn('durum', ['acik', 'yapiliyor'])->whereNotNull('son_tarih')->where('son_tarih', '<', $bugun)->count(); } catch (\Throwable $e) {}
+    return ['ok' => 1,
+        'isler' => $isler->map(fn ($x) => ['id' => (int) $x->id, 'tip' => $x->tip, 'baslik' => $x->baslik, 'aciklama' => $x->aciklama, 'durum' => $x->durum, 'oncelik' => $x->oncelik, 'deger' => $x->deger, 'son_tarih' => $x->son_tarih, 'tekrar' => $x->tekrar, 'atanan_ad' => $x->atanan_ad, 'gecikti' => ($x->son_tarih && $x->son_tarih < $bugun), 'saniye' => (function () use ($now, $x) { try { return (int) $now->diffInSeconds(\Illuminate\Support\Carbon::parse($x->created_at)); } catch (\Throwable $e) { return 0; } })()])->values()->all(),
+        'presetler' => _departmanIsPresetleri($kod),
+        'ozet' => ['acik' => $isler->count(), 'bugun_tamam' => $bugunTamam, 'geciken' => $geciken, 'yuksek' => $isler->where('oncelik', 'yuksek')->count()],
+    ];
+});
+// İş ekle
+Route::post('/api/departman-is/ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanIsEnsure();
+    $kod = preg_replace('/[^a-z_]/', '', (string) $r->input('kod'));
+    $baslik = trim((string) $r->input('baslik'));
+    if ($kod === '' || $baslik === '') return ['ok' => 0, 'hata' => 'Başlık gerekli.'];
+    $tip = in_array($r->input('tip'), ['gorev', 'kontrol', 'olay', 'ariza', 'bakim', 'etkinlik', 'kayit']) ? $r->input('tip') : 'gorev';
+    $oncelik = in_array($r->input('oncelik'), ['dusuk', 'orta', 'yuksek']) ? $r->input('oncelik') : 'orta';
+    $tekrar = in_array($r->input('tekrar'), ['gunluk', 'haftalik', 'aylik']) ? $r->input('tekrar') : null;
+    $id = DB::table('departman_isler')->insertGetId([
+        'sube_id' => $p->sube_id, 'departman_kod' => $kod, 'tip' => $tip, 'baslik' => mb_substr($baslik, 0, 200),
+        'aciklama' => $r->input('aciklama') ? mb_substr((string) $r->input('aciklama'), 0, 2000) : null,
+        'durum' => 'acik', 'oncelik' => $oncelik,
+        'deger' => $r->input('deger') ? mb_substr((string) $r->input('deger'), 0, 60) : null,
+        'son_tarih' => $r->input('son_tarih') ?: null, 'tekrar' => $tekrar,
+        'atanan_ad' => $r->input('atanan_ad') ? mb_substr((string) $r->input('atanan_ad'), 0, 120) : null,
+        'olusturan_id' => $p->id, 'olusturan_ad' => $p->ad ?? null, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'id' => $id];
+});
+// Durum değiştir (başla/tamam/iptal). Periyodik iş tamamlanınca bir sonraki otomatik açılır.
+Route::post('/api/departman-is/durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanIsEnsure();
+    $id = (int) $r->input('id'); $durum = (string) $r->input('durum');
+    if (!in_array($durum, ['acik', 'yapiliyor', 'tamam', 'iptal'])) return ['ok' => 0, 'hata' => 'Geçersiz durum'];
+    $row = DB::table('departman_isler')->where('id', $id)->where('sube_id', $p->sube_id)->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kayıt bulunamadı'];
+    $upd = ['durum' => $durum, 'updated_at' => now()];
+    if ($durum === 'tamam') $upd['tamamlanan_at'] = now();
+    if ($r->filled('deger')) $upd['deger'] = mb_substr((string) $r->input('deger'), 0, 60);
+    DB::table('departman_isler')->where('id', $id)->update($upd);
+    if ($durum === 'tamam' && $row->tekrar) {
+        $sonraki = null;
+        try { $b = today(); $sonraki = ($row->tekrar === 'gunluk' ? $b->copy()->addDay() : ($row->tekrar === 'haftalik' ? $b->copy()->addWeek() : $b->copy()->addMonth()))->toDateString(); } catch (\Throwable $e) {}
+        DB::table('departman_isler')->insert([
+            'sube_id' => $row->sube_id, 'departman_kod' => $row->departman_kod, 'tip' => $row->tip, 'baslik' => $row->baslik,
+            'aciklama' => $row->aciklama, 'durum' => 'acik', 'oncelik' => $row->oncelik, 'deger' => null, 'son_tarih' => $sonraki,
+            'tekrar' => $row->tekrar, 'atanan_ad' => $row->atanan_ad, 'olusturan_id' => $row->olusturan_id, 'olusturan_ad' => $row->olusturan_ad,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    return ['ok' => 1];
+});
+// Sil
+Route::post('/api/departman-is/sil', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanIsEnsure();
+    DB::table('departman_isler')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->delete();
+    return ['ok' => 1];
+});
+// WEB: Grup B departman iş ekranları — tek generic blade, kod/başlık/ikon/renk ile.
+$depIsSayfalar = [
+    'kalite'    => ['kod' => 'kalite', 'baslik' => 'Kalite / Gıda Güvenliği (HACCP)', 'ikon' => 'verified_user', 'renk' => '#16A34A', 'yetki' => 'gor_stok'],
+    'temizlik'  => ['kod' => 'temizlik', 'baslik' => 'Temizlik / Hijyen', 'ikon' => 'cleaning_services', 'renk' => '#0EA5E9', 'yetki' => 'gor_garson_cagri'],
+    'guvenlik'  => ['kod' => 'guvenlik', 'baslik' => 'Güvenlik', 'ikon' => 'security', 'renk' => '#475569', 'yetki' => 'gor_bagli_cihaz'],
+    'teknik'    => ['kod' => 'teknik', 'baslik' => 'Teknik Servis / Bakım-Onarım', 'ikon' => 'build', 'renk' => '#F97316', 'yetki' => 'gor_bagli_cihaz'],
+    'it-destek' => ['kod' => 'it', 'baslik' => 'IT / Bilgi İşlem', 'ikon' => 'dns', 'renk' => '#6366F1', 'yetki' => 'gor_bagli_cihaz'],
+    'bulasik'   => ['kod' => 'bulasik', 'baslik' => 'Bulaşıkhane / Steward', 'ikon' => 'wash', 'renk' => '#06B6D4', 'yetki' => 'gor_mutfak'],
+    'etkinlik'  => ['kod' => 'satis_etkinlik', 'baslik' => 'Satış / Etkinlik', 'ikon' => 'celebration', 'renk' => '#A855F7', 'yetki' => 'gor_rezervasyon'],
+];
+foreach ($depIsSayfalar as $url => $cfg) {
+    Route::get('/' . $url, function () use ($cfg) { return view('departman_is', $cfg); });
+}
 
 // TEMIZLIK: rezervasyonlari + ACIK adisyonlari sifirla -> tertemiz test zemini.
 // ?hepsi=1 TUM acik adisyonlari iptal eder (masalar bosalir, birlesmeler cozulur). Menu/urun/satis gecmisi KORUNUR.
