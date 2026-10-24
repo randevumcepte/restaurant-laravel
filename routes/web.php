@@ -8676,6 +8676,32 @@ Route::get('/departman-baglanti', function (Request $r) {
     return view('departman_baglanti', ['dep' => $dep, 'google' => $google, 'graph' => $graph, 'smtp' => $smtp,
         'googleVar' => (bool) _oauthAppCreds($sid, 'google')['client_id'], 'graphVar' => (bool) _oauthAppCreds($sid, 'graph')['client_id']]);
 });
+if (!function_exists('_epostaHesapTest')) {
+    // SMTP gönderme (kendine test maili) + IMAP bağlanma testi; sonucu hesaba yazar, mesaj döndürür.
+    function _epostaHesapTest($sid, $hesap)
+    {
+        $smtpOk = _epostaGonder($sid, $hesap->email, 'ResteOS Bağlantı Testi', "Bu bir bağlantı testidir.\nKurulum başarılı. ✅\n\n— ResteOS", $hesap->id);
+        $imap = 'atlandi';
+        if (!empty($hesap->imap_host)) {
+            if (!function_exists('imap_open')) $imap = 'eksik';
+            else {
+                try {
+                    $sec = $hesap->imap_guvenlik ?: 'ssl';
+                    $bayrak = '/imap' . ($sec === 'ssl' ? '/ssl' : ($sec === 'tls' ? '/tls' : '/notls')) . '/novalidate-cert';
+                    $mbox = '{' . $hesap->imap_host . ':' . ((int) ($hesap->imap_port ?: 993)) . $bayrak . '}INBOX';
+                    $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : '';
+                    $t = @imap_open($mbox, ($hesap->smtp_user ?: $hesap->email), $pass, 0, 1);
+                    if ($t) { $imap = 'ok'; @imap_close($t); } else { $imap = 'hata'; }
+                } catch (\Throwable $e) { $imap = 'hata'; }
+            }
+        }
+        $imapEt = ['ok' => '✅ çalışıyor', 'hata' => '❌ bağlanamadı', 'atlandi' => '— ayarlanmadı', 'eksik' => '— sunucuda imap eklentisi yok'][$imap];
+        $genel = $smtpOk ? ($imap === 'hata' ? 'hata' : 'ok') : 'hata';
+        $not = 'Gönderme (SMTP): ' . ($smtpOk ? '✅ çalışıyor' : '❌ bağlanamadı') . ' · Okuma (IMAP): ' . $imapEt;
+        try { DB::table('eposta_hesaplari')->where('id', $hesap->id)->update(['son_test' => $genel, 'son_test_at' => now(), 'son_test_not' => mb_substr($not, 0, 180)]); } catch (\Throwable $e) {}
+        return ['ok' => $smtpOk, 'durum' => $genel, 'not' => $not];
+    }
+}
 Route::post('/departman-baglanti/smtp', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
@@ -8694,7 +8720,19 @@ Route::post('/departman-baglanti/smtp', function (Request $r) {
         if ($ex) DB::table('eposta_hesaplari')->where('id', $ex->id)->update($veri);
         else { $veri['created_at'] = now(); DB::table('eposta_hesaplari')->insert($veri); }
     } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Kaydedilemedi.'); }
-    return redirect($geri)->with('ok', 'Kurumsal e-posta (SMTP) kaydedildi.');
+    // Kaydettikten sonra bağlantıyı test et (gerçekten çalışıyor mu?)
+    $hesap = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first();
+    $t = _epostaHesapTest($sid, $hesap);
+    return redirect($geri)->with($t['ok'] ? 'ok' : 'hata', ($t['ok'] ? '✅ Kaydedildi ve test edildi — ' : '⚠️ Kaydedildi ama bağlantı başarısız — ') . $t['not']);
+});
+Route::post('/departman-baglanti/smtp-test', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $depId = (int) $r->input('dep'); $geri = '/departman-baglanti?dep=' . $depId;
+    $hesap = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first();
+    if (!$hesap) return redirect($geri)->with('hata', 'Önce kurumsal e-posta kaydet.');
+    $t = _epostaHesapTest($sid, $hesap);
+    return redirect($geri)->with($t['ok'] ? 'ok' : 'hata', ($t['ok'] ? '✅ Test başarılı — ' : '❌ Test başarısız — ') . $t['not']);
 });
 Route::post('/departman-baglanti/smtp-sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -8761,6 +8799,9 @@ if (!function_exists('_epostaHesapEnsure')) {
                 ['imap_host', fn ($t) => $t->string('imap_host', 120)->nullable()],   // gelen mail okuma (IMAP)
                 ['imap_port', fn ($t) => $t->integer('imap_port')->default(993)],
                 ['imap_guvenlik', fn ($t) => $t->string('imap_guvenlik', 8)->default('ssl')], // ssl|tls|yok
+                ['son_test', fn ($t) => $t->string('son_test', 10)->nullable()],          // ok | hata | atlandi
+                ['son_test_at', fn ($t) => $t->timestamp('son_test_at')->nullable()],
+                ['son_test_not', fn ($t) => $t->string('son_test_not', 180)->nullable()],
             ] as [$kol, $cl]) {
                 try { if (Schema::hasTable('eposta_hesaplari') && !Schema::hasColumn('eposta_hesaplari', $kol)) Schema::table('eposta_hesaplari', $cl); } catch (\Throwable $e) {}
             }

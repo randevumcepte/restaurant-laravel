@@ -86,8 +86,14 @@
     <div class="db-h">
       <span class="ik db-btn-s"><span class="material-icons-outlined" style="font-size:20px">dns</span></span>
       <span class="b">Kurumsal E-posta (SMTP)</span>
-      @if ($smtp)<span class="db-durum" style="background:var(--yesil);margin-left:auto">TANIMLI</span>@endif
+      @if ($smtp)
+        @php $st = $smtp->son_test ?? null; @endphp
+        <span class="db-durum" style="margin-left:auto;background:{{ $st==='ok' ? 'var(--yesil)' : ($st==='hata' ? 'var(--kirmizi)' : 'var(--sub)') }}">{{ $st==='ok' ? '✅ ÇALIŞIYOR' : ($st==='hata' ? '❌ HATA' : 'TANIMLI') }}</span>
+      @endif
     </div>
+    @if ($smtp && ($smtp->son_test_not ?? null))
+      <div class="db-not" style="color:{{ ($smtp->son_test ?? '')==='ok' ? 'var(--yesil)' : 'var(--kirmizi)' }};font-weight:600">{{ $smtp->son_test_not }}@if ($smtp->son_test_at ?? null) · {{ \Carbon\Carbon::parse($smtp->son_test_at)->diffForHumans() }}@endif</div>
+    @endif
     <div class="db-not">Kendi mail sunucun (ör. mail.firman.com) veya Gmail/Outlook <b>uygulama şifresi</b> ile gönderim. Okuma için sunucuda IMAP gerekir (opsiyonel).</div>
     <form method="POST" action="/departman-baglanti/smtp">
       @csrf<input type="hidden" name="dep" value="{{ $dep->id }}">
@@ -125,15 +131,20 @@
         </div>
         <div class="rk-sub" style="font-size:11px;margin-top:4px">Boş bırakırsan AI yalnız gönderir, okumaz. Gmail: imap.gmail.com · 993 · SSL</div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button class="rk-btn db-btn-s" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">save</span> Kaydet</button>
-        @if ($smtp)
-        <form method="POST" action="/departman-baglanti/smtp-sil" style="display:inline" onsubmit="return rkOnayForm(this, 'Kurumsal SMTP kaldırılsın mı?', 'var(--kirmizi)', 'Evet, kaldır')">
-          @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--kirmizi)" type="submit">Kaldır</button>
-        </form>
-        @endif
+      <div style="margin-top:12px">
+        <button class="rk-btn db-btn-s" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">save</span> Kaydet ve Test Et</button>
       </div>
     </form>
+    @if ($smtp)
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <form method="POST" action="/departman-baglanti/smtp-test" style="display:inline">
+        @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--mavi)" type="submit"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">wifi_tethering</span> Yeniden Test Et</button>
+      </form>
+      <form method="POST" action="/departman-baglanti/smtp-sil" style="display:inline" onsubmit="return rkOnayForm(this, 'Kurumsal SMTP kaldırılsın mı?', 'var(--kirmizi)', 'Evet, kaldır')">
+        @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--kirmizi)" type="submit">Kaldır</button>
+      </form>
+    </div>
+    @endif
   </div>
 
   {{-- WHATSAPP --}}
