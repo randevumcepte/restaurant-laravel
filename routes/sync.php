@@ -17,6 +17,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+// ===========================================================================
+// YETKİLİ PIN'LERİ: offline yönetici onayı icin (İkram/İskonto internetsiz).
+// PIN'ler plaintext DÖNMEZ -> sha256('rpos|'+pin). Istemci girilen PIN'i ayni
+// sekilde hashleyip yerelde karsilastirir. Sadece sahip/mudur, kendi subesi.
+// ===========================================================================
+Route::get('/api/yetkili-pinler', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $list = DB::table('personeller')->where('sube_id', $p->sube_id)
+        ->whereIn('rol', ['sahip', 'mudur'])->where('aktif', 1)->get(['id', 'ad', 'rol', 'pin']);
+    $out = $list->filter(fn ($x) => $x->pin !== null && $x->pin !== '')
+        ->map(fn ($x) => ['id' => (int) $x->id, 'ad' => $x->ad, 'rol' => $x->rol, 'pin_hash' => hash('sha256', 'rpos|' . $x->pin)])
+        ->values()->all();
+    return ['ok' => 1, 'yetkililer' => $out];
+});
+
 // ---------------------------------------------------------------------------
 // Senkronlanan entity'ler: istemci adi => backend eslemesi
 //   tablo    : MySQL tablosu
