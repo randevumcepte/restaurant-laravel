@@ -6,9 +6,9 @@
 
 @section('content')
 <style>
-  #saChat .sa-h{display:inline-block;font-weight:800;font-size:14.5px;color:var(--mor1,#7C3AED);margin:6px 0 2px;letter-spacing:.2px}
-  #saChat b{font-weight:800;color:inherit}
-  #saChat .sa-mad{color:var(--mor1,#7C3AED);font-weight:900}
+  #saChat .sa-h{display:inline-block;font-weight:700;font-size:14px;color:var(--mor1,#7C3AED);margin:6px 0 2px;letter-spacing:.2px}
+  #saChat b{font-weight:600;color:inherit}
+  #saChat .sa-mad{color:var(--mor1,#7C3AED);font-weight:700}
 </style>
 <div style="max-width:760px;margin:0 auto">
   <div class="rk-card" style="margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">
