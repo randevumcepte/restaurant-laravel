@@ -53,7 +53,7 @@ function saFormat(t){
 function saBubble(metin, ben){
   const d=document.createElement('div');
   d.style.cssText='max-width:86%;padding:11px 14px;border-radius:14px;font-size:13.5px;white-space:pre-wrap;line-height:1.55;'+
-    (ben?'align-self:flex-end;background:var(--mor1);color:#fff;border-bottom-right-radius:4px':'align-self:flex-start;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-bottom-left-radius:4px');
+    (ben?'align-self:flex-end;background:var(--mor1);color:#fff;border-bottom-right-radius:4px':'align-self:flex-start;background:var(--card);color:var(--ink);border:1px solid var(--line);border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.04)');
   if(ben) d.textContent=metin; else d.innerHTML=saFormat(metin);
   document.getElementById('saChat').appendChild(d);
   d.scrollIntoView({behavior:'smooth',block:'end'});
@@ -81,7 +81,7 @@ function saIndir(tip){
 function saExportButonlar(list){
   saTeklifAcik=false;
   const d=document.createElement('div');
-  d.style.cssText='align-self:flex-start;max-width:90%;background:var(--card2);border:1px solid var(--line);border-radius:14px;border-bottom-left-radius:4px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:7px';
+  d.style.cssText='align-self:flex-start;max-width:90%;background:var(--card);border:1px solid var(--line);border-radius:14px;border-bottom-left-radius:4px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:7px';
   (list||SA_RAPORLAR).forEach(o=>{
     const b=document.createElement('button');
     b.type='button'; b.className='rk-btn';
