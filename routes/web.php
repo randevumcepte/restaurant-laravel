@@ -6719,6 +6719,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/patron-ai' => 'gor_copilot',          // Patron AI sabah brifingi: copilot yetkisi olana (sahip/müdür)
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
+            '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
         ];
     }
 }
@@ -9186,23 +9187,24 @@ if (!function_exists('_rfqTeklifIsle')) {
     }
 }
 // CRON: gelen WhatsApp + Gmail teklifleri oku. curl "/api/patron-ai/teklif-oku?key=SANTRAL_SECRET"
-Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
-    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
-    $n = 0;
-    foreach (DB::table('subeler')->pluck('id') as $sid) {
+if (!function_exists('_teklifleriOku')) {
+    // Bir şubenin TÜM gelen kanallarını tara (WhatsApp + kurumsal IMAP/saf-PHP + Gmail/Graph OAuth), RFQ yanıtlarını işle. İşlenen teklif sayısı döner.
+    function _teklifleriOku($sid)
+    {
+        $n = 0;
         // WhatsApp gelen (son 2 gün)
         try { if (Schema::hasTable('wa_mesaj_loglari')) {
             foreach (DB::table('wa_mesaj_loglari')->where('sube_id', $sid)->where('yon', 'gelen')->where('created_at', '>=', now()->subDays(2))->orderByDesc('id')->limit(50)->get() as $m) {
                 $n += _rfqTeklifIsle($sid, $m->mesaj, 'wa', 'wa:' . $m->id);
             }
         } } catch (\Throwable $e) {}
-        // Kurumsal IMAP hesapları (uygulama şifresi ile gelen mail oku) — ext-imap gerekir
+        // Kurumsal IMAP hesapları (ext-imap yoksa saf-PHP okuyucu)
         try { if (Schema::hasTable('eposta_hesaplari') && Schema::hasColumn('eposta_hesaplari', 'imap_host')) {
             foreach (DB::table('eposta_hesaplari')->where('sube_id', $sid)->whereNotNull('imap_host')->where('imap_host', '!=', '')->get() as $hes) {
                 foreach (_imapOku($hes, 2, 30) as $mail) $n += _rfqTeklifIsle($sid, $mail['metin'], 'mail', $mail['ref']);
             }
         } } catch (\Throwable $e) {}
-        // Gmail bağlantıları (şube + her departman) — REST oku
+        // Gmail OAuth bağlantıları (şube + her departman) — REST oku
         try { if (Schema::hasTable('patron_ai_baglantilar') && function_exists('_oauthAccessToken')) {
             foreach (DB::table('patron_ai_baglantilar')->where('sube_id', $sid)->where('saglayici', 'google')->where('durum', 'aktif')->get() as $bg) {
                 $tok = _oauthAccessToken($sid, 'google', $bg->departman_id ?? null); if (!$tok) continue;
@@ -9217,7 +9219,7 @@ Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
                 }
             }
         } } catch (\Throwable $e) {}
-        // Outlook/Graph bağlantıları — REST oku
+        // Outlook/Graph OAuth bağlantıları — REST oku
         try { if (Schema::hasTable('patron_ai_baglantilar') && function_exists('_oauthAccessToken')) {
             foreach (DB::table('patron_ai_baglantilar')->where('sube_id', $sid)->where('saglayici', 'graph')->where('durum', 'aktif')->get() as $bg) {
                 $tok = _oauthAccessToken($sid, 'graph', $bg->departman_id ?? null); if (!$tok) continue;
@@ -9228,8 +9230,74 @@ Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
                 }
             }
         } } catch (\Throwable $e) {}
+        return $n;
     }
+}
+Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    $n = 0;
+    foreach (DB::table('subeler')->pluck('id') as $sid) $n += _teklifleriOku($sid);
     return ['ok' => 1, 'teklif' => $n];
+});
+// WEB: Gelen Teklifler — AI'nın okuyup çıkardığı fiyatlar + "Şimdi Oku" butonu + test verisi kur
+Route::get('/gelen-teklifler', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    _rfqEnsure(); if (function_exists('_rfqTeklifEnsure')) _rfqTeklifEnsure();
+    $sid = _webSubeId();
+    $teklifler = collect();
+    try {
+        $teklifler = DB::table('rfq_teklif')->where('sube_id', $sid)->orderByDesc('id')->limit(200)->get();
+        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        $teklifler = $teklifler->map(function ($t) use ($tedAd, $malAd) {
+            $t->tedarikci_ad = $tedAd[$t->tedarikci_id] ?? '—';
+            $t->malzeme_ad = $t->malzeme_id ? ($malAd[$t->malzeme_id] ?? $t->urun_ad) : $t->urun_ad;
+            return $t;
+        });
+    } catch (\Throwable $e) {}
+    $acikRfq = 0; try { $acikRfq = DB::table('rfq_gonderim')->where('sube_id', $sid)->count(); } catch (\Throwable $e) {}
+    return view('gelen_teklifler', ['teklifler' => $teklifler, 'acikRfq' => $acikRfq, 'sahip' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::post('/gelen-teklifler/oku', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    $n = 0; try { $n = _teklifleriOku($sid); } catch (\Throwable $e) {}
+    return redirect('/gelen-teklifler')->with('ok', $n > 0 ? ('✅ ' . $n . ' yeni teklif okundu ve kaydedildi.') : 'Yeni teklif bulunamadı (gelen kutusunda RFQ kodlu yanıt yok ya da hepsi zaten işlenmiş).');
+});
+Route::post('/rfq-test-kur', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/gelen-teklifler')->with('hata', 'Yetkisiz.');
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $sid = _webSubeId();
+    try {
+        $birimId = DB::table('birimler')->value('id');
+        // Test malzemesi (kritik)
+        $mid = DB::table('malzemeler')->where('ad', 'TEST Dana Kıyma')->value('id');
+        if (!$mid) {
+            $kol = ['ad' => 'TEST Dana Kıyma', 'stok_takipli' => 1, 'kritik_stok' => 9999, 'created_at' => now(), 'updated_at' => now()];
+            if (Schema::hasColumn('malzemeler', 'temel_birim_id')) $kol['temel_birim_id'] = $birimId;
+            if (Schema::hasColumn('malzemeler', 'sube_id')) $kol['sube_id'] = $sid;
+            $mid = (int) DB::table('malzemeler')->insertGetId($kol);
+        }
+        // Test tedarikçisi — maili varsa departmanın bağlı mailine ayarla (RFQ kendi kutuna düşsün)
+        $testMail = null;
+        try { $testMail = DB::table('eposta_hesaplari')->where('sube_id', $sid)->orderByDesc('varsayilan')->value('email'); } catch (\Throwable $e) {}
+        $tid = DB::table('tedarikciler')->where('ad', 'TEST Tedarik AŞ')->value('id');
+        if (!$tid) {
+            $tkol = ['ad' => 'TEST Tedarik AŞ', 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
+            foreach (['email' => $testMail, 'telefon' => null, 'yetkili' => 'Test Yetkili', 'anlasmali' => 1] as $k => $v) if (Schema::hasColumn('tedarikciler', $k)) $tkol[$k] = $v;
+            $tid = (int) DB::table('tedarikciler')->insertGetId($tkol);
+        } elseif ($testMail && Schema::hasColumn('tedarikciler', 'email')) {
+            DB::table('tedarikciler')->where('id', $tid)->update(['email' => $testMail]);
+        }
+        // Katalog bağ (tedarikci_malzeme)
+        if (!DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->exists()) {
+            DB::table('tedarikci_malzeme')->insert(['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid, 'guncel_fiyat' => 240, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        }
+    } catch (\Throwable $e) { return redirect('/gelen-teklifler')->with('hata', 'Test verisi kurulamadı: ' . mb_substr($e->getMessage(), 0, 100)); }
+    return redirect('/gelen-teklifler')->with('ok', 'Test verisi hazır: "TEST Dana Kıyma" malzemesi + "TEST Tedarik AŞ" tedarikçisi' . ($testMail ? (' (mail: ' . $testMail . ')') : '') . ' bağlandı. Şimdi bir departman raporundan "Fiyat Araştır" ile RFQ gönder.');
 });
 
 // ============================ P4 — TESLİM TAKİBİ (hatırlatma + gecikme) ============================

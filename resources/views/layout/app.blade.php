@@ -65,6 +65,7 @@
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
             ['/eposta-hesaplari', 'alternate_email', 'E-posta Hesapları (RFQ)', '#7C3AED'],
+            ['/gelen-teklifler', 'mark_email_read', 'Gelen Teklifler (AI)', '#10B981'],
         ],
         'Kasa & Finans' => [
             ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
