@@ -9039,7 +9039,7 @@ Route::get('/ik-vardiya', function () {
     $hb = $hafta ? \Carbon\Carbon::parse($hafta) : \Carbon\Carbon::now();
     $hb = $hb->startOfWeek(\Carbon\Carbon::MONDAY);
     $veri = _ikVardiyaHafta($sid, $hb->toDateString());
-    return view('ik_vardiya', ['veri' => $veri, 'yonetici' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+    return view('ik_vardiya', ['veri' => $veri, 'yonetici' => in_array(($bp->rol ?? ''), ['sahip', 'mudur']), 'oneri' => null]);
 });
 Route::post('/ik-vardiya/kaydet', function (Request $r) {
     if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
@@ -9109,6 +9109,85 @@ Route::post('/ik-vardiya/kopyala', function (Request $r) {
         }
         return redirect($geri)->with('ok', "$n vardiya geçen haftadan kopyalandı ✓");
     } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Kopyalanamadı.'); }
+});
+
+// ===== İK: AI OTOMATİK VARDİYA PLANLAYICI (öneri → önizleme → onay → yaz) =====
+if (!function_exists('_ikVardiyaSaatVarsayilan')) {
+    function _ikVardiyaSaatVarsayilan($rol)
+    {
+        return ['mutfak' => ['09:00', '21:00'], 'garson' => ['11:00', '23:00'], 'kasa' => ['10:00', '22:00'], 'satinalmaci' => ['09:00', '17:00']][$rol] ?? ['10:00', '22:00'];
+    }
+}
+if (!function_exists('_ikVardiyaOneri')) {
+    // Haftalık vardiya ÖNERİSİ (deterministik kural): izinli/dolu günleri atlar, herkese 1 hafta-içi off,
+    // hafta sonu tam kadro. MEVCUT vardiyaları EZMEZ (yalnız boş personel-gün'lere önerir). Döner: öneri satırları.
+    function _ikVardiyaOneri($sid, $haftaBasi)
+    {
+        $sid = (int) $sid;
+        _ikVardiyaEnsure(); _ikIzinEnsure(); _restoPersonelKolonEnsure();
+        $bas = \Carbon\Carbon::parse($haftaBasi)->startOfDay();
+        $son = $bas->copy()->addDays(6);
+        $gunAd = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+        $pers = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('rol')->orderBy('ad')->get();
+        $izinli = [];
+        try {
+            foreach (DB::table('personel_izinler')->where('sube_id', $sid)->where('durum', 'onay')
+                ->where('baslangic', '<=', $son->toDateString())->where('bitis', '>=', $bas->toDateString())->get() as $iz) {
+                $b = \Carbon\Carbon::parse($iz->baslangic); $e = \Carbon\Carbon::parse($iz->bitis);
+                for ($d = $b->copy(); $d->lte($e); $d->addDay()) $izinli[$iz->personel_id][$d->toDateString()] = true;
+            }
+        } catch (\Throwable $e) {}
+        $dolu = [];
+        try { foreach (DB::table('personel_vardiya')->where('sube_id', $sid)->whereBetween('tarih', [$bas->toDateString(), $son->toDateString()])->get(['personel_id', 'tarih']) as $v) $dolu[$v->personel_id][$v->tarih] = true; } catch (\Throwable $e) {}
+        $oneri = []; $i = 0;
+        foreach ($pers as $p) {
+            $offGun = $i % 4; // Pzt/Sal/Çar/Per rotasyonla 1 gün off (hafta sonu herkes çalışır)
+            [$bg, $bt] = _ikVardiyaSaatVarsayilan($p->rol);
+            for ($g = 0; $g < 7; $g++) {
+                if ($g === $offGun) continue;
+                $tarih = $bas->copy()->addDays($g)->toDateString();
+                if (!empty($izinli[$p->id][$tarih])) continue;
+                if (!empty($dolu[$p->id][$tarih])) continue;
+                $oneri[] = ['personel_id' => $p->id, 'ad' => $p->ad, 'rol' => $p->rol, 'tarih' => $tarih, 'gun' => $gunAd[$g], 'bas' => $bg, 'bit' => $bt];
+            }
+            $i++;
+        }
+        return $oneri;
+    }
+}
+Route::post('/ik-vardiya/ai-planla', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $hb = \Carbon\Carbon::parse($r->hafta ?: 'now')->startOfWeek(\Carbon\Carbon::MONDAY);
+    $oneri = _ikVardiyaOneri($sid, $hb->toDateString());
+    $veri = _ikVardiyaHafta($sid, $hb->toDateString());
+    return view('ik_vardiya', ['veri' => $veri, 'yonetici' => in_array(($bp->rol ?? ''), ['sahip', 'mudur']), 'oneri' => $oneri]);
+});
+Route::post('/ik-vardiya/ai-uygula', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikVardiyaEnsure();
+    $sid = _webSubeId();
+    $hb = \Carbon\Carbon::parse($r->hafta ?: 'now')->startOfWeek(\Carbon\Carbon::MONDAY);
+    $geri = '/ik-vardiya?hafta=' . urlencode($hb->toDateString());
+    try {
+        $lines = json_decode((string) $r->oneri, true);
+        if (!is_array($lines) || !count($lines)) return redirect($geri)->with('hata', 'Uygulanacak öneri bulunamadı.');
+        $n = 0;
+        foreach ($lines as $l) {
+            $pid = (int) ($l['personel_id'] ?? 0);
+            $tarih = (string) ($l['tarih'] ?? ''); $bg = substr((string) ($l['bas'] ?? ''), 0, 5); $bt = substr((string) ($l['bit'] ?? ''), 0, 5);
+            if (!$pid || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $tarih) || !preg_match('/^\d{2}:\d{2}$/', $bg) || !preg_match('/^\d{2}:\d{2}$/', $bt)) continue;
+            if (!DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->where('aktif', 1)->exists()) continue;
+            if (DB::table('personel_vardiya')->where('sube_id', $sid)->where('personel_id', $pid)->where('tarih', $tarih)->where('baslangic', $bg . ':00')->exists()) continue;
+            DB::table('personel_vardiya')->insert(['sube_id' => $sid, 'personel_id' => $pid, 'tarih' => $tarih, 'baslangic' => $bg . ':00', 'bitis' => $bt . ':00', 'pozisyon' => trim((string) ($l['rol'] ?? '')) ?: null, 'created_by' => (int) $bp->id, 'created_at' => now()]);
+            $n++;
+        }
+        return redirect($geri)->with('ok', "✓ AI planı uygulandı — {$n} vardiya eklendi (mevcut vardiyalar korundu).");
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Plan uygulanamadı.'); }
 });
 
 // ===== İK: SİCİL KARTI (tek personel dosyası: zimmet + belge/sertifika SKT + eğitim + avans/icra & izin geçmişi) =====
@@ -13887,6 +13966,9 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
     $sid = _webSubeId();
     $soru = trim((string) $r->input('soru'));
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    // Sohbet (selam/teşekkür/veda) -> rapor DÖKME, kısa sıcak cevap ver (bedava)
+    $sohbet = _satinalmaSohbetCevap($soru);
+    if ($sohbet !== null) return response()->json(['ok' => 1, 'kaynak' => 'sohbet', 'cevap' => $sohbet]);
     // Excel/dosya isteği -> LLM'e gitmeden indirme butonları dön (bedava)
     if (preg_match('/excel|csv|indir|dosya|dışa|disa|aktar|xls|tabloya|tablo olarak/iu', $soru)) {
         return response()->json(['ok' => 1, 'kaynak' => 'export', 'cevap' => 'İstediğin raporu Excel olarak indirebilirsin 👇 Dosyaya tıklayınca Excel otomatik açar.', 'exportlar' => _satinalmaExportTipleri()]);
@@ -13896,7 +13978,7 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
         $teklif = _satinalmaRaporSorusuMu($soru) ? _satinalmaRaporTipi($soru) : false; // rapor sorusuysa ilgili rapor tipi, değilse false
         $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
-        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
+        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma. ÖNEMLİ: Kullanıcı sadece selamlaşıyor, teşekkür ediyor veya sohbet ediyorsa ASLA rapor/özet dökme; tek-iki cümlelik kısa, samimi karşılık ver. Rapor ve veri analizini YALNIZCA stok/fiyat/tedarikçi/harcama/sipariş gibi konular sorulduğunda yap.';
         $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
             ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
                 'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
@@ -13922,6 +14004,27 @@ if (!function_exists('_satinalmaExportTipleri')) {
             ['tip' => 'siparis',   'ad' => 'Açık Siparişler'],
             ['tip' => 'talep',     'ad' => 'Talepler'],
         ];
+    }
+}
+if (!function_exists('_satinalmaSohbetCevap')) {
+    // Selam/teşekkür/veda gibi sohbet mesajları -> kısa sıcak cevap (rapor dökme). Değilse null.
+    function _satinalmaSohbetCevap($soru)
+    {
+        $s = trim(mb_strtolower((string) $soru, 'UTF-8'));
+        if ($s === '') return null;
+        // Veri/rapor konusu geçiyorsa sohbet sayma -> normal akışa bırak
+        if (preg_match('/stok|fiyat|zam|tedarik|harc|sipariş|siparis|talep|borç|borc|ürün|urun|kaç|kac|ne kadar|rapor|liste|öner|oner|analiz|almalı|almali|pazarlık|pazarlik|bütçe|butce|maliyet/u', $s)) return null;
+        $kelime = count(preg_split('/\s+/', $s, -1, PREG_SPLIT_NO_EMPTY));
+        // Teşekkür / memnuniyet / kapanış
+        if (preg_match('/teşekkür|tesekkur|teşekkr|sağ ?ol|sagol|eyvallah|eline sağlık|çok iyi|cok iyi|harika|süper|super|mükemmel|mukemmel|yeterli|tamamdır|tamamdir|anladım|anladim/u', $s))
+            return 'Rica ederim! 😊 İyi çalışmalar — stok, fiyat, tedarikçi ya da sipariş konusunda gerektiğinde buradayım. 👋';
+        // Vedalaşma
+        if (preg_match('/görüşürüz|gorusuruz|hoşça ?kal|hosca ?kal|bay ?bay|kapat|güle ?güle|gule ?gule|iyi geceler|kendine iyi bak|çıkıyorum|cikiyorum/u', $s))
+            return 'Görüşürüz! 👋 İstediğinde tekrar yazabilirsin.';
+        // Selamlama (kısa ve başta)
+        if ($kelime <= 4 && preg_match('/^(merhaba|mrb|selam|selamün|selamun|aleyküm|günaydın|gunaydin|iyi akşam|iyi aksam|iyi gün|iyi gun|hey|alo|nasılsın|nasilsin|naber|ne haber)/u', $s))
+            return 'Merhaba! 😊 Satın alma, stok, fiyat ya da tedarikçi hakkında ne öğrenmek istersin? Üstteki hızlı sorulardan da seçebilirsin.';
+        return null;
     }
 }
 if (!function_exists('_satinalmaRaporSorusuMu')) {
