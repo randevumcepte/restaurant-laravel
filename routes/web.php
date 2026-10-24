@@ -11587,6 +11587,16 @@ Route::get('/siparis-onerisi', function () {
         }
         $d['oneriler'] = $oner->sort(fn ($a, $b) => ($b->kritikMi <=> $a->kritikMi) ?: strcmp($a->ad, $b->ad))->values();
     } catch (\Throwable $e) {}
+    // Satın alma ekibi var mı? (satınalmacı rolü VEYA 'satinalma' departmanına atanmış personel)
+    $satinalmaVar = false;
+    try {
+        $satinalmaVar = DB::table('personeller')->where('rol', 'satinalmaci')->exists();
+        if (!$satinalmaVar && Schema::hasColumn('personeller', 'departman_id')) {
+            $depId = DB::table('departmanlar')->where('sube_id', $sid)->where('kod', 'satinalma')->value('id');
+            if ($depId) $satinalmaVar = DB::table('personeller')->where('departman_id', $depId)->exists();
+        }
+    } catch (\Throwable $e) {}
+    $d['satinalmaVar'] = $satinalmaVar;
     return view('siparis_onerisi', $d);
 });
 Route::post('/siparis-onerisi/par', function (Request $r) {
