@@ -103,7 +103,7 @@
         @foreach ($personeller as $p)
           @php $h = $haklar[$p->id] ?? ['hak'=>0,'kullanilan'=>0,'kalan'=>0]; $oran = $h['hak']>0 ? min(100,round($h['kullanilan']/$h['hak']*100)) : 0; @endphp
           <tr>
-            <td style="font-weight:600">{{ $p->ad }}</td>
+            <td style="font-weight:600"><a href="/ik-sicil?id={{ $p->id }}" style="color:var(--ink)" title="Sicil kartı">{{ $p->ad }}</a></td>
             <td>{{ $h['hak'] ? $h['hak'].' gün' : '—' }}</td>
             <td>{{ rtrim(rtrim(number_format($h['kullanilan'],1,',','.'),'0'),',') }}</td>
             <td><b style="color:{{ $h['kalan']>0?'var(--yesil)':'var(--sub)' }}">{{ $h['hak'] ? rtrim(rtrim(number_format($h['kalan'],1,',','.'),'0'),',').' gün' : '—' }}</b></td>

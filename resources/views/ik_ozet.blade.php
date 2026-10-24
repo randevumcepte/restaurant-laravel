@@ -180,7 +180,7 @@
       <div class="ik-card" style="border:1px solid rgba(245,158,11,.3)">
         <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--amber)">📋 Eksik özlük bilgisi ({{ count($veri['eksik_belge']) }})</div>
         @foreach (array_slice($veri['eksik_belge'], 0, 8) as $e)
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0"><span>{{ $e['ad'] }}</span><span class="rk-sub">{{ implode(', ', $e['eksik']) }}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0"><a href="/ik-sicil?id={{ $e['id'] }}" style="color:var(--ink)">{{ $e['ad'] }}</a><span class="rk-sub">{{ implode(', ', $e['eksik']) }}</span></div>
         @endforeach
         <a href="/personel" class="rk-sub" style="font-size:11px;color:var(--mavi);font-weight:600">Tamamla →</a>
       </div>
