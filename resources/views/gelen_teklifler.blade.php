@@ -25,10 +25,7 @@
       @csrf<button class="rk-btn bos" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">science</span> 1) Test Verisi Kur</button>
     </form>
     @endif
-    <form method="POST" action="/fiyat-arastir" style="display:inline" onsubmit="return rkOnayForm(this, 'Kritik malzemelerin tedarikçilerine fiyat isteği (RFQ) gönderilsin mi? Not: tedarikçilerin gerçek mail adreslerine mail gider.', 'var(--mavi)', 'Evet, gönder')">
-      @csrf<input type="hidden" name="geri" value="/gelen-teklifler">
-      <button class="rk-btn" style="background:var(--mavi)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> 2) Fiyat Araştır (RFQ Gönder)</button>
-    </form>
+    <a href="/fiyat-arastir-sec" class="rk-btn" style="background:var(--mavi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> 2) Fiyat Araştır (Tedarikçi Seç)</a>
     <form method="POST" action="/gelen-teklifler/oku" style="display:inline">
       @csrf<button class="rk-btn" style="background:var(--mor1)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">download</span> 3) Şimdi Teklifleri Oku</button>
     </form>

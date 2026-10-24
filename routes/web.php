@@ -9094,6 +9094,29 @@ if (!function_exists('_rfqEnsure')) {
         cache()->put('rfq_ensure_ok', 1, now()->addHours(12));
     }
 }
+if (!function_exists('_rfqSupMapGonder')) {
+    // supMap[tedarikci_id] = [kalemler] → her tedarikçiye RFQ-kod'lu fiyat isteği (mail + WhatsApp). ['gonderilen','mail','wa'] döner.
+    function _rfqSupMapGonder($sid, $supMap, $talepId = 0, $depId = 0)
+    {
+        $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+        $gonderilen = 0; $mailSay = 0; $waSay = 0;
+        foreach ($supMap as $tid => $items) {
+            $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
+            $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
+            $kod = 'RFQ-' . $rfqId;
+            $satir = '';
+            foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
+            $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
+            $kanal = [];
+            if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
+            if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
+            DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
+            $gonderilen++;
+        }
+        if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+        return ['gonderilen' => $gonderilen, 'mail' => $mailSay, 'wa' => $waSay];
+    }
+}
 Route::post('/fiyat-arastir', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
@@ -9114,23 +9137,42 @@ Route::post('/fiyat-arastir', function (Request $r) {
             foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
     }
     if (!$supMap) return redirect($geri)->with('hata', 'Bu ürünlere bağlı tedarikçi yok (malzeme-tedarikçi kataloğu boş). Önce tedarikçilere ürün ekle.');
-    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
-    $gonderilen = 0; $mailSay = 0; $waSay = 0;
-    foreach ($supMap as $tid => $items) {
-        $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
-        $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
-        $kod = 'RFQ-' . $rfqId;
-        $satir = '';
-        foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
-        $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
-        $kanal = [];
-        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
-        if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
-        DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
-        $gonderilen++;
+    $res = _rfqSupMapGonder($sid, $supMap, $talepId, $depId);
+    return redirect($geri)->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Gelen teklifler otomatik okunacak.');
+});
+// Fiyat Araştır — TEDARİKÇİ SEÇİMLİ (kritik ürünler + her ürünün tedarikçileri, işaretle-gönder)
+Route::get('/fiyat-arastir-sec', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $sid = _webSubeId();
+    $satirlar = [];
+    foreach ((function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []) as $m) {
+        $sups = collect();
+        try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $m['id'])->where('t.aktif', 1)->where('tm.aktif', 1)
+            ->orderByDesc('t.anlasmali')->orderBy('tm.guncel_fiyat')
+            ->get(['t.id', 't.ad', 't.anlasmali', 't.email', 't.telefon', 'tm.guncel_fiyat']); } catch (\Throwable $e) {}
+        if (count($sups)) $satirlar[] = ['m' => $m, 'sups' => $sups];
     }
-    if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
-    return redirect($geri)->with('ok', $gonderilen . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $mailSay . ', WhatsApp: ' . $waSay . '). Gelen teklifler otomatik okunacak.');
+    return view('fiyat_arastir_sec', ['satirlar' => $satirlar]);
+});
+Route::post('/fiyat-arastir-sec', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    _rfqEnsure(); $sid = _webSubeId();
+    $sec = (array) $r->input('sec', []);
+    if (!$sec) return redirect('/fiyat-arastir-sec')->with('hata', 'En az bir tedarikçi işaretle.');
+    $matMap = [];
+    foreach ((function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []) as $k) $matMap[(int) $k['id']] = ['malzeme_id' => (int) $k['id'], 'ad' => $k['ad'], 'miktar' => $k['oneri'], 'birim' => $k['birim']];
+    $supMap = [];
+    foreach ($sec as $pair) {
+        $p = explode(':', (string) $pair); $mid = (int) ($p[0] ?? 0); $tid = (int) ($p[1] ?? 0);
+        if ($mid && $tid && isset($matMap[$mid])) $supMap[$tid][] = $matMap[$mid];
+    }
+    if (!$supMap) return redirect('/fiyat-arastir-sec')->with('hata', 'Seçim çözümlenemedi.');
+    $res = _rfqSupMapGonder($sid, $supMap, 0, 0);
+    return redirect('/gelen-teklifler')->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Yanıt gelince "Şimdi Teklifleri Oku" ile çek.');
 });
 
 // ============================ P3 — GELEN TEKLİFLERİ AI OKU (WhatsApp + Gmail) ============================

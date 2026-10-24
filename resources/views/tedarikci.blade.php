@@ -324,6 +324,9 @@ body.koyu #ted{
       {{-- Flutter: TextField Telefon --}}
       <label class="rk-lbl">Telefon</label>
       <input type="text" name="telefon" id="tedTel" placeholder="Telefon" class="rk-inp">
+      {{-- E-posta: RFQ/fiyat isteği buraya gider (ana alana taşındı) --}}
+      <label class="rk-lbl">E-posta <span style="color:var(--mor1);font-weight:400">(fiyat isteği / RFQ buraya gönderilir)</span></label>
+      <input type="email" name="email" id="tedEmail" placeholder="ornek@tedarikci.com" class="rk-inp">
       {{-- Flutter: TextField Not --}}
       <label class="rk-lbl">Not (opsiyonel)</label>
       <input type="text" name="aciklama" id="tedAciklama" placeholder="Not (opsiyonel)" class="rk-inp">
@@ -349,7 +352,6 @@ body.koyu #ted{
             <div><label class="rk-lbl" style="margin-top:0">VKN / TCKN</label><input type="text" name="vkn_tckn" id="tedVkn" placeholder="Vergi/TC no" class="rk-inp"></div>
             <div><label class="rk-lbl" style="margin-top:0">Vergi Dairesi</label><input type="text" name="vergi_dairesi" id="tedVd" placeholder="Vergi dairesi" class="rk-inp"></div>
             <div><label class="rk-lbl" style="margin-top:0">Yetkili Kişi</label><input type="text" name="yetkili" id="tedYetkili" placeholder="Yetkili" class="rk-inp"></div>
-            <div><label class="rk-lbl" style="margin-top:0">E-posta</label><input type="text" name="email" id="tedEmail" placeholder="E-posta" class="rk-inp"></div>
             <div><label class="rk-lbl" style="margin-top:0">Ödeme Vadesi (gün)</label><input type="number" name="odeme_vade_gun" id="tedVade" min="0" placeholder="Örn. 30" class="rk-inp"></div>
           </div>
           <label class="rk-lbl">IBAN</label>
