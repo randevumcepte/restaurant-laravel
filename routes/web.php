@@ -13392,7 +13392,7 @@ if (!function_exists('_satinalmaRaporSorusuMu')) {
     // Soru rapor/veri sorusu mu? -> AI "Excel'e aktarayım mı?" teklif etsin
     function _satinalmaRaporSorusuMu($soru)
     {
-        return (bool) preg_match('/rapor|liste|listele|dökü|döküm|kritik|stok|zam|fiyat|tedarik|harca|sipariş|siparis|talep|özet|ozet|hangi|ne kadar|kaç|kac/iu', (string) $soru);
+        return (bool) preg_match('/rapor|liste|listele|dökü|döküm|kritik|stok|zam|fiyat|tedarik|harc|sipariş|siparis|talep|özet|ozet|hangi|ne kadar|kaç|kac/iu', (string) $soru);
     }
 }
 if (!function_exists('_satinalmaRaporTipi')) {
@@ -13402,7 +13402,7 @@ if (!function_exists('_satinalmaRaporTipi')) {
         $s = mb_strtolower((string) $soru, 'UTF-8');
         if (preg_match('/zam|pahal|fiyat art|artış|artis/u', $s)) return 'zam';
         if (preg_match('/tedarik|satıcı|satici|firma/u', $s)) return 'tedarikci';
-        if (preg_match('/harca|bütçe|butce|gider|maliyet|ne kadar/u', $s)) return 'harcama';
+        if (preg_match('/harc|bütçe|butce|gider|maliyet|nereye|ne kadar/u', $s)) return 'harcama';
         if (preg_match('/sipariş|siparis|\bpo\b/u', $s)) return 'siparis';
         if (preg_match('/talep/u', $s)) return 'talep';
         return 'kritik'; // varsayılan: kritik stok
