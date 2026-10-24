@@ -309,7 +309,7 @@ body.koyu #ted{
 
 {{-- ====== Modal: Ekle / Düzenle (Flutter _form bottom sheet) ====== --}}
 <div id="tedModal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(10,14,25,.6);padding:16px">
-  <div style="background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.4);width:100%;max-width:440px;padding:22px">
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.4);width:100%;max-width:440px;padding:22px;max-height:90vh;overflow-y:auto">
     {{-- Başlık çubuğu (Flutter handle + başlık) --}}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <h3 id="tedModalBaslik" style="font-size:18px;font-weight:800;color:var(--ink);margin:0">Yeni Tedarikçi</h3>
