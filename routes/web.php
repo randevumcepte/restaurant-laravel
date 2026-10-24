@@ -21603,9 +21603,13 @@ Route::get('/api/patron/fis', function (Request $r) {
     $sube = DB::table('subeler')->find($a->sube_id);
     $masa = $a->masa_id ? DB::table('masalar')->where('id', $a->masa_id)->value('ad') : null;
     $garson = $a->acan_personel_id ? DB::table('personeller')->where('id', $a->acan_personel_id)->value('ad') : null;
+    $fisIkramVar = Schema::hasColumn('adisyon_kalemleri', 'ikram');
+    $fisSel = ['urun_adi', 'adet', 'birim_fiyat', 'tutar'];
+    if ($fisIkramVar) $fisSel[] = 'ikram';
     $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')
-        ->select('urun_adi', 'adet', 'birim_fiyat', 'tutar')->orderBy('id')->get()
-        ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar]);
+        ->select($fisSel)->orderBy('id')->get()
+        // ikram=1 kalem -> fişte üstü çizili (bedava) gösterilir (Flutter fis.dart handle eder)
+        ->map(fn ($k) => ['ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'birim_fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar, 'ikram' => $fisIkramVar ? (int) ($k->ikram ?? 0) : 0]);
     $odemeler = DB::table('odemeler')->where('adisyon_id', $a->id)->select('tip', 'tutar')->get()
         ->map(fn ($o) => ['tip' => $o->tip, 'tutar' => (float) $o->tutar]);
     // Birleşik masa grubu (bu adisyon hedefse): kendisi + birleşmiş kaynak masalar -> "4 + 5"
