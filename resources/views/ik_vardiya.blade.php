@@ -25,6 +25,7 @@
   .vd-cip{display:block;background:color-mix(in srgb,var(--mavi) 14%,transparent);border-left:3px solid var(--mavi);border-radius:6px;padding:3px 7px;margin-bottom:3px;font-size:11.5px;font-weight:700;color:var(--ink)}
   .vd-cip .p{font-size:10px;color:var(--sub);font-weight:500}
   .vd-cip.ger{background:color-mix(in srgb,var(--yesil) 15%,transparent);border-left-color:var(--yesil)}
+  .vd-oneri{display:block;background:color-mix(in srgb,var(--yesil) 12%,transparent);border:1.5px dashed var(--yesil);border-radius:6px;padding:2px 6px;margin-bottom:3px;font-size:11px;font-weight:700;color:var(--yesil)}
   .vd-ekle{font-size:11px;color:var(--sub);opacity:0;transition:opacity .12s}
   .vd-hucre:hover .vd-ekle{opacity:.7}
   .vd-inp{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card2);color:var(--ink);font-size:13px}
@@ -42,6 +43,10 @@
     $buHafta = \Carbon\Carbon::now()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
     $bugunStr = \Carbon\Carbon::now()->toDateString();
     $tl = fn($n)=>number_format((float)($n??0),0,',','.').'₺';
+    $oneri = $oneri ?? null;
+    $oneriIdx = [];
+    foreach (($oneri ?? []) as $o) { $oneriIdx[$o['personel_id']][$o['tarih']] = $o; }
+    $oneriVar = $oneri !== null && count($oneri);
   @endphp
 
   {{-- Başlık --}}
@@ -71,8 +76,32 @@
         @csrf<input type="hidden" name="hafta" value="{{ $hb }}">
         <button class="rk-btn bos" style="padding:8px 12px;font-size:12.5px"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">content_copy</span> Geçen haftayı kopyala</button>
       </form>
+      @unless ($oneriVar)
+      <form method="POST" action="/ik-vardiya/ai-planla" style="display:flex;align-items:center">
+        @csrf<input type="hidden" name="hafta" value="{{ $hb }}">
+        <button class="rk-btn" style="padding:8px 13px;font-size:12.5px;background:linear-gradient(135deg,#7C3AED,#4F46E5)"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">auto_awesome</span> AI ile Planla</button>
+      </form>
+      @endunless
     </div>
   </div>
+
+  @if ($oneriVar)
+  {{-- AI ÖNERİSİ ÖNİZLEME (onay bekliyor) --}}
+  <div style="background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(79,70,229,.04));border:1.5px solid rgba(124,58,237,.35);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+      <span class="material-icons-outlined" style="color:var(--mor1)">auto_awesome</span>
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:800;font-size:14px;color:var(--ink)">AI {{ count($oneri) }} vardiya önerdi</div>
+        <div class="rk-sub" style="font-size:12px">İzinli günler atlandı, herkese 1 gün izin günü verildi, hafta sonu tam kadro. <b>Mevcut vardiyaların korunur.</b> Aşağıda kesikli yeşil hücreler önerilerdir — onaylarsan eklenir.</div>
+      </div>
+      <form method="POST" action="/ik-vardiya/ai-uygula" style="display:inline" onsubmit="return rkOnayForm(this,'AI planı uygulansın mı? {{ count($oneri) }} vardiya eklenecek (mevcutlar korunur).','var(--yesil)','Evet, uygula')">
+        @csrf<input type="hidden" name="hafta" value="{{ $hb }}"><input type="hidden" name="oneri" value='@json($oneri)'>
+        <button class="rk-btn" style="background:var(--yesil)"><span class="material-icons-outlined" style="font-size:17px;vertical-align:middle">check</span> Planı Uygula</button>
+      </form>
+      <a href="/ik-vardiya?hafta={{ $hb }}" class="rk-btn bos">Vazgeç</a>
+    </div>
+  </div>
+  @endif
 
   <div class="vd-tablo-sar">
     <table class="vd-tablo">
@@ -98,6 +127,10 @@
                   @if($v['pozisyon'])<span class="p">{{ $v['pozisyon'] }}</span>@endif
                 </span>
               @endforeach
+              @if (!empty($oneriIdx[$p->id][$gs]))
+                @php $o=$oneriIdx[$p->id][$gs]; @endphp
+                <span class="vd-oneri" title="AI önerisi">✨ {{ $o['bas'] }}–{{ $o['bit'] }}</span>
+              @endif
               <span class="vd-ekle">+ ekle</span>
             </td>
           @endforeach
