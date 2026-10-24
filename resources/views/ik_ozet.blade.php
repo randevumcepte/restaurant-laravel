@@ -143,6 +143,29 @@ body.koyu #iko{
   @if (session('ok'))   <div class="kart" style="border-left:4px solid var(--yesil);color:var(--yesil);font-weight:600;padding:12px 16px">{{ session('ok') }}</div> @endif
   @if (session('hata')) <div class="kart" style="border-left:4px solid var(--kirmizi);color:var(--kirmizi);font-weight:600;padding:12px 16px">{{ session('hata') }}</div> @endif
 
+  {{-- ☀️ GÜNÜN GÜNDEMİ (proaktif sabah brifingi) --}}
+  @if (($gundem['sayi'] ?? 0) > 0)
+  <div class="kart" style="border-left:4px solid var(--amber);background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(249,115,22,.03))">
+    <div class="kh"><span class="material-icons-outlined" style="color:var(--amber)">wb_sunny</span> Günün Gündemi · {{ \Carbon\Carbon::now()->translatedFormat('d F, l') }}</div>
+    @foreach ($gundem['maddeler'] as $m)
+      @php $mr = $renkMap[$m['renk']??'mavi'] ?? '#4F46E5'; @endphp
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)">
+        <div style="width:30px;height:30px;border-radius:9px;background:{{ $mr }}1f;color:{{ $mr }};display:flex;align-items:center;justify-content:center;flex-shrink:0"><span class="material-icons-outlined" style="font-size:17px">{{ $m['ikon'] }}</span></div>
+        <div style="flex:1;font-size:13.5px;color:var(--ink);line-height:1.4">{{ $m['metin'] }}</div>
+        @if (!empty($m['aksiyon']))
+          <form method="POST" action="/ik-aksiyon" style="margin:0" onsubmit="return rkOnayForm(this,'WhatsApp mesajı gönderilsin mi?','{{ $mr }}','Evet, gönder')">
+            @csrf<input type="hidden" name="key" value="{{ $m['aksiyon']['key'] }}">
+            <button type="submit" class="ai-yap-btn" style="background:{{ $mr }};padding:7px 12px"><span class="material-icons-outlined">send</span> {{ $m['aksiyon']['lbl'] }}</button>
+          </form>
+        @elseif (!empty($m['link']))
+          <a href="{{ $m['link']['url'] }}" class="ai-yap-btn" style="background:{{ $mr }};padding:7px 12px">{{ $m['link']['lbl'] }} →</a>
+        @endif
+      </div>
+    @endforeach
+    <div style="font-size:11px;color:var(--sub);margin-top:9px">İК AI'sı bugüne özel hazırladı. <a href="/ik-asistan" style="color:var(--mor1);font-weight:600">Asistan'a sor →</a></div>
+  </div>
+  @endif
+
   {{-- AI / DURUM ANLATI --}}
   <div class="ai-kart">
     <div class="ai-h"><span class="material-icons-outlined" style="font-size:18px">{{ $aiVar ? 'auto_awesome' : 'insights' }}</span> {{ $aiVar ? 'İK Analizi' : 'Durum Özeti' }}</div>

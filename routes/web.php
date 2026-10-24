@@ -8347,8 +8347,86 @@ Route::get('/ik-ozet', function () {
     $ay = request('ay');
     $veri = _ikOzetVeri($sid, $ay);
     $ai = _ikAiYorum($sid, $veri, request()->boolean('force'));
-    // departman dağılımı adlarını çöz
-    return view('ik_ozet', ['veri' => $veri, 'ai' => $ai]);
+    $gundem = _ikGunGundem($sid);
+    return view('ik_ozet', ['veri' => $veri, 'ai' => $ai, 'gundem' => $gundem]);
+});
+
+// ===== İK: PROAKTİF GÜNÜN GÜNDEMİ (sabah brifingi — bugüne özel yapılacaklar) =====
+if (!function_exists('_ikGunGundem')) {
+    // Bugüne özel İK gündemi: doğum günü, deneme süresi, belge, bekleyen onay, yıldönümü, gelmeyen.
+    // Döner: ['maddeler'=>[['ikon','renk','metin','link'?]], 'sayi'=>N]
+    function _ikGunGundem($sid)
+    {
+        $sid = (int) $sid;
+        _restoPersonelKolonEnsure();
+        $bugun = now(); $bugunStr = $bugun->toDateString(); $buYil = (int) $bugun->year;
+        $hasDogum = Schema::hasColumn('personeller', 'dogum_tarihi');
+        $md = [];
+        $bugunDogum = []; $denemeBiten = []; $yildonumuBugun = [];
+        try {
+            foreach (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->get() as $p) {
+                // bugün doğum günü
+                if ($hasDogum && !empty($p->dogum_tarihi)) {
+                    try { $d = \Carbon\Carbon::parse($p->dogum_tarihi); if ((int) $d->month === (int) $bugun->month && (int) $d->day === (int) $bugun->day) $bugunDogum[] = $p->ad; } catch (\Throwable $e) {}
+                }
+                if (!empty($p->ise_baslama)) {
+                    try {
+                        $g = \Carbon\Carbon::parse($p->ise_baslama);
+                        // deneme süresi (90 gün) bugün ±3 içinde doluyor
+                        $deneme = $g->copy()->addDays(90); $fark = $bugun->copy()->startOfDay()->diffInDays($deneme, false);
+                        if ($fark >= 0 && $fark <= 3) $denemeBiten[] = $p->ad;
+                        // bugün işe giriş yıldönümü
+                        if ((int) $g->month === (int) $bugun->month && (int) $g->day === (int) $bugun->day && (int) $g->year < $buYil) $yildonumuBugun[] = $p->ad . ' (' . ($buYil - (int) $g->year) . '. yıl)';
+                    } catch (\Throwable $e) {}
+                }
+            }
+        } catch (\Throwable $e) {}
+        if ($bugunDogum) $md[] = ['ikon' => 'cake', 'renk' => 'pembe', 'metin' => 'Bugün doğum günü: ' . implode(', ', $bugunDogum), 'aksiyon' => ['key' => 'dogum-kutla', 'lbl' => 'Kutlama gönder']];
+        if ($yildonumuBugun) $md[] = ['ikon' => 'celebration', 'renk' => 'mor', 'metin' => 'Bugün işe giriş yıldönümü: ' . implode(', ', $yildonumuBugun)];
+        if ($denemeBiten) $md[] = ['ikon' => 'hourglass_bottom', 'renk' => 'amber', 'metin' => count($denemeBiten) . ' personelin deneme süresi doluyor: ' . implode(', ', $denemeBiten) . ' — değerlendir.', 'link' => ['url' => '/personel', 'lbl' => 'Personel']];
+        // belge bugün/yakında dolan
+        try {
+            if (Schema::hasTable('personel_belge')) {
+                $bd = DB::table('personel_belge')->join('personeller', 'personeller.id', '=', 'personel_belge.personel_id')
+                    ->where('personel_belge.sube_id', $sid)->where('personeller.aktif', 1)->whereNotNull('personel_belge.son_gecerlilik')
+                    ->whereDate('personel_belge.son_gecerlilik', '<=', $bugun->copy()->addDays(7)->toDateString())->count();
+                if ($bd > 0) $md[] = ['ikon' => 'event_busy', 'renk' => 'kirmizi', 'metin' => $bd . ' belgenin süresi bu hafta doluyor/doldu.', 'aksiyon' => ['key' => 'belge-hatirlat', 'lbl' => 'Yenileme hatırlat']];
+            }
+        } catch (\Throwable $e) {}
+        // bekleyen onaylar
+        try {
+            $bi = (int) DB::table('personel_izinler')->where('sube_id', $sid)->where('durum', 'talep')->count();
+            if ($bi > 0) $md[] = ['ikon' => 'event_available', 'renk' => 'amber', 'metin' => $bi . ' izin talebi onay bekliyor.', 'link' => ['url' => '/ik-izin', 'lbl' => 'İzin Yönetimi']];
+        } catch (\Throwable $e) {}
+        try {
+            if (Schema::hasTable('ik_self_talep')) { $ba = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count(); if ($ba > 0) $md[] = ['ikon' => 'request_quote', 'renk' => 'amber', 'metin' => $ba . ' avans talebi onay bekliyor.', 'link' => ['url' => '/ik-izin', 'lbl' => 'Talepleri gör']]; }
+        } catch (\Throwable $e) {}
+        // yeni başvuru
+        try {
+            if (Schema::hasTable('ik_adaylar')) { $yb = (int) DB::table('ik_adaylar')->where('sube_id', $sid)->where('durum', 'yeni')->count(); if ($yb > 0) $md[] = ['ikon' => 'how_to_reg', 'renk' => 'yesil', 'metin' => $yb . ' yeni iş başvurusu var.', 'link' => ['url' => '/ik-aday', 'lbl' => 'İncele']]; }
+        } catch (\Throwable $e) {}
+        // yüksek risk
+        try {
+            $yuksek = array_values(array_filter(_ikRiskAnaliz($sid), fn ($x) => $x['seviye'] === 'yuksek'));
+            if (count($yuksek)) $md[] = ['ikon' => 'crisis_alert', 'renk' => 'turuncu', 'metin' => count($yuksek) . ' personel yüksek riskli (' . implode(', ', array_map(fn ($x) => $x['ad'], array_slice($yuksek, 0, 3))) . ').', 'link' => ['url' => '/ik-risk', 'lbl' => 'Risk Radarı']];
+        } catch (\Throwable $e) {}
+        return ['maddeler' => $md, 'sayi' => count($md)];
+    }
+}
+// CRON: sabah İK gündemini şube yöneticilerine/İK'ya FCM ile gönder (OS cron + SANTRAL_SECRET)
+Route::get('/api/ik/sabah', function (Request $r) {
+    if (function_exists('_santralAuthGuard')) { $g = _santralAuthGuard($r); if ($g) return $g; }
+    if (!config('services.resteos.ik_acik', true)) return response()->json(['ok' => 0, 'kapali' => 1]);
+    $n = 0;
+    try {
+        foreach (DB::table('subeler')->get(['id']) as $s) {
+            $gg = _ikGunGundem((int) $s->id);
+            if ($gg['sayi'] === 0) continue;
+            $metin = implode("\n", array_map(fn ($m) => '• ' . $m['metin'], array_slice($gg['maddeler'], 0, 6)));
+            try { if (function_exists('_fcmSubeyeGonder')) { _fcmSubeyeGonder((int) $s->id, 'Günaydın — İK gündemi', $metin, ['tip' => 'ik_sabah'], ['sahip', 'mudur']); $n++; } } catch (\Throwable $e) {}
+        }
+    } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'gonderilen' => $n]);
 });
 
 // WEB: İK AI iş aksiyonu ("Senin için yapabilirim" — WhatsApp şablon mesajı toplu gönderir)
