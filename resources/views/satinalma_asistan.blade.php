@@ -6,6 +6,8 @@
 
 @section('content')
 <style>
+  /* Bu sayfaya özel: içerik zemini komple beyaz (koyu modda koyu kart) — mavi/lilak kalksın */
+  .rk-main{background:var(--card)}
   #saChat .sa-h{display:inline-block;font-weight:700;font-size:14px;color:var(--mor1,#7C3AED);margin:6px 0 2px;letter-spacing:.2px}
   #saChat b{font-weight:600;color:inherit}
   #saChat .sa-mad{color:var(--mor1,#7C3AED);font-weight:700}
