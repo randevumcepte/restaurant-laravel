@@ -5,94 +5,126 @@
 
 @push('head')
 <style>
-  #so-ozet{max-width:1040px}
-  .so-kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:18px}
-  .so-k{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--golge);padding:16px;display:flex;flex-direction:column;gap:4px}
-  .so-k .v{font-size:26px;font-weight:900;line-height:1}
-  .so-k .l{font-size:12px;color:var(--sub);font-weight:600}
-  .so-k .ik{font-size:20px}
-  .durum-roz{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;color:#fff}
+#db{--mor1:#7C3AED;--mor2:#9D5DC8;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;--gold:#F6CE63;
+  --card:#fff;--card2:#f1f5f9;--bg:#f8fafc;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0}
+body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650}
+#db{background:var(--bg);min-height:calc(100vh - 60px)}#db *{box-sizing:border-box}
+#db .pano{max-width:1200px;margin:0 auto;padding:20px 22px 32px}
+#db a{text-decoration:none;color:inherit}
+#db .selam-kart{background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
+#db .selam-ikon{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#FB923C,#F43F5E);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#db .selam-ikon .material-icons-outlined{color:#fff;font-size:24px}
+#db .selam-kart .ad{font-size:17px;font-weight:700;color:var(--ink);line-height:1.1}
+#db .selam-kart .sube{font-size:12.5px;color:var(--sub)}
+#db .uclu{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+#db .ciro-mini{background:var(--card);border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:row;transition:opacity .12s}
+#db .ciro-mini:hover{opacity:.9}
+#db .ciro-mini .cubuk{width:5px;flex-shrink:0}
+#db .ciro-mini .ic{padding:14px;flex:1;min-width:0}
+#db .ciro-baslik-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+#db .ciro-ikon{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#db .ciro-ikon .material-icons-outlined{font-size:17px}
+#db .ciro-label{font-size:12.5px;font-weight:600;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#db .ciro-deger{font-size:27px;font-weight:800;color:var(--ink);letter-spacing:-.5px;line-height:1;margin-bottom:8px}
+#db .ciro-trend{display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600}
+#db .ciro-trend .material-icons-outlined{font-size:14px}
+#db .hizli{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+#db .bilgi-kart{background:var(--card);border-radius:15px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:13px;transition:opacity .12s}
+#db .bilgi-kart:hover{opacity:.9}
+#db .bk-row{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+#db .bk-ikon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#db .bk-ikon .material-icons-outlined{font-size:15px}
+#db .bk-label{font-size:11.5px;font-weight:600;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#db .bk-deger{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px;line-height:1;margin-bottom:3px}
+#db .bk-alt{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#db .kart{background:var(--card);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:16px;margin-bottom:16px}
+#db .kart-baslik{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+#db .kb-ikon{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#db .kb-ikon .material-icons-outlined{font-size:17px}
+#db .kb-ad{font-size:15px;font-weight:700;color:var(--ink)}
+#db .butce-bar{height:10px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:8px}
+#db .butce-bar div{height:100%;border-radius:6px;transition:width .7s cubic-bezier(.22,.68,0,1.2)}
+#db .bek-satir{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+#db .bek-satir:first-of-type{border-top:none}
+#db .roz{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;flex-shrink:0}
+@media(max-width:860px){#db .uclu{grid-template-columns:1fr}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
 
 @section('content')
-<div class="rk-body">
-<div id="so-ozet">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-    <span class="material-icons-outlined" style="font-size:30px;color:var(--mor1)">shopping_cart</span>
-    <div>
-      <div style="font-size:19px;font-weight:800;color:var(--ink)">Merhaba {{ $ad ?: 'Satın Alma' }} 👋</div>
-      <div class="rk-sub" style="font-size:12.5px">Satın alma operasyonunun özeti</div>
-    </div>
+@php
+  $saat = (int) date('H');
+  $selam = $saat < 12 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
+  $selamIk = $saat < 18 ? 'wb_sunny' : 'nightlight';
+  $tl0 = fn($v) => number_format((float)$v, 0, ',', '.') . ' ₺';
+  $butceY = $ay_butce > 0 ? round($ay_harcama / $ay_butce * 100) : null;
+  $butceC = $butceY === null ? 'var(--sub)' : ($butceY > 100 ? 'var(--kirmizi)' : ($butceY >= 85 ? 'var(--amber)' : 'var(--yesil)'));
+  $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']];
+@endphp
+<div id="db">
+<div class="pano">
+
+  {{-- Selam --}}
+  <div class="selam-kart">
+    <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
+    <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
   </div>
 
-  {{-- İş yükü --}}
-  <div class="so-kpi">
-    <a href="/satinalma-talep" class="so-k" style="text-decoration:none;color:inherit;border-left:4px solid var(--mor1)">
-      <span class="material-icons-outlined ik" style="color:var(--mor1)">assignment</span>
-      <span class="v">{{ $talep_yeni }}</span><span class="l">Yeni talep</span>
+  {{-- 3 büyük kart --}}
+  <div class="uclu">
+    <a href="/satinalma-talep" class="ciro-mini">
+      <div class="cubuk" style="background:var(--mor1)"></div>
+      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">assignment</span></div><span class="ciro-label">Yeni Talep</span></div>
+        <div class="ciro-deger">{{ $talep_yeni }}</div>
+        <div class="ciro-trend" style="color:var(--sub)">işlem bekliyor</div></div>
     </a>
-    <a href="/satinalma-talep" class="so-k" style="text-decoration:none;color:inherit">
-      <span class="material-icons-outlined ik" style="color:var(--mavi)">request_quote</span>
-      <span class="v">{{ $talep_teklif }}</span><span class="l">Teklif aşamasında</span>
+    <a href="/gelen-teklifler" class="ciro-mini">
+      <div class="cubuk" style="background:var(--yesil)"></div>
+      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">mark_email_read</span></div><span class="ciro-label">Teklif Geldi</span></div>
+        <div class="ciro-deger">{{ $teklif_geldi }}</div>
+        <div class="ciro-trend" style="color:var(--sub)">incelenecek</div></div>
     </a>
-    <a href="/satinalma-talep" class="so-k" style="text-decoration:none;color:inherit">
-      <span class="material-icons-outlined ik" style="color:var(--amber)">how_to_reg</span>
-      <span class="v">{{ $talep_onayda }}</span><span class="l">Onay bekleyen</span>
-    </a>
-    <a href="/gelen-teklifler" class="so-k" style="text-decoration:none;color:inherit;border-left:4px solid var(--yesil)">
-      <span class="material-icons-outlined ik" style="color:var(--yesil)">mark_email_read</span>
-      <span class="v">{{ $teklif_geldi }}</span><span class="l">Teklif geldi</span>
-    </a>
-  </div>
-
-  {{-- Durum --}}
-  <div class="so-kpi">
-    <a href="/satinalma-siparis" class="so-k" style="text-decoration:none;color:inherit">
-      <span class="material-icons-outlined ik" style="color:var(--mavi)">shopping_cart_checkout</span>
-      <span class="v">{{ $acik_siparis }}</span><span class="l">Açık sipariş</span>
-    </a>
-    <a href="/satinalma-siparis" class="so-k" style="text-decoration:none;color:inherit;{{ $geciken>0 ? 'border-left:4px solid var(--kirmizi)' : '' }}">
-      <span class="material-icons-outlined ik" style="color:var(--kirmizi)">running_with_errors</span>
-      <span class="v" style="{{ $geciken>0 ? 'color:var(--kirmizi)' : '' }}">{{ $geciken }}</span><span class="l">Geciken teslim</span>
-    </a>
-    <a href="/stok" class="so-k" style="text-decoration:none;color:inherit;{{ $kritik>0 ? 'border-left:4px solid var(--amber)' : '' }}">
-      <span class="material-icons-outlined ik" style="color:var(--amber)">inventory_2</span>
-      <span class="v" style="{{ $kritik>0 ? 'color:var(--amber)' : '' }}">{{ $kritik }}</span><span class="l">Kritik stok</span>
-    </a>
-    <a href="/satinalma-butce" class="so-k" style="text-decoration:none;color:inherit">
-      <span class="material-icons-outlined ik" style="color:var(--yesil)">savings</span>
-      <span class="v" style="font-size:19px">{{ number_format($ay_harcama,0,',','.') }} ₺</span>
-      <span class="l">Bu ay harcama @if($ay_butce>0) / {{ number_format($ay_butce,0,',','.') }} ₺ bütçe @endif</span>
+    <a href="/satinalma-butce" class="ciro-mini">
+      <div class="cubuk" style="background:var(--mavi)"></div>
+      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">payments</span></div><span class="ciro-label">Bu Ay Harcama</span></div>
+        <div class="ciro-deger" style="font-size:23px">{{ $tl0($ay_harcama) }}</div>
+        <div class="ciro-trend" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div></div>
     </a>
   </div>
 
-  {{-- Bütçe çubuğu --}}
-  @if ($ay_butce>0)
-    @php $y = round($ay_harcama/$ay_butce*100); $c = $y>100?'var(--kirmizi)':($y>=85?'var(--amber)':'var(--yesil)'); @endphp
-    <div class="rk-card" style="padding:14px;margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span>Bu ay bütçe kullanımı</span><span style="color:{{ $c }};font-weight:800">%{{ $y }}@if($y>100) · aşım!@endif</span></div>
-      <div style="background:var(--card2);border-radius:20px;height:14px;overflow:hidden"><div style="width:{{ min(100,$y) }}%;height:100%;background:{{ $c }}"></div></div>
-    </div>
+  {{-- 4 küçük kart --}}
+  <div class="hizli">
+    <a href="/satinalma-talep" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">how_to_reg</span></div><span class="bk-label">Onay Bekleyen</span></div><div class="bk-deger">{{ $talep_onayda }}</div><div class="bk-alt">talep</div></a>
+    <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">shopping_cart_checkout</span></div><span class="bk-label">Açık Sipariş</span></div><div class="bk-deger">{{ $acik_siparis }}</div><div class="bk-alt">devam eden</div></a>
+    <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--kirmizi) 15%,transparent);color:var(--kirmizi)"><span class="material-icons-outlined">running_with_errors</span></div><span class="bk-label">Geciken Teslim</span></div><div class="bk-deger" style="color:{{ $geciken>0?'var(--kirmizi)':'var(--ink)' }}">{{ $geciken }}</div><div class="bk-alt">sipariş</div></a>
+    <a href="/stok" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">inventory_2</span></div><span class="bk-label">Kritik Stok</span></div><div class="bk-deger" style="color:{{ $kritik>0?'var(--amber)':'var(--ink)' }}">{{ $kritik }}</div><div class="bk-alt">malzeme</div></a>
+  </div>
+
+  {{-- Bütçe --}}
+  @if ($ay_butce > 0)
+  <div class="kart">
+    <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">savings</span></div><span class="kb-ad">Bu Ay Bütçe Kullanımı</span>
+      <span style="margin-left:auto;font-weight:800;color:{{ $butceC }}">%{{ $butceY }}@if($butceY>100) · aşım!@endif</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sub)"><span>Harcama: {{ $tl0($ay_harcama) }}</span><span>Bütçe: {{ $tl0($ay_butce) }}</span></div>
+    <div class="butce-bar"><div style="width:{{ min(100,$butceY) }}%;background:{{ $butceC }}"></div></div>
+  </div>
   @endif
 
   {{-- Son talepler --}}
-  <div class="rk-bolum" style="margin:6px 0 8px"><span class="cubuk" style="background:var(--mor1)"></span><span class="b">Son Talepler</span></div>
-  @if (count($son_talepler))
-  <div class="rk-card" style="padding:0;overflow:hidden">
-    @php $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']]; @endphp
-    @foreach ($son_talepler as $t)
+  <div class="kart">
+    <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">history</span></div><span class="kb-ad">Son Talepler</span></div>
+    @forelse ($son_talepler as $t)
       @php [$dm,$dc] = $dr[$t->durum] ?? [$t->durum,'var(--sub)']; @endphp
-      <a href="/satinalma-talep" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line);text-decoration:none;color:inherit">
-        <span class="material-icons-outlined" style="color:var(--sub);font-size:18px">assignment</span>
-        <div style="flex:1"><div style="font-weight:600;font-size:13.5px">{{ $t->departman }}</div><div class="rk-sub" style="font-size:11.5px">{{ $t->isteyen_ad }} · {{ $t->kalem }} kalem · {{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</div></div>
-        <span class="durum-roz" style="background:{{ $dc }}">{{ $dm }}</span>
+      <a href="/satinalma-talep" class="bek-satir">
+        <span class="material-icons-outlined" style="color:var(--sub);font-size:19px">assignment</span>
+        <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:var(--ink)">{{ $t->departman }}</div><div style="font-size:11.5px;color:var(--sub)">{{ $t->isteyen_ad }} · {{ $t->kalem }} kalem · {{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</div></div>
+        <span class="roz" style="background:{{ $dc }}">{{ $dm }}</span>
       </a>
-    @endforeach
+    @empty
+      <div style="color:var(--sub);text-align:center;padding:16px">Henüz talep yok.</div>
+    @endforelse
   </div>
-  @else
-  <div class="rk-card" style="padding:24px;text-align:center;color:var(--sub)">Henüz talep yok.</div>
-  @endif
+
 </div>
 </div>
 @endsection
