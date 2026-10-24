@@ -53,7 +53,20 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-@media(max-width:860px){#db .uclu{grid-template-columns:1fr}#db .hizli{grid-template-columns:1fr 1fr}}
+#db .hero{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+#db .hero .selam-kart{flex:1;min-width:240px;margin-bottom:0}
+#db .grafik-kart{flex:1.5;min-width:300px;background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px}
+#db .gk-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+#db .gk-baslik{font-size:13px;font-weight:700;color:var(--ink)}
+#db .gk-top{font-size:15px;font-weight:800;color:var(--mor1)}
+#db .gk-bars{display:flex;align-items:flex-end;gap:9px;height:84px}
+#db .gk-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%}
+#db .gk-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end}
+#db .gk-bar{width:100%;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--mor1),var(--mavi));transform-origin:bottom;animation:gkbar .85s cubic-bezier(.22,.68,0,1.2) both}
+#db .gk-lbl{font-size:10px;color:var(--sub);font-weight:600}
+@keyframes gkbar{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+#db .uclu2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+@media(max-width:860px){#db .uclu2{grid-template-columns:1fr}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
 
@@ -63,6 +76,9 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   $selam = $saat < 12 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
   $selamIk = $saat < 18 ? 'wb_sunny' : 'nightlight';
   $tl0 = fn($v) => number_format((float)$v, 0, ',', '.') . ' ₺';
+  $aylarK = [1=>'Oca',2=>'Şub',3=>'Mar',4=>'Nis',5=>'May',6=>'Haz',7=>'Tem',8=>'Ağu',9=>'Eyl',10=>'Eki',11=>'Kas',12=>'Ara'];
+  $ayKisa = fn($ym) => $aylarK[(int)substr($ym,5,2)] ?? '';
+  $aylik = $aylik ?? [];
   $butceY = $ay_butce > 0 ? round($ay_harcama / $ay_butce * 100) : null;
   $butceC = $butceY === null ? 'var(--sub)' : ($butceY > 100 ? 'var(--kirmizi)' : ($butceY >= 85 ? 'var(--amber)' : 'var(--yesil)'));
   $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']];
@@ -92,14 +108,29 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 <div id="db">
 <div class="pano">
 
-  {{-- Selam --}}
-  <div class="selam-kart">
-    <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
-    <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
+  {{-- Selam + Harcama grafiği (yan yana) --}}
+  @php $maxH = max(1, collect($aylik)->max('tutar') ?: 1); @endphp
+  <div class="hero">
+    <div class="selam-kart">
+      <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
+      <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
+    </div>
+    <div class="grafik-kart">
+      <div class="gk-row"><span class="gk-baslik"><span class="material-icons-outlined" style="font-size:16px;color:var(--mor1);vertical-align:-3px">bar_chart</span> Son 6 Ay Harcama</span><span class="gk-top">{{ $tl0($ay_harcama) }} <span style="font-size:10px;color:var(--sub2);font-weight:600">bu ay</span></span></div>
+      <div class="gk-bars">
+        @foreach ($aylik as $m)
+          @php $h = round($m->tutar / $maxH * 100); @endphp
+          <div class="gk-col" title="{{ $ayKisa($m->ay) }}: {{ $tl0($m->tutar) }}">
+            <div class="gk-bar-wrap"><div class="gk-bar" style="height:{{ max(4,$h) }}%;animation-delay:{{ $loop->index * 0.08 }}s"></div></div>
+            <div class="gk-lbl">{{ $ayKisa($m->ay) }}</div>
+          </div>
+        @endforeach
+      </div>
+    </div>
   </div>
 
-  {{-- 3 büyük kart --}}
-  <div class="uclu">
+  {{-- 2 büyük kart --}}
+  <div class="uclu2">
     <a href="/satinalma-talep" class="ciro-mini">
       <div class="cubuk" style="background:var(--mor1)"></div>
       <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">assignment</span></div><span class="ciro-label">Yeni Talep</span></div>
@@ -111,12 +142,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">mark_email_read</span></div><span class="ciro-label">Teklif Geldi</span></div>
         <div class="ciro-deger">{{ $teklif_geldi }}</div>
         <div class="ciro-trend" style="color:var(--sub)">incelenecek</div></div>
-    </a>
-    <a href="/satinalma-butce" class="ciro-mini">
-      <div class="cubuk" style="background:var(--mavi)"></div>
-      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">payments</span></div><span class="ciro-label">Bu Ay Harcama</span></div>
-        <div class="ciro-deger" style="font-size:23px">{{ $tl0($ay_harcama) }}</div>
-        <div class="ciro-trend" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div></div>
     </a>
   </div>
 

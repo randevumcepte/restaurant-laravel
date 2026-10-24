@@ -6716,6 +6716,8 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', // İnsan Kaynakları: özet + izin yönetimi (gor_personel yetkisi)
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
+            '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
+
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
             '/yazici-ayarlari' => 'gor_yazici', '/bagli-cihazlar' => 'gor_bagli_cihaz', '/isletme-konum' => 'gor_isletme_konum',
@@ -10007,6 +10009,110 @@ Route::get('/api/patron/garson-ozet', function (Request $r) {
     ];
 });
 
+// ============================ SERVİS / GARSON İŞ AKIŞI (departman iş ekranı A + B) ============================
+// A) Garsonun canlı "yapılacaklar" akışı: bekleyen çağrılarım + servise hazır bekleyen ürünlerim + açık masalarım.
+// B) Servis Şefi (departman_sorumlu / sahip / müdür): ekip performansı + kapsama özeti.
+// Kapsam: bana atanmış masalar (_personelMasaIdler) ∪ açtığım açık masalar. Sorumlu/patron ya da hiç bağ yoksa → tüm şube.
+if (!function_exists('_servisKapsamMasaIdler')) {
+    function _servisKapsamMasaIdler($p)
+    {
+        $sube = (int) $p->sube_id; $pid = (int) $p->id;
+        $tumu = ((int) ($p->departman_sorumlu ?? 0)) === 1 || in_array(($p->rol ?? ''), ['sahip', 'mudur']);
+        if ($tumu) return null; // tüm şube
+        $atanmis = function_exists('_personelMasaIdler') ? _personelMasaIdler($sube, $pid) : null; // null = atama yok
+        $actigim = [];
+        try { $actigim = DB::table('adisyonlar')->where('sube_id', $sube)->where('acan_personel_id', $pid)->where('durum', 'acik')->pluck('masa_id')->filter()->map(fn ($x) => (int) $x)->all(); } catch (\Throwable $e) {}
+        if ($atanmis === null && empty($actigim)) return null; // hiç bağ yok → garson tüm şubeyi görsün (mevcut çağrı davranışıyla tutarlı)
+        $set = array_values(array_unique(array_merge($atanmis ?? [], $actigim)));
+        return empty($set) ? null : $set;
+    }
+}
+// A — Garson canlı iş akışı
+Route::get('/api/servis/akis', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sube = (int) $p->sube_id; $pid = (int) $p->id;
+    $masaSet = _servisKapsamMasaIdler($p); // null = tüm şube
+    $now = now();
+    $cagrilar = collect(); $hazir = collect(); $acik = collect();
+
+    // 1) Bekleyen çağrılarım
+    try {
+        if (function_exists('_masaCagriEnsure')) _masaCagriEnsure();
+        $cq = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
+            ->where('masa_cagrilari.sube_id', $sube)->where('masa_cagrilari.durum', 'bekliyor');
+        if ($masaSet !== null) $cq->whereIn('masa_cagrilari.masa_id', $masaSet);
+        $cagrilar = $cq->orderBy('masa_cagrilari.created_at')
+            ->get(['masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.masa_id', 'masa_cagrilari.tutar', 'masa_cagrilari.created_at', 'masalar.ad as masa']);
+    } catch (\Throwable $e) {}
+
+    // 2) Servise hazır bekleyen ürünlerim (mutfaktan çıktı, henüz götürülmedi)
+    try {
+        $hq = DB::table('adisyon_kalemleri')
+            ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+            ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->where('adisyonlar.sube_id', $sube)->where('adisyonlar.durum', 'acik')
+            ->where('adisyon_kalemleri.durum', 'hazir');
+        if ($masaSet !== null) $hq->whereIn('adisyonlar.masa_id', $masaSet);
+        $hazir = $hq->orderBy('adisyon_kalemleri.hazir_zamani')
+            ->get(['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.hazir_zamani', 'adisyonlar.id as adisyon_id', 'adisyonlar.masa_id', 'masalar.ad as masa']);
+    } catch (\Throwable $e) {}
+
+    // 3) Açık masalarım (açtığım adisyonlar)
+    try {
+        $acik = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
+            ->where('adisyonlar.sube_id', $sube)->where('adisyonlar.acan_personel_id', $pid)->where('adisyonlar.durum', 'acik')
+            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.masa_id', 'adisyonlar.acilis', 'masalar.ad as masa')
+            ->orderBy('adisyonlar.acilis')->get();
+    } catch (\Throwable $e) {}
+
+    $san = function ($t) use ($now) { try { return $t ? (int) $now->diffInSeconds(\Illuminate\Support\Carbon::parse($t)) : 0; } catch (\Throwable $e) { return 0; } };
+    $tipAd = ['garson' => 'Garson çağırıyor', 'servise_hazir' => 'Servise hazır', 'tasima' => 'Taşıma talebi', 'odeme' => 'Ödeme alınacak', 'hesap' => 'Hesap istiyor', 'siparis' => 'Sipariş verdi'];
+    return ['ok' => 1,
+        'cagrilar' => $cagrilar->map(fn ($c) => ['id' => (int) $c->id, 'tip' => $c->tip, 'tip_ad' => ($tipAd[$c->tip] ?? 'Çağrı'), 'masa' => $c->masa ?: ('Masa ' . $c->masa_id), 'masa_id' => (int) $c->masa_id, 'tutar' => $c->tutar !== null ? (float) $c->tutar : null, 'saniye' => $san($c->created_at)])->values()->all(),
+        'hazir' => $hazir->map(fn ($h) => ['id' => (int) $h->id, 'urun' => $h->urun_adi, 'adet' => (float) $h->adet, 'masa' => $h->masa ?: ('Masa ' . $h->masa_id), 'adisyon_id' => (int) $h->adisyon_id, 'saniye' => $san($h->hazir_zamani)])->values()->all(),
+        'acik_masalar' => $acik->map(fn ($a) => ['adisyon_id' => (int) $a->id, 'masa' => $a->masa ?: ('Masa ' . $a->masa_id), 'masa_id' => (int) $a->masa_id, 'toplam' => (float) $a->toplam, 'saniye' => $san($a->acilis)])->values()->all(),
+        'ozet' => ['cagri' => $cagrilar->count(), 'hazir' => $hazir->count(), 'acik' => $acik->count()],
+    ];
+});
+// A — Servise hazır ürünü "teslim ettim" (KDS'ten düşer: durum=servis)
+Route::post('/api/servis/teslim', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $id = (int) $r->kalem_id;
+    $k = DB::table('adisyon_kalemleri')->where('id', $id)->first();
+    if (!$k) return ['ok' => 0, 'hata' => 'Kalem bulunamadı.'];
+    $a = DB::table('adisyonlar')->where('id', $k->adisyon_id)->first();
+    if (!$a || (int) $a->sube_id !== (int) $p->sube_id) return ['ok' => 0, 'hata' => 'Yetki yok.'];
+    DB::table('adisyon_kalemleri')->where('id', $id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    return ['ok' => 1];
+});
+// B — Servis Şefi ekip görünümü (sorumlu/patron)
+Route::get('/api/servis/ekip', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sorumlu = ((int) ($p->departman_sorumlu ?? 0)) === 1 || in_array(($p->rol ?? ''), ['sahip', 'mudur']);
+    if (!$sorumlu) return response()->json(['ok' => 0, 'hata' => 'Bu ekran servis sorumlusuna açıktır.'], 403);
+    $sube = (int) $p->sube_id;
+    $period = in_array($r->get('period'), ['gunluk', 'haftalik', 'aylik', 'yillik']) ? $r->get('period') : 'gunluk';
+    $garsonlar = [];
+    try { $rapor = (new \App\Services\GarsonPerformans($sube))->rapor($period, null); $garsonlar = $rapor['garsonlar'] ?? []; } catch (\Throwable $e) {}
+    $acikMasa = 0; $bekleyenCagri = 0; $hazirBekleyen = 0;
+    try { $acikMasa = (int) DB::table('adisyonlar')->where('sube_id', $sube)->where('durum', 'acik')->count(); } catch (\Throwable $e) {}
+    try { if (function_exists('_masaCagriEnsure')) _masaCagriEnsure(); $bekleyenCagri = (int) DB::table('masa_cagrilari')->where('sube_id', $sube)->where('durum', 'bekliyor')->count(); } catch (\Throwable $e) {}
+    try { $hazirBekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $sube)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')->count(); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'period' => $period, 'garsonlar' => $garsonlar,
+        'ozet' => ['acik_masa' => $acikMasa, 'bekleyen_cagri' => $bekleyenCagri, 'servise_hazir_bekleyen' => $hazirBekleyen, 'aktif_garson' => collect($garsonlar)->where('adisyon', '>', 0)->count()],
+    ];
+});
+
+// WEB: Servis / Garson iş ekranı (İş Akışım + Ekip). API uçlarını JS ile poll eder (oturum cookie'si _apiPersonel fallback).
+Route::get('/servis', function () {
+    $pp = function_exists('_posPersonel') ? _posPersonel() : null;
+    $sorumlu = $pp && (((int) ($pp->departman_sorumlu ?? 0)) === 1 || in_array(($pp->rol ?? ''), ['sahip', 'mudur']));
+    return view('servis', ['ad' => $pp->ad ?? '', 'sorumlu' => $sorumlu]);
+});
+
 // ---------------- PERSONEL MASA/BOLGE ATAMA (hibrit: bolge ∪ ekstra masa) ----------------
 if (!function_exists('_atamaTablo')) {
     function _atamaTablo()
@@ -12016,9 +12122,11 @@ Route::get('/satinalma-ozet', function () {
     $d['acik_siparis'] = 0; try { if (Schema::hasTable('satinalma_siparisleri')) $d['acik_siparis'] = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])->count(); } catch (\Throwable $e) {}
     $d['geciken'] = function_exists('_gecikenSiparisler') ? _gecikenSiparisler($sid) : 0;
     $d['kritik'] = count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []);
-    $buAy = date('Y-m'); $harcama = 0;
-    try { if (Schema::hasTable('satinalma_siparisleri')) foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $s) if (substr((string) $s->tarih, 0, 7) === $buAy) $harcama += (float) $s->genel_toplam; } catch (\Throwable $e) {}
-    $d['ay_harcama'] = $harcama;
+    $buAy = date('Y-m'); $hm = [];
+    try { if (Schema::hasTable('satinalma_siparisleri')) foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $s) { $a = substr((string) $s->tarih, 0, 7); $hm[$a] = ($hm[$a] ?? 0) + (float) $s->genel_toplam; } } catch (\Throwable $e) {}
+    $d['ay_harcama'] = (float) ($hm[$buAy] ?? 0);
+    $d['aylik'] = [];
+    for ($i = 5; $i >= 0; $i--) { $a = \Carbon\Carbon::now()->subMonths($i)->format('Y-m'); $d['aylik'][] = (object) ['ay' => $a, 'tutar' => (float) ($hm[$a] ?? 0)]; }
     $d['ay_butce'] = 0; try { $d['ay_butce'] = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $buAy)->value('tutar') ?: 0); } catch (\Throwable $e) {}
     try {
         $d['son_talepler'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->orderByDesc('created_at')->limit(6)->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at'])
