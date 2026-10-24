@@ -8742,6 +8742,41 @@ Route::post('/departman-baglanti/smtp-test', function (Request $r) {
     $t = _epostaHesapTest($sid, $hesap);
     return redirect($geri)->with($t['ok'] ? 'ok' : 'hata', ($t['ok'] ? '✅ Test başarılı — ' : '❌ Test başarısız — ') . $t['not']);
 });
+if (!function_exists('_imapSonMesajlar')) {
+    // Gelen kutusundan son N mailin konusunu getir (okuma kanıtı). ext-imap yoksa/host yoksa açıklayıcı hata.
+    function _imapSonMesajlar($hesap, $n = 5)
+    {
+        if (!function_exists('imap_open')) return ['hata' => 'Sunucuda imap eklentisi yok — hosting panelinden php-imap aç.'];
+        if (empty($hesap->imap_host)) return ['hata' => 'IMAP sunucusu girilmemiş (okuma kapalı).'];
+        try {
+            $port = (int) ($hesap->imap_port ?: 993); $sec = $hesap->imap_guvenlik ?: 'ssl';
+            $bayrak = '/imap' . ($sec === 'ssl' ? '/ssl' : ($sec === 'tls' ? '/tls' : '/notls')) . '/novalidate-cert';
+            $mbox = '{' . $hesap->imap_host . ':' . $port . $bayrak . '}INBOX';
+            $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : '';
+            $imap = @imap_open($mbox, ($hesap->smtp_user ?: $hesap->email), $pass, 0, 1);
+            if (!$imap) return ['hata' => 'Bağlanamadı — kullanıcı/şifre ya da Gmail IMAP ayarı kapalı. ' . mb_substr((string) imap_last_error(), 0, 120)];
+            $sayi = (int) imap_num_msg($imap); $out = [];
+            for ($i = $sayi; $i >= max(1, $sayi - $n + 1); $i--) {
+                $ov = @imap_fetch_overview($imap, (string) $i, 0);
+                if ($ov && isset($ov[0])) { $o = $ov[0]; $out[] = ['konu' => (function_exists('imap_utf8') ? @imap_utf8($o->subject ?? '') : ($o->subject ?? '')), 'from' => mb_substr($o->from ?? '', 0, 60)]; }
+            }
+            @imap_close($imap);
+            return ['toplam' => $sayi, 'mesajlar' => $out];
+        } catch (\Throwable $e) { return ['hata' => mb_substr($e->getMessage(), 0, 140)]; }
+    }
+}
+Route::post('/departman-baglanti/imap-test', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $depId = (int) $r->input('dep'); $geri = '/departman-baglanti?dep=' . $depId;
+    $hesap = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first();
+    if (!$hesap) return redirect($geri)->with('hata', 'Önce kurumsal e-posta kaydet.');
+    $res = _imapSonMesajlar($hesap, 5);
+    if (!empty($res['hata'])) return redirect($geri)->with('hata', '📥 Okuma testi başarısız — ' . $res['hata']);
+    $sat = [];
+    foreach ($res['mesajlar'] as $m) $sat[] = '• ' . ($m['konu'] ?: '(konu yok)');
+    return redirect($geri)->with('ok', '📥 Gelen kutusu OKUNDU ✅ — kutuda ' . $res['toplam'] . ' mail var. Son ' . count($res['mesajlar']) . ': ' . (count($sat) ? implode('  ', $sat) : '(boş)'));
+});
 Route::post('/departman-baglanti/smtp-sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');

@@ -145,6 +145,9 @@
       <form method="POST" action="/departman-baglanti/smtp-test" style="display:inline">
         @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--mavi)" type="submit"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">wifi_tethering</span> Yeniden Test Et</button>
       </form>
+      <form method="POST" action="/departman-baglanti/imap-test" style="display:inline">
+        @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--mor1)" type="submit"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle">inbox</span> Gelen Kutusunu Oku</button>
+      </form>
       <form method="POST" action="/departman-baglanti/smtp-sil" style="display:inline" onsubmit="return rkOnayForm(this, 'Kurumsal SMTP kaldırılsın mı?', 'var(--kirmizi)', 'Evet, kaldır')">
         @csrf<input type="hidden" name="dep" value="{{ $dep->id }}"><button class="rk-btn bos" style="color:var(--kirmizi)" type="submit">Kaldır</button>
       </form>
