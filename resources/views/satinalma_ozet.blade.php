@@ -124,11 +124,11 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
         <div class="ciro-deger">{{ $teklif_geldi }}</div>
         <div class="ciro-trend" style="color:var(--sub)">incelenecek</div></div>
     </a>
-    <a href="/satinalma-butce" class="ciro-mini">
+    <a href="/satinalma-siparis" class="ciro-mini">
       <div class="cubuk" style="background:var(--mavi)"></div>
-      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">payments</span></div><span class="ciro-label">Bu Ay Harcama</span></div>
-        <div class="ciro-deger" style="font-size:23px">{{ $tl0($ay_harcama) }}</div>
-        <div class="ciro-trend" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div></div>
+      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">shopping_cart_checkout</span></div><span class="ciro-label">Siparişler</span></div>
+        <div class="ciro-deger">{{ $acik_siparis }}</div>
+        <div class="ciro-trend" style="color:{{ ($geciken ?? 0) > 0 ? 'var(--kirmizi)' : 'var(--sub)' }}">@if(($geciken ?? 0) > 0){{ $geciken }} geciken ⚠️@else açık sipariş @endif</div></div>
     </a>
   </div>
 
