@@ -95,7 +95,8 @@
       <select class="rk-inp" id="f_saglayici" onchange="saglayiciDoldur(this.value)" style="margin-bottom:10px">
         <option value="">— Sağlayıcı seç —</option>
         <option value="gmail">Gmail / Google Workspace</option>
-        <option value="outlook">Outlook / Microsoft 365 / Exchange</option>
+        <option value="hotmail">Outlook.com / Hotmail / Live (kişisel)</option>
+        <option value="outlook">Microsoft 365 / Exchange (kurumsal)</option>
         <option value="diger">Diğer (IMAP/SMTP elle gir)</option>
       </select>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -156,8 +157,9 @@
 @push('scripts')
 <script>
 var SAGLAYICI_PRESET = {
-  gmail:   { smtp_host:'smtp.gmail.com',     smtp_port:465, smtp_guvenlik:'ssl', imap_host:'imap.gmail.com',        imap_port:993, imap_guvenlik:'ssl' },
-  outlook: { smtp_host:'smtp.office365.com', smtp_port:587, smtp_guvenlik:'tls', imap_host:'outlook.office365.com', imap_port:993, imap_guvenlik:'ssl' }
+  gmail:   { smtp_host:'smtp.gmail.com',       smtp_port:465, smtp_guvenlik:'ssl', imap_host:'imap.gmail.com',        imap_port:993, imap_guvenlik:'ssl' },
+  hotmail: { smtp_host:'smtp-mail.outlook.com', smtp_port:587, smtp_guvenlik:'tls', imap_host:'outlook.office365.com', imap_port:993, imap_guvenlik:'ssl' },
+  outlook: { smtp_host:'smtp.office365.com',   smtp_port:587, smtp_guvenlik:'tls', imap_host:'outlook.office365.com', imap_port:993, imap_guvenlik:'ssl' }
 };
 function saglayiciDoldur(v) {
   if (v === 'diger') { document.getElementById('f_smtp_host').value=''; document.getElementById('f_imap_host').value=''; document.getElementById('f_smtp_host').focus(); return; }
@@ -173,6 +175,7 @@ function saglayiciDoldur(v) {
   var sel = document.getElementById('f_saglayici'); if (!sel) return;
   var h = (document.getElementById('f_smtp_host') || {}).value || '';
   if (/gmail/i.test(h)) sel.value = 'gmail';
+  else if (/smtp-mail\.outlook/i.test(h)) sel.value = 'hotmail';
   else if (/office365|outlook|exchange/i.test(h)) sel.value = 'outlook';
   else if (h) sel.value = 'diger';
 })();
