@@ -6724,6 +6724,8 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_stok', // satın alma talep havuzu + reçeteler
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', // yeni: tedarikçi karnesi / fatura OCR / bütçe
         ];
     }
 }

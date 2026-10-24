@@ -139,7 +139,13 @@
         <nav class="rk-menu">
             @foreach ($gruplar as $grupAd => $items)
                 @php
-                    $gorunur = array_values(array_filter($items, fn ($it) => !($_pp && isset($_harita[$it[0]]) && !_panelYetkiVar($_pp, $_harita[$it[0]]))));
+                    $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
+                        if (!$_pp) return true;
+                        if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
+                        if (in_array($it[0], ['/bildirim-ayar'])) return true;                 // herkese açık (kişisel bildirim tercihi)
+                        if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
+                        return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
+                    }));
                     $grupAktif = collect($gorunur)->contains(fn ($it) => $it[0] === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $it[0]));
                 @endphp
                 @if (count($gorunur))
