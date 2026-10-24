@@ -85,14 +85,21 @@
     <div class="db-not">Kendi mail sunucun (ör. mail.firman.com) veya Gmail/Outlook <b>uygulama şifresi</b> ile gönderim. Okuma için sunucuda IMAP gerekir (opsiyonel).</div>
     <form method="POST" action="/departman-baglanti/smtp">
       @csrf<input type="hidden" name="dep" value="{{ $dep->id }}">
+      <label class="rk-lbl">Sağlayıcı — seç, sunucu ayarları otomatik dolsun</label>
+      <select class="rk-inp" id="f_saglayici" onchange="saglayiciDoldur(this.value)" style="margin-bottom:10px">
+        <option value="">— Sağlayıcı seç —</option>
+        <option value="gmail">Gmail / Google Workspace</option>
+        <option value="outlook">Outlook / Microsoft 365 / Exchange</option>
+        <option value="diger">Diğer (IMAP/SMTP elle gir)</option>
+      </select>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px"><label class="rk-lbl">E-posta Adresi</label><input class="rk-inp" name="email" type="email" value="{{ $smtp->email ?? '' }}" placeholder="satinalma@firma.com" required></div>
         <div style="flex:1;min-width:160px"><label class="rk-lbl">Gönderen Adı</label><input class="rk-inp" name="gonderen_ad" value="{{ $smtp->gonderen_ad ?? '' }}" placeholder="{{ $dep->ad }}"></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <div style="flex:2;min-width:200px"><label class="rk-lbl">SMTP Sunucu</label><input class="rk-inp" name="smtp_host" value="{{ $smtp->smtp_host ?? '' }}" placeholder="smtp.gmail.com / smtp.office365.com"></div>
-        <div style="width:90px"><label class="rk-lbl">Port</label><input class="rk-inp" name="smtp_port" type="number" value="{{ $smtp->smtp_port ?? 587 }}"></div>
-        <div style="width:110px"><label class="rk-lbl">Güvenlik</label><select class="rk-inp" name="smtp_guvenlik">
+        <div style="flex:2;min-width:200px"><label class="rk-lbl">SMTP Sunucu</label><input class="rk-inp" id="f_smtp_host" name="smtp_host" value="{{ $smtp->smtp_host ?? '' }}" placeholder="smtp.gmail.com / smtp.office365.com"></div>
+        <div style="width:90px"><label class="rk-lbl">Port</label><input class="rk-inp" id="f_smtp_port" name="smtp_port" type="number" value="{{ $smtp->smtp_port ?? 587 }}"></div>
+        <div style="width:110px"><label class="rk-lbl">Güvenlik</label><select class="rk-inp" id="f_smtp_guvenlik" name="smtp_guvenlik">
           @foreach (['tls'=>'TLS','ssl'=>'SSL','yok'=>'Yok'] as $k=>$v)<option value="{{ $k }}" @selected(($smtp->smtp_guvenlik ?? 'tls')===$k)>{{ $v }}</option>@endforeach
         </select></div>
       </div>
@@ -103,9 +110,9 @@
       <div style="border-top:1px dashed var(--line);margin:12px 0 10px;padding-top:10px">
         <div class="rk-lbl" style="margin-bottom:4px">📥 Gelen Mail Okuma (IMAP) — AI tedarikçi yanıtlarını buradan okur</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <div style="flex:2;min-width:200px"><label class="rk-lbl">IMAP Sunucu</label><input class="rk-inp" name="imap_host" value="{{ $smtp->imap_host ?? '' }}" placeholder="imap.gmail.com / outlook.office365.com"></div>
-          <div style="width:90px"><label class="rk-lbl">Port</label><input class="rk-inp" name="imap_port" type="number" value="{{ $smtp->imap_port ?? 993 }}"></div>
-          <div style="width:110px"><label class="rk-lbl">Güvenlik</label><select class="rk-inp" name="imap_guvenlik">
+          <div style="flex:2;min-width:200px"><label class="rk-lbl">IMAP Sunucu</label><input class="rk-inp" id="f_imap_host" name="imap_host" value="{{ $smtp->imap_host ?? '' }}" placeholder="imap.gmail.com / outlook.office365.com"></div>
+          <div style="width:90px"><label class="rk-lbl">Port</label><input class="rk-inp" id="f_imap_port" name="imap_port" type="number" value="{{ $smtp->imap_port ?? 993 }}"></div>
+          <div style="width:110px"><label class="rk-lbl">Güvenlik</label><select class="rk-inp" id="f_imap_guvenlik" name="imap_guvenlik">
             @foreach (['ssl'=>'SSL','tls'=>'TLS','yok'=>'Yok'] as $k=>$v)<option value="{{ $k }}" @selected(($smtp->imap_guvenlik ?? 'ssl')===$k)>{{ $v }}</option>@endforeach
           </select></div>
         </div>
@@ -139,4 +146,30 @@
 
 </div>
 </div>
+
+@push('scripts')
+<script>
+var SAGLAYICI_PRESET = {
+  gmail:   { smtp_host:'smtp.gmail.com',     smtp_port:465, smtp_guvenlik:'ssl', imap_host:'imap.gmail.com',        imap_port:993, imap_guvenlik:'ssl' },
+  outlook: { smtp_host:'smtp.office365.com', smtp_port:587, smtp_guvenlik:'tls', imap_host:'outlook.office365.com', imap_port:993, imap_guvenlik:'ssl' }
+};
+function saglayiciDoldur(v) {
+  if (v === 'diger') { document.getElementById('f_smtp_host').value=''; document.getElementById('f_imap_host').value=''; document.getElementById('f_smtp_host').focus(); return; }
+  var p = SAGLAYICI_PRESET[v]; if (!p) return;
+  document.getElementById('f_smtp_host').value = p.smtp_host;
+  document.getElementById('f_smtp_port').value = p.smtp_port;
+  document.getElementById('f_smtp_guvenlik').value = p.smtp_guvenlik;
+  document.getElementById('f_imap_host').value = p.imap_host;
+  document.getElementById('f_imap_port').value = p.imap_port;
+  document.getElementById('f_imap_guvenlik').value = p.imap_guvenlik;
+}
+(function () {
+  var sel = document.getElementById('f_saglayici'); if (!sel) return;
+  var h = (document.getElementById('f_smtp_host') || {}).value || '';
+  if (/gmail/i.test(h)) sel.value = 'gmail';
+  else if (/office365|outlook|exchange/i.test(h)) sel.value = 'outlook';
+  else if (h) sel.value = 'diger';
+})();
+</script>
+@endpush
 @endsection
