@@ -964,10 +964,12 @@ function staAksiyonCiz(durum) {
     let html = '';
     if (['yeni','teklif','onayda'].includes(durum)) {
         // satın almacı: patrona gönder
-        const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Her kaleme teklif girip ⭐ ile birini öner, sonra patrona gönder.';
+        const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Fiyat Araştır ile tüm tedarikçilere teklif iste (AI yanıtları buraya düşürür), ya da elle teklif gir → ⭐ ile öner → Patrona Gönder.';
         html += `<div class="sta-aks-info">${notu}</div>`;
-        if (durum !== 'onayda')
+        if (durum !== 'onayda') {
+            html += `<button class="sta-aks-btn" style="background:#7C3AED" onclick="staFiyatArastir()"><span class="material-icons-outlined">request_quote</span>Fiyat Araştır (tüm tedarikçilere)</button>`;
             html += `<button class="sta-aks-btn" style="background:#F59E0B" onclick="staPatronaGonder()"><span class="material-icons-outlined">send</span>Patrona Gönder (Onaya)</button>`;
+        }
         // Anlaşmalı tedarikçiye ⭐ önerilen + fiyatı olan kalemler → patron onayı atlanır, direkt sipariş + tedarikçiye WhatsApp
         html += `<button class="sta-aks-btn" style="background:#0EA5E9" onclick="staAnlasmaliDirekt()"><span class="material-icons-outlined">bolt</span>Anlaşmalıdan Direkt Sipariş</button>`;
         html += `<div class="sta-aks-info" style="font-size:11px;opacity:.75">⚡ <b>Anlaşmalı</b> tedarikçiye ⭐ önerdiğin + fiyatını girdiğin kalemler, patron onayı beklemeden direkt siparişe döner ve tedarikçiye WhatsApp sipariş gider.</div>`;
@@ -1026,6 +1028,16 @@ window.staPatronSec = async function(kalemId, tedId) {
 };
 
 /* ─── Patrona gönder / onayla / PO ─────────────────────── */
+window.staFiyatArastir = function() {
+    const git = async () => {
+        toast('Fiyat isteği gönderiliyor…', '#7C3AED');
+        const res = await api('/satinalma-talep/fiyat-arastir', { id: aktifTalepId });
+        if (res.ok) { toast(`✓ ${res.gonderilen} tedarikçiye fiyat isteği gönderildi (mail ${res.mail}, WhatsApp ${res.wa}). Yanıtlar geldikçe buraya düşecek.`, '#10B981'); staDetayAc(aktifTalepId); }
+        else toast('⚠ ' + (res.hata || 'Gönderilemedi'), '#F43F5E');
+    };
+    if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', git, 'var(--mor1)', 'Evet, gönder');
+    else git();
+};
 window.staPatronaGonder = async function() {
     const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId });
     if (res.ok) { toast('✓ Patrona gönderildi', '#10B981'); staDetListeYenile('onayda'); staDetayAc(aktifTalepId); }

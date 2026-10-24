@@ -15662,6 +15662,31 @@ Route::post('/satinalma-talep/durum-guncelle', function (Request $r) {
     DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $p->sube_id)->update(['durum' => $durum, 'updated_at' => now()]);
     return response()->json(['ok' => true]);
 });
+// Satın almacı: FİYAT ARAŞTIR — talepteki ürünleri sağlayan TÜM tedarikçilere mail+WhatsApp fiyat isteği (RFQ)
+Route::post('/satinalma-talep/fiyat-arastir', function (Request $r) {
+    _satinalmaTalepEnsure();
+    $p = _apiPersonel($r);
+    if (!$p || !in_array(($p->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return response()->json(['ok' => false, 'hata' => 'Yetkisiz'], 403);
+    $sid = $p->sube_id; $id = (int) $r->input('id');
+    if (function_exists('_rfqEnsure')) _rfqEnsure();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $talep = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$talep) return response()->json(['ok' => false, 'hata' => 'Talep bulunamadı']);
+    $mats = [];
+    foreach (DB::table('talep_kalemleri')->where('talep_id', $id)->get() as $k) if ($k->malzeme_id) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim];
+    if (!$mats) return response()->json(['ok' => false, 'hata' => 'Talepte stok malzemesine bağlı kalem yok']);
+    $supMap = [];
+    foreach ($mats as $m) {
+        try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $m['malzeme_id'])->where('tm.aktif', 1)->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
+            foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
+    }
+    if (!$supMap) return response()->json(['ok' => false, 'hata' => 'Bu ürünlere bağlı tedarikçi yok (tedarikçi-malzeme kataloğu boş). Önce tedarikçilere ürün/fiyat ekle.']);
+    $res = ['gonderilen' => 0, 'mail' => 0, 'wa' => 0];
+    if (function_exists('_rfqSupMapGonder')) $res = _rfqSupMapGonder($sid, $supMap, $id, 0);
+    try { DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {}
+    return response()->json(['ok' => true, 'gonderilen' => $res['gonderilen'], 'mail' => $res['mail'], 'wa' => $res['wa']]);
+});
 // Satın almacı: bir kaleme tedarikçi teklifi ekle (RFQ)
 Route::post('/satinalma-talep/teklif-ekle', function (Request $r) {
     _satinalmaTalepEnsure();
