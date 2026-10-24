@@ -53,16 +53,26 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-#db .selam-oneri{margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:9px;background:color-mix(in srgb,var(--mor1) 10%,var(--card));border:1.5px solid color-mix(in srgb,var(--mor1) 35%,transparent);border-radius:16px;padding:11px 16px;text-decoration:none;transition:.15s}
-#db .selam-oneri:hover{background:color-mix(in srgb,var(--mor1) 18%,var(--card));transform:translateY(-1px)}
-#db .selam-oneri .so-ik{font-size:26px;color:var(--mor1)}
-#db .selam-oneri .so-ust{font-size:10.5px;font-weight:700;color:var(--mor1);letter-spacing:.3px}
-#db .selam-oneri .so-alt{font-size:14px;font-weight:800;color:var(--ink);line-height:1.15}
+#db .ai-panel{flex:1;min-width:220px;margin:0 6px;background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 9%,var(--card)),color-mix(in srgb,var(--mavi) 7%,var(--card)));border:1.5px solid color-mix(in srgb,var(--mor1) 22%,transparent);border-radius:16px;padding:11px 14px;display:flex;flex-direction:column;gap:7px}
+#db .ai-panel .aip-head{display:flex;align-items:center;gap:8px}
+#db .ai-panel .aip-orb{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 55%,transparent);animation:aiorb 2.2s ease-out infinite}
+#db .ai-panel .aip-orb .material-icons-outlined{font-size:16px;color:#fff}
+@keyframes aiorb{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 50%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+#db .ai-panel .aip-baslik{font-size:12.5px;font-weight:800;color:var(--ink)}
+#db .ai-panel .aip-canli{font-size:10px;font-weight:700;color:var(--yesil);margin-left:auto}
+#db .ai-panel .aip-body{display:flex;flex-direction:column;gap:5px}
+#db .ai-panel .aip-oneri{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:10px;background:var(--card);text-decoration:none;transition:.13s}
+#db .ai-panel .aip-oneri:hover{background:color-mix(in srgb,var(--mor1) 10%,var(--card));transform:translateX(2px)}
+#db .ai-panel .aip-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#db .ai-panel .aip-mtn{flex:1;font-size:12px;font-weight:600;color:var(--ink);line-height:1.3}
+#db .ai-panel .aip-ok{font-size:17px;color:var(--sub2)}
+#db .ai-panel .aip-bos{font-size:12.5px;font-weight:600;color:var(--sub);padding:4px 2px}
+#db .ai-panel .aip-tumu{font-size:11px;font-weight:700;color:var(--mor1);text-decoration:none;align-self:flex-start}
 #db .selam-harcama{text-align:right;flex-shrink:0;background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:16px;padding:12px 20px;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--mor1) 38%,transparent)}
 #db .selam-harcama .sh-lbl{font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:4px;display:flex;align-items:center;gap:5px;justify-content:flex-end}
 #db .selam-harcama .sh-deger{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px}
 #db .selam-harcama .sh-alt{font-size:12px;font-weight:800;margin-top:6px;color:#fff !important;background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;display:inline-block}
-@media(max-width:760px){#db .selam-oneri .so-ust,#db .selam-oneri .so-alt{display:none}#db .selam-oneri{padding:11px 13px}}
+@media(max-width:900px){#db .selam-kart{flex-wrap:wrap}#db .ai-panel{order:3;flex-basis:100%;margin:6px 0 0}}
 @media(max-width:620px){#db .selam-harcama{display:none}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
@@ -108,11 +118,31 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   {{-- Selam --}}
   <div class="selam-kart">
     <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
-    <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
-    <a href="/siparis-onerisi" class="selam-oneri">
-      <span class="material-icons-outlined so-ik">auto_awesome</span>
-      <div><div class="so-ust">AI Önerisi</div><div class="so-alt">Sipariş Önerisi</div></div>
-    </a>
+    <div style="flex-shrink:0"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
+    @php
+      $oneriler = [];
+      if (($kritik ?? 0) > 0)      $oneriler[] = ['ik' => 'warning_amber',     'renk' => 'var(--kirmizi)', 'mtn' => $kritik.' kritik stok var — hemen sipariş öner', 'link' => '/siparis-onerisi'];
+      if (($geciken ?? 0) > 0)     $oneriler[] = ['ik' => 'local_shipping',    'renk' => 'var(--amber)',   'mtn' => $geciken.' sipariş gecikti — tedarikçiyi takip et', 'link' => '/satinalma-siparis'];
+      if (($teklif_geldi ?? 0) > 0) $oneriler[] = ['ik' => 'mark_email_read',   'renk' => 'var(--mor1)',    'mtn' => $teklif_geldi.' teklif incelemeni bekliyor — en uygunu seç', 'link' => '/gelen-teklifler'];
+      if (($talep_onayda ?? 0) > 0) $oneriler[] = ['ik' => 'how_to_reg',        'renk' => 'var(--mavi)',    'mtn' => $talep_onayda.' talep onayda bekliyor', 'link' => '/satinalma-talep'];
+      if (($talep_yeni ?? 0) > 0)  $oneriler[] = ['ik' => 'search',             'renk' => 'var(--mor1)',    'mtn' => $talep_yeni.' yeni talep — fiyat araştır', 'link' => '/satinalma-talep'];
+      $oneriler = array_slice($oneriler, 0, 3);
+    @endphp
+    <div class="ai-panel">
+      <div class="aip-head"><span class="aip-orb"><span class="material-icons-outlined">auto_awesome</span></span> <span class="aip-baslik">AI Satın Alma Asistanı</span> <span class="aip-canli">● canlı</span></div>
+      <div class="aip-body">
+        @forelse ($oneriler as $o)
+          <a href="{{ $o['link'] }}" class="aip-oneri">
+            <span class="aip-dot" style="background:{{ $o['renk'] }}"></span>
+            <span class="aip-mtn">{{ $o['mtn'] }}</span>
+            <span class="material-icons-outlined aip-ok">chevron_right</span>
+          </a>
+        @empty
+          <div class="aip-bos"><span class="material-icons-outlined" style="color:var(--yesil);font-size:18px;vertical-align:-4px">check_circle</span> Stok ve siparişler yolunda — acil aksiyon yok.</div>
+        @endforelse
+      </div>
+      <a href="/satinalma-asistan" class="aip-tumu">AI'ya soru sor · tüm öneriler <span class="material-icons-outlined" style="font-size:15px;vertical-align:-3px">arrow_forward</span></a>
+    </div>
     <div class="selam-harcama">
       <div class="sh-lbl"><span class="material-icons-outlined" style="font-size:14px;vertical-align:-2px">payments</span> Bu Ay Harcama</div>
       <div class="sh-deger">{{ $tl0($ay_harcama) }}</div>
