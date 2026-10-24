@@ -67,9 +67,9 @@
     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <label class="rk-lbl" style="margin:0">İstenen teslim tarihi (ops.):</label>
       <input type="date" name="beklenen_teslim" class="rk-inp" style="width:auto;padding:7px 10px">
-      <button class="rk-btn" style="background:var(--yesil)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Seçilenlerden Sipariş Oluştur</button>
+      <button class="rk-btn" style="background:var(--yesil)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Sipariş Oluştur ve Tedarikçiye Gönder</button>
     </div>
-    <div class="rk-sub" style="font-size:11.5px;margin:6px 2px 0">İşaretli teklifler tedarikçiye göre gruplanıp satın alma siparişine dönüşür (KDV %10). Teslim tarihi girersen teslim takibi otomatik çalışır.</div>
+    <div class="rk-sub" style="font-size:11.5px;margin:6px 2px 0">Tek tıkta: işaretli teklifler tedarikçiye göre gruplanır, sipariş oluşur (KDV %10) ve <b>otomatik mail + WhatsApp</b> ile onay linki gönderilir. Detaya girmene gerek yok.</div>
   </form>
   @else
   <div class="rk-card" style="padding:28px;text-align:center">

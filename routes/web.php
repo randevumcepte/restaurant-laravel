@@ -9338,7 +9338,7 @@ Route::post('/gelen-teklifler/siparis', function (Request $r) {
     }
     if (!$grup) return redirect('/gelen-teklifler')->with('hata', 'Seçilen teklifler stok malzemesine bağlı değil, sipariş oluşturulamadı.');
     $teslim = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('beklenen_teslim')) ? $r->input('beklenen_teslim') : null;
-    $olusan = 0; $pid = $bp->id ?? null;
+    $olusan = 0; $gonderildi = 0; $kanalSet = []; $pid = $bp->id ?? null;
     foreach ($grup as $tid => $kalemler) {
         try {
             $ara = 0; foreach ($kalemler as $k) $ara += $k['miktar'] * $k['fiyat'];
@@ -9348,11 +9348,13 @@ Route::post('/gelen-teklifler/siparis', function (Request $r) {
             foreach ($kalemler as $k) {
                 DB::table('satinalma_siparis_kalemleri')->insert(['siparis_id' => $spid, 'malzeme_id' => $k['malzeme_id'], 'miktar' => $k['miktar'], 'birim_fiyat' => $k['fiyat'], 'kdv_yuzde' => 10, 'satir_toplam' => round($k['miktar'] * $k['fiyat'] * 1.10, 2), 'created_at' => now(), 'updated_at' => now()]);
             }
-            // teklifin RFQ'sunu "sipariş verildi" işaretle (opsiyonel)
             $olusan++;
+            // TEK TIKTA: oluştur + otomatik tedarikçiye gönder (mail + WhatsApp, onay linkiyle)
+            try { $sr = _siparisGonderHelper($sid, $spid); if (!empty($sr['ok'])) { $gonderildi++; foreach ($sr['kanal'] as $kk) $kanalSet[$kk] = true; } } catch (\Throwable $e) {}
         } catch (\Throwable $e) {}
     }
-    $msg = $olusan . ' satın alma siparişi oluşturuldu.' . ($atlanan ? (' (' . $atlanan . ' ürün stok malzemesine bağlı olmadığı için atlandı.)') : '');
+    $kanalMsg = $kanalSet ? (' — ' . implode(' + ', array_keys($kanalSet)) . ' ile onay linki iletildi') : ' (tedarikçi e-postası yoksa iletilemedi — tedarikçi kartına mail ekle)';
+    $msg = '✅ ' . $olusan . ' sipariş oluşturuldu, ' . $gonderildi . ' tanesi tedarikçiye otomatik gönderildi' . $kanalMsg . '.' . ($atlanan ? (' (' . $atlanan . ' eşleşmeyen ürün atlandı.)') : '');
     return redirect('/satinalma-siparis')->with('ok', $msg);
 });
 Route::post('/rfq-test-kur', function (Request $r) {
@@ -10979,30 +10981,80 @@ Route::post('/satinalma-siparis/durum', function (Request $r) {
         return redirect('/satinalma-siparis-detay?id=' . $s->id)->with('sa_ok', 'Durum güncellendi.');
     } catch (\Throwable $e) { return redirect('/satinalma-siparis')->with('sa_hata', 'Güncellenemedi.'); }
 });
+if (!function_exists('_siparisOnayEnsure')) {
+    function _siparisOnayEnsure()
+    {
+        if (cache()->get('siparis_onay_ok')) return;
+        foreach ([
+            ['onay_token', fn ($t) => $t->string('onay_token', 40)->nullable()->index()],
+            ['onay_durum', fn ($t) => $t->string('onay_durum', 16)->nullable()], // bekliyor|onaylandi|degisiklik
+            ['onay_not', fn ($t) => $t->text('onay_not')->nullable()],
+            ['onay_at', fn ($t) => $t->timestamp('onay_at')->nullable()],
+        ] as [$kol, $cl]) { try { if (Schema::hasTable('satinalma_siparisleri') && !Schema::hasColumn('satinalma_siparisleri', $kol)) Schema::table('satinalma_siparisleri', $cl); } catch (\Throwable $e) {} }
+        cache()->put('siparis_onay_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_siparisGonderHelper')) {
+    // Siparişi tedarikçiye gönder (onay linkiyle): mail + WhatsApp. ['ok','kanal','hata'] döner. Token üretir.
+    function _siparisGonderHelper($sid, $spid)
+    {
+        _siparisOnayEnsure();
+        $s = DB::table('satinalma_siparisleri')->where('id', $spid)->where('sube_id', $sid)->first();
+        if (!$s) return ['ok' => false, 'kanal' => [], 'hata' => 'Sipariş bulunamadı'];
+        $ted = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
+        if (!$ted) return ['ok' => false, 'kanal' => [], 'hata' => 'Tedarikçi tanımlı değil'];
+        if (empty($ted->email) && empty($ted->telefon)) return ['ok' => false, 'kanal' => [], 'hata' => 'tedarikçinin e-postası/telefonu yok'];
+        $token = $s->onay_token ?? null;
+        if (!$token) { $token = \Illuminate\Support\Str::random(32); try { DB::table('satinalma_siparisleri')->where('id', $spid)->update(['onay_token' => $token, 'onay_durum' => 'bekliyor']); } catch (\Throwable $e) {} }
+        $link = url('/siparis/onay/' . $token);
+        $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        $kalemler = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $spid)->get();
+        $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+        $satir = '';
+        foreach ($kalemler as $k) { $ad = $malAd[$k->malzeme_id] ?? 'Ürün'; $br = $birim[$k->alis_birim_id] ?? ''; $satir .= "\n- " . $ad . ' ' . rtrim(rtrim(number_format((float) $k->miktar, 2, ',', ''), '0'), ',') . ' ' . $br . ' x ' . number_format((float) $k->birim_fiyat, 2, ',', '.') . ' TL'; }
+        $teslim = $s->beklenen_teslim ? ("\nİstenen teslim: " . \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y')) : '';
+        $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " siparişi (" . $s->siparis_no . "):" . $satir . "\n\nGenel toplam: " . number_format((float) $s->genel_toplam, 2, ',', '.') . " TL (KDV dahil)." . $teslim . "\n\nSiparişi görüntüle, ONAYLA ya da değişiklik iste:\n" . $link . "\n\nTeşekkürler.";
+        $kanal = [];
+        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Sipariş Onayı — ' . $s->siparis_no, $msg)) $kanal[] = 'e-posta';
+        if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) $kanal[] = 'WhatsApp';
+        if ($kanal) { try { DB::table('satinalma_siparisleri')->where('id', $spid)->update(['durum' => 'gonderildi', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+        return ['ok' => (bool) $kanal, 'kanal' => $kanal];
+    }
+}
 Route::post('/satinalma-siparis/gonder', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-siparis')->with('sa_hata', 'Yetkisiz.');
-    $sid = _webSubeId(); $id = (int) $r->input('id'); $geri = '/satinalma-siparis-detay?id=' . $id;
-    $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
-    if (!$s) return redirect('/satinalma-siparis')->with('sa_hata', 'Sipariş bulunamadı.');
+    $sid = _webSubeId(); $id = (int) $r->input('id');
+    $res = _siparisGonderHelper($sid, $id);
+    return redirect('/satinalma-siparis-detay?id=' . $id)->with($res['ok'] ? 'sa_ok' : 'sa_hata', $res['ok'] ? ('✅ Sipariş tedarikçiye gönderildi (' . implode(' + ', $res['kanal']) . '). Onay linki iletildi.') : ('Gönderilemedi — ' . ($res['hata'] ?? 'SMTP/e-posta ayarı') . '.'));
+});
+// TEDARİKÇİ ONAY SAYFASI (public, token ile) — şık sipariş + Onayla / Değişiklik İste + Yazdır(PDF)
+Route::get('/siparis/onay/{token}', function ($token) {
+    _siparisOnayEnsure();
+    $s = DB::table('satinalma_siparisleri')->where('onay_token', $token)->first();
+    if (!$s) abort(404);
     $ted = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
-    if (!$ted) return redirect($geri)->with('sa_hata', 'Tedarikçi tanımlı değil.');
-    if (empty($ted->email) && empty($ted->telefon)) return redirect($geri)->with('sa_hata', 'Tedarikçinin e-postası/telefonu yok. Tedarikçi kartına ekle.');
+    $sube = DB::table('subeler')->where('id', $s->sube_id)->first();
     $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
-    $kalemler = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->get();
-    $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
-    $satir = '';
-    foreach ($kalemler as $k) {
-        $ad = $malAd[$k->malzeme_id] ?? 'Ürün'; $br = $birim[$k->alis_birim_id] ?? '';
-        $satir .= "\n- " . $ad . ' ' . rtrim(rtrim(number_format((float) $k->miktar, 2, ',', ''), '0'), ',') . ' ' . $br . ' × ' . number_format((float) $k->birim_fiyat, 2, ',', '.') . ' ₺';
-    }
-    $teslim = $s->beklenen_teslim ? ("\nİstenen teslim tarihi: " . \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y')) : '';
-    $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " olarak aşağıdaki ürünleri sipariş ediyoruz:" . $satir . "\n\nGenel toplam: " . number_format((float) $s->genel_toplam, 2, ',', '.') . " ₺ (KDV dahil)." . "\nSipariş no: " . $s->siparis_no . $teslim . "\n\nTeşekkürler.";
-    $kanal = [];
-    if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Satın Alma Siparişi — ' . $s->siparis_no, $msg)) $kanal[] = 'e-posta';
-    if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) $kanal[] = 'WhatsApp';
-    if ($kanal) { try { DB::table('satinalma_siparisleri')->where('id', $id)->update(['durum' => 'gonderildi', 'updated_at' => now()]); } catch (\Throwable $e) {} }
-    return redirect($geri)->with($kanal ? 'sa_ok' : 'sa_hata', $kanal ? ('✅ Sipariş tedarikçiye gönderildi (' . implode(' + ', $kanal) . ').') : 'Gönderilemedi — tedarikçi e-postası veya SMTP ayarını kontrol et.');
+    $kalemler = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $s->id)->get()
+        ->map(function ($k) use ($birim, $malAd) { $k->malzeme = $malAd[$k->malzeme_id] ?? 'Ürün'; $k->birim = $birim[$k->alis_birim_id] ?? ''; return $k; });
+    return view('siparis_onay', ['s' => $s, 'ted' => $ted, 'sube' => $sube, 'kalemler' => $kalemler, 'token' => $token]);
+});
+Route::post('/siparis/onay/{token}/onayla', function ($token) {
+    _siparisOnayEnsure();
+    $s = DB::table('satinalma_siparisleri')->where('onay_token', $token)->first(); if (!$s) abort(404);
+    try { DB::table('satinalma_siparisleri')->where('id', $s->id)->update(['onay_durum' => 'onaylandi', 'durum' => 'onaylandi', 'onay_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($s->sube_id, '✅ Sipariş Onaylandı', ($s->siparis_no) . ' tedarikçi tarafından onaylandı.', ['tur' => 'siparis_onay', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci']); } catch (\Throwable $e) {}
+    return redirect('/siparis/onay/' . $token)->with('ok', 'Siparişi onayladınız. Teşekkürler! Satın alma bilgilendirildi.');
+});
+Route::post('/siparis/onay/{token}/degisiklik', function (Request $r, $token) {
+    _siparisOnayEnsure();
+    $s = DB::table('satinalma_siparisleri')->where('onay_token', $token)->first(); if (!$s) abort(404);
+    $not = mb_substr(trim((string) $r->input('not')), 0, 500);
+    if ($not === '') return redirect('/siparis/onay/' . $token)->with('hata', 'Lütfen değişiklik talebinizi yazın.');
+    try { DB::table('satinalma_siparisleri')->where('id', $s->id)->update(['onay_durum' => 'degisiklik', 'onay_not' => $not, 'updated_at' => now()]); } catch (\Throwable $e) {}
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($s->sube_id, '✏️ Tedarikçi Değişiklik İstedi', ($s->siparis_no) . ': ' . mb_substr($not, 0, 80), ['tur' => 'siparis_onay', 'id' => (string) $s->id], ['sahip', 'mudur', 'satinalmaci']); } catch (\Throwable $e) {}
+    return redirect('/siparis/onay/' . $token)->with('ok', 'Değişiklik talebiniz iletildi. Satın alma sizinle iletişime geçecek.');
 });
 Route::get('/satinalma-siparis-detay', function (Request $r) {
     $sid = _webSubeId(); $id = (int) $r->query('id');

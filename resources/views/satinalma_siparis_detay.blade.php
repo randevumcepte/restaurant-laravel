@@ -39,6 +39,14 @@
   </div>
 </div>
 
+@if (($s->onay_durum ?? '') === 'onaylandi')
+  <div class="rk-flash ok" style="margin-bottom:12px">✅ Tedarikçi bu siparişi ONAYLADI{{ $s->onay_at ? ' · '.\Carbon\Carbon::parse($s->onay_at)->format('d.m.Y H:i') : '' }}. Mal teslimi beklenebilir.</div>
+@elseif (($s->onay_durum ?? '') === 'degisiklik')
+  <div class="rk-flash err" style="margin-bottom:12px;background:color-mix(in srgb,var(--amber) 14%,transparent);color:#9a6a06">✏️ Tedarikçi DEĞİŞİKLİK istedi: "{{ $s->onay_not }}" — görüşüp güncelle, sonra tekrar "Tedarikçiye Gönder".</div>
+@elseif (($s->onay_durum ?? '') === 'bekliyor')
+  <div class="rk-sub" style="font-size:12.5px;margin-bottom:12px">⏳ Tedarikçi onayı bekleniyor — onay linki gönderildi.</div>
+@endif
+
 <div class="rk-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
   <div class="rk-card"><div class="rk-sub2" style="font-size:11px">Tedarikçi</div><div class="rk-ink" style="font-weight:700;font-size:15px">{{ $tedarikci->ad ?? '—' }}</div>@if($tedarikci && !empty($tedarikci->telefon))<div class="rk-sub2" style="font-size:12px;margin-top:2px">{{ $tedarikci->telefon }}</div>@endif</div>
   <div class="rk-card"><div class="rk-sub2" style="font-size:11px">Sipariş / Beklenen Teslim</div><div class="rk-ink" style="font-weight:600">{{ $s->tarih ? \Carbon\Carbon::parse($s->tarih)->format('d.m.Y') : '—' }}</div><div class="rk-sub2" style="font-size:12px">Teslim: {{ $s->beklenen_teslim ? \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y') : '—' }}</div></div>
