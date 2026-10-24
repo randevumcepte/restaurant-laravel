@@ -11712,6 +11712,50 @@ Route::get('/tedarikci-karne', function () {
     } catch (\Throwable $e) {}
     return view('tedarikci_karne', ['rows' => $rows]);
 });
+// ===== SATINALMA BÜTÇE (aylık bütçe vs gerçek harcama) =====
+if (!function_exists('_butceEnsure')) {
+    function _butceEnsure()
+    {
+        if (cache()->get('satinalma_butce_ok')) return;
+        if (!Schema::hasTable('satinalma_butce')) {
+            try { Schema::create('satinalma_butce', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('yil_ay', 7); $t->decimal('tutar', 14, 2)->default(0);
+                $t->timestamps(); $t->index(['sube_id', 'yil_ay']);
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('satinalma_butce_ok', 1, now()->addHours(12));
+    }
+}
+Route::get('/satinalma-butce', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    _butceEnsure(); $sid = _webSubeId();
+    $aylar = []; for ($i = 5; $i >= 0; $i--) $aylar[] = \Carbon\Carbon::now()->subMonths($i)->format('Y-m');
+    $butceler = DB::table('satinalma_butce')->where('sube_id', $sid)->pluck('tutar', 'yil_ay');
+    $harcama = [];
+    try { if (Schema::hasTable('satinalma_siparisleri')) {
+        foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $r) {
+            $ay = substr((string) $r->tarih, 0, 7); $harcama[$ay] = ($harcama[$ay] ?? 0) + (float) $r->genel_toplam;
+        }
+    } } catch (\Throwable $e) {}
+    $satirlar = [];
+    foreach ($aylar as $ay) { $b = (float) ($butceler[$ay] ?? 0); $h = (float) ($harcama[$ay] ?? 0); $satirlar[] = (object) ['ay' => $ay, 'butce' => $b, 'harcama' => $h, 'yuzde' => $b > 0 ? round($h / $b * 100) : null]; }
+    $buAy = date('Y-m');
+    return view('satinalma_butce', ['satirlar' => array_reverse($satirlar), 'buAy' => $buAy, 'mevcutButce' => (float) ($butceler[$buAy] ?? 0), 'duzenle' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::post('/satinalma-butce/kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/satinalma-butce')->with('hata', 'Bütçeyi yalnızca sahip/müdür belirler.');
+    _butceEnsure(); $sid = _webSubeId();
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string) $r->input('yil_ay')) ? $r->input('yil_ay') : date('Y-m');
+    $tutar = max(0, (float) str_replace(',', '.', (string) $r->input('tutar')));
+    try {
+        $var = DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $ay)->first();
+        if ($var) DB::table('satinalma_butce')->where('id', $var->id)->update(['tutar' => $tutar, 'updated_at' => now()]);
+        else DB::table('satinalma_butce')->insert(['sube_id' => $sid, 'yil_ay' => $ay, 'tutar' => $tutar, 'created_at' => now(), 'updated_at' => now()]);
+    } catch (\Throwable $e) { return redirect('/satinalma-butce')->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/satinalma-butce')->with('ok', $ay . ' bütçesi kaydedildi: ' . number_format($tutar, 2, ',', '.') . ' ₺.');
+});
 // ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
 Route::get('/fiyat-radari', function () {
     $sid = _webSubeId();
