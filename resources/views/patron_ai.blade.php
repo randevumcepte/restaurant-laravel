@@ -67,8 +67,7 @@
     <div style="display:flex;gap:6px">
       <a href="/patron-ai?tip=sabah" class="rk-btn {{ (!$demo && ($tip??'sabah')==='sabah')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'sabah')==='sabah')?'background:var(--mor1)':'' }}">Sabah</a>
       <a href="/patron-ai?tip=aksam" class="rk-btn {{ (!$demo && ($tip??'')==='aksam')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'')==='aksam')?'background:var(--mor1)':'' }}">Akşam</a>
-      <a href="/patron-ai?demo=1" class="rk-btn {{ $demo?'':'bos' }}" style="padding:6px 12px;{{ $demo?'background:var(--amber)':'' }}" title="Sahte veriyle önizleme">🎭 Demo</a>
-      <a href="/patron-ai?{{ $demo?'demo=1':'tip='.($tip??'sabah').'&force=1' }}" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
+      <a href="/patron-ai?tip={{ $tip??'sabah' }}&force=1" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
     </div>
   </div>
 
