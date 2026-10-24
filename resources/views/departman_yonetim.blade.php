@@ -3,6 +3,18 @@
 @section('baslik', 'Departman & Yetki')
 @section('title', 'Departman Yönetimi')
 
+@push('head')
+<style>
+  .ikon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px;max-height:168px;overflow-y:auto;
+    background:var(--card2);border-radius:12px;padding:8px;margin-top:4px}
+  .ikon-opt{display:flex;align-items:center;justify-content:center;height:44px;border-radius:10px;cursor:pointer;
+    border:1px solid transparent;background:var(--card);color:var(--sub2);transition:.12s}
+  .ikon-opt:hover{background:var(--line)}
+  .ikon-opt.sec{border-color:var(--mor1);background:rgba(124,58,237,.12);color:var(--mor1)}
+  .ikon-opt .material-icons-outlined{font-size:22px}
+</style>
+@endpush
+
 @section('content')
 <div class="rk-body">
 
@@ -112,8 +124,22 @@
           </div>
         </div>
 
-        <label class="rk-lbl">İkon (Material)</label>
-        <input type="text" name="ikon" id="d_ikon" class="rk-inp" placeholder="inventory_2">
+        <label class="rk-lbl">İkon — tıklayıp seç</label>
+        <input type="hidden" name="ikon" id="d_ikon" value="inventory_2">
+        @php $ikonSet = [
+          'inventory_2','shopping_cart','local_shipping','warehouse','receipt_long','fact_check','inventory',
+          'restaurant','soup_kitchen','kitchen','outdoor_grill','set_meal','bakery_dining','lunch_dining','dinner_dining','icecream','blender','ac_unit',
+          'local_bar','liquor','local_cafe','emoji_food_beverage','room_service','table_restaurant','restaurant_menu',
+          'point_of_sale','payments','account_balance','savings','account_balance_wallet',
+          'groups','badge','person','support_agent','handshake','campaign','verified',
+          'cleaning_services','security','engineering','build','plumbing','computer','wifi',
+          'delivery_dining','two_wheeler','store','apartment','menu_book','local_dining','egg','spa','health_and_safety',
+        ]; @endphp
+        <div id="ikonSecici" class="ikon-grid">
+          @foreach ($ikonSet as $ik)
+            <div class="ikon-opt" data-ikon="{{ $ik }}" title="{{ $ik }}" onclick="ikonSec('{{ $ik }}')"><span class="material-icons-outlined">{{ $ik }}</span></div>
+          @endforeach
+        </div>
 
         <label class="rk-lbl">Üst Grup (ağaç) — örn. Mutfak (BOH), İdari Ofis</label>
         <input type="text" name="grup" id="d_grup" class="rk-inp" placeholder="Mutfak (BOH)">
@@ -205,7 +231,7 @@ function depAc(d) {
   document.getElementById('d_ad').value = d ? (d.ad || '') : '';
   document.getElementById('d_kod').value = d ? (d.kod || '') : '';
   document.getElementById('d_renk').value = (d && d.renk) ? d.renk : '#4F46E5';
-  document.getElementById('d_ikon').value = d ? (d.ikon || '') : '';
+  ikonSec((d && d.ikon) ? d.ikon : 'inventory_2');
   document.getElementById('d_grup').value = d ? (d.grup || '') : '';
   document.getElementById('d_unvanlar').value = (d && d.unvanlar) ? d.unvanlar.join('\n') : '';
   document.getElementById('d_ai').value = (d && d.ai_erisim) ? d.ai_erisim : 'kapali';
@@ -226,5 +252,9 @@ function depAc(d) {
   document.getElementById('depModal').classList.add('acik');
 }
 function depKapat() { document.getElementById('depModal').classList.remove('acik'); }
+function ikonSec(ik) {
+  document.getElementById('d_ikon').value = ik;
+  document.querySelectorAll('#ikonSecici .ikon-opt').forEach(function (o) { o.classList.toggle('sec', o.dataset.ikon === ik); });
+}
 </script>
 @endpush
