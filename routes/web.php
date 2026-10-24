@@ -8340,10 +8340,17 @@ if (!function_exists('_baglantiEnsure')) {
             }); } catch (\Throwable $e) {}
         }
         cache()->put('patron_ai_baglanti_ensure_ok', 1, now()->addHours(12));
+        // departman_id kolonu (departman bazlı bağlantı) — ayrı cache anahtarı: mevcut kurulumlarda da eklenir
+        if (!cache()->get('patron_ai_baglanti_dep_ok')) {
+            try { if (Schema::hasTable('patron_ai_baglantilar') && !Schema::hasColumn('patron_ai_baglantilar', 'departman_id')) {
+                Schema::table('patron_ai_baglantilar', function ($t) { $t->unsignedBigInteger('departman_id')->nullable()->after('sube_id')->index(); });
+            } } catch (\Throwable $e) {}
+            cache()->put('patron_ai_baglanti_dep_ok', 1, now()->addHours(12));
+        }
     }
 }
 if (!function_exists('_baglantiKaydet')) {
-    function _baglantiKaydet($sid, $saglayici, $email, $access, $refresh, $scope, $expSec)
+    function _baglantiKaydet($sid, $saglayici, $email, $access, $refresh, $scope, $expSec, $depId = null)
     {
         _baglantiEnsure();
         try {
@@ -8351,24 +8358,28 @@ if (!function_exists('_baglantiKaydet')) {
             $veri = ['hesap_email' => $email, 'erisim_token' => $enc($access), 'kapsam' => $scope,
                 'gecerlilik' => now()->addSeconds(max(60, (int) $expSec)), 'durum' => 'aktif', 'updated_at' => now()];
             if ($refresh) $veri['yenileme_token'] = $enc($refresh); // refresh sadece ilk onayda gelir; varsa güncelle
-            $row = DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->first();
+            $q = DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici);
+            $depId === null ? $q->whereNull('departman_id') : $q->where('departman_id', (int) $depId);
+            $row = $q->first();
             if ($row) DB::table('patron_ai_baglantilar')->where('id', $row->id)->update($veri);
-            else { $veri['sube_id'] = (int) $sid; $veri['saglayici'] = $saglayici; $veri['created_at'] = now(); DB::table('patron_ai_baglantilar')->insert($veri); }
+            else { $veri['sube_id'] = (int) $sid; $veri['saglayici'] = $saglayici; $veri['departman_id'] = $depId !== null ? (int) $depId : null; $veri['created_at'] = now(); DB::table('patron_ai_baglantilar')->insert($veri); }
         } catch (\Throwable $e) {}
     }
 }
 if (!function_exists('_baglantiGetir')) {
-    function _baglantiGetir($sid, $saglayici)
+    function _baglantiGetir($sid, $saglayici, $depId = null)
     {
         _baglantiEnsure();
-        try { return DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->where('durum', 'aktif')->first(); } catch (\Throwable $e) { return null; }
+        try { $q = DB::table('patron_ai_baglantilar')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->where('durum', 'aktif');
+            $depId === null ? $q->whereNull('departman_id') : $q->where('departman_id', (int) $depId);
+            return $q->first(); } catch (\Throwable $e) { return null; }
     }
 }
 if (!function_exists('_oauthAccessToken')) {
     // Geçerli access token döndür; süresi dolduysa refresh token ile yenile. Yoksa null.
-    function _oauthAccessToken($sid, $saglayici)
+    function _oauthAccessToken($sid, $saglayici, $depId = null)
     {
-        $row = _baglantiGetir($sid, $saglayici);
+        $row = _baglantiGetir($sid, $saglayici, $depId);
         if (!$row) return null;
         try {
             $dec = fn ($v) => $v ? \Illuminate\Support\Facades\Crypt::decryptString($v) : null;
@@ -8383,7 +8394,7 @@ if (!function_exists('_oauthAccessToken')) {
                 $tenant = config('services.graph_oauth.tenant', 'common');
                 $cid = config('services.graph_oauth.client_id'); $sec = config('services.graph_oauth.client_secret');
                 $url = 'https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token';
-                $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token', 'scope' => 'offline_access Mail.Read Calendars.Read User.Read'];
+                $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token', 'scope' => 'offline_access Mail.Read Mail.Send Calendars.Read User.Read'];
             }
             $ch = curl_init($url);
             curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query($body)]);
@@ -8406,6 +8417,41 @@ if (!function_exists('_oauthHttpGet')) {
             if ($kod < 200 || $kod >= 300) return null;
             return json_decode((string) $res, true);
         } catch (\Throwable $e) { return null; }
+    }
+}
+if (!function_exists('_oauthHttpPost')) {
+    function _oauthHttpPost($url, $token, $jsonBody)
+    {
+        try {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12, CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($jsonBody, JSON_UNESCAPED_UNICODE),
+                CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Content-Type: application/json', 'Accept: application/json']]);
+            $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+            return $kod >= 200 && $kod < 300;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+// ---- GÖNDERME (Gmail API / Graph sendMail) — REST, ext-imap/SMTP gerekmez ----
+if (!function_exists('_gmailGonder')) {
+    function _gmailGonder($sid, $to, $konu, $govde, $depId = null, $gonderenAd = null)
+    {
+        $tok = _oauthAccessToken($sid, 'google', $depId); if (!$tok) return false;
+        $konuMime = '=?UTF-8?B?' . base64_encode($konu) . '?=';
+        $ham = "To: " . $to . "\r\nSubject: " . $konuMime . "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" . $govde;
+        $raw = rtrim(strtr(base64_encode($ham), '+/', '-_'), '=');
+        return _oauthHttpPost('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', $tok, ['raw' => $raw]);
+    }
+}
+if (!function_exists('_graphGonder')) {
+    function _graphGonder($sid, $to, $konu, $govde, $depId = null)
+    {
+        $tok = _oauthAccessToken($sid, 'graph', $depId); if (!$tok) return false;
+        return _oauthHttpPost('https://graph.microsoft.com/v1.0/me/sendMail', $tok, [
+            'message' => ['subject' => $konu, 'body' => ['contentType' => 'Text', 'content' => $govde],
+                'toRecipients' => [['emailAddress' => ['address' => $to]]]],
+            'saveToSentItems' => true,
+        ]);
     }
 }
 // ---- Connector'lar: yalnız konu+gönderen+sayı (gövde YOK) ----
@@ -8491,23 +8537,26 @@ if (!function_exists('_patronAiDisKaynak')) {
 if (!function_exists('_baglantiYetki')) {
     function _baglantiYetki() { try { $bp = _posPersonel(); return $bp && in_array(($bp->rol ?? ''), ['sahip', 'mudur']); } catch (\Throwable $e) { return false; } }
 }
-Route::get('/baglanti/google', function () {
+Route::get('/baglanti/google', function (Request $r) {
     if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
     $cid = config('services.google_oauth.client_id');
-    if (!$cid) return redirect('/entegrasyonlar')->with('hata', 'Google OAuth yapılandırılmamış (GOOGLE_OAUTH_CLIENT_ID).');
+    $dep = (int) $r->input('dep');
+    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Google OAuth yapılandırılmamış (GOOGLE_OAUTH_CLIENT_ID).');
     $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
-    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state]);
+    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state, 'oauth_dep' => $dep ?: null]);
     $q = http_build_query([
         'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
-        'scope' => 'openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+        'scope' => 'openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.readonly',
         'access_type' => 'offline', 'prompt' => 'consent', 'state' => $state,
     ]);
     return redirect('https://accounts.google.com/o/oauth2/v2/auth?' . $q);
 });
 Route::get('/baglanti/google/callback', function (Request $r) {
-    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
-    if ($r->input('state') !== session('oauth_state')) return redirect('/entegrasyonlar')->with('hata', 'Oturum doğrulaması başarısız.');
-    $code = (string) $r->input('code'); if ($code === '') return redirect('/entegrasyonlar')->with('hata', 'Yetki iptal edildi.');
+    $depId = session('oauth_dep') ?: null;
+    $geri = $depId ? ('/departman-baglanti?dep=' . $depId) : '/entegrasyonlar';
+    if (!_baglantiYetki()) return redirect($geri)->with('hata', 'Yetkisiz.');
+    if ($r->input('state') !== session('oauth_state')) return redirect($geri)->with('hata', 'Oturum doğrulaması başarısız.');
+    $code = (string) $r->input('code'); if ($code === '') return redirect($geri)->with('hata', 'Yetki iptal edildi.');
     $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
     try {
         $ch = curl_init('https://oauth2.googleapis.com/token');
@@ -8520,51 +8569,58 @@ Route::get('/baglanti/google/callback', function (Request $r) {
         $email = null;
         $ui = _oauthHttpGet('https://www.googleapis.com/oauth2/v2/userinfo', $d['access_token']);
         if ($ui) $email = $ui['email'] ?? null;
-        _baglantiKaydet(_webSubeId(), 'google', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600);
+        _baglantiKaydet(_webSubeId(), 'google', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600, $depId);
         \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId());
-    } catch (\Throwable $e) { return redirect('/entegrasyonlar')->with('hata', 'Bağlantı hatası.'); }
-    return redirect('/entegrasyonlar')->with('ok', 'Google (Gmail + Takvim) bağlandı.');
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Bağlantı hatası.'); }
+    return redirect($geri)->with('ok', ($depId ? 'Bu departman için Gmail' : 'Google (Gmail + Takvim)') . ' bağlandı — AI artık bu kutudan gönderip okuyabilir.');
 });
-Route::get('/baglanti/graph', function () {
+Route::get('/baglanti/graph', function (Request $r) {
     if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
     $cid = config('services.graph_oauth.client_id');
-    if (!$cid) return redirect('/entegrasyonlar')->with('hata', 'Microsoft OAuth yapılandırılmamış (GRAPH_OAUTH_CLIENT_ID).');
+    $dep = (int) $r->input('dep');
+    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Microsoft OAuth yapılandırılmamış (GRAPH_OAUTH_CLIENT_ID).');
     $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
     $tenant = config('services.graph_oauth.tenant', 'common');
-    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state]);
+    $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state, 'oauth_dep' => $dep ?: null]);
     $q = http_build_query([
         'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
-        'scope' => 'offline_access openid email Mail.Read Calendars.Read User.Read', 'state' => $state, 'prompt' => 'consent',
+        'scope' => 'offline_access openid email Mail.Read Mail.Send Calendars.Read User.Read', 'state' => $state, 'prompt' => 'consent',
     ]);
     return redirect('https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/authorize?' . $q);
 });
 Route::get('/baglanti/graph/callback', function (Request $r) {
-    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
-    if ($r->input('state') !== session('oauth_state')) return redirect('/entegrasyonlar')->with('hata', 'Oturum doğrulaması başarısız.');
-    $code = (string) $r->input('code'); if ($code === '') return redirect('/entegrasyonlar')->with('hata', 'Yetki iptal edildi.');
+    $depId = session('oauth_dep') ?: null;
+    $geri = $depId ? ('/departman-baglanti?dep=' . $depId) : '/entegrasyonlar';
+    if (!_baglantiYetki()) return redirect($geri)->with('hata', 'Yetkisiz.');
+    if ($r->input('state') !== session('oauth_state')) return redirect($geri)->with('hata', 'Oturum doğrulaması başarısız.');
+    $code = (string) $r->input('code'); if ($code === '') return redirect($geri)->with('hata', 'Yetki iptal edildi.');
     $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
     $tenant = config('services.graph_oauth.tenant', 'common');
     try {
         $ch = curl_init('https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token');
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query([
             'code' => $code, 'client_id' => config('services.graph_oauth.client_id'), 'client_secret' => config('services.graph_oauth.client_secret'),
-            'redirect_uri' => $redirect, 'grant_type' => 'authorization_code', 'scope' => 'offline_access openid email Mail.Read Calendars.Read User.Read'])]);
+            'redirect_uri' => $redirect, 'grant_type' => 'authorization_code', 'scope' => 'offline_access openid email Mail.Read Mail.Send Calendars.Read User.Read'])]);
         $res = curl_exec($ch); curl_close($ch);
         $d = json_decode((string) $res, true);
         if (empty($d['access_token'])) return redirect('/entegrasyonlar')->with('hata', 'Token alınamadı.');
         $email = null;
         $me = _oauthHttpGet('https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName', $d['access_token']);
         if ($me) $email = $me['mail'] ?? ($me['userPrincipalName'] ?? null);
-        _baglantiKaydet(_webSubeId(), 'graph', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600);
+        _baglantiKaydet(_webSubeId(), 'graph', $email, $d['access_token'], $d['refresh_token'] ?? null, $d['scope'] ?? '', $d['expires_in'] ?? 3600, $depId);
         \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId());
-    } catch (\Throwable $e) { return redirect('/entegrasyonlar')->with('hata', 'Bağlantı hatası.'); }
-    return redirect('/entegrasyonlar')->with('ok', 'Microsoft 365 (Outlook + Takvim) bağlandı.');
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Bağlantı hatası.'); }
+    return redirect($geri)->with('ok', ($depId ? 'Bu departman için Outlook' : 'Microsoft 365 (Outlook + Takvim)') . ' bağlandı — AI artık bu kutudan gönderip okuyabilir.');
 });
 Route::post('/baglanti/kaldir', function (Request $r) {
     if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yetkisiz.');
     $s = in_array($r->input('saglayici'), ['google', 'graph']) ? $r->input('saglayici') : null;
-    if ($s) { try { DB::table('patron_ai_baglantilar')->where('sube_id', _webSubeId())->where('saglayici', $s)->delete(); \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId()); } catch (\Throwable $e) {} }
-    return redirect('/entegrasyonlar')->with('ok', 'Bağlantı kaldırıldı.');
+    $dep = (int) $r->input('dep');
+    $geri = $dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar';
+    if ($s) { try { $q = DB::table('patron_ai_baglantilar')->where('sube_id', _webSubeId())->where('saglayici', $s);
+        $dep ? $q->where('departman_id', $dep) : $q->whereNull('departman_id'); $q->delete();
+        \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId()); } catch (\Throwable $e) {} }
+    return redirect($geri)->with('ok', 'Bağlantı kaldırıldı.');
 });
 // WEB: Entegrasyonlar (bağlantı yönetimi)
 Route::get('/entegrasyonlar', function () {
