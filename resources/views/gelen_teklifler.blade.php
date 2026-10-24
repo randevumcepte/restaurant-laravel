@@ -33,32 +33,42 @@
   <div class="rk-sub" style="font-size:11.5px;margin:0 2px 16px">Test akışı: <b>1)</b> örnek veri kur → <b>2)</b> RFQ gönder (kritik ürünlerin tedarikçilerine mail gider) → Gmail'ine gelen RFQ mailine fiyatla yanıt ver → <b>3)</b> AI okusun.</div>
 
   @if (count($teklifler))
-  <div class="rk-card" style="padding:0;overflow:hidden">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="background:var(--card2);text-align:left">
-          <th style="padding:10px 12px">Tedarikçi</th>
-          <th style="padding:10px 12px">Ürün</th>
-          <th style="padding:10px 12px;text-align:right">Fiyat</th>
-          <th style="padding:10px 12px">Kanal</th>
-          <th style="padding:10px 12px">RFQ</th>
-          <th style="padding:10px 12px">Zaman</th>
-        </tr>
-      </thead>
-      <tbody>
-        @foreach ($teklifler as $t)
-        <tr style="border-top:1px solid var(--line)">
-          <td style="padding:10px 12px;font-weight:600">{{ $t->tedarikci_ad }}</td>
-          <td style="padding:10px 12px">{{ $t->malzeme_ad ?: $t->urun_ad }}</td>
-          <td style="padding:10px 12px;text-align:right;font-weight:800;color:var(--yesil)">{{ number_format((float)$t->fiyat, 2, ',', '.') }} ₺</td>
-          <td style="padding:10px 12px"><span class="rk-rozet" style="background:{{ $t->kaynak==='wa' ? 'var(--yesil)' : 'var(--mavi)' }}">{{ $t->kaynak==='wa' ? 'WhatsApp' : 'E-posta' }}</span></td>
-          <td style="padding:10px 12px;color:var(--sub)">RFQ-{{ $t->rfq_id }}</td>
-          <td style="padding:10px 12px;color:var(--sub);font-size:11.5px">{{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</td>
-        </tr>
-        @endforeach
-      </tbody>
-    </table>
-  </div>
+  <form method="POST" action="/gelen-teklifler/siparis">
+    @csrf
+    <div class="rk-sub" style="font-size:12px;margin:0 2px 8px">✅ <b>EN UCUZ</b> teklifler otomatik işaretli. İstediğini değiştir, sonra <b>sipariş oluştur</b>.</div>
+    <div class="rk-card" style="padding:0;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--card2);text-align:left">
+            <th style="padding:10px 12px;width:34px"></th>
+            <th style="padding:10px 12px">Tedarikçi</th>
+            <th style="padding:10px 12px">Ürün</th>
+            <th style="padding:10px 12px;text-align:right">Fiyat</th>
+            <th style="padding:10px 12px">Kanal</th>
+            <th style="padding:10px 12px">RFQ</th>
+            <th style="padding:10px 12px">Zaman</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach ($teklifler as $t)
+          <tr style="border-top:1px solid var(--line);{{ ($t->en_ucuz ?? false) ? 'background:rgba(16,185,129,.07)' : '' }}">
+            <td style="padding:10px 12px"><input type="checkbox" name="teklif[]" value="{{ $t->id }}" class="rk-chk" @if($t->en_ucuz ?? false) checked @endif></td>
+            <td style="padding:10px 12px;font-weight:600">{{ $t->tedarikci_ad }}</td>
+            <td style="padding:10px 12px">{{ $t->malzeme_ad ?: $t->urun_ad }} @if($t->en_ucuz ?? false)<span class="rk-rozet" style="background:var(--yesil);margin-left:4px">EN UCUZ</span>@endif @if(!$t->malzeme_id)<span class="rk-rozet" style="background:var(--amber);margin-left:4px" title="Stok malzemesine bağlanamadı, siparişe eklenemez">eşleşmedi</span>@endif</td>
+            <td style="padding:10px 12px;text-align:right;font-weight:800;color:var(--yesil)">{{ number_format((float)$t->fiyat, 2, ',', '.') }} ₺</td>
+            <td style="padding:10px 12px"><span class="rk-rozet" style="background:{{ $t->kaynak==='wa' ? 'var(--yesil)' : 'var(--mavi)' }}">{{ $t->kaynak==='wa' ? 'WhatsApp' : 'E-posta' }}</span></td>
+            <td style="padding:10px 12px;color:var(--sub)">RFQ-{{ $t->rfq_id }}</td>
+            <td style="padding:10px 12px;color:var(--sub);font-size:11.5px">{{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</td>
+          </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px">
+      <button class="rk-btn" style="background:var(--yesil)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">shopping_cart_checkout</span> Seçilenlerden Sipariş Oluştur</button>
+      <span class="rk-sub" style="font-size:11.5px;margin-left:8px">İşaretli teklifler tedarikçiye göre gruplanıp satın alma siparişine dönüşür (KDV %10).</span>
+    </div>
+  </form>
   @else
   <div class="rk-card" style="padding:28px;text-align:center">
     <span class="material-icons-outlined" style="font-size:40px;color:var(--sub)">inbox</span>

@@ -9292,9 +9292,16 @@ Route::get('/gelen-teklifler', function () {
         $teklifler = DB::table('rfq_teklif')->where('sube_id', $sid)->orderByDesc('id')->limit(200)->get();
         $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
         $malAd = DB::table('malzemeler')->pluck('ad', 'id');
-        $teklifler = $teklifler->map(function ($t) use ($tedAd, $malAd) {
+        // Her ürün için EN UCUZ teklifi bul (malzeme_id yoksa ürün adına göre)
+        $minFiyat = [];
+        foreach ($teklifler as $t) { $k = $t->malzeme_id ? ('m' . $t->malzeme_id) : ('u' . mb_strtolower(trim($t->urun_ad))); if (!isset($minFiyat[$k]) || (float) $t->fiyat < $minFiyat[$k]) $minFiyat[$k] = (float) $t->fiyat; }
+        $ucuzIsaretli = [];
+        $teklifler = $teklifler->map(function ($t) use ($tedAd, $malAd, $minFiyat, &$ucuzIsaretli) {
             $t->tedarikci_ad = $tedAd[$t->tedarikci_id] ?? '—';
             $t->malzeme_ad = $t->malzeme_id ? ($malAd[$t->malzeme_id] ?? $t->urun_ad) : $t->urun_ad;
+            $k = $t->malzeme_id ? ('m' . $t->malzeme_id) : ('u' . mb_strtolower(trim($t->urun_ad)));
+            $t->en_ucuz = (!isset($ucuzIsaretli[$k]) && abs((float) $t->fiyat - ($minFiyat[$k] ?? 0)) < 0.001);
+            if ($t->en_ucuz) $ucuzIsaretli[$k] = true;
             return $t;
         });
     } catch (\Throwable $e) {}
@@ -9307,6 +9314,45 @@ Route::post('/gelen-teklifler/oku', function (Request $r) {
     $sid = _webSubeId();
     $n = 0; try { $n = _teklifleriOku($sid); } catch (\Throwable $e) {}
     return redirect('/gelen-teklifler')->with('ok', $n > 0 ? ('✅ ' . $n . ' yeni teklif okundu ve kaydedildi.') : 'Yeni teklif bulunamadı (gelen kutusunda RFQ kodlu yanıt yok ya da hepsi zaten işlenmiş).');
+});
+// Seçilen tekliflerden satın alma siparişi oluştur (tedarikçiye göre gruplu)
+Route::post('/gelen-teklifler/siparis', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    $ids = array_filter(array_map('intval', (array) $r->input('teklif', [])));
+    if (!$ids) return redirect('/gelen-teklifler')->with('hata', 'Sipariş için en az bir teklif işaretle.');
+    $teklifler = DB::table('rfq_teklif')->where('sube_id', $sid)->whereIn('id', $ids)->get();
+    if ($teklifler->isEmpty()) return redirect('/gelen-teklifler')->with('hata', 'Teklif bulunamadı.');
+    // miktarları ilgili RFQ'nun kalemlerinden al
+    $rfqKalem = [];
+    foreach ($teklifler->pluck('rfq_id')->unique()->filter() as $rid) {
+        try { $row = DB::table('rfq_gonderim')->where('id', $rid)->first(); if ($row) $rfqKalem[$rid] = json_decode($row->kalemler_json ?? '[]', true) ?: []; } catch (\Throwable $e) {}
+    }
+    $grup = []; $atlanan = 0;
+    foreach ($teklifler as $t) {
+        if (!$t->malzeme_id) { $atlanan++; continue; } // eşleşmemiş ürün (siparişe malzeme gerekir)
+        $miktar = 1.0;
+        foreach (($rfqKalem[$t->rfq_id] ?? []) as $k) { if ((int) ($k['malzeme_id'] ?? 0) === (int) $t->malzeme_id) { $miktar = (float) ($k['miktar'] ?? 1) ?: 1; break; } }
+        $grup[(int) $t->tedarikci_id][] = ['malzeme_id' => (int) $t->malzeme_id, 'miktar' => $miktar, 'fiyat' => (float) $t->fiyat];
+    }
+    if (!$grup) return redirect('/gelen-teklifler')->with('hata', 'Seçilen teklifler stok malzemesine bağlı değil, sipariş oluşturulamadı.');
+    $olusan = 0; $pid = $bp->id ?? null;
+    foreach ($grup as $tid => $kalemler) {
+        try {
+            $ara = 0; foreach ($kalemler as $k) $ara += $k['miktar'] * $k['fiyat'];
+            $kdv = round($ara * 0.10, 2); $genel = round($ara + $kdv, 2);
+            $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
+            $spid = (int) DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'siparis', 'ara_toplam' => round($ara, 2), 'kdv_toplam' => $kdv, 'genel_toplam' => $genel, 'notlar' => 'Gelen tekliften oluşturuldu', 'olusturan_personel_id' => $pid, 'created_at' => now(), 'updated_at' => now()]);
+            foreach ($kalemler as $k) {
+                DB::table('satinalma_siparis_kalemleri')->insert(['siparis_id' => $spid, 'malzeme_id' => $k['malzeme_id'], 'miktar' => $k['miktar'], 'birim_fiyat' => $k['fiyat'], 'kdv_yuzde' => 10, 'satir_toplam' => round($k['miktar'] * $k['fiyat'] * 1.10, 2), 'created_at' => now(), 'updated_at' => now()]);
+            }
+            // teklifin RFQ'sunu "sipariş verildi" işaretle (opsiyonel)
+            $olusan++;
+        } catch (\Throwable $e) {}
+    }
+    $msg = $olusan . ' satın alma siparişi oluşturuldu.' . ($atlanan ? (' (' . $atlanan . ' ürün stok malzemesine bağlı olmadığı için atlandı.)') : '');
+    return redirect('/satinalma-siparis')->with('ok', $msg);
 });
 Route::post('/rfq-test-kur', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
