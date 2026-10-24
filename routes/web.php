@@ -13960,6 +13960,51 @@ Route::get('/satinalma-asistan', function () {
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     return view('satinalma_asistan');
 });
+// ===== PAYLAŞIMLI AI ÇEKİRDEK MOTORU (tüm departman AI'ları kullanır) =====
+// Haiku çağrısı (ham) — metin döner veya '' (hata/boş)
+if (!function_exists('_aiHaikuCagir')) {
+    function _aiHaikuCagir($apiKey, $sys, $baglam, $soru, $model = 'claude-haiku-4-5-20251001', $maxTok = 500)
+    {
+        try {
+            $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
+                ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model, 'max_tokens' => $maxTok, 'system' => $sys,
+                    'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
+                ]);
+            if (!$resp->successful()) return '';
+            return trim((string) ($resp->json('content.0.text') ?? ''));
+        } catch (\Throwable $e) { return ''; }
+    }
+}
+// Çekirdek: veri-farkında ÖĞRENEN ÖNBELLEK (aynı soru+aynı veri = BEDAVA) + GÜNLÜK KOTA (fair-use)
+// $o: alan, sube_id, soru, baglam, sys, kuralCevap(callable), [fpAlanlar], [limit], [model], [max_tokens]
+if (!function_exists('_aiSohbetCekirdek')) {
+    function _aiSohbetCekirdek(array $o)
+    {
+        $alan = $o['alan']; $sid = (int) $o['sube_id']; $soru = trim((string) $o['soru']);
+        $baglam = $o['baglam'] ?? []; $kuralCevap = $o['kuralCevap'];
+        $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$apiKey) return ['cevap' => $kuralCevap(), 'kaynak' => 'kural'];
+        // Veri parmak izi: rakam/stok değişince anahtar değişir -> önbellek otomatik tazelenir (bayatlamaz)
+        $fp = substr(md5(json_encode($o['fpAlanlar'] ?? $baglam, JSON_UNESCAPED_UNICODE)), 0, 12);
+        $kova = 's:' . md5(mb_strtolower($soru, 'UTF-8'));
+        $onbKey = "resto_{$alan}_ai_cev:{$sid}:{$kova}:{$fp}";
+        $gunKey = "resto_{$alan}_ai_gun:{$sid}:" . date('Y-m-d');
+        $limit = (int) ($o['limit'] ?? config('services.anthropic.sohbet_gunluk_limit', 80));
+        $onbek = cache()->get($onbKey);
+        if ($onbek) return ['cevap' => $onbek, 'kaynak' => 'onbellek']; // aynı soru + veri değişmemiş -> BEDAVA
+        if ((int) cache()->get($gunKey, 0) < $limit) {
+            $c = _aiHaikuCagir($apiKey, $o['sys'], $baglam, $soru, $o['model'] ?? 'claude-haiku-4-5-20251001', $o['max_tokens'] ?? 500);
+            if ($c !== '') {
+                cache()->put($onbKey, $c, now()->addHours(2));
+                cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->addHours(26));
+                return ['cevap' => $c, 'kaynak' => 'haiku'];
+            }
+        }
+        // Kota dolu / hata -> bedava kural özeti
+        return ['cevap' => $kuralCevap(), 'kaynak' => 'kural_kota'];
+    }
+}
 Route::post('/satinalma-asistan/sor', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'cevap' => 'Yetkisiz.'], 403);
@@ -13976,18 +14021,13 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
     try {
         $baglam = _satinalmaBaglam($sid);
         $teklif = _satinalmaRaporSorusuMu($soru) ? _satinalmaRaporTipi($soru) : false; // rapor sorusuysa ilgili rapor tipi, değilse false
-        $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
-        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
         $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma. ÖNEMLİ: Kullanıcı sadece selamlaşıyor, teşekkür ediyor veya sohbet ediyorsa ASLA rapor/özet dökme; tek-iki cümlelik kısa, samimi karşılık ver. Rapor ve veri analizini YALNIZCA stok/fiyat/tedarikçi/harcama/sipariş gibi konular sorulduğunda yap.';
-        $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
-            ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
-                'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
-                'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
-            ]);
-        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
-        $metin = trim((string) ($resp->json('content.0.text') ?? ''));
-        if ($metin === '') $metin = _satinalmaKuralCevap($soru, $baglam);
-        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin, 'teklif_export' => $teklif]);
+        // Paylaşımlı çekirdek: öğrenen önbellek (aynı soru+veri = BEDAVA) + günlük kota
+        $cek = _aiSohbetCekirdek([
+            'alan' => 'satinalma', 'sube_id' => $sid, 'soru' => $soru, 'baglam' => $baglam, 'sys' => $sys,
+            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam),
+        ]);
+        return response()->json(['ok' => 1, 'kaynak' => $cek['kaynak'], 'cevap' => $cek['cevap'], 'teklif_export' => $teklif]);
     } catch (\Throwable $e) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }
