@@ -9219,6 +9219,15 @@ if (!function_exists('_rfqTeklifIsle')) {
             $mid = null;
             foreach ($kalemler as $k) { if (mb_stripos($urun, mb_substr($k['ad'], 0, 6)) !== false || mb_stripos($k['ad'], $urun) !== false) { $mid = (int) $k['malzeme_id']; break; } }
             try { DB::table('rfq_teklif')->insert(['sube_id' => (int) $sid, 'rfq_id' => $rfqId, 'tedarikci_id' => $tedId ?: $rfq->tedarikci_id, 'malzeme_id' => $mid, 'urun_ad' => mb_substr($urun, 0, 160), 'fiyat' => $fiyat, 'ham_metin' => mb_substr($metin, 0, 500), 'kaynak' => $kaynak, 'kaynak_ref' => $ref, 'created_at' => now(), 'updated_at' => now()]); $say++; } catch (\Throwable $e) {}
+            // AI → TALEP KÖPRÜSÜ: RFQ bir talebe bağlıysa, eşleşen kaleme talep_teklifleri satırı da yaz (elle girmeden detayda görünsün)
+            try {
+                if ($mid && !empty($rfq->talep_id) && Schema::hasTable('talep_teklifleri')) {
+                    $tk = DB::table('talep_kalemleri')->where('talep_id', $rfq->talep_id)->where('malzeme_id', $mid)->value('id');
+                    $tedK = $tedId ?: $rfq->tedarikci_id;
+                    if ($tk && $tedK && !DB::table('talep_teklifleri')->where('talep_kalem_id', $tk)->where('tedarikci_id', $tedK)->where('fiyat', $fiyat)->exists())
+                        DB::table('talep_teklifleri')->insert(['talep_kalem_id' => $tk, 'tedarikci_id' => $tedK, 'fiyat' => $fiyat, 'not' => 'AI okudu (' . $kaynak . ')', 'created_at' => now()]);
+                }
+            } catch (\Throwable $e) {}
         }
         if ($say) {
             try { DB::table('rfq_gonderim')->where('id', $rfqId)->update(['durum' => 'teklif_geldi', 'updated_at' => now()]); } catch (\Throwable $e) {}
