@@ -129,6 +129,7 @@
     if (config('services.resteos.ik_acik', true)) {
         array_unshift($gruplar['Personel'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
         $gruplar['Personel'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
+        $gruplar['Personel'][] = ['/ik-risk', 'crisis_alert', 'Risk Radarı', '#F97316'];
         $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
         $gruplar['Personel'][] = ['/ik-aday', 'how_to_reg', 'İşe Alım / Aday Havuzu', '#10B981'];
     }

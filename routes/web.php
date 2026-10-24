@@ -6714,7 +6714,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
-            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya + sicil + işe alım + AI asistan (gor_personel yetkisi)
+            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_personel', '/ik-risk' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya + sicil + işe alım + AI asistan + risk radarı (gor_personel yetkisi)
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
@@ -8258,6 +8258,7 @@ if (!function_exists('_ikOzetVeri')) {
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Vardiya Planı', 'url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'renk' => 'mavi'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'İzin Yönetimi', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'mavi'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'İşe Alım', 'url' => '/ik-aday', 'ikon' => 'how_to_reg', 'renk' => 'mavi'];
+        $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Risk Radarı', 'url' => '/ik-risk', 'ikon' => 'crisis_alert', 'renk' => 'turuncu'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Performans', 'url' => '/garson-performans', 'ikon' => 'emoji_events', 'renk' => 'mavi'];
 
         // ---- AI İŞ AKSİYONLARI ("Senin için yapabilirim" — tek tıkla yürür) ----
@@ -8470,6 +8471,7 @@ if (!function_exists('_ikAsistanNiyet')) {
             '/(bugün|bugun).*(izin|izinli)|izinli.*(kim|olan)/u' => ['cevap', 'liste_izinli'],
             '/bekleyen.*izin|izin.*(talep|bekleyen)/u' => ['cevap', 'liste_bekleyen_izin'],
             '/(en\s*çok|en\s*cok|kim).*avans|avans.*(kim|en)/u' => ['cevap', 'en_cok_avans'],
+            '/risk|ayrıl|devamsız|riskli/u' => ['cevap', 'liste_risk'],
             '/doğum\s*gün|dogum\s*gun/u' => ['eylem', 'mesaj_dogum'],
             '/eksik.*(iste|sor|gönder|gonder)/u' => ['eylem', 'mesaj_eksik'],
         ];
@@ -8482,7 +8484,7 @@ if (!function_exists('_ikAsistanNiyet')) {
         $bugun = now()->toDateString(); $gunAdi = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][now()->dayOfWeekIso - 1] ?? '';
         $sys = "Sen bir restoranın İnsan Kaynakları asistanısın. İK çalışanının mesajını analiz et ve SADECE geçerli JSON döndür (başka hiçbir metin yok):\n"
             . '{"tip":"cevap|eylem","intent":"...","params":{...},"ozet":"...","cevap":"..."}' . "\n\n"
-            . "OKUMA niyetleri (tip=cevap, bilgi sorusu): ozet, personel_bul(params.ad), liste_eksik, liste_izinli, liste_bekleyen_izin, en_cok_avans, bilinmiyor.\n"
+            . "OKUMA niyetleri (tip=cevap, bilgi sorusu): ozet, personel_bul(params.ad), liste_eksik, liste_izinli, liste_bekleyen_izin, en_cok_avans, liste_risk, bilinmiyor.\n"
             . "YAZMA niyetleri (tip=eylem, bir şey değiştirir/gönderir): izin_ver(params: ad, baslangic, bitis, izin_tipi[yillik|hastalik|ucretsiz|mazeret|dogum|diger]), avans_onayla(params.ad opsiyonel), mesaj_dogum, mesaj_eksik, mesaj_belge, mesaj_gelmeyen.\n"
             . "KURALLAR: Tarihleri YYYY-MM-DD yap. Bugün {$bugun} ({$gunAdi}). 'yarın','cuma','hafta sonu' gibi ifadeleri gerçek tarihe çevir. "
             . "İsimleri şu aktif personel listesinden EŞLE (params.ad'a tam adı yaz): {$plist}. "
@@ -8534,6 +8536,13 @@ if (!function_exists('_ikAsistanOku')) {
                     ->whereBetween('personel_hareketleri.tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])
                     ->groupBy('personeller.ad')->selectRaw('personeller.ad, SUM(personel_hareketleri.tutar) t')->orderByDesc('t')->first();
                 return ['cevap' => $row ? ('Bu ay en çok avans alan: ' . $row->ad . ' — ' . $tl($row->t)) : 'Bu ay avans kaydı yok.'];
+            case 'liste_risk':
+                $risk = _ikRiskAnaliz($sid);
+                $dikkat = array_values(array_filter($risk, fn ($x) => in_array($x['seviye'], ['yuksek', 'orta'])));
+                if (!count($dikkat)) return ['cevap' => 'Şu an yüksek/orta riskli personel yok. 👍', 'link' => ['url' => '/ik-risk', 'lbl' => 'Risk Radarı\'nı aç']];
+                $s = count($dikkat) . ' personel dikkat gerektiriyor:';
+                foreach (array_slice($dikkat, 0, 10) as $x) $s .= "\n• " . $x['ad'] . ' (' . ($x['seviye'] === 'yuksek' ? 'YÜKSEK' : 'orta') . ') — ' . implode('; ', array_slice($x['nedenler'], 0, 2));
+                return ['cevap' => $s, 'link' => ['url' => '/ik-risk', 'lbl' => 'Risk Radarı\'nı aç']];
             case 'personel_bul':
                 [$p, $n] = _ikAsistanPersonelBul($sid, $params['ad'] ?? '');
                 if (!$p) return ['cevap' => $n > 1 ? ('Birden fazla eşleşme var, tam adı yazar mısın? (' . ($params['ad'] ?? '') . ')') : 'O isimde aktif personel bulamadım.'];
@@ -8699,6 +8708,74 @@ Route::post('/api/ik-asistan/uygula', function (Request $r) {
     }
     $sonuc = _ikAsistanEylemUygula($sid, $bp, $eylem, $params);
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
+// ===== İK: PERSONEL RİSK RADARI (devamsızlık + avans + kıdem → erken uyarı) =====
+if (!function_exists('_ikRiskAnaliz')) {
+    // Her aktif personel için risk skoru + nedenler. Deterministik (kural). Döner: sıralı liste.
+    function _ikRiskAnaliz($sid)
+    {
+        $sid = (int) $sid;
+        _restoPersonelKolonEnsure();
+        [$ay, $bas, $bit] = _restoAyAralik(null);
+        $son30 = now()->copy()->subDays(30)->toDateString();
+        $bugun = now()->toDateString();
+        // Son 30 gün vardiya + mesai (devamsızlık için)
+        $vardiya30 = []; $mesai30 = [];
+        try {
+            if (Schema::hasTable('personel_vardiya')) {
+                foreach (DB::table('personel_vardiya')->where('sube_id', $sid)->whereBetween('tarih', [$son30, $bugun])->get(['personel_id', 'tarih']) as $v) $vardiya30[$v->personel_id][$v->tarih] = true;
+            }
+            if (Schema::hasTable('personel_mesai')) {
+                foreach (DB::table('personel_mesai')->where('sube_id', $sid)->whereBetween('giris_at', [$son30 . ' 00:00:00', $bugun . ' 23:59:59'])->get(['personel_id', 'giris_at']) as $m) $mesai30[$m->personel_id][substr($m->giris_at, 0, 10)] = true;
+            }
+        } catch (\Throwable $e) {}
+        $liste = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->get();
+        $out = [];
+        foreach ($liste as $p) {
+            $skor = 0; $nedenler = []; $oneri = null;
+            // 1) Devamsızlık: son 30 gün vardiyalı AMA mesai girmemiş gün
+            $devamsiz = 0;
+            if (!empty($vardiya30[$p->id])) {
+                foreach (array_keys($vardiya30[$p->id]) as $g) { if ($g <= $bugun && empty($mesai30[$p->id][$g])) $devamsiz++; }
+            }
+            if ($devamsiz >= 3) { $skor += 3; $nedenler[] = "Son 30 günde {$devamsiz} gün vardiyasında gelmemiş"; }
+            elseif ($devamsiz == 2) { $skor += 2; $nedenler[] = "Son 30 günde 2 gün devamsızlık"; }
+            elseif ($devamsiz == 1) { $skor += 1; $nedenler[] = "Son 30 günde 1 gün devamsızlık"; }
+            // 2) Avans yoğunluğu (bu ay)
+            $avansAdet = 0; $avansTut = 0.0;
+            try {
+                $row = DB::table('personel_hareketleri')->where('sube_id', $sid)->where('personel_id', $p->id)->where('tur', 'avans')
+                    ->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->selectRaw('COUNT(*) a, SUM(tutar) t')->first();
+                $avansAdet = (int) ($row->a ?? 0); $avansTut = (float) ($row->t ?? 0);
+            } catch (\Throwable $e) {}
+            $maas = (float) ($p->maas ?? 0);
+            if ($avansAdet >= 3) { $skor += 2; $nedenler[] = "Bu ay {$avansAdet} kez avans aldı"; }
+            elseif ($avansAdet == 2) { $skor += 1; $nedenler[] = "Bu ay 2 kez avans aldı"; }
+            if ($maas > 0 && $avansTut >= $maas * 0.5) { $skor += 1; $nedenler[] = "Avansı maaşının yarısını aştı"; }
+            // 3) Kıdem (yeni = takip)
+            $yeni = false;
+            if (!empty($p->ise_baslama)) { try { if (\Carbon\Carbon::parse($p->ise_baslama)->diffInDays(now()) <= 90) { $yeni = true; $nedenler[] = 'Yeni personel (deneme/uyum dönemi)'; } } catch (\Throwable $e) {} }
+            // seviye
+            $seviye = $skor >= 4 ? 'yuksek' : ($skor >= 2 ? 'orta' : ($skor >= 1 ? 'dusuk' : 'yok'));
+            if ($seviye === 'yuksek') $oneri = 'Birebir görüş — sebebini anla, destek/uyarı planla.';
+            elseif ($seviye === 'orta') $oneri = 'Göz önünde tut; devamsızlık/avans tekrar ederse konuş.';
+            elseif ($yeni) $oneri = 'Uyum sürecini destekle; ilk 3 ay kritik.';
+            if ($seviye !== 'yok' || $yeni) {
+                $out[] = ['id' => $p->id, 'ad' => $p->ad, 'rol' => $p->rol, 'skor' => $skor, 'seviye' => $seviye,
+                    'devamsiz' => $devamsiz, 'avans_adet' => $avansAdet, 'yeni' => $yeni, 'nedenler' => $nedenler, 'oneri' => $oneri];
+            }
+        }
+        usort($out, fn ($a, $b) => $b['skor'] <=> $a['skor']);
+        return $out;
+    }
+}
+Route::get('/ik-risk', function () {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    $risk = _ikRiskAnaliz(_webSubeId());
+    return view('ik_risk', ['risk' => $risk]);
 });
 
 // WEB: İzin Yönetimi sayfası
