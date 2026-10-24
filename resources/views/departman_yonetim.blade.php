@@ -110,7 +110,16 @@
         <button type="button" class="rk-modal-kapa" onclick="depKapat()">&times;</button>
       </div>
       <div class="rk-modal-govde">
-        <label class="rk-lbl">Departman Adı</label>
+        @php $gruplar = collect($sablonlar)->pluck('grup')->merge(collect($departmanlar)->pluck('grup'))->filter()->unique()->values(); @endphp
+        <label class="rk-lbl">Hazır departman seç — ikon, grup, ünvan, yetkiler otomatik dolar</label>
+        <select id="d_sablon" class="rk-inp" onchange="sablonUygula(this.value)">
+          <option value="">— Hazır departman seç —</option>
+          @foreach ($sablonlar as $kod => $s)
+            <option value="{{ $kod }}">{{ $s['ad'] }} · {{ $s['grup'] }}</option>
+          @endforeach
+          <option value="__yeni">➕ Diğer / Yeni departman (elle gir)</option>
+        </select>
+        <label class="rk-lbl" style="margin-top:10px">Departman Adı</label>
         <input type="text" name="ad" id="d_ad" class="rk-inp" placeholder="örn. Satın Alma" required>
 
         <div style="display:flex;gap:10px">
@@ -141,8 +150,13 @@
           @endforeach
         </div>
 
-        <label class="rk-lbl">Üst Grup (ağaç) — örn. Mutfak (BOH), İdari Ofis</label>
-        <input type="text" name="grup" id="d_grup" class="rk-inp" placeholder="Mutfak (BOH)">
+        <label class="rk-lbl">Üst Grup (ağaç)</label>
+        <select id="d_grup_sel" class="rk-inp" onchange="grupSec(this.value)">
+          <option value="">— Grup seç —</option>
+          @foreach ($gruplar as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
+          <option value="__yeni">➕ Yeni grup tanımla…</option>
+        </select>
+        <input type="text" name="grup" id="d_grup" class="rk-inp" placeholder="Yeni grup adı (örn. Mutfak (BOH))" style="margin-top:8px;display:none">
 
         <label class="rk-lbl">Ünvanlar (en üst SORUMLU en başta; her satıra bir ünvan)</label>
         <textarea name="unvanlar" id="d_unvanlar" class="rk-inp" rows="4" placeholder="Mutfak Şefi&#10;Sous Chef&#10;Aşçı&#10;Komi"></textarea>
@@ -232,7 +246,8 @@ function depAc(d) {
   document.getElementById('d_kod').value = d ? (d.kod || '') : '';
   document.getElementById('d_renk').value = (d && d.renk) ? d.renk : '#4F46E5';
   ikonSec((d && d.ikon) ? d.ikon : 'inventory_2');
-  document.getElementById('d_grup').value = d ? (d.grup || '') : '';
+  grupInit(d ? (d.grup || '') : '');
+  document.getElementById('d_sablon').value = (d && d.kod && SABLON[d.kod]) ? d.kod : '';
   document.getElementById('d_unvanlar').value = (d && d.unvanlar) ? d.unvanlar.join('\n') : '';
   document.getElementById('d_ai').value = (d && d.ai_erisim) ? d.ai_erisim : 'kapali';
   document.getElementById('d_ai_limit').value = d ? (d.ai_gunluk_limit || 0) : 30;
@@ -255,6 +270,39 @@ function depKapat() { document.getElementById('depModal').classList.remove('acik
 function ikonSec(ik) {
   document.getElementById('d_ikon').value = ik;
   document.querySelectorAll('#ikonSecici .ikon-opt').forEach(function (o) { o.classList.toggle('sec', o.dataset.ikon === ik); });
+}
+var SABLON = @json($sablonlar);
+function sablonUygula(kod) {
+  if (!kod) return;
+  if (kod === '__yeni') {
+    document.getElementById('d_ad').value = ''; document.getElementById('d_kod').value = '';
+    grupInit(''); document.getElementById('d_ad').focus(); return;
+  }
+  var s = SABLON[kod]; if (!s) return;
+  document.getElementById('d_ad').value = s.ad || '';
+  document.getElementById('d_kod').value = kod;
+  if (s.renk) document.getElementById('d_renk').value = s.renk;
+  ikonSec(s.ikon || 'inventory_2');
+  grupInit(s.grup || '');
+  document.getElementById('d_unvanlar').value = (s.unvan || []).join('\n');
+  document.getElementById('d_ai').value = s.ai || 'kapali';
+  document.getElementById('d_ai_limit').value = (s.ai === 'kisitli') ? 30 : 0;
+  var sayfa = s.sayfa || [], ek = s.sorumlu_ek || [];
+  document.querySelectorAll('#depModal input[data-sayfa]').forEach(function (c) { c.checked = sayfa.indexOf(c.dataset.sayfa) >= 0; });
+  document.querySelectorAll('#depModal input[data-ek]').forEach(function (c) { c.checked = ek.indexOf(c.dataset.ek) >= 0; });
+}
+function grupSec(v) {
+  var t = document.getElementById('d_grup');
+  if (v === '__yeni') { t.style.display = 'block'; t.value = ''; t.focus(); }
+  else { t.style.display = 'none'; t.value = v || ''; }
+}
+function grupInit(val) {
+  var sel = document.getElementById('d_grup_sel'), t = document.getElementById('d_grup');
+  val = val || ''; var found = false;
+  for (var i = 0; i < sel.options.length; i++) { if (sel.options[i].value === val) { found = true; break; } }
+  if (val && found) { sel.value = val; t.style.display = 'none'; t.value = val; }
+  else if (val) { sel.value = '__yeni'; t.style.display = 'block'; t.value = val; }
+  else { sel.value = ''; t.style.display = 'none'; t.value = ''; }
 }
 </script>
 @endpush
