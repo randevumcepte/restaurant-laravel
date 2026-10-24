@@ -53,10 +53,16 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-#db .selam-harcama{margin-left:auto;text-align:right;flex-shrink:0;background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:16px;padding:12px 20px;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--mor1) 38%,transparent)}
+#db .selam-oneri{margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:9px;background:color-mix(in srgb,var(--mor1) 10%,var(--card));border:1.5px solid color-mix(in srgb,var(--mor1) 35%,transparent);border-radius:16px;padding:11px 16px;text-decoration:none;transition:.15s}
+#db .selam-oneri:hover{background:color-mix(in srgb,var(--mor1) 18%,var(--card));transform:translateY(-1px)}
+#db .selam-oneri .so-ik{font-size:26px;color:var(--mor1)}
+#db .selam-oneri .so-ust{font-size:10.5px;font-weight:700;color:var(--mor1);letter-spacing:.3px}
+#db .selam-oneri .so-alt{font-size:14px;font-weight:800;color:var(--ink);line-height:1.15}
+#db .selam-harcama{text-align:right;flex-shrink:0;background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:16px;padding:12px 20px;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--mor1) 38%,transparent)}
 #db .selam-harcama .sh-lbl{font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:4px;display:flex;align-items:center;gap:5px;justify-content:flex-end}
 #db .selam-harcama .sh-deger{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px}
 #db .selam-harcama .sh-alt{font-size:12px;font-weight:800;margin-top:6px;color:#fff !important;background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;display:inline-block}
+@media(max-width:760px){#db .selam-oneri .so-ust,#db .selam-oneri .so-alt{display:none}#db .selam-oneri{padding:11px 13px}}
 @media(max-width:620px){#db .selam-harcama{display:none}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
@@ -103,6 +109,10 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   <div class="selam-kart">
     <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
     <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
+    <a href="/siparis-onerisi" class="selam-oneri">
+      <span class="material-icons-outlined so-ik">auto_awesome</span>
+      <div><div class="so-ust">AI Önerisi</div><div class="so-alt">Sipariş Önerisi</div></div>
+    </a>
     <div class="selam-harcama">
       <div class="sh-lbl"><span class="material-icons-outlined" style="font-size:14px;vertical-align:-2px">payments</span> Bu Ay Harcama</div>
       <div class="sh-deger">{{ $tl0($ay_harcama) }}</div>
