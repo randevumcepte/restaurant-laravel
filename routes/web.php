@@ -8163,13 +8163,14 @@ if (!function_exists('_ikOzetVeri')) {
         $hasCikis = Schema::hasColumn('personeller', 'ise_cikis');
         $liste = DB::table('personeller')->where('sube_id', $sid)->get();
         $aktif = 0; $toplamHakedis = 0.0; $toplamOdenen = 0.0; $toplamNet = 0.0;
-        $yeniGiren = 0; $ayrilan = 0; $departmanDagilim = [];
+        $yeniGiren = 0; $ayrilan = 0; $departmanDagilim = []; $maassiz = 0;
         foreach ($liste as $per) {
             $isAktif = (int) ($per->aktif ?? 1) === 1;
             if ($isAktif) {
                 $aktif++;
                 $h = _restoPersonelHesap($sid, $per, $bas, $bit);
                 $toplamHakedis += $h['hakedis']; $toplamOdenen += ($h['odenen'] + $h['avans']); $toplamNet += $h['net'];
+                if ((float) ($per->maas ?? 0) <= 0) $maassiz++;
                 // departman dağılımı
                 $dep = $per->departman_unvan ?: null;
             }
@@ -8259,6 +8260,34 @@ if (!function_exists('_ikOzetVeri')) {
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'İşe Alım', 'url' => '/ik-aday', 'ikon' => 'how_to_reg', 'renk' => 'mavi'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Performans', 'url' => '/garson-performans', 'ikon' => 'emoji_events', 'renk' => 'mavi'];
 
+        // ---- AI İŞ AKSİYONLARI ("Senin için yapabilirim" — tek tıkla yürür) ----
+        $bekleyenAvans = 0;
+        try { if (Schema::hasTable('ik_self_talep')) $bekleyenAvans = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count(); } catch (\Throwable $e) {}
+        $yeniBasvuru = 0;
+        try { if (Schema::hasTable('ik_adaylar')) $yeniBasvuru = (int) DB::table('ik_adaylar')->where('sube_id', $sid)->where('durum', 'yeni')->count(); } catch (\Throwable $e) {}
+        $belgeSkt = 0;
+        try { if (Schema::hasTable('personel_belge')) $belgeSkt = (int) DB::table('personel_belge')->where('sube_id', $sid)->whereNotNull('son_gecerlilik')->whereDate('son_gecerlilik', '<=', now()->addDays(30)->toDateString())->count(); } catch (\Throwable $e) {}
+        $gelmeyenVardiya = 0;
+        try {
+            if (Schema::hasTable('personel_vardiya')) {
+                $vardiyali = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun)->distinct()->pluck('personel_id')->all();
+                if ($vardiyali) {
+                    $girenler = Schema::hasTable('personel_mesai') ? DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->distinct()->pluck('personel_id')->all() : [];
+                    $gelmeyenVardiya = count(array_diff($vardiyali, $girenler));
+                }
+            }
+        } catch (\Throwable $e) {}
+        $aiAks = [];
+        if (count($dogumGunleri)) $aiAks[] = ['key' => 'dogum-kutla', 'tip' => 'wa', 'metin' => count($dogumGunleri) . ' kişinin doğum günü bu hafta yaklaşıyor.', 'lbl' => 'Kutlama mesajı gönder', 'ikon' => 'cake', 'renk' => 'pembe', 'adet' => count($dogumGunleri)];
+        if (count($yildonumleri)) $aiAks[] = ['key' => 'yildonumu-kutla', 'tip' => 'wa', 'metin' => count($yildonumleri) . ' kişinin işe giriş yıldönümü bu ay.', 'lbl' => 'Tebrik mesajı gönder', 'ikon' => 'celebration', 'renk' => 'mor', 'adet' => count($yildonumleri)];
+        if (count($eksikBelge)) $aiAks[] = ['key' => 'eksik-bilgi-iste', 'tip' => 'wa', 'metin' => count($eksikBelge) . ' personelin özlük bilgisi eksik (IBAN/TC/doğum tarihi).', 'lbl' => 'Hepsinden eksik bilgiyi iste', 'ikon' => 'forward_to_inbox', 'renk' => 'amber', 'adet' => count($eksikBelge)];
+        if ($belgeSkt > 0) $aiAks[] = ['key' => 'belge-hatirlat', 'tip' => 'wa', 'metin' => $belgeSkt . ' belgenin geçerlilik süresi doluyor/doldu.', 'lbl' => 'Yenileme hatırlatması gönder', 'ikon' => 'event_busy', 'renk' => 'kirmizi', 'adet' => $belgeSkt];
+        if ($gelmeyenVardiya > 0) $aiAks[] = ['key' => 'gelmeyene-sor', 'tip' => 'wa', 'metin' => $gelmeyenVardiya . ' kişi bugün vardiyasında ama giriş yapmadı.', 'lbl' => 'Gelmeyene durumunu sor', 'ikon' => 'phone_missed', 'renk' => 'turuncu', 'adet' => $gelmeyenVardiya];
+        if ($maassiz > 0) $aiAks[] = ['key' => 'maas', 'tip' => 'link', 'metin' => $maassiz . ' aktif personelin maaşı girilmemiş — bordro bu yüzden 0 görünüyor.', 'lbl' => 'Maaş girişine git', 'url' => '/personel', 'ikon' => 'payments', 'renk' => 'mavi'];
+        if ($bekleyenIzin > 0) $aiAks[] = ['key' => 'izin', 'tip' => 'link', 'metin' => $bekleyenIzin . ' izin talebi onay bekliyor.', 'lbl' => 'İzin taleplerini aç', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'amber'];
+        if ($bekleyenAvans > 0) $aiAks[] = ['key' => 'avans', 'tip' => 'link', 'metin' => $bekleyenAvans . ' avans talebi onay bekliyor.', 'lbl' => 'Avans taleplerini aç', 'url' => '/ik-izin', 'ikon' => 'request_quote', 'renk' => 'amber'];
+        if ($yeniBasvuru > 0) $aiAks[] = ['key' => 'basvuru', 'tip' => 'link', 'metin' => $yeniBasvuru . ' yeni iş başvurusu geldi.', 'lbl' => 'Başvuruları incele', 'url' => '/ik-aday', 'ikon' => 'how_to_reg', 'renk' => 'yesil'];
+
         $ozet = $aktif . ' aktif personel, bu ay bordro yükü ' . $tl($toplamHakedis)
             . ($iscilikYuzde !== null ? ' (ciroya oran %' . $iscilikYuzde . ')' : '') . '. '
             . ($bugunGiris !== null ? $bugunGiris . '/' . $aktif . ' kişi bugün işe geldi. ' : '')
@@ -8272,6 +8301,7 @@ if (!function_exists('_ikOzetVeri')) {
             'devam' => ['beklenen' => $aktif, 'gelen' => $bugunGiris, 'mesaide' => $mesaide],
             'izin' => ['bekleyen' => $bekleyenIzin, 'bugun_izinli' => $bugunIzinli],
             'dogum_gunleri' => $dogumGunleri, 'yildonumleri' => $yildonumleri, 'eksik_belge' => $eksikBelge,
+            'ai_aksiyonlar' => $aiAks,
         ];
     }
 }
@@ -8318,6 +8348,89 @@ Route::get('/ik-ozet', function () {
     $ai = _ikAiYorum($sid, $veri, request()->boolean('force'));
     // departman dağılımı adlarını çöz
     return view('ik_ozet', ['veri' => $veri, 'ai' => $ai]);
+});
+
+// WEB: İK AI iş aksiyonu ("Senin için yapabilirim" — WhatsApp şablon mesajı toplu gönderir)
+Route::post('/ik-aksiyon', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _restoPersonelKolonEnsure();
+    $sid = _webSubeId();
+    $key = (string) $r->key;
+    $isl = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: 'İşletme');
+    if (!function_exists('_restoWaGonder')) return redirect('/ik-ozet')->with('hata', 'WhatsApp gönderimi bu kurulumda yok.');
+    $bugun = now(); $buYil = (int) $bugun->year;
+    $gonderildi = 0; $telsiz = 0;
+    $yolla = function ($tel, $mesaj) use (&$gonderildi, &$telsiz, $sid) {
+        $t = trim((string) $tel);
+        if ($t === '') { $telsiz++; return; }
+        if (_restoWaGonder($sid, $t, $mesaj)) $gonderildi++;
+    };
+    try {
+        switch ($key) {
+            case 'dogum-kutla':
+                foreach (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('dogum_tarihi')->get() as $p) {
+                    try {
+                        $d = \Carbon\Carbon::parse($p->dogum_tarihi);
+                        $by = \Carbon\Carbon::create($buYil, (int) $d->month, (int) $d->day);
+                        if ($by->isPast() && !$by->isToday()) $by->addYear();
+                        $fark = now()->startOfDay()->diffInDays($by, false);
+                        if ($fark >= 0 && $fark <= 7) $yolla($p->telefon, "Sevgili {$p->ad}, doğum gününüz kutlu olsun! 🎂 Nice sağlıklı, mutlu ve başarılı yıllara. Sizi ekibimizde görmekten mutluyuz. — {$isl} ailesi");
+                    } catch (\Throwable $e) {}
+                }
+                break;
+            case 'yildonumu-kutla':
+                foreach (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('ise_baslama')->get() as $p) {
+                    try {
+                        $g = \Carbon\Carbon::parse($p->ise_baslama);
+                        if ((int) $g->month === (int) $bugun->month && (int) $g->year < $buYil) {
+                            $yil = $buYil - (int) $g->year;
+                            $yolla($p->telefon, "Sevgili {$p->ad}, {$isl} ailesine katılışınızın {$yil}. yıl dönümü kutlu olsun! 🎉 Emeğiniz ve katkılarınız için teşekkür ederiz. Nice beraber yıllara.");
+                        }
+                    } catch (\Throwable $e) {}
+                }
+                break;
+            case 'eksik-bilgi-iste':
+                $hasTc = Schema::hasColumn('personeller', 'tc'); $hasDogum = Schema::hasColumn('personeller', 'dogum_tarihi');
+                foreach (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->get() as $p) {
+                    $eksik = [];
+                    if (empty($p->iban)) $eksik[] = 'IBAN';
+                    if ($hasTc && empty($p->tc)) $eksik[] = 'TC kimlik no';
+                    if ($hasDogum && empty($p->dogum_tarihi)) $eksik[] = 'doğum tarihi';
+                    if (empty($p->ise_baslama)) $eksik[] = 'işe başlama tarihi';
+                    if ($eksik) $yolla($p->telefon, "Sayın {$p->ad}, özlük dosyanızın tamamlanması için şu bilgilere ihtiyacımız var: " . implode(', ', $eksik) . ". En kısa sürede İK birimine iletebilir misiniz? Teşekkürler. — {$isl}");
+                }
+                break;
+            case 'belge-hatirlat':
+                if (Schema::hasTable('personel_belge')) {
+                    foreach (DB::table('personel_belge')->join('personeller', 'personeller.id', '=', 'personel_belge.personel_id')
+                        ->where('personel_belge.sube_id', $sid)->where('personeller.aktif', 1)
+                        ->whereNotNull('personel_belge.son_gecerlilik')->whereDate('personel_belge.son_gecerlilik', '<=', now()->addDays(30)->toDateString())
+                        ->select('personeller.ad', 'personeller.telefon', 'personel_belge.baslik', 'personel_belge.son_gecerlilik')->get() as $b) {
+                        $tarih = \Carbon\Carbon::parse($b->son_gecerlilik)->format('d.m.Y');
+                        $yolla($b->telefon, "Sayın {$b->ad}, '{$b->baslik}' belgenizin geçerlilik süresi {$tarih} tarihinde doluyor. Lütfen yenileyip İK birimine iletiniz. — {$isl}");
+                    }
+                }
+                break;
+            case 'gelmeyene-sor':
+                if (Schema::hasTable('personel_vardiya')) {
+                    $vardiyali = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun->toDateString())->distinct()->pluck('personel_id')->all();
+                    $girenler = Schema::hasTable('personel_mesai') ? DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun->toDateString())->distinct()->pluck('personel_id')->all() : [];
+                    $gelmeyen = array_values(array_diff($vardiyali, $girenler));
+                    if ($gelmeyen) {
+                        foreach (DB::table('personeller')->where('sube_id', $sid)->whereIn('id', $gelmeyen)->get(['ad', 'telefon']) as $p) {
+                            $yolla($p->telefon, "Sayın {$p->ad}, bugün vardiyanız olmasına rağmen henüz giriş kaydınız görünmüyor. İyi misiniz? Lütfen en kısa sürede İK ile iletişime geçiniz. — {$isl}");
+                        }
+                    }
+                }
+                break;
+            default:
+                return redirect('/ik-ozet')->with('hata', 'Bilinmeyen işlem.');
+        }
+    } catch (\Throwable $e) { return redirect('/ik-ozet')->with('hata', 'İşlem sırasında hata oluştu.'); }
+    if (!$gonderildi) return redirect('/ik-ozet')->with('hata', 'Mesaj gönderilemedi — WhatsApp bağlı değil' . ($telsiz > 0 ? ' veya ilgili kişilerin telefonu kayıtlı değil' : '') . '. (WhatsApp Yönetimi\'nden bağlantıyı kontrol et.)');
+    return redirect('/ik-ozet')->with('ok', "✓ {$gonderildi} kişiye WhatsApp mesajı gönderildi." . ($telsiz > 0 ? " ({$telsiz} kişinin telefonu kayıtlı değil, onlara gönderilemedi.)" : ''));
 });
 
 // WEB: İzin Yönetimi sayfası

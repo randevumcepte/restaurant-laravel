@@ -34,6 +34,17 @@ body.koyu #iko{
 #iko .ai-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--mor1);margin-bottom:9px}
 #iko .ai-yorum{font-size:14.5px;line-height:1.65;color:var(--ink)}
 #iko .ai-blok{margin-top:10px;padding:10px 13px;border-radius:12px;font-size:13px;line-height:1.5}
+/* AI iş aksiyonları */
+#iko .ai-yap{margin-top:14px;padding-top:13px;border-top:1px dashed rgba(124,58,237,.28)}
+#iko .ai-yap-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:var(--mor1);margin-bottom:11px}
+#iko .ai-yap-h .material-icons-outlined{font-size:17px}
+#iko .ai-yap-satir{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:13px;background:var(--card);box-shadow:0 1px 5px rgba(0,0,0,.06);margin-bottom:8px;flex-wrap:wrap}
+#iko .ai-yap-satir .ayk{width:35px;height:35px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#iko .ai-yap-satir .ayk .material-icons-outlined{font-size:20px;color:#fff}
+#iko .ai-yap-satir .ayt{flex:1;min-width:150px;font-size:13px;color:var(--ink);line-height:1.4;font-weight:500}
+#iko .ai-yap-btn{border:none;cursor:pointer;padding:9px 15px;border-radius:10px;font-size:12.5px;font-weight:700;color:#fff;display:inline-flex;align-items:center;gap:5px;text-decoration:none;white-space:nowrap}
+#iko .ai-yap-btn .material-icons-outlined{font-size:16px}
+#iko .ai-yap-btn:hover{opacity:.9}
 
 /* 3 büyük kart */
 #iko .uc{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
@@ -114,7 +125,7 @@ body.koyu #iko{
     $offset = $cevre * (1-$oran);
     $b = $veri['bordro']; $kd = $veri['kadro']; $dv = $veri['devam']; $iz = $veri['izin'];
     $ayAd = \Carbon\Carbon::parse($veri['ay'].'-01')->translatedFormat('F Y');
-    $renkMap = ['kirmizi'=>'#F43F5E','amber'=>'#F59E0B','mavi'=>'#4F46E5','yesil'=>'#10B981','mor'=>'#7C3AED'];
+    $renkMap = ['kirmizi'=>'#F43F5E','amber'=>'#F59E0B','mavi'=>'#4F46E5','yesil'=>'#10B981','mor'=>'#7C3AED','pembe'=>'#EC4899','turuncu'=>'#F97316','teal'=>'#14B8A6'];
   @endphp
 
   {{-- SELAM --}}
@@ -156,6 +167,29 @@ body.koyu #iko{
       @if (config('services.resteos.patron_ai_v2', false) === false)
         <div style="font-size:11px;color:var(--sub);margin-top:9px">💡 Derin İK analizi için <code>RESTEOS_PATRON_AI_V2=true</code> + Anthropic anahtarı.</div>
       @endif
+    @endif
+
+    {{-- 🤖 SENİN İÇİN YAPABİLİRİM — iş yapan aksiyonlar --}}
+    @if (count($veri['ai_aksiyonlar'] ?? []))
+    <div class="ai-yap">
+      <div class="ai-yap-h"><span class="material-icons-outlined">smart_toy</span> Senin için yapabilirim</div>
+      @foreach ($veri['ai_aksiyonlar'] as $a)
+        @php $rk = $renkMap[$a['renk']??'mavi'] ?? '#4F46E5'; @endphp
+        <div class="ai-yap-satir">
+          <div class="ayk" style="background:{{ $rk }}"><span class="material-icons-outlined">{{ $a['ikon'] }}</span></div>
+          <div class="ayt">{{ $a['metin'] }}</div>
+          @if (($a['tip']??'')==='wa')
+            <form method="POST" action="/ik-aksiyon" style="margin:0" onsubmit="return rkOnayForm(this,'{{ $a['adet']??'' }} kişiye WhatsApp mesajı gönderilsin mi?','{{ $rk }}','Evet, gönder')">
+              @csrf<input type="hidden" name="key" value="{{ $a['key'] }}">
+              <button type="submit" class="ai-yap-btn" style="background:{{ $rk }}"><span class="material-icons-outlined">send</span> {{ $a['lbl'] }}</button>
+            </form>
+          @else
+            <a href="{{ $a['url'] }}" class="ai-yap-btn" style="background:{{ $rk }}">{{ $a['lbl'] }} →</a>
+          @endif
+        </div>
+      @endforeach
+      <div style="font-size:10.5px;color:var(--sub);margin-top:4px">WhatsApp mesajları restoranın bağlı WhatsApp hattından, kayıtlı telefonu olan kişilere gider.</div>
+    </div>
     @endif
   </div>
 
