@@ -6714,7 +6714,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
-            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', // İnsan Kaynakları: özet + izin yönetimi (gor_personel yetkisi)
+            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya (gor_personel yetkisi)
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
 
@@ -8199,6 +8199,7 @@ if (!function_exists('_ikOzetVeri')) {
         if ($bekleyenIzin > 0) { if ($durum === 'iyi') $durum = 'dikkat'; $uyari[] = $bekleyenIzin . ' izin talebi onay bekliyor.'; $aksiyonlar[] = ['tip' => 'link', 'lbl' => $bekleyenIzin . ' İzin Talebini Gör', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'amber']; }
         if (count($eksikBelge) > 0) { $uyari[] = count($eksikBelge) . ' personelin özlük bilgisi eksik (IBAN/TC/doğum tarihi).'; $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Eksikleri Tamamla', 'url' => '/personel', 'ikon' => 'badge', 'renk' => 'amber']; }
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Personel & Maaş', 'url' => '/personel', 'ikon' => 'badge', 'renk' => 'mavi'];
+        $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Vardiya Planı', 'url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'renk' => 'mavi'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'İzin Yönetimi', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'mavi'];
         $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Performans', 'url' => '/garson-performans', 'ikon' => 'emoji_events', 'renk' => 'mavi'];
 
@@ -8337,6 +8338,179 @@ Route::post('/ik-izin/sil', function (Request $r) {
     $sid = _webSubeId();
     try { DB::table('personel_izinler')->where('id', (int) $r->id)->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
     return redirect('/ik-izin')->with('ok', 'İzin kaydı silindi.');
+});
+
+// ===== İK: VARDİYA / SHIFT PLANLAMA (haftalık çizelge + tahmini işçilik + puantaj karşılaştırma) =====
+if (!function_exists('_ikVardiyaEnsure')) {
+    function _ikVardiyaEnsure()
+    {
+        if (Schema::hasTable('personel_vardiya')) return;
+        Schema::create('personel_vardiya', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('personel_id');
+            $t->date('tarih');
+            $t->time('baslangic');
+            $t->time('bitis');
+            $t->string('pozisyon', 40)->nullable();  // garson / mutfak / kasa / bar ...
+            $t->string('not')->nullable();
+            $t->unsignedBigInteger('created_by')->nullable();
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'tarih']);
+            $t->index(['sube_id', 'personel_id', 'tarih']);
+        });
+    }
+}
+if (!function_exists('_ikVardiyaSaat')) {
+    // İki saat arası süre (saat, ondalık). Gece yarısını geçerse (bitiş<başlangıç) +24s.
+    function _ikVardiyaSaat($bas, $bit)
+    {
+        try {
+            $b = (int) substr($bas, 0, 2) * 60 + (int) substr($bas, 3, 2);
+            $e = (int) substr($bit, 0, 2) * 60 + (int) substr($bit, 3, 2);
+            if ($e <= $b) $e += 24 * 60;
+            return round(($e - $b) / 60, 1);
+        } catch (\Throwable $ex) { return 0.0; }
+    }
+}
+if (!function_exists('_ikSaatlikUcret')) {
+    // Personelin maaşından yaklaşık saatlik ücret (tahmini işçilik için). Restoran ~ayda 26 gün × 9 saat ≈ 234s.
+    function _ikSaatlikUcret($per)
+    {
+        $maas = (float) ($per->maas ?? 0);
+        if ($maas <= 0) return 0.0;
+        $tip = $per->maas_tipi ?? 'aylik';
+        if ($tip === 'saatlik') return $maas;
+        if ($tip === 'gunluk') return round($maas / 9, 2);
+        return round($maas / 234, 2); // aylık
+    }
+}
+if (!function_exists('_ikVardiyaHafta')) {
+    // Bir haftanın (Pzt başlangıç) vardiya çizelgesi: personel bazında günlere dağılmış + toplam saat + tahmini maliyet.
+    function _ikVardiyaHafta($sid, $haftaBasi)
+    {
+        $sid = (int) $sid;
+        _ikVardiyaEnsure();
+        $bas = \Carbon\Carbon::parse($haftaBasi)->startOfDay();
+        $gunler = [];
+        for ($i = 0; $i < 7; $i++) $gunler[] = $bas->copy()->addDays($i);
+        $sonGun = $bas->copy()->addDays(6)->toDateString();
+        $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')
+            ->get(['id', 'ad', 'rol', 'maas', 'maas_tipi']);
+        $vardiyalar = DB::table('personel_vardiya')->where('sube_id', $sid)
+            ->whereBetween('tarih', [$bas->toDateString(), $sonGun])->orderBy('baslangic')->get();
+        // puantaj (gerçekleşen) — o hafta giriş yapılan gün/personel
+        $mesaiGun = [];
+        if (Schema::hasTable('personel_mesai')) {
+            try {
+                foreach (DB::table('personel_mesai')->where('sube_id', $sid)
+                    ->whereBetween('giris_at', [$bas->toDateString() . ' 00:00:00', $sonGun . ' 23:59:59'])
+                    ->get(['personel_id', 'giris_at']) as $m) {
+                    $mesaiGun[$m->personel_id . '|' . substr($m->giris_at, 0, 10)] = true;
+                }
+            } catch (\Throwable $e) {}
+        }
+        // index: personel_id -> tarih -> [vardiya,...]
+        $idx = []; $toplamSaat = 0.0; $toplamMaliyet = 0.0;
+        $perMap = [];
+        foreach ($personeller as $p) $perMap[$p->id] = $p;
+        foreach ($vardiyalar as $v) {
+            $saat = _ikVardiyaSaat($v->baslangic, $v->bitis);
+            $toplamSaat += $saat;
+            $per = $perMap[$v->personel_id] ?? null;
+            if ($per) $toplamMaliyet += $saat * _ikSaatlikUcret($per);
+            $gercek = isset($mesaiGun[$v->personel_id . '|' . $v->tarih]);
+            $idx[$v->personel_id][$v->tarih][] = [
+                'id' => $v->id, 'bas' => substr($v->baslangic, 0, 5), 'bit' => substr($v->bitis, 0, 5),
+                'saat' => $saat, 'pozisyon' => $v->pozisyon, 'not' => $v->not, 'gercek' => $gercek,
+            ];
+        }
+        return [
+            'hafta_basi' => $bas->toDateString(), 'gunler' => $gunler, 'personeller' => $personeller,
+            'idx' => $idx, 'toplam_saat' => round($toplamSaat, 1), 'toplam_maliyet' => round($toplamMaliyet, 0),
+        ];
+    }
+}
+Route::get('/ik-vardiya', function () {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _restoPersonelKolonEnsure();
+    $sid = _webSubeId();
+    $hafta = request('hafta');
+    $hb = $hafta ? \Carbon\Carbon::parse($hafta) : \Carbon\Carbon::now();
+    $hb = $hb->startOfWeek(\Carbon\Carbon::MONDAY);
+    $veri = _ikVardiyaHafta($sid, $hb->toDateString());
+    return view('ik_vardiya', ['veri' => $veri, 'yonetici' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::post('/ik-vardiya/kaydet', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikVardiyaEnsure();
+    $sid = _webSubeId();
+    $geri = '/ik-vardiya?hafta=' . urlencode((string) $r->hafta);
+    try {
+        $pid = (int) $r->personel_id;
+        if (!DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->exists()) return redirect($geri)->with('hata', 'Personel bulunamadı.');
+        $bas = substr((string) $r->baslangic, 0, 5); $bit = substr((string) $r->bitis, 0, 5);
+        if (!preg_match('/^\d{2}:\d{2}$/', $bas) || !preg_match('/^\d{2}:\d{2}$/', $bit)) return redirect($geri)->with('hata', 'Saat formatı geçersiz.');
+        $data = [
+            'sube_id' => $sid, 'personel_id' => $pid, 'tarih' => \Carbon\Carbon::parse($r->tarih)->toDateString(),
+            'baslangic' => $bas . ':00', 'bitis' => $bit . ':00',
+            'pozisyon' => trim((string) $r->pozisyon) ?: null, 'not' => trim((string) $r->not) ?: null,
+        ];
+        $id = (int) $r->id;
+        if ($id > 0 && DB::table('personel_vardiya')->where('id', $id)->where('sube_id', $sid)->exists()) {
+            DB::table('personel_vardiya')->where('id', $id)->update($data);
+        } else {
+            $data['created_by'] = (int) $bp->id; $data['created_at'] = now();
+            DB::table('personel_vardiya')->insert($data);
+        }
+        return redirect($geri)->with('ok', 'Vardiya kaydedildi ✓');
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Kaydedilemedi: ' . $e->getMessage()); }
+});
+Route::post('/ik-vardiya/sil', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikVardiyaEnsure();
+    $sid = _webSubeId();
+    try { DB::table('personel_vardiya')->where('id', (int) $r->id)->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/ik-vardiya?hafta=' . urlencode((string) $r->hafta))->with('ok', 'Vardiya silindi.');
+});
+Route::post('/ik-vardiya/kopyala', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikVardiyaEnsure();
+    $sid = _webSubeId();
+    $geri = '/ik-vardiya?hafta=' . urlencode((string) $r->hafta);
+    try {
+        $hedef = \Carbon\Carbon::parse($r->hafta)->startOfWeek(\Carbon\Carbon::MONDAY);
+        $kaynak = $hedef->copy()->subDays(7); // geçen hafta
+        $kay = DB::table('personel_vardiya')->where('sube_id', $sid)
+            ->whereBetween('tarih', [$kaynak->toDateString(), $kaynak->copy()->addDays(6)->toDateString()])->get();
+        if ($kay->isEmpty()) return redirect($geri)->with('hata', 'Geçen hafta kopyalanacak vardiya yok.');
+        // hedef haftada o personel+gün zaten varsa atla (üstüne yazma)
+        $mevcut = [];
+        foreach (DB::table('personel_vardiya')->where('sube_id', $sid)
+            ->whereBetween('tarih', [$hedef->toDateString(), $hedef->copy()->addDays(6)->toDateString()])->get(['personel_id', 'tarih', 'baslangic']) as $m) {
+            $mevcut[$m->personel_id . '|' . $m->tarih . '|' . $m->baslangic] = true;
+        }
+        $n = 0;
+        foreach ($kay as $v) {
+            $yeniTarih = \Carbon\Carbon::parse($v->tarih)->addDays(7)->toDateString();
+            if (isset($mevcut[$v->personel_id . '|' . $yeniTarih . '|' . $v->baslangic])) continue;
+            DB::table('personel_vardiya')->insert([
+                'sube_id' => $sid, 'personel_id' => $v->personel_id, 'tarih' => $yeniTarih,
+                'baslangic' => $v->baslangic, 'bitis' => $v->bitis, 'pozisyon' => $v->pozisyon, 'not' => $v->not,
+                'created_by' => (int) $bp->id, 'created_at' => now(),
+            ]);
+            $n++;
+        }
+        return redirect($geri)->with('ok', "$n vardiya geçen haftadan kopyalandı ✓");
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Kopyalanamadı.'); }
 });
 
 // AKSİYON: AI'nın yakaladığı kritik stoğu TEK TIKLA acil satın alma talebine çevir (çözüm odaklı).
@@ -19463,6 +19637,140 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
     DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]);
     return ['ok' => 1, 'adisyon_id' => $adId, 'kalem' => $eklenen,
         'mesaj' => $masa->ad . ' açıldı' . ($eklenen ? ", $eklenen ön sipariş mutfağa gönderildi." : '.')];
+});
+
+// ============================ KARŞILAMA / HOST (departman iş ekranı) ============================
+// Bekleme listesi (walk-in sırası) YENİ. Rezervasyon + masa durumu mevcut sistemden derlenir.
+if (!function_exists('_beklemeEnsure')) {
+    function _beklemeEnsure()
+    {
+        if (Schema::hasTable('bekleme_listesi')) return;
+        try {
+            Schema::create('bekleme_listesi', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 120);
+                $t->string('telefon', 30)->nullable();
+                $t->unsignedInteger('kisi')->default(2);
+                $t->string('not', 255)->nullable();
+                $t->unsignedInteger('tahmini_dk')->nullable();          // tahmini bekleme (dk)
+                $t->string('durum', 20)->default('bekliyor');           // bekliyor | cagrildi | oturtuldu | iptal
+                $t->unsignedBigInteger('masa_id')->nullable();
+                $t->unsignedBigInteger('adisyon_id')->nullable();
+                $t->unsignedBigInteger('personel_id')->nullable();
+                $t->timestamp('cagrildi_at')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+                $t->timestamp('updated_at')->nullable();
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+// Host paneli: bekleme listesi + bugünün yaklaşan rezervasyonları + bölge bazlı masa durumu + özet.
+Route::get('/api/karsilama/panel', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sube = (int) $p->sube_id;
+    _beklemeEnsure(); _rezervasyonEnsure($sube);
+    $ds = today()->toDateString(); $now = now();
+    $san = function ($t) use ($now) { try { return $t ? (int) $now->diffInSeconds(\Illuminate\Support\Carbon::parse($t)) : 0; } catch (\Throwable $e) { return 0; } };
+
+    // Bekleme listesi (aktif)
+    $bekleme = collect();
+    try { $bekleme = DB::table('bekleme_listesi')->where('sube_id', $sube)->whereIn('durum', ['bekliyor', 'cagrildi'])->orderBy('created_at')->get(); } catch (\Throwable $e) {}
+
+    // Bugünün yaklaşan rezervasyonları
+    $rez = collect();
+    try {
+        $rez = DB::table('rezervasyonlar')->leftJoin('masalar', 'rezervasyonlar.masa_id', '=', 'masalar.id')
+            ->where('rezervasyonlar.sube_id', $sube)->where('rezervasyonlar.tarih', $ds)
+            ->whereIn('rezervasyonlar.durum', ['bekliyor', 'onaylandi', 'geldi'])->orderBy('rezervasyonlar.saat')
+            ->get(['rezervasyonlar.id', 'rezervasyonlar.ad', 'rezervasyonlar.telefon', 'rezervasyonlar.kisi', 'rezervasyonlar.saat', 'rezervasyonlar.durum', 'rezervasyonlar.masa_id', 'rezervasyonlar.not', 'rezervasyonlar.etiketler', 'masalar.ad as masa']);
+    } catch (\Throwable $e) {}
+
+    // Masa durumu (bölge bazlı boş/dolu/rezerve)
+    $bolgeler = []; $topBos = 0; $topDolu = 0; $topRez = 0;
+    try {
+        $acikIds = DB::table('adisyonlar')->where('sube_id', $sube)->where('durum', 'acik')->whereNotNull('masa_id')->pluck('masa_id')->map(fn ($x) => (int) $x)->unique()->all();
+        $acikSet = array_flip($acikIds);
+        $masalar = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')
+            ->where('masalar.sube_id', $sube)->get(['masalar.id', 'masalar.durum', 'bolgeler.ad as bolge', 'bolgeler.sira']);
+        $map = [];
+        foreach ($masalar as $m) {
+            $b = $m->bolge ?: 'Genel';
+            if (!isset($map[$b])) $map[$b] = ['bolge' => $b, 'bos' => 0, 'dolu' => 0, 'rezerve' => 0, 'sira' => $m->sira ?? 999];
+            if (isset($acikSet[(int) $m->id])) { $map[$b]['dolu']++; $topDolu++; }
+            elseif (($m->durum ?? '') === 'rezerve') { $map[$b]['rezerve']++; $topRez++; }
+            else { $map[$b]['bos']++; $topBos++; }
+        }
+        $bolgeler = array_values($map);
+        usort($bolgeler, fn ($a, $b) => $a['sira'] <=> $b['sira']);
+    } catch (\Throwable $e) {}
+
+    return ['ok' => 1,
+        'bekleme' => $bekleme->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad, 'telefon' => $b->telefon, 'kisi' => (int) $b->kisi, 'not' => $b->not, 'tahmini_dk' => $b->tahmini_dk !== null ? (int) $b->tahmini_dk : null, 'durum' => $b->durum, 'saniye' => $san($b->created_at)])->values()->all(),
+        'rezervasyonlar' => $rez->map(fn ($x) => ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'kisi' => (int) $x->kisi, 'saat' => $x->saat, 'durum' => $x->durum, 'masa_id' => $x->masa_id ? (int) $x->masa_id : null, 'masa' => $x->masa, 'not' => $x->not, 'etiketler' => $x->etiketler])->values()->all(),
+        'masa_durum' => ['bolgeler' => $bolgeler, 'toplam' => ['bos' => $topBos, 'dolu' => $topDolu, 'rezerve' => $topRez]],
+        'ozet' => ['bekleme_grup' => $bekleme->count(), 'bekleme_kisi' => (int) $bekleme->sum(fn ($b) => (int) $b->kisi), 'rez_bekleyen' => $rez->whereIn('durum', ['bekliyor', 'onaylandi'])->count(), 'bos_masa' => $topBos],
+    ];
+});
+// Bekleme listesine ekle
+Route::post('/api/karsilama/bekleme-ekle', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _beklemeEnsure();
+    $ad = trim((string) $r->input('ad'));
+    if ($ad === '') return ['ok' => 0, 'hata' => 'İsim gerekli.'];
+    $tahmini = $r->input('tahmini_dk');
+    $id = DB::table('bekleme_listesi')->insertGetId([
+        'sube_id' => $p->sube_id, 'ad' => mb_substr($ad, 0, 120),
+        'telefon' => preg_replace('/[^0-9+]/', '', (string) $r->input('telefon')) ?: null,
+        'kisi' => max(1, (int) $r->input('kisi', 2)),
+        'not' => $r->input('not') ? mb_substr((string) $r->input('not'), 0, 255) : null,
+        'tahmini_dk' => ($tahmini !== null && $tahmini !== '') ? (int) $tahmini : null,
+        'durum' => 'bekliyor', 'personel_id' => $p->id, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'id' => $id];
+});
+// Bekleme durumu (cagrildi / iptal / geri bekliyor)
+Route::post('/api/karsilama/bekleme-durum', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _beklemeEnsure();
+    $id = (int) $r->input('id'); $durum = (string) $r->input('durum');
+    if (!in_array($durum, ['bekliyor', 'cagrildi', 'iptal'])) return ['ok' => 0, 'hata' => 'Geçersiz durum'];
+    $row = DB::table('bekleme_listesi')->where('id', $id)->where('sube_id', $p->sube_id)->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kayıt bulunamadı'];
+    $upd = ['durum' => $durum, 'updated_at' => now()];
+    if ($durum === 'cagrildi') $upd['cagrildi_at'] = now();
+    DB::table('bekleme_listesi')->where('id', $id)->update($upd);
+    return ['ok' => 1];
+});
+// Bekleyeni OTURT → masaya adisyon aç (rezervasyon-oturt deseni, ön sipariş yok)
+Route::post('/api/karsilama/bekleme-oturt', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Masa / adisyon açma yetkiniz yok.'];
+    _beklemeEnsure();
+    $id = (int) $r->input('id'); $masaId = (int) $r->input('masa_id');
+    if (!$masaId) return ['ok' => 0, 'hata' => 'Önce masa seçin.'];
+    $row = DB::table('bekleme_listesi')->where('id', $id)->where('sube_id', $p->sube_id)->first();
+    if (!$row) return ['ok' => 0, 'hata' => 'Kayıt bulunamadı'];
+    $masa = DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->first();
+    if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
+    $birlesik = DB::table('adisyon_masa_loglari as l')->join('adisyonlar as a', 'l.adisyon_id', '=', 'a.id')
+        ->where('l.islem', 'birlestirme')->where('a.durum', 'acik')->whereNotNull('a.masa_id')->where('l.eski_masa_id', $masaId)->exists();
+    if ($birlesik) return ['ok' => 0, 'hata' => $masa->ad . ' başka masayla birleşik. Önce ayırın ya da başka masa seçin.'];
+    $adId = DB::table('adisyonlar')->where('masa_id', $masaId)->where('durum', 'acik')->value('id');
+    if (!$adId) {
+        $adId = DB::table('adisyonlar')->insertGetId([
+            'sube_id' => $p->sube_id, 'masa_id' => $masaId, 'kanal' => 'salon', 'misafir_sayisi' => max(1, (int) $row->kisi),
+            'durum' => 'acik', 'acan_personel_id' => $p->id, 'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0,
+            'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    DB::table('masalar')->where('id', $masaId)->update(['durum' => 'dolu']);
+    DB::table('bekleme_listesi')->where('id', $id)->update(['durum' => 'oturtuldu', 'masa_id' => $masaId, 'adisyon_id' => $adId, 'updated_at' => now()]);
+    return ['ok' => 1, 'adisyon_id' => $adId, 'mesaj' => $masa->ad . ' açıldı.'];
 });
 
 // TEMIZLIK: rezervasyonlari + ACIK adisyonlari sifirla -> tertemiz test zemini.
