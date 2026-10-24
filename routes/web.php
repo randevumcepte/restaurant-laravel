@@ -422,17 +422,21 @@ Route::post('/pos-giris', function (Request $r) {
     if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
     session(['pos_personel_id' => $p->id]);
     session()->forget('pos_kasa_id');
-    // ÇOKLU KASA: kasa noktası tanımlıysa hangi kasada çalışılacağını belirle
-    $kasalar = function_exists('_kasalarAktif') ? _kasalarAktif($p->sube_id) : collect();
-    if ($kasalar->count()) {
-        $vk = DB::table('personeller')->where('id', $p->id)->value('varsayilan_kasa_id');
-        $sec = $vk ? $kasalar->firstWhere('id', (int) $vk) : null;   // atanmış kasa
-        if (!$sec && $kasalar->count() === 1) $sec = $kasalar->first(); // tek kasa → otomatik
-        if ($sec) { session(['pos_kasa_id' => $sec->id]); }
-        else { return redirect('/pos-kasa-sec'); }                     // birden fazla & atanmamış → seçtir
+    // Satın almacı POS/kasa kullanmaz → kasa seçimini atla, kendi sayfasına düşür
+    $posSuz = in_array(($p->rol ?? ''), ['satinalmaci']);
+    if (!$posSuz) {
+        // ÇOKLU KASA: kasa noktası tanımlıysa hangi kasada çalışılacağını belirle
+        $kasalar = function_exists('_kasalarAktif') ? _kasalarAktif($p->sube_id) : collect();
+        if ($kasalar->count()) {
+            $vk = DB::table('personeller')->where('id', $p->id)->value('varsayilan_kasa_id');
+            $sec = $vk ? $kasalar->firstWhere('id', (int) $vk) : null;   // atanmış kasa
+            if (!$sec && $kasalar->count() === 1) $sec = $kasalar->first(); // tek kasa → otomatik
+            if ($sec) { session(['pos_kasa_id' => $sec->id]); }
+            else { return redirect('/pos-kasa-sec'); }                     // birden fazla & atanmamış → seçtir
+        }
     }
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
-    return redirect($hedef ?: '/pos');
+    return redirect($hedef ?: ($posSuz ? '/satinalma-talep' : '/pos'));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
