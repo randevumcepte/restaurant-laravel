@@ -8695,9 +8695,14 @@ if (!function_exists('_epostaHesapEnsure')) {
         }
         cache()->put('eposta_hesap_ensure_ok', 1, now()->addHours(12));
         if (!cache()->get('eposta_hesap_dep_ok')) {
-            try { if (Schema::hasTable('eposta_hesaplari') && !Schema::hasColumn('eposta_hesaplari', 'departman_id')) {
-                Schema::table('eposta_hesaplari', function ($t) { $t->unsignedBigInteger('departman_id')->nullable()->after('sube_id')->index(); });
-            } } catch (\Throwable $e) {}
+            foreach ([
+                ['departman_id', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()->index()],
+                ['imap_host', fn ($t) => $t->string('imap_host', 120)->nullable()],   // gelen mail okuma (IMAP)
+                ['imap_port', fn ($t) => $t->integer('imap_port')->default(993)],
+                ['imap_guvenlik', fn ($t) => $t->string('imap_guvenlik', 8)->default('ssl')], // ssl|tls|yok
+            ] as [$kol, $cl]) {
+                try { if (Schema::hasTable('eposta_hesaplari') && !Schema::hasColumn('eposta_hesaplari', $kol)) Schema::table('eposta_hesaplari', $cl); } catch (\Throwable $e) {}
+            }
             cache()->put('eposta_hesap_dep_ok', 1, now()->addHours(12));
         }
     }
@@ -8710,13 +8715,24 @@ if (!function_exists('_epostaVarsayilan')) {
     }
 }
 if (!function_exists('_epostaGonder')) {
-    // SMTP ile mail gönder (Laravel dinamik mailer). Hesap yoksa/hata -> false (graceful; RFQ WhatsApp ile yine gider).
-    function _epostaGonder($sid, $to, $konu, $govde, $hesapId = null)
+    // Mail gönder. Öncelik: departman OAuth (Gmail/Graph REST, ücretsiz) > departman SMTP > şube varsayılan SMTP.
+    // Hiçbiri yoksa/hata -> false (graceful; RFQ WhatsApp ile yine gider).
+    function _epostaGonder($sid, $to, $konu, $govde, $hesapId = null, $depId = null)
     {
         if (empty($to)) return false;
         _epostaHesapEnsure();
+        // 1) Departman OAuth bağlantısı (ücretsiz, ext-imap/SMTP gerekmez)
+        if ($depId && function_exists('_baglantiGetir')) {
+            if (_baglantiGetir($sid, 'google', $depId) && function_exists('_gmailGonder') && _gmailGonder($sid, $to, $konu, $govde, $depId)) return true;
+            if (_baglantiGetir($sid, 'graph', $depId) && function_exists('_graphGonder') && _graphGonder($sid, $to, $konu, $govde, $depId)) return true;
+        }
+        // 2) SMTP hesabı: açık hesapId > departman SMTP > şube varsayılan
         $h = null;
-        try { $h = $hesapId ? DB::table('eposta_hesaplari')->where('id', (int) $hesapId)->where('sube_id', (int) $sid)->first() : _epostaVarsayilan($sid); } catch (\Throwable $e) {}
+        try {
+            if ($hesapId) $h = DB::table('eposta_hesaplari')->where('id', (int) $hesapId)->where('sube_id', (int) $sid)->first();
+            elseif ($depId) $h = DB::table('eposta_hesaplari')->where('sube_id', (int) $sid)->where('departman_id', (int) $depId)->first();
+            if (!$h) $h = _epostaVarsayilan($sid);
+        } catch (\Throwable $e) {}
         if (!$h || empty($h->smtp_host) || empty($h->email)) return false;
         try {
             $sifre = $h->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($h->smtp_sifre) : '';
@@ -8730,6 +8746,45 @@ if (!function_exists('_epostaGonder')) {
             });
             return true;
         } catch (\Throwable $e) { return false; }
+    }
+}
+if (!function_exists('_imapOku')) {
+    // IMAP ile gelen mailleri oku (konu+gövde metni). ext-imap yoksa veya imap_host boşsa [] döner (graceful).
+    // $hesap = eposta_hesaplari satırı (imap_host + smtp_user/smtp_sifre aynı kimlikle kullanılır).
+    function _imapOku($hesap, $gunGeri = 2, $max = 30)
+    {
+        if (!function_exists('imap_open') || empty($hesap->imap_host)) return [];
+        $imap = null;
+        try {
+            $port = (int) ($hesap->imap_port ?: 993);
+            $sec = $hesap->imap_guvenlik ?: 'ssl';
+            $bayrak = '/imap' . ($sec === 'ssl' ? '/ssl' : ($sec === 'tls' ? '/tls' : '/notls')) . '/novalidate-cert';
+            $mbox = '{' . $hesap->imap_host . ':' . $port . $bayrak . '}INBOX';
+            $user = $hesap->smtp_user ?: $hesap->email;
+            $pass = $hesap->smtp_sifre ? \Illuminate\Support\Facades\Crypt::decryptString($hesap->smtp_sifre) : '';
+            $imap = @imap_open($mbox, $user, $pass, 0, 1);
+            if (!$imap) return [];
+            $ids = @imap_search($imap, 'SINCE "' . date('d-M-Y', strtotime('-' . (int) $gunGeri . ' days')) . '"', SE_UID);
+            $out = [];
+            if ($ids) {
+                rsort($ids);
+                foreach (array_slice($ids, 0, $max) as $uid) {
+                    $uid = (string) $uid;
+                    $konu = '';
+                    $ov = @imap_fetch_overview($imap, $uid, FT_UID);
+                    if ($ov && isset($ov[0]->subject)) { $konu = function_exists('imap_utf8') ? @imap_utf8($ov[0]->subject) : $ov[0]->subject; }
+                    $st = @imap_fetchstructure($imap, $uid, FT_UID);
+                    $enc = is_object($st) ? ($st->encoding ?? 0) : 0;
+                    $govde = @imap_fetchbody($imap, $uid, '1', FT_UID | FT_PEEK);
+                    if ($govde === false || $govde === '') $govde = @imap_body($imap, $uid, FT_UID | FT_PEEK);
+                    if ($enc === 3) $govde = base64_decode((string) $govde);
+                    elseif ($enc === 4) $govde = quoted_printable_decode((string) $govde);
+                    $out[] = ['ref' => 'imap:' . $hesap->id . ':' . $uid, 'metin' => trim($konu . "\n" . (string) $govde)];
+                }
+            }
+            @imap_close($imap);
+            return $out;
+        } catch (\Throwable $e) { if ($imap) { try { @imap_close($imap); } catch (\Throwable $e2) {} } return []; }
     }
 }
 Route::get('/eposta-hesaplari', function () {
@@ -8799,6 +8854,7 @@ Route::post('/fiyat-arastir', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId(); $geri = $r->input('geri', '/satinalma-talep');
+    $depId = (int) $r->input('dep');
     _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     $talepId = (int) $r->input('talep');
     $birim = DB::table('birimler')->pluck('kisaltma', 'id');
@@ -8824,7 +8880,7 @@ Route::post('/fiyat-arastir', function (Request $r) {
         foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
         $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
         $kanal = [];
-        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg)) { $kanal[] = 'mail'; $mailSay++; }
+        if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
         if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
         DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
         $gonderilen++;
@@ -8897,24 +8953,38 @@ Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
                 $n += _rfqTeklifIsle($sid, $m->mesaj, 'wa', 'wa:' . $m->id);
             }
         } } catch (\Throwable $e) {}
-        // Gmail gelen (bağlıysa)
-        try {
-            if (function_exists('_baglantiGetir') && _baglantiGetir($sid, 'google') && function_exists('_oauthAccessToken')) {
-                $tok = _oauthAccessToken($sid, 'google');
-                if ($tok) {
-                    $liste = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' . rawurlencode('RFQ- newer_than:2d') . '&maxResults=15', $tok);
-                    foreach (($liste['messages'] ?? []) as $mm) {
-                        $msg = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages/' . $mm['id'] . '?format=full', $tok);
-                        $body = '';
-                        $parts = $msg['payload']['parts'] ?? [[$msg['payload']]];
-                        foreach (($msg['payload']['parts'] ?? []) as $p) { if (!empty($p['body']['data'])) $body .= base64_decode(strtr($p['body']['data'], '-_', '+/')); }
-                        if ($body === '' && !empty($msg['payload']['body']['data'])) $body = base64_decode(strtr($msg['payload']['body']['data'], '-_', '+/'));
-                        $snippet = $body ?: ($msg['snippet'] ?? '');
-                        $n += _rfqTeklifIsle($sid, $snippet, 'mail', 'mail:' . $mm['id']);
-                    }
+        // Kurumsal IMAP hesapları (uygulama şifresi ile gelen mail oku) — ext-imap gerekir
+        try { if (Schema::hasTable('eposta_hesaplari') && Schema::hasColumn('eposta_hesaplari', 'imap_host')) {
+            foreach (DB::table('eposta_hesaplari')->where('sube_id', $sid)->whereNotNull('imap_host')->where('imap_host', '!=', '')->get() as $hes) {
+                foreach (_imapOku($hes, 2, 30) as $mail) $n += _rfqTeklifIsle($sid, $mail['metin'], 'mail', $mail['ref']);
+            }
+        } } catch (\Throwable $e) {}
+        // Gmail bağlantıları (şube + her departman) — REST oku
+        try { if (Schema::hasTable('patron_ai_baglantilar') && function_exists('_oauthAccessToken')) {
+            foreach (DB::table('patron_ai_baglantilar')->where('sube_id', $sid)->where('saglayici', 'google')->where('durum', 'aktif')->get() as $bg) {
+                $tok = _oauthAccessToken($sid, 'google', $bg->departman_id ?? null); if (!$tok) continue;
+                $liste = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' . rawurlencode('RFQ- newer_than:2d') . '&maxResults=15', $tok);
+                foreach (($liste['messages'] ?? []) as $mm) {
+                    $msg = _oauthHttpGet('https://gmail.googleapis.com/gmail/v1/users/me/messages/' . $mm['id'] . '?format=full', $tok);
+                    $body = '';
+                    foreach (($msg['payload']['parts'] ?? []) as $p) { if (!empty($p['body']['data'])) $body .= base64_decode(strtr($p['body']['data'], '-_', '+/')); }
+                    if ($body === '' && !empty($msg['payload']['body']['data'])) $body = base64_decode(strtr($msg['payload']['body']['data'], '-_', '+/'));
+                    $snippet = $body ?: ($msg['snippet'] ?? '');
+                    $n += _rfqTeklifIsle($sid, $snippet, 'mail', 'gml:' . $bg->id . ':' . $mm['id']);
                 }
             }
-        } catch (\Throwable $e) {}
+        } } catch (\Throwable $e) {}
+        // Outlook/Graph bağlantıları — REST oku
+        try { if (Schema::hasTable('patron_ai_baglantilar') && function_exists('_oauthAccessToken')) {
+            foreach (DB::table('patron_ai_baglantilar')->where('sube_id', $sid)->where('saglayici', 'graph')->where('durum', 'aktif')->get() as $bg) {
+                $tok = _oauthAccessToken($sid, 'graph', $bg->departman_id ?? null); if (!$tok) continue;
+                $d = _oauthHttpGet('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=20&$select=subject,body,receivedDateTime', $tok);
+                foreach (($d['value'] ?? []) as $m) {
+                    $metin = ($m['subject'] ?? '') . "\n" . strip_tags((string) ($m['body']['content'] ?? ''));
+                    $n += _rfqTeklifIsle($sid, $metin, 'mail', 'grp:' . $bg->id . ':' . ($m['id'] ?? ''));
+                }
+            }
+        } } catch (\Throwable $e) {}
     }
     return ['ok' => 1, 'teklif' => $n];
 });

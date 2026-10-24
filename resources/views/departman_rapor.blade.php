@@ -99,6 +99,7 @@
       <form method="POST" action="/fiyat-arastir" style="display:inline" onsubmit="return rkOnayForm(this, 'Bu ürünlere bağlı tedarikçilere e-posta + WhatsApp ile fiyat teklifi isteği gönderilsin mi?', 'var(--mavi)', 'Evet, fiyat iste')">
         @csrf
         <input type="hidden" name="geri" value="/departman-rapor?id={{ $dep->id }}">
+        <input type="hidden" name="dep" value="{{ $dep->id }}">
         <button type="submit" class="rk-btn bos" style="color:var(--mavi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> Fiyat Araştır</button>
       </form>
     </div>
