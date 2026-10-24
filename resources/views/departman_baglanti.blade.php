@@ -102,9 +102,14 @@
         <option value="">— Sağlayıcı seç —</option>
         <option value="gmail">Gmail / Google Workspace</option>
         <option value="hotmail">Outlook.com / Hotmail / Live (kişisel)</option>
-        <option value="outlook">Microsoft 365 / Exchange (kurumsal)</option>
+        <option value="outlook">Microsoft 365 / Exchange Online (bulut)</option>
+        <option value="onprem">On-prem Exchange / Kendi Mail Sunucun</option>
         <option value="diger">Diğer (IMAP/SMTP elle gir)</option>
       </select>
+      <div class="rk-sub" style="font-size:11px;margin:-4px 2px 10px">
+        ⚠️ <b>Microsoft bulut hesapları</b> (Outlook.com, Hotmail, Microsoft 365, Exchange Online) artık uygulama şifresiyle SMTP'yi <b>kapattı</b> → bunlar için <a href="/entegrasyonlar" style="color:var(--mor1);font-weight:700">OAuth</a> kullan (hem gönderir hem okur, imap eklentisi gerekmez).
+        <b>Kendi/on-prem mail sunucun</b> ise aşağıya bilgileri elle gir.
+      </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px"><label class="rk-lbl">E-posta Adresi</label><input class="rk-inp" name="email" type="email" value="{{ $smtp->email ?? '' }}" placeholder="satinalma@firma.com" required></div>
         <div style="flex:1;min-width:160px"><label class="rk-lbl">Gönderen Adı</label><input class="rk-inp" name="gonderen_ad" value="{{ $smtp->gonderen_ad ?? '' }}" placeholder="{{ $dep->ad }}"></div>
@@ -173,7 +178,7 @@ var SAGLAYICI_PRESET = {
   outlook: { smtp_host:'smtp.office365.com',   smtp_port:587, smtp_guvenlik:'tls', imap_host:'outlook.office365.com', imap_port:993, imap_guvenlik:'ssl' }
 };
 function saglayiciDoldur(v) {
-  if (v === 'diger') { document.getElementById('f_smtp_host').value=''; document.getElementById('f_imap_host').value=''; document.getElementById('f_smtp_host').focus(); return; }
+  if (v === 'diger' || v === 'onprem') { document.getElementById('f_smtp_host').value=''; document.getElementById('f_imap_host').value=''; document.getElementById('f_smtp_host').focus(); return; }
   var p = SAGLAYICI_PRESET[v]; if (!p) return;
   document.getElementById('f_smtp_host').value = p.smtp_host;
   document.getElementById('f_smtp_port').value = p.smtp_port;
