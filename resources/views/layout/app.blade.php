@@ -121,6 +121,7 @@
         array_unshift($gruplar['Personel'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981']);
         $gruplar['Personel'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
         $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
+        $gruplar['Personel'][] = ['/ik-aday', 'how_to_reg', 'İşe Alım / Aday Havuzu', '#10B981'];
     }
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
