@@ -24,6 +24,9 @@
     <form method="POST" action="/rfq-test-kur" style="display:inline" onsubmit="return rkOnayForm(this, 'Test için örnek bir malzeme + tedarikçi oluşturulsun mu? (sonra silebilirsin)', 'var(--mavi)', 'Evet, kur')">
       @csrf<button class="rk-btn bos" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">science</span> 1) Test Verisi Kur</button>
     </form>
+    <form method="POST" action="/rfq-test-sifirla" style="display:inline" onsubmit="return rkOnayForm(this, 'TÜM test verileri silinsin mi? (gelen teklifler, RFQ&apos;lar, tekliften oluşan siparişler, TEST tedarikçi/malzeme) — gerçek veriler etkilenmez.', 'var(--kirmizi)', 'Evet, sıfırla')">
+      @csrf<button class="rk-btn bos" style="color:var(--kirmizi)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">restart_alt</span> Test Verilerini Sıfırla</button>
+    </form>
     @endif
     <a href="/fiyat-arastir-sec" class="rk-btn" style="background:var(--mavi)"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> 2) Fiyat Araştır (Tedarikçi Seç)</a>
     <form method="POST" action="/gelen-teklifler/oku" style="display:inline">

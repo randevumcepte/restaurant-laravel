@@ -9388,7 +9388,32 @@ Route::post('/rfq-test-kur', function (Request $r) {
             DB::table('tedarikci_malzeme')->insert(['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid, 'guncel_fiyat' => 240, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
         }
     } catch (\Throwable $e) { return redirect('/gelen-teklifler')->with('hata', 'Test verisi kurulamadı: ' . mb_substr($e->getMessage(), 0, 100)); }
-    return redirect('/gelen-teklifler')->with('ok', 'Test verisi hazır: "TEST Dana Kıyma" malzemesi + "TEST Tedarik AŞ" tedarikçisi' . ($testMail ? (' (mail: ' . $testMail . ')') : '') . ' bağlandı. Şimdi bir departman raporundan "Fiyat Araştır" ile RFQ gönder.');
+    return redirect('/gelen-teklifler')->with('ok', 'Test verisi hazır: "TEST Dana Kıyma" malzemesi + "TEST Tedarik AŞ" tedarikçisi' . ($testMail ? (' (mail: ' . $testMail . ')') : '') . ' bağlandı. Şimdi "Fiyat Araştır" ile RFQ gönder.');
+});
+// TEST VERİLERİNİ SIFIRLA — RFQ/teklif/test siparişleri + TEST tedarikçi/malzeme temizle (sıfırdan test için)
+Route::post('/rfq-test-sifirla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/gelen-teklifler')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $sil = [];
+    try {
+        // Gelen teklifler + RFQ kayıtları (hepsi test kaynaklı)
+        if (Schema::hasTable('rfq_teklif')) { $n = DB::table('rfq_teklif')->where('sube_id', $sid)->delete(); if ($n) $sil[] = $n . ' teklif'; }
+        if (Schema::hasTable('rfq_gonderim')) { $n = DB::table('rfq_gonderim')->where('sube_id', $sid)->delete(); if ($n) $sil[] = $n . ' RFQ'; }
+        // Tekliften oluşturulan siparişler + kalemleri
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $spIds = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->where('notlar', 'Gelen tekliften oluşturuldu')->pluck('id')->all();
+            if ($spIds) {
+                if (Schema::hasTable('satinalma_siparis_kalemleri')) DB::table('satinalma_siparis_kalemleri')->whereIn('siparis_id', $spIds)->delete();
+                $n = DB::table('satinalma_siparisleri')->whereIn('id', $spIds)->delete(); if ($n) $sil[] = $n . ' sipariş';
+            }
+        }
+        // TEST tedarikçi + malzeme + katalog bağ
+        $tid = DB::table('tedarikciler')->where('ad', 'TEST Tedarik AŞ')->value('id');
+        $mid = DB::table('malzemeler')->where('ad', 'TEST Dana Kıyma')->value('id');
+        if ($tid) { try { DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->delete(); } catch (\Throwable $e) {} DB::table('tedarikciler')->where('id', $tid)->delete(); $sil[] = 'TEST tedarikçi'; }
+        if ($mid) { try { DB::table('tedarikci_malzeme')->where('malzeme_id', $mid)->delete(); } catch (\Throwable $e) {} DB::table('malzemeler')->where('id', $mid)->delete(); $sil[] = 'TEST malzeme'; }
+    } catch (\Throwable $e) { return redirect('/gelen-teklifler')->with('hata', 'Sıfırlanamadı: ' . mb_substr($e->getMessage(), 0, 100)); }
+    return redirect('/gelen-teklifler')->with('ok', '🔄 Sıfırlandı: ' . ($sil ? implode(', ', $sil) . ' silindi' : 'silinecek test verisi yoktu') . '. "Test Verisi Kur" ile baştan başlayabilirsin.');
 });
 
 // ============================ P4 — TESLİM TAKİBİ (hatırlatma + gecikme) ============================
