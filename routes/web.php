@@ -11625,6 +11625,29 @@ Route::post('/siparis-onerisi/olustur', function (Request $r) {
         return redirect('/satinalma-siparis')->with('sa_ok', $olusan . ' sipariş taslağı oluşturuldu (tedarikçiye göre gruplandı).');
     } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Sipariş oluşturulamadı.'); }
 });
+// PATRON → SATIN ALMAYA GÖNDER: öneri listesini talep olarak satın alma ekibine yolla (direkt sipariş DEĞİL)
+Route::post('/siparis-onerisi/talep', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/siparis-onerisi')->with('so_hata', 'Yetkisiz.');
+    $sid = _webSubeId();
+    try {
+        if (function_exists('_satinalmaTalepEnsure')) _satinalmaTalepEnsure();
+        $kalemler = json_decode((string) $r->input('kalemler'), true);
+        if (!is_array($kalemler) || !count($kalemler)) return redirect('/siparis-onerisi')->with('so_hata', 'Ürün seçilmedi.');
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $talepId = (int) DB::table('satinalma_talepleri')->insertGetId(['sube_id' => $sid, 'departman' => 'Üst Yönetim (öneri)', 'isteyen_id' => $bp->id ?? null, 'isteyen_ad' => $bp->ad ?? 'Patron', 'aciliyet' => 'normal', 'durum' => 'yeni', 'not' => 'Otomatik sipariş önerisinden satın almaya gönderildi', 'created_at' => now(), 'updated_at' => now()]);
+        $say = 0;
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0); $miktar = (float) ($k['miktar'] ?? 0); if (!$mid || $miktar <= 0) continue;
+            $tid = (int) ($k['tedarikci_id'] ?? 0);
+            DB::table('talep_kalemleri')->insert(['talep_id' => $talepId, 'malzeme_id' => $mid, 'ad' => $malAd[$mid] ?? 'Ürün', 'miktar' => $miktar, 'birim' => $birimKis[(int) ($k['birim_id'] ?? 0)] ?? '', 'onerilen_tedarikci_id' => $tid ?: null, 'created_at' => now(), 'updated_at' => now()]);
+            $say++;
+        }
+        if (!$say) { DB::table('satinalma_talepleri')->where('id', $talepId)->delete(); return redirect('/siparis-onerisi')->with('so_hata', 'Geçerli ürün yok.'); }
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🛒 Yeni Satın Alma Talebi', $say . ' kalemlik talep satın almaya gönderildi.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['satinalmaci', 'sahip', 'mudur']); } catch (\Throwable $e) {}
+        return redirect('/satinalma-talep')->with('ok', '✅ ' . $say . ' kalemlik talep satın almaya gönderildi. Satın alma ekibi "Fiyat Araştır" veya "Hemen Sipariş" ile devam edebilir.');
+    } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Talep gönderilemedi.'); }
+});
 
 // ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
 Route::get('/fiyat-radari', function () {
