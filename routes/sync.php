@@ -139,6 +139,18 @@ if (!function_exists('_syncUuidBackfill')) {
         foreach ($q->limit(5000)->get(['id']) as $row) {
             DB::table($tablo)->where('id', $row->id)->update(['uuid' => 'srv_' . $tablo . '_' . $row->id]);
         }
+        // KRİTİK: updated_at NULL ise pull "WHERE updated_at > X" ile bu satırı ATLAR -> offline'a HİÇ inmez.
+        // (Eski/demo/web-panelden açılan açık adisyonlar damgasız kalınca telefonda masa BOŞ görünüyordu.)
+        // Damgayı created_at'e (yoksa now) eşitle: yaşını koru, ama senkrona görünür olsun.
+        if (Schema::hasColumn($tablo, 'updated_at')) {
+            $u = DB::table($tablo)->whereNull('updated_at');
+            if (Schema::hasColumn($tablo, 'sube_id')) $u->where('sube_id', $subeId);
+            if (Schema::hasColumn($tablo, 'created_at')) {
+                $u->update(['updated_at' => DB::raw('COALESCE(created_at, NOW())')]);
+            } else {
+                $u->update(['updated_at' => now()]);
+            }
+        }
     }
 }
 
@@ -263,9 +275,23 @@ Route::get('/api/sync/pull', function (Request $r) {
         _syncUuidBackfill($t, $subeId);
 
         $q = DB::table($t);
-        // Sipariş/ödeme gecmisini son N gunle sinirla -> ilk senkron yillarca veri cekmez
+        // Sipariş/ödeme gecmisini son N gunle sinirla -> ilk senkron yillarca veri cekmez.
+        // AMA açık adisyonlar YAŞI NE OLURSA OLSUN gelmeli (offline'da masa dolu görünsün).
         if (in_array($ad, $gecmisliler, true) && Schema::hasColumn($t, 'updated_at')) {
-            $q->where('updated_at', '>', $gecmisEsik);
+            if ($ad === 'adisyonlar') {
+                $q->where(function ($w) use ($gecmisEsik) {
+                    $w->where('updated_at', '>', $gecmisEsik)->orWhere('durum', 'acik');
+                });
+            } elseif (Schema::hasColumn($t, 'adisyon_id')) {
+                // Kalem/ödeme: son 7 gün VEYA açık bir adisyona ait olanlar (açık masanın kalemleri eksik kalmasın).
+                $acikIdler = DB::table('adisyonlar')->where('sube_id', $subeId)->where('durum', 'acik')->pluck('id')->all();
+                $q->where(function ($w) use ($gecmisEsik, $acikIdler) {
+                    $w->where('updated_at', '>', $gecmisEsik);
+                    if ($acikIdler) $w->orWhereIn('adisyon_id', $acikIdler);
+                });
+            } else {
+                $q->where('updated_at', '>', $gecmisEsik);
+            }
         }
         // sube kapsami: dogrudan sube_id varsa onunla; yoksa adisyon uzerinden (kalem/odeme)
         if (Schema::hasColumn($t, 'sube_id')) {
