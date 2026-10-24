@@ -47,6 +47,12 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .bek-satir{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
 #db .bek-satir:first-of-type{border-top:none}
 #db .roz{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;flex-shrink:0}
+#db .arac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:10px;margin-bottom:16px}
+#db .arac{background:var(--card);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:14px 8px;text-align:center;transition:transform .12s,opacity .12s;display:block}
+#db .arac:hover{transform:translateY(-2px);opacity:.92}
+#db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
+#db .arac .ai .material-icons-outlined{font-size:22px}
+#db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
 @media(max-width:860px){#db .uclu{grid-template-columns:1fr}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
@@ -60,6 +66,28 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   $butceY = $ay_butce > 0 ? round($ay_harcama / $ay_butce * 100) : null;
   $butceC = $butceY === null ? 'var(--sub)' : ($butceY > 100 ? 'var(--kirmizi)' : ($butceY >= 85 ? 'var(--amber)' : 'var(--yesil)'));
   $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']];
+  $araclar = [
+    ['/satinalma-talep','assignment','Talep Oluştur','#7C3AED'],
+    ['/gelen-teklifler','mark_email_read','Gelen Teklifler','#10B981'],
+    ['/satinalma-siparis','shopping_cart_checkout','Siparişler','#4F46E5'],
+    ['/mal-kabul','inventory','Mal Kabul','#10B981'],
+    ['/fatura-eslestir','fact_check','Fatura Eşleştir','#F59E0B'],
+    ['/fatura-ocr','document_scanner','Fatura OCR','#7C3AED'],
+    ['/siparis-onerisi','auto_awesome','Sipariş Önerisi','#7C3AED'],
+    ['/stok','inventory_2','Stok','#4F46E5'],
+    ['/sayim','fact_check','Sayım','#0EA5E9'],
+    ['/recete','menu_book','Reçeteler','#7C3AED'],
+    ['/parti-takip','event_busy','Parti / SKT','#F43F5E'],
+    ['/tedarikci','local_shipping','Tedarikçiler','#64748B'],
+    ['/tedarikci-karne','grading','Tedarikçi Karnesi','#0EA5E9'],
+    ['/satinalma-butce','savings','Bütçe','#10B981'],
+    ['/fiyat-radari','radar','Fiyat Radarı','#EC4899'],
+    ['/hal-fiyatlari','storefront','Hal Fiyatları','#059669'],
+    ['/satinalma-analiz','leaderboard','Analiz · Karne','#4F46E5'],
+    ['/satinalma-asistan','smart_toy','AI Asistanı','#7C3AED'],
+    ['/uretim-riski','warning_amber','Üretim Riski','#F59E0B'],
+    ['/eposta-hesaplari','alternate_email','E-posta (RFQ)','#7C3AED'],
+  ];
 @endphp
 <div id="db">
 <div class="pano">
@@ -98,6 +126,14 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">shopping_cart_checkout</span></div><span class="bk-label">Açık Sipariş</span></div><div class="bk-deger">{{ $acik_siparis }}</div><div class="bk-alt">devam eden</div></a>
     <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--kirmizi) 15%,transparent);color:var(--kirmizi)"><span class="material-icons-outlined">running_with_errors</span></div><span class="bk-label">Geciken Teslim</span></div><div class="bk-deger" style="color:{{ $geciken>0?'var(--kirmizi)':'var(--ink)' }}">{{ $geciken }}</div><div class="bk-alt">sipariş</div></a>
     <a href="/stok" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">inventory_2</span></div><span class="bk-label">Kritik Stok</span></div><div class="bk-deger" style="color:{{ $kritik>0?'var(--amber)':'var(--ink)' }}">{{ $kritik }}</div><div class="bk-alt">malzeme</div></a>
+  </div>
+
+  {{-- Satın Alma Araçları --}}
+  <div class="kart-baslik" style="margin:2px 2px 10px"><div class="kb-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">apps</span></div><span class="kb-ad">Satın Alma Araçları</span></div>
+  <div class="arac-grid">
+    @foreach ($araclar as [$u,$ik,$ad,$rk])
+      <a href="{{ $u }}" class="arac"><div class="ai" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $ik }}</span></div><div class="al">{{ $ad }}</div></a>
+    @endforeach
   </div>
 
   {{-- Bütçe --}}
