@@ -135,6 +135,7 @@ body.koyu #iko{
       <div class="ad">İnsan Kaynakları</div>
       <div class="alt">{{ $ayAd }} özeti · İdari Ofis</div>
     </div>
+    <a href="/ik-asistan" class="selam-cip" style="background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff" title="İK AI Asistanı"><span class="material-icons-outlined">smart_toy</span> AI Asistan</a>
     <span class="durum-rozet" style="background:{{ $durRenk }}">{{ $durAd }}</span>
     <a href="/ik-ozet?force=1" class="selam-cip" title="Yenile"><span class="material-icons-outlined">refresh</span></a>
   </div>
