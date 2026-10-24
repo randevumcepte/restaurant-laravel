@@ -53,10 +53,10 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-#db .selam-harcama{margin-left:auto;text-align:right;padding-left:18px;flex-shrink:0}
-#db .selam-harcama .sh-lbl{font-size:11.5px;font-weight:600;color:var(--sub);margin-bottom:3px}
-#db .selam-harcama .sh-deger{font-size:26px;font-weight:900;color:var(--ink);line-height:1}
-#db .selam-harcama .sh-alt{font-size:11.5px;font-weight:700;margin-top:4px}
+#db .selam-harcama{margin-left:auto;text-align:right;flex-shrink:0;background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:16px;padding:12px 20px;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--mor1) 38%,transparent)}
+#db .selam-harcama .sh-lbl{font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:4px;display:flex;align-items:center;gap:5px;justify-content:flex-end}
+#db .selam-harcama .sh-deger{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px}
+#db .selam-harcama .sh-alt{font-size:12px;font-weight:800;margin-top:6px;color:#fff !important;background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;display:inline-block}
 @media(max-width:620px){#db .selam-harcama{display:none}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
