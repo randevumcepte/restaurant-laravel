@@ -9047,7 +9047,7 @@ Route::post('/patron-ai/acil-siparis', function (Request $r) {
 // HEMEN SİPARİŞ ET — düzenlenebilir sipariş ekranı (ürün + tedarikçi seçici + miktar) → tedarikçiye gruplu PO + WhatsApp
 Route::get('/acil-siparis-hazirla', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
     if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
@@ -9078,7 +9078,7 @@ Route::get('/acil-siparis-hazirla', function () {
 });
 Route::post('/acil-siparis-gec', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId();
     if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
@@ -10029,7 +10029,7 @@ if (!function_exists('_imapOku')) {
 }
 Route::get('/eposta-hesaplari', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     _epostaHesapEnsure();
     $sid = _webSubeId();
     $hesaplar = collect(); try { $hesaplar = DB::table('eposta_hesaplari')->where('sube_id', $sid)->orderByDesc('varsayilan')->orderBy('id')->get(); } catch (\Throwable $e) {}
@@ -10115,7 +10115,7 @@ if (!function_exists('_rfqSupMapGonder')) {
 }
 Route::post('/fiyat-arastir', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId(); $geri = $r->input('geri', '/satinalma-talep');
     $depId = (int) $r->input('dep');
     _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
@@ -10139,7 +10139,7 @@ Route::post('/fiyat-arastir', function (Request $r) {
 // Fiyat Araştır — TEDARİKÇİ SEÇİMLİ (kritik ürünler + her ürünün tedarikçileri, işaretle-gönder)
 Route::get('/fiyat-arastir-sec', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     _rfqEnsure(); if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     $sid = _webSubeId();
     $satirlar = [];
@@ -10155,7 +10155,7 @@ Route::get('/fiyat-arastir-sec', function () {
 });
 Route::post('/fiyat-arastir-sec', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     _rfqEnsure(); $sid = _webSubeId();
     $sec = (array) $r->input('sec', []);
     if (!$sec) return redirect('/fiyat-arastir-sec')->with('hata', 'En az bir tedarikçi işaretle.');
@@ -10289,7 +10289,7 @@ Route::get('/api/patron-ai/teklif-oku', function (Request $r) {
 // WEB: Gelen Teklifler — AI'nın okuyup çıkardığı fiyatlar + "Şimdi Oku" butonu + test verisi kur
 Route::get('/gelen-teklifler', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     _rfqEnsure(); if (function_exists('_rfqTeklifEnsure')) _rfqTeklifEnsure();
     $sid = _webSubeId();
     $teklifler = collect();
@@ -10315,7 +10315,7 @@ Route::get('/gelen-teklifler', function () {
 });
 Route::post('/gelen-teklifler/oku', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId();
     $n = 0; try { $n = _teklifleriOku($sid); } catch (\Throwable $e) {}
     return redirect('/gelen-teklifler')->with('ok', $n > 0 ? ('✅ ' . $n . ' yeni teklif okundu ve kaydedildi.') : 'Yeni teklif bulunamadı (gelen kutusunda RFQ kodlu yanıt yok ya da hepsi zaten işlenmiş).');
@@ -10323,7 +10323,7 @@ Route::post('/gelen-teklifler/oku', function (Request $r) {
 // Seçilen tekliflerden satın alma siparişi oluştur (tedarikçiye göre gruplu)
 Route::post('/gelen-teklifler/siparis', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId();
     $ids = array_filter(array_map('intval', (array) $r->input('teklif', [])));
     if (!$ids) return redirect('/gelen-teklifler')->with('hata', 'Sipariş için en az bir teklif işaretle.');
@@ -10469,7 +10469,7 @@ Route::get('/api/patron-ai/teslim-takip', function (Request $r) {
 // ============================ P5 — FİYAT RE-ONAY DÖNGÜSÜ (satınalmacı → üst yönetici → geri) ============================
 Route::post('/satinalma-fiyat-onaya', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-talep')->with('hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/satinalma-talep')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId(); $id = (int) $r->input('talep');
     try {
         $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
@@ -12170,7 +12170,7 @@ if (!function_exists('_siparisGonderHelper')) {
 }
 Route::post('/satinalma-siparis/gonder', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/satinalma-siparis')->with('sa_hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/satinalma-siparis')->with('sa_hata', 'Yetkisiz.');
     $sid = _webSubeId(); $id = (int) $r->input('id');
     $res = _siparisGonderHelper($sid, $id);
     return redirect('/satinalma-siparis-detay?id=' . $id)->with($res['ok'] ? 'sa_ok' : 'sa_hata', $res['ok'] ? ('✅ Sipariş tedarikçiye gönderildi (' . implode(' + ', $res['kanal']) . '). Onay linki iletildi.') : ('Gönderilemedi — ' . ($res['hata'] ?? 'SMTP/e-posta ayarı') . '.'));
@@ -12760,7 +12760,7 @@ Route::post('/siparis-onerisi/olustur', function (Request $r) {
 // PATRON → SATIN ALMAYA GÖNDER: öneri listesini talep olarak satın alma ekibine yolla (direkt sipariş DEĞİL)
 Route::post('/siparis-onerisi/talep', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/siparis-onerisi')->with('so_hata', 'Yetkisiz.');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/siparis-onerisi')->with('so_hata', 'Yetkisiz.');
     $sid = _webSubeId();
     try {
         if (function_exists('_satinalmaTalepEnsure')) _satinalmaTalepEnsure();
@@ -12784,7 +12784,7 @@ Route::post('/siparis-onerisi/talep', function (Request $r) {
 // ===== SATIN ALMA ÖZETİ (satın almacının kendi verileri — ciro/kâr YOK) =====
 Route::get('/satinalma-ozet', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
     if (function_exists('_satinalmaTalepEnsure')) _satinalmaTalepEnsure();
     if (function_exists('_rfqEnsure')) _rfqEnsure();
@@ -12814,7 +12814,7 @@ Route::get('/satinalma-ozet', function () {
 // ===== TEDARİKÇİ KARNESİ (scorecard): zamanında teslim % + sipariş hacmi + gecikme =====
 Route::get('/tedarikci-karne', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
     $rows = collect();
     try {
@@ -12865,7 +12865,7 @@ if (!function_exists('_butceEnsure')) {
 }
 Route::get('/satinalma-butce', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     _butceEnsure(); $sid = _webSubeId();
     $aylar = []; for ($i = 5; $i >= 0; $i--) $aylar[] = \Carbon\Carbon::now()->subMonths($i)->format('Y-m');
     $butceler = DB::table('satinalma_butce')->where('sube_id', $sid)->pluck('tutar', 'yil_ay');
@@ -12924,12 +12924,12 @@ if (!function_exists('_aiFaturaOku')) {
 }
 Route::get('/fatura-ocr', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     return view('fatura_ocr', ['sonuc' => null]);
 });
 Route::post('/fatura-ocr/oku', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     if (!$r->hasFile('fatura')) return redirect('/fatura-ocr')->with('hata', 'Lütfen bir fatura dosyası seç.');
     $f = $r->file('fatura');
     $mime = $f->getMimeType();
@@ -13341,29 +13341,184 @@ if (!function_exists('_satinalmaKuralCevap')) {
     }
 }
 Route::get('/satinalma-asistan', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     return view('satinalma_asistan');
 });
 Route::post('/satinalma-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'cevap' => 'Yetkisiz.'], 403);
     $sid = _webSubeId();
     $soru = trim((string) $r->input('soru'));
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    // Excel/dosya isteği -> LLM'e gitmeden indirme butonları dön (bedava)
+    if (preg_match('/excel|csv|indir|dosya|dışa|disa|aktar|xls|tabloya|tablo olarak/iu', $soru)) {
+        return response()->json(['ok' => 1, 'kaynak' => 'export', 'cevap' => 'İstediğin raporu Excel olarak indirebilirsin 👇 Dosyaya tıklayınca Excel otomatik açar.', 'exportlar' => _satinalmaExportTipleri()]);
+    }
     try {
         $baglam = _satinalmaBaglam($sid);
+        $teklif = _satinalmaRaporSorusuMu($soru); // rapor/veri sorusuysa -> AI "Excel'e aktarayım mı?" teklif etsin
         $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
-        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
         $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK cevap ver (en fazla 5 cümle veya madde). Fiyat/stok/tedarikçi rakamlarını yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
         $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
             ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
                 'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
                 'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
             ]);
-        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
+        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam), 'teklif_export' => $teklif]);
         $metin = trim((string) ($resp->json('content.0.text') ?? ''));
         if ($metin === '') $metin = _satinalmaKuralCevap($soru, $baglam);
-        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin]);
+        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin, 'teklif_export' => $teklif]);
     } catch (\Throwable $e) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }
+});
+// ===== SATINALMA AI — Excel/CSV EXPORT (saf veri, LLM yok = bedava) =====
+if (!function_exists('_satinalmaExportTipleri')) {
+    function _satinalmaExportTipleri()
+    {
+        return [
+            ['tip' => 'kritik',    'ad' => 'Kritik Stok'],
+            ['tip' => 'zam',       'ad' => 'Gizli Zamlar'],
+            ['tip' => 'tedarikci', 'ad' => 'Tedarikçi Karnesi'],
+            ['tip' => 'harcama',   'ad' => 'Aylık Harcama'],
+            ['tip' => 'siparis',   'ad' => 'Açık Siparişler'],
+            ['tip' => 'talep',     'ad' => 'Talepler'],
+        ];
+    }
+}
+if (!function_exists('_satinalmaRaporSorusuMu')) {
+    // Soru rapor/veri sorusu mu? -> AI "Excel'e aktarayım mı?" teklif etsin
+    function _satinalmaRaporSorusuMu($soru)
+    {
+        return (bool) preg_match('/rapor|liste|listele|dökü|döküm|kritik|stok|zam|fiyat|tedarik|harca|sipariş|siparis|talep|özet|ozet|hangi|ne kadar|kaç|kac/iu', (string) $soru);
+    }
+}
+if (!function_exists('_satinalmaExportUret')) {
+    function _satinalmaExportUret($sid, $tip)
+    {
+        $basliklar = []; $rows = []; $ad = 'rapor';
+        $ac = function ($c) {
+            if ($c === null || $c === '') return '';
+            if (is_int($c)) return (string) $c;
+            if (is_float($c)) return number_format($c, 2, ',', '');
+            return '"' . str_replace('"', '""', (string) $c) . '"';
+        };
+        $tar = fn ($d) => $d ? \Carbon\Carbon::parse($d)->format('d.m.Y') : '';
+        try {
+            if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+            if ($tip === 'kritik') {
+                $ad = 'kritik-stok'; $basliklar = ['Malzeme', 'Mevcut', 'Kritik Stok', 'Hedef Stok', 'Eksik'];
+                $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+                $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
+                $kol = ['id', 'ad', 'kritik_stok']; if ($hedefVar) $kol[] = 'hedef_stok';
+                foreach (DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get($kol) as $m) {
+                    $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
+                    $ref = $hedef > 0 ? $hedef : $kritik;
+                    if ($ref <= 0 || $mevcut >= $ref) continue;
+                    $rows[] = [$m->ad, round($mevcut, 2), round($kritik, 2), $hedef > 0 ? round($hedef, 2) : '', round($ref - $mevcut, 2)];
+                }
+            } elseif ($tip === 'zam') {
+                $ad = 'gizli-zamlar'; $basliklar = ['Malzeme', 'Birim', 'İlk Fiyat', 'Son Fiyat', 'Artış %', 'Yıllık Etki'];
+                if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari')) {
+                    $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+                    $from = today()->subDays(120);
+                    $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                        ->where('f.sube_id', $sid)->whereDate('f.tarih', '>=', $from)->orderBy('k.malzeme_id')->orderBy('f.tarih')->orderBy('k.id')
+                        ->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar']);
+                    $tmp = [];
+                    foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
+                        if ($g->count() < 2) continue; $ilk = (float) $g->first()->birim_fiyat; $son = (float) $g->last()->birim_fiyat;
+                        if ($ilk <= 0) continue; $yuzde = round(($son - $ilk) / $ilk * 100, 1);
+                        if ($yuzde < 8) continue;
+                        $yillik = round(($son - $ilk) * ((float) $g->sum('miktar') * (365 / 120)), 0);
+                        $tmp[] = [$malAd[$mid] ?? '—', $birimKis[$g->first()->alis_birim_id] ?? '', round($ilk, 2), round($son, 2), $yuzde, (float) $yillik];
+                    }
+                    usort($tmp, fn ($a, $b) => $b[5] <=> $a[5]); $rows = $tmp;
+                }
+            } elseif ($tip === 'tedarikci') {
+                $ad = 'tedarikci-karne'; $basliklar = ['Tedarikçi', 'Anlaşmalı', 'Sipariş', 'Toplam Harcama', 'Teslim', 'Zamanında %', 'Ort Gecikme (gün)', 'Son Sipariş'];
+                $ted = DB::table('tedarikciler')->get(['id', 'ad', 'anlasmali'])->keyBy('id');
+                $sip = Schema::hasTable('satinalma_siparisleri') ? DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi', 'tamamlandi'])->get(['id', 'tedarikci_id', 'tarih', 'beklenen_teslim', 'genel_toplam']) : collect();
+                $mk = Schema::hasTable('mal_kabuller') ? DB::table('mal_kabuller')->where('sube_id', $sid)->whereNotNull('siparis_id')->get(['siparis_id', 'tarih'])->keyBy('siparis_id') : collect();
+                $agg = [];
+                foreach ($sip as $s) {
+                    $tid = (int) ($s->tedarikci_id ?? 0); if (!$tid) continue;
+                    if (!isset($agg[$tid])) $agg[$tid] = ['siparis' => 0, 'tutar' => 0.0, 'teslim' => 0, 'zamaninda' => 0, 'gecikmeTop' => 0, 'son' => null];
+                    $agg[$tid]['siparis']++; $agg[$tid]['tutar'] += (float) $s->genel_toplam;
+                    if (!$agg[$tid]['son'] || $s->tarih > $agg[$tid]['son']) $agg[$tid]['son'] = $s->tarih;
+                    $m = $mk[$s->id] ?? null;
+                    if ($m && $s->beklenen_teslim) {
+                        $agg[$tid]['teslim']++;
+                        $bek = \Carbon\Carbon::parse($s->beklenen_teslim); $ger = \Carbon\Carbon::parse($m->tarih);
+                        if ($ger->lte($bek)) $agg[$tid]['zamaninda']++; else $agg[$tid]['gecikmeTop'] += (int) $ger->diffInDays($bek);
+                    }
+                }
+                uasort($agg, fn ($a, $b) => $b['tutar'] <=> $a['tutar']);
+                foreach ($agg as $tid => $a) {
+                    $zpct = $a['teslim'] > 0 ? (int) round($a['zamaninda'] / $a['teslim'] * 100) : '';
+                    $gecSay = $a['teslim'] - $a['zamaninda'];
+                    $rows[] = [$ted[$tid]->ad ?? '—', ((int) ($ted[$tid]->anlasmali ?? 0) ? 'Evet' : ''), (int) $a['siparis'], round($a['tutar'], 2), (int) $a['teslim'], $zpct, $gecSay > 0 ? round($a['gecikmeTop'] / $gecSay, 1) : (float) 0, $tar($a['son'])];
+                }
+            } elseif ($tip === 'harcama') {
+                $ad = 'aylik-harcama'; $basliklar = ['Ay', 'Harcama', 'Bütçe', 'Kullanım %'];
+                $aylarTr = [1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan', 5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos', 9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık'];
+                $butceler = Schema::hasTable('satinalma_butce') ? DB::table('satinalma_butce')->where('sube_id', $sid)->pluck('tutar', 'yil_ay') : collect();
+                $hm = [];
+                if (Schema::hasTable('satinalma_siparisleri')) foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $s) { $a = substr((string) $s->tarih, 0, 7); $hm[$a] = ($hm[$a] ?? 0) + (float) $s->genel_toplam; }
+                for ($i = 5; $i >= 0; $i--) {
+                    $ym = \Carbon\Carbon::now()->subMonths($i)->format('Y-m');
+                    $h = (float) ($hm[$ym] ?? 0); $b = (float) ($butceler[$ym] ?? 0);
+                    $rows[] = [($aylarTr[(int) substr($ym, 5, 2)] ?? '') . ' ' . substr($ym, 0, 4), round($h, 2), $b > 0 ? round($b, 2) : '', $b > 0 ? (int) round($h / $b * 100) : ''];
+                }
+            } elseif ($tip === 'siparis') {
+                $ad = 'acik-siparisler'; $basliklar = ['Sipariş No', 'Tedarikçi', 'Tarih', 'Beklenen Teslim', 'Tutar', 'Durum'];
+                if (Schema::hasTable('satinalma_siparisleri')) {
+                    $ted = DB::table('tedarikciler')->pluck('ad', 'id');
+                    foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])->orderByDesc('tarih')->get(['id', 'tedarikci_id', 'tarih', 'beklenen_teslim', 'genel_toplam', 'durum']) as $s) {
+                        $rows[] = [(int) $s->id, $ted[$s->tedarikci_id] ?? '—', $tar($s->tarih), $tar($s->beklenen_teslim), round((float) $s->genel_toplam, 2), (string) $s->durum];
+                    }
+                }
+            } elseif ($tip === 'talep') {
+                $ad = 'talepler'; $basliklar = ['Talep No', 'Departman', 'İsteyen', 'Durum', 'Kalem', 'Tarih'];
+                if (Schema::hasTable('satinalma_talepleri')) {
+                    foreach (DB::table('satinalma_talepleri')->where('sube_id', $sid)->orderByDesc('created_at')->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at']) as $t) {
+                        $kalem = Schema::hasTable('talep_kalemleri') ? DB::table('talep_kalemleri')->where('talep_id', $t->id)->count() : 0;
+                        $rows[] = [(int) $t->id, (string) $t->departman, (string) $t->isteyen_ad, (string) $t->durum, (int) $kalem, $tar($t->created_at)];
+                    }
+                }
+            } else {
+                return null;
+            }
+        } catch (\Throwable $e) {}
+        $out = "\xEF\xBB\xBF" . implode(';', array_map(fn ($h) => '"' . str_replace('"', '""', $h) . '"', $basliklar)) . "\r\n";
+        foreach ($rows as $row) $out .= implode(';', array_map($ac, $row)) . "\r\n";
+        if (empty($rows)) $out .= '"Bu raporda veri yok."' . "\r\n";
+        return ['dosya' => 'satinalma-' . $ad . '-' . date('Ymd') . '.csv', 'icerik' => $out, 'satir' => count($rows)];
+    }
+}
+if (!function_exists('_satinalmaErisim')) {
+    // Satınalma AI + rapor erişimi: üst yönetim/müdür/satınalmacı + ofis rolleri + gor_stok yetkisi verilen herkes
+    function _satinalmaErisim($p)
+    {
+        if (!$p) return false;
+        $rol = strtolower((string) ($p->rol ?? ''));
+        if (in_array($rol, ['sahip', 'mudur', 'müdür', 'satinalmaci', 'satınalmacı', 'ust_yonetim', 'yonetim', 'yönetim', 'ik', 'ofis', 'idare', 'muhasebe', 'finans'])) return true;
+        if (function_exists('_panelYetkiVar')) { try { return (bool) _panelYetkiVar($p, 'gor_stok'); } catch (\Throwable $e) {} }
+        return false;
+    }
+}
+Route::get('/satinalma-asistan/excel', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $res = _satinalmaExportUret($sid, (string) $r->query('tip', 'kritik'));
+    if (!$res) return redirect('/satinalma-asistan');
+    return response($res['icerik'], 200, [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+        'Content-Disposition' => 'attachment; filename="' . $res['dosya'] . '"',
+    ]);
 });
 
 // ===== API (Flutter patron app) — Fiyat Radarı (native parite) =====
