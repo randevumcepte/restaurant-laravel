@@ -8680,7 +8680,15 @@ if (!function_exists('_epostaHesapTest')) {
     // SMTP gönderme (kendine test maili) + IMAP bağlanma testi; sonucu hesaba yazar, mesaj döndürür.
     function _epostaHesapTest($sid, $hesap)
     {
+        $GLOBALS['_eposta_son_hata'] = null;
         $smtpOk = _epostaGonder($sid, $hesap->email, 'ResteOS Bağlantı Testi', "Bu bir bağlantı testidir.\nKurulum başarılı. ✅\n\n— ResteOS", $hesap->id);
+        $smtpSebep = '';
+        if (!$smtpOk && !empty($GLOBALS['_eposta_son_hata'])) {
+            $ham = (string) $GLOBALS['_eposta_son_hata'];
+            if (stripos($ham, 'authenticat') !== false || strpos($ham, '535') !== false || stripos($ham, 'credential') !== false || stripos($ham, 'login') !== false) $smtpSebep = ' (kimlik reddedildi — uygulama şifresi/kullanıcı adı yanlış ya da sağlayıcı basic-auth kapalı)';
+            elseif (stripos($ham, 'connect') !== false || stripos($ham, 'timed out') !== false || stripos($ham, 'timeout') !== false) $smtpSebep = ' (sunucuya ulaşılamadı — host/port/güvenlik yanlış ya da port kapalı)';
+            else $smtpSebep = ' (' . mb_substr($ham, 0, 90) . ')';
+        }
         $imap = 'atlandi';
         if (!empty($hesap->imap_host)) {
             if (!function_exists('imap_open')) $imap = 'eksik';
@@ -8697,7 +8705,7 @@ if (!function_exists('_epostaHesapTest')) {
         }
         $imapEt = ['ok' => '✅ çalışıyor', 'hata' => '❌ bağlanamadı', 'atlandi' => '— ayarlanmadı', 'eksik' => '— sunucuda imap eklentisi yok'][$imap];
         $genel = $smtpOk ? ($imap === 'hata' ? 'hata' : 'ok') : 'hata';
-        $not = 'Gönderme (SMTP): ' . ($smtpOk ? '✅ çalışıyor' : '❌ bağlanamadı') . ' · Okuma (IMAP): ' . $imapEt;
+        $not = 'Gönderme (SMTP): ' . ($smtpOk ? '✅ çalışıyor' : ('❌ bağlanamadı' . $smtpSebep)) . ' · Okuma (IMAP): ' . $imapEt;
         try { DB::table('eposta_hesaplari')->where('id', $hesap->id)->update(['son_test' => $genel, 'son_test_at' => now(), 'son_test_not' => mb_substr($not, 0, 180)]); } catch (\Throwable $e) {}
         return ['ok' => $smtpOk, 'durum' => $genel, 'not' => $not];
     }
@@ -8847,7 +8855,7 @@ if (!function_exists('_epostaGonder')) {
                 $m->to($to)->subject($konu)->from($h->email, $h->gonderen_ad ?: $h->email);
             });
             return true;
-        } catch (\Throwable $e) { return false; }
+        } catch (\Throwable $e) { $GLOBALS['_eposta_son_hata'] = $e->getMessage(); return false; }
     }
 }
 if (!function_exists('_imapOku')) {
