@@ -19,16 +19,21 @@
     @if (!$acikRfq)<br><b>Not:</b> Henüz hiç RFQ göndermemişsin — önce bir departman raporundan "Fiyat Araştır" yap.@endif
   </div>
 
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <form method="POST" action="/gelen-teklifler/oku" style="display:inline">
-      @csrf<button class="rk-btn" style="background:var(--mor1)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">download</span> Şimdi Teklifleri Oku</button>
-    </form>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
     @if ($sahip)
     <form method="POST" action="/rfq-test-kur" style="display:inline" onsubmit="return rkOnayForm(this, 'Test için örnek bir malzeme + tedarikçi oluşturulsun mu? (sonra silebilirsin)', 'var(--mavi)', 'Evet, kur')">
-      @csrf<button class="rk-btn bos" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">science</span> Test Verisi Kur</button>
+      @csrf<button class="rk-btn bos" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">science</span> 1) Test Verisi Kur</button>
     </form>
     @endif
+    <form method="POST" action="/fiyat-arastir" style="display:inline" onsubmit="return rkOnayForm(this, 'Kritik malzemelerin tedarikçilerine fiyat isteği (RFQ) gönderilsin mi? Not: tedarikçilerin gerçek mail adreslerine mail gider.', 'var(--mavi)', 'Evet, gönder')">
+      @csrf<input type="hidden" name="geri" value="/gelen-teklifler">
+      <button class="rk-btn" style="background:var(--mavi)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">request_quote</span> 2) Fiyat Araştır (RFQ Gönder)</button>
+    </form>
+    <form method="POST" action="/gelen-teklifler/oku" style="display:inline">
+      @csrf<button class="rk-btn" style="background:var(--mor1)" type="submit"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">download</span> 3) Şimdi Teklifleri Oku</button>
+    </form>
   </div>
+  <div class="rk-sub" style="font-size:11.5px;margin:0 2px 16px">Test akışı: <b>1)</b> örnek veri kur → <b>2)</b> RFQ gönder (kritik ürünlerin tedarikçilerine mail gider) → Gmail'ine gelen RFQ mailine fiyatla yanıt ver → <b>3)</b> AI okusun.</div>
 
   @if (count($teklifler))
   <div class="rk-card" style="padding:0;overflow:hidden">
