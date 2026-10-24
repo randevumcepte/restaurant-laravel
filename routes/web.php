@@ -11756,6 +11756,53 @@ Route::post('/satinalma-butce/kaydet', function (Request $r) {
     } catch (\Throwable $e) { return redirect('/satinalma-butce')->with('hata', 'Kaydedilemedi.'); }
     return redirect('/satinalma-butce')->with('ok', $ay . ' bütçesi kaydedildi: ' . number_format($tutar, 2, ',', '.') . ' ₺.');
 });
+// ===== FATURA OCR (foto/PDF → Claude vision → kalemleri çıkar) =====
+if (!function_exists('_aiFaturaOku')) {
+    function _aiFaturaOku($b64, $mime)
+    {
+        $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$key) return ['hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
+        $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        $system = 'Sen bir fatura/irsaliye okuma asistanısın. Görseldeki/PDF\'deki faturadan bilgileri çıkar. SADECE geçerli JSON döndür, başka metin yazma: {"tedarikci":"","tarih":"","kalemler":[{"urun":"","miktar":0,"birim":"","birim_fiyat":0,"tutar":0}],"ara_toplam":0,"kdv":0,"genel_toplam":0}. Okuyamadığın alanı boş ("") ya da 0 bırak. Para birimi TL. Tarih YYYY-MM-DD.';
+        $kaynak = ($mime === 'application/pdf')
+            ? ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => $b64]]
+            : ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]];
+        $content = [$kaynak, ['type' => 'text', 'text' => 'Bu faturadaki/irsaliyedeki tüm kalemleri ve toplamları JSON olarak çıkar.']];
+        try {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45, CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => 2500, 'system' => $system, 'messages' => [['role' => 'user', 'content' => $content]]], JSON_UNESCAPED_UNICODE)]);
+            $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+            if ($kod < 200 || $kod >= 300) return ['hata' => 'AI servisi hatası (' . $kod . '). Anahtar/bakiye veya dosya biçimini kontrol et.'];
+            $d = json_decode((string) $res, true);
+            $txt = '';
+            if (isset($d['content']) && is_array($d['content'])) foreach ($d['content'] as $b) if (($b['type'] ?? '') === 'text') $txt .= $b['text'];
+            $s = strpos($txt, '{'); $e = strrpos($txt, '}'); if ($s !== false && $e !== false && $e > $s) $txt = substr($txt, $s, $e - $s + 1);
+            $j = json_decode($txt, true);
+            if (!is_array($j)) return ['hata' => 'Fatura okunamadı (AI yanıtı çözümlenemedi).'];
+            return ['ok' => true, 'veri' => $j];
+        } catch (\Throwable $e) { return ['hata' => 'Bağlantı hatası.']; }
+    }
+}
+Route::get('/fatura-ocr', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    return view('fatura_ocr', ['sonuc' => null]);
+});
+Route::post('/fatura-ocr/oku', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    if (!$r->hasFile('fatura')) return redirect('/fatura-ocr')->with('hata', 'Lütfen bir fatura dosyası seç.');
+    $f = $r->file('fatura');
+    $mime = $f->getMimeType();
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'])) return redirect('/fatura-ocr')->with('hata', 'Sadece JPG/PNG/WEBP/PDF yükleyebilirsin.');
+    if ($f->getSize() > 8 * 1024 * 1024) return redirect('/fatura-ocr')->with('hata', 'Dosya 8MB\'den küçük olmalı.');
+    $b64 = base64_encode((string) file_get_contents($f->getRealPath()));
+    $res = _aiFaturaOku($b64, $mime);
+    if (!empty($res['hata'])) return redirect('/fatura-ocr')->with('hata', $res['hata']);
+    return view('fatura_ocr', ['sonuc' => $res['veri']]);
+});
 // ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
 Route::get('/fiyat-radari', function () {
     $sid = _webSubeId();

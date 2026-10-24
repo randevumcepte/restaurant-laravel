@@ -64,6 +64,7 @@
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Satınalma Siparişi', '#4F46E5'],
             ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
             ['/fatura-eslestir', 'fact_check', 'Fatura Eşleştir (3-way)', '#F59E0B'],
+            ['/fatura-ocr', 'document_scanner', 'Fatura OCR (AI)', '#7C3AED'],
             ['/parti-takip', 'event_busy', 'Parti / SKT Takip', '#F43F5E'],
             ['/fiyat-radari', 'radar', 'Fiyat Radarı · Gizli Zam', '#EC4899'],
             ['/hal-fiyatlari', 'storefront', 'Hal Fiyatları (sen vs hal)', '#059669'],
