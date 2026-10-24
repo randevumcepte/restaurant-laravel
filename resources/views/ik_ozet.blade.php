@@ -212,6 +212,23 @@ body.koyu #iko{
     <div class="mk"><div class="mrow"><div class="mik" style="background:rgba(244,63,94,.13);color:var(--kirmizi)"><span class="material-icons-outlined">person_remove</span></div><div class="mlbl">Bu Ay Ayrılan</div></div><div class="mdeger" style="color:{{ $kd['ayrilan']>0?'var(--kirmizi)':'var(--ink)' }}">−{{ $kd['ayrilan'] }}</div><div class="malt">devir</div></div>
   </div>
 
+  {{-- HIZLI AKSİYONLAR --}}
+  @php $linkler = array_values(array_filter($veri['aksiyonlar'], fn($a)=>($a['tip']??'')==='link')); @endphp
+  @if (count($linkler))
+  <div class="kart">
+    <div class="kh"><span class="material-icons-outlined" style="color:var(--mor1)">bolt</span> Hızlı Erişim</div>
+    <div class="aks">
+      @foreach ($linkler as $a)
+        @php $rk = $renkMap[$a['renk']??'mavi'] ?? '#4F46E5'; @endphp
+        <a href="{{ $a['url'] }}" class="ak">
+          <div class="aik" style="background:linear-gradient(135deg,{{ $rk }},{{ $rk }}cc)"><span class="material-icons-outlined">{{ $a['ikon']??'arrow_forward' }}</span></div>
+          <div><div class="at">{{ $a['lbl'] }}</div><div class="ao">aç →</div></div>
+        </a>
+      @endforeach
+    </div>
+  </div>
+  @endif
+
   {{-- İZİN DURUMU --}}
   <div class="kart">
     <div class="kh"><span class="material-icons-outlined" style="color:var(--mavi)">event_available</span> İzin Durumu <a href="/ik-izin">İzin Yönetimi →</a></div>
@@ -250,23 +267,6 @@ body.koyu #iko{
         @foreach (array_slice($veri['eksik_belge'],0,6) as $e)<div class="hsatir"><a href="/ik-sicil?id={{ $e['id'] }}">{{ $e['ad'] }}</a><span class="s">{{ implode(', ', $e['eksik']) }}</span></div>@endforeach
       </div></div>
       @endif
-    </div>
-  </div>
-  @endif
-
-  {{-- HIZLI AKSİYONLAR --}}
-  @php $linkler = array_values(array_filter($veri['aksiyonlar'], fn($a)=>($a['tip']??'')==='link')); @endphp
-  @if (count($linkler))
-  <div class="kart">
-    <div class="kh"><span class="material-icons-outlined" style="color:var(--mor1)">bolt</span> Hızlı Erişim</div>
-    <div class="aks">
-      @foreach ($linkler as $a)
-        @php $rk = $renkMap[$a['renk']??'mavi'] ?? '#4F46E5'; @endphp
-        <a href="{{ $a['url'] }}" class="ak">
-          <div class="aik" style="background:linear-gradient(135deg,{{ $rk }},{{ $rk }}cc)"><span class="material-icons-outlined">{{ $a['ikon']??'arrow_forward' }}</span></div>
-          <div><div class="at">{{ $a['lbl'] }}</div><div class="ao">aç →</div></div>
-        </a>
-      @endforeach
     </div>
   </div>
   @endif
