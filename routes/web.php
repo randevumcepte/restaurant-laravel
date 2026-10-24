@@ -436,7 +436,7 @@ Route::post('/pos-giris', function (Request $r) {
         }
     }
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
-    return redirect($hedef ?: ($posSuz ? '/satinalma-talep' : '/pos'));
+    return redirect($hedef ?: ($posSuz ? '/satinalma-ozet' : '/pos'));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
@@ -6714,6 +6714,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
+            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', // İnsan Kaynakları: özet + izin yönetimi (gor_personel yetkisi)
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -6725,7 +6726,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_stok', // satın alma talep havuzu + reçeteler
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', // yeni: tedarikçi karnesi / fatura OCR / bütçe
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
         ];
     }
 }
@@ -6750,7 +6751,7 @@ if (!function_exists('_kademeSayfalar')) {
             case 'sahip': return $tum;
             case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar'])); // ödeme/kaçak hariç her şey
             case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
-            case 'satinalma': return ['gor_dashboard', 'gor_stok', 'gor_cari', 'gor_raporlar'];
+            case 'satinalma': return ['gor_stok', 'gor_cari']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
             case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
             default: return ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon']; // personel / garson
         }
@@ -8024,6 +8025,316 @@ Route::get('/departman-rapor', function () {
     $aiPers = array_map(fn ($x) => ['ad' => $x['ad'], 'unvan' => $x['unvan'] ?: $x['rol'], 'adisyon' => $x['adisyon']], $personeller);
     $ai = _departmanAiYorum($sid, $dep->ad, $dep->kod ?? '', $veri, $aiPers, request()->boolean('force'));
     return view('departman_rapor', ['dep' => $dep, 'veri' => $veri, 'haftalik' => $haftalik, 'personeller' => $personeller, 'ai' => $ai, 'tarih' => $gun->toDateString()]);
+});
+
+// ============================ İNSAN KAYNAKLARI (İK) — Özet + İzin Yönetimi ============================
+// TAMAMEN ADDITIF. Mevcut personel/puantaj/hareket altyapısını OKUR, yeni tek tablo: personel_izinler.
+// Erişim: sahip/müdür VEYA gor_personel yetkisi (İK Müdürü/Uzmanı). Flag: services.resteos.ik_acik.
+if (!function_exists('_ikIzinEnsure')) {
+    function _ikIzinEnsure()
+    {
+        if (Schema::hasTable('personel_izinler')) return;
+        Schema::create('personel_izinler', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('sube_id');
+            $t->unsignedBigInteger('personel_id');
+            $t->string('tip', 16)->default('yillik');  // yillik|hastalik|ucretsiz|mazeret|dogum|diger
+            $t->date('baslangic');
+            $t->date('bitis');
+            $t->decimal('gun', 5, 1)->default(1);       // gün sayısı (takvim günü)
+            $t->string('durum', 10)->default('talep');  // talep|onay|ret
+            $t->string('aciklama')->nullable();
+            $t->string('ret_sebep')->nullable();
+            $t->unsignedBigInteger('karar_veren')->nullable();
+            $t->timestamp('karar_at')->nullable();
+            $t->unsignedBigInteger('created_by')->nullable();
+            $t->timestamp('created_at')->useCurrent();
+            $t->index(['sube_id', 'personel_id', 'durum']);
+        });
+    }
+}
+if (!function_exists('_ikGuard')) {
+    // İK sayfası erişimi: sahip/müdür VEYA gor_personel yetkisi. Yetkili personel objesi döner, yoksa null.
+    function _ikGuard()
+    {
+        $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$bp) return null;
+        if (in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return $bp;
+        if (function_exists('_panelYetkiVar') && _panelYetkiVar($bp, 'gor_personel')) return $bp;
+        return null;
+    }
+}
+if (!function_exists('_ikYillikHak')) {
+    // Türkiye İş Kanunu md.53 yıllık ücretli izin hakkı (gün) — kıdeme göre.
+    function _ikYillikHak($iseBaslama)
+    {
+        if (!$iseBaslama) return 0;
+        try { $bas = \Carbon\Carbon::parse($iseBaslama); } catch (\Throwable $e) { return 0; }
+        $yil = $bas->floatDiffInYears(now());
+        if ($yil < 1) return 0;          // ilk yıl dolmadan izne hak kazanılmaz
+        if ($yil <= 5) return 14;        // 1–5 yıl (5 dahil)
+        if ($yil < 15) return 20;        // 5'ten fazla, 15'ten az
+        return 26;                       // 15 yıl ve üzeri
+    }
+}
+if (!function_exists('_ikIzinKullanilan')) {
+    // Bir personelin $yil (takvim yılı) içinde ONAYLANMIŞ yıllık izin gün toplamı.
+    function _ikIzinKullanilan($sid, $pid, $yil)
+    {
+        try {
+            return (float) DB::table('personel_izinler')->where('sube_id', $sid)->where('personel_id', $pid)
+                ->where('tip', 'yillik')->where('durum', 'onay')
+                ->whereBetween('baslangic', [$yil . '-01-01', $yil . '-12-31'])->sum('gun');
+        } catch (\Throwable $e) { return 0.0; }
+    }
+}
+if (!function_exists('_ikOzetVeri')) {
+    // İK ana özet verisi: işçilik maliyeti, bugün devam, kadro/devir, bordro, izin, hatırlatıcılar.
+    function _ikOzetVeri($sid, $ay = null)
+    {
+        $sid = (int) $sid;
+        [$ay, $bas, $bit] = _restoAyAralik($ay);
+        $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
+        $bugun = now()->toDateString();
+        $buYil = (int) now()->year;
+        $kpi = []; $uyari = []; $aksiyonlar = []; $durum = 'iyi';
+        $dogumGunleri = []; $yildonumleri = []; $eksikBelge = [];
+
+        // ---- Personel tablosu (tek çekiş, hepsini PHP'de işle) ----
+        $hasDogum = Schema::hasColumn('personeller', 'dogum_tarihi');
+        $hasTc = Schema::hasColumn('personeller', 'tc');
+        $hasCikis = Schema::hasColumn('personeller', 'ise_cikis');
+        $liste = DB::table('personeller')->where('sube_id', $sid)->get();
+        $aktif = 0; $toplamHakedis = 0.0; $toplamOdenen = 0.0; $toplamNet = 0.0;
+        $yeniGiren = 0; $ayrilan = 0; $departmanDagilim = [];
+        foreach ($liste as $per) {
+            $isAktif = (int) ($per->aktif ?? 1) === 1;
+            if ($isAktif) {
+                $aktif++;
+                $h = _restoPersonelHesap($sid, $per, $bas, $bit);
+                $toplamHakedis += $h['hakedis']; $toplamOdenen += ($h['odenen'] + $h['avans']); $toplamNet += $h['net'];
+                // departman dağılımı
+                $dep = $per->departman_unvan ?: null;
+            }
+            // yeni giren / ayrılan (bu ay)
+            if (!empty($per->ise_baslama) && substr((string) $per->ise_baslama, 0, 7) === $ay) $yeniGiren++;
+            if ($hasCikis && !empty($per->ise_cikis) && substr((string) $per->ise_cikis, 0, 7) === $ay) $ayrilan++;
+            if (!$isAktif) continue;
+            // doğum günü (bu hafta, 0-7 gün)
+            if ($hasDogum && !empty($per->dogum_tarihi)) {
+                try {
+                    $d = \Carbon\Carbon::parse($per->dogum_tarihi);
+                    $buYilki = \Carbon\Carbon::create($buYil, (int) $d->month, (int) $d->day);
+                    if ($buYilki->isPast() && !$buYilki->isToday()) $buYilki->addYear();
+                    $fark = now()->startOfDay()->diffInDays($buYilki, false);
+                    if ($fark >= 0 && $fark <= 7) $dogumGunleri[] = ['ad' => $per->ad, 'tarih' => $buYilki->format('d.m'), 'gun' => $fark == 0 ? 'bugün' : $fark . ' gün sonra'];
+                } catch (\Throwable $e) {}
+            }
+            // işe giriş yıldönümü (bu ay, en az 1 yıl)
+            if (!empty($per->ise_baslama)) {
+                try {
+                    $g = \Carbon\Carbon::parse($per->ise_baslama);
+                    if ((int) $g->month === (int) now()->month && (int) $g->year < $buYil) {
+                        $yildonumleri[] = ['ad' => $per->ad, 'yil' => $buYil - (int) $g->year, 'tarih' => $g->format('d.m')];
+                    }
+                } catch (\Throwable $e) {}
+            }
+            // eksik özlük belgesi
+            $eksik = [];
+            if (empty($per->iban)) $eksik[] = 'IBAN';
+            if ($hasTc && empty($per->tc)) $eksik[] = 'TC';
+            if ($hasDogum && empty($per->dogum_tarihi)) $eksik[] = 'doğum tarihi';
+            if (empty($per->ise_baslama)) $eksik[] = 'işe başlama';
+            if ($eksik) $eksikBelge[] = ['ad' => $per->ad, 'eksik' => $eksik];
+            if (!empty($per->departman_id)) $departmanDagilim[(int) $per->departman_id] = ($departmanDagilim[(int) $per->departman_id] ?? 0) + 1;
+        }
+
+        // ---- İşçilik maliyeti (bu ay hakediş / bu ay ciro) ----
+        $ciroAy = 0.0;
+        try { $ciroAy = (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')
+            ->where('adisyonlar.sube_id', $sid)->whereBetween('odemeler.created_at', [$bas, $bit])->sum('odemeler.tutar'); } catch (\Throwable $e) {}
+        $iscilikYuzde = $ciroAy > 0 ? round($toplamHakedis / $ciroAy * 100, 1) : null;
+        $iscilikSaglik = 'iyi';
+        if ($iscilikYuzde !== null) {
+            if ($iscilikYuzde > 40) $iscilikSaglik = 'risk';
+            elseif ($iscilikYuzde > 35) $iscilikSaglik = 'dikkat';
+            elseif ($iscilikYuzde >= 25) $iscilikSaglik = 'iyi';
+            else $iscilikSaglik = 'iyi';
+        }
+
+        // ---- Bugün devam/devamsızlık ----
+        $mesaide = null; $bugunGiris = null;
+        if (Schema::hasTable('personel_mesai')) {
+            try { $mesaide = (int) DB::table('personel_mesai')->where('sube_id', $sid)->whereNull('cikis_at')->whereDate('giris_at', $bugun)->count(); } catch (\Throwable $e) {}
+            try { $bugunGiris = (int) DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->distinct()->count('personel_id'); } catch (\Throwable $e) {}
+        }
+
+        // ---- İzinler ----
+        _ikIzinEnsure();
+        $bekleyenIzin = 0; $bugunIzinli = [];
+        try { $bekleyenIzin = (int) DB::table('personel_izinler')->where('sube_id', $sid)->where('durum', 'talep')->count(); } catch (\Throwable $e) {}
+        try {
+            $bugunIzinli = DB::table('personel_izinler')->join('personeller', 'personeller.id', '=', 'personel_izinler.personel_id')
+                ->where('personel_izinler.sube_id', $sid)->where('personel_izinler.durum', 'onay')
+                ->whereDate('personel_izinler.baslangic', '<=', $bugun)->whereDate('personel_izinler.bitis', '>=', $bugun)
+                ->pluck('personeller.ad')->all();
+        } catch (\Throwable $e) {}
+
+        // ---- KPI ----
+        $kpi[] = ['İşçilik / ciro', $iscilikYuzde === null ? '—' : ('%' . $iscilikYuzde)];
+        $kpi[] = ['Aktif personel', $aktif];
+        $kpi[] = ['Bugün işe gelen', ($bugunGiris === null ? '—' : $bugunGiris) . ($bugunGiris !== null ? ' / ' . $aktif : '')];
+        $kpi[] = ['Şu an mesaide', $mesaide === null ? '—' : $mesaide];
+        $kpi[] = ['Bu ay bordro yükü', $tl($toplamHakedis)];
+        $kpi[] = ['Ödenen', $tl($toplamOdenen)];
+        $kpi[] = ['Kalan ödeme', $tl($toplamNet)];
+        $kpi[] = ['Bekleyen izin', $bekleyenIzin];
+
+        // ---- Durum + uyarılar + aksiyonlar ----
+        if ($iscilikSaglik === 'risk') { $durum = 'risk'; $uyari[] = 'İşçilik maliyeti ciroya göre yüksek (%' . $iscilikYuzde . ') — ideal bant %25–35. Vardiya/fazla mesai gözden geçir.'; }
+        elseif ($iscilikSaglik === 'dikkat') { if ($durum === 'iyi') $durum = 'dikkat'; $uyari[] = 'İşçilik maliyeti %' . $iscilikYuzde . ' — üst banda yakın, takip et.'; }
+        if ($mesaide === null && $bugunGiris === null) { if ($durum === 'iyi') $durum = 'dikkat'; $uyari[] = 'Puantaj/mesai verisi yok — devam-devamsızlık takip edilemiyor. Personele QR ile mesai başlatmayı kur.'; $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Puantajı Aç', 'url' => '/puantaj', 'ikon' => 'schedule', 'renk' => 'mavi']; }
+        if ($bekleyenIzin > 0) { if ($durum === 'iyi') $durum = 'dikkat'; $uyari[] = $bekleyenIzin . ' izin talebi onay bekliyor.'; $aksiyonlar[] = ['tip' => 'link', 'lbl' => $bekleyenIzin . ' İzin Talebini Gör', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'amber']; }
+        if (count($eksikBelge) > 0) { $uyari[] = count($eksikBelge) . ' personelin özlük bilgisi eksik (IBAN/TC/doğum tarihi).'; $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Eksikleri Tamamla', 'url' => '/personel', 'ikon' => 'badge', 'renk' => 'amber']; }
+        $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Personel & Maaş', 'url' => '/personel', 'ikon' => 'badge', 'renk' => 'mavi'];
+        $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'İzin Yönetimi', 'url' => '/ik-izin', 'ikon' => 'event_available', 'renk' => 'mavi'];
+        $aksiyonlar[] = ['tip' => 'link', 'lbl' => 'Performans', 'url' => '/garson-performans', 'ikon' => 'emoji_events', 'renk' => 'mavi'];
+
+        $ozet = $aktif . ' aktif personel, bu ay bordro yükü ' . $tl($toplamHakedis)
+            . ($iscilikYuzde !== null ? ' (ciroya oran %' . $iscilikYuzde . ')' : '') . '. '
+            . ($bugunGiris !== null ? $bugunGiris . '/' . $aktif . ' kişi bugün işe geldi. ' : '')
+            . ($bekleyenIzin ? $bekleyenIzin . ' izin talebi bekliyor.' : 'Bekleyen izin talebi yok.');
+
+        return [
+            'ay' => $ay, 'durum' => $durum, 'ozet' => $ozet, 'kpi' => $kpi, 'uyari' => $uyari, 'aksiyonlar' => $aksiyonlar,
+            'iscilik_yuzde' => $iscilikYuzde, 'iscilik_saglik' => $iscilikSaglik, 'ciro_ay' => $ciroAy,
+            'bordro' => ['hakedis' => $toplamHakedis, 'odenen' => $toplamOdenen, 'net' => $toplamNet],
+            'kadro' => ['aktif' => $aktif, 'yeni_giren' => $yeniGiren, 'ayrilan' => $ayrilan],
+            'devam' => ['beklenen' => $aktif, 'gelen' => $bugunGiris, 'mesaide' => $mesaide],
+            'izin' => ['bekleyen' => $bekleyenIzin, 'bugun_izinli' => $bugunIzinli],
+            'dogum_gunleri' => $dogumGunleri, 'yildonumleri' => $yildonumleri, 'eksik_belge' => $eksikBelge,
+        ];
+    }
+}
+if (!function_exists('_ikAiYorum')) {
+    // İK özetine Haiku yorumu (kıdemli İK müdürü gözüyle). Kapalıysa kural (null yorum).
+    function _ikAiYorum($sid, $veri, $force = false)
+    {
+        $sonuc = ['kaynak' => 'kural', 'yorum' => null];
+        if (!config('services.resteos.patron_ai_v2', false)) return $sonuc;
+        $ck = 'ik_ozet_ai:' . (int) $sid . ':' . now()->toDateString();
+        if ($force) \Illuminate\Support\Facades\Cache::forget($ck);
+        return \Illuminate\Support\Facades\Cache::remember($ck, now()->addHours(3), function () use ($sid, $veri, $sonuc) {
+            $paket = [
+                'iscilik_yuzde' => $veri['iscilik_yuzde'], 'bordro' => $veri['bordro'], 'kadro' => $veri['kadro'],
+                'devam' => $veri['devam'], 'bekleyen_izin' => $veri['izin']['bekleyen'],
+                'eksik_belge_sayisi' => count($veri['eksik_belge']), 'uyarilar' => $veri['uyari'],
+            ];
+            $sys = 'Sen bir restoranın kıdemli İnsan Kaynakları müdürüsün. Aşağıdaki İK verisini patrona DEĞERLENDİR. '
+                . 'SADECE doğal, akıcı, profesyonel TÜRKÇE yaz; yabancı kelime kullanma. Sadece verilen veriyi kullan, UYDURMA. '
+                . 'İşçilik maliyetinin ciroya oranını yorumla (restoranda sağlıklı bant %25–35); devam-devamsızlığı, bekleyen izinleri ve eksik özlük bilgilerini değerlendir; sonunda 1–2 somut, çözüm odaklı öneri ver. '
+                . 'ÇIKTIYI YALNIZCA şu JSON ile ver (başka metin yok): {"yorum":"3-5 cümle","sorunlar":["varsa kısa madde"],"oneriler":["1-2 somut öneri"]}'
+                . "\n--- VERİ ---\n" . json_encode($paket, JSON_UNESCAPED_UNICODE);
+            $ai = _patronAiCagir($sys, 'Bu İK verisini değerlendir, sadece JSON döndür.', 900, null, $sid);
+            if (!$ai) return $sonuc;
+            $s = strpos($ai, '{'); $e = strrpos($ai, '}');
+            if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+            $j = json_decode($ai, true);
+            if (!is_array($j) || empty($j['yorum'])) return $sonuc;
+            return ['kaynak' => 'ai', 'yorum' => (string) $j['yorum'], 'sorunlar' => (array) ($j['sorunlar'] ?? []), 'oneriler' => (array) ($j['oneriler'] ?? [])];
+        });
+    }
+}
+
+// WEB: İK Özet sayfası
+Route::get('/ik-ozet', function () {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _restoPersonelKolonEnsure();
+    _restoPersonelHareketEnsure();
+    $sid = _webSubeId();
+    $ay = request('ay');
+    $veri = _ikOzetVeri($sid, $ay);
+    $ai = _ikAiYorum($sid, $veri, request()->boolean('force'));
+    // departman dağılımı adlarını çöz
+    return view('ik_ozet', ['veri' => $veri, 'ai' => $ai]);
+});
+
+// WEB: İzin Yönetimi sayfası
+Route::get('/ik-izin', function () {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikIzinEnsure(); _restoPersonelKolonEnsure();
+    $sid = _webSubeId();
+    $buYil = (int) now()->year;
+    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol', 'ise_baslama']);
+    // her personel için yıllık izin hakkı + kullanılan + kalan
+    $haklar = [];
+    foreach ($personeller as $p) {
+        $hak = _ikYillikHak($p->ise_baslama ?? null);
+        $kullanilan = _ikIzinKullanilan($sid, $p->id, $buYil);
+        $haklar[$p->id] = ['hak' => $hak, 'kullanilan' => $kullanilan, 'kalan' => max(0, $hak - $kullanilan)];
+    }
+    $izinler = DB::table('personel_izinler')->join('personeller', 'personeller.id', '=', 'personel_izinler.personel_id')
+        ->where('personel_izinler.sube_id', $sid)
+        ->orderByRaw("CASE personel_izinler.durum WHEN 'talep' THEN 0 WHEN 'onay' THEN 1 ELSE 2 END")
+        ->orderByDesc('personel_izinler.baslangic')
+        ->select('personel_izinler.*', 'personeller.ad as personel_ad')->limit(200)->get();
+    return view('ik_izin', ['personeller' => $personeller, 'haklar' => $haklar, 'izinler' => $izinler, 'buYil' => $buYil]);
+});
+Route::post('/ik-izin/kaydet', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikIzinEnsure();
+    $sid = _webSubeId();
+    try {
+        $pid = (int) $r->personel_id;
+        $per = DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->first();
+        if (!$per) return redirect('/ik-izin')->with('hata', 'Personel bulunamadı.');
+        $tip = in_array($r->tip, ['yillik', 'hastalik', 'ucretsiz', 'mazeret', 'dogum', 'diger']) ? $r->tip : 'yillik';
+        $b = \Carbon\Carbon::parse($r->baslangic); $s = \Carbon\Carbon::parse($r->bitis);
+        if ($s->lt($b)) return redirect('/ik-izin')->with('hata', 'Bitiş, başlangıçtan önce olamaz.');
+        $gun = $r->filled('gun') && (float) $r->gun > 0 ? (float) $r->gun : ($b->diffInDays($s) + 1);
+        // sahip/müdür doğrudan onaylı ekleyebilir; diğerleri talep oluşturur
+        $durum = ($r->durum === 'onay' && in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) ? 'onay' : 'talep';
+        DB::table('personel_izinler')->insert([
+            'sube_id' => $sid, 'personel_id' => $pid, 'tip' => $tip,
+            'baslangic' => $b->toDateString(), 'bitis' => $s->toDateString(), 'gun' => $gun,
+            'durum' => $durum, 'aciklama' => trim((string) $r->aciklama) ?: null,
+            'karar_veren' => $durum === 'onay' ? (int) $bp->id : null, 'karar_at' => $durum === 'onay' ? now() : null,
+            'created_by' => (int) $bp->id, 'created_at' => now(),
+        ]);
+        return redirect('/ik-izin')->with('ok', $per->ad . ' için izin kaydı eklendi' . ($durum === 'onay' ? ' ve onaylandı ✓' : ' (onay bekliyor).'));
+    } catch (\Throwable $e) { return redirect('/ik-izin')->with('hata', 'Kaydedilemedi: ' . $e->getMessage()); }
+});
+Route::post('/ik-izin/karar', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/ik-izin')->with('hata', 'İzin onayını sadece yönetici yapabilir.');
+    _ikIzinEnsure();
+    $sid = _webSubeId();
+    try {
+        $iz = DB::table('personel_izinler')->where('id', (int) $r->id)->where('sube_id', $sid)->first();
+        if (!$iz) return redirect('/ik-izin')->with('hata', 'İzin kaydı bulunamadı.');
+        $karar = $r->karar === 'ret' ? 'ret' : 'onay';
+        DB::table('personel_izinler')->where('id', $iz->id)->update([
+            'durum' => $karar, 'ret_sebep' => $karar === 'ret' ? (trim((string) $r->ret_sebep) ?: null) : null,
+            'karar_veren' => (int) $bp->id, 'karar_at' => now(),
+        ]);
+        return redirect('/ik-izin')->with('ok', 'İzin ' . ($karar === 'onay' ? 'onaylandı ✓' : 'reddedildi.'));
+    } catch (\Throwable $e) { return redirect('/ik-izin')->with('hata', 'İşlem başarısız.'); }
+});
+Route::post('/ik-izin/sil', function (Request $r) {
+    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
+    $bp = _ikGuard();
+    if (!$bp) return redirect('/pos-giris');
+    _ikIzinEnsure();
+    $sid = _webSubeId();
+    try { DB::table('personel_izinler')->where('id', (int) $r->id)->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/ik-izin')->with('ok', 'İzin kaydı silindi.');
 });
 
 // AKSİYON: AI'nın yakaladığı kritik stoğu TEK TIKLA acil satın alma talebine çevir (çözüm odaklı).
@@ -11674,6 +11985,34 @@ Route::post('/siparis-onerisi/talep', function (Request $r) {
     } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Talep gönderilemedi.'); }
 });
 
+// ===== SATIN ALMA ÖZETİ (satın almacının kendi verileri — ciro/kâr YOK) =====
+Route::get('/satinalma-ozet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    if (function_exists('_satinalmaTalepEnsure')) _satinalmaTalepEnsure();
+    if (function_exists('_rfqEnsure')) _rfqEnsure();
+    if (function_exists('_butceEnsure')) _butceEnsure();
+    $d = ['ad' => $bp->ad ?? ''];
+    try {
+        $d['talep_yeni'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+        $d['talep_teklif'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'teklif')->count();
+        $d['talep_onayda'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count();
+    } catch (\Throwable $e) { $d['talep_yeni'] = $d['talep_teklif'] = $d['talep_onayda'] = 0; }
+    $d['teklif_geldi'] = 0; try { if (Schema::hasTable('rfq_gonderim')) $d['teklif_geldi'] = DB::table('rfq_gonderim')->where('sube_id', $sid)->where('durum', 'teklif_geldi')->count(); } catch (\Throwable $e) {}
+    $d['acik_siparis'] = 0; try { if (Schema::hasTable('satinalma_siparisleri')) $d['acik_siparis'] = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])->count(); } catch (\Throwable $e) {}
+    $d['geciken'] = function_exists('_gecikenSiparisler') ? _gecikenSiparisler($sid) : 0;
+    $d['kritik'] = count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []);
+    $buAy = date('Y-m'); $harcama = 0;
+    try { if (Schema::hasTable('satinalma_siparisleri')) foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $s) if (substr((string) $s->tarih, 0, 7) === $buAy) $harcama += (float) $s->genel_toplam; } catch (\Throwable $e) {}
+    $d['ay_harcama'] = $harcama;
+    $d['ay_butce'] = 0; try { $d['ay_butce'] = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $buAy)->value('tutar') ?: 0); } catch (\Throwable $e) {}
+    try {
+        $d['son_talepler'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->orderByDesc('created_at')->limit(6)->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at'])
+            ->map(function ($t) { $t->kalem = DB::table('talep_kalemleri')->where('talep_id', $t->id)->count(); return $t; });
+    } catch (\Throwable $e) { $d['son_talepler'] = collect(); }
+    return view('satinalma_ozet', $d);
+});
 // ===== TEDARİKÇİ KARNESİ (scorecard): zamanında teslim % + sipariş hacmi + gecikme =====
 Route::get('/tedarikci-karne', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -14917,6 +15256,12 @@ function _restoPersonelKolonEnsure()
         'iban' => "ALTER TABLE personeller ADD COLUMN iban VARCHAR(40) NULL",
         'adim_izni' => "ALTER TABLE personeller ADD COLUMN adim_izni TINYINT NULL",          // 1 verdi | 0 reddetti | null bildirmedi
         'adim_izni_at' => "ALTER TABLE personeller ADD COLUMN adim_izni_at TIMESTAMP NULL",  // son bildirim zamani
+        // ÖZLÜK (İK) — geriye uyumlu, hepsi nullable
+        'dogum_tarihi' => "ALTER TABLE personeller ADD COLUMN dogum_tarihi DATE NULL",       // doğum günü hatırlatıcı
+        'tc' => "ALTER TABLE personeller ADD COLUMN tc VARCHAR(11) NULL",                     // TC kimlik (eksik belge takibi)
+        'ise_cikis' => "ALTER TABLE personeller ADD COLUMN ise_cikis DATE NULL",             // ayrılış tarihi (personel devir / turnover)
+        'acil_kisi' => "ALTER TABLE personeller ADD COLUMN acil_kisi VARCHAR(80) NULL",      // acil durumda aranacak kişi
+        'acil_tel' => "ALTER TABLE personeller ADD COLUMN acil_tel VARCHAR(20) NULL",        // acil durum telefonu
     ];
     foreach ($ekle as $kol => $sql) {
         if (!Schema::hasColumn('personeller', $kol)) DB::statement($sql);

@@ -57,6 +57,7 @@
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
         'Stok & Tedarik' => [
+            ['/satinalma-ozet', 'space_dashboard', 'Satın Alma Özeti', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/recete', 'menu_book', 'Reçeteler (Yarı Mamül)', '#7C3AED'],
@@ -112,6 +113,11 @@
     if (config('services.resteos.departman_acik', true)) {
         $gruplar['Personel'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
         $gruplar['Ayarlar & Entegrasyon'][] = ['/bildirim-ayar', 'notifications_active', 'Bildirim Ayarları', '#0EA5E9'];
+    }
+    // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
+    if (config('services.resteos.ik_acik', true)) {
+        array_unshift($gruplar['Personel'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981']);
+        $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
     }
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
