@@ -49,7 +49,7 @@
       <div class="db-not">Tek tıkla bağlan — gönderme + okuma Gmail üzerinden olur (ekstra kurulum/şifre gerekmez).</div>
       <a href="/baglanti/google?dep={{ $dep->id }}" class="rk-btn db-btn-g"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">link</span> Gmail ile Bağlan</a>
     @else
-      <div class="db-not">⚠️ Google tek-tık bağlantısı için sistem yöneticisinin Google Cloud OAuth anahtarlarını kurması gerekir. Alternatif: aşağıdan <b>Kurumsal E-posta (SMTP)</b> ile Gmail uygulama şifresini gir.</div>
+      <div class="db-not">Tek-tık Gmail için bir kez <a href="/entegrasyonlar" style="color:var(--mor1);font-weight:700">Entegrasyonlar</a> sayfasından kendi Google anahtarını gir. <b>Ya da</b> hemen aşağıdaki <b>Kurumsal E-posta (SMTP)</b> kartına Gmail uygulama şifreni girip bağlan (en pratik).</div>
     @endif
   </div>
 
@@ -71,7 +71,7 @@
       <div class="db-not">Tek tıkla bağlan — gönderme + okuma Microsoft Graph üzerinden olur.</div>
       <a href="/baglanti/graph?dep={{ $dep->id }}" class="rk-btn db-btn-o"><span class="material-icons-outlined" style="font-size:18px;vertical-align:middle">link</span> Outlook ile Bağlan</a>
     @else
-      <div class="db-not">⚠️ Outlook tek-tık bağlantısı için sistem yöneticisinin Azure OAuth anahtarlarını kurması gerekir.</div>
+      <div class="db-not">Tek-tık Outlook için bir kez <a href="/entegrasyonlar" style="color:var(--mor1);font-weight:700">Entegrasyonlar</a> sayfasından kendi Azure anahtarını gir. <b>Ya da</b> aşağıdaki <b>Kurumsal E-posta (SMTP)</b> kartına Outlook uygulama şifreni gir.</div>
     @endif
   </div>
 

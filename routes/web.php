@@ -8381,6 +8381,43 @@ if (!function_exists('_baglantiGetir')) {
             return $q->first(); } catch (\Throwable $e) { return null; }
     }
 }
+if (!function_exists('_oauthAppEnsure')) {
+    function _oauthAppEnsure()
+    {
+        if (cache()->get('oauth_app_ensure_ok')) return;
+        if (!Schema::hasTable('oauth_uygulamalari')) {
+            try { Schema::create('oauth_uygulamalari', function ($t) {
+                $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                $t->string('saglayici', 12);          // google | graph
+                $t->text('client_id')->nullable();
+                $t->text('client_secret')->nullable(); // şifreli
+                $t->string('tenant', 60)->nullable();
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('oauth_app_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_oauthAppCreds')) {
+    // Panelden girilen şube-bazlı OAuth uygulama anahtarları (restoran kendi uygulaması = ücretsiz) > .env fallback. redirect sabit.
+    function _oauthAppCreds($sid, $saglayici)
+    {
+        _oauthAppEnsure();
+        $cid = null; $sec = null; $tenant = null;
+        try {
+            $row = DB::table('oauth_uygulamalari')->where('sube_id', (int) $sid)->where('saglayici', $saglayici)->first();
+            if ($row) {
+                $cid = $row->client_id ?: null; $tenant = $row->tenant ?: null;
+                if ($row->client_secret) { try { $sec = \Illuminate\Support\Facades\Crypt::decryptString($row->client_secret); } catch (\Throwable $e) {} }
+            }
+        } catch (\Throwable $e) {}
+        $blk = $saglayici === 'google' ? 'google_oauth' : 'graph_oauth';
+        if (!$cid) $cid = config('services.' . $blk . '.client_id');
+        if (!$sec) $sec = config('services.' . $blk . '.client_secret');
+        if (!$tenant && $saglayici === 'graph') $tenant = config('services.graph_oauth.tenant', 'common');
+        return ['client_id' => $cid, 'client_secret' => $sec, 'tenant' => $tenant ?: 'common', 'redirect' => url('/baglanti/' . $saglayici . '/callback')];
+    }
+}
 if (!function_exists('_oauthAccessToken')) {
     // Geçerli access token döndür; süresi dolduysa refresh token ile yenile. Yoksa null.
     function _oauthAccessToken($sid, $saglayici, $depId = null)
@@ -8392,13 +8429,12 @@ if (!function_exists('_oauthAccessToken')) {
             if ($row->gecerlilik && now()->lt(\Carbon\Carbon::parse($row->gecerlilik)->subSeconds(60))) return $dec($row->erisim_token);
             $refresh = $dec($row->yenileme_token);
             if (!$refresh) return $dec($row->erisim_token); // yenileme yoksa eldekini dene
+            $cr = _oauthAppCreds($sid, $saglayici); $cid = $cr['client_id']; $sec = $cr['client_secret'];
             if ($saglayici === 'google') {
-                $cid = config('services.google_oauth.client_id'); $sec = config('services.google_oauth.client_secret');
                 $url = 'https://oauth2.googleapis.com/token';
                 $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token'];
             } else {
-                $tenant = config('services.graph_oauth.tenant', 'common');
-                $cid = config('services.graph_oauth.client_id'); $sec = config('services.graph_oauth.client_secret');
+                $tenant = $cr['tenant'];
                 $url = 'https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token';
                 $body = ['client_id' => $cid, 'client_secret' => $sec, 'refresh_token' => $refresh, 'grant_type' => 'refresh_token', 'scope' => 'offline_access Mail.Read Mail.Send Calendars.Read User.Read'];
             }
@@ -8545,10 +8581,10 @@ if (!function_exists('_baglantiYetki')) {
 }
 Route::get('/baglanti/google', function (Request $r) {
     if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
-    $cid = config('services.google_oauth.client_id');
+    $cr = _oauthAppCreds(_webSubeId(), 'google'); $cid = $cr['client_id'];
     $dep = (int) $r->input('dep');
-    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Google OAuth yapılandırılmamış (GOOGLE_OAUTH_CLIENT_ID).');
-    $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
+    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Google uygulaması tanımlı değil — Entegrasyonlar sayfasından kendi Google anahtarını gir.');
+    $redirect = $cr['redirect'];
     $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state, 'oauth_dep' => $dep ?: null]);
     $q = http_build_query([
         'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
@@ -8563,11 +8599,11 @@ Route::get('/baglanti/google/callback', function (Request $r) {
     if (!_baglantiYetki()) return redirect($geri)->with('hata', 'Yetkisiz.');
     if ($r->input('state') !== session('oauth_state')) return redirect($geri)->with('hata', 'Oturum doğrulaması başarısız.');
     $code = (string) $r->input('code'); if ($code === '') return redirect($geri)->with('hata', 'Yetki iptal edildi.');
-    $redirect = config('services.google_oauth.redirect') ?: url('/baglanti/google/callback');
+    $cr = _oauthAppCreds(_webSubeId(), 'google'); $redirect = $cr['redirect'];
     try {
         $ch = curl_init('https://oauth2.googleapis.com/token');
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query([
-            'code' => $code, 'client_id' => config('services.google_oauth.client_id'), 'client_secret' => config('services.google_oauth.client_secret'),
+            'code' => $code, 'client_id' => $cr['client_id'], 'client_secret' => $cr['client_secret'],
             'redirect_uri' => $redirect, 'grant_type' => 'authorization_code'])]);
         $res = curl_exec($ch); curl_close($ch);
         $d = json_decode((string) $res, true);
@@ -8582,11 +8618,11 @@ Route::get('/baglanti/google/callback', function (Request $r) {
 });
 Route::get('/baglanti/graph', function (Request $r) {
     if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
-    $cid = config('services.graph_oauth.client_id');
+    $cr = _oauthAppCreds(_webSubeId(), 'graph'); $cid = $cr['client_id'];
     $dep = (int) $r->input('dep');
-    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Microsoft OAuth yapılandırılmamış (GRAPH_OAUTH_CLIENT_ID).');
-    $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
-    $tenant = config('services.graph_oauth.tenant', 'common');
+    if (!$cid) return redirect($dep ? ('/departman-baglanti?dep=' . $dep) : '/entegrasyonlar')->with('hata', 'Microsoft uygulaması tanımlı değil — Entegrasyonlar sayfasından kendi Azure anahtarını gir.');
+    $redirect = $cr['redirect'];
+    $tenant = $cr['tenant'];
     $state = \Illuminate\Support\Str::random(24); session(['oauth_state' => $state, 'oauth_dep' => $dep ?: null]);
     $q = http_build_query([
         'client_id' => $cid, 'redirect_uri' => $redirect, 'response_type' => 'code',
@@ -8600,12 +8636,11 @@ Route::get('/baglanti/graph/callback', function (Request $r) {
     if (!_baglantiYetki()) return redirect($geri)->with('hata', 'Yetkisiz.');
     if ($r->input('state') !== session('oauth_state')) return redirect($geri)->with('hata', 'Oturum doğrulaması başarısız.');
     $code = (string) $r->input('code'); if ($code === '') return redirect($geri)->with('hata', 'Yetki iptal edildi.');
-    $redirect = config('services.graph_oauth.redirect') ?: url('/baglanti/graph/callback');
-    $tenant = config('services.graph_oauth.tenant', 'common');
+    $cr = _oauthAppCreds(_webSubeId(), 'graph'); $redirect = $cr['redirect']; $tenant = $cr['tenant'];
     try {
         $ch = curl_init('https://login.microsoftonline.com/' . $tenant . '/oauth2/v2.0/token');
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query([
-            'code' => $code, 'client_id' => config('services.graph_oauth.client_id'), 'client_secret' => config('services.graph_oauth.client_secret'),
+            'code' => $code, 'client_id' => $cr['client_id'], 'client_secret' => $cr['client_secret'],
             'redirect_uri' => $redirect, 'grant_type' => 'authorization_code', 'scope' => 'offline_access openid email Mail.Read Mail.Send Calendars.Read User.Read'])]);
         $res = curl_exec($ch); curl_close($ch);
         $d = json_decode((string) $res, true);
@@ -8639,7 +8674,7 @@ Route::get('/departman-baglanti', function (Request $r) {
     $google = _baglantiGetir($sid, 'google', $depId); $graph = _baglantiGetir($sid, 'graph', $depId);
     $smtp = null; try { $smtp = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first(); } catch (\Throwable $e) {}
     return view('departman_baglanti', ['dep' => $dep, 'google' => $google, 'graph' => $graph, 'smtp' => $smtp,
-        'googleVar' => (bool) config('services.google_oauth.client_id'), 'graphVar' => (bool) config('services.graph_oauth.client_id')]);
+        'googleVar' => (bool) _oauthAppCreds($sid, 'google')['client_id'], 'graphVar' => (bool) _oauthAppCreds($sid, 'graph')['client_id']]);
 });
 Route::post('/departman-baglanti/smtp', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -8681,8 +8716,26 @@ Route::get('/entegrasyonlar', function () {
     _baglantiEnsure();
     $sid = _webSubeId();
     $google = _baglantiGetir($sid, 'google'); $graph = _baglantiGetir($sid, 'graph');
+    $gc = _oauthAppCreds($sid, 'google'); $mc = _oauthAppCreds($sid, 'graph');
     return view('entegrasyonlar', ['google' => $google, 'graph' => $graph,
-        'googleVar' => (bool) config('services.google_oauth.client_id'), 'graphVar' => (bool) config('services.graph_oauth.client_id')]);
+        'googleVar' => (bool) $gc['client_id'], 'graphVar' => (bool) $mc['client_id'],
+        'gCid' => $gc['client_id'], 'gRedirect' => $gc['redirect'],
+        'mCid' => $mc['client_id'], 'mRedirect' => $mc['redirect'], 'mTenant' => $mc['tenant']]);
+});
+Route::post('/oauth-uygulama-kaydet', function (Request $r) {
+    if (!_baglantiYetki()) return redirect('/entegrasyonlar')->with('hata', 'Yalnızca sahip/müdür.');
+    _oauthAppEnsure(); $sid = _webSubeId();
+    $sag = in_array($r->input('saglayici'), ['google', 'graph']) ? $r->input('saglayici') : null;
+    if (!$sag) return redirect('/entegrasyonlar')->with('hata', 'Geçersiz sağlayıcı.');
+    $cid = trim((string) $r->input('client_id'));
+    $veri = ['client_id' => $cid ?: null, 'tenant' => ($sag === 'graph' ? (trim((string) $r->input('tenant')) ?: 'common') : null), 'updated_at' => now()];
+    if ($r->filled('client_secret')) { try { $veri['client_secret'] = \Illuminate\Support\Facades\Crypt::encryptString((string) $r->input('client_secret')); } catch (\Throwable $e) {} }
+    try {
+        $row = DB::table('oauth_uygulamalari')->where('sube_id', $sid)->where('saglayici', $sag)->first();
+        if ($row) DB::table('oauth_uygulamalari')->where('id', $row->id)->update($veri);
+        else { $veri['sube_id'] = $sid; $veri['saglayici'] = $sag; $veri['created_at'] = now(); DB::table('oauth_uygulamalari')->insert($veri); }
+    } catch (\Throwable $e) { return redirect('/entegrasyonlar')->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/entegrasyonlar')->with('ok', ($sag === 'google' ? 'Google' : 'Microsoft') . ' uygulama anahtarları kaydedildi. Artık departmanlardan tek-tık bağlanabilirsin.');
 });
 
 // ============================ ÇOKLU E-POSTA HESABI (RFQ/sipariş maili gönderimi) — SMTP (kurumsal/Gmail/Outlook) ============================
