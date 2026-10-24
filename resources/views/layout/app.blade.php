@@ -22,6 +22,14 @@
     .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.7}
     .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
     .rk-grp.kapali + .rk-grp-body{display:none}
+    /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
+    .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
+    .rk-modal-arka.acik{display:flex}
+    .rk-modal{background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.35);width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+    .rk-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line,#e5e7eb);font-weight:800;font-size:15px}
+    .rk-modal-kapa{background:none;border:0;font-size:26px;line-height:1;color:var(--sub,#94a3b8);cursor:pointer;padding:0 4px}
+    .rk-modal-govde{padding:16px 20px}
+    .rk-modal-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line,#e5e7eb)}
     </style>
     @stack('head')
 </head>
