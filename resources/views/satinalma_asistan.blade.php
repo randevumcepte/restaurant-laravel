@@ -132,8 +132,8 @@ async function saSor(metin){
     const j=await r.json();
     bekle.remove();
     saBubble(j.cevap||'Cevap alınamadı.',false);
+    // Sadece kullanıcı açıkça isteyince (excel/indir/csv) indirme butonları çıkar; otomatik teklif YOK
     if(j.exportlar && j.exportlar.length){ saExportButonlar(j.exportlar); }
-    else if(j.teklif_export){ saTeklifBalonu(j.teklif_export); }
   }catch(e){ bekle.remove(); saBubble('Bağlantı hatası, tekrar dene.',false); }
   saBusy=false;
 }
