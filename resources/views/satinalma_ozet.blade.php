@@ -108,29 +108,14 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 <div id="db">
 <div class="pano">
 
-  {{-- Selam + Harcama grafiği (yan yana) --}}
-  @php $maxH = max(1, collect($aylik)->max('tutar') ?: 1); @endphp
-  <div class="hero">
-    <div class="selam-kart">
-      <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
-      <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
-    </div>
-    <div class="grafik-kart">
-      <div class="gk-row"><span class="gk-baslik"><span class="material-icons-outlined" style="font-size:16px;color:var(--mor1);vertical-align:-3px">bar_chart</span> Son 6 Ay Harcama</span><span class="gk-top">{{ $tl0($ay_harcama) }} <span style="font-size:10px;color:var(--sub2);font-weight:600">bu ay</span></span></div>
-      <div class="gk-bars">
-        @foreach ($aylik as $m)
-          @php $h = round($m->tutar / $maxH * 100); @endphp
-          <div class="gk-col" title="{{ $ayKisa($m->ay) }}: {{ $tl0($m->tutar) }}">
-            <div class="gk-bar-wrap"><div class="gk-bar" style="height:{{ max(4,$h) }}%;animation-delay:{{ $loop->index * 0.08 }}s"></div></div>
-            <div class="gk-lbl">{{ $ayKisa($m->ay) }}</div>
-          </div>
-        @endforeach
-      </div>
-    </div>
+  {{-- Selam --}}
+  <div class="selam-kart">
+    <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
+    <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
   </div>
 
-  {{-- 2 büyük kart --}}
-  <div class="uclu2">
+  {{-- 3 büyük kart --}}
+  <div class="uclu">
     <a href="/satinalma-talep" class="ciro-mini">
       <div class="cubuk" style="background:var(--mor1)"></div>
       <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">assignment</span></div><span class="ciro-label">Yeni Talep</span></div>
@@ -142,6 +127,12 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">mark_email_read</span></div><span class="ciro-label">Teklif Geldi</span></div>
         <div class="ciro-deger">{{ $teklif_geldi }}</div>
         <div class="ciro-trend" style="color:var(--sub)">incelenecek</div></div>
+    </a>
+    <a href="/satinalma-butce" class="ciro-mini">
+      <div class="cubuk" style="background:var(--mavi)"></div>
+      <div class="ic"><div class="ciro-baslik-row"><div class="ciro-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">payments</span></div><span class="ciro-label">Bu Ay Harcama</span></div>
+        <div class="ciro-deger" style="font-size:23px">{{ $tl0($ay_harcama) }}</div>
+        <div class="ciro-trend" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div></div>
     </a>
   </div>
 
