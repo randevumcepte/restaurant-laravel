@@ -77,7 +77,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         @if (($satinalmaVar ?? false))
           <button type="submit" formaction="/siparis-onerisi/talep" class="rk-btn lg" style="background:var(--mor1)"><span class="material-icons-outlined" style="color:#fff;font-size:20px">forward_to_inbox</span> Satın Almaya Gönder</button>
-          <button type="submit" formaction="/siparis-onerisi/olustur" class="rk-btn lg bos"><span class="material-icons-outlined" style="font-size:20px">shopping_cart_checkout</span> Kendim Sipariş Oluştur</button>
+          <button type="submit" formaction="/siparis-onerisi/olustur" class="rk-btn lg bos"><span class="material-icons-outlined" style="font-size:20px">shopping_cart_checkout</span> Sipariş Oluştur</button>
         @else
           <button type="submit" formaction="/siparis-onerisi/olustur" class="rk-btn lg" style="background:var(--mor1)"><span class="material-icons-outlined" style="color:#fff;font-size:20px">shopping_cart_checkout</span> Seçililerden Sipariş Taslağı Oluştur</button>
         @endif
@@ -86,7 +86,7 @@
     @if (($satinalmaVar ?? false))
       <div class="rk-sub2" style="font-size:11.5px;margin-top:8px">
         <b>Satın Almaya Gönder</b> (önerilen): bu listeyi <b>talep</b> olarak satın alma ekibine yollar → onlar <b>Fiyat Araştır / Hemen Sipariş</b> ile devam eder.<br>
-        <b>Kendim Sipariş Oluştur:</b> ekibi atlayıp direkt taslak sipariş oluşturur (tedarikçiye göre gruplu).
+        <b>Sipariş Oluştur:</b> ekibi atlayıp direkt taslak sipariş oluşturur (tedarikçiye göre gruplu).
       </div>
     @else
       <div class="rk-sub2" style="font-size:11.5px;margin-top:8px">Siparişler <b>tedarikçiye göre gruplanıp</b> taslak olarak oluşturulur. <i>(Not: Satınalmacı rolünde personel atarsan, burada "Satın Almaya Gönder" ile listeyi ekibe devredebilirsin.)</i></div>
