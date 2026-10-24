@@ -53,20 +53,11 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-#db .hero{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-#db .hero .selam-kart{flex:1;min-width:240px;margin-bottom:0}
-#db .grafik-kart{flex:1.5;min-width:300px;background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px}
-#db .gk-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-#db .gk-baslik{font-size:13px;font-weight:700;color:var(--ink)}
-#db .gk-top{font-size:15px;font-weight:800;color:var(--mor1)}
-#db .gk-bars{display:flex;align-items:flex-end;gap:9px;height:84px}
-#db .gk-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%}
-#db .gk-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end}
-#db .gk-bar{width:100%;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--mor1),var(--mavi));transform-origin:bottom;animation:gkbar .85s cubic-bezier(.22,.68,0,1.2) both}
-#db .gk-lbl{font-size:10px;color:var(--sub);font-weight:600}
-@keyframes gkbar{from{transform:scaleY(0)}to{transform:scaleY(1)}}
-#db .uclu2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
-@media(max-width:860px){#db .uclu2{grid-template-columns:1fr}#db .hizli{grid-template-columns:1fr 1fr}}
+#db .selam-harcama{margin-left:auto;text-align:right;padding-left:18px;flex-shrink:0}
+#db .selam-harcama .sh-lbl{font-size:11.5px;font-weight:600;color:var(--sub);margin-bottom:3px}
+#db .selam-harcama .sh-deger{font-size:26px;font-weight:900;color:var(--ink);line-height:1}
+#db .selam-harcama .sh-alt{font-size:11.5px;font-weight:700;margin-top:4px}
+@media(max-width:620px){#db .selam-harcama{display:none}#db .hizli{grid-template-columns:1fr 1fr}}
 </style>
 @endpush
 
@@ -112,6 +103,11 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   <div class="selam-kart">
     <div class="selam-ikon"><span class="material-icons-outlined">{{ $selamIk }}</span></div>
     <div style="flex:1"><div class="ad">{{ $selam }}, {{ $ad ?: 'Satın Alma' }}! 🛒</div><div class="sube">Satın alma operasyonunun özeti</div></div>
+    <div class="selam-harcama">
+      <div class="sh-lbl"><span class="material-icons-outlined" style="font-size:14px;vertical-align:-2px">payments</span> Bu Ay Harcama</div>
+      <div class="sh-deger">{{ $tl0($ay_harcama) }}</div>
+      <div class="sh-alt" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div>
+    </div>
   </div>
 
   {{-- 3 büyük kart --}}
