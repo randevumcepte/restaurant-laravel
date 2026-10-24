@@ -5,6 +5,11 @@
 @section('rk_alt', 'Stok + fiyat + tedarikçi verinden anında cevap')
 
 @section('content')
+<style>
+  #saChat .sa-h{display:inline-block;font-weight:800;font-size:14.5px;color:var(--mor1,#7C3AED);margin:6px 0 2px;letter-spacing:.2px}
+  #saChat b{font-weight:800;color:inherit}
+  #saChat .sa-mad{color:var(--mor1,#7C3AED);font-weight:900}
+</style>
 <div style="max-width:760px;margin:0 auto">
   <div class="rk-card" style="margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">
     <span class="material-icons-outlined" style="color:var(--mor1);font-size:24px">smart_toy</span>
@@ -35,11 +40,21 @@
 
 <script>
 const SA_CSRF = document.querySelector('meta[name=csrf-token]').content;
+// Güvenli markdown -> HTML (sadece AI balonu için): başlık, kalın, madde
+function saEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function saFormat(t){
+  let h=saEsc(t);
+  h=h.replace(/^\s*#{1,6}\s*(.+?)\s*$/gm,'<span class="sa-h">$1</span>');       // başlık
+  h=h.replace(/\*\*([^*]+?)\*\*/g,'<b>$1</b>');                                 // **kalın**
+  h=h.replace(/__([^_]+?)__/g,'<b>$1</b>');                                     // __kalın__
+  h=h.replace(/^[ \t]*[-*•]\s+/gm,'<span class="sa-mad">•</span> ');            // madde imi
+  return h;
+}
 function saBubble(metin, ben){
   const d=document.createElement('div');
-  d.style.cssText='max-width:82%;padding:11px 14px;border-radius:14px;font-size:13.5px;white-space:pre-wrap;line-height:1.5;'+
+  d.style.cssText='max-width:86%;padding:11px 14px;border-radius:14px;font-size:13.5px;white-space:pre-wrap;line-height:1.55;'+
     (ben?'align-self:flex-end;background:var(--mor1);color:#fff;border-bottom-right-radius:4px':'align-self:flex-start;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-bottom-left-radius:4px');
-  d.textContent=metin;
+  if(ben) d.textContent=metin; else d.innerHTML=saFormat(metin);
   document.getElementById('saChat').appendChild(d);
   d.scrollIntoView({behavior:'smooth',block:'end'});
   return d;
