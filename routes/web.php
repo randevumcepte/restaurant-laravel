@@ -11674,6 +11674,44 @@ Route::post('/siparis-onerisi/talep', function (Request $r) {
     } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Talep gönderilemedi.'); }
 });
 
+// ===== TEDARİKÇİ KARNESİ (scorecard): zamanında teslim % + sipariş hacmi + gecikme =====
+Route::get('/tedarikci-karne', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'])) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $rows = collect();
+    try {
+        if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
+        $ted = DB::table('tedarikciler')->get(['id', 'ad', 'anlasmali'])->keyBy('id');
+        $sip = Schema::hasTable('satinalma_siparisleri') ? DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi', 'tamamlandi'])->get(['id', 'tedarikci_id', 'tarih', 'beklenen_teslim', 'genel_toplam']) : collect();
+        $mk = Schema::hasTable('mal_kabuller') ? DB::table('mal_kabuller')->where('sube_id', $sid)->whereNotNull('siparis_id')->get(['siparis_id', 'tarih'])->keyBy('siparis_id') : collect();
+        $agg = [];
+        foreach ($sip as $s) {
+            $tid = (int) ($s->tedarikci_id ?? 0); if (!$tid) continue;
+            if (!isset($agg[$tid])) $agg[$tid] = ['siparis' => 0, 'tutar' => 0.0, 'teslim' => 0, 'zamaninda' => 0, 'gecikmeTop' => 0, 'son' => null];
+            $agg[$tid]['siparis']++; $agg[$tid]['tutar'] += (float) $s->genel_toplam;
+            if (!$agg[$tid]['son'] || $s->tarih > $agg[$tid]['son']) $agg[$tid]['son'] = $s->tarih;
+            $m = $mk[$s->id] ?? null;
+            if ($m && $s->beklenen_teslim) {
+                $agg[$tid]['teslim']++;
+                $bek = \Carbon\Carbon::parse($s->beklenen_teslim); $ger = \Carbon\Carbon::parse($m->tarih);
+                if ($ger->lte($bek)) $agg[$tid]['zamaninda']++;
+                else $agg[$tid]['gecikmeTop'] += (int) $ger->diffInDays($bek);
+            }
+        }
+        $out = [];
+        foreach ($agg as $tid => $a) {
+            $zpct = $a['teslim'] > 0 ? round($a['zamaninda'] / $a['teslim'] * 100) : null;
+            $gecSay = $a['teslim'] - $a['zamaninda'];
+            $out[] = (object) ['ad' => $ted[$tid]->ad ?? '—', 'anlasmali' => (int) ($ted[$tid]->anlasmali ?? 0),
+                'siparis' => $a['siparis'], 'tutar' => $a['tutar'], 'teslim' => $a['teslim'], 'zamaninda_pct' => $zpct,
+                'ort_gecikme' => $gecSay > 0 ? round($a['gecikmeTop'] / $gecSay, 1) : 0, 'son' => $a['son'],
+                'puan' => $zpct === null ? null : $zpct];
+        }
+        $rows = collect($out)->sortByDesc(fn ($r) => $r->tutar)->values();
+    } catch (\Throwable $e) {}
+    return view('tedarikci_karne', ['rows' => $rows]);
+});
 // ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
 Route::get('/fiyat-radari', function () {
     $sid = _webSubeId();
