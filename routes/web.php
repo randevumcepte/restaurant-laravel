@@ -6805,6 +6805,7 @@ if (!function_exists('_departmanEnsure')) {
             ['departmanlar', 'sorumlu_ek', fn ($t) => $t->text('sorumlu_ek')->nullable()],
             ['departmanlar', 'unvanlar', fn ($t) => $t->text('unvanlar')->nullable()],
             ['menu_kategorileri', 'departman_id', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()], // kategori->istasyon/departman eşleşmesi
+            ['departmanlar', 'wa_numara', fn ($t) => $t->string('wa_numara', 24)->nullable()],                   // departman WhatsApp iletişim numarası
         ] as [$tab, $kol, $cl]) {
             try { if (Schema::hasTable($tab) && !Schema::hasColumn($tab, $kol)) Schema::table($tab, $cl); } catch (\Throwable $e) {}
         }
@@ -8622,6 +8623,51 @@ Route::post('/baglanti/kaldir', function (Request $r) {
         \Illuminate\Support\Facades\Cache::forget('patron_ai_dis:' . _webSubeId()); } catch (\Throwable $e) {} }
     return redirect($geri)->with('ok', 'Bağlantı kaldırıldı.');
 });
+// WEB: Departman Bağlantı Yönetimi (Gmail/Outlook tek-tık + kurumsal SMTP + WhatsApp) — departman bazlı
+Route::get('/departman-baglanti', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür.');
+    _departmanEnsure(); _baglantiEnsure(); _epostaHesapEnsure();
+    $sid = _webSubeId(); $depId = (int) $r->input('dep');
+    $dep = DB::table('departmanlar')->where('id', $depId)->where('sube_id', $sid)->first();
+    if (!$dep) return redirect('/departman-yonetim')->with('hata', 'Departman bulunamadı.');
+    $google = _baglantiGetir($sid, 'google', $depId); $graph = _baglantiGetir($sid, 'graph', $depId);
+    $smtp = null; try { $smtp = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first(); } catch (\Throwable $e) {}
+    return view('departman_baglanti', ['dep' => $dep, 'google' => $google, 'graph' => $graph, 'smtp' => $smtp,
+        'googleVar' => (bool) config('services.google_oauth.client_id'), 'graphVar' => (bool) config('services.graph_oauth.client_id')]);
+});
+Route::post('/departman-baglanti/smtp', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
+    _epostaHesapEnsure(); $sid = _webSubeId(); $depId = (int) $r->input('dep');
+    $geri = '/departman-baglanti?dep=' . $depId;
+    $email = trim((string) $r->email); if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return redirect($geri)->with('hata', 'Geçerli e-posta gir.');
+    $veri = ['sube_id' => $sid, 'departman_id' => $depId, 'ad' => (trim((string) $r->ad) ?: $email), 'gonderen_ad' => $r->gonderen_ad ?: null,
+        'email' => $email, 'smtp_host' => trim((string) $r->smtp_host), 'smtp_port' => (int) ($r->smtp_port ?: 587), 'smtp_user' => $r->smtp_user ?: null,
+        'smtp_guvenlik' => in_array($r->smtp_guvenlik, ['tls', 'ssl', 'yok']) ? $r->smtp_guvenlik : 'tls', 'aktif' => 1, 'updated_at' => now()];
+    if ($r->filled('smtp_sifre')) $veri['smtp_sifre'] = \Illuminate\Support\Facades\Crypt::encryptString((string) $r->smtp_sifre);
+    try {
+        $ex = DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->first();
+        if ($ex) DB::table('eposta_hesaplari')->where('id', $ex->id)->update($veri);
+        else { $veri['created_at'] = now(); DB::table('eposta_hesaplari')->insert($veri); }
+    } catch (\Throwable $e) { return redirect($geri)->with('hata', 'Kaydedilemedi.'); }
+    return redirect($geri)->with('ok', 'Kurumsal e-posta (SMTP) kaydedildi.');
+});
+Route::post('/departman-baglanti/smtp-sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $depId = (int) $r->input('dep');
+    try { DB::table('eposta_hesaplari')->where('sube_id', $sid)->where('departman_id', $depId)->delete(); } catch (\Throwable $e) {}
+    return redirect('/departman-baglanti?dep=' . $depId)->with('ok', 'Kurumsal e-posta kaldırıldı.');
+});
+Route::post('/departman-baglanti/whatsapp', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yetkisiz.');
+    _departmanEnsure(); $sid = _webSubeId(); $depId = (int) $r->input('dep');
+    $num = preg_replace('/[^0-9]/', '', (string) $r->input('wa_numara'));
+    try { DB::table('departmanlar')->where('id', $depId)->where('sube_id', $sid)->update(['wa_numara' => ($num ?: null), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    return redirect('/departman-baglanti?dep=' . $depId)->with('ok', 'WhatsApp numarası kaydedildi.');
+});
 // WEB: Entegrasyonlar (bağlantı yönetimi)
 Route::get('/entegrasyonlar', function () {
     _baglantiEnsure();
@@ -8648,6 +8694,12 @@ if (!function_exists('_epostaHesapEnsure')) {
             }); } catch (\Throwable $e) {}
         }
         cache()->put('eposta_hesap_ensure_ok', 1, now()->addHours(12));
+        if (!cache()->get('eposta_hesap_dep_ok')) {
+            try { if (Schema::hasTable('eposta_hesaplari') && !Schema::hasColumn('eposta_hesaplari', 'departman_id')) {
+                Schema::table('eposta_hesaplari', function ($t) { $t->unsignedBigInteger('departman_id')->nullable()->after('sube_id')->index(); });
+            } } catch (\Throwable $e) {}
+            cache()->put('eposta_hesap_dep_ok', 1, now()->addHours(12));
+        }
     }
 }
 if (!function_exists('_epostaVarsayilan')) {
