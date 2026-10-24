@@ -31,7 +31,8 @@
   @if (session('ok'))   <div class="rk-flash ok">{{ session('ok') }}</div> @endif
   @if (session('hata')) <div class="rk-flash err">{{ session('hata') }}</div> @endif
 
-  {{-- GMAIL --}}
+  {{-- GMAIL (OAuth tek-tık — opsiyonel; yalnız OAuth uygulaması tanımlı VEYA bağlıysa görünür) --}}
+  @if ($googleVar || $google)
   <div class="db-kart">
     <div class="db-h">
       <span class="ik db-btn-g"><span class="material-icons-outlined" style="font-size:20px">mail</span></span>
@@ -53,7 +54,10 @@
     @endif
   </div>
 
-  {{-- OUTLOOK / 365 --}}
+  @endif
+
+  {{-- OUTLOOK / 365 (OAuth tek-tık — opsiyonel; yalnız OAuth uygulaması tanımlı VEYA bağlıysa görünür) --}}
+  @if ($graphVar || $graph)
   <div class="db-kart">
     <div class="db-h">
       <span class="ik db-btn-o"><span class="material-icons-outlined" style="font-size:20px">mail</span></span>
@@ -74,6 +78,8 @@
       <div class="db-not">Tek-tık Outlook için bir kez <a href="/entegrasyonlar" style="color:var(--mor1);font-weight:700">Entegrasyonlar</a> sayfasından kendi Azure anahtarını gir. <b>Ya da</b> aşağıdaki <b>Kurumsal E-posta (SMTP)</b> kartına Outlook uygulama şifreni gir.</div>
     @endif
   </div>
+
+  @endif
 
   {{-- KURUMSAL SMTP --}}
   <div class="db-kart">
