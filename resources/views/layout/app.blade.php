@@ -47,6 +47,7 @@
         ],
         'Satış & Servis' => [
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
+            ['/servis', 'room_service', 'Servis Ekranı (İş Akışım)', '#4F46E5'],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
         ],
         'Menü & Ürünler' => [
