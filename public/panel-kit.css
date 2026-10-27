@@ -116,25 +116,25 @@ a{text-decoration:none}
 /* ---- Masaüstü hover-expand sidebar (yalnizca >=901px) ---- */
 @media(min-width:901px){
   /* Collapsed default: dar sidebar, sadece ikonlar */
-  .rk-side{width:68px;flex:0 0 68px;overflow:hidden;transition:width .25s cubic-bezier(.4,0,.2,1)}
-  .rk-side:hover{width:258px}
-  .rk-main{margin-left:68px;transition:margin-left .25s cubic-bezier(.4,0,.2,1)}
-  /* Hover ile sidebar genislediginde icerik yerinde kalsin (overlay gibi) */
-  .rk-side:hover ~ .rk-main{margin-left:68px}
+  .rk-side{width:68px !important;flex:0 0 68px !important;overflow:hidden;transition:width .25s cubic-bezier(.4,0,.2,1)}
+  .rk-side:hover{width:258px !important;flex:0 0 258px !important;z-index:40;box-shadow:4px 0 24px rgba(0,0,0,.12)}
+  .rk-main{margin-left:68px !important;transition:margin-left .25s cubic-bezier(.4,0,.2,1)}
   /* Head (ResteOS branding) collapsed'de daralsin, hover'da genislesin */
-  .rk-side-head{padding:14px 10px;transition:padding .25s ease;overflow:hidden}
+  .rk-side-head{padding:14px 10px;transition:padding .25s ease;overflow:hidden;min-height:70px}
   .rk-side:hover .rk-side-head{padding:18px 18px 16px}
-  /* Head metinleri (ad, sube, kul) collapsed'de gizli */
-  .rk-side-head .ad,.rk-side-head .sube,.rk-side-head .kul{opacity:0;transition:opacity .18s ease;white-space:nowrap;overflow:hidden}
-  .rk-side:hover .rk-side-head .ad,.rk-side:hover .rk-side-head .sube,.rk-side:hover .rk-side-head .kul{opacity:1}
-  /* Menu / footer linklerindeki metin kismi gizli, ikon gorunur kalir */
-  .rk-menu a,.rk-side-foot a{white-space:nowrap;overflow:hidden}
-  .rk-menu a > :not(.material-icons-outlined),
-  .rk-side-foot a > :not(.material-icons-outlined){opacity:0;transition:opacity .18s ease}
-  .rk-side:hover .rk-menu a > :not(.material-icons-outlined),
-  .rk-side:hover .rk-side-foot a > :not(.material-icons-outlined){opacity:1}
+  /* Head metinleri (ad, sube, kul) collapsed'de tamamen gizli (hem opacity hem height) */
+  .rk-side-head .ad,.rk-side-head .sube,.rk-side-head .kul{opacity:0;transition:opacity .18s ease;white-space:nowrap;overflow:hidden;max-height:0}
+  .rk-side:hover .rk-side-head .ad{opacity:1;max-height:30px}
+  .rk-side:hover .rk-side-head .sube{opacity:1;max-height:20px}
+  .rk-side:hover .rk-side-head .kul{opacity:1;max-height:18px}
+  /* Menu / footer linklerindeki metin kismi gizlemek icin font-size:0 (text node'u yakalamanin en guvenli yolu) */
+  .rk-menu a,.rk-side-foot a{font-size:0;transition:font-size .18s ease;white-space:nowrap;overflow:hidden}
+  .rk-side:hover .rk-menu a{font-size:14.5px}
+  .rk-side:hover .rk-side-foot a{font-size:14.5px}
+  /* Ikon font-size collapsed'de de korunsun */
+  .rk-menu a .material-icons-outlined,.rk-side-foot a .material-icons-outlined{font-size:21px !important}
   /* Grup basliklari (Panel / Satis & Servis vs) collapsed'de yer kaplamasin */
-  .rk-side:not(:hover) .rk-grp{height:0;padding:0;margin:0;border-top:none;opacity:0;overflow:hidden;pointer-events:none}
+  .rk-side:not(:hover) .rk-grp{height:0;padding:0;margin:0;border-top:none;opacity:0;overflow:hidden;pointer-events:none;font-size:0}
   .rk-grp{transition:opacity .18s ease,padding .18s ease,height .25s ease}
   /* Collapsed'de kapali gruplar bile acik gorunsun (yoksa dar menu bos kalir) */
   .rk-side:not(:hover) .rk-grp.kapali + .rk-grp-body{display:block}
