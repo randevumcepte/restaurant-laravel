@@ -13,17 +13,35 @@
 
     $toplamDeger = 0.0;
     $kritikSayi  = 0;
-    // $malzemeler already has `stok` sub-query column (from route); use it directly.
-    $rows = $malzemeler->map(function ($m) use ($birimMap, $katMap, &$toplamDeger, &$kritikSayi) {
+    $azSayi      = 0;
+    $negatifSayi = 0;
+    $takipsizSayi = 0;
+    // $malzemeler already has `stok` and `son_hareket` sub-query columns (from route); use directly.
+    $rows = $malzemeler->map(function ($m) use ($birimMap, $katMap, &$toplamDeger, &$kritikSayi, &$azSayi, &$negatifSayi, &$takipsizSayi) {
         $stok  = (float) ($m->stok ?? 0);
-        $deger = $stok * (float) $m->guncel_maliyet;
+        $deger = max(0, $stok) * (float) $m->guncel_maliyet; // negatif stoğu değerlemeye katma
         $toplamDeger += $deger;
-        $kritik = (float) $m->kritik_stok > 0 && $stok <= (float) $m->kritik_stok;
-        if ($kritik) $kritikSayi++;
-        // durum rengi: kırmızı=kritik, turuncu=az (≤ 1.5× eşik), yeşil=yeterli
         $esik  = (float) $m->kritik_stok;
-        $durum = $kritik ? 'kirmizi' : ($esik > 0 && $stok <= $esik * 1.5 ? 'turuncu' : 'yesil');
-        $durumMetin = ['kirmizi' => 'Kritik', 'turuncu' => 'Az', 'yesil' => 'Yeterli'][$durum];
+        $takipli = (int) ($m->stok_takipli ?? 1);
+        if (!$takipli) $takipsizSayi++;
+        // Durum: negatif = veri hatası (koyu kırmızı), kritik = kırmızı, az = turuncu, yeterli = yeşil
+        if ($stok < 0) { $durum = 'negatif'; $negatifSayi++; }
+        elseif ($esik > 0 && $stok <= $esik) { $durum = 'kirmizi'; $kritikSayi++; }
+        elseif ($esik > 0 && $stok <= $esik * 1.5) { $durum = 'turuncu'; $azSayi++; }
+        else { $durum = 'yesil'; }
+        $durumMetin = ['negatif' => 'Veri Hatası', 'kirmizi' => 'Kritik', 'turuncu' => 'Az', 'yesil' => 'Yeterli'][$durum];
+        // Progress bar yüzdesi: hedef = max(kritik*2, 1); negatif stokta 0, aşımda 100
+        $hedef = $esik > 0 ? $esik * 2 : max(1, $stok);
+        $yuzde = $hedef > 0 ? max(0, min(100, round($stok / $hedef * 100))) : 0;
+        // Son hareket tarihi — insan okunabilir
+        $sonHareket = null; $sonHareketMetin = 'Hareket yok';
+        if (!empty($m->son_hareket)) {
+            try {
+                $sonHareket = \Carbon\Carbon::parse($m->son_hareket);
+                $gun = $sonHareket->diffInDays(now());
+                $sonHareketMetin = $gun == 0 ? 'Bugün' : ($gun == 1 ? 'Dün' : $gun . ' gün önce');
+            } catch (\Throwable $e) {}
+        }
         return (object) [
             'id'           => (int) $m->id,
             'ad'           => $m->ad,
@@ -33,12 +51,15 @@
             'temel_birim_id' => (int) $m->temel_birim_id,
             'guncel_maliyet' => (float) $m->guncel_maliyet,
             'kritik_stok'  => (float) $m->kritik_stok,
-            'stok_takipli' => (int) ($m->stok_takipli ?? 1),
+            'stok_takipli' => $takipli,
             'mevcut'       => round($stok, 3),
             'deger'        => round($deger, 2),
-            'kritik'       => $kritik,
+            'kritik'       => $durum === 'kirmizi',
             'durum'        => $durum,
             'durum_metin'  => $durumMetin,
+            'yuzde'        => $yuzde,
+            'son_hareket_metin' => $sonHareketMetin,
+            'son_hareket_gun'   => $sonHareket ? (int) $sonHareket->diffInDays(now()) : null,
         ];
     });
 
@@ -59,7 +80,7 @@
     $tl = fn($v) => number_format((float) $v, 0, ',', '.') . 'TL';
 
     // Renk hex'leri (durum → renk)
-    $durumRenk = ['kirmizi' => '#DC2626', 'turuncu' => '#EA580C', 'yesil' => '#16A34A'];
+    $durumRenk = ['negatif' => '#991B1B', 'kirmizi' => '#DC2626', 'turuncu' => '#EA580C', 'yesil' => '#16A34A'];
 @endphp
 
 @push('head')
@@ -72,16 +93,33 @@
 }
 body.koyu #stk{--card:#1b2235;--card2:#161C2E;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650;--bg:#0B1020}
 
-/* ---- Özet kart (Flutter _ozetKart — gradient) ---- */
-#stk .stk-ozet{display:flex;align-items:center;gap:12px;padding:16px;border-radius:18px;
-  background:linear-gradient(135deg,var(--mor1),var(--mavi));margin-bottom:14px}
-#stk .stk-ozet .sol{flex:1;min-width:0}
-#stk .stk-ozet .etiket{color:rgba(255,255,255,.75);font-size:12px}
-#stk .stk-ozet .deger{color:#fff;font-size:24px;font-weight:800;line-height:1.15;margin-top:1px}
-#stk .stk-ozet .kritik-kutu{background:rgba(255,255,255,.18);border-radius:12px;
-  padding:8px 12px;text-align:center;flex-shrink:0}
-#stk .stk-ozet .kritik-kutu .kn{color:#fff;font-size:20px;font-weight:800;line-height:1}
-#stk .stk-ozet .kritik-kutu .kl{color:rgba(255,255,255,.75);font-size:10px}
+/* ---- Metrik şeridi (4 kompakt kutu) ---- */
+#stk .stk-metrik{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+#stk .stk-mk{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;transition:box-shadow .14s ease,transform .14s ease;cursor:default}
+#stk .stk-mk.tiklanabilir{cursor:pointer}
+#stk .stk-mk.tiklanabilir:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.08)}
+#stk .stk-mk .mk-ikon{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#stk .stk-mk .mk-ikon .material-icons-outlined{font-size:20px}
+#stk .stk-mk .mk-bilgi{flex:1;min-width:0}
+#stk .stk-mk .mk-deger{font-size:20px;font-weight:800;color:var(--ink);line-height:1.05;letter-spacing:-.3px}
+#stk .stk-mk .mk-etiket{font-size:11.5px;color:var(--sub);font-weight:600;margin-top:2px}
+#stk .stk-mk.vurgu{background:linear-gradient(135deg,var(--mor1),var(--mavi));border-color:transparent}
+#stk .stk-mk.vurgu .mk-deger,#stk .stk-mk.vurgu .mk-etiket{color:#fff}
+#stk .stk-mk.vurgu .mk-etiket{opacity:.85}
+#stk .stk-mk.vurgu .mk-ikon{background:rgba(255,255,255,.22);color:#fff}
+@media(max-width:900px){#stk .stk-metrik{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){#stk .stk-mk .mk-deger{font-size:17px}#stk .stk-mk{padding:10px 11px}}
+
+/* ---- Filtre çipleri ---- */
+#stk .stk-cip-sat{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+#stk .stk-cip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;background:var(--card);border:1px solid var(--line);color:var(--sub2);font-size:12.5px;font-weight:700;cursor:pointer;transition:all .13s ease;user-select:none}
+#stk .stk-cip:hover{background:var(--card2)}
+#stk .stk-cip.aktif{background:var(--mor1);border-color:var(--mor1);color:#fff}
+#stk .stk-cip .sayi{font-size:11px;padding:1px 7px;border-radius:12px;background:var(--card2);color:var(--sub);font-weight:800;line-height:1.4}
+#stk .stk-cip.aktif .sayi{background:rgba(255,255,255,.25);color:#fff}
+#stk .stk-cip.kirmizi.aktif{background:#DC2626;border-color:#DC2626}
+#stk .stk-cip.turuncu.aktif{background:#EA580C;border-color:#EA580C}
+#stk .stk-cip.negatif.aktif{background:#991B1B;border-color:#991B1B}
 
 /* ---- Arama alanı (Flutter TextField + prefixIcon) ---- */
 #stk .stk-ara-wrap{position:relative;margin-bottom:14px}
@@ -123,18 +161,39 @@ body.koyu #stk #stkAra{background:var(--card2)}
 #stk .stk-kart .deger-txt{font-size:11px;color:var(--sub);margin-top:1px}
 #stk .stk-kart .material-icons-outlined.cev{color:var(--sub);font-size:20px;margin-left:4px;flex-shrink:0}
 
-/* ---- Masaüstü ızgara kartı (Flutter _mKart) ---- */
-#stk .stk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:18px}
+/* ---- Masaüstü ızgara kartı (modern) ---- */
+#stk .stk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:18px}
 #stk .stk-mkart{border-radius:14px;background:var(--card);border:1px solid var(--line);
-  overflow:hidden;cursor:pointer;transition:box-shadow .1s}
-#stk .stk-mkart:hover{box-shadow:0 4px 14px rgba(0,0,0,.10)}
+  overflow:hidden;cursor:pointer;transition:box-shadow .14s ease,transform .14s ease,border-color .14s ease;position:relative}
+#stk .stk-mkart:hover{box-shadow:0 6px 20px rgba(0,0,0,.09);transform:translateY(-2px)}
+#stk .stk-mkart.d-negatif{border-color:rgba(153,27,27,.55)}
+#stk .stk-mkart.d-kirmizi{border-color:rgba(220,38,38,.42)}
+#stk .stk-mkart.d-turuncu{border-color:rgba(234,88,12,.35)}
 #stk .stk-mkart .serit{height:5px}
-#stk .stk-mkart .ic{padding:11px 14px 11px}
-#stk .stk-mkart .satir-ust{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:2px}
-#stk .stk-mkart .mkad{color:var(--ink);font-size:15px;font-weight:700;flex:1;min-width:0;
+#stk .stk-mkart .ic{padding:12px 14px 12px}
+#stk .stk-mkart .satir-ust{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+#stk .stk-mkart .mkad{color:var(--ink);font-size:14.5px;font-weight:700;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#stk .stk-mkart .satir-kat{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-#stk .stk-mkart .kat-txt{color:var(--sub);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Progress bar */
+#stk .stk-mkart .pbar-wrap{margin:6px 0 8px}
+#stk .stk-mkart .pbar{height:6px;border-radius:4px;background:var(--card2);overflow:hidden;position:relative}
+#stk .stk-mkart .pbar>div{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+#stk .stk-mkart .pbar-label{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--sub);margin-top:4px;font-weight:600}
+#stk .stk-mkart .pbar-label .mv{color:var(--ink);font-weight:800;font-size:13.5px}
+
+/* Alt bilgi: değer + son hareket */
+#stk .stk-mkart .alt-bilgi{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;color:var(--sub);font-weight:600;padding-top:7px;border-top:1px dashed var(--line);margin-top:4px}
+#stk .stk-mkart .alt-bilgi .material-icons-outlined{font-size:13px;vertical-align:-2px;opacity:.75;margin-right:2px}
+#stk .stk-mkart .alt-bilgi .uyari{color:#EA580C}
+
+/* Hover aksiyonları (hover butonları) */
+#stk .stk-mkart .hover-aks{position:absolute;top:9px;right:9px;display:flex;gap:4px;opacity:0;transform:translateX(4px);transition:opacity .14s ease,transform .14s ease;z-index:3}
+#stk .stk-mkart:hover .hover-aks{opacity:1;transform:translateX(0)}
+#stk .stk-mkart .hover-aks button{width:30px;height:30px;border-radius:8px;border:none;background:var(--card2);color:var(--mor1);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:background .13s}
+#stk .stk-mkart .hover-aks button:hover{background:var(--mor1);color:#fff}
+#stk .stk-mkart .hover-aks button .material-icons-outlined{font-size:16px}
+@media(hover:none){#stk .stk-mkart .hover-aks{display:none}} /* dokunmatikte gizle */
 
 /* ---- Rozet (Flutter MRozet) ---- */
 #stk .rozet{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
@@ -254,24 +313,49 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
 @section('content')
 <div id="stk">
 
-    {{-- ===== ÖZET KART (Flutter _ozetKart — gradient) ===== --}}
-    <div class="stk-ozet">
-        <div class="sol">
-            <div class="etiket">Toplam Stok Değeri</div>
-            <div class="deger">{{ $tl($toplamDeger) }}</div>
+    {{-- ===== METRİK ŞERİDİ (4 kompakt kutu) ===== --}}
+    <div class="stk-metrik">
+        <div class="stk-mk vurgu">
+            <div class="mk-ikon"><span class="material-icons-outlined">payments</span></div>
+            <div class="mk-bilgi">
+                <div class="mk-deger">{{ $tl($toplamDeger) }}</div>
+                <div class="mk-etiket">Toplam Stok Değeri</div>
+            </div>
         </div>
-        @if ($kritikSayi > 0)
-        <div class="kritik-kutu">
-            <div class="kn">{{ $kritikSayi }}</div>
-            <div class="kl">kritik</div>
+        <div class="stk-mk">
+            <div class="mk-ikon" style="background:color-mix(in srgb,var(--mor1) 14%,transparent);color:var(--mor1)"><span class="material-icons-outlined">inventory_2</span></div>
+            <div class="mk-bilgi">
+                <div class="mk-deger">{{ $rows->count() }}</div>
+                <div class="mk-etiket">Malzeme Sayısı</div>
+            </div>
         </div>
-        @endif
+        <div class="stk-mk tiklanabilir" onclick="stkCipSec('kirmizi')" title="Kritik stoğu filtrele">
+            <div class="mk-ikon" style="background:color-mix(in srgb,#DC2626 14%,transparent);color:#DC2626"><span class="material-icons-outlined">warning_amber</span></div>
+            <div class="mk-bilgi">
+                <div class="mk-deger" style="color:{{ $kritikSayi>0?'#DC2626':'var(--ink)' }}">{{ $kritikSayi }}</div>
+                <div class="mk-etiket">Kritik Stok</div>
+            </div>
+        </div>
+        <div class="stk-mk tiklanabilir" onclick="stkCipSec('negatif')" title="Negatif stoğu filtrele">
+            <div class="mk-ikon" style="background:color-mix(in srgb,#991B1B 14%,transparent);color:#991B1B"><span class="material-icons-outlined">error_outline</span></div>
+            <div class="mk-bilgi">
+                <div class="mk-deger" style="color:{{ $negatifSayi>0?'#991B1B':'var(--ink)' }}">{{ $negatifSayi }}</div>
+                <div class="mk-etiket">Veri Hatası (Negatif)</div>
+            </div>
+        </div>
     </div>
 
-    {{-- ===== ARAMA (Flutter TextField prefixIcon:search) ===== --}}
+    {{-- ===== ARAMA + FİLTRE ÇİPLERİ ===== --}}
     <div class="stk-ara-wrap" id="stkAraWrapMobil">
         <span class="material-icons-outlined">search</span>
         <input type="text" id="stkAraMobil" placeholder="Malzeme ara" oninput="stkFiltre(this.value)">
+    </div>
+    <div class="stk-cip-sat" id="stkCipSat">
+        <span class="stk-cip aktif" data-fil="tumu" onclick="stkCipSec('tumu')">Tümü <span class="sayi">{{ $rows->count() }}</span></span>
+        <span class="stk-cip negatif" data-fil="negatif" onclick="stkCipSec('negatif')">⚠ Veri Hatası <span class="sayi">{{ $negatifSayi }}</span></span>
+        <span class="stk-cip kirmizi" data-fil="kirmizi" onclick="stkCipSec('kirmizi')">Kritik <span class="sayi">{{ $kritikSayi }}</span></span>
+        <span class="stk-cip turuncu" data-fil="turuncu" onclick="stkCipSec('turuncu')">Az <span class="sayi">{{ $azSayi }}</span></span>
+        <span class="stk-cip" data-fil="takipsiz" onclick="stkCipSec('takipsiz')">Takipsiz <span class="sayi">{{ $takipsizSayi }}</span></span>
     </div>
 
     {{-- ===== LİSTE / IZGARA ===== --}}
@@ -295,30 +379,31 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                 <div class="stk-grid">
                     @foreach ($katRows as $m)
                     @php $renk = $durumRenk[$m->durum]; @endphp
-                    <div class="stk-mkart" data-ad="{{ strtolower($m->ad) }}" onclick="stkDetayAc({{ $m->id }})">
+                    <div class="stk-mkart d-{{ $m->durum }}" data-ad="{{ strtolower($m->ad) }}" data-dur="{{ $m->durum }}" data-takip="{{ $m->stok_takipli }}" onclick="stkDetayAc({{ $m->id }})">
                         <div class="serit" style="background:{{ $renk }}"></div>
+                        @if ($duzenleyebilir)
+                        <div class="hover-aks">
+                            <button onclick="event.stopPropagation();stkHareketAc({{ $m->id }},'giris')" title="Stok Girişi"><span class="material-icons-outlined">add</span></button>
+                            <button onclick="event.stopPropagation();stkHareketAc({{ $m->id }},'duzeltme')" title="Sayım Düzelt"><span class="material-icons-outlined">tune</span></button>
+                        </div>
+                        @endif
                         <div class="ic">
                             <div class="satir-ust">
                                 <span class="mkad" title="{{ $m->ad }}">{{ $m->ad }}</span>
-                                @if ($m->kritik)
-                                <span class="material-icons-outlined" style="color:{{ $renk }};font-size:18px;flex-shrink:0">warning_amber</span>
-                                @endif
-                            </div>
-                            <div class="satir-kat">
-                                <span class="kat-txt">{{ $m->kategori }}</span>
                                 <span class="rozet" style="background:{{ $renk }}">{{ $m->durum_metin }}</span>
                             </div>
-                            <div class="stk-msat">
-                                <span class="etiket">Kalan</span>
-                                <span class="val" style="color:{{ $renk }}">{{ $mik($m->mevcut) }} {{ $m->birim }}</span>
+                            <div class="pbar-wrap">
+                                <div class="pbar"><div style="width:{{ $m->yuzde }}%;background:{{ $renk }}"></div></div>
+                                <div class="pbar-label">
+                                    <span class="mv" style="color:{{ in_array($m->durum,['kirmizi','negatif','turuncu'])?$renk:'var(--ink)' }}">{{ $mik($m->mevcut) }} {{ $m->birim }}</span>
+                                    <span>Kritik: {{ $mik($m->kritik_stok) }}</span>
+                                </div>
                             </div>
-                            <div class="stk-msat">
-                                <span class="etiket">Kritik</span>
-                                <span class="val" style="color:var(--sub)">{{ $mik($m->kritik_stok) }} {{ $m->birim }}</span>
-                            </div>
-                            <div class="stk-msat">
-                                <span class="etiket">Değer</span>
-                                <span class="val" style="color:var(--sub)">{{ $tl($m->deger) }}</span>
+                            <div class="alt-bilgi">
+                                <span><span class="material-icons-outlined">payments</span>{{ $tl($m->deger) }}</span>
+                                <span @if($m->son_hareket_gun !== null && $m->son_hareket_gun >= 7) class="uyari" @endif>
+                                    <span class="material-icons-outlined">schedule</span>{{ $m->son_hareket_metin }}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -327,23 +412,23 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                 @endforeach
             </div>
 
-            {{-- -- Mobil liste (Flutter _malzemeKart) -- --}}
+            {{-- -- Mobil liste -- --}}
             <div id="stkMobil">
                 @foreach ($rows as $m)
                 @php $renk = $durumRenk[$m->durum]; @endphp
-                <div class="stk-kart {{ $m->kritik ? 'kritik-sinir' : '' }}"
-                     data-ad="{{ strtolower($m->ad) }}" onclick="stkDetayAc({{ $m->id }})">
+                <div class="stk-kart {{ in_array($m->durum,['kirmizi','negatif']) ? 'kritik-sinir' : '' }}"
+                     data-ad="{{ strtolower($m->ad) }}" data-dur="{{ $m->durum }}" data-takip="{{ $m->stok_takipli }}" onclick="stkDetayAc({{ $m->id }})">
                     <div class="sol">
                         <div class="ad">
                             <span>{{ $m->ad }}</span>
-                            @if ($m->kritik)
-                            <span class="material-icons-outlined" style="color:{{ $renk }};font-size:16px">warning_amber</span>
+                            @if (in_array($m->durum, ['negatif','kirmizi']))
+                            <span class="material-icons-outlined" style="color:{{ $renk }};font-size:16px">{{ $m->durum==='negatif'?'error_outline':'warning_amber' }}</span>
                             @endif
                         </div>
-                        <div class="alt">{{ $m->kategori }} · {{ $tl($m->guncel_maliyet) }}/{{ $m->birim }}</div>
+                        <div class="alt">{{ $m->kategori }} · {{ $tl($m->guncel_maliyet) }}/{{ $m->birim }} · {{ $m->son_hareket_metin }}</div>
                     </div>
                     <div class="sag">
-                        <div class="miktar" style="color:{{ $m->kritik ? $renk : 'var(--ink)' }}">
+                        <div class="miktar" style="color:{{ in_array($m->durum,['kirmizi','negatif']) ? $renk : 'var(--ink)' }}">
                             {{ $mik($m->mevcut) }} {{ $m->birim }}
                         </div>
                         <div class="deger-txt">{{ $tl($m->deger) }}</div>
@@ -589,18 +674,45 @@ function stkResponsive() {
 stkResponsive();
 window.addEventListener('resize', stkResponsive);
 
-// ── Arama filtresi (Flutter onChanged _ara) ──────────────────────────────
+// ── Arama + çip filtresi ──────────────────────────────
+let _stkAktifCip = 'tumu';
+function stkCipSec(fil){
+    _stkAktifCip = fil;
+    document.querySelectorAll('#stkCipSat .stk-cip').forEach(function(c){
+        c.classList.toggle('aktif', c.getAttribute('data-fil') === fil);
+    });
+    stkFiltre();
+}
+function _stkCipGecer(el){
+    if (_stkAktifCip === 'tumu') return true;
+    var d = el.getAttribute('data-dur') || '';
+    var t = el.getAttribute('data-takip') || '';
+    if (_stkAktifCip === 'takipsiz') return t === '0';
+    return d === _stkAktifCip;
+}
 function stkFiltre(q) {
+    // Query ya argümandan ya aktif input'tan
+    if (q === undefined) {
+        var ag = document.getElementById('stkAraGenis');
+        var am = document.getElementById('stkAraMobil');
+        q = (ag && ag.value) || (am && am.value) || '';
+    }
     q = (q || '').toLowerCase().trim();
-    // Mobil
-    document.querySelectorAll('#stkMobil .stk-kart').forEach(function(el){
-        el.style.display = (!q || (el.getAttribute('data-ad')||'').indexOf(q) !== -1) ? '' : 'none';
+    function uygula(el){
+        var adOk = !q || (el.getAttribute('data-ad')||'').indexOf(q) !== -1;
+        var cipOk = _stkCipGecer(el);
+        el.style.display = (adOk && cipOk) ? '' : 'none';
+    }
+    document.querySelectorAll('#stkMobil .stk-kart').forEach(uygula);
+    document.querySelectorAll('#stkGenis .stk-mkart').forEach(uygula);
+    // Boş kategori başlıklarını gizle (geniş görünümde)
+    document.querySelectorAll('#stkGenis .stk-grid').forEach(function(grid){
+        var gorulen = Array.from(grid.children).some(function(c){ return c.style.display !== 'none'; });
+        grid.style.display = gorulen ? '' : 'none';
+        var baslik = grid.previousElementSibling;
+        if (baslik && baslik.classList.contains('stk-kat-baslik')) baslik.style.display = gorulen ? '' : 'none';
     });
-    // Geniş
-    document.querySelectorAll('#stkGenis .stk-mkart').forEach(function(el){
-        el.style.display = (!q || (el.getAttribute('data-ad')||'').indexOf(q) !== -1) ? '' : 'none';
-    });
-    // Senkronize arama kutuları
+    // Arama kutuları senkron
     var mAra = document.getElementById('stkAraMobil');
     var gAra = document.getElementById('stkAraGenis');
     if (mAra && document.activeElement !== mAra) mAra.value = q;

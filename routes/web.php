@@ -2792,7 +2792,8 @@ Route::get('/stok/malzeme', function () {
     $malzemeler = DB::table('malzemeler')
         ->leftJoin('malzeme_kategorileri', 'malzemeler.kategori_id', '=', 'malzeme_kategorileri.id')
         ->select('malzemeler.*', 'malzeme_kategorileri.ad as kategori',
-            DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as stok'))
+            DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as stok'),
+            DB::raw('(SELECT MAX(sh.created_at) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as son_hareket'))
         ->orderBy('malzemeler.ad')->get();
     $receteler = DB::table('receteler')->leftJoin('urunler', 'receteler.urun_id', '=', 'urunler.id')
         ->select('receteler.id', 'receteler.ad', 'receteler.tip', DB::raw('(SELECT COUNT(*) FROM recete_kalemleri WHERE recete_kalemleri.recete_id = receteler.id) as kalem_sayisi'))
