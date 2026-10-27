@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=7">
+    <link rel="stylesheet" href="/panel-kit.css?v=8">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -230,7 +230,7 @@
                             <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
                                 <span class="rk-ikon-wrap">
                                     <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span>
-                                    @if ($badge > 0)<span class="rk-badge">{{ $_badgeMetin($badge) }}</span>@endif
+                                    @if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif
                                 </span>
                                 {{ $ad }}
                             </a>
