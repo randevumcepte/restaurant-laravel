@@ -223,6 +223,12 @@ body.koyu #stk #stkAra{background:var(--card2)}
 .stk-modal{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:620px;
   max-height:92vh;overflow-y:auto;padding:16px}
 .stk-modal-bg.merkez .stk-modal{border-radius:18px;margin:16px}
+/* Masaustunde modal merkeze alinsin, bottom-sheet mobile'a kalsin */
+@media(min-width:900px){
+  .stk-modal-bg{align-items:center}
+  .stk-modal{border-radius:18px;margin:16px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+  .stk-modal .stk-mod-cizgi{display:none} /* mobil tutamagi (drag handle) desktopta gereksiz */
+}
 body.koyu .stk-modal{background:#0B1020}
 .stk-modal .stk-mod-cizgi{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
 .stk-modal .stk-mod-baslik{color:var(--ink);font-size:18px;font-weight:800;margin-bottom:16px}
