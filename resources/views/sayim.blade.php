@@ -155,19 +155,20 @@ body.koyu #sym .sym-stepper input{background:#1b2235}
   padding:14px 0 6px;margin-top:16px;pointer-events:none}
 #sym .sym-alt button{pointer-events:auto;display:inline-flex;align-items:stretch;padding:0;
   border:none;border-radius:999px;cursor:pointer;overflow:hidden;position:relative;
-  background:linear-gradient(135deg,var(--mor1) 0%,#8B5CF6 50%,var(--mavi) 100%);
+  background:linear-gradient(135deg,var(--mavi) 0%,#6366F1 55%,var(--mor1) 100%);
   color:#fff;min-width:280px;max-width:92vw;
-  box-shadow:0 12px 32px -6px color-mix(in srgb,var(--mor1) 55%,transparent),
+  box-shadow:0 12px 32px -6px color-mix(in srgb,var(--mavi) 55%,transparent),
              0 4px 14px rgba(0,0,0,.14),
              inset 0 1px 0 rgba(255,255,255,.18);
   transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .22s,filter .2s,opacity .2s}
 #sym .sym-alt button:hover:not(:disabled){transform:translateY(-3px) scale(1.015);
-  box-shadow:0 18px 44px -6px color-mix(in srgb,var(--mor1) 65%,transparent),
+  box-shadow:0 18px 44px -6px color-mix(in srgb,var(--mavi) 65%,transparent),
              0 8px 20px rgba(0,0,0,.18),
              inset 0 1px 0 rgba(255,255,255,.25)}
 #sym .sym-alt button:active:not(:disabled){transform:translateY(-1px) scale(1)}
-#sym .sym-alt button:disabled{opacity:.5;cursor:not-allowed;filter:saturate(.3);
-  box-shadow:0 4px 14px rgba(0,0,0,.1)}
+#sym .sym-alt button:disabled{opacity:.72;cursor:not-allowed;
+  box-shadow:0 6px 18px -4px color-mix(in srgb,var(--mavi) 35%,transparent),
+             0 2px 8px rgba(0,0,0,.08)}
 #sym .sym-alt .btn-ic{display:inline-flex;align-items:center;gap:10px;padding:11px 18px 11px 10px;
   position:relative;z-index:2;flex:1}
 #sym .sym-alt .btn-ikon-kutu{width:30px;height:30px;border-radius:50%;flex-shrink:0;
