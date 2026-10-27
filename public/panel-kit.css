@@ -117,8 +117,10 @@ a{text-decoration:none}
 @media(min-width:641px){
   /* Collapsed default: dar sidebar, sadece ikonlar */
   .rk-side{width:68px !important;flex:0 0 68px !important;overflow:hidden;transition:width .25s cubic-bezier(.4,0,.2,1)}
-  .rk-side:hover{width:258px !important;flex:0 0 258px !important;z-index:40;box-shadow:4px 0 24px rgba(0,0,0,.12)}
+  .rk-side:hover{width:258px !important;flex:0 0 258px !important}
+  /* PUSH davranis: sidebar genisleyince icerik de smooth kayar (overlay yerine) */
   .rk-main{margin-left:68px !important;transition:margin-left .25s cubic-bezier(.4,0,.2,1)}
+  .rk-side:hover ~ .rk-main{margin-left:258px !important}
   /* Head (ResteOS branding) collapsed'de daralsin, hover'da genislesin */
   .rk-side-head{padding:14px 10px;transition:padding .25s ease;overflow:hidden;min-height:70px}
   .rk-side:hover .rk-side-head{padding:18px 18px 16px}
