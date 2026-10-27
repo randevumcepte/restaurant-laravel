@@ -54,21 +54,21 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
-#db .ai-panel{flex:1;min-width:220px;margin:0 6px;background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 9%,var(--card)),color-mix(in srgb,var(--mavi) 7%,var(--card)));border:1.5px solid color-mix(in srgb,var(--mor1) 22%,transparent);border-radius:16px;padding:11px 14px;display:flex;flex-direction:column;gap:7px}
-#db .ai-panel .aip-head{display:flex;align-items:center;gap:8px}
-#db .ai-panel .aip-orb{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 55%,transparent);animation:aiorb 2.2s ease-out infinite}
-#db .ai-panel .aip-orb .material-icons-outlined{font-size:16px;color:#fff}
-@keyframes aiorb{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 50%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
-#db .ai-panel .aip-baslik{font-size:12.5px;font-weight:800;color:var(--ink)}
-#db .ai-panel .aip-canli{font-size:10px;font-weight:700;color:var(--yesil);margin-left:auto}
-#db .ai-panel .aip-body{display:flex;flex-direction:column;gap:5px}
-#db .ai-panel .aip-oneri{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:10px;background:var(--card);text-decoration:none;transition:.13s}
-#db .ai-panel .aip-oneri:hover{background:color-mix(in srgb,var(--mor1) 10%,var(--card));transform:translateX(2px)}
-#db .ai-panel .aip-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-#db .ai-panel .aip-mtn{flex:1;font-size:12px;font-weight:600;color:var(--ink);line-height:1.3}
-#db .ai-panel .aip-ok{font-size:17px;color:var(--sub2)}
-#db .ai-panel .aip-bos{font-size:12.5px;font-weight:600;color:var(--sub);padding:4px 2px}
-#db .ai-panel .aip-tumu{font-size:11px;font-weight:700;color:var(--mor1);text-decoration:none;align-self:flex-start}
+#db .ai-panel{flex:1;min-width:240px;margin:0 10px;padding:2px 0 2px 14px;border-left:2px solid color-mix(in srgb,var(--mor1) 28%,transparent);display:flex;flex-direction:column;gap:4px}
+#db .ai-panel .aip-head{display:flex;align-items:center;gap:9px;margin-bottom:3px}
+#db .ai-panel .aip-orb{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 55%,transparent);animation:aiorb 2.2s ease-out infinite}
+#db .ai-panel .aip-orb .material-icons-outlined{font-size:18px;color:#fff}
+@keyframes aiorb{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--mor1) 45%,transparent)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+#db .ai-panel .aip-baslik{font-size:13.5px;font-weight:800;color:var(--ink);letter-spacing:-.1px}
+#db .ai-panel .aip-body{display:flex;flex-direction:column}
+#db .ai-panel .aip-oneri{display:flex;align-items:center;gap:9px;padding:5px 2px;text-decoration:none;transition:transform .14s ease,color .14s ease}
+#db .ai-panel .aip-oneri:hover{transform:translateX(3px)}
+#db .ai-panel .aip-oneri:hover .aip-mtn{color:var(--mor1)}
+#db .ai-panel .aip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+#db .ai-panel .aip-mtn{flex:1;font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.35;transition:color .14s ease}
+#db .ai-panel .aip-bos{font-size:12.5px;font-weight:600;color:var(--sub);padding:2px 0}
+#db .ai-panel .aip-tumu{font-size:11.5px;font-weight:700;color:var(--mor1);text-decoration:none;align-self:flex-start;margin-top:2px;opacity:.9;transition:opacity .14s}
+#db .ai-panel .aip-tumu:hover{opacity:1}
 #db .selam-harcama{text-align:right;flex-shrink:0;background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:16px;padding:12px 20px;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--mor1) 38%,transparent)}
 #db .selam-harcama .sh-lbl{font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:4px;display:flex;align-items:center;gap:5px;justify-content:flex-end}
 #db .selam-harcama .sh-deger{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px}
@@ -127,13 +127,12 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       $oneriler = array_slice($oneriler, 0, 3);
     @endphp
     <div class="ai-panel">
-      <div class="aip-head"><span class="aip-orb"><span class="material-icons-outlined">auto_awesome</span></span> <span class="aip-baslik">AI Satın Alma Asistanı</span> <span class="aip-canli">● AI öneri</span></div>
+      <div class="aip-head"><span class="aip-orb"><span class="material-icons-outlined">auto_awesome</span></span> <span class="aip-baslik">AI Satın Alma Asistanı</span></div>
       <div class="aip-body">
         @forelse ($oneriler as $o)
           <a href="{{ $o['link'] }}" class="aip-oneri">
             <span class="aip-dot" style="background:{{ $o['renk'] }}"></span>
             <span class="aip-mtn">{{ $o['mtn'] }}</span>
-            <span class="material-icons-outlined aip-ok">chevron_right</span>
           </a>
         @empty
           <div class="aip-bos"><span class="material-icons-outlined" style="color:var(--yesil);font-size:18px;vertical-align:-4px">check_circle</span> Stok ve siparişler yolunda — acil aksiyon yok.</div>
