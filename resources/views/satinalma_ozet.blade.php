@@ -126,7 +126,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     ['/fatura-eslestir','fact_check','Fatura Eşleştir','#F59E0B'],
     ['/fatura-ocr','document_scanner','Fatura OCR','#7C3AED'],
     ['/sayim','fact_check','Sayım','#0EA5E9'],
-    ['/recete','menu_book','Reçeteler','#7C3AED'],
     ['/parti-takip','event_busy','Parti / SKT','#F43F5E'],
     ['/tedarikci','local_shipping','Tedarikçiler','#64748B'],
     ['/fiyat-radari','radar','Fiyat Radarı','#EC4899'],
