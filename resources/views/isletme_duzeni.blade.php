@@ -62,7 +62,7 @@
           <input type="text" name="ad" value="{{ $b->ad }}" maxlength="60" class="rk-inp" style="flex:1;padding:7px 9px">
           <button class="rk-btn bos" style="padding:7px 10px" title="Kaydet"><span class="material-icons-outlined" style="font-size:15px">save</span></button>
         </form>
-        <form method="POST" action="/isletme-duzeni/bolge-sil" onsubmit="return confirm('{{ $b->ad }} bölgesi silinsin mi?')">
+        <form method="POST" action="/isletme-duzeni/bolge-sil" onsubmit="return rkOnayForm(this, '{{ $b->ad }} bölgesi silinsin mi?', 'var(--kirmizi)', 'Sil')">
           @csrf<input type="hidden" name="id" value="{{ $b->id }}">
           <button class="rk-btn bos" style="width:100%;padding:7px;color:var(--kirmizi);border-color:color-mix(in srgb,var(--kirmizi) 30%,transparent)"><span class="material-icons-outlined" style="font-size:15px">delete_outline</span> Sil</button>
         </form>
@@ -121,7 +121,7 @@
           <div class="mduz-masa-btns">
             <button type="button" class="mduz-ibtn" style="color:{{ $qrurl ? 'var(--yesil)' : 'var(--amber)' }}" onclick="masaQr(@js($m->ad), @js($qrurl))" title="{{ $qrurl ? 'QR göster / yazdır' : 'QR henüz yok' }}"><span class="material-icons-outlined">qr_code_2</span></button>
             <button type="button" class="mduz-ibtn" style="color:var(--mavi)" onclick="masaDuzenleAc(@js(['id'=>(int)$m->id,'ad'=>$m->ad,'kapasite'=>(int)($m->kapasite ?? 4),'bolge_id'=>(int)$bid]))" title="Düzenle (ad · kişi · bölge)"><span class="material-icons-outlined">edit</span></button>
-            <form method="POST" action="/masa-yonetim/sil" onsubmit="return confirm('{{ $m->ad }} arşive taşınsın mı? (QR korunur)')" style="margin:0">
+            <form method="POST" action="/masa-yonetim/sil" onsubmit="return rkOnayForm(this, '{{ $m->ad }} arşive taşınsın mı? (QR korunur)', 'var(--kirmizi)', 'Arşivle')" style="margin:0">
               @csrf<input type="hidden" name="id" value="{{ $m->id }}">
               <button class="mduz-ibtn" style="color:var(--kirmizi)" title="Arşive taşı"><span class="material-icons-outlined">delete_outline</span></button>
             </form>
@@ -238,7 +238,7 @@
         <input type="text" name="ad" value="{{ $k->ad }}" maxlength="60" class="rk-inp" style="max-width:220px;padding:7px 9px;font-weight:700">
         <button class="rk-btn bos" style="padding:7px 10px" title="Adı kaydet"><span class="material-icons-outlined" style="font-size:15px">save</span></button>
       </form>
-      <form method="POST" action="/kasalar/sil" onsubmit="return confirm('{{ $k->ad }} kapatılsın mı?')">
+      <form method="POST" action="/kasalar/sil" onsubmit="return rkOnayForm(this, '{{ $k->ad }} kapatılsın mı?', 'var(--kirmizi)', 'Kapat')">
         @csrf<input type="hidden" name="id" value="{{ $k->id }}">
         <button class="rk-btn bos" style="padding:7px 10px;color:var(--kirmizi);border-color:color-mix(in srgb,var(--kirmizi) 30%,transparent)"><span class="material-icons-outlined" style="font-size:15px">delete_outline</span></button>
       </form>

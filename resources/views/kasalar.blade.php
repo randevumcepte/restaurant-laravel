@@ -92,7 +92,7 @@
               <span class="material-icons-outlined" style="font-size:16px">{{ $pasif ? 'toggle_on' : 'toggle_off' }}</span> {{ $pasif ? 'Aktif et' : 'Pasife al' }}
             </button>
           </form>
-          <form method="POST" action="/kasalar/sil" onsubmit="return confirm('{{ $k->ad }} kapatılsın mı? (Geçmiş kayıtlar korunur, pasife alınır)')">
+          <form method="POST" action="/kasalar/sil" onsubmit="return rkOnayForm(this, '{{ $k->ad }} kapatılsın mı? (Geçmiş kayıtlar korunur, pasife alınır)', 'var(--kirmizi)', 'Kapat')">
             @csrf
             <input type="hidden" name="id" value="{{ $k->id }}">
             <button type="submit" class="rk-btn bos" style="padding:8px 12px;color:var(--kirmizi);border-color:color-mix(in srgb,var(--kirmizi) 35%,transparent)" title="Kapat">

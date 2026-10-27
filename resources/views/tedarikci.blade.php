@@ -235,7 +235,7 @@ body.koyu #ted{
                   <span class="material-icons-outlined">edit_outlined</span> Düzenle
                 </button>
                 <form action="/tedarikci/sil" method="POST" style="display:inline"
-                      onsubmit="return confirm('{{ $ad }} silinecek. Bu işlem geri alınamaz.')">
+                      onsubmit="return rkOnayForm(this, '{{ $ad }} silinecek. Bu işlem geri alınamaz.', 'var(--kirmizi)', 'Sil')">
                   @csrf
                   <input type="hidden" name="id" value="{{ (int) $t->id }}">
                   <button type="submit" class="btn sil">
@@ -293,7 +293,7 @@ body.koyu #ted{
               <span class="material-icons-outlined">edit_outlined</span> Düzenle
             </button>
             <form action="/tedarikci/sil" method="POST"
-                  onsubmit="return confirm('{{ $ad }} silinecek. Bu işlem geri alınamaz.')">
+                  onsubmit="return rkOnayForm(this, '{{ $ad }} silinecek. Bu işlem geri alınamaz.', 'var(--kirmizi)', 'Sil')">
               @csrf
               <input type="hidden" name="id" value="{{ $mid }}">
               <button type="submit" class="sil">

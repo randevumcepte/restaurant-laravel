@@ -128,11 +128,12 @@
     }catch(e){ mesaj('❌ İstek hatası: '+e.message,false); }
   }
 
-  async function sil(did){
-    if(!confirm(did+' numaralı hattın DID bağlaması kaldırılsın mı? (Trunk FreePBX\'te kalır)')) return;
-    const r=await fetch('/api/hat/sil',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({sube_id:SUBE,did})});
-    const d=await r.json();
-    if(d.ok) yukle(); else alert('Kaldırılamadı: '+(d.hata||''));
+  function sil(did){
+    rkOnay(did+' numaralı hattın DID bağlaması kaldırılsın mı? (Trunk FreePBX\'te kalır)', async function(){
+      const r=await fetch('/api/hat/sil',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({sube_id:SUBE,did})});
+      const d=await r.json();
+      if(d.ok) yukle(); else alert('Kaldırılamadı: '+(d.hata||''));
+    }, 'var(--kirmizi)', 'Kaldır');
   }
 
   yukle();

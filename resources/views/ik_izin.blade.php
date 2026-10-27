@@ -212,11 +212,12 @@
     b.addEventListener('change',hesap); s.addEventListener('change',hesap);
   })();
   function izRet(id, ad){
-    var sebep = prompt(ad+' için izin reddediliyor. Sebep (opsiyonel):', '');
-    if(sebep===null) return; // iptal
-    document.getElementById('izRetId').value=id;
-    document.getElementById('izRetSebep').value=sebep;
-    document.getElementById('izRetForm').submit();
+    rkIste(ad+' için izin reddediliyor. Sebep (opsiyonel):', function(sebep){
+      if(sebep===null) return;
+      document.getElementById('izRetId').value=id;
+      document.getElementById('izRetSebep').value=sebep;
+      document.getElementById('izRetForm').submit();
+    }, { baslik:'İzin Reddet', placeholder:'Sebep (opsiyonel)', ok:'Reddet' });
   }
 </script>
 @endsection

@@ -204,7 +204,7 @@ function egitim(){
       try{ const r=await api('/asistan-egitim/kalip-kaydet', this.f); if(r.ok){ location.reload(); return; } alert(r.hata||'Kaydedilemedi'); }
       finally{ this.kaydediyor=false; }
     },
-    async sil(id){ if(!confirm('Kalıp silinsin mi?')) return; const r=await api('/asistan-egitim/kalip-sil',{id}); if(r.ok) location.reload(); },
+    sil(id){ rkOnay('Kalıp silinsin mi?', async function(){ const r=await api('/asistan-egitim/kalip-sil',{id}); if(r.ok) location.reload(); }, 'var(--kirmizi)', 'Sil'); },
     async cozSil(id){ const r=await api('/asistan-egitim/cozulmeyen-sil',{id}); if(r.ok) location.reload(); },
   };
 }

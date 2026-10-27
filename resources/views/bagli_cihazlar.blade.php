@@ -543,17 +543,18 @@
 
   /* ---- SİL — form POST (redirect tabanlı mevcut rota) ---- */
   window.bcSil = function(id, ad) {
-    if (!confirm('"' + ad + '" silinsin mi?')) return;
-    var form = document.createElement('form');
-    form.method = 'POST'; form.action = '/bagli-cihazlar/sil'; form.style.display = 'none';
-    var csrf = document.createElement('input');
-    csrf.type='hidden'; csrf.name='_token'; csrf.value=window.csrf;
-    form.appendChild(csrf);
-    var inp = document.createElement('input');
-    inp.type='hidden'; inp.name='id'; inp.value=id;
-    form.appendChild(inp);
-    document.body.appendChild(form);
-    form.submit();
+    rkOnay('"' + ad + '" silinsin mi?', function(){
+      var form = document.createElement('form');
+      form.method = 'POST'; form.action = '/bagli-cihazlar/sil'; form.style.display = 'none';
+      var csrf = document.createElement('input');
+      csrf.type='hidden'; csrf.name='_token'; csrf.value=window.csrf;
+      form.appendChild(csrf);
+      var inp = document.createElement('input');
+      inp.type='hidden'; inp.name='id'; inp.value=id;
+      form.appendChild(inp);
+      document.body.appendChild(form);
+      form.submit();
+    }, 'var(--kirmizi)', 'Sil');
   };
 
   /* ---- BAĞLANTI TESTİ (LAN — sadece web tarayıcısında açık port çeklemeye yakın deneme: img/fetch) ---- */

@@ -49,11 +49,12 @@ async function yukle(){
   tb.querySelectorAll('button').forEach(b=>b.onclick=()=>kontorYukle(b.dataset.id,b.dataset.sube,b.dataset.adet));
 }
 async function kontorYukle(talepId,sube,adet){
-  if(!confirm(adet+' kontör yüklensin mi?')) return;
-  const r = await fetch('/api/wa/kontor-yukle', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({admin_key:k(),sube,adet,talep_id:talepId})});
-  const j = await r.json();
-  alert(j.ok ? ('Yüklendi. Yeni bakiye: '+j.bakiye) : ('Hata: '+(j.mesaj||'')));
-  yukle();
+  rkOnay(adet+' kontör yüklensin mi?', async function(){
+    const r = await fetch('/api/wa/kontor-yukle', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({admin_key:k(),sube,adet,talep_id:talepId})});
+    const j = await r.json();
+    alert(j.ok ? ('Yüklendi. Yeni bakiye: '+j.bakiye) : ('Hata: '+(j.mesaj||'')));
+    yukle();
+  });
 }
 if(k()) yukle();
 </script>

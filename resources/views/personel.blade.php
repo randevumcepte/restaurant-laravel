@@ -1080,17 +1080,18 @@ async function hareketKaydet() {
     } catch(e) { alert('Bağlantı hatası'); }
 }
 
-async function hareketSil(id, e) {
+function hareketSil(id, e) {
     e.stopPropagation();
-    if (!confirm('Bu hareketi sil?')) return;
-    try {
-        var res = await apiHareket('/api/patron/personel-hareket-sil', { id: id });
-        if (res.ok === 1) {
-            window.location.href = '/personel?ay=' + AY_KEY;
-        } else {
-            alert(res.hata || 'Silinemedi');
-        }
-    } catch(e) { alert('Bağlantı hatası'); }
+    rkOnay('Bu hareketi sil?', async function(){
+        try {
+            var res = await apiHareket('/api/patron/personel-hareket-sil', { id: id });
+            if (res.ok === 1) {
+                window.location.href = '/personel?ay=' + AY_KEY;
+            } else {
+                alert(res.hata || 'Silinemedi');
+            }
+        } catch(e) { alert('Bağlantı hatası'); }
+    }, 'var(--kirmizi)', 'Sil');
 }
 
 document.addEventListener('keydown', function (e) {

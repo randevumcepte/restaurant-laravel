@@ -140,7 +140,7 @@
     if(d.ok){ k_tet.value='';k_cev.value='';k_kat.value=''; kalipYukle(); } else alert(d.hata||'Hata');
   }
   async function kalipAktif(id,aktif){ await post('/api/santral-egitim/kalip-guncelle',{id,aktif}); kalipYukle(); }
-  async function kalipSil(id){ if(!confirm('Silinsin mi?'))return; await post('/api/santral-egitim/kalip-sil',{id}); kalipYukle(); }
+  function kalipSil(id){ rkOnay('Silinsin mi?', async function(){ await post('/api/santral-egitim/kalip-sil',{id}); kalipYukle(); }, 'var(--kirmizi)', 'Sil'); }
 
   // --- OGRENILEN ---
   async function ogrYukle(){
@@ -156,11 +156,14 @@
       tr.dataset.cev=x.cevap; t.appendChild(tr);
     });
   }
-  async function ogrDuzelt(id,btn){
-    const tr=btn.closest('tr'); const yeni=prompt('Yeni cevap:', tr.dataset.cev||'');
-    if(yeni===null) return; await post('/api/santral-egitim/ogrenilen-guncelle',{id,cevap:yeni}); ogrYukle();
+  function ogrDuzelt(id,btn){
+    const tr=btn.closest('tr');
+    rkIste('Yeni cevap:', async function(yeni){
+      if(yeni===null) return;
+      await post('/api/santral-egitim/ogrenilen-guncelle',{id,cevap:yeni}); ogrYukle();
+    }, { baslik:'Cevabı Düzelt', varsayilan: tr.dataset.cev||'', ok:'Kaydet' });
   }
-  async function ogrSil(id){ if(!confirm('Silinsin mi? (Bir daha sorulursa yeniden öğrenir)'))return; await post('/api/santral-egitim/ogrenilen-sil',{id}); ogrYukle(); }
+  function ogrSil(id){ rkOnay('Silinsin mi? (Bir daha sorulursa yeniden öğrenir)', async function(){ await post('/api/santral-egitim/ogrenilen-sil',{id}); ogrYukle(); }, 'var(--kirmizi)', 'Sil'); }
 
   // --- COZULEMEYEN ---
   async function cozYukle(){
@@ -176,12 +179,14 @@
       t.appendChild(tr);
     });
   }
-  async function cozKalip(id){
-    const cev=prompt('Bu soruya AI ne cevap versin?');
-    if(!cev) return; const d=await post('/api/santral-egitim/cozulemeyen-kalipla',{id,cevap:cev});
-    if(d.ok){ alert('Kalıba eklendi, artık AI cevaplayacak.'); cozYukle(); } else alert(d.hata||'Hata');
+  function cozKalip(id){
+    rkIste('Bu soruya AI ne cevap versin?', async function(cev){
+      if(!cev) return;
+      const d=await post('/api/santral-egitim/cozulemeyen-kalipla',{id,cevap:cev});
+      if(d.ok){ alert('Kalıba eklendi, artık AI cevaplayacak.'); cozYukle(); } else alert(d.hata||'Hata');
+    }, { baslik:'AI Cevabı Ekle', placeholder:'Cevap metni', ok:'Ekle' });
   }
-  async function cozSil(id){ if(!confirm('Silinsin mi?'))return; await post('/api/santral-egitim/cozulemeyen-sil',{id}); cozYukle(); }
+  function cozSil(id){ rkOnay('Silinsin mi?', async function(){ await post('/api/santral-egitim/cozulemeyen-sil',{id}); cozYukle(); }, 'var(--kirmizi)', 'Sil'); }
 
   // --- PDF ---
   async function pdfCikar(){

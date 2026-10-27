@@ -1356,7 +1356,7 @@ async function rctYmKaydet() {
     if (_uretMik > 0 && Math.abs(_uretMik - verim) > 0.0001) {
         const bir = _rctYmBirimTxt();
         const yuzde = Math.round(_uretMik / verim * 100);
-        if (!confirm('Reçetenin verimi ' + _mik(verim) + ' ' + bir + ', ama üretilen miktara ' + _mik(_uretMik) + ' ' + bir + ' yazdın.\n\nMalzemeler bu orana göre düşecek (yaklaşık %' + yuzde + ').\n\nTamam = bu miktarla üret · İptal = düzelt')) return;
+        if (!(await rkOnayP('Reçetenin verimi ' + _mik(verim) + ' ' + bir + ', ama üretilen miktara ' + _mik(_uretMik) + ' ' + bir + ' yazdın.\n\nMalzemeler bu orana göre düşecek (yaklaşık %' + yuzde + ').\n\nTamam = bu miktarla üret · İptal = düzelt', 'var(--amber)', 'Üret'))) return;
     }
 
     const btn = document.getElementById('rctYmKaydetBtn');
@@ -1418,15 +1418,18 @@ function _rctYmBirimTxt() {
 function _q(s) { return "'" + String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
 // Üretimi geri al / sil (onay: sahip/müdür doğrudan, değilse PIN)
 function rctUretimGeriAl(partiId) {
-    if (!confirm('Bu üretim partisini GERİ AL?\n\n• Düşen malzemeler stoğa geri döner\n• Bu partinin sos stoğu silinir\n• Yalnızca satılmamış parti geri alınabilir\n\nDevam?')) return;
+    rkOnay('Bu üretim partisini GERİ AL?\n\n• Düşen malzemeler stoğa geri döner\n• Bu partinin sos stoğu silinir\n• Yalnızca satılmamış parti geri alınabilir\n\nDevam?', function(){ _rctUretimGeriAlDevam(partiId); }, 'var(--kirmizi)', 'Geri Al');
+}
+function _rctUretimGeriAlDevam(partiId) {
     const _gonder = function(pin) {
         const d = { parti_id: partiId };
         if (pin) d.onay_pin = pin;
         api('/api/patron/yarimamul-uretim-sil', d).then(function(r){
             if (r && r.ok) { rctToast(r.mesaj || 'Geri alındı ✓'); _rctYmDegisti = true; if (_rctYmEdId) _rctYmPartiYukle(_rctYmEdId); }
             else if (r && r.onay_gerek) {
-                const p2 = prompt((r.hata || 'Müdür/Sahip onayı gerekli') + '\n\nMüdür/Sahip PIN:');
-                if (p2 && p2.trim()) _gonder(p2.trim());
+                rkIste((r.hata || 'Müdür/Sahip onayı gerekli') + '\n\nMüdür/Sahip PIN:', function(p2){
+                    if (p2 && p2.trim()) _gonder(p2.trim());
+                }, { baslik:'Yetki Onayı', tip:'password', placeholder:'PIN', ok:'Onayla' });
             }
             else { rctToast((r && r.hata) || 'Geri alınamadı'); }
         }).catch(function(){ rctToast('Bağlantı hatası'); });
@@ -1506,15 +1509,16 @@ function _rctYmPartiYukle(id) {
 // ===================================================================
 // YARI MAMÜL SİL
 // ===================================================================
-async function rctYmSil(id, ad) {
-    if (!confirm('"' + ad + '" silinsin mi?')) return;
-    const res = await api('/api/patron/yarimamul-sil', { id });
-    if (res && res.ok) {
-        rctToast('Yarı mamül silindi');
-        location.reload();
-    } else {
-        rctToast(res?.hata || 'Silinemedi');
-    }
+function rctYmSil(id, ad) {
+    rkOnay('"' + ad + '" silinsin mi?', async function(){
+        const res = await api('/api/patron/yarimamul-sil', { id });
+        if (res && res.ok) {
+            rctToast('Yarı mamül silindi');
+            location.reload();
+        } else {
+            rctToast(res?.hata || 'Silinemedi');
+        }
+    }, 'var(--kirmizi)', 'Sil');
 }
 
 // ===================================================================

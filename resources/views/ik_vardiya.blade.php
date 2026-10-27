@@ -207,6 +207,6 @@
     document.getElementById('vdModal').classList.add('acik');
   }
   function vdKapat(){ document.getElementById('vdModal').classList.remove('acik'); }
-  function vdSil(){ if(confirm('Bu vardiya silinsin mi?')) document.getElementById('vdSilForm').submit(); }
+  function vdSil(){ rkOnay('Bu vardiya silinsin mi?', function(){ document.getElementById('vdSilForm').submit(); }, 'var(--kirmizi)', 'Sil'); }
 </script>
 @endsection

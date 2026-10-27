@@ -1047,21 +1047,23 @@ window.staOnayla = async function() {
     if (res.ok) { toast('✓ Onaylandı', '#10B981'); staDetListeYenile('onaylandi'); staDetayAc(aktifTalepId); }
     else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
-window.staPOOlustur = async function() {
-    if (!confirm('Onaylı tedarikçilere satın alma siparişi (PO) oluşturulsun mu? Telefonu olan tedarikçilere WhatsApp sipariş gider.')) return;
-    const res = await api('/satinalma-talep/po-olustur', { id: aktifTalepId });
-    if (res.ok) { const wa = res.wa ? ` · ${res.wa} tedarikçiye WhatsApp gitti` : ''; toast('✓ Sipariş oluşturuldu: ' + (res.siparisler||[]).join(', ') + wa, '#10B981'); staDetListeYenile('siparis'); staDetayAc(aktifTalepId); }
-    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+window.staPOOlustur = function() {
+    rkOnay('Onaylı tedarikçilere satın alma siparişi (PO) oluşturulsun mu? Telefonu olan tedarikçilere WhatsApp sipariş gider.', async function(){
+        const res = await api('/satinalma-talep/po-olustur', { id: aktifTalepId });
+        if (res.ok) { const wa = res.wa ? ` · ${res.wa} tedarikçiye WhatsApp gitti` : ''; toast('✓ Sipariş oluşturuldu: ' + (res.siparisler||[]).join(', ') + wa, '#10B981'); staDetListeYenile('siparis'); staDetayAc(aktifTalepId); }
+        else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+    }, 'var(--mor1)', 'Oluştur');
 };
-window.staAnlasmaliDirekt = async function() {
-    if (!confirm('Anlaşmalı tedarikçiye önerdiğin + fiyatı girili kalemler patron onayı OLMADAN direkt siparişe dönsün mü? Tedarikçiye WhatsApp sipariş gider.')) return;
-    const res = await api('/satinalma-talep/anlasmali-direkt', { id: aktifTalepId });
-    if (res.ok) {
-        const wa = res.wa ? ` · ${res.wa} WhatsApp` : '';
-        const kalan = res.kalan ? ` · ${res.kalan} kalem onaya kaldı` : '';
-        toast('✓ Direkt sipariş: ' + (res.siparisler||[]).join(', ') + wa + kalan, '#10B981');
-        staDetListeYenile(res.kalan ? 'teklif' : 'siparis'); staDetayAc(aktifTalepId);
-    } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+window.staAnlasmaliDirekt = function() {
+    rkOnay('Anlaşmalı tedarikçiye önerdiğin + fiyatı girili kalemler patron onayı OLMADAN direkt siparişe dönsün mü? Tedarikçiye WhatsApp sipariş gider.', async function(){
+        const res = await api('/satinalma-talep/anlasmali-direkt', { id: aktifTalepId });
+        if (res.ok) {
+            const wa = res.wa ? ` · ${res.wa} WhatsApp` : '';
+            const kalan = res.kalan ? ` · ${res.kalan} kalem onaya kaldı` : '';
+            toast('✓ Direkt sipariş: ' + (res.siparisler||[]).join(', ') + wa + kalan, '#10B981');
+            staDetListeYenile(res.kalan ? 'teklif' : 'siparis'); staDetayAc(aktifTalepId);
+        } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+    }, 'var(--mor1)', 'Onaylı');
 };
 
 function staDetListeYenile(yeniDurum) {

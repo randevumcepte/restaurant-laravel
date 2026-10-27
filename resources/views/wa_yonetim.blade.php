@@ -175,11 +175,12 @@ async function qrGetir(){
     durumYenile();
   }catch(e){}
 }
-async function cikis(){
-  if(!confirm('WhatsApp oturumu kapatılsın mı?')) return;
-  try{ await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); toast('Çıkış yapıldı'); }catch(e){}
-  if(qrTimer){clearInterval(qrTimer); qrTimer=null;} $('#qrbox').style.display='none';
-  durumYenile();
+function cikis(){
+  rkOnay('WhatsApp oturumu kapatılsın mı?', async function(){
+    try{ await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})}); toast('Çıkış yapıldı'); }catch(e){}
+    if(qrTimer){clearInterval(qrTimer); qrTimer=null;} $('#qrbox').style.display='none';
+    durumYenile();
+  }, 'var(--kirmizi)', 'Kapat');
 }
 async function ayarKaydet(){
   const sc = $('#sidecar').value.trim();
@@ -223,13 +224,15 @@ async function kontorYukle(){
     });
   }catch(e){}
 }
-async function kontorTalep(key){
-  const iletisim = (prompt('İletişim / not (telefon, uygun saat vb.) — opsiyonel:', '')||'');
-  try{
-    const r = await fetch('/api/wa/kontor-talep', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sube:sube(), paket:key, iletisim})});
-    const j = await r.json();
-    toast(j.mesaj || (j.ok?'Talep alındı 🙌':'Hata'));
-  }catch(e){ toast('Talep gönderilemedi'); }
+function kontorTalep(key){
+  rkIste('İletişim / not (telefon, uygun saat vb.) — opsiyonel:', async function(iletisim){
+    iletisim = iletisim || '';
+    try{
+      const r = await fetch('/api/wa/kontor-talep', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sube:sube(), paket:key, iletisim})});
+      const j = await r.json();
+      toast(j.mesaj || (j.ok?'Talep alındı 🙌':'Hata'));
+    }catch(e){ toast('Talep gönderilemedi'); }
+  }, { baslik:'Kontör Talebi', placeholder:'Telefon / not (opsiyonel)', ok:'Gönder' });
 }
 
 $('#sube') && $('#sube').addEventListener && $('#sube').addEventListener('change', ()=>{ durumYenile(); kontorYukle(); });

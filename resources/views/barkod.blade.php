@@ -259,7 +259,7 @@ body.koyu #brkroot .brk-form-kart{box-shadow:0 2px 8px rgba(0,0,0,.2)}
             </span>
 
             {{-- Flutter IconButton(icon: Icons.delete_outline, color: kirmizi) — sil --}}
-            <form method="POST" action="/barkod/sil" onsubmit="return confirm('Bu barkodu sil?');" style="margin:0;line-height:0;display:inline">
+            <form method="POST" action="/barkod/sil" onsubmit="return rkOnayForm(this, 'Bu barkodu sil?', 'var(--kirmizi)', 'Sil');" style="margin:0;line-height:0;display:inline">
               @csrf
               <input type="hidden" name="id" value="{{ $b->id }}">
               <button type="submit" class="brk-sil-btn" title="Sil">

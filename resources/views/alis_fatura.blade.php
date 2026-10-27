@@ -673,20 +673,21 @@ function _afDetayHtml(d, id) {
 }
 
 // ── Silme (Flutter _faturaSil → POST /api/patron/alis-fatura-sil) ───────────
-async function afSilOnayla(id) {
-    if (!confirm('Bu faturayı silmek istediğinizden emin misiniz?\nStok hareketi de geri alınır.')) return;
-    afDetayKapat();
-    try {
-        var r = await afApi('/api/patron/alis-fatura-sil', { id: id });
-        if (r.ok === 1) {
-            afToast('Fatura silindi.');
-            setTimeout(function(){ location.reload(); }, 700);
-        } else {
-            afToast(r.hata || 'Silinemedi');
+function afSilOnayla(id) {
+    rkOnay('Bu faturayı silmek istediğinizden emin misiniz?\nStok hareketi de geri alınır.', async function(){
+        afDetayKapat();
+        try {
+            var r = await afApi('/api/patron/alis-fatura-sil', { id: id });
+            if (r.ok === 1) {
+                afToast('Fatura silindi.');
+                setTimeout(function(){ location.reload(); }, 700);
+            } else {
+                afToast(r.hata || 'Silinemedi');
+            }
+        } catch(e) {
+            afToast('Bağlantı hatası');
         }
-    } catch(e) {
-        afToast('Bağlantı hatası');
-    }
+    }, 'var(--kirmizi)', 'Sil');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

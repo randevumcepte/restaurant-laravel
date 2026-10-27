@@ -574,19 +574,20 @@ async function katKaydet() {
     mnyLoading(false);
 }
 
-async function katSil() {
+function katSil() {
     const id = parseInt(document.getElementById('katId').value);
     if (!id) return;
-    if (!confirm('Bu kategoriyi silmek istiyor musunuz?')) return;
-    mnyLoading(true);
-    try {
-        const r = await mnyApi('/api/patron/kategori-sil', { id });
-        if (r.ok === 1) {
-            mnyKategoriler = mnyKategoriler.filter(k=>k.id!==id);
-            mnyModalKapat('katModal'); mnyRenderIcerik(); mnyToast('Kategori silindi');
-        } else { mnyToast(r.hata || 'Silinemedi'); }
-    } catch(e){ mnyToast('Bağlantı hatası'); }
-    mnyLoading(false);
+    rkOnay('Bu kategoriyi silmek istiyor musunuz?', async function(){
+        mnyLoading(true);
+        try {
+            const r = await mnyApi('/api/patron/kategori-sil', { id });
+            if (r.ok === 1) {
+                mnyKategoriler = mnyKategoriler.filter(k=>k.id!==id);
+                mnyModalKapat('katModal'); mnyRenderIcerik(); mnyToast('Kategori silindi');
+            } else { mnyToast(r.hata || 'Silinemedi'); }
+        } catch(e){ mnyToast('Bağlantı hatası'); }
+        mnyLoading(false);
+    }, 'var(--kirmizi)', 'Sil');
 }
 
 /* ── Ürün modal ── */
@@ -805,20 +806,21 @@ async function urunKaydet(kapat = true) {
     } catch(e) { btn.disabled=false; btn.textContent='Kaydet'; mnyToast('Bağlantı hatası'); return false; }
 }
 
-async function urunSilOnay() {
+function urunSilOnay() {
     const id = mnyAktifUrunId;
     if (!id) return;
     const ad = document.getElementById('urunAd').value.trim();
-    if (!confirm(`"${ad}" menüden kalkacak. Silmek istiyor musunuz?`)) return;
-    mnyLoading(true);
-    try {
-        const r = await mnyApi('/api/patron/urun-sil', { id });
-        if (r.ok === 1) {
-            mnyUrunler = mnyUrunler.filter(u=>u.id!==id);
-            mnyModalKapat('urunModal'); mnyRenderIcerik(); mnyToast('Ürün silindi');
-        } else { mnyToast(r.hata || 'Silinemedi'); }
-    } catch(e){ mnyToast('Bağlantı hatası'); }
-    mnyLoading(false);
+    rkOnay(`"${ad}" menüden kalkacak. Silmek istiyor musunuz?`, async function(){
+        mnyLoading(true);
+        try {
+            const r = await mnyApi('/api/patron/urun-sil', { id });
+            if (r.ok === 1) {
+                mnyUrunler = mnyUrunler.filter(u=>u.id!==id);
+                mnyModalKapat('urunModal'); mnyRenderIcerik(); mnyToast('Ürün silindi');
+            } else { mnyToast(r.hata || 'Silinemedi'); }
+        } catch(e){ mnyToast('Bağlantı hatası'); }
+        mnyLoading(false);
+    }, 'var(--kirmizi)', 'Sil');
 }
 
 /* ── Öne Çıkanları Sırala ── */

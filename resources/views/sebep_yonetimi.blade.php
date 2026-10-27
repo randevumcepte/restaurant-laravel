@@ -111,7 +111,7 @@ body.koyu .rk-flash.err{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
               <span class="sb-metin">{{ $s->metin }}</span>
               @if ($duz)
                 <form method="POST" action="/sebep-yonetimi/sil" style="margin:0;line-height:0"
-                      onsubmit="return confirm('Bu sebep silinsin mi?')">
+                      onsubmit="return rkOnayForm(this, 'Bu sebep silinsin mi?', 'var(--kirmizi)', 'Sil')">
                   @csrf
                   <input type="hidden" name="id" value="{{ $s->id }}">
                   <button type="submit" class="sb-sil" title="Sil">

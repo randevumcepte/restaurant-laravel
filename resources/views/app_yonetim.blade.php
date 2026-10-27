@@ -80,7 +80,7 @@
           <div class="ops">
             <a class="btn btn-d" href="/app-yonetim?duzenle={{ $k->id }}">Düzenle</a>
             <form method="post" action="/app-yonetim/aktif" style="display:inline">@csrf<input type="hidden" name="id" value="{{ $k->id }}"><button class="btn btn-t">{{ $k->aktif ? 'Gizle' : 'Göster' }}</button></form>
-            <form method="post" action="/app-yonetim/sil" style="display:inline" onsubmit="return confirm('Silinsin mi?')">@csrf<input type="hidden" name="id" value="{{ $k->id }}"><button class="btn btn-s">Sil</button></form>
+            <form method="post" action="/app-yonetim/sil" style="display:inline" onsubmit="return rkOnayForm(this, 'Silinsin mi?', 'var(--kirmizi)', 'Sil')">@csrf<input type="hidden" name="id" value="{{ $k->id }}"><button class="btn btn-s">Sil</button></form>
           </div>
         </div>
       @empty

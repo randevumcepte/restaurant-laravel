@@ -287,7 +287,7 @@ body:not(.koyu) #gdModal .gd-alan select option { background: #fff; color: #1e29
           {{-- Flutter sil butonu (maas hariç) --}}
           @if ($kat !== 'maas')
             <form method="POST" action="/gider/sil"
-                  onsubmit="return confirm('Bu gideri silmek istediğinize emin misiniz?')"
+                  onsubmit="return rkOnayForm(this, 'Bu gideri silmek istediğinize emin misiniz?', 'var(--kirmizi)', 'Sil')"
                   style="margin:0;padding:0">
               @csrf
               <input type="hidden" name="id" value="{{ $g->id }}">

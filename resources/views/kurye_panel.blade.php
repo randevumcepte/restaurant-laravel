@@ -117,14 +117,15 @@
       .catch(function(){ btn.disabled=false; });
   }
   function teslimEdemedim(id, btn){
-    var sebep = prompt('Teslim edilemedi sebebi nedir?\n(ör. adreste bulunamadı, müşteri ulaşılamadı, müşteri vazgeçti)');
-    if (sebep === null) return;
-    btn.disabled = true; btn.textContent = '…';
-    fetch('/kurye/'+TOKEN+'/durum', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:'adisyon_id='+id+'&durum=teslim_edilemedi&sebep='+encodeURIComponent(sebep||'')})
-      .then(function(r){return r.json();})
-      .then(function(j){ if(j.ok){ location.reload(); } else { btn.disabled=false; alert(j.hata||'Hata'); } })
-      .catch(function(){ btn.disabled=false; });
+    rkIste('Teslim edilemedi sebebi nedir?\n(ör. adreste bulunamadı, müşteri ulaşılamadı, müşteri vazgeçti)', function(sebep){
+      if (sebep === null) return;
+      btn.disabled = true; btn.textContent = '…';
+      fetch('/kurye/'+TOKEN+'/durum', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'adisyon_id='+id+'&durum=teslim_edilemedi&sebep='+encodeURIComponent(sebep||'')})
+        .then(function(r){return r.json();})
+        .then(function(j){ if(j.ok){ location.reload(); } else { btn.disabled=false; alert(j.hata||'Hata'); } })
+        .catch(function(){ btn.disabled=false; });
+    }, { baslik:'Teslim Edilemedi', placeholder:'Sebep', ok:'Bildir' });
   }
 </script>
 </body>

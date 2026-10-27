@@ -110,13 +110,18 @@ async function presetEkle(pr){
   await disPost('/api/departman-is/ekle', {kod:DIS_KOD, tip:pr.tip, baslik:pr.baslik, oncelik:pr.oncelik||'orta', tekrar:pr.tekrar||''});
   yukle();
 }
-async function durumDegis(id, durum, olcumIster){
-  let deger = null;
-  if(durum==='tamam' && olcumIster){ deger = prompt('Ölçüm / değer girin (ör. 4 °C):', ''); if(deger===null) return; }
-  await disPost('/api/departman-is/durum', {id, durum, deger: deger||''});
-  yukle();
+function durumDegis(id, durum, olcumIster){
+  if(durum==='tamam' && olcumIster){
+    rkIste('Ölçüm / değer girin (ör. 4 °C):', async function(deger){
+      if(deger===null) return;
+      await disPost('/api/departman-is/durum', {id, durum, deger: deger||''});
+      yukle();
+    }, { baslik:'Ölçüm Değeri', placeholder:'örn. 4 °C', ok:'Kaydet' });
+    return;
+  }
+  (async()=>{ await disPost('/api/departman-is/durum', {id, durum, deger:''}); yukle(); })();
 }
-async function isSil(id){ if(!confirm('Bu kayıt silinsin mi?')) return; await disPost('/api/departman-is/sil', {id}); yukle(); }
+function isSil(id){ rkOnay('Bu kayıt silinsin mi?', async function(){ await disPost('/api/departman-is/sil', {id}); yukle(); }, 'var(--kirmizi)', 'Sil'); }
 
 async function yukle(){
   let d; try { const r = await fetch('/api/departman-is/panel?kod='+encodeURIComponent(DIS_KOD), {credentials:'same-origin', headers:{'Accept':'application/json'}}); d = await r.json(); } catch(e){ return; }

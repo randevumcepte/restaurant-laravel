@@ -360,12 +360,13 @@ document.querySelectorAll('.tog-input').forEach(inp => {
 
 /* ---- Sil ---- */
 document.querySelectorAll('.btn-sil').forEach(btn => {
-  btn.addEventListener('click', async function(){
+  btn.addEventListener('click', function(){
     const id   = this.dataset.id;
     const ad   = this.dataset.ad;
-    if (!confirm('"'+ad+'" indirimi silinsin mi?')) return;
-    const r = await api('/indirimler/sil', {id});
-    if (r.ok) document.querySelector('.kart[data-id="'+id+'"]')?.remove();
+    rkOnay('"'+ad+'" indirimi silinsin mi?', async function(){
+      const r = await api('/indirimler/sil', {id});
+      if (r.ok) document.querySelector('.kart[data-id="'+id+'"]')?.remove();
+    }, 'var(--kirmizi)', 'Sil');
   });
 });
 

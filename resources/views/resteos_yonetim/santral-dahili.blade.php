@@ -68,19 +68,21 @@
     }catch(e){ gosterHata('e_hata', e.message); }
   }
 
-  async function sil(numara){
-    if(!confirm(numara+' numaralı dahili silinsin mi?')) return;
-    const r=await fetch('/api/dahili/sil',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({numara})});
-    const d=await r.json();
-    if(d.ok) yukle(); else alert('Silinemedi: '+(d.hata||''));
+  function sil(numara){
+    rkOnay(numara+' numaralı dahili silinsin mi?', async function(){
+      const r=await fetch('/api/dahili/sil',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({numara})});
+      const d=await r.json();
+      if(d.ok) yukle(); else alert('Silinemedi: '+(d.hata||''));
+    }, 'var(--kirmizi)', 'Sil');
   }
 
-  async function sifre(numara){
-    const s=prompt(numara+' için yeni SIP şifresi:');
-    if(!s) return;
-    const r=await fetch('/api/dahili/sifre',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({numara,sifre:s})});
-    const d=await r.json();
-    if(d.ok) alert('Şifre güncellendi.'); else alert('Güncellenemedi: '+(d.hata||''));
+  function sifre(numara){
+    rkIste(numara+' için yeni SIP şifresi:', async function(s){
+      if(!s) return;
+      const r=await fetch('/api/dahili/sifre',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({numara,sifre:s})});
+      const d=await r.json();
+      if(d.ok) alert('Şifre güncellendi.'); else alert('Güncellenemedi: '+(d.hata||''));
+    }, { baslik:'Yeni SIP Şifresi', tip:'password', placeholder:'Şifre', ok:'Güncelle' });
   }
 
   yukle();

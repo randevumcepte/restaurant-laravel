@@ -286,11 +286,12 @@ async function baglan(){
   setTimeout(loadQr,1000); qrTimer=setInterval(loadQr,2500);
   setTimeout(durumYenile,1500);
 }
-async function cikis(){
-  if(!confirm('Oturumu kapat?'))return;
-  await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
-  if(qrTimer){ clearInterval(qrTimer); qrTimer=null; }
-  toast('Oturum kapatıldı'); setTimeout(durumYenile,1000);
+function cikis(){
+  rkOnay('Oturumu kapat?', async function(){
+    await fetch('/api/wa/cikis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sube:sube()})});
+    if(qrTimer){ clearInterval(qrTimer); qrTimer=null; }
+    toast('Oturum kapatıldı'); setTimeout(durumYenile,1000);
+  }, 'var(--kirmizi)', 'Kapat');
 }
 /* ---- Telefon numarasıyla bağlan (PairPhone) ---- */
 function pairAc(){ const p=$('#pairPanel'); p.style.display = p.style.display==='none'?'block':'none'; }
@@ -330,16 +331,17 @@ async function duyuruGonder(){
   const s = $('#duyuruSonuc'), btn = $('#duyuruBtn');
   if(!mesaj){ s.style.color='#dc3545'; s.textContent='Mesaj boş olamaz.'; return; }
   const etiket = {hepsi:'tüm müşterilere', son30:'son 30 günde gelenlere', sadik:'sadık müşterilere'}[hedef];
-  if(!confirm('Duyuru '+etiket+' WhatsApp\'tan gönderilecek. Her mesaj 1 kontör harcar. Onaylıyor musunuz?')) return;
-  btn.disabled=true; btn.textContent='Gönderiliyor…'; s.style.color='#555'; s.textContent='';
-  try{
-    const body = new URLSearchParams({ sube:sube(), hedef:hedef, mesaj:mesaj });
-    const r = await fetch('/api/wa/duyuru-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-    const j = await r.json();
-    if(j.ok){ s.style.color='#1a7f3e'; s.textContent='✓ '+j.gonderilen+' kişiye gönderildi'+(j.atlanan? (' · '+j.atlanan+' atlandı (kontör/numara)'):''); $('#duyuruMesaj').value=''; kontorYukle(); }
-    else { s.style.color='#dc3545'; s.textContent = j.hata||'Hata'; }
-  }catch(e){ s.style.color='#dc3545'; s.textContent='Bağlantı hatası'; }
-  btn.disabled=false; btn.textContent='Duyuruyu Gönder';
+  rkOnay('Duyuru '+etiket+' WhatsApp\'tan gönderilecek. Her mesaj 1 kontör harcar. Onaylıyor musunuz?', async function(){
+    btn.disabled=true; btn.textContent='Gönderiliyor…'; s.style.color='#555'; s.textContent='';
+    try{
+      const body = new URLSearchParams({ sube:sube(), hedef:hedef, mesaj:mesaj });
+      const r = await fetch('/api/wa/duyuru-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+      const j = await r.json();
+      if(j.ok){ s.style.color='#1a7f3e'; s.textContent='✓ '+j.gonderilen+' kişiye gönderildi'+(j.atlanan? (' · '+j.atlanan+' atlandı (kontör/numara)'):''); $('#duyuruMesaj').value=''; kontorYukle(); }
+      else { s.style.color='#dc3545'; s.textContent = j.hata||'Hata'; }
+    }catch(e){ s.style.color='#dc3545'; s.textContent='Bağlantı hatası'; }
+    btn.disabled=false; btn.textContent='Duyuruyu Gönder';
+  });
 }
 
 /* ---- Kontör ---- */

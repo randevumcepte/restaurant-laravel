@@ -359,9 +359,10 @@ body.koyu .rk-flash.err{color:#fda4af}
       'Bu masanın QR kodu metal/ağaç gibi fiziksel bir yere basılmış olabilir.\n\n' +
       'Masa SİLİNMEZ, arşive taşınır — QR kodu KORUNUR ve istediğin an aynı kodla geri getirebilirsin. ' +
       'Böylece yeniden bastırma masrafı olmaz.';
-    if(!confirm(msg)) return;
-    document.getElementById('silId').value = id;
-    document.getElementById('silForm').submit();
+    rkOnay(msg, function(){
+      document.getElementById('silId').value = id;
+      document.getElementById('silForm').submit();
+    }, 'var(--kirmizi)', 'Arşivle');
   };
 
   // ---- Yazdır (tarayıcı penceresi, A6 afiş, Flutter _yazdir eşdeğeri) ----

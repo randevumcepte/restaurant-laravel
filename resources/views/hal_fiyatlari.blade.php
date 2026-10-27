@@ -96,7 +96,7 @@
             <td class="sag" style="font-weight:700">{{ $h->ortalama !== null ? $tl($h->ortalama) : '—' }}</td>
             <td class="sag rk-sub2">{{ $h->azami !== null ? $tl($h->azami) : '—' }}</td>
             <td class="sag">
-              <form method="POST" action="/hal-fiyatlari/sil" onsubmit="return confirm('Silinsin mi?')" style="margin:0">@csrf<input type="hidden" name="id" value="{{ $h->id }}">
+              <form method="POST" action="/hal-fiyatlari/sil" onsubmit="return rkOnayForm(this, 'Silinsin mi?', 'var(--kirmizi)', 'Sil')" style="margin:0">@csrf<input type="hidden" name="id" value="{{ $h->id }}">
                 <button class="rk-btn bos" style="padding:5px 9px;color:var(--kirmizi)"><span class="material-icons-outlined" style="font-size:15px">delete_outline</span></button></form>
             </td>
           </tr>

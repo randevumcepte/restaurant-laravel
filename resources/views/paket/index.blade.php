@@ -249,7 +249,7 @@ body.koyu #pk{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;--sub2:
                                             const d={adisyon_id:{{ $id }}, durum:ak}; if(extra) Object.assign(d,extra);
                                             api('/paket/durum', d).then(r=>{ if(r&&r.ok===1) location.reload(); else alert('İşlem başarısız'); });
                                         },
-                                        iptalOnay(){ if(confirm('Bu paket siparişi iptal edilecek. Emin misiniz?')) this.call('iptal'); }
+                                        iptalOnay(){ var self=this; rkOnay('Bu paket siparişi iptal edilecek. Emin misiniz?', function(){ self.call('iptal'); }, 'var(--kirmizi)', 'İptal Et'); }
                                      }">
 
                                     @if ($asama === 'hazirlaniyor' || $asama === '' || $asama === 'yeni')
