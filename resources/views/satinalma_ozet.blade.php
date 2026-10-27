@@ -52,9 +52,9 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .bek-satir:first-of-type{border-top:none}
 #db .roz{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;flex-shrink:0}
 #db .arac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:10px;margin-bottom:16px}
-#db .arac{background:var(--card);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:14px 8px;text-align:center;transition:transform .12s,opacity .12s;display:block}
-#db .arac:hover{transform:translateY(-2px);opacity:.92}
-#db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px}
+#db .arac{--c:#7C3AED;background:color-mix(in srgb,var(--c) 7%,var(--card));border:1px solid color-mix(in srgb,var(--c) 16%,transparent);border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.04);padding:14px 8px;text-align:center;transition:transform .14s ease,box-shadow .14s ease,background .14s ease,border-color .14s ease;display:block}
+#db .arac:hover{transform:translateY(-2px);background:color-mix(in srgb,var(--c) 13%,var(--card));border-color:color-mix(in srgb,var(--c) 32%,transparent);box-shadow:0 6px 18px color-mix(in srgb,var(--c) 22%,transparent)}
+#db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px;background:color-mix(in srgb,var(--c) 20%,var(--card));color:var(--c)}
 #db .arac .ai .material-icons-outlined{font-size:22px}
 #db .arac .al{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.25}
 #db .ai-panel{flex:1;min-width:240px;margin:0 10px;padding:2px 0 2px 14px;border-left:2px solid color-mix(in srgb,var(--mor1) 28%,transparent);display:flex;flex-direction:column;gap:4px}
@@ -176,7 +176,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   <div class="kart-baslik" style="margin:2px 2px 10px"><div class="kb-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">apps</span></div><span class="kb-ad">Satın Alma Araçları</span></div>
   <div class="arac-grid">
     @foreach ($araclar as [$u,$ik,$ad,$rk])
-      <a href="{{ $u }}" class="arac"><div class="ai" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $ik }}</span></div><div class="al">{{ $ad }}</div></a>
+      <a href="{{ $u }}" class="arac" style="--c:{{ $rk }}"><div class="ai"><span class="material-icons-outlined">{{ $ik }}</span></div><div class="al">{{ $ad }}</div></a>
     @endforeach
   </div>
 
