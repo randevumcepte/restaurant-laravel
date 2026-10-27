@@ -85,3 +85,25 @@ a{text-decoration:none}
 .rk-flash.err{background:color-mix(in srgb,var(--kirmizi) 14%,transparent);color:var(--kirmizi)}
 .rk-grid{display:grid;gap:16px}
 .rk-sub{color:var(--sub)} .rk-sub2{color:var(--sub2)} .rk-ink{color:var(--ink)}
+
+/* ---- Mobile sidebar drawer (<=900px) ---- */
+.rk-hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:7px;border-radius:9px;align-items:center;justify-content:center;margin-right:2px}
+.rk-hamburger:hover{background:var(--card2)}
+.rk-hamburger .material-icons-outlined{font-size:24px}
+.rk-side-backdrop{display:none;position:fixed;inset:0;background:rgba(10,15,30,.45);z-index:29;opacity:0;transition:opacity .22s ease}
+.rk-side-backdrop.acik{display:block;opacity:1}
+@media(max-width:900px){
+  .rk-hamburger{display:inline-flex}
+  .rk-side{transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:0 12px 42px rgba(0,0,0,.3)}
+  .rk-side.acik{transform:translateX(0)}
+  .rk-main{margin-left:0}
+  .rk-header{padding:12px 14px}
+  .rk-body{padding:14px 14px}
+}
+@media(max-width:620px){
+  .rk-side{width:84%;max-width:300px;flex-basis:84%}
+  .rk-header .baslik{font-size:17px}
+  .rk-header .alt{font-size:11px}
+  .rk-header .ikon{width:34px;height:34px}
+  .rk-header .ikon .material-icons-outlined{font-size:19px}
+}

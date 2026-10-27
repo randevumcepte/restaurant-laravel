@@ -153,7 +153,8 @@
     $_harita = function_exists('_sayfaYetkiHaritasi') ? _sayfaYetkiHaritasi() : [];
 @endphp
 <div class="rk-wrap">
-    <aside class="rk-side">
+    <div class="rk-side-backdrop" id="rkSideBackdrop" onclick="rkSideTog(false)"></div>
+    <aside class="rk-side" id="rkSide">
         <div class="rk-side-head">
             <div class="ad">🍔 ResteOS</div>
             <div class="sube">{{ $aktifSubeAd }}</div>
@@ -190,6 +191,7 @@
     </aside>
     <main class="rk-main">
         <div class="rk-header">
+            <button class="rk-hamburger" onclick="rkSideTog()" aria-label="Menü"><span class="material-icons-outlined">menu</span></button>
             <div class="ikon"><span class="material-icons-outlined">@yield('rk_ikon', 'dashboard')</span></div>
             <div>
                 <div class="baslik">@yield('baslik', 'Panel')</div>
@@ -212,6 +214,15 @@
         var ik = document.getElementById('rkTemaIk'); if(ik) ik.textContent = k ? 'light_mode' : 'dark_mode';
     }
     (function(){ var ik=document.getElementById('rkTemaIk'); if(ik && document.body.classList.contains('koyu')) ik.textContent='light_mode'; })();
+    function rkSideTog(ac){
+        var s = document.getElementById('rkSide'); var b = document.getElementById('rkSideBackdrop'); if(!s||!b) return;
+        var acik = (ac === true) ? true : (ac === false ? false : !s.classList.contains('acik'));
+        s.classList.toggle('acik', acik); b.classList.toggle('acik', acik);
+    }
+    // Menuden bir sayfaya tiklanirsa drawer'i kapat (mobilde)
+    (function(){ var m=document.querySelector('.rk-side .rk-menu'); if(m) m.addEventListener('click', function(e){ if(e.target.closest('a') && window.innerWidth <= 900) rkSideTog(false); }); })();
+    // ESC tuslariyla kapat
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') rkSideTog(false); });
     async function api(url, data = null) {
         const opt = { headers: { 'X-CSRF-TOKEN': window.csrf, 'Accept': 'application/json' } };
         if (data) {
