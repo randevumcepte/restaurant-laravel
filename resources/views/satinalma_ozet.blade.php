@@ -97,7 +97,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     ['/parti-takip','event_busy','Parti / SKT','#F43F5E'],
     ['/tedarikci','local_shipping','Tedarikçiler','#64748B'],
     ['/tedarikci-karne','grading','Tedarikçi Karnesi','#0EA5E9'],
-    ['/satinalma-butce','savings','Bütçe','#10B981'],
     ['/fiyat-radari','radar','Fiyat Radarı','#EC4899'],
     ['/hal-fiyatlari','storefront','Hal Fiyatları','#059669'],
     ['/satinalma-analiz','leaderboard','Analiz · Karne','#4F46E5'],
