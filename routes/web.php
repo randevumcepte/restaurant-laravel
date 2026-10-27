@@ -13339,6 +13339,9 @@ Route::get('/siparis-onerisi', function () {
         }
     } catch (\Throwable $e) {}
     $d['satinalmaVar'] = $satinalmaVar;
+    $d['kullaniciRol'] = '';
+    try { $bp = _posPersonel(); $d['kullaniciRol'] = (string) ($bp->rol ?? ''); } catch (\Throwable $e) {}
+    $d['patronMu'] = in_array($d['kullaniciRol'], ['sahip', 'mudur']);
     return view('siparis_onerisi', $d);
 });
 Route::post('/siparis-onerisi/par', function (Request $r) {
