@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=9">
+    <link rel="stylesheet" href="/panel-kit.css?v=10">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
