@@ -41,7 +41,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .kart{background:var(--card);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:16px;margin-bottom:16px}
 #db .ucgen-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
 #db .ucgen-grid > .kart{margin-bottom:0}
-@media(max-width:1100px){#db .ucgen-grid{grid-template-columns:1fr}}
 #db .kart-baslik{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 #db .kb-ikon{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #db .kb-ikon .material-icons-outlined{font-size:17px}
@@ -76,8 +75,39 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .selam-harcama .sh-lbl{font-size:12px;font-weight:700;color:rgba(255,255,255,.85);margin-bottom:4px;display:flex;align-items:center;gap:5px;justify-content:flex-end}
 #db .selam-harcama .sh-deger{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.5px}
 #db .selam-harcama .sh-alt{font-size:12px;font-weight:800;margin-top:6px;color:#fff !important;background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;display:inline-block}
-@media(max-width:900px){#db .selam-kart{flex-wrap:wrap}#db .ai-panel{order:3;flex-basis:100%;margin:6px 0 0}}
-@media(max-width:620px){#db .selam-harcama{display:none}#db .hizli{grid-template-columns:1fr 1fr}}
+/* === Responsive breakpoints === */
+/* Tablet landscape ve alti: ucgen 2 sutun */
+@media(max-width:1300px){#db .ucgen-grid{grid-template-columns:repeat(2,1fr)}}
+/* Tablet portrait: selam-kart alta sarmala, uclu 1 sutun, hizli 2x2 */
+@media(max-width:900px){
+  #db .selam-kart{flex-wrap:wrap}
+  #db .ai-panel{order:3;flex-basis:100%;margin:8px 0 0;padding-left:0;border-left:none;border-top:2px solid color-mix(in srgb,var(--mor1) 28%,transparent);padding-top:10px}
+  #db .uclu{grid-template-columns:1fr}
+  #db .hizli{grid-template-columns:repeat(2,1fr)}
+  #db .ucgen-grid{grid-template-columns:1fr}
+  #db .ciro-deger{font-size:24px}
+}
+/* Mobil: harcama kutusu kompakt satir olsun (gizleme!), hizli 2 kolon kalsin */
+@media(max-width:620px){
+  #db .pano{padding:14px 14px 24px}
+  #db .selam-kart{padding:12px 14px}
+  #db .selam-harcama{text-align:left;padding:10px 14px;margin-top:8px;flex-basis:100%;display:flex;align-items:center;gap:12px}
+  #db .selam-harcama .sh-lbl{margin-bottom:0;justify-content:flex-start;font-size:11.5px}
+  #db .selam-harcama .sh-deger{font-size:24px;flex:1;text-align:right}
+  #db .selam-harcama .sh-alt{margin-top:0;font-size:11px}
+  #db .selam-kart .ad{font-size:15px}
+  #db .ciro-deger{font-size:22px}
+  #db .bk-deger{font-size:19px}
+  #db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+  #db .arac{padding:12px 6px}
+  #db .arac .ai{width:36px;height:36px}
+  #db .arac .ai .material-icons-outlined{font-size:19px}
+  #db .arac .al{font-size:11px}
+}
+/* Kucuk mobil: hizli tek sutun */
+@media(max-width:420px){
+  #db .hizli{grid-template-columns:1fr}
+}
 </style>
 @endpush
 
