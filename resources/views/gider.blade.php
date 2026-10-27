@@ -8,7 +8,7 @@
 /* ================================================================
    GİDER SAYFASI — Flutter gider_screen.dart birebir
    ================================================================ */
-#gdroot { max-width: 1100px; }
+#gdroot {}
 
 /* --- Ay navigasyon çubuğu --- */
 #gdroot .gd-nav {

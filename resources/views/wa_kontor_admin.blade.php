@@ -7,7 +7,7 @@
 <style>
   :root{ --bg:#0B1020; --card:#161C2E; --line:#2D3752; --ink:#F1F5F9; --sub:#94A3B8; --yesil:#10B981; --mor:#7C3AED; }
   *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
-  .wrap{ max-width:1500px; margin:0 auto; padding:20px 24px 60px; }
+  .wrap{ padding:0 0 40px; }
   h1{ font-size:22px; margin:6px 0 2px; } .mut{ color:var(--sub); font-size:13px; }
   table{ width:100%; border-collapse:collapse; margin-top:16px; background:var(--card); border-radius:12px; overflow:hidden; font-size:13px; }
   th,td{ padding:10px 12px; text-align:left; border-bottom:1px solid #1f2740; }

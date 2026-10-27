@@ -18,8 +18,7 @@ body.koyu #db{
 /* ===== GENEL ===== */
 #db{background:var(--bg);min-height:calc(100vh - 60px);font-family:inherit}
 #db *{box-sizing:border-box}
-#db .pano{max-width:1600px;margin:0 auto;padding:20px 28px 32px}
-@media(min-width:1600px){#db .pano{padding:24px 40px 40px}}
+#db .pano{padding:0 0 24px}
 
 /* ===== DÖNEM SEÇİCİ ===== */
 #db .donem-wrap{display:flex;background:var(--card);border-radius:14px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.07);flex:1}

@@ -5,7 +5,7 @@
 
 @section('content')
 <div class="rk-body">
-<div style="max-width:960px">
+<div>
   @if (session('ok'))   <div class="rk-flash ok">{{ session('ok') }}</div> @endif
   @if (session('hata')) <div class="rk-flash err">{{ session('hata') }}</div> @endif
 

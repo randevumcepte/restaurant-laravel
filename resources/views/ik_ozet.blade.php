@@ -16,7 +16,7 @@ body.koyu #iko{
 }
 #iko{background:var(--bg);min-height:calc(100vh - 60px)}
 #iko *{box-sizing:border-box}
-#iko .pano{max-width:1280px;margin:0 auto;padding:18px 20px 34px}
+#iko .pano{padding:0 0 28px}
 
 /* selam kartı */
 #iko .selam{background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:15px 18px;display:flex;align-items:center;gap:13px;margin-bottom:16px}

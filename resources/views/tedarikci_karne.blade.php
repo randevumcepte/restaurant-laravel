@@ -5,7 +5,7 @@
 
 @section('content')
 <div class="rk-body">
-<div style="max-width:1600px">
+<div>
   <div class="rk-bolum" style="margin-bottom:6px">
     <span class="cubuk" style="background:linear-gradient(135deg,var(--mor1),var(--mavi))"></span>
     <span class="b">Tedarikçi Performansı</span>

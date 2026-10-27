@@ -56,7 +56,7 @@ body.koyu #af{
   --card:#1b2235;--card2:#161C2E;--ink:#e2e8f0;
   --sub:#94a3b8;--sub2:#64748b;--line:#2c3650;--bg:#0B1020;
 }
-#af{ max-width:1280px; }
+#af{}
 
 /* ── Ay seçici (Flutter IconButton chevron + Text) ─────────────────────── */
 #af .af-ay{

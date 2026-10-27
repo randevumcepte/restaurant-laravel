@@ -5,7 +5,7 @@
 
 @push('head')
 <style>
-  #ad{max-width:1040px}
+  #ad{}
   .ad-blok{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--golge);padding:16px 18px;margin-bottom:14px}
   .ad-cip{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:20px;font-size:12.5px;font-weight:700;background:var(--card2);color:var(--sub2);border:1px solid var(--line);text-decoration:none}
   .ad-cip.aktif{background:var(--mor1);color:#fff;border-color:var(--mor1)}

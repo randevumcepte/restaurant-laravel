@@ -44,9 +44,8 @@
   --mor1:#7C3AED;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;
   --card:#fff;--card2:#f1f5f9;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;
   --line:#e2e8f0;
-  max-width:1600px;margin:0 auto
+  margin:0
 }
-@media(min-width:1600px){#ks{padding:0 20px}}
 body.koyu #ks{
   --card:#1b2235;--card2:#161d2e;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;
   --line:#2c3650

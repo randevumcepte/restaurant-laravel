@@ -6,7 +6,7 @@
 
 @push('head')
 <style>
-#fins{max-width:1280px}
+#fins{}
 
 /* ---- Dönem sekmeleri (Flutter: önceki/sonraki ay nav karşılığı) ---- */
 #fins .fin-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}

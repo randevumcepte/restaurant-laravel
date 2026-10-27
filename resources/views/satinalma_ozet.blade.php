@@ -9,8 +9,8 @@
   --card:#fff;--card2:#f1f5f9;--bg:#f8fafc;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0}
 body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650}
 #db{background:var(--bg);min-height:calc(100vh - 60px)}#db *{box-sizing:border-box}
-#db .pano{max-width:1600px;margin:0 auto;padding:20px 28px 32px}
-@media(min-width:1600px){#db .pano{padding:24px 40px 40px}#db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}#db .arac{padding:16px 10px}#db .arac .ai{width:48px;height:48px}#db .arac .ai .material-icons-outlined{font-size:24px}#db .arac .al{font-size:12.5px}}
+#db .pano{padding:0 0 24px}
+@media(min-width:1600px){#db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}#db .arac{padding:16px 10px}#db .arac .ai{width:48px;height:48px}#db .arac .ai .material-icons-outlined{font-size:24px}#db .arac .al{font-size:12.5px}}
 #db a{text-decoration:none;color:inherit}
 #db .selam-kart{background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
 #db .selam-ikon{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#FB923C,#F43F5E);display:flex;align-items:center;justify-content:center;flex-shrink:0}

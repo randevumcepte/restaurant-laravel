@@ -5,7 +5,7 @@
 
 @push('head')
 <style>
-  #vd{max-width:1180px}
+  #vd{}
   .vd-ust{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .vd-nav{display:flex;align-items:center;gap:6px}
   .vd-ozet{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}

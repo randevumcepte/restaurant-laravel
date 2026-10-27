@@ -36,7 +36,7 @@ body.koyu #cr{
 }
 
 /* ── layout ───────────────────────────────────────────────── */
-#cr{max-width:1280px}
+#cr{}
 #cr .cr-grid{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:20px;align-items:start}
 @media(max-width:900px){#cr .cr-grid{grid-template-columns:1fr}}
 

@@ -32,7 +32,7 @@ body.koyu #ted{
   --sub:#94a3b8;--sub2:#64748b;--line:#2d3650;
 }
 
-#ted{max-width:1280px}
+#ted{}
 
 /* ── Gradient özet kartı (Flutter MIstatKart, masaüstü) ─────────────── */
 #ted .ted-ozet{

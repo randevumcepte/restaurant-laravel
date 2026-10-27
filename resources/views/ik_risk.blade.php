@@ -12,7 +12,7 @@
 body.koyu #ir{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--line:#2c3650;}
 #ir{background:var(--bg);min-height:calc(100vh - 60px)}
 #ir *{box-sizing:border-box}
-#ir .pano{max-width:1040px;margin:0 auto;padding:18px 20px 34px}
+#ir .pano{padding:0 0 28px}
 #ir .ust{display:flex;align-items:center;gap:13px;margin-bottom:16px}
 #ir .ust .ik{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#F97316,#F43F5E);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 16px rgba(244,63,94,.3)}
 #ir .ust .ik .material-icons-outlined{color:#fff;font-size:26px}
