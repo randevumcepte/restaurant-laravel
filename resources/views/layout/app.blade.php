@@ -32,7 +32,7 @@
     .rk-pin::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#7C3AED,#4F46E5);opacity:0;transition:opacity .14s}
     .rk-pin:hover{transform:translateX(2px);border-color:#7C3AED;color:#7C3AED;box-shadow:0 4px 14px rgba(124,58,237,.18)}
     .rk-pin:hover::before{opacity:1}
-    .rk-pin .pi{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(79,70,229,.08));display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .14s}
+    .rk-pin .pi{position:relative;width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(79,70,229,.08));display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .14s}
     .rk-pin .pi .material-icons-outlined{font-size:20px;color:#7C3AED}
     .rk-pin .pt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
     .rk-pin .pok{font-size:18px;color:#94a3b8;opacity:.5;transition:all .14s}
@@ -301,9 +301,15 @@
                     {{-- SATIN ALMACI: üstte 3 standalone büyük link (grup değil) --}}
                     <div class="rk-pin-pano">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
-                            @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
+                            @php
+                                $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url));
+                                $badge = $_menuBadge[$url] ?? 0;
+                            @endphp
                             <a href="{{ $url }}" class="rk-pin{{ $aktif ? ' aktif' : '' }}">
-                                <span class="pi"><span class="material-icons-outlined">{{ $ikon }}</span></span>
+                                <span class="pi">
+                                    <span class="material-icons-outlined">{{ $ikon }}</span>
+                                    @if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif
+                                </span>
                                 <span class="pt">{{ $ad }}</span>
                                 <span class="material-icons-outlined pok">chevron_right</span>
                             </a>
