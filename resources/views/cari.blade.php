@@ -4,9 +4,9 @@
 @section('baslik', 'Cari / Açık Hesaplar')
 
 @php
-  /* Flutter cari_hesaplar_screen BİREBİR */
   $tipAd  = ['patron' => 'Patron', 'firma' => 'Firma', 'musteri' => 'Müşteri', 'personel' => 'Personel'];
   $tipRnk = ['patron' => '#7C3AED', 'firma' => '#4F46E5', 'musteri' => '#10B981', 'personel' => '#D97706'];
+  $tipIkon= ['patron' => 'star', 'firma' => 'business', 'musteri' => 'person', 'personel' => 'badge'];
 
   $cariler    = $cariler    ?? [];
   $ozet       = $ozet       ?? ['toplam_alacak' => 0, 'adet' => 0];
@@ -14,508 +14,488 @@
   $hareketler = $hareketler ?? [];
   $aktifId    = $aktifId    ?? 0;
 
-  $adet = $ozet['adet'] ?? count($cariler);
-  $tl   = fn($v) => number_format(round((float) $v), 0, ',', '.') . '₺';
-  $rnk  = fn($t) => $tipRnk[$t] ?? '#64748B';
+  $adet   = $ozet['adet'] ?? count($cariler);
+  $tl     = fn($v) => number_format(round((float) $v), 0, ',', '.') . ' ₺';
+  $rnk    = fn($t) => $tipRnk[$t] ?? '#64748B';
+
+  $borcluSayi = collect($cariler)->filter(fn($c) => (float)($c['bakiye'] ?? 0) > 0)->count();
+  $temizSayi  = max(0, $adet - $borcluSayi);
+  $tipDag = [];
+  foreach ($cariler as $c) { $t = $c['tip'] ?? 'diger'; $tipDag[$t] = ($tipDag[$t] ?? 0) + 1; }
 @endphp
 
 @section('rk_alt', $adet . ' cari hesap')
 
 @push('head')
 <style>
-/* ── köklü CSS değişkenler (koyu/açık) ──────────────────── */
 #cr{
-  --mor1:#7C3AED;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;
-  --amber:#F59E0B;--gold:#F6CE63;
-  --card:#fff;--card2:#f1f5f9;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;
-  --line:#e2e8f0;
+  --mor1:#7C3AED;--mor2:#A855F7;--mavi:#4F46E5;--mavi2:#6366F1;
+  --yesil:#10B981;--yesil2:#34D399;--kirmizi:#F43F5E;--kirmizi2:#FB7185;
+  --amber:#F59E0B;--amber2:#FBBF24;--cyan:#06B6D4;
+  --card:#fff;--card2:#f8fafc;--card3:#f1f5f9;--bg:#f6f7fb;
+  --ink:#0f172a;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;
+  --sh1:0 2px 8px rgba(15,23,42,.06);--sh2:0 8px 24px rgba(15,23,42,.08);
 }
 body.koyu #cr{
-  --card:#1b2235;--card2:#0f1526;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;
-  --line:#2c3650;
+  --card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
+  --ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650;
+  --sh1:0 2px 8px rgba(0,0,0,.3);--sh2:0 8px 24px rgba(0,0,0,.35);
 }
+#cr{background:var(--bg);min-height:calc(100vh - 60px)}
+#cr *{box-sizing:border-box}
+#cr .pano{width:100%;padding:20px 22px 36px}
 
-/* ── layout ───────────────────────────────────────────────── */
-#cr{}
-#cr .cr-grid{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:20px;align-items:start}
-@media(max-width:900px){#cr .cr-grid{grid-template-columns:1fr}}
+/* Flash */
+#cr .flash{border-radius:14px;padding:12px 16px;margin-bottom:14px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:9px}
+#cr .flash.ok{background:linear-gradient(135deg,rgba(16,185,129,.14),rgba(52,211,153,.08));color:#047857;border:1px solid rgba(16,185,129,.3)}
+#cr .flash.err{background:linear-gradient(135deg,rgba(244,63,94,.14),rgba(251,113,133,.08));color:#be123c;border:1px solid rgba(244,63,94,.3)}
 
-/* ── Flutter gradient özet kartı (MIstatKart) ──────────────── */
-#cr .cr-ozet{
-  border-radius:18px;overflow:hidden;margin-bottom:20px;
-  background:linear-gradient(135deg,var(--mor1),var(--mavi));
-  padding:20px 22px;
-}
-#cr .cr-ozet .sub{color:rgba(255,255,255,.70);font-size:13px;margin-bottom:4px}
-#cr .cr-ozet .buyuk{color:#fff;font-size:30px;font-weight:900;letter-spacing:-.5px;line-height:1}
-#cr .cr-ozet .alt{color:rgba(255,255,255,.60);font-size:12px;margin-top:6px}
+/* HERO ÖZET */
+#cr .hero{background:linear-gradient(135deg,var(--mor1) 0%,var(--mavi) 100%);border-radius:22px;padding:24px 26px;margin-bottom:18px;color:#fff;position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(124,58,237,.25)}
+#cr .hero::before{content:'';position:absolute;top:-100px;right:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 70%);border-radius:50%;pointer-events:none}
+#cr .hero::after{content:'';position:absolute;bottom:-60px;left:30%;width:200px;height:200px;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);border-radius:50%;pointer-events:none}
+#cr .hero-grid{display:grid;grid-template-columns:1fr auto;gap:22px;align-items:center;position:relative}
+#cr .hero-ana .lbl{font-size:12.5px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+#cr .hero-ana .tutar{font-size:42px;font-weight:900;letter-spacing:-1px;line-height:1}
+#cr .hero-ana .alt{font-size:13px;color:rgba(255,255,255,.75);margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#cr .hero-ana .alt .mini-dot{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700}
+#cr .hero-chips{display:flex;gap:10px;flex-wrap:wrap;position:relative;z-index:1}
+#cr .hero-chip{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:12px 16px;backdrop-filter:blur(10px);min-width:110px}
+#cr .hero-chip .l{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px}
+#cr .hero-chip .v{font-size:22px;font-weight:900;color:#fff;line-height:1;margin-top:4px}
 
-/* ── kart sarmalayıcı ───────────────────────────────────────── */
-#cr .cr-kart{
-  background:var(--card);border:1px solid var(--line);
-  border-radius:16px;padding:18px;margin-bottom:16px;
-}
+/* GRID: list | detay */
+#cr .cr-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;align-items:start}
 
-/* ── bölüm başlığı (cubuk+bold) ─────────────────────────────── */
-#cr .cr-bolum{display:flex;align-items:center;gap:9px;margin-bottom:14px}
-#cr .cr-bolum .cubuk{width:4px;height:18px;border-radius:3px;flex:none}
-#cr .cr-bolum .b{font-size:14px;font-weight:700;color:var(--ink)}
+/* ARA ÇUBUK (arama + yeni) */
+#cr .ustbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+#cr .arama{flex:1;min-width:200px;position:relative}
+#cr .arama .material-icons-outlined{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--sub2);font-size:20px}
+#cr .arama input{width:100%;height:42px;padding:0 14px 0 40px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-size:14px;font-weight:600;transition:border-color .15s,box-shadow .15s}
+#cr .arama input:focus{outline:none;border-color:var(--mor1);box-shadow:0 0 0 3px rgba(124,58,237,.14)}
+#cr .filtrele{display:flex;gap:6px;flex-wrap:wrap}
+#cr .filtre{padding:8px 13px;border-radius:10px;background:var(--card);border:1.5px solid var(--line);font-size:12.5px;font-weight:700;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none}
+#cr .filtre:hover{color:var(--ink);border-color:var(--sub2)}
+#cr .filtre.aktif{background:var(--mor1);border-color:var(--mor1);color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.3)}
+#cr .btn-ekle{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;border:0;border-radius:12px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,.3);transition:transform .14s,box-shadow .14s}
+#cr .btn-ekle:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(124,58,237,.4)}
+#cr .btn-ekle .material-icons-outlined{font-size:19px}
 
-/* ── form elemanları ────────────────────────────────────────── */
-#cr .cr-inp{
-  width:100%;height:42px;border:1px solid var(--line);border-radius:10px;
-  background:var(--card2);color:var(--ink);font-size:13.5px;padding:0 12px;
-  outline:none;box-sizing:border-box;transition:border-color .15s;
-}
-#cr .cr-inp:focus{border-color:var(--mor1)}
-body.koyu #cr .cr-inp{background:var(--card2);border-color:var(--line)}
-#cr .cr-inp::placeholder{color:var(--sub2)}
-#cr .cr-lbl{display:block;font-size:12px;font-weight:600;color:var(--sub);margin:10px 0 4px}
+/* CARİ KART (modern liste öğesi) */
+#cr .cari-list{display:flex;flex-direction:column;gap:10px}
+#cr .cari-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;transition:transform .14s,box-shadow .14s,border-color .14s;cursor:pointer;text-decoration:none;color:inherit;position:relative;overflow:hidden}
+#cr .cari-kart:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:color-mix(in srgb,var(--mor1) 30%,var(--line))}
+#cr .cari-kart.aktif{border-color:var(--mor1);box-shadow:0 0 0 2px rgba(124,58,237,.14),var(--sh2);background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 4%,var(--card)),var(--card))}
+#cr .cari-kart .strip{position:absolute;left:0;top:0;bottom:0;width:4px}
+#cr .av{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;flex-shrink:0;position:relative}
+#cr .av .material-icons-outlined{font-size:17px;position:absolute;bottom:-4px;right:-4px;width:19px;height:19px;background:var(--card);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)}
+#cr .orta{min-width:0}
+#cr .orta .ad{font-size:14.5px;font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cr .orta .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
+#cr .roz{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2}
+#cr .roz .material-icons-outlined{font-size:12px}
+#cr .tel{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--sub);font-weight:600}
+#cr .tel .material-icons-outlined{font-size:13px;color:var(--sub2)}
+#cr .sag{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
+#cr .bakiye{font-size:16px;font-weight:900;line-height:1;letter-spacing:-.3px}
+#cr .durum-rz{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+#cr .durum-rz.borc{background:rgba(244,63,94,.14);color:var(--kirmizi)}
+#cr .durum-rz.temiz{background:rgba(16,185,129,.14);color:var(--yesil)}
 
-/* ── Tip seçici (Flutter Row/GestureDetector kutuları) ──────── */
-#cr .cr-tipler{display:flex;gap:8px;margin-top:4px}
-#cr .cr-tip{
-  flex:1;padding:9px 4px;border-radius:10px;border:1.5px solid transparent;
-  background:var(--card2);cursor:pointer;text-align:center;
-  font-size:12px;font-weight:700;color:var(--sub);transition:all .15s;user-select:none;
-}
+/* Boş durum */
+#cr .bos{background:var(--card);border:1px dashed var(--line);border-radius:16px;padding:48px 20px;text-align:center;color:var(--sub)}
+#cr .bos .material-icons-outlined{font-size:48px;color:var(--sub2);margin-bottom:10px;opacity:.5}
+#cr .bos .b{font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:5px}
+#cr .bos .a{font-size:12.5px;color:var(--sub)}
 
-/* ── butonlar ────────────────────────────────────────────────── */
-#cr .cr-btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  height:44px;padding:0 18px;border:none;border-radius:12px;
-  font-size:14px;font-weight:700;color:#fff;cursor:pointer;
-  transition:opacity .15s;
-}
-#cr .cr-btn:disabled{opacity:.6;cursor:default}
-#cr .cr-btn.tam{width:100%}
-#cr .cr-btn.bos{
-  background:transparent;border:1.5px solid var(--line);
-  color:var(--sub);height:36px;padding:0 12px;font-size:13px;border-radius:9px;
-}
-#cr .cr-btn .material-icons-outlined{font-size:18px}
+/* ===== DETAY PANELİ ===== */
+#cr .det-sticky{position:sticky;top:12px}
+#cr .det-hero{border-radius:18px;overflow:hidden;margin-bottom:14px;color:#fff;position:relative;padding:22px 22px 20px;box-shadow:var(--sh2)}
+#cr .det-hero::before{content:'';position:absolute;top:-80px;right:-60px;width:220px;height:220px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 70%);border-radius:50%}
+#cr .det-hero-ust{display:flex;align-items:center;gap:12px;margin-bottom:14px;position:relative}
+#cr .det-hero-ust .av2{width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#fff;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.3)}
+#cr .det-hero-ust .ad{font-size:18px;font-weight:800;color:#fff;line-height:1.1;margin-bottom:4px}
+#cr .det-hero-ust .roz2{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;color:#fff}
+#cr .det-hero-ust .roz2 .material-icons-outlined{font-size:13px}
+#cr .det-hero .buyuk-tutar{font-size:36px;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1;position:relative}
+#cr .det-hero .lbl2{font-size:11.5px;color:rgba(255,255,255,.8);font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;position:relative}
+#cr .det-hero .stat2{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap;position:relative}
+#cr .det-hero .stat2 .st{flex:1;min-width:100px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:11px;padding:9px 12px;backdrop-filter:blur(6px)}
+#cr .det-hero .stat2 .st .sl{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.5px}
+#cr .det-hero .stat2 .st .sv{font-size:14.5px;font-weight:800;color:#fff;margin-top:3px;line-height:1.1}
 
-/* ── tablo (Flutter MTablo) ──────────────────────────────────── */
-#cr .cr-tablo{overflow-x:auto}
-#cr .cr-tablo table{width:100%;border-collapse:collapse}
-#cr .cr-tablo th{
-  font-size:11.5px;font-weight:700;color:var(--sub2);
-  padding:9px 10px;border-bottom:1.5px solid var(--line);
-  text-transform:uppercase;letter-spacing:.5px;
-}
-#cr .cr-tablo td{
-  padding:10px;border-bottom:1px solid var(--line);vertical-align:middle;
-}
-#cr .cr-tablo tbody tr:last-child td{border-bottom:0}
-#cr .cr-tablo tbody tr{transition:background .1s}
-#cr .cr-tablo tbody tr:hover{background:color-mix(in srgb,var(--mor1) 6%,transparent)}
-#cr .cr-tablo .sag{text-align:right}
+#cr .det-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:12px;box-shadow:var(--sh1)}
+#cr .baslik2{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+#cr .baslik2 .ik{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+#cr .baslik2 .ik .material-icons-outlined{font-size:17px}
+#cr .baslik2 .b{font-size:14px;font-weight:800;color:var(--ink)}
+#cr .lbl{display:block;font-size:11.5px;font-weight:700;color:var(--sub);margin:0 0 5px;text-transform:uppercase;letter-spacing:.4px}
+#cr .lbl.t2{margin-top:12px}
+#cr .inp{width:100%;height:44px;border:1.5px solid var(--line);border-radius:11px;background:var(--card);color:var(--ink);font-size:14.5px;font-weight:700;padding:0 13px;outline:none;transition:border-color .15s,box-shadow .15s}
+#cr .inp:focus{border-color:var(--mor1);box-shadow:0 0 0 3px rgba(124,58,237,.14)}
+#cr .inp::placeholder{color:var(--sub2);font-weight:600}
 
-/* ── avatar (CircleAvatar) ───────────────────────────────────── */
-#cr .cr-av{
-  width:36px;height:36px;border-radius:50%;flex:none;
-  display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:900;
-}
+#cr .tipler{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+#cr .tip{padding:9px 4px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);cursor:pointer;text-align:center;font-size:12.5px;font-weight:700;color:var(--sub);transition:all .14s;user-select:none}
+#cr .tip:hover{color:var(--ink);border-color:var(--sub2)}
+#cr .tip.sec{background:color-mix(in srgb,var(--mor1) 10%,var(--card));border-color:var(--mor1);color:var(--mor1)}
 
-/* ── rozet (MRozet / Flutter tip rozeti) ─────────────────────── */
-#cr .cr-roz{
-  display:inline-flex;align-items:center;
-  padding:3px 9px;border-radius:20px;border:1.5px solid;
-  font-size:11px;font-weight:700;
-}
+#cr .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;height:46px;border:0;border-radius:12px;font-size:14px;font-weight:800;color:#fff;cursor:pointer;transition:transform .14s,box-shadow .14s;margin-top:14px}
+#cr .btn:hover{transform:translateY(-1px)}
+#cr .btn.yesil{background:linear-gradient(135deg,var(--yesil),#059669);box-shadow:0 4px 12px rgba(16,185,129,.3)}
+#cr .btn.yesil:hover{box-shadow:0 6px 16px rgba(16,185,129,.4)}
+#cr .btn.mor{background:linear-gradient(135deg,var(--mor1),var(--mavi));box-shadow:0 4px 12px rgba(124,58,237,.3)}
+#cr .btn.mor:hover{box-shadow:0 6px 16px rgba(124,58,237,.4)}
+#cr .btn .material-icons-outlined{font-size:19px}
 
-/* ── detay panel ─────────────────────────────────────────────── */
-/* Flutter _CariDetayScreen: gradient özet + tahsilat + hareketler */
-#cr .cr-det-ozet{
-  border-radius:18px;overflow:hidden;margin-bottom:14px;
-  padding:20px 22px;
-}
-#cr .cr-det-ozet .sub{color:rgba(255,255,255,.70);font-size:13px;margin-bottom:4px}
-#cr .cr-det-ozet .buyuk{color:#fff;font-size:28px;font-weight:900;letter-spacing:-.5px}
-#cr .cr-det-ozet .alt{color:rgba(255,255,255,.60);font-size:11.5px;margin-top:6px}
-#cr .cr-det-bas{
-  display:flex;align-items:center;flex-wrap:wrap;gap:8px;
-  margin-bottom:6px;
-}
-#cr .cr-det-bas .ad{color:#fff;font-size:15px;font-weight:800}
+/* Hareket satırı */
+#cr .har{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;background:var(--card2);margin-bottom:7px;transition:background .12s}
+#cr .har:hover{background:var(--card3)}
+#cr .har:last-child{margin-bottom:0}
+#cr .har .hi{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#cr .har .hi .material-icons-outlined{font-size:17px;color:#fff}
+#cr .har.borc .hi{background:linear-gradient(135deg,var(--kirmizi),#E11D48)}
+#cr .har.tah .hi{background:linear-gradient(135deg,var(--yesil),#059669)}
+#cr .har .hb{flex:1;min-width:0}
+#cr .har .hb .ad{font-size:13px;font-weight:700;color:var(--ink);line-height:1.2}
+#cr .har .hb .z{font-size:11px;color:var(--sub);margin-top:2px}
+#cr .har .ht{font-size:14px;font-weight:900;white-space:nowrap;letter-spacing:-.2px}
 
-/* ── hareket satırı (Flutter _hareketSatir) ─────────────────── */
-#cr .cr-h{
-  display:flex;align-items:center;gap:10px;
-  border:1px solid var(--line);border-radius:12px;
-  padding:10px 12px;margin-bottom:8px;
-}
-#cr .cr-h:last-child{margin-bottom:0}
-#cr .cr-h .ico{font-size:18px}
-#cr .cr-h .bilgi{flex:1;min-width:0}
-#cr .cr-h .bilgi .ad{font-size:13px;font-weight:600;color:var(--sub2)}
-#cr .cr-h .bilgi .zaman{font-size:11px;color:var(--sub)}
-#cr .cr-h .tutar{font-size:14px;font-weight:800;white-space:nowrap}
+/* Boş detay */
+#cr .det-bos{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:60px 24px;text-align:center;color:var(--sub)}
+#cr .det-bos .ic{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 15%,var(--card3)),color-mix(in srgb,var(--mavi) 10%,var(--card3)));margin:0 auto 14px;display:flex;align-items:center;justify-content:center}
+#cr .det-bos .ic .material-icons-outlined{font-size:34px;color:var(--mor1)}
+#cr .det-bos .b{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:5px}
+#cr .det-bos .a{font-size:13px;color:var(--sub);max-width:280px;margin:0 auto;line-height:1.4}
 
-/* ── boş detay ön yüzü ───────────────────────────────────────── */
-#cr .cr-bos-det{
-  background:var(--card);border:1px solid var(--line);border-radius:16px;
-  padding:44px 20px;text-align:center;color:var(--sub);
-}
-#cr .cr-bos-det .material-icons-outlined{font-size:44px;color:var(--mor1);display:block;margin-bottom:10px}
+/* MODAL (yeni cari) */
+#crModal{display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;padding:16px;background:rgba(10,15,30,.55);backdrop-filter:blur(2px)}
+#crModal.ac{display:flex;animation:crFi .2s ease}
+@keyframes crFi{from{opacity:0}to{opacity:1}}
+#crModal .kutu{width:100%;max-width:440px;background:var(--card);border-radius:20px;padding:0;box-shadow:0 24px 60px rgba(0,0,0,.35);overflow:hidden;transform:scale(.94);animation:crPp .25s cubic-bezier(.34,1.56,.64,1) forwards}
+@keyframes crPp{to{transform:scale(1)}}
+#crModal .mu{display:flex;align-items:center;gap:12px;padding:20px 22px 10px}
+#crModal .mu .mi{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;color:#fff}
+#crModal .mu .mi .material-icons-outlined{font-size:22px}
+#crModal .mu .mb{font-size:16px;font-weight:800;color:var(--ink)}
+#crModal .mb-form{padding:0 22px 20px}
+#crModal .ma{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px 20px;background:var(--card2)}
+#crModal .vaz{height:42px;padding:0 18px;border:1.5px solid var(--line);background:var(--card);border-radius:11px;font-size:13.5px;font-weight:700;color:var(--ink);cursor:pointer}
+#crModal .vaz:hover{background:var(--card3)}
+#crModal .onay{height:42px;padding:0 20px;background:linear-gradient(135deg,var(--mor1),var(--mavi));border:0;border-radius:11px;color:#fff;font-size:13.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,.3)}
 
-/* ── flash ────────────────────────────────────────────────────── */
-#cr .cr-flash{
-  padding:12px 16px;border-radius:12px;margin-bottom:14px;font-size:13.5px;font-weight:600;
-  display:flex;align-items:center;gap:8px;
+/* Responsive */
+@media(max-width:1100px){#cr .cr-grid{grid-template-columns:1fr}#cr .det-sticky{position:static}}
+@media(max-width:900px){
+  #cr .pano{padding:16px 14px 30px}
+  #cr .hero{padding:20px}
+  #cr .hero-grid{grid-template-columns:1fr}
+  #cr .hero-ana .tutar{font-size:34px}
+  #cr .hero-chips{width:100%}
+  #cr .hero-chip{flex:1;min-width:0}
 }
-#cr .cr-flash.ok{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
-body.koyu #cr .cr-flash.ok{color:#34d399;border-color:rgba(16,185,129,.25)}
-#cr .cr-flash.err{background:rgba(244,63,94,.10);color:#be123c;border:1px solid rgba(244,63,94,.3)}
-body.koyu #cr .cr-flash.err{color:#fb7185;border-color:rgba(244,63,94,.25)}
-
-/* ── yeni cari modal ─────────────────────────────────────────── */
-#crModal{display:none;position:fixed;inset:0;z-index:1200;align-items:center;justify-content:center;padding:20px}
-#crModal.ac{display:flex}
-#crModal .overlay{position:absolute;inset:0;background:rgba(0,0,0,.5)}
-#crModal .kutu{
-  position:relative;z-index:1;width:100%;max-width:420px;
-  background:var(--card);border-radius:18px;padding:26px 22px;
-  box-shadow:0 24px 64px rgba(0,0,0,.22);
+@media(max-width:640px){
+  #cr .hero-ana .tutar{font-size:28px}
+  #cr .hero-chips{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;width:100%}
+  #cr .hero-chip{min-width:0;padding:10px 12px}
+  #cr .hero-chip .v{font-size:18px}
+  #cr .cari-kart{grid-template-columns:auto 1fr;row-gap:10px}
+  #cr .cari-kart .sag{grid-column:1 / -1;flex-direction:row;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px dashed var(--line);width:100%}
+  #cr .ustbar{flex-direction:column;align-items:stretch}
+  #cr .btn-ekle{width:100%;justify-content:center}
+  #cr .det-hero .buyuk-tutar{font-size:28px}
+  #cr .tipler{grid-template-columns:repeat(3,1fr)}
 }
-#crModal .kutu .baslik{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:18px}
-#crModal .kutu .alt-btn{
-  display:flex;justify-content:flex-end;gap:10px;margin-top:20px;
-}
-#crModal .cr-vaz{
-  height:40px;padding:0 16px;border:1px solid var(--line);background:transparent;
-  border-radius:10px;font-size:14px;color:var(--sub);cursor:pointer;
+@media(max-width:420px){
+  #cr .filtrele{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  #cr .filtrele::-webkit-scrollbar{display:none}
+  #cr .filtre{white-space:nowrap}
 }
 </style>
 @endpush
 
 @section('content')
 <div id="cr">
+<div class="pano">
 
-{{-- ── Flash bildirimleri ─────────────────────────────────────── --}}
 @if (session('cari_ok'))
-  <div class="cr-flash ok">
-    <span class="material-icons-outlined" style="font-size:18px">check_circle</span>
-    {{ session('cari_ok') }}
-  </div>
+  <div class="flash ok"><span class="material-icons-outlined" style="font-size:20px">check_circle</span>{{ session('cari_ok') }}</div>
 @endif
 @if (session('cari_hata'))
-  <div class="cr-flash err">
-    <span class="material-icons-outlined" style="font-size:18px">error_outline</span>
-    {{ session('cari_hata') }}
-  </div>
+  <div class="flash err"><span class="material-icons-outlined" style="font-size:20px">error</span>{{ session('cari_hata') }}</div>
 @endif
 
-{{-- ── Flutter gradient özet kartı: Toplam Açık Alacak ─────── --}}
-<div class="cr-ozet">
-  <div class="sub">Toplam Açık Alacak</div>
-  <div class="buyuk">{{ $tl($ozet['toplam_alacak'] ?? 0) }}</div>
-  <div class="alt">{{ $adet }} cari hesap</div>
+{{-- HERO ÖZET --}}
+<div class="hero">
+  <div class="hero-grid">
+    <div class="hero-ana">
+      <div class="lbl">Toplam Açık Alacak</div>
+      <div class="tutar">{{ $tl($ozet['toplam_alacak'] ?? 0) }}</div>
+      <div class="alt">
+        <span class="mini-dot"><span class="material-icons-outlined" style="font-size:14px">groups</span>{{ $adet }} hesap</span>
+        @if($borcluSayi>0)<span class="mini-dot"><span class="material-icons-outlined" style="font-size:14px">warning</span>{{ $borcluSayi }} borçlu</span>@endif
+        @if($temizSayi>0)<span class="mini-dot"><span class="material-icons-outlined" style="font-size:14px">verified</span>{{ $temizSayi }} temiz</span>@endif
+      </div>
+    </div>
+    <div class="hero-chips">
+      @foreach($tipDag as $t => $n)
+        @php $r = $rnk($t); @endphp
+        <div class="hero-chip">
+          <div class="l"><span class="material-icons-outlined" style="font-size:13px">{{ $tipIkon[$t] ?? 'group' }}</span>{{ $tipAd[$t] ?? ucfirst($t) }}</div>
+          <div class="v">{{ $n }}</div>
+        </div>
+      @endforeach
+    </div>
+  </div>
 </div>
 
-{{-- ── İki sütun: sol liste · sağ detay ──────────────────────── --}}
 <div class="cr-grid">
 
-  {{-- ════ SOL: liste + Yeni Cari butonu ════ --}}
+  {{-- SOL: ARAMA + LİSTE --}}
   <div>
-
-    {{-- FAB ↔ "Yeni Cari" butonu (Flutter FloatingActionButton.extended) --}}
-    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
-      <button class="cr-btn" style="background:var(--mor1)" onclick="crYeniAc()">
-        <span class="material-icons-outlined">person_add_alt</span>
-        Yeni Cari
-      </button>
+    <div class="ustbar">
+      <div class="arama">
+        <span class="material-icons-outlined">search</span>
+        <input type="text" id="crAra" placeholder="Cari ara…" oninput="crFiltre()">
+      </div>
+      <div class="filtrele">
+        <div class="filtre aktif" data-f="hepsi" onclick="crTipFiltre(this)">Tümü</div>
+        <div class="filtre" data-f="borc" onclick="crTipFiltre(this)">Borçlu</div>
+        <div class="filtre" data-f="temiz" onclick="crTipFiltre(this)">Temiz</div>
+      </div>
+      <button class="btn-ekle" onclick="crYeniAc()"><span class="material-icons-outlined">person_add_alt</span>Yeni Cari</button>
     </div>
 
-    {{-- ── Cari listesi (Flutter masaüstü MTablo) ──────────────── --}}
     @if (!count($cariler))
-      <div class="cr-kart" style="padding:44px;text-align:center;color:var(--sub)">Cari hesap yok.</div>
+      <div class="bos">
+        <span class="material-icons-outlined">account_balance_wallet</span>
+        <div class="b">Henüz cari hesap yok</div>
+        <div class="a">Yeni Cari butonuna basarak ilk hesabı oluştur.</div>
+      </div>
     @else
-      <div class="cr-kart" style="padding:0;overflow:hidden">
-        <div class="cr-tablo">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:42%">Cari</th>
-                <th style="width:18%">Tip</th>
-                <th class="sag" style="width:24%">Bakiye</th>
-                <th class="sag" style="width:16%"></th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach ($cariler as $c)
-                @php
-                  $bk   = (float) ($c['bakiye'] ?? 0);
-                  $tip  = $c['tip'] ?? '';
-                  $renk = $rnk($tip);
-                  $aktif = ($aktifId == ($c['id'] ?? 0));
-                  $borc = $bk > 0;
-                  $ilk  = mb_strtoupper(mb_substr($c['ad'] ?? '?', 0, 1));
-                @endphp
-                <tr @if($aktif) style="background:color-mix(in srgb,#7C3AED 10%,transparent)" @endif>
-
-                  {{-- Cari: avatar baş harf + ad (Flutter CircleAvatar + Text) --}}
-                  <td>
-                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
-                      <div class="cr-av"
-                        style="background:color-mix(in srgb,{{ $renk }} 22%,transparent);color:{{ $renk }}">
-                        {{ $ilk }}
-                      </div>
-                      <div style="min-width:0">
-                        <div style="font-size:13.5px;font-weight:600;color:var(--ink);
-                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                          {{ $c['ad'] ?? '' }}
-                        </div>
-                        @if (!empty($c['telefon']))
-                          <div style="font-size:11.5px;color:var(--sub)">{{ $c['telefon'] }}</div>
-                        @endif
-                      </div>
-                    </div>
-                  </td>
-
-                  {{-- Tip rozeti (Flutter MRozet / _tipRenk) --}}
-                  <td>
-                    <span class="cr-roz"
-                      style="color:{{ $renk }};
-                             border-color:color-mix(in srgb,{{ $renk }} 40%,transparent);
-                             background:color-mix(in srgb,{{ $renk }} 13%,transparent)">
-                      {{ $tipAd[$tip] ?? $tip }}
-                    </span>
-                  </td>
-
-                  {{-- Bakiye: borç=kırmızı / temiz=yeşil --}}
-                  <td class="sag">
-                    <div style="font-size:13.5px;font-weight:800;
-                                color:{{ $borc ? 'var(--kirmizi)' : 'var(--yesil)' }}">
-                      {{ $tl($bk) }}
-                    </div>
-                    <div style="font-size:10.5px;color:var(--sub)">
-                      {{ $borc ? 'borç' : 'temiz' }}
-                    </div>
-                  </td>
-
-                  {{-- Detay butonu (Flutter MButon bos + chevron_right) --}}
-                  <td class="sag">
-                    <a href="/cari?id={{ $c['id'] }}" class="cr-btn bos">
-                      Detay
-                      <span class="material-icons-outlined" style="font-size:16px">chevron_right</span>
-                    </a>
-                  </td>
-
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
-        </div>
+      <div class="cari-list" id="crListe">
+        @foreach ($cariler as $c)
+          @php
+            $bk = (float) ($c['bakiye'] ?? 0);
+            $tip = $c['tip'] ?? '';
+            $renk = $rnk($tip);
+            $aktif = ($aktifId == ($c['id'] ?? 0));
+            $borc = $bk > 0;
+            $ilk = mb_strtoupper(mb_substr($c['ad'] ?? '?', 0, 1));
+            $ikon = $tipIkon[$tip] ?? 'person';
+          @endphp
+          <a href="/cari?id={{ $c['id'] }}" class="cari-kart {{ $aktif ? 'aktif' : '' }}"
+             data-ad="{{ mb_strtolower($c['ad'] ?? '') }}"
+             data-tel="{{ $c['telefon'] ?? '' }}"
+             data-durum="{{ $borc ? 'borc' : 'temiz' }}">
+            <div class="strip" style="background:{{ $renk }}"></div>
+            <div class="av" style="background:color-mix(in srgb,{{ $renk }} 18%,var(--card3));color:{{ $renk }}">
+              {{ $ilk }}
+              <span class="material-icons-outlined" style="color:{{ $renk }}">{{ $ikon }}</span>
+            </div>
+            <div class="orta">
+              <div class="ad">{{ $c['ad'] ?? '' }}</div>
+              <div class="meta">
+                <span class="roz" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 12%,transparent)">
+                  <span class="material-icons-outlined">{{ $ikon }}</span>{{ $tipAd[$tip] ?? $tip }}
+                </span>
+                @if(!empty($c['telefon']))
+                  <span class="tel"><span class="material-icons-outlined">phone</span>{{ $c['telefon'] }}</span>
+                @endif
+              </div>
+            </div>
+            <div class="sag">
+              <div class="bakiye" style="color:{{ $borc ? 'var(--kirmizi)' : 'var(--yesil)' }}">{{ $tl($bk) }}</div>
+              <div class="durum-rz {{ $borc ? 'borc' : 'temiz' }}">{{ $borc ? 'borç' : 'temiz' }}</div>
+            </div>
+          </a>
+        @endforeach
+      </div>
+      <div class="bos" id="crBosFiltre" style="display:none;margin-top:10px">
+        <span class="material-icons-outlined">search_off</span>
+        <div class="b">Eşleşen cari yok</div>
+        <div class="a">Arama ya da filtreyi temizleyin.</div>
       </div>
     @endif
-  </div>{{-- /sol --}}
+  </div>
 
-  {{-- ════ SAĞ: seçili cari detayı + tahsilat + hareketler ════ --}}
+  {{-- SAĞ: DETAY --}}
   <div>
+    <div class="det-sticky">
     @if ($detay)
       @php
-        $bk   = (float) ($detay['bakiye'] ?? 0);
+        $bk = (float) ($detay['bakiye'] ?? 0);
         $borc = $bk > 0;
-        $tip  = $detay['tip'] ?? '';
+        $tip = $detay['tip'] ?? '';
         $renk = $rnk($tip);
-        $gbg  = $borc
-          ? 'linear-gradient(135deg,#7F1D1D,#9F1239)'
-          : 'linear-gradient(135deg,#7C3AED,#4F46E5)';
+        $ikon = $tipIkon[$tip] ?? 'person';
+        $gbg = $borc
+          ? 'linear-gradient(135deg,#DC2626 0%,#9F1239 100%)'
+          : 'linear-gradient(135deg,'.$renk.' 0%,'.$rnk($tip).' 100%)';
+        if (!$borc) $gbg = 'linear-gradient(135deg,#10B981 0%,#059669 100%)';
+        $ilkD = mb_strtoupper(mb_substr($detay['ad'] ?? '?', 0, 1));
       @endphp
 
-      {{-- Flutter _CariDetayScreen: gradient bakiye kartı --}}
-      <div class="cr-det-ozet" style="background:{{ $gbg }}">
-        <div class="cr-det-bas">
-          <span class="ad">{{ $detay['ad'] ?? '' }}</span>
-          <span class="cr-roz" style="color:#fff;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.2)">
-            {{ $tipAd[$tip] ?? $tip }}
-          </span>
+      <div class="det-hero" style="background:{{ $gbg }}">
+        <div class="det-hero-ust">
+          <div class="av2">{{ $ilkD }}</div>
+          <div style="flex:1;min-width:0">
+            <div class="ad">{{ $detay['ad'] ?? '' }}</div>
+            <span class="roz2"><span class="material-icons-outlined">{{ $ikon }}</span>{{ $tipAd[$tip] ?? $tip }}</span>
+          </div>
         </div>
-        <div class="sub">Güncel Bakiye (Borç)</div>
-        <div class="buyuk">{{ $tl($bk) }}</div>
-        <div class="alt">
-          Toplam satış {{ $tl($detay['toplam_borc'] ?? 0) }}
+        <div class="lbl2">{{ $borc ? 'Güncel Borç' : 'Hesap Temiz' }}</div>
+        <div class="buyuk-tutar">{{ $tl($bk) }}</div>
+        <div class="stat2">
+          <div class="st"><div class="sl">Toplam Satış</div><div class="sv">{{ $tl($detay['toplam_borc'] ?? 0) }}</div></div>
           @if (isset($detay['toplam_tahsilat']))
-            &nbsp;·&nbsp; Tahsilat {{ $tl($detay['toplam_tahsilat']) }}
+            <div class="st"><div class="sl">Tahsilat</div><div class="sv">{{ $tl($detay['toplam_tahsilat']) }}</div></div>
           @endif
+          <div class="st"><div class="sl">Hareket</div><div class="sv">{{ count($hareketler) }}</div></div>
         </div>
       </div>
 
-      {{-- Flutter FilledButton.icon "Tahsil Et" — geniş yeşil buton --}}
-      {{-- Webde inline form olarak açılır --}}
-      <div class="cr-kart" style="margin-bottom:14px">
-        <div class="cr-bolum">
-          <span class="cubuk" style="background:var(--yesil)"></span>
-          <span class="b">Tahsilat (Borç Kapat)</span>
+      {{-- Tahsilat formu --}}
+      <div class="det-kart">
+        <div class="baslik2">
+          <div class="ik" style="background:linear-gradient(135deg,var(--yesil),#059669)"><span class="material-icons-outlined">payments</span></div>
+          <div class="b">Tahsilat · Borç Kapat</div>
         </div>
         <form method="POST" action="/cari/tahsilat">
           @csrf
           <input type="hidden" name="cari_id" value="{{ $aktifId }}">
-
-          <label class="cr-lbl" style="margin-top:0">Tutar (₺)</label>
-          <input type="number" name="tutar" step="0.01" min="0.01" required
-                 class="cr-inp"
-                 value="{{ $borc ? round($bk) : '' }}"
-                 placeholder="Tutar (TL)">
-
-          {{-- Flutter Row: nakit / havale / kredi seçici --}}
-          <label class="cr-lbl">Ödeme Şekli</label>
-          <div class="cr-tipler" id="tahSekilKutu">
-            @foreach (['nakit' => 'Nakit', 'havale' => 'Havale', 'kredi' => 'Kredi Kartı'] as $sk => $sad)
-              <label class="cr-tip" id="tahTip_{{ $sk }}"
-                     style="--rc:var(--yesil)"
-                     onclick="crTahSekil('{{ $sk }}')">
-                <input type="radio" name="odeme_sekli" value="{{ $sk }}"
-                       {{ $sk === 'nakit' ? 'checked' : '' }}
-                       style="display:none">
+          <label class="lbl">Tutar (₺)</label>
+          <input type="number" name="tutar" step="0.01" min="0.01" required class="inp" value="{{ $borc ? round($bk) : '' }}" placeholder="örn. 500" inputmode="decimal">
+          <label class="lbl t2">Ödeme Şekli</label>
+          <div class="tipler" id="tahSekilKutu">
+            @foreach (['nakit' => ['Nakit','payments'], 'havale' => ['Havale','account_balance'], 'kredi' => ['Kart','credit_card']] as $sk => [$sad,$sik])
+              <label class="tip" id="tahTip_{{ $sk }}" onclick="crTahSekil('{{ $sk }}')">
+                <input type="radio" name="odeme_sekli" value="{{ $sk }}" {{ $sk === 'nakit' ? 'checked' : '' }} style="display:none">
                 {{ $sad }}
               </label>
             @endforeach
           </div>
-
-          {{-- Flutter FilledButton.icon payments_outlined --}}
-          <button type="submit" class="cr-btn tam" style="background:var(--yesil);margin-top:14px">
-            <span class="material-icons-outlined">payments</span>
-            Tahsil Et
-          </button>
+          <button type="submit" class="btn yesil"><span class="material-icons-outlined">check_circle</span>Tahsil Et</button>
         </form>
       </div>
 
-      {{-- Flutter _hareketSatir listesi --}}
-      <div class="cr-kart">
-        <div class="cr-bolum">
-          <span class="cubuk" style="background:var(--mor1)"></span>
-          <span class="b">Hesap Hareketleri</span>
+      {{-- Hareketler --}}
+      <div class="det-kart">
+        <div class="baslik2">
+          <div class="ik" style="background:linear-gradient(135deg,var(--mor1),var(--mavi))"><span class="material-icons-outlined">history</span></div>
+          <div class="b">Hesap Hareketleri</div>
         </div>
         @if (!count($hareketler))
-          <div style="text-align:center;color:var(--sub);padding:16px 0">Hareket yok.</div>
+          <div style="text-align:center;color:var(--sub);padding:18px 0;font-size:13px">Hareket yok.</div>
         @else
           @foreach ($hareketler as $h)
             @php
               $hBorc = (($h['tip'] ?? '') === 'borc');
-              $hRnk  = $hBorc ? 'var(--kirmizi)' : 'var(--yesil)';
-              $hAd   = $hBorc
-                ? 'Satış (Borç)'
-                : 'Tahsilat' . (!empty($h['odeme_sekli']) ? ' · ' . $h['odeme_sekli'] : '');
+              $hAd   = $hBorc ? 'Satış · Borç' : 'Tahsilat' . (!empty($h['odeme_sekli']) ? ' · ' . ucfirst($h['odeme_sekli']) : '');
             @endphp
-            <div class="cr-h">
-              {{-- Flutter arrow_upward (borç=kırmızı) / arrow_downward (tahsilat=yeşil) --}}
-              <span class="material-icons-outlined ico" style="color:{{ $hRnk }}">
-                {{ $hBorc ? 'arrow_upward' : 'arrow_downward' }}
-              </span>
-              <div class="bilgi">
+            <div class="har {{ $hBorc ? 'borc' : 'tah' }}">
+              <div class="hi"><span class="material-icons-outlined">{{ $hBorc ? 'arrow_upward' : 'arrow_downward' }}</span></div>
+              <div class="hb">
                 <div class="ad">{{ $hAd }}</div>
-                <div class="zaman">{{ $h['zaman'] ?? '' }}</div>
+                <div class="z">{{ $h['zaman'] ?? '' }}</div>
               </div>
-              <div class="tutar" style="color:{{ $hRnk }}">
-                {{ $hBorc ? '+' : '-' }}{{ $tl($h['tutar'] ?? 0) }}
+              <div class="ht" style="color:{{ $hBorc ? 'var(--kirmizi)' : 'var(--yesil)' }}">
+                {{ $hBorc ? '+' : '−' }}{{ $tl($h['tutar'] ?? 0) }}
               </div>
             </div>
           @endforeach
         @endif
       </div>
-
     @else
-      {{-- Detay seçilmedi: Flutter account_balance_wallet_outlined ön yüzü --}}
-      <div class="cr-bos-det">
-        <span class="material-icons-outlined">account_balance_wallet</span>
-        Detay ve tahsilat için listeden bir cari seçin.
+      <div class="det-bos">
+        <div class="ic"><span class="material-icons-outlined">account_balance_wallet</span></div>
+        <div class="b">Cari seçili değil</div>
+        <div class="a">Listeden bir hesap seç — detay, tahsilat ve geçmiş burada açılır.</div>
       </div>
     @endif
-  </div>{{-- /sağ --}}
+    </div>
+  </div>
 
-</div>{{-- /cr-grid --}}
+</div>
 
-{{-- ════════════════════════════════════════════════════════════
-     Yeni Cari Hesap Modalı
-     Flutter _yeniCari diyaloguna BİREBİR: İsim / Tip / Telefon
-     ════════════════════════════════════════════════════════════ --}}
-<div id="crModal" role="dialog" aria-modal="true">
-  <div class="overlay" onclick="crYeniKapat()"></div>
+{{-- YENİ CARİ MODAL --}}
+<div id="crModal" role="dialog" aria-modal="true" onclick="if(event.target===this)crYeniKapat()">
   <div class="kutu">
-    <div class="baslik">Yeni Cari Hesap</div>
-    <form method="POST" action="/cari/ekle" id="crYeniForm">
+    <div class="mu">
+      <div class="mi"><span class="material-icons-outlined">person_add_alt</span></div>
+      <div class="mb">Yeni Cari Hesap</div>
+    </div>
+    <form method="POST" action="/cari/ekle" id="crYeniForm" class="mb-form">
       @csrf
-
-      <label class="cr-lbl" style="margin-top:0">İsim / Ünvan</label>
-      <input name="ad" required autofocus placeholder="İsim / Ünvan" class="cr-inp" id="crAdInp">
-
-      <label class="cr-lbl">Telefon (opsiyonel)</label>
-      <input name="telefon" placeholder="Telefon" class="cr-inp" inputmode="tel">
-
-      {{-- Flutter Row/GestureDetector tip kutuları: musteri / firma / personel --}}
-      <label class="cr-lbl">Tip</label>
-      <div class="cr-tipler" id="crTipKutu">
-        @foreach (['musteri' => ['Müşteri', '#10B981'], 'firma' => ['Firma', '#4F46E5'], 'personel' => ['Personel', '#D97706']] as $tk => [$tad, $trc])
-          <label class="cr-tip" id="crTip_{{ $tk }}"
-                 style="--rc:{{ $trc }}"
-                 onclick="crTip('{{ $tk }}')">
-            <input type="radio" name="tip" value="{{ $tk }}"
-                   {{ $tk === 'musteri' ? 'checked' : '' }}
-                   style="display:none">
+      <label class="lbl">İsim / Ünvan</label>
+      <input name="ad" required autofocus placeholder="örn. Et Dünyası" class="inp" id="crAdInp">
+      <label class="lbl t2">Telefon (opsiyonel)</label>
+      <input name="telefon" placeholder="05xx xxx xx xx" class="inp" inputmode="tel">
+      <label class="lbl t2">Tip</label>
+      <div class="tipler" id="crTipKutu">
+        @foreach (['musteri' => 'Müşteri', 'firma' => 'Firma', 'personel' => 'Personel'] as $tk => $tad)
+          <label class="tip" id="crTip_{{ $tk }}" onclick="crTip('{{ $tk }}')">
+            <input type="radio" name="tip" value="{{ $tk }}" {{ $tk === 'musteri' ? 'checked' : '' }} style="display:none">
             {{ $tad }}
           </label>
         @endforeach
       </div>
-
-      <div class="alt-btn">
-        <button type="button" class="cr-vaz" onclick="crYeniKapat()">Vazgeç</button>
-        <button type="submit" class="cr-btn" style="background:var(--mor1)">Ekle</button>
+      <div class="ma" style="margin:18px -22px -20px">
+        <button type="button" class="vaz" onclick="crYeniKapat()">Vazgeç</button>
+        <button type="submit" class="onay">Ekle</button>
       </div>
     </form>
   </div>
 </div>
 
-</div>{{-- /cr --}}
+</div>
+</div>
 
 <script>
-/* ── modal aç/kapat ─────────────────────────── */
-function crYeniAc(){
-  document.getElementById('crModal').classList.add('ac');
-  setTimeout(()=>document.getElementById('crAdInp')?.focus(),80);
-}
-function crYeniKapat(){document.getElementById('crModal').classList.remove('ac')}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')crYeniKapat()});
+function crYeniAc(){ document.getElementById('crModal').classList.add('ac'); setTimeout(()=>document.getElementById('crAdInp')?.focus(),80); }
+function crYeniKapat(){ document.getElementById('crModal').classList.remove('ac'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') crYeniKapat(); });
 
-/* ── Yeni Cari tip seçici ──────────────────── */
-function crTip(seç){
+function crTip(sec){
   ['musteri','firma','personel'].forEach(k=>{
-    const el=document.getElementById('crTip_'+k);
-    if(!el)return;
+    const el=document.getElementById('crTip_'+k); if(!el) return;
     const inp=el.querySelector('input');
-    if(k===seç){
-      inp.checked=true;
-      el.style.background='color-mix(in srgb,'+getComputedStyle(el).getPropertyValue('--rc')+' 25%,transparent)';
-      el.style.borderColor=getComputedStyle(el).getPropertyValue('--rc');
-      el.style.color=getComputedStyle(el).getPropertyValue('--rc');
-    }else{
-      inp.checked=false;
-      el.style.background='';el.style.borderColor='transparent';el.style.color='';
-    }
+    inp.checked = (k===sec);
+    el.classList.toggle('sec', k===sec);
   });
 }
-
-/* ── Tahsilat ödeme şekli seçici ─────────────── */
-function crTahSekil(seç){
+function crTahSekil(sec){
   ['nakit','havale','kredi'].forEach(k=>{
-    const el=document.getElementById('tahTip_'+k);
-    if(!el)return;
+    const el=document.getElementById('tahTip_'+k); if(!el) return;
     const inp=el.querySelector('input');
-    if(k===seç){
-      inp.checked=true;
-      el.style.background='color-mix(in srgb,var(--yesil) 25%,transparent)';
-      el.style.borderColor='var(--yesil)';
-      el.style.color='var(--yesil)';
-    }else{
-      inp.checked=false;
-      el.style.background='';el.style.borderColor='transparent';el.style.color='';
-    }
+    inp.checked = (k===sec);
+    el.classList.toggle('sec', k===sec);
   });
 }
+function crFiltre(){
+  var q = (document.getElementById('crAra').value||'').toLowerCase().trim();
+  var durumF = document.querySelector('.filtre.aktif')?.dataset.f || 'hepsi';
+  var kartlar = document.querySelectorAll('#crListe .cari-kart');
+  var gorunen = 0;
+  kartlar.forEach(k=>{
+    var ad = k.dataset.ad || '';
+    var tel = (k.dataset.tel||'').toLowerCase();
+    var durum = k.dataset.durum;
+    var qOk = !q || ad.includes(q) || tel.includes(q);
+    var dOk = durumF==='hepsi' || durumF===durum;
+    var vis = qOk && dOk;
+    k.style.display = vis ? '' : 'none';
+    if (vis) gorunen++;
+  });
+  var bos = document.getElementById('crBosFiltre');
+  if (bos) bos.style.display = (gorunen===0 && kartlar.length>0) ? 'block' : 'none';
+}
+function crTipFiltre(el){
+  document.querySelectorAll('.filtre').forEach(f=>f.classList.remove('aktif'));
+  el.classList.add('aktif');
+  crFiltre();
+}
 
-/* ── sayfa yüklenince başlangıç durumunu boyayalım ─ */
 (function(){
   crTip('musteri');
   crTahSekil('nakit');
