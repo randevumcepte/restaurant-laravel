@@ -42,6 +42,19 @@
     .rk-pin.aktif .pi{background:rgba(255,255,255,.22)}
     .rk-pin.aktif .pi .material-icons-outlined{color:#fff}
     .rk-pin.aktif .pok{color:#fff;opacity:.9}
+    /* Collapsed sidebar (>=641px, hover degil): pin'ler sade ikon olsun */
+    @media (min-width:641px){
+      .rk-side:not(:hover) .rk-pin-pano{padding:8px 0 10px;margin-bottom:4px;gap:2px;border-bottom:1px solid rgba(120,120,140,.14)}
+      .rk-side:not(:hover) .rk-pin{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;justify-content:center;height:44px;margin:1px 10px;border-radius:11px;transform:none !important}
+      .rk-side:not(:hover) .rk-pin::before{display:none}
+      .rk-side:not(:hover) .rk-pin:hover{background:color-mix(in srgb,#7C3AED 12%,transparent) !important}
+      .rk-side:not(:hover) .rk-pin .pi{background:transparent !important;width:auto !important;height:auto !important}
+      .rk-side:not(:hover) .rk-pin .pi .material-icons-outlined{color:#7C3AED !important;font-size:22px !important}
+      .rk-side:not(:hover) .rk-pin .pt,
+      .rk-side:not(:hover) .rk-pin .pok{display:none}
+      .rk-side:not(:hover) .rk-pin.aktif{background:linear-gradient(135deg,#7C3AED,#4F46E5) !important;box-shadow:0 4px 12px rgba(124,58,237,.3) !important}
+      .rk-side:not(:hover) .rk-pin.aktif .pi .material-icons-outlined{color:#fff !important}
+    }
     /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
     .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
     .rk-modal-arka.acik{display:flex}
