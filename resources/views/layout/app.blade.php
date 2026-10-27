@@ -15,31 +15,33 @@
     <style>
     html._koyu body{}
     .rk-grp{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;
-      font-size:11.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;opacity:.85;color:#334155;
-      padding:13px 16px 8px;margin-top:4px;border-top:1px solid rgba(120,120,140,.14)}
-    body.koyu .rk-grp{color:#cbd5e1}
+      font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;opacity:1;color:#1e293b;
+      padding:15px 16px 9px;margin-top:6px;border-top:1px solid rgba(120,120,140,.18)}
+    body.koyu .rk-grp{color:#e2e8f0}
     .rk-grp:first-of-type{border-top:0;margin-top:0}
-    .rk-grp:hover{opacity:1}
-    .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.7}
+    .rk-grp::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,#7C3AED,#4F46E5);border-radius:2px;margin-right:8px;vertical-align:-1px}
+    .rk-grp:hover{opacity:1;color:#7C3AED}
+    body.koyu .rk-grp:hover{color:#a78bfa}
+    .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.6}
     .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
     .rk-grp.kapali + .rk-grp-body{display:none}
-    /* ÖNE ÇIKAN GRUP (Satın Alma — pinned) */
-    .rk-grp.one{
-      background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(79,70,229,.08));
-      border:1px solid rgba(124,58,237,.3);border-radius:12px;
-      margin:8px 10px 0;padding:11px 14px 10px;
-      font-size:12.5px;font-weight:900;letter-spacing:.5px;
-      color:#7C3AED;opacity:1;border-top:1px solid rgba(124,58,237,.3);
-      box-shadow:0 2px 10px rgba(124,58,237,.12);
-    }
-    body.koyu .rk-grp.one{
-      background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(79,70,229,.12));
-      border-color:rgba(124,58,237,.45);color:#a78bfa;
-      box-shadow:0 2px 10px rgba(124,58,237,.18);
-    }
-    .rk-grp.one::before{content:'';display:inline-block;width:4px;height:14px;background:linear-gradient(180deg,#7C3AED,#4F46E5);border-radius:3px;margin-right:9px;vertical-align:-2px}
-    .rk-grp.one + .rk-grp-body{padding:0 8px}
-    .rk-grp.one + .rk-grp-body a{border-radius:11px;margin:3px 0}
+    /* PINNED LINKS (satın almacı — Özet · AI Asistan · Stok & Satın Alma) */
+    .rk-pin-pano{display:flex;flex-direction:column;gap:6px;padding:12px 10px 10px;margin-bottom:8px;border-bottom:1px solid rgba(120,120,140,.14)}
+    .rk-pin{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;text-decoration:none;color:#1e293b;background:#fff;border:1.5px solid #e2e8f0;font-size:14.5px;font-weight:800;transition:all .14s;position:relative;overflow:hidden}
+    body.koyu .rk-pin{background:#1b2235;border-color:#2c3650;color:#e2e8f0}
+    .rk-pin::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#7C3AED,#4F46E5);opacity:0;transition:opacity .14s}
+    .rk-pin:hover{transform:translateX(2px);border-color:#7C3AED;color:#7C3AED;box-shadow:0 4px 14px rgba(124,58,237,.18)}
+    .rk-pin:hover::before{opacity:1}
+    .rk-pin .pi{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(79,70,229,.08));display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .14s}
+    .rk-pin .pi .material-icons-outlined{font-size:20px;color:#7C3AED}
+    .rk-pin .pt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
+    .rk-pin .pok{font-size:18px;color:#94a3b8;opacity:.5;transition:all .14s}
+    .rk-pin:hover .pok{color:#7C3AED;opacity:1;transform:translateX(2px)}
+    .rk-pin.aktif{background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;border-color:transparent;box-shadow:0 6px 18px rgba(124,58,237,.35)}
+    .rk-pin.aktif::before{opacity:0}
+    .rk-pin.aktif .pi{background:rgba(255,255,255,.22)}
+    .rk-pin.aktif .pi .material-icons-outlined{color:#fff}
+    .rk-pin.aktif .pok{color:#fff;opacity:.9}
     /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
     .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
     .rk-modal-arka.acik{display:flex}
@@ -201,27 +203,46 @@
     ]] + $gruplar;
 
     // ===== SATIN ALMACI'ya ÖZEL MENÜ DÜZENİ =====
+    // 1) Üstte 3 standalone büyük link: Özet · AI Asistan · Stok & Satın Alma
+    // 2) "İŞLEMLER" grubu: diğer satın alma iş akışları (talep, sipariş, OCR, karne vb.)
+    // 3) Kasa & Finans (Cari)
+    // 4) Departman Operasyon (en alt)
     $_pp = null; try { if (function_exists('_posPersonel')) $_pp = _posPersonel(); } catch (\Throwable $e) {}
     $_ppRol = $_pp->rol ?? '';
     if ($_pp && in_array($_ppRol, ['satinalmaci','satinalma'])) {
         if (isset($gruplar['Menü & Ürünler'])) unset($gruplar['Menü & Ürünler']);
-        $_ozetI = null; $_aiI = null;
+
+        $_ozetI = null; $_aiI = null; $_stokI = null;
         if (isset($gruplar['Stok & Tedarik'])) {
-            $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI) {
+            $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI, &$_stokI) {
                 if ($it[0] === '/satinalma-ozet')    { $_ozetI = $it; return false; }
                 if ($it[0] === '/satinalma-asistan') { $_aiI  = $it; return false; }
+                if ($it[0] === '/stok')              { $_stokI = $it; return false; }
                 return true;
             }));
         }
+        // Etiketleri sadeleştir
+        if ($_ozetI) $_ozetI[2] = 'Özet';
+        if ($_aiI)   $_aiI[2]   = 'AI Asistan';
+        if ($_stokI) $_stokI[2] = 'Stok & Satın Alma';
+
         $_yeni = [];
         $_pin = [];
         if ($_ozetI) $_pin[] = $_ozetI;
         if ($_aiI)   $_pin[] = $_aiI;
-        if ($_pin)   $_yeni['Satın Alma'] = $_pin;
-        if (isset($gruplar['Stok & Tedarik'])) { $_yeni['Stok & Satın Alma'] = $gruplar['Stok & Tedarik']; unset($gruplar['Stok & Tedarik']); }
-        $_dept = $gruplar['Departman Operasyon'] ?? null; unset($gruplar['Departman Operasyon']);
+        if ($_stokI) $_pin[] = $_stokI;
+        if ($_pin) $_yeni['__PIN__'] = $_pin;
+
+        if (isset($gruplar['Stok & Tedarik']) && count($gruplar['Stok & Tedarik']) > 0) {
+            $_yeni['İşlemler'] = $gruplar['Stok & Tedarik'];
+        }
+        unset($gruplar['Stok & Tedarik']);
+
+        $_dept = $gruplar['Departman Operasyon'] ?? null;
+        unset($gruplar['Departman Operasyon']);
         foreach ($gruplar as $_gad => $_items) { $_yeni[$_gad] = $_items; }
         if ($_dept) $_yeni['Departman Operasyon'] = $_dept;
+
         $gruplar = $_yeni;
     }
 
@@ -263,9 +284,20 @@
                     }));
                     $grupAktif = collect($gorunur)->contains(fn ($it) => $it[0] === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $it[0]));
                 @endphp
-                @php $_oneCikan = in_array($grupAd, ['Satın Alma', 'Stok & Satın Alma']); @endphp
-                @if (count($gorunur))
-                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}{{ $_oneCikan ? ' one' : '' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+                @if ($grupAd === '__PIN__' && count($gorunur))
+                    {{-- SATIN ALMACI: üstte 3 standalone büyük link (grup değil) --}}
+                    <div class="rk-pin-pano">
+                        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
+                            @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
+                            <a href="{{ $url }}" class="rk-pin{{ $aktif ? ' aktif' : '' }}">
+                                <span class="pi"><span class="material-icons-outlined">{{ $ikon }}</span></span>
+                                <span class="pt">{{ $ad }}</span>
+                                <span class="material-icons-outlined pok">chevron_right</span>
+                            </a>
+                        @endforeach
+                    </div>
+                @elseif (count($gorunur))
+                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
                     <div class="rk-grp-body">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
                             @php
