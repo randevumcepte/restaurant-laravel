@@ -322,7 +322,7 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                 <div class="mk-etiket">Toplam Stok Değeri</div>
             </div>
         </div>
-        <div class="stk-mk">
+        <div class="stk-mk tiklanabilir" onclick="stkCipSec('tumu')" title="Tümünü göster">
             <div class="mk-ikon" style="background:color-mix(in srgb,var(--mor1) 14%,transparent);color:var(--mor1)"><span class="material-icons-outlined">inventory_2</span></div>
             <div class="mk-bilgi">
                 <div class="mk-deger">{{ $rows->count() }}</div>
