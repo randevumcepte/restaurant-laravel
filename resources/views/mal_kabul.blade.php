@@ -19,6 +19,24 @@
 @if (session('mk_ok'))<div class="rk-flash ok">{{ session('mk_ok') }}</div>@endif
 @if (session('mk_hata'))<div class="rk-flash err">{{ session('mk_hata') }}</div>@endif
 
+{{-- Son Mal Kabuller: ust ozet kart (ayri sayfaya linkli) --}}
+<a href="/mal-kabul-liste" class="rk-card" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;text-decoration:none;transition:box-shadow .14s,transform .14s;border:1px solid var(--line)" onmouseover="this.style.boxShadow='0 6px 18px rgba(0,0,0,.08)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
+  <div style="width:40px;height:40px;border-radius:11px;background:color-mix(in srgb,var(--mor1) 14%,transparent);color:var(--mor1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <span class="material-icons-outlined">history</span>
+  </div>
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:800;color:var(--ink);font-size:14.5px">Son Mal Kabuller</div>
+    <div class="rk-sub2" style="font-size:12px;margin-top:2px">
+      @if ($kabuller->isEmpty()) Henüz mal kabul yok.
+      @else {{ $kabuller->count() }} kayıt · en son {{ $kabuller->first()->tarih ? \Carbon\Carbon::parse($kabuller->first()->tarih)->format('d.m.Y') : '—' }}
+      @endif
+    </div>
+  </div>
+  <span style="color:var(--mor1);font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:4px;flex-shrink:0">
+    Tümünü gör <span class="material-icons-outlined" style="font-size:18px">arrow_forward</span>
+  </span>
+</a>
+
 {{-- Açık siparişten çek --}}
 @if ($acikSiparisler->count() && !$siparis)
   <div class="rk-card" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -191,29 +209,6 @@
     <button type="submit" id="mkOnayBtn" class="rk-btn lg" style="background:var(--yesil);margin-top:14px"><span class="material-icons-outlined" style="color:#fff;font-size:20px">check_circle</span> Mal Kabulü Onayla (Stok Gir)</button>
   </form>
 </div>
-
-{{-- ===== SON MAL KABULLER ===== --}}
-<div class="rk-bolum"><span class="cubuk" style="background:var(--mor1)"></span><span class="b">Son Mal Kabuller</span>
-  <span class="rk-rozet" style="color:var(--mor1);background:color-mix(in srgb,var(--mor1) 13%,transparent);border-color:color-mix(in srgb,var(--mor1) 40%,transparent)">{{ $kabuller->count() }}</span></div>
-@if ($kabuller->isEmpty())
-  <div class="rk-card" style="text-align:center;padding:24px"><div class="rk-sub">Henüz mal kabul yok.</div></div>
-@else
-  <div class="rk-tablo">
-    <table>
-      <thead><tr><th>Tarih</th><th>Tedarikçi</th><th>İrsaliye</th><th class="sag"></th></tr></thead>
-      <tbody>
-        @foreach ($kabuller as $m)
-          <tr>
-            <td class="rk-sub2">{{ $m->tarih ? \Carbon\Carbon::parse($m->tarih)->format('d.m.Y') : '—' }}</td>
-            <td style="font-weight:600">{{ $m->tedarikci }}</td>
-            <td class="rk-sub">{{ $m->irsaliye_no ?: '—' }}</td>
-            <td class="sag"><a href="/mal-kabul-detay?id={{ $m->id }}" class="rk-btn bos" style="padding:6px 11px"><span class="material-icons-outlined" style="font-size:15px">visibility</span> Detay</a></td>
-          </tr>
-        @endforeach
-      </tbody>
-    </table>
-  </div>
-@endif
 
 {{-- Fotoğraf büyütme (lightbox) — data: URL yeni sekmede açılmaz, sayfa içinde göster --}}
 <div id="mkFotoTam" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;align-items:center;justify-content:center;padding:18px;cursor:zoom-out">
