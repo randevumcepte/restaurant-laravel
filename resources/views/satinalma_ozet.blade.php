@@ -102,7 +102,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     ['/satinalma-analiz','leaderboard','Analiz · Karne','#4F46E5'],
     ['/satinalma-asistan','smart_toy','AI Asistanı','#7C3AED'],
     ['/uretim-riski','warning_amber','Üretim Riski','#F59E0B'],
-    ['/eposta-hesaplari','alternate_email','E-posta (RFQ)','#7C3AED'],
   ];
 @endphp
 <div id="db">
