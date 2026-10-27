@@ -2717,6 +2717,7 @@ Route::get('/stok', fn () => view('stok_hub'));
 // Reçeteler (web sayfası) — Flutter recete_screen ile birebir. Ürün maliyeti + food-cost + yarı mamül.
 Route::get('/recete', function () {
     if (function_exists('_posKapi')) { $k = _posKapi(); if ($k) return $k; }
+    try { $_p = _posPersonel(); if ($_p && in_array(($_p->rol ?? ''), ['satinalmaci','satinalma'])) return redirect('/satinalma-ozet'); } catch (\Throwable $e) {}
     $urunler = collect(); $malzemeler = collect(); $birimler = collect(); $yarimamuller = collect();
     try {
         $mMap = _restoUrunMaliyetMap();
@@ -6729,7 +6730,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_stok', // satın alma talep havuzu + reçeteler
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', // satın alma talep havuzu; reçeteler menü/mutfak alanı — satın almacı görmez
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
         ];
     }

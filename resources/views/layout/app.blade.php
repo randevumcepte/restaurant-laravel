@@ -62,6 +62,7 @@
         ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
+            ['/recete', 'menu_book', 'Reçeteler (Yarı Mamül)', '#7C3AED'],
             ['/app-yonetim', 'palette', 'App Kartları / QR Menü', '#F6CE63'],
             ['/qr-menu-rengi', 'color_lens', 'QR Menü Rengi', '#EC4899'],
             ['/indirimler', 'local_offer', 'İndirimler', '#22C55E'],
@@ -71,7 +72,6 @@
             ['/satinalma-ozet', 'space_dashboard', 'Satın Alma Özeti', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
-            ['/recete', 'menu_book', 'Reçeteler (Yarı Mamül)', '#7C3AED'],
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Satınalma Siparişi', '#4F46E5'],
             ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
