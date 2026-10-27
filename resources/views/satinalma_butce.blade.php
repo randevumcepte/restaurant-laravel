@@ -21,7 +21,7 @@ body.koyu #bt{
 }
 #bt{background:var(--bg);min-height:calc(100vh - 60px)}
 #bt *{box-sizing:border-box}
-#bt .pano{max-width:1180px;margin:0 auto;padding:22px 22px 40px}
+#bt .pano{width:100%;margin:0;padding:22px 24px 40px}
 
 #bt .flash{border-radius:14px;padding:14px 18px;margin-bottom:16px;font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:10px;animation:bts .4s ease}
 #bt .flash.ok{background:linear-gradient(135deg,rgba(16,185,129,.14),rgba(52,211,153,.08));color:#047857;border:1px solid rgba(16,185,129,.3)}
@@ -90,7 +90,7 @@ body.koyu #bt{
 #bt .baslik b{font-size:15px;color:var(--ink)}
 #bt .baslik small{font-size:12px;color:var(--sub);margin-left:4px}
 
-#bt .ay-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+#bt .ay-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
 #bt .ay-kart{background:var(--card);border-radius:16px;box-shadow:var(--sh1);padding:16px;border:1px solid var(--line);transition:transform .18s,box-shadow .18s;position:relative;overflow:hidden}
 #bt .ay-kart:hover{transform:translateY(-3px);box-shadow:var(--sh2)}
 #bt .ay-kart .strip{position:absolute;top:0;left:0;right:0;height:4px}
@@ -111,6 +111,9 @@ body.koyu #bt{
 #bt .legend .lg .d{width:10px;height:10px;border-radius:50%}
 #bt .legend .lg b{color:var(--ink);font-weight:700}
 
+@media(max-width:1400px){
+  #bt .ay-grid{grid-template-columns:repeat(3,1fr)}
+}
 @media(max-width:900px){
   #bt .hero .orta{grid-template-columns:1fr;justify-items:center;text-align:center}
   #bt .kpiler{width:100%}
