@@ -34,12 +34,12 @@
         $hedef = $esik > 0 ? $esik * 2 : max(1, $stok);
         $yuzde = $hedef > 0 ? max(0, min(100, round($stok / $hedef * 100))) : 0;
         // Son hareket tarihi — insan okunabilir
-        $sonHareket = null; $sonHareketMetin = 'Hareket yok';
+        $sonHareket = null; $sonHareketMetin = 'Hareket yok'; $sonHareketGun = null;
         if (!empty($m->son_hareket)) {
             try {
                 $sonHareket = \Carbon\Carbon::parse($m->son_hareket);
-                $gun = $sonHareket->diffInDays(now());
-                $sonHareketMetin = $gun == 0 ? 'Bugün' : ($gun == 1 ? 'Dün' : $gun . ' gün önce');
+                $sonHareketGun = (int) floor($sonHareket->diffInDays(now()));
+                $sonHareketMetin = $sonHareketGun === 0 ? 'Bugün' : ($sonHareketGun === 1 ? 'Dün' : $sonHareketGun . ' gün önce');
             } catch (\Throwable $e) {}
         }
         return (object) [
@@ -59,7 +59,7 @@
             'durum_metin'  => $durumMetin,
             'yuzde'        => $yuzde,
             'son_hareket_metin' => $sonHareketMetin,
-            'son_hareket_gun'   => $sonHareket ? (int) $sonHareket->diffInDays(now()) : null,
+            'son_hareket_gun'   => $sonHareketGun,
         ];
     });
 

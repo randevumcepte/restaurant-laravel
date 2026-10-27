@@ -18255,7 +18255,7 @@ Route::get('/api/patron/malzemeler', function (Request $r) {
 
 Route::get('/api/patron/malzeme-detay', function (Request $r) {
     $p = _apiPersonel($r);
-    if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!$p || !in_array($p->rol, ['sahip', 'mudur', 'satinalmaci'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $m = DB::table('malzemeler')->where('id', (int) $r->id)->first();
     if (!$m) return ['ok' => 0, 'hata' => 'Malzeme bulunamadı'];
     $birim = DB::table('birimler')->where('id', $m->temel_birim_id)->value('kisaltma');
