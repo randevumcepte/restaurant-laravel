@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=3">
+    <link rel="stylesheet" href="/panel-kit.css?v=4">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -30,6 +30,49 @@
     .rk-modal-kapa{background:none;border:0;font-size:26px;line-height:1;color:var(--sub,#94a3b8);cursor:pointer;padding:0 4px}
     .rk-modal-govde{padding:16px 20px}
     .rk-modal-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line,#e5e7eb)}
+    /* ====== RK DIYALOG (alert/confirm/prompt yerine kendi popup'imiz) ====== */
+    .rkd-arka{position:fixed;inset:0;background:rgba(10,15,30,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:999999;padding:16px;opacity:0;animation:rkdFadeIn .18s ease forwards}
+    .rkd-arka.kapaniyor{animation:rkdFadeOut .14s ease forwards}
+    @keyframes rkdFadeIn{from{opacity:0}to{opacity:1}}
+    @keyframes rkdFadeOut{from{opacity:1}to{opacity:0}}
+    .rkd-kutu{background:var(--card,#fff);color:var(--ink,#1e293b);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.35);width:100%;max-width:440px;overflow:hidden;transform:scale(.94);animation:rkdPop .22s cubic-bezier(.34,1.56,.64,1) forwards}
+    @keyframes rkdPop{to{transform:scale(1)}}
+    .rkd-ust{display:flex;align-items:center;gap:12px;padding:20px 22px 10px}
+    .rkd-ikon{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .rkd-ikon .material-icons-outlined{font-size:26px;color:#fff}
+    .rkd-baslik{font-size:16px;font-weight:800;color:var(--ink,#1e293b);line-height:1.3}
+    .rkd-mesaj{padding:4px 22px 18px;font-size:14px;color:var(--ink,#1e293b);line-height:1.5;word-break:break-word;white-space:pre-wrap}
+    .rkd-input{display:block;width:calc(100% - 44px);margin:4px 22px 16px;padding:11px 13px;border:1.5px solid var(--line,#e2e8f0);border-radius:11px;font-size:14px;font-weight:600;background:var(--card,#fff);color:var(--ink,#1e293b);box-sizing:border-box}
+    .rkd-input:focus{outline:none;border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+    .rkd-foot{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px 20px;flex-wrap:wrap}
+    .rkd-btn{border:0;border-radius:11px;padding:10px 20px;font-weight:700;font-size:13.5px;cursor:pointer;transition:transform .12s,box-shadow .12s,background .12s;display:inline-flex;align-items:center;gap:6px;min-width:88px;justify-content:center}
+    .rkd-btn:hover{transform:translateY(-1px)}
+    .rkd-btn.iptal{background:var(--card2,#f1f5f9);color:var(--ink,#1e293b)}
+    .rkd-btn.iptal:hover{background:var(--line,#e2e8f0)}
+    .rkd-btn.ok{background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.3)}
+    .rkd-btn.ok:hover{box-shadow:0 6px 16px rgba(124,58,237,.4)}
+    .rkd-btn.tehlike{background:linear-gradient(135deg,#F43F5E,#E11D48);color:#fff;box-shadow:0 4px 12px rgba(244,63,94,.3)}
+    .rkd-btn.tehlike:hover{box-shadow:0 6px 16px rgba(244,63,94,.4)}
+    .rkd-i-ok{background:linear-gradient(135deg,#10B981,#059669)}
+    .rkd-i-wn{background:linear-gradient(135deg,#F59E0B,#D97706)}
+    .rkd-i-er{background:linear-gradient(135deg,#F43F5E,#E11D48)}
+    .rkd-i-info{background:linear-gradient(135deg,#4F46E5,#7C3AED)}
+    .rkd-i-sor{background:linear-gradient(135deg,#A855F7,#7C3AED)}
+    /* Toast */
+    .rkd-toast-pano{position:fixed;top:16px;right:16px;z-index:999998;display:flex;flex-direction:column;gap:10px;max-width:420px;pointer-events:none}
+    .rkd-toast{background:var(--card,#fff);color:var(--ink,#1e293b);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:12px 14px;display:flex;align-items:flex-start;gap:10px;border-left:4px solid #4F46E5;animation:rkdTIn .25s cubic-bezier(.34,1.56,.64,1);pointer-events:auto;font-size:13.5px;font-weight:600;line-height:1.4}
+    .rkd-toast.cikis{animation:rkdTOut .2s ease forwards}
+    .rkd-toast.ok{border-left-color:#10B981}
+    .rkd-toast.wn{border-left-color:#F59E0B}
+    .rkd-toast.er{border-left-color:#F43F5E}
+    .rkd-toast .ti{font-size:19px;flex-shrink:0}
+    .rkd-toast.ok .ti{color:#10B981}
+    .rkd-toast.wn .ti{color:#F59E0B}
+    .rkd-toast.er .ti{color:#F43F5E}
+    .rkd-toast.info .ti{color:#4F46E5}
+    @keyframes rkdTIn{from{transform:translateX(50px);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes rkdTOut{to{transform:translateX(50px);opacity:0}}
+    @media(max-width:560px){.rkd-toast-pano{top:auto;bottom:16px;left:16px;right:16px;max-width:none}@keyframes rkdTIn{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}}
     </style>
     @stack('head')
 </head>
@@ -295,6 +338,81 @@
   }
   function rkOnayKapat(){ document.getElementById('rkOnayModal').classList.remove('acik'); _rkOnayCb = null; }
   document.getElementById('rkOnayOk').addEventListener('click', function(){ var cb = _rkOnayCb; rkOnayKapat(); if (cb) cb(); });
+</script>
+
+{{-- ====== RK DİYALOG: toast (rkBilgi) + prompt (rkIste) + alert/prompt override ====== --}}
+<div id="rkdToastPano" class="rkd-toast-pano" aria-live="polite"></div>
+<script>
+  (function(){
+    // ---- Toast (alert replacement) ----
+    var _rkdIcons = { ok:'check_circle', wn:'warning', er:'error', info:'info' };
+    window.rkBilgi = function(mesaj, tip, sure){
+      tip = tip || 'info'; sure = sure || (tip==='er' ? 5500 : 3200);
+      var p = document.getElementById('rkdToastPano'); if(!p) return;
+      var t = document.createElement('div'); t.className = 'rkd-toast '+tip;
+      t.innerHTML = '<span class="material-icons-outlined ti">'+(_rkdIcons[tip]||'info')+'</span><span>'+String(mesaj).replace(/</g,'&lt;').replace(/\n/g,'<br>')+'</span>';
+      p.appendChild(t);
+      t.addEventListener('click', function(){ kapat(); });
+      var zt = setTimeout(kapat, sure);
+      function kapat(){ clearTimeout(zt); if(!t.parentNode) return; t.classList.add('cikis'); setTimeout(function(){ try{ p.removeChild(t); }catch(e){} }, 220); }
+    };
+    // alert → toast (otomatik tip algıla)
+    var _oriAlert = window.alert;
+    window.alert = function(m){
+      var s = String(m==null?'':m);
+      var tip = /hata|başarısız|basarisiz|olmadı|olmadi|yok\b|eksik|hatalı|hatali|geçersiz|gecersiz/i.test(s) ? 'er'
+              : /dikkat|uyarı|uyari|zaten|önce|once/i.test(s) ? 'wn'
+              : /oldu|başarı|basari|güncellendi|guncellendi|silindi|kaydedildi|eklendi|tamamlandı|tamamlandi/i.test(s) ? 'ok'
+              : 'info';
+      try { window.rkBilgi(s, tip); } catch(e){ _oriAlert(m); }
+    };
+
+    // ---- Prompt modal (callback) ----
+    var _rkdIsteKutu = null;
+    window.rkIste = function(mesaj, cb, opts){
+      opts = opts || {};
+      if (_rkdIsteKutu) return; // bir seferde tek
+      var ark = document.createElement('div'); ark.className='rkd-arka';
+      ark.innerHTML = '<div class="rkd-kutu" role="dialog" aria-modal="true">'
+        + '<div class="rkd-ust"><div class="rkd-ikon rkd-i-sor"><span class="material-icons-outlined">edit</span></div><div class="rkd-baslik">'+(opts.baslik||'Bilgi gir')+'</div></div>'
+        + '<div class="rkd-mesaj">'+String(mesaj||'').replace(/</g,'&lt;')+'</div>'
+        + '<input class="rkd-input" type="'+(opts.tip||'text')+'" placeholder="'+(opts.placeholder||'')+'" value="'+(opts.varsayilan||'').toString().replace(/"/g,'&quot;')+'">'
+        + '<div class="rkd-foot"><button type="button" class="rkd-btn iptal">'+(opts.iptal||'İptal')+'</button><button type="button" class="rkd-btn ok">'+(opts.ok||'Tamam')+'</button></div>'
+        + '</div>';
+      document.body.appendChild(ark);
+      _rkdIsteKutu = ark;
+      var inp = ark.querySelector('.rkd-input');
+      var btnOk = ark.querySelector('.rkd-btn.ok');
+      var btnIp = ark.querySelector('.rkd-btn.iptal');
+      setTimeout(function(){ inp.focus(); inp.select(); }, 60);
+      function kapat(deger){
+        ark.classList.add('kapaniyor');
+        setTimeout(function(){ try{ document.body.removeChild(ark); }catch(e){} _rkdIsteKutu=null; }, 150);
+        if (cb) cb(deger);
+      }
+      btnOk.onclick = function(){ kapat(inp.value); };
+      btnIp.onclick = function(){ kapat(null); };
+      ark.addEventListener('click', function(e){ if (e.target===ark) kapat(null); });
+      inp.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); kapat(inp.value); } if (e.key==='Escape') kapat(null); });
+    };
+
+    // ---- Onay modal yeni API (varyant) — rkOnay zaten var, bu da alternatif ----
+    // Tehlike + özelleştirilebilir ikon/metin isteyenler için (kirmizi tema otomatik)
+    window.rkSor = function(mesaj, cb, opts){
+      opts = opts || {};
+      var tehlike = !!opts.tehlike;
+      return window.rkOnay(mesaj, cb, tehlike ? 'var(--kirmizi)' : (opts.renk||null), opts.ok || (tehlike?'Sil':'Onayla'));
+    };
+
+    // ---- window.prompt override (kullanıcılara uyarı — sync değildir) ----
+    var _oriPrompt = window.prompt;
+    window.prompt = function(mesaj, varsayilan){
+      // Sync beklentisi olan eski kodu kırmamak için konsola uyar + modal göster (geri değer dönmez)
+      try { console.warn('[rkDiyalog] prompt() yerine rkIste(mesaj, cb) kullanın. Çağrı:', mesaj); } catch(e){}
+      window.rkIste(mesaj, function(){}, { varsayilan: varsayilan||'' });
+      return null;
+    };
+  })();
 </script>
 @stack('scripts')
 </body>
