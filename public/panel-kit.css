@@ -93,10 +93,10 @@ a{text-decoration:none}
 
 /* ---- Menu ikonu rozeti (iOS/Linear tarzi minimal) ---- */
 .rk-ikon-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
-.rk-badge{position:absolute;top:-4px;right:-7px;min-width:16px;height:16px;padding:0 4px;background:#EF4444;color:#fff;border-radius:999px;font-size:10px;font-weight:700;line-height:16px;text-align:center;letter-spacing:-.2px;box-shadow:0 0 0 2px var(--card),0 1px 3px rgba(0,0,0,.14);z-index:5;pointer-events:none;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
-.rk-menu a.aktif .rk-badge{box-shadow:0 0 0 2px color-mix(in srgb,var(--mor1) 13%,var(--card)),0 1px 3px rgba(0,0,0,.14)}
+.rk-badge{position:absolute;top:-3px;right:-6px;min-width:14px;height:14px;padding:0 3px;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:700;line-height:14px;text-align:center;letter-spacing:-.2px;box-shadow:0 0 0 1.5px var(--card),0 1px 2px rgba(0,0,0,.14);z-index:5;pointer-events:none;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+.rk-menu a.aktif .rk-badge{box-shadow:0 0 0 1.5px color-mix(in srgb,var(--mor1) 13%,var(--card)),0 1px 2px rgba(0,0,0,.14)}
 /* 3+ karakterli (99+ gibi) biraz daha genis */
-.rk-badge.cok{right:-10px;padding:0 5px}
+.rk-badge.cok{right:-9px;padding:0 4px}
 
 /* ---- Mobile sidebar drawer (<=640px) ---- */
 .rk-hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:7px;border-radius:9px;align-items:center;justify-content:center;margin-right:2px}
