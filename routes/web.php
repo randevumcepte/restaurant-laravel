@@ -7294,6 +7294,11 @@ if (!function_exists('_patronAiCagir')) {
         if (!config('services.resteos.patron_ai_v2', false)) return null;
         $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$key) return null;
+        // ÖĞRENEN ÖNBELLEK (tüm departman AI'ları kapsar): aynı system+user (veri değişince user değişir
+        // -> otomatik tazelenir) daha önce yanıtlandıysa BEDAVA dön; kredi/kota harcanmaz, tekrar Haiku'ya gitmez.
+        $onbKey = 'resto_ai_cagir:' . md5($system . '|' . $user);
+        $onbek = cache()->get($onbKey);
+        if ($onbek !== null) return $onbek;
         // İzin: departman/pool/günlük limit. Sistem (brief/cron) = $personel null -> izinli.
         if (function_exists('_aiIzin')) { $izin = _aiIzin($personel); if (!($izin['ok'] ?? true)) return null; }
         $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
@@ -14364,20 +14369,17 @@ Route::post('/api/patron/satinalma-asistan', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $soru = trim((string) $r->input('soru'));
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    // Sohbet (selam/teşekkür/veda) -> rapor DÖKME, kısa cevap (bedava)
+    if (function_exists('_satinalmaSohbetCevap')) { $sh = _satinalmaSohbetCevap($soru); if ($sh !== null) return response()->json(['ok' => 1, 'kaynak' => 'sohbet', 'cevap' => $sh]); }
     try {
         $baglam = function_exists('_satinalmaBaglam') ? _satinalmaBaglam($p->sube_id) : [];
-        $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
-        if (!$apiKey) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
-        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK (en fazla 5 cümle/madde). Rakamları yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma.';
-        $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
-            ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
-                'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 500, 'system' => $sys,
-                'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
-            ]);
-        if (!$resp->successful()) return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => _satinalmaKuralCevap($soru, $baglam)]);
-        $metin = trim((string) ($resp->json('content.0.text') ?? ''));
-        if ($metin === '') $metin = _satinalmaKuralCevap($soru, $baglam);
-        return response()->json(['ok' => 1, 'kaynak' => 'haiku', 'cevap' => $metin]);
+        $sys = 'Sen bir restoranın SATIN ALMA danışmanısın. SADECE verilen JSON verisine dayan. Türkçe, kısa, net, EYLEME DÖNÜK (en fazla 5 cümle/madde). Rakamları yorumla, somut aksiyon öner. Veri yetersizse dürüstçe söyle. Uydurma. ÖNEMLİ: Sadece selam/teşekkür/sohbet ise rapor DÖKME; kısa samimi karşılık ver.';
+        // Paylaşımlı çekirdek: öğrenen önbellek (aynı soru+veri = BEDAVA) + günlük kota
+        $cek = _aiSohbetCekirdek([
+            'alan' => 'satinalma', 'sube_id' => (int) $p->sube_id, 'soru' => $soru, 'baglam' => $baglam, 'sys' => $sys,
+            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam),
+        ]);
+        return response()->json(['ok' => 1, 'kaynak' => $cek['kaynak'], 'cevap' => $cek['cevap']]);
     } catch (\Throwable $e) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }
