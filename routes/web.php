@@ -13410,24 +13410,45 @@ Route::get('/satinalma-ozet', function () {
     if (function_exists('_rfqEnsure')) _rfqEnsure();
     if (function_exists('_butceEnsure')) _butceEnsure();
     $d = ['ad' => $bp->ad ?? ''];
+    $d['talep_yeni'] = $d['talep_teklif'] = $d['talep_onayda'] = 0;
     try {
-        $d['talep_yeni'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count();
-        $d['talep_teklif'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'teklif')->count();
-        $d['talep_onayda'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count();
-    } catch (\Throwable $e) { $d['talep_yeni'] = $d['talep_teklif'] = $d['talep_onayda'] = 0; }
+        foreach (DB::table('satinalma_talepleri')->where('sube_id', $sid)
+            ->whereIn('durum', ['yeni', 'teklif', 'onayda'])
+            ->selectRaw('durum, COUNT(*) as c')->groupBy('durum')->get() as $r) {
+            $d['talep_' . $r->durum] = (int) $r->c;
+        }
+    } catch (\Throwable $e) {}
     $d['teklif_geldi'] = 0; try { if (Schema::hasTable('rfq_gonderim')) $d['teklif_geldi'] = DB::table('rfq_gonderim')->where('sube_id', $sid)->where('durum', 'teklif_geldi')->count(); } catch (\Throwable $e) {}
     $d['acik_siparis'] = 0; try { if (Schema::hasTable('satinalma_siparisleri')) $d['acik_siparis'] = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])->count(); } catch (\Throwable $e) {}
-    $d['geciken'] = function_exists('_gecikenSiparisler') ? _gecikenSiparisler($sid) : 0;
-    $d['kritik'] = count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []);
-    $buAy = date('Y-m'); $hm = [];
-    try { if (Schema::hasTable('satinalma_siparisleri')) foreach (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->get(['tarih', 'genel_toplam']) as $s) { $a = substr((string) $s->tarih, 0, 7); $hm[$a] = ($hm[$a] ?? 0) + (float) $s->genel_toplam; } } catch (\Throwable $e) {}
-    $d['ay_harcama'] = (float) ($hm[$buAy] ?? 0);
-    $d['aylik'] = [];
-    for ($i = 5; $i >= 0; $i--) { $a = \Carbon\Carbon::now()->subMonths($i)->format('Y-m'); $d['aylik'][] = (object) ['ay' => $a, 'tutar' => (float) ($hm[$a] ?? 0)]; }
+    // Pahalı: geciken + kritik stok. Dashboard için 60 sn cache yeterli, çünkü sayım/sipariş hareketi anlık değil.
+    $d['geciken'] = cache()->remember("satinalma_ozet_geciken:$sid", 60, fn () => function_exists('_gecikenSiparisler') ? _gecikenSiparisler($sid) : 0);
+    $d['kritik'] = cache()->remember("satinalma_ozet_kritik:$sid", 60, fn () => count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []));
+    $buAy = date('Y-m');
+    $ayBas = $buAy . '-01';
+    $ayBit = date('Y-m-d', strtotime('first day of next month', strtotime($ayBas)));
+    $d['ay_harcama'] = 0.0;
+    try {
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $d['ay_harcama'] = (float) DB::table('satinalma_siparisleri')
+                ->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])
+                ->where('tarih', '>=', $ayBas)->where('tarih', '<', $ayBit)
+                ->sum('genel_toplam');
+        }
+    } catch (\Throwable $e) {}
     $d['ay_butce'] = 0; try { $d['ay_butce'] = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $buAy)->value('tutar') ?: 0); } catch (\Throwable $e) {}
     try {
-        $d['son_talepler'] = DB::table('satinalma_talepleri')->where('sube_id', $sid)->orderByDesc('created_at')->limit(6)->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at'])
-            ->map(function ($t) { $t->kalem = DB::table('talep_kalemleri')->where('talep_id', $t->id)->count(); return $t; });
+        $talepler = DB::table('satinalma_talepleri')->where('sube_id', $sid)
+            ->orderByDesc('created_at')->limit(6)
+            ->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at']);
+        $ids = $talepler->pluck('id')->all();
+        $kalemMap = $ids
+            ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)
+                ->selectRaw('talep_id, COUNT(*) as c')->groupBy('talep_id')->pluck('c', 'talep_id')
+            : collect();
+        $d['son_talepler'] = $talepler->map(function ($t) use ($kalemMap) {
+            $t->kalem = (int) ($kalemMap[$t->id] ?? 0);
+            return $t;
+        });
     } catch (\Throwable $e) { $d['son_talepler'] = collect(); }
     return view('satinalma_ozet', $d);
 });

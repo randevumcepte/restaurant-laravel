@@ -5,7 +5,7 @@
 
 @push('head')
 <style>
-  #sc{max-width:1000px}
+  #sc{max-width:1500px}
   .sc-blok{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--golge);padding:16px 18px;margin-bottom:14px}
   .sc-h{font-size:12.5px;font-weight:800;color:var(--sub2);letter-spacing:.3px;margin:0 0 12px;display:flex;align-items:center;gap:7px;text-transform:uppercase}
   .sc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}

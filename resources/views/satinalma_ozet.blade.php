@@ -9,7 +9,8 @@
   --card:#fff;--card2:#f1f5f9;--bg:#f8fafc;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0}
 body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650}
 #db{background:var(--bg);min-height:calc(100vh - 60px)}#db *{box-sizing:border-box}
-#db .pano{max-width:1200px;margin:0 auto;padding:20px 22px 32px}
+#db .pano{max-width:1600px;margin:0 auto;padding:20px 28px 32px}
+@media(min-width:1600px){#db .pano{padding:24px 40px 40px}#db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}#db .arac{padding:16px 10px}#db .arac .ai{width:48px;height:48px}#db .arac .ai .material-icons-outlined{font-size:24px}#db .arac .al{font-size:12.5px}}
 #db a{text-decoration:none;color:inherit}
 #db .selam-kart{background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
 #db .selam-ikon{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#FB923C,#F43F5E);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -83,9 +84,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   $selam = $saat < 12 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
   $selamIk = $saat < 18 ? 'wb_sunny' : 'nightlight';
   $tl0 = fn($v) => number_format((float)$v, 0, ',', '.') . ' ₺';
-  $aylarK = [1=>'Oca',2=>'Şub',3=>'Mar',4=>'Nis',5=>'May',6=>'Haz',7=>'Tem',8=>'Ağu',9=>'Eyl',10=>'Eki',11=>'Kas',12=>'Ara'];
-  $ayKisa = fn($ym) => $aylarK[(int)substr($ym,5,2)] ?? '';
-  $aylik = $aylik ?? [];
   $butceY = $ay_butce > 0 ? round($ay_harcama / $ay_butce * 100) : null;
   $butceC = $butceY === null ? 'var(--sub)' : ($butceY > 100 ? 'var(--kirmizi)' : ($butceY >= 85 ? 'var(--amber)' : 'var(--yesil)'));
   $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']];
@@ -129,7 +127,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       $oneriler = array_slice($oneriler, 0, 3);
     @endphp
     <div class="ai-panel">
-      <div class="aip-head"><span class="aip-orb"><span class="material-icons-outlined">auto_awesome</span></span> <span class="aip-baslik">AI Satın Alma Asistanı</span> <span class="aip-canli">● canlı</span></div>
+      <div class="aip-head"><span class="aip-orb"><span class="material-icons-outlined">auto_awesome</span></span> <span class="aip-baslik">AI Satın Alma Asistanı</span> <span class="aip-canli">● AI öneri</span></div>
       <div class="aip-body">
         @forelse ($oneriler as $o)
           <a href="{{ $o['link'] }}" class="aip-oneri">
@@ -143,11 +141,11 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       </div>
       <a href="/satinalma-asistan" class="aip-tumu">AI'ya soru sor · tüm öneriler <span class="material-icons-outlined" style="font-size:15px;vertical-align:-3px">arrow_forward</span></a>
     </div>
-    <div class="selam-harcama">
+    <a href="/satinalma-butce" class="selam-harcama" style="text-decoration:none">
       <div class="sh-lbl"><span class="material-icons-outlined" style="font-size:14px;vertical-align:-2px">payments</span> Bu Ay Harcama</div>
       <div class="sh-deger">{{ $tl0($ay_harcama) }}</div>
-      <div class="sh-alt" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımsız @endif</div>
-    </div>
+      <div class="sh-alt" style="color:{{ $butceC }}">@if($butceY!==null)%{{ $butceY }} bütçe @if($butceY>100)· aşım!@endif @else bütçe tanımla @endif</div>
+    </a>
   </div>
 
   {{-- 3 büyük kart --}}
@@ -177,7 +175,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     <a href="/satinalma-talep" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">how_to_reg</span></div><span class="bk-label">Onay Bekleyen</span></div><div class="bk-deger">{{ $talep_onayda }}</div><div class="bk-alt">talep</div></a>
     <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--mavi) 15%,transparent);color:var(--mavi)"><span class="material-icons-outlined">shopping_cart_checkout</span></div><span class="bk-label">Açık Sipariş</span></div><div class="bk-deger">{{ $acik_siparis }}</div><div class="bk-alt">devam eden</div></a>
     <a href="/satinalma-siparis" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--kirmizi) 15%,transparent);color:var(--kirmizi)"><span class="material-icons-outlined">running_with_errors</span></div><span class="bk-label">Geciken Teslim</span></div><div class="bk-deger" style="color:{{ $geciken>0?'var(--kirmizi)':'var(--ink)' }}">{{ $geciken }}</div><div class="bk-alt">sipariş</div></a>
-    <a href="/stok" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">inventory_2</span></div><span class="bk-label">Kritik Stok</span></div><div class="bk-deger" style="color:{{ $kritik>0?'var(--amber)':'var(--ink)' }}">{{ $kritik }}</div><div class="bk-alt">malzeme</div></a>
+    <a href="/siparis-onerisi" class="bilgi-kart"><div class="bk-row"><div class="bk-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">inventory_2</span></div><span class="bk-label">Kritik Stok</span></div><div class="bk-deger" style="color:{{ $kritik>0?'var(--amber)':'var(--ink)' }}">{{ $kritik }}</div><div class="bk-alt">malzeme</div></a>
   </div>
 
   {{-- Satın Alma Araçları --}}
