@@ -88,9 +88,6 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   $butceC = $butceY === null ? 'var(--sub)' : ($butceY > 100 ? 'var(--kirmizi)' : ($butceY >= 85 ? 'var(--amber)' : 'var(--yesil)'));
   $dr = ['yeni'=>['Yeni','var(--mavi)'],'teklif'=>['Teklif','var(--mor1)'],'onayda'=>['Onayda','var(--amber)'],'onaylandi'=>['Onaylandı','var(--yesil)'],'siparis'=>['Siparişte','#0EA5E9'],'tamamlandi'=>['Tamam','var(--yesil)']];
   $araclar = [
-    ['/satinalma-talep','assignment','Talep Oluştur','#7C3AED'],
-    ['/gelen-teklifler','mark_email_read','Gelen Teklifler','#10B981'],
-    ['/satinalma-siparis','shopping_cart_checkout','Siparişler','#4F46E5'],
     ['/mal-kabul','inventory','Mal Kabul','#10B981'],
     ['/fatura-eslestir','fact_check','Fatura Eşleştir','#F59E0B'],
     ['/fatura-ocr','document_scanner','Fatura OCR','#7C3AED'],
