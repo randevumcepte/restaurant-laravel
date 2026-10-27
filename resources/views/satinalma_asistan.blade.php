@@ -54,7 +54,8 @@
   #saArac .sa-sayac .dot{width:6px;height:6px;border-radius:50%;background:var(--yesil);box-shadow:0 0 8px var(--yesil)}
 
   /* --- Chat alanı --- */
-  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 20px}
+  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 200px}
+  #saChat > *{scroll-margin-bottom:180px}
   .sa-msg{max-width:88%;padding:12px 15px;border-radius:16px;font-size:13.5px;line-height:1.6;
     white-space:pre-wrap;word-wrap:break-word;animation:saIn .25s ease-out}
   @keyframes saIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
