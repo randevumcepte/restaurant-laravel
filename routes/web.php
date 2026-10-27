@@ -13441,7 +13441,7 @@ Route::get('/satinalma-ozet', function () {
     $d['ay_butce'] = 0; try { $d['ay_butce'] = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $buAy)->value('tutar') ?: 0); } catch (\Throwable $e) {}
     try {
         $talepler = DB::table('satinalma_talepleri')->where('sube_id', $sid)
-            ->orderByDesc('created_at')->limit(6)
+            ->orderByDesc('created_at')->limit(5)
             ->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at']);
         $ids = $talepler->pluck('id')->all();
         $kalemMap = $ids
@@ -13453,6 +13453,34 @@ Route::get('/satinalma-ozet', function () {
             return $t;
         });
     } catch (\Throwable $e) { $d['son_talepler'] = collect(); }
+    // Yaklasan teslimler: beklenen_teslim +7 gun icinde, acik siparisler
+    $d['yaklasan_teslimler'] = collect();
+    try {
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $d['yaklasan_teslimler'] = DB::table('satinalma_siparisleri')
+                ->leftJoin('tedarikciler', 'satinalma_siparisleri.tedarikci_id', '=', 'tedarikciler.id')
+                ->where('satinalma_siparisleri.sube_id', $sid)
+                ->whereIn('satinalma_siparisleri.durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])
+                ->whereNotNull('satinalma_siparisleri.beklenen_teslim')
+                ->where('satinalma_siparisleri.beklenen_teslim', '<=', today()->addDays(7))
+                ->orderBy('satinalma_siparisleri.beklenen_teslim')->limit(5)
+                ->get(['satinalma_siparisleri.id', 'satinalma_siparisleri.siparis_no', 'satinalma_siparisleri.beklenen_teslim', 'satinalma_siparisleri.genel_toplam', 'tedarikciler.ad as tedarikci']);
+        }
+    } catch (\Throwable $e) {}
+    // Son fiyat hareketleri: sari/kirmizi uyarili fatura kalemleri (son 30 gun)
+    $d['son_fiyat_hareketleri'] = collect();
+    try {
+        if (Schema::hasTable('alis_fatura_kalemleri')) {
+            $d['son_fiyat_hareketleri'] = DB::table('alis_fatura_kalemleri')
+                ->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+                ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
+                ->where('alis_faturalari.sube_id', $sid)
+                ->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
+                ->where('alis_faturalari.tarih', '>=', today()->subDays(30))
+                ->orderByDesc('alis_faturalari.tarih')->limit(5)
+                ->get(['malzemeler.ad', 'alis_fatura_kalemleri.uyari', 'alis_fatura_kalemleri.fiyat_farki_yuzde', 'alis_fatura_kalemleri.birim_fiyat', 'alis_faturalari.tarih']);
+        }
+    } catch (\Throwable $e) {}
     return view('satinalma_ozet', $d);
 });
 // ===== TEDARİKÇİ KARNESİ (scorecard): zamanında teslim % + sipariş hacmi + gecikme =====

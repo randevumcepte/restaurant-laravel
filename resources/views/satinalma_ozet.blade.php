@@ -39,6 +39,9 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .bk-deger{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px;line-height:1;margin-bottom:3px}
 #db .bk-alt{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #db .kart{background:var(--card);border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:16px;margin-bottom:16px}
+#db .ucgen-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+#db .ucgen-grid > .kart{margin-bottom:0}
+@media(max-width:1100px){#db .ucgen-grid{grid-template-columns:1fr}}
 #db .kart-baslik{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 #db .kb-ikon{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #db .kb-ikon .material-icons-outlined{font-size:17px}
@@ -189,19 +192,63 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   </div>
   @endif
 
-  {{-- Son talepler --}}
-  <div class="kart">
-    <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">history</span></div><span class="kb-ad">Son Talepler</span></div>
-    @forelse ($son_talepler as $t)
-      @php [$dm,$dc] = $dr[$t->durum] ?? [$t->durum,'var(--sub)']; @endphp
-      <a href="/satinalma-talep" class="bek-satir">
-        <span class="material-icons-outlined" style="color:var(--sub);font-size:19px">assignment</span>
-        <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:var(--ink)">{{ $t->departman }}</div><div style="font-size:11.5px;color:var(--sub)">{{ $t->isteyen_ad }} · {{ $t->kalem }} kalem · {{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</div></div>
-        <span class="roz" style="background:{{ $dc }}">{{ $dm }}</span>
-      </a>
-    @empty
-      <div style="color:var(--sub);text-align:center;padding:16px">Henüz talep yok.</div>
-    @endforelse
+  {{-- Operasyonel üçgen: Son Talepler (iş geliyor) + Yaklaşan Teslimler (iş teslim) + Fiyat Hareketleri (sinyaller) --}}
+  <div class="ucgen-grid">
+    {{-- Son Talepler --}}
+    <div class="kart">
+      <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">history</span></div><span class="kb-ad">Son Talepler</span></div>
+      @forelse ($son_talepler as $t)
+        @php [$dm,$dc] = $dr[$t->durum] ?? [$t->durum,'var(--sub)']; @endphp
+        <a href="/satinalma-talep" class="bek-satir">
+          <span class="material-icons-outlined" style="color:var(--sub);font-size:19px">assignment</span>
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $t->departman }}</div><div style="font-size:11.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $t->isteyen_ad }} · {{ $t->kalem }} kalem · {{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</div></div>
+          <span class="roz" style="background:{{ $dc }}">{{ $dm }}</span>
+        </a>
+      @empty
+        <div style="color:var(--sub);text-align:center;padding:16px;font-size:12.5px">Henüz talep yok.</div>
+      @endforelse
+    </div>
+
+    {{-- Yaklaşan Teslimler --}}
+    <div class="kart">
+      <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,#0EA5E9 15%,transparent);color:#0EA5E9"><span class="material-icons-outlined">local_shipping</span></div><span class="kb-ad">Yaklaşan Teslimler</span><span style="margin-left:auto;font-size:11px;color:var(--sub);font-weight:600">7 gün</span></div>
+      @forelse ($yaklasan_teslimler as $s)
+        @php
+          $bt = \Carbon\Carbon::parse($s->beklenen_teslim)->startOfDay();
+          $bg = today()->startOfDay()->diffInDays($bt, false);
+          if ($bg < 0)      [$dm,$dc] = [abs($bg).' gün geciken','var(--kirmizi)'];
+          elseif ($bg == 0) [$dm,$dc] = ['Bugün','var(--amber)'];
+          elseif ($bg == 1) [$dm,$dc] = ['Yarın','var(--amber)'];
+          else              [$dm,$dc] = [$bg.' gün sonra','var(--mavi)'];
+        @endphp
+        <a href="/satinalma-siparis" class="bek-satir">
+          <span class="material-icons-outlined" style="color:var(--sub);font-size:19px">inventory_2</span>
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $s->tedarikci ?: 'Tedarikçi —' }}</div><div style="font-size:11.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $s->siparis_no ?: '#'.$s->id }} · {{ $tl0($s->genel_toplam) }}</div></div>
+          <span class="roz" style="background:{{ $dc }}">{{ $dm }}</span>
+        </a>
+      @empty
+        <div style="color:var(--sub);text-align:center;padding:16px;font-size:12.5px">Önümüzdeki 7 günde teslim yok.</div>
+      @endforelse
+    </div>
+
+    {{-- Fiyat Hareketleri --}}
+    <div class="kart">
+      <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,#EC4899 15%,transparent);color:#EC4899"><span class="material-icons-outlined">trending_up</span></div><span class="kb-ad">Fiyat Hareketleri</span><span style="margin-left:auto;font-size:11px;color:var(--sub);font-weight:600">30 gün</span></div>
+      @forelse ($son_fiyat_hareketleri as $f)
+        @php
+          $dc = $f->uyari === 'kirmizi' ? 'var(--kirmizi)' : 'var(--amber)';
+          $yz = (float) $f->fiyat_farki_yuzde;
+          $isaret = $yz > 0 ? '+' : '';
+        @endphp
+        <a href="/fiyat-radari" class="bek-satir">
+          <span class="material-icons-outlined" style="color:{{ $dc }};font-size:19px">{{ $yz > 0 ? 'north_east' : 'south_east' }}</span>
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $f->ad }}</div><div style="font-size:11.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ number_format((float) $f->birim_fiyat, 2, ',', '.') }} ₺ · {{ \Carbon\Carbon::parse($f->tarih)->diffForHumans() }}</div></div>
+          <span class="roz" style="background:{{ $dc }}">{{ $isaret }}{{ number_format($yz, 1, ',', '.') }}%</span>
+        </a>
+      @empty
+        <div style="color:var(--sub);text-align:center;padding:16px;font-size:12.5px">Fiyat uyarısı yok — sakin.</div>
+      @endforelse
+    </div>
   </div>
 
 </div>
