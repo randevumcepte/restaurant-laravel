@@ -10,7 +10,7 @@
 body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650}
 #db{background:var(--bg);min-height:calc(100vh - 60px)}#db *{box-sizing:border-box}
 #db .pano{padding:0 0 24px}
-@media(min-width:1600px){#db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}#db .arac{padding:16px 10px}#db .arac .ai{width:48px;height:48px}#db .arac .ai .material-icons-outlined{font-size:24px}#db .arac .al{font-size:12.5px}}
+@media(min-width:1600px){#db .arac-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}#db .arac{padding:16px 10px}#db .arac .ai{width:48px;height:48px}#db .arac .ai .material-icons-outlined{font-size:24px}#db .arac .al{font-size:12.5px}}
 #db a{text-decoration:none;color:inherit}
 #db .selam-kart{background:var(--card);border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.07);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
 #db .selam-ikon{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#FB923C,#F43F5E);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -50,7 +50,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #db .bek-satir{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
 #db .bek-satir:first-of-type{border-top:none}
 #db .roz{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;flex-shrink:0}
-#db .arac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:10px;margin-bottom:16px}
+#db .arac-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:10px;margin-bottom:16px}
 #db .arac{--c:#7C3AED;background:color-mix(in srgb,var(--c) 7%,var(--card));border:1px solid color-mix(in srgb,var(--c) 16%,transparent);border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.04);padding:14px 8px;text-align:center;transition:transform .14s ease,box-shadow .14s ease,background .14s ease,border-color .14s ease;display:block}
 #db .arac:hover{transform:translateY(-2px);background:color-mix(in srgb,var(--c) 13%,var(--card));border-color:color-mix(in srgb,var(--c) 32%,transparent);box-shadow:0 6px 18px color-mix(in srgb,var(--c) 22%,transparent)}
 #db .arac .ai{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 7px;background:color-mix(in srgb,var(--c) 20%,var(--card));color:var(--c)}
@@ -98,7 +98,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   #db .selam-kart .ad{font-size:15px}
   #db .ciro-deger{font-size:22px}
   #db .bk-deger{font-size:19px}
-  #db .arac-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+  #db .arac-grid{grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
   #db .arac{padding:12px 6px}
   #db .arac .ai{width:36px;height:36px}
   #db .arac .ai .material-icons-outlined{font-size:19px}
