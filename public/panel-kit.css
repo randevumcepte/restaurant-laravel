@@ -91,6 +91,12 @@ a{text-decoration:none}
 .rk-grid{display:grid;gap:16px}
 .rk-sub{color:var(--sub)} .rk-sub2{color:var(--sub2)} .rk-ink{color:var(--ink)}
 
+/* ---- Menu ikonu rozeti (iPhone bildirim tarzi) ---- */
+.rk-ikon-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.rk-badge{position:absolute;top:-6px;right:-10px;min-width:18px;height:18px;padding:0 5px;background:#F43F5E;color:#fff;border-radius:12px;font-size:10.5px;font-weight:800;line-height:18px;text-align:center;letter-spacing:-.3px;box-shadow:0 2px 6px rgba(244,63,94,.45);border:2px solid var(--card);animation:rkBadgePulse 2.4s ease-out infinite;z-index:5;pointer-events:none}
+@keyframes rkBadgePulse{0%{box-shadow:0 0 0 0 rgba(244,63,94,.5),0 2px 6px rgba(244,63,94,.45)}70%{box-shadow:0 0 0 7px rgba(244,63,94,0),0 2px 6px rgba(244,63,94,.45)}100%{box-shadow:0 0 0 0 rgba(244,63,94,0),0 2px 6px rgba(244,63,94,.45)}}
+.rk-menu a.aktif .rk-badge{border-color:color-mix(in srgb,var(--mor1) 13%,var(--card))}
+
 /* ---- Mobile sidebar drawer (<=640px) ---- */
 .rk-hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:7px;border-radius:9px;align-items:center;justify-content:center;margin-right:2px}
 .rk-hamburger:hover{background:var(--card2)}

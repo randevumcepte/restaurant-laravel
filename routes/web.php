@@ -13556,6 +13556,57 @@ Route::get('/tedarikci-karne', function () {
     return view('tedarikci_karne', ['rows' => $rows]);
 });
 // ===== SATINALMA BÜTÇE (aylık bütçe vs gerçek harcama) =====
+// ===== MENU BADGE'LERI: sidebar ikonlarina rozet sayilari ===================
+// Her sayfada layout tarafindan cagrilir, 60sn cache ile sorgu yuku minimum tutulur.
+if (!function_exists('_menuBadgeler')) {
+    function _menuBadgeler($sid)
+    {
+        return cache()->remember("menu_badges:$sid", 60, function () use ($sid) {
+            $b = [];
+            try {
+                // Satin alma: kritik stok + yeni talep + teklif + geciken (ozet toplami)
+                $kritik = 0;
+                try { $kritik = count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []); } catch (\Throwable $e) {}
+                $yeniTalep = 0;
+                try { if (Schema::hasTable('satinalma_talepleri')) $yeniTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count(); } catch (\Throwable $e) {}
+                $teklif = 0;
+                try { if (Schema::hasTable('rfq_gonderim')) $teklif = (int) DB::table('rfq_gonderim')->where('sube_id', $sid)->where('durum', 'teklif_geldi')->count(); } catch (\Throwable $e) {}
+                $geciken = 0;
+                try { $geciken = function_exists('_gecikenSiparisler') ? (int) _gecikenSiparisler($sid) : 0; } catch (\Throwable $e) {}
+                $toplam = $kritik + $yeniTalep + $teklif + $geciken;
+                if ($toplam > 0)   $b['/satinalma-ozet']  = $toplam;
+                if ($yeniTalep > 0) $b['/satinalma-talep'] = $yeniTalep;
+                if ($teklif > 0)   $b['/gelen-teklifler'] = $teklif;
+                if ($geciken > 0)  $b['/satinalma-siparis'] = $geciken;
+            } catch (\Throwable $e) {}
+            try {
+                // Garson cagrilari: bekleyen
+                if (Schema::hasTable('masa_cagrilari')) {
+                    $cagri = (int) DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->count();
+                    if ($cagri > 0) $b['/garson-cagrilari'] = $cagri;
+                }
+            } catch (\Throwable $e) {}
+            try {
+                // Mutfak: hazirlanacak kalemler (durum='yeni', iptal degil, bu subedeki acik adisyonlardan)
+                if (Schema::hasTable('adisyon_kalemleri') && Schema::hasTable('adisyonlar')) {
+                    $mutfak = (int) DB::table('adisyon_kalemleri')
+                        ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                        ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')
+                        ->where('adisyon_kalemleri.durum', 'yeni')->count();
+                    if ($mutfak > 0) $b['/mutfak'] = $mutfak;
+                }
+            } catch (\Throwable $e) {}
+            try {
+                // IK Adaylari: yeni basvuru
+                if (Schema::hasTable('ik_adaylar')) {
+                    $aday = (int) DB::table('ik_adaylar')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+                    if ($aday > 0) $b['/ik-aday'] = $aday;
+                }
+            } catch (\Throwable $e) {}
+            return $b;
+        });
+    }
+}
 if (!function_exists('_butceEnsure')) {
     function _butceEnsure()
     {
@@ -17010,6 +17061,8 @@ function _restoPersonelKolonEnsure()
         'ise_cikis' => "ALTER TABLE personeller ADD COLUMN ise_cikis DATE NULL",             // ayrılış tarihi (personel devir / turnover)
         'acil_kisi' => "ALTER TABLE personeller ADD COLUMN acil_kisi VARCHAR(80) NULL",      // acil durumda aranacak kişi
         'acil_tel' => "ALTER TABLE personeller ADD COLUMN acil_tel VARCHAR(20) NULL",        // acil durum telefonu
+        // PROFİL — kişisel avatar (data:URL formatında; mobil app upload eder, ~300KB üstü backend reddeder)
+        'foto' => "ALTER TABLE personeller ADD COLUMN foto MEDIUMTEXT NULL",
     ];
     foreach ($ekle as $kol => $sql) {
         if (!Schema::hasColumn('personeller', $kol)) DB::statement($sql);

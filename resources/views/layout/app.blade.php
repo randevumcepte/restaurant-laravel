@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=6">
+    <link rel="stylesheet" href="/panel-kit.css?v=7">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -194,6 +194,10 @@
         $kulRol = $_kadlar[$_kad]['ad'] ?? (['sahip'=>'Sahip','mudur'=>'Müdür','kasa'=>'Kasa','garson'=>'Garson','mutfak'=>'Mutfak'][$_pp->rol ?? ''] ?? ($_pp->rol ?? 'Panel'));
     }
     $_harita = function_exists('_sayfaYetkiHaritasi') ? _sayfaYetkiHaritasi() : [];
+    // Menu badge sayilari (yeni talep, kritik stok, cagri vb.) — 60sn cache
+    $_menuBadge = [];
+    try { if (function_exists('_menuBadgeler') && function_exists('_aktifSubeId')) $_menuBadge = _menuBadgeler(_aktifSubeId()); } catch (\Throwable $e) {}
+    $_badgeMetin = fn($n) => $n > 99 ? '99+' : (string) $n;
 @endphp
 <div class="rk-wrap">
     <div class="rk-side-backdrop" id="rkSideBackdrop" onclick="rkSideTog(false)"></div>
@@ -219,9 +223,16 @@
                     <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
                     <div class="rk-grp-body">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
-                            @php $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url)); @endphp
+                            @php
+                                $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url));
+                                $badge = $_menuBadge[$url] ?? 0;
+                            @endphp
                             <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
-                                <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span> {{ $ad }}
+                                <span class="rk-ikon-wrap">
+                                    <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span>
+                                    @if ($badge > 0)<span class="rk-badge">{{ $_badgeMetin($badge) }}</span>@endif
+                                </span>
+                                {{ $ad }}
                             </a>
                         @endforeach
                     </div>
