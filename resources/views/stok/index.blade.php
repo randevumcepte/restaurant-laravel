@@ -1,6 +1,7 @@
 @extends('layout.app')
 @section('title', 'Stok / Malzeme')
 @section('rk_ikon', 'inventory_2')
+@section('rk_geri', '/stok')
 @section('baslik', 'Stok / Malzeme')
 
 @php

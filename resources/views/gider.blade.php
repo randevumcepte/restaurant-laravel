@@ -1,6 +1,7 @@
 @extends('layout.app')
 @section('title', 'Giderler')
 @section('rk_ikon', 'receipt_long')
+@section('rk_geri', '/stok')
 @section('baslik', 'Giderler')
 
 @push('head')

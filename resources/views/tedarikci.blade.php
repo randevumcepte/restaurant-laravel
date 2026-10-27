@@ -1,6 +1,7 @@
 @extends('layout.app')
 @section('title', 'Tedarikçiler')
 @section('rk_ikon', 'local_shipping_outlined')
+@section('rk_geri', '/stok')
 @section('baslik', 'Tedarikçiler')
 
 @php
