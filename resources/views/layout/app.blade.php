@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=4">
+    <link rel="stylesheet" href="/panel-kit.css?v=5">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -321,9 +321,10 @@
   </div>
 </div>
 <script>
-  var _rkOnayCb = null;
-  function rkOnay(mesaj, cb, renk, okLabel){
+  var _rkOnayCb = null, _rkOnayIptalCb = null;
+  function rkOnay(mesaj, cb, renk, okLabel, iptalCb){
     _rkOnayCb = cb || null;
+    _rkOnayIptalCb = iptalCb || null;
     document.getElementById('rkOnayMsg').textContent = mesaj;
     var b = document.getElementById('rkOnayOk');
     b.style.background = renk || 'var(--mor1)';
@@ -332,12 +333,20 @@
     document.getElementById('rkOnayModal').classList.add('acik');
     return false;
   }
-  // Form onsubmit için: return rkOnayForm(this, 'mesaj', 'renk', 'OK etiketi')
   function rkOnayForm(form, mesaj, renk, okLabel){
     return rkOnay(mesaj, function(){ HTMLFormElement.prototype.submit.call(form); }, renk, okLabel);
   }
-  function rkOnayKapat(){ document.getElementById('rkOnayModal').classList.remove('acik'); _rkOnayCb = null; }
-  document.getElementById('rkOnayOk').addEventListener('click', function(){ var cb = _rkOnayCb; rkOnayKapat(); if (cb) cb(); });
+  // Promise sürümü: const ok = await rkOnayP('mesaj', 'var(--kirmizi)', 'Sil'); if (!ok) return;
+  window.rkOnayP = function(mesaj, renk, okLabel){
+    return new Promise(function(res){ rkOnay(mesaj, function(){ res(true); }, renk, okLabel, function(){ res(false); }); });
+  };
+  function rkOnayKapat(){
+    var ic = _rkOnayIptalCb;
+    document.getElementById('rkOnayModal').classList.remove('acik');
+    _rkOnayCb = null; _rkOnayIptalCb = null;
+    if (ic) try { ic(); } catch(e){}
+  }
+  document.getElementById('rkOnayOk').addEventListener('click', function(){ var cb = _rkOnayCb; _rkOnayCb = null; _rkOnayIptalCb = null; document.getElementById('rkOnayModal').classList.remove('acik'); if (cb) cb(); });
 </script>
 
 {{-- ====== RK DİYALOG: toast (rkBilgi) + prompt (rkIste) + alert/prompt override ====== --}}

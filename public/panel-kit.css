@@ -91,17 +91,17 @@ a{text-decoration:none}
 .rk-grid{display:grid;gap:16px}
 .rk-sub{color:var(--sub)} .rk-sub2{color:var(--sub2)} .rk-ink{color:var(--ink)}
 
-/* ---- Mobile sidebar drawer (<=900px) ---- */
+/* ---- Mobile sidebar drawer (<=640px) ---- */
 .rk-hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:7px;border-radius:9px;align-items:center;justify-content:center;margin-right:2px}
 .rk-hamburger:hover{background:var(--card2)}
 .rk-hamburger .material-icons-outlined{font-size:24px}
 .rk-side-backdrop{display:none;position:fixed;inset:0;background:rgba(10,15,30,.45);z-index:29;opacity:0;transition:opacity .22s ease}
 .rk-side-backdrop.acik{display:block;opacity:1}
-@media(max-width:900px){
+@media(max-width:640px){
   .rk-hamburger{display:inline-flex}
   .rk-side{transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:0 12px 42px rgba(0,0,0,.3)}
   .rk-side.acik{transform:translateX(0)}
-  .rk-main{margin-left:0}
+  .rk-main{margin-left:0 !important}
   .rk-header{padding:12px 14px}
   .rk-body{padding:14px 14px}
 }
@@ -113,8 +113,8 @@ a{text-decoration:none}
   .rk-header .ikon .material-icons-outlined{font-size:19px}
 }
 
-/* ---- Masaüstü hover-expand sidebar (yalnizca >=901px) ---- */
-@media(min-width:901px){
+/* ---- Hover-expand sidebar (tablet landscape ve ustunde >=641px) ---- */
+@media(min-width:641px){
   /* Collapsed default: dar sidebar, sadece ikonlar */
   .rk-side{width:68px !important;flex:0 0 68px !important;overflow:hidden;transition:width .25s cubic-bezier(.4,0,.2,1)}
   .rk-side:hover{width:258px !important;flex:0 0 258px !important;z-index:40;box-shadow:4px 0 24px rgba(0,0,0,.12)}
