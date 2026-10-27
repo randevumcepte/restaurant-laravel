@@ -15,13 +15,31 @@
     <style>
     html._koyu body{}
     .rk-grp{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;
-      font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;opacity:.72;
-      padding:12px 16px 7px;margin-top:3px;border-top:1px solid rgba(120,120,140,.14)}
+      font-size:11.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;opacity:.85;color:#334155;
+      padding:13px 16px 8px;margin-top:4px;border-top:1px solid rgba(120,120,140,.14)}
+    body.koyu .rk-grp{color:#cbd5e1}
     .rk-grp:first-of-type{border-top:0;margin-top:0}
     .rk-grp:hover{opacity:1}
     .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.7}
     .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
     .rk-grp.kapali + .rk-grp-body{display:none}
+    /* ÖNE ÇIKAN GRUP (Satın Alma — pinned) */
+    .rk-grp.one{
+      background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(79,70,229,.08));
+      border:1px solid rgba(124,58,237,.3);border-radius:12px;
+      margin:8px 10px 0;padding:11px 14px 10px;
+      font-size:12.5px;font-weight:900;letter-spacing:.5px;
+      color:#7C3AED;opacity:1;border-top:1px solid rgba(124,58,237,.3);
+      box-shadow:0 2px 10px rgba(124,58,237,.12);
+    }
+    body.koyu .rk-grp.one{
+      background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(79,70,229,.12));
+      border-color:rgba(124,58,237,.45);color:#a78bfa;
+      box-shadow:0 2px 10px rgba(124,58,237,.18);
+    }
+    .rk-grp.one::before{content:'';display:inline-block;width:4px;height:14px;background:linear-gradient(180deg,#7C3AED,#4F46E5);border-radius:3px;margin-right:9px;vertical-align:-2px}
+    .rk-grp.one + .rk-grp-body{padding:0 8px}
+    .rk-grp.one + .rk-grp-body a{border-radius:11px;margin:3px 0}
     /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
     .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
     .rk-modal-arka.acik{display:flex}
@@ -181,6 +199,32 @@
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
         ['/entegrasyonlar', 'hub', 'Entegrasyonlar (Gmail/Takvim)', '#4F46E5'],
     ]] + $gruplar;
+
+    // ===== SATIN ALMACI'ya ÖZEL MENÜ DÜZENİ =====
+    $_pp = null; try { if (function_exists('_posPersonel')) $_pp = _posPersonel(); } catch (\Throwable $e) {}
+    $_ppRol = $_pp->rol ?? '';
+    if ($_pp && in_array($_ppRol, ['satinalmaci','satinalma'])) {
+        if (isset($gruplar['Menü & Ürünler'])) unset($gruplar['Menü & Ürünler']);
+        $_ozetI = null; $_aiI = null;
+        if (isset($gruplar['Stok & Tedarik'])) {
+            $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI) {
+                if ($it[0] === '/satinalma-ozet')    { $_ozetI = $it; return false; }
+                if ($it[0] === '/satinalma-asistan') { $_aiI  = $it; return false; }
+                return true;
+            }));
+        }
+        $_yeni = [];
+        $_pin = [];
+        if ($_ozetI) $_pin[] = $_ozetI;
+        if ($_aiI)   $_pin[] = $_aiI;
+        if ($_pin)   $_yeni['Satın Alma'] = $_pin;
+        if (isset($gruplar['Stok & Tedarik'])) { $_yeni['Stok & Satın Alma'] = $gruplar['Stok & Tedarik']; unset($gruplar['Stok & Tedarik']); }
+        $_dept = $gruplar['Departman Operasyon'] ?? null; unset($gruplar['Departman Operasyon']);
+        foreach ($gruplar as $_gad => $_items) { $_yeni[$_gad] = $_items; }
+        if ($_dept) $_yeni['Departman Operasyon'] = $_dept;
+        $gruplar = $_yeni;
+    }
+
     $path = '/' . trim(request()->path(), '/');
     $aktifSubeAd = 'ResteOS';
     try { if (function_exists('_aktifSubeId')) { $aktifSubeAd = optional(\DB::table('subeler')->where('id', _aktifSubeId())->first())->ad ?: 'ResteOS'; } } catch (\Throwable $e) {}
@@ -219,8 +263,9 @@
                     }));
                     $grupAktif = collect($gorunur)->contains(fn ($it) => $it[0] === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $it[0]));
                 @endphp
+                @php $_oneCikan = in_array($grupAd, ['Satın Alma', 'Stok & Satın Alma']); @endphp
                 @if (count($gorunur))
-                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}{{ $_oneCikan ? ' one' : '' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
                     <div class="rk-grp-body">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
                             @php
