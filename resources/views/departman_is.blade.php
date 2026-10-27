@@ -26,13 +26,19 @@ body.koyu #dis { --card:#1b2235; --card2:#161C2E; --ink:#e2e8f0; --sub:#a4b1c7; 
 #dis .dis-sek .sayac { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:18px; padding:0 6px; border-radius:999px; background:color-mix(in srgb, currentColor 15%, transparent); font-size:11px; font-weight:800; }
 #dis .dis-sek.aktif .sayac { background:rgba(255,255,255,.28); }
 
-/* --- Özet rozetleri --- */
+/* --- Özet rozetleri (tıklanabilir filtre) --- */
 #dis .dis-ozet { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
-#dis .dis-rozet { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; flex:1; min-width:135px; }
+#dis .dis-rozet { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; flex:1; min-width:135px; cursor:pointer; transition:all .15s; text-align:left; font-family:inherit; position:relative; }
+#dis .dis-rozet:hover { border-color:color-mix(in srgb, var(--ana) 35%, var(--line)); transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.06); }
+#dis .dis-rozet.aktif { border-color:var(--ana); background:color-mix(in srgb, var(--ana) 6%, var(--card)); box-shadow:0 4px 16px color-mix(in srgb, var(--ana) 20%, transparent); }
+#dis .dis-rozet.aktif::after { content:''; position:absolute; top:8px; right:10px; width:7px; height:7px; border-radius:50%; background:var(--ana); box-shadow:0 0 0 3px color-mix(in srgb, var(--ana) 25%, transparent); }
 #dis .dis-rozet .c { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 #dis .dis-rozet .c .material-icons-outlined { font-size:21px; }
 #dis .dis-rozet .s { font-size:23px; font-weight:900; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums; }
 #dis .dis-rozet .e { font-size:11.5px; color:var(--sub); font-weight:600; margin-top:3px; }
+#dis .dis-rozet .git { position:absolute; bottom:6px; right:10px; font-size:10px; color:var(--sub2); font-weight:700; opacity:0; transition:opacity .15s; display:inline-flex; align-items:center; gap:2px; }
+#dis .dis-rozet .git .material-icons-outlined { font-size:12px; }
+#dis .dis-rozet:hover .git { opacity:1; }
 
 /* --- Preset chip + yeni iş butonu --- */
 #dis .dis-presetler { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -123,10 +129,25 @@ body.koyu #dis { --card:#1b2235; --card2:#161C2E; --ink:#e2e8f0; --sub:#a4b1c7; 
   {{-- SEKME: AÇIK İŞLER --}}
   <div id="panel-acik">
     <div class="dis-ozet">
-      <div class="dis-rozet"><div class="c" style="background:rgba(79,70,229,.14)"><span class="material-icons-outlined" style="color:var(--mavi)">pending_actions</span></div><div><div class="s" id="o-acik">0</div><div class="e">Açık iş</div></div></div>
-      <div class="dis-rozet"><div class="c" style="background:rgba(16,185,129,.14)"><span class="material-icons-outlined" style="color:var(--yesil)">task_alt</span></div><div><div class="s" id="o-tamam">0</div><div class="e">Bugün tamamlanan</div></div></div>
-      <div class="dis-rozet"><div class="c" style="background:rgba(244,63,94,.14)"><span class="material-icons-outlined" style="color:var(--kirmizi)">schedule</span></div><div><div class="s" id="o-gecik">0</div><div class="e">Geciken</div></div></div>
-      <div class="dis-rozet"><div class="c" style="background:rgba(245,158,11,.14)"><span class="material-icons-outlined" style="color:var(--amber)">priority_high</span></div><div><div class="s" id="o-yuksek">0</div><div class="e">Yüksek öncelik</div></div></div>
+      <button type="button" class="dis-rozet aktif" data-f="tumu" onclick="disFiltre('tumu')" title="Tümünü göster">
+        <div class="c" style="background:rgba(79,70,229,.14)"><span class="material-icons-outlined" style="color:var(--mavi)">pending_actions</span></div>
+        <div><div class="s" id="o-acik">0</div><div class="e">Açık iş</div></div>
+      </button>
+      <button type="button" class="dis-rozet" data-f="tamam-bugun" onclick="disFiltre('tamam-bugun')" title="Bugün tamamlananlar">
+        <div class="c" style="background:rgba(16,185,129,.14)"><span class="material-icons-outlined" style="color:var(--yesil)">task_alt</span></div>
+        <div><div class="s" id="o-tamam">0</div><div class="e">Bugün tamamlanan</div></div>
+        <span class="git">Geçmişe git<span class="material-icons-outlined">arrow_forward</span></span>
+      </button>
+      <button type="button" class="dis-rozet" data-f="gecikmis" onclick="disFiltre('gecikmis')" title="Sadece gecikmiş olanları göster">
+        <div class="c" style="background:rgba(244,63,94,.14)"><span class="material-icons-outlined" style="color:var(--kirmizi)">schedule</span></div>
+        <div><div class="s" id="o-gecik">0</div><div class="e">Geciken</div></div>
+        <span class="git">Filtrele<span class="material-icons-outlined">filter_alt</span></span>
+      </button>
+      <button type="button" class="dis-rozet" data-f="yuksek" onclick="disFiltre('yuksek')" title="Sadece yüksek öncelikli olanları göster">
+        <div class="c" style="background:rgba(245,158,11,.14)"><span class="material-icons-outlined" style="color:var(--amber)">priority_high</span></div>
+        <div><div class="s" id="o-yuksek">0</div><div class="e">Yüksek öncelik</div></div>
+        <span class="git">Filtrele<span class="material-icons-outlined">filter_alt</span></span>
+      </button>
     </div>
 
     <div class="dis-presetler" id="presetler"></div>
@@ -226,9 +247,13 @@ async function isSil(id){
   if (document.getElementById('panel-gecmis').style.display !== 'none') gYukle();
 }
 
+let SON_VERI = null;
+let AKTIF_FILTRE = 'tumu'; // tumu | gecikmis | yuksek
+
 async function yukle(){
   let d; try { const r = await fetch('/api/departman-is/panel?kod='+encodeURIComponent(DIS_KOD), {credentials:'same-origin', headers:{'Accept':'application/json'}}); d = await r.json(); } catch(e){ return; }
   if(!d || d.ok!==1) return;
+  SON_VERI = d;
   const oz = d.ozet||{};
   document.getElementById('o-acik').textContent = oz.acik||0;
   document.getElementById('o-tamam').textContent = oz.bugun_tamam||0;
@@ -239,9 +264,29 @@ async function yukle(){
   document.getElementById('presetler').innerHTML = (d.presetler||[]).map((pr,i)=>
     `<button class="dis-preset" onclick='presetEkle(${JSON.stringify(pr).replace(/'/g,"&#39;")})'><span class="material-icons-outlined">add</span> ${disEsc(pr.baslik)}</button>`).join('');
 
+  renderListe();
+  document.getElementById('son-g').textContent = 'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
+}
+
+function renderListe(){
   const l = document.getElementById('liste');
-  if(!(d.isler||[]).length){ l.innerHTML = '<div class="dis-bos"><span class="material-icons-outlined">inbox</span>Açık iş yok. Yukarıdan ekleyebilir ya da hazır şablonlardan seçebilirsin.</div>'; }
-  else l.innerHTML = d.isler.map(x=>{
+  if (!SON_VERI) return;
+  let isler = SON_VERI.isler || [];
+  // Aktif filtre uygula
+  if (AKTIF_FILTRE === 'gecikmis') isler = isler.filter(x => x.gecikti);
+  else if (AKTIF_FILTRE === 'yuksek') isler = isler.filter(x => x.oncelik === 'yuksek');
+
+  if (!isler.length) {
+    const bosMsg = AKTIF_FILTRE === 'tumu'
+      ? '<span class="material-icons-outlined">inbox</span>Açık iş yok. Yukarıdan ekleyebilir ya da hazır şablonlardan seçebilirsin.'
+      : (AKTIF_FILTRE === 'gecikmis'
+          ? '<span class="material-icons-outlined">schedule</span>Gecikmiş iş yok — harika.'
+          : '<span class="material-icons-outlined">priority_high</span>Yüksek öncelikli iş yok.');
+    l.innerHTML = '<div class="dis-bos">' + bosMsg + (AKTIF_FILTRE !== 'tumu' ? '<br><button class="dis-btn gri" style="margin-top:10px" onclick="disFiltre(\'tumu\')">Filtreyi Kaldır</button>' : '') + '</div>';
+    return;
+  }
+
+  l.innerHTML = isler.map(x=>{
     const tp = TIP[x.tip]||TIP.gorev, on = ONC[x.oncelik]||ONC.orta;
     const olcumIster = (x.tip==='kontrol');
     const yapiliyor = x.durum==='yapiliyor';
@@ -264,8 +309,26 @@ async function yukle(){
       <button class="dis-btn gri" onclick="isSil(${x.id})" title="Sil"><span class="material-icons-outlined">delete</span></button>
     </div>`;
   }).join('');
+}
 
-  document.getElementById('son-g').textContent = 'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
+function disFiltre(f){
+  // "Bugün tamamlanan" özel durumu: Geçmiş sekmesine atla, bugün + tamam filtresi
+  if (f === 'tamam-bugun') {
+    disSekSec('gecmis');
+    G_GUN = 1; G_DUR = 'tamam';
+    document.querySelectorAll('.dis-filt-chip[data-gun]').forEach(b => b.classList.toggle('aktif', b.getAttribute('data-gun') === '1'));
+    document.querySelectorAll('.dis-filt-chip[data-dur]').forEach(b => b.classList.toggle('aktif', b.getAttribute('data-dur') === 'tamam'));
+    gYukle();
+    return;
+  }
+  // Aynı filtreye tekrar basılırsa iptal et (toggle)
+  if (AKTIF_FILTRE === f) f = 'tumu';
+  AKTIF_FILTRE = f;
+  document.querySelectorAll('#panel-acik .dis-rozet').forEach(b => {
+    const bf = b.getAttribute('data-f');
+    b.classList.toggle('aktif', bf === AKTIF_FILTRE);
+  });
+  renderListe();
 }
 
 // ─── GEÇMİŞ ──────────────────────────────────────────────────────────────────
