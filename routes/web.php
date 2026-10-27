@@ -11141,7 +11141,7 @@ Route::get('/yetki-kur', function () {
 
 // ============================ FLUTTER API (token = personel PIN girisi) ============================
 if (!function_exists('_apiPersonel')) {
-    function _apiPersonel(Request $r)
+    function _apiPersonel(Request $r, $webFallback = false)
     {
         $token = $r->bearerToken();
         if ($token) {
@@ -11160,6 +11160,25 @@ if (!function_exists('_apiPersonel')) {
                 if (($sp->rol ?? '') !== 'sahip' && _subeKilitli($sp->sube_id)) return null;
                 return $sp;
             }
+        }
+        // Web admin paneli opt-in fallback — sadece explicit true ile. POS giriş yoksa aktif şubenin
+        // sahibini (veya üst yöneticisini) kullan. Diğer tüm API endpoint'leri bu dalı çağırmaz,
+        // davranış değişmez; yalnızca departman_is gibi web paneli ekranları için güvenli.
+        if ($webFallback) {
+            try {
+                if (function_exists('_webSubeId')) {
+                    $sid = _webSubeId();
+                    if ($sid) {
+                        $p = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)
+                            ->orderByRaw("CASE rol WHEN 'sahip' THEN 1 WHEN 'mudur' THEN 2 WHEN 'yonetici' THEN 3 ELSE 9 END")
+                            ->orderBy('id')->first();
+                        if ($p) {
+                            if (($p->rol ?? '') !== 'sahip' && _subeKilitli($p->sube_id)) return null;
+                            return $p;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
         }
         return null;
     }
@@ -21301,7 +21320,7 @@ if (!function_exists('_departmanIsPresetleri')) {
 }
 // Panel: departmanın açık işleri + özet + preset şablonları
 Route::get('/api/departman-is/panel', function (Request $r) {
-    $p = _apiPersonel($r);
+    $p = _apiPersonel($r, true);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _departmanIsEnsure();
     $sube = (int) $p->sube_id; $kod = preg_replace('/[^a-z_]/', '', (string) $r->get('kod'));
@@ -21325,7 +21344,7 @@ Route::get('/api/departman-is/panel', function (Request $r) {
 });
 // İş ekle
 Route::post('/api/departman-is/ekle', function (Request $r) {
-    $p = _apiPersonel($r);
+    $p = _apiPersonel($r, true);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _departmanIsEnsure();
     $kod = preg_replace('/[^a-z_]/', '', (string) $r->input('kod'));
@@ -21347,7 +21366,7 @@ Route::post('/api/departman-is/ekle', function (Request $r) {
 });
 // Durum değiştir (başla/tamam/iptal). Periyodik iş tamamlanınca bir sonraki otomatik açılır.
 Route::post('/api/departman-is/durum', function (Request $r) {
-    $p = _apiPersonel($r);
+    $p = _apiPersonel($r, true);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _departmanIsEnsure();
     $id = (int) $r->input('id'); $durum = (string) $r->input('durum');
@@ -21372,11 +21391,58 @@ Route::post('/api/departman-is/durum', function (Request $r) {
 });
 // Sil
 Route::post('/api/departman-is/sil', function (Request $r) {
-    $p = _apiPersonel($r);
+    $p = _apiPersonel($r, true);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _departmanIsEnsure();
     DB::table('departman_isler')->where('id', (int) $r->input('id'))->where('sube_id', $p->sube_id)->delete();
     return ['ok' => 1];
+});
+// Geçmiş: tamamlanmış/iptal edilmiş işler (süreç detayı ile)
+Route::get('/api/departman-is/gecmis', function (Request $r) {
+    $p = _apiPersonel($r, true);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    _departmanIsEnsure();
+    $sube = (int) $p->sube_id;
+    $kod = preg_replace('/[^a-z_]/', '', (string) $r->get('kod'));
+    if ($kod === '') return ['ok' => 0, 'hata' => 'Departman belirtilmedi.'];
+    $gun = (int) $r->get('gun', 30);
+    if (!in_array($gun, [1, 7, 30, 90, 365, 9999], true)) $gun = 30;
+    $durumF = (string) $r->get('durum', 'tumu');
+    $rows = collect();
+    try {
+        $q = DB::table('departman_isler')->where('sube_id', $sube)->where('departman_kod', $kod);
+        if ($durumF === 'tamam') $q->where('durum', 'tamam');
+        elseif ($durumF === 'iptal') $q->where('durum', 'iptal');
+        else $q->whereIn('durum', ['tamam', 'iptal']);
+        if ($gun < 9999) {
+            $esik = today()->subDays($gun);
+            $q->where(function ($q2) use ($esik) {
+                $q2->where('tamamlanan_at', '>=', $esik)->orWhere('updated_at', '>=', $esik);
+            });
+        }
+        $rows = $q->orderByDesc(DB::raw('COALESCE(tamamlanan_at, updated_at)'))->limit(200)->get();
+    } catch (\Throwable $e) {}
+    $ozet = ['toplam' => $rows->count(), 'tamam' => $rows->where('durum', 'tamam')->count(), 'iptal' => $rows->where('durum', 'iptal')->count()];
+    return ['ok' => 1, 'ozet' => $ozet, 'kayitlar' => $rows->map(function ($x) {
+        $acilma = null; $tamam = null; $sure = null;
+        try { if ($x->created_at) $acilma = \Carbon\Carbon::parse($x->created_at)->isoFormat('D MMM YYYY · HH:mm'); } catch (\Throwable $e) {}
+        try { if ($x->tamamlanan_at) $tamam = \Carbon\Carbon::parse($x->tamamlanan_at)->isoFormat('D MMM YYYY · HH:mm'); } catch (\Throwable $e) {}
+        try {
+            if ($x->tamamlanan_at && $x->created_at) {
+                $dk = (int) \Carbon\Carbon::parse($x->created_at)->diffInMinutes(\Carbon\Carbon::parse($x->tamamlanan_at));
+                if ($dk < 1) $sure = '< 1 dk';
+                elseif ($dk < 60) $sure = $dk . ' dk';
+                elseif ($dk < 60 * 24) { $s = $dk / 60; $sure = (floor($s) == $s ? (int) $s : number_format($s, 1, ',', '')) . ' sa'; }
+                else { $g = $dk / 1440; $sure = (floor($g) == $g ? (int) $g : number_format($g, 1, ',', '')) . ' gün'; }
+            }
+        } catch (\Throwable $e) {}
+        return [
+            'id' => (int) $x->id, 'tip' => $x->tip, 'baslik' => $x->baslik, 'aciklama' => $x->aciklama,
+            'durum' => $x->durum, 'oncelik' => $x->oncelik, 'deger' => $x->deger, 'tekrar' => $x->tekrar,
+            'olusturan_ad' => $x->olusturan_ad, 'atanan_ad' => $x->atanan_ad,
+            'acilma' => $acilma, 'tamam' => $tamam, 'sure' => $sure,
+        ];
+    })->values()->all()];
 });
 // WEB: Grup B departman iş ekranları — tek generic blade, kod/başlık/ikon/renk ile.
 $depIsSayfalar = [
