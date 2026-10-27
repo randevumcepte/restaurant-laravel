@@ -21,20 +21,31 @@ body.koyu #sym{--card:#1b2235;--ink:#e2e8f0;--sub:#a4b1c7;--sub2:#8694ad;--line:
 #sym .sym-ozet-bar{height:6px;background:color-mix(in srgb,var(--line) 70%,transparent);border-radius:3px;overflow:hidden;flex:1;min-width:60px}
 #sym .sym-ozet-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--mor1),var(--mavi));border-radius:3px;transition:width .3s ease}
 #sym .sym-ozet-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-#sym .ozet-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;
-  font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--line);color:var(--sub)}
-#sym .ozet-chip b{color:var(--ink);font-weight:800}
+#sym .ozet-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;
+  font-size:12px;font-weight:700;background:color-mix(in srgb,var(--sub) 10%,var(--card));
+  border:1px solid color-mix(in srgb,var(--sub) 25%,var(--line));color:var(--sub)}
+#sym .ozet-chip b{font-weight:800;font-variant-numeric:tabular-nums}
 #sym .ozet-chip .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-#sym .ozet-chip .d-blue{background:var(--mavi)}
-#sym .ozet-chip .d-red{background:var(--kirmizi)}
-#sym .ozet-chip .d-amber{background:var(--amber)}
-#sym .ozet-chip .d-green{background:var(--yesil)}
-#sym .ozet-chip-tutar{margin-left:auto;background:color-mix(in srgb,var(--mavi) 10%,var(--card));
-  border-color:color-mix(in srgb,var(--mavi) 30%,transparent);color:var(--ink);font-weight:700}
-#sym .ozet-chip-tutar.minus{background:color-mix(in srgb,var(--kirmizi) 10%,var(--card));
-  border-color:color-mix(in srgb,var(--kirmizi) 35%,transparent);color:var(--kirmizi)}
-#sym .ozet-chip-tutar.plus{background:color-mix(in srgb,var(--amber) 10%,var(--card));
-  border-color:color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber)}
+#sym .ozet-chip.c-bek{background:color-mix(in srgb,var(--mavi) 14%,var(--card));
+  border-color:color-mix(in srgb,var(--mavi) 45%,transparent);color:var(--mavi)}
+#sym .ozet-chip.c-bek .dot{background:var(--mavi)}
+#sym .ozet-chip.c-eksik{background:color-mix(in srgb,var(--kirmizi) 14%,var(--card));
+  border-color:color-mix(in srgb,var(--kirmizi) 45%,transparent);color:var(--kirmizi)}
+#sym .ozet-chip.c-eksik .dot{background:var(--kirmizi)}
+#sym .ozet-chip.c-fazla{background:color-mix(in srgb,var(--amber) 16%,var(--card));
+  border-color:color-mix(in srgb,var(--amber) 50%,transparent);color:#C27803}
+#sym .ozet-chip.c-fazla .dot{background:var(--amber)}
+#sym .ozet-chip.c-tam{background:color-mix(in srgb,var(--yesil) 14%,var(--card));
+  border-color:color-mix(in srgb,var(--yesil) 45%,transparent);color:var(--yesil)}
+#sym .ozet-chip.c-tam .dot{background:var(--yesil)}
+body.koyu #sym .ozet-chip.c-fazla{color:#FBBF24}
+#sym .ozet-chip-tutar{margin-left:auto;background:color-mix(in srgb,var(--mor1) 12%,var(--card));
+  border-color:color-mix(in srgb,var(--mor1) 40%,transparent);color:var(--mor1);font-weight:800}
+#sym .ozet-chip-tutar.minus{background:color-mix(in srgb,var(--kirmizi) 14%,var(--card));
+  border-color:color-mix(in srgb,var(--kirmizi) 45%,transparent);color:var(--kirmizi)}
+#sym .ozet-chip-tutar.plus{background:color-mix(in srgb,var(--amber) 16%,var(--card));
+  border-color:color-mix(in srgb,var(--amber) 50%,transparent);color:#C27803}
+body.koyu #sym .ozet-chip-tutar.plus{color:#FBBF24}
 
 /* --- Küçük bilgi banner --- */
 #sym .sym-info{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:10px;
@@ -52,24 +63,74 @@ body.koyu #sym{--card:#1b2235;--ink:#e2e8f0;--sub:#a4b1c7;--sub2:#8694ad;--line:
   background:var(--card);color:var(--ink);font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
 #sym #symAra:focus{border-color:var(--mor1);box-shadow:0 0 0 3px color-mix(in srgb,var(--mor1) 12%,transparent)}
 body.koyu #sym #symAra{background:#1b2235}
-#sym .sym-toggle{display:inline-flex;align-items:center;gap:6px;padding:9px 12px;border-radius:10px;
-  background:var(--card);border:1px solid var(--line);cursor:pointer;font-size:13px;color:var(--sub);
-  user-select:none;transition:border-color .15s;white-space:nowrap}
-#sym .sym-toggle:hover{border-color:var(--mor1)}
-#sym .sym-toggle input{accent-color:var(--mor1);margin:0;width:14px;height:14px;cursor:pointer}
-#sym .sym-toggle.aktif{color:var(--mor1);border-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 6%,var(--card))}
+#sym .sym-toggle{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;
+  background:color-mix(in srgb,var(--mavi) 8%,var(--card));
+  border:1px solid color-mix(in srgb,var(--mavi) 30%,var(--line));
+  cursor:pointer;font-size:13px;color:var(--mavi);font-weight:600;
+  user-select:none;transition:all .15s;white-space:nowrap}
+#sym .sym-toggle:hover{background:color-mix(in srgb,var(--mavi) 15%,var(--card));
+  border-color:color-mix(in srgb,var(--mavi) 50%,transparent)}
+#sym .sym-toggle input{accent-color:var(--mavi);margin:0;width:14px;height:14px;cursor:pointer}
+#sym .sym-toggle.aktif{color:#fff;border-color:var(--mavi);background:var(--mavi);
+  box-shadow:0 4px 12px color-mix(in srgb,var(--mavi) 30%,transparent)}
+#sym .sym-toggle.aktif input{accent-color:#fff;filter:brightness(2)}
 
 /* --- Kategori chip bar --- */
-#sym .sym-kat-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;margin-bottom:12px;
+#sym .sym-kat-chips{display:flex;gap:7px;overflow-x:auto;padding:2px 0 6px;margin-bottom:12px;
   scrollbar-width:thin}
 #sym .sym-kat-chips::-webkit-scrollbar{height:4px}
 #sym .sym-kat-chips::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
-#sym .kat-chip{flex-shrink:0;padding:6px 12px;border-radius:999px;border:1px solid var(--line);
-  background:var(--card);color:var(--sub);font-size:12.5px;font-weight:600;cursor:pointer;
-  transition:all .15s;white-space:nowrap}
-#sym .kat-chip:hover{border-color:var(--mor1);color:var(--ink)}
-#sym .kat-chip.aktif{background:var(--mor1);color:#fff;border-color:var(--mor1)}
-#sym .kat-chip .n{opacity:.7;margin-left:4px;font-weight:500;font-size:11.5px}
+#sym .kat-chip{flex-shrink:0;padding:7px 13px;border-radius:999px;
+  border:1px solid color-mix(in srgb,var(--mor1) 25%,var(--line));
+  background:color-mix(in srgb,var(--mor1) 7%,var(--card));
+  color:var(--mor1);font-size:12.5px;font-weight:700;cursor:pointer;
+  transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+#sym .kat-chip:hover{background:color-mix(in srgb,var(--mor1) 15%,var(--card));
+  border-color:color-mix(in srgb,var(--mor1) 45%,transparent)}
+#sym .kat-chip.aktif{background:var(--mor1);color:#fff;border-color:var(--mor1);
+  box-shadow:0 4px 12px color-mix(in srgb,var(--mor1) 30%,transparent)}
+#sym .kat-chip .n{display:inline-flex;align-items:center;justify-content:center;
+  min-width:20px;height:18px;padding:0 6px;border-radius:999px;
+  background:color-mix(in srgb,var(--mor1) 18%,transparent);color:var(--mor1);
+  font-weight:800;font-size:11px;font-variant-numeric:tabular-nums}
+#sym .kat-chip.aktif .n{background:rgba(255,255,255,.28);color:#fff}
+
+/* --- Son sayımlar kompakt strip (üstte) --- */
+#sym .son-sayim-strip{display:flex;align-items:stretch;gap:8px;margin-bottom:14px;
+  padding:10px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+#sym .son-sayim-strip .ss-bas{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 8px;
+  min-width:0;flex-shrink:0}
+#sym .son-sayim-strip .ss-ikon{width:30px;height:30px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;
+  display:flex;align-items:center;justify-content:center}
+#sym .son-sayim-strip .ss-ikon .material-icons-outlined{font-size:17px}
+#sym .son-sayim-strip .ss-bas-metin{color:var(--ink);font-size:13.5px;font-weight:700;line-height:1.2}
+#sym .son-sayim-strip .ss-bas-metin small{display:block;color:var(--sub);font-size:11px;font-weight:500;margin-top:1px}
+#sym .son-sayim-strip .ss-liste{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:thin;padding-bottom:2px}
+#sym .son-sayim-strip .ss-liste::-webkit-scrollbar{height:4px}
+#sym .son-sayim-strip .ss-liste::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+#sym .son-sayim-strip .ss-mini{flex-shrink:0;padding:7px 11px;border-radius:10px;
+  background:color-mix(in srgb,var(--sub) 8%,var(--card));
+  border:1px solid var(--line);cursor:pointer;text-decoration:none;
+  display:inline-flex;align-items:center;gap:7px;transition:all .15s;min-width:0}
+#sym .son-sayim-strip .ss-mini:hover{border-color:var(--mor1);transform:translateY(-1px);
+  box-shadow:0 4px 10px rgba(0,0,0,.08)}
+#sym .son-sayim-strip .ss-mini-tar{color:var(--ink);font-size:12px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+#sym .son-sayim-strip .ss-mini-tut{font-size:12px;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}
+#sym .son-sayim-strip .ss-mini-tut.minus{color:var(--kirmizi)}
+#sym .son-sayim-strip .ss-mini-tut.plus{color:var(--amber)}
+#sym .son-sayim-strip .ss-mini-tut.zero{color:var(--yesil)}
+#sym .son-sayim-strip .ss-tum{flex-shrink:0;padding:7px 12px;border-radius:10px;text-decoration:none;
+  display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:700;
+  background:color-mix(in srgb,var(--mor1) 10%,var(--card));color:var(--mor1);
+  border:1px solid color-mix(in srgb,var(--mor1) 30%,var(--line));transition:all .15s;white-space:nowrap}
+#sym .son-sayim-strip .ss-tum:hover{background:var(--mor1);color:#fff}
+#sym .son-sayim-strip .ss-tum .material-icons-outlined{font-size:16px}
+@media (max-width:640px){
+  #sym .son-sayim-strip{flex-wrap:wrap}
+  #sym .son-sayim-strip .ss-bas{width:100%}
+  #sym .son-sayim-strip .ss-tum{margin-left:auto}
+}
 
 /* --- Malzeme satırı (yeni kart) --- */
 #sym .sym-satir{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;
@@ -336,16 +397,43 @@ body.koyu #symModal .sym-det-satir{background:#1b2235}
         <div class="sym-ozet-bar"><div class="sym-ozet-fill" id="symFill"></div></div>
       </div>
       <div class="sym-ozet-chips">
-        <div class="ozet-chip" title="Henüz sayılmayan"><span class="dot d-blue"></span><b id="symBek">{{ count($malzemeler) }}</b> bekliyor</div>
-        <div class="ozet-chip" title="Sistemden az"><span class="dot d-red"></span><b id="symEksik">0</b> eksik</div>
-        <div class="ozet-chip" title="Sistemden fazla"><span class="dot d-amber"></span><b id="symFazla">0</b> fazla</div>
-        <div class="ozet-chip" title="Sistemle eşit"><span class="dot d-green"></span><b id="symTam">0</b> tam</div>
+        <div class="ozet-chip c-bek" title="Henüz sayılmayan"><span class="dot"></span><b id="symBek">{{ count($malzemeler) }}</b> bekliyor</div>
+        <div class="ozet-chip c-eksik" title="Sistemden az"><span class="dot"></span><b id="symEksik">0</b> eksik</div>
+        <div class="ozet-chip c-fazla" title="Sistemden fazla"><span class="dot"></span><b id="symFazla">0</b> fazla</div>
+        <div class="ozet-chip c-tam" title="Sistemle eşit"><span class="dot"></span><b id="symTam">0</b> tam</div>
         <div class="ozet-chip ozet-chip-tutar" id="symTutarChip">
           <span class="material-icons-outlined" style="font-size:14px">payments</span>
           Fark: <span id="symTutar">0 ₺</span>
         </div>
       </div>
     </div>
+
+    {{-- Son Sayımlar kompakt strip (üstte, "Tümünü gör" ile ayrı sayfaya) --}}
+    @if ($sonSayimlar)
+      <div class="son-sayim-strip">
+        <div class="ss-bas">
+          <div class="ss-ikon"><span class="material-icons-outlined">history</span></div>
+          <div class="ss-bas-metin">Son Sayımlar<small>Hızlı erişim</small></div>
+        </div>
+        <div class="ss-liste">
+          @foreach (array_slice($sonSayimlar, 0, 5) as $s)
+            @php
+              $gfm = (float) $s['fark_maliyet'];
+              $gcls = $gfm < 0 ? 'minus' : ($gfm > 0 ? 'plus' : 'zero');
+              $gmetin = $gfm < 0 ? '-' . $tl(abs($gfm)) : ($gfm > 0 ? '+' . $tl($gfm) : '0');
+            @endphp
+            <a class="ss-mini" href="/sayim/gecmis" title="{{ $s['tarih'] }} — {{ $s['kalem'] }} kalem">
+              <span class="ss-mini-tar">{{ $s['tarih'] }}</span>
+              <span class="ss-mini-tut {{ $gcls }}">{{ $gmetin }}</span>
+            </a>
+          @endforeach
+        </div>
+        <a class="ss-tum" href="/sayim/gecmis">
+          Tümünü Gör
+          <span class="material-icons-outlined">arrow_forward</span>
+        </a>
+      </div>
+    @endif
 
     <div class="sym-info">
       <span class="material-icons-outlined">info</span>
@@ -456,32 +544,6 @@ body.koyu #symModal .sym-det-satir{background:#1b2235}
 
     </form>
 
-  @endif
-
-  {{-- Geçmiş --}}
-  @if ($sonSayimlar)
-    <div class="sym-sec-baslik">
-      <div class="cubuk"></div>
-      <span>Son Sayımlar</span>
-    </div>
-    <div class="sym-gecmis-grid" id="symGecmisGrid">
-      @foreach ($sonSayimlar as $s)
-        @php
-          $gfm = (float) $s['fark_maliyet'];
-          $grenk = $gfm < 0 ? 'var(--kirmizi)' : ($gfm > 0 ? 'var(--amber)' : 'var(--yesil)');
-        @endphp
-        <div class="sym-gecmis-kart" onclick="symDetayAc({{ $s['id'] }})">
-          <div class="sol">
-            <div class="tarih">{{ $s['tarih'] }}</div>
-            <div class="alt">{{ $s['kalem'] }} kalem · {{ $s['eksik'] }} eksik</div>
-          </div>
-          <div class="tutar" style="color:{{ $grenk }}">
-            {{ $gfm < 0 ? '-' . $tl(abs($gfm)) : ($gfm > 0 ? '+' . $tl($gfm) : '0') }}
-          </div>
-          <span class="material-icons-outlined">chevron_right</span>
-        </div>
-      @endforeach
-    </div>
   @endif
 
 </div>{{-- #sym --}}

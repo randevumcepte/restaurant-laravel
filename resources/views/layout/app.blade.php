@@ -192,6 +192,9 @@
     <main class="rk-main">
         <div class="rk-header">
             <button class="rk-hamburger" onclick="rkSideTog()" aria-label="Menü"><span class="material-icons-outlined">menu</span></button>
+            @hasSection('rk_geri')
+                <a href="@yield('rk_geri')" class="rk-geri" title="Geri"><span class="material-icons-outlined">arrow_back</span><span class="rk-geri-metin">Geri</span></a>
+            @endif
             <div class="ikon"><span class="material-icons-outlined">@yield('rk_ikon', 'dashboard')</span></div>
             <div>
                 <div class="baslik">@yield('baslik', 'Panel')</div>

@@ -12842,6 +12842,19 @@ Route::get('/satinalma-siparis-detay', function (Request $r) {
 });
 
 // ===== FAZ 2: Mal Kabul (irsaliye / GRN) — stoğu yazan adım =====
+// Son mal kabuller — ayri sayfa (geri butonlu)
+Route::get('/mal-kabul-liste', function () {
+    $sid = _webSubeId();
+    $kabuller = collect();
+    try {
+        if (Schema::hasTable('mal_kabuller')) {
+            $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+            $kabuller = DB::table('mal_kabuller')->where('sube_id', $sid)->orderByDesc('id')->limit(200)->get()
+                ->map(function ($m) use ($tedAd) { $m->tedarikci = $tedAd[$m->tedarikci_id] ?? '—'; return $m; });
+        }
+    } catch (\Throwable $e) {}
+    return view('mal_kabul_liste', compact('kabuller'));
+});
 Route::get('/mal-kabul', function (Request $r) {
     $sid = _webSubeId();
     $d = ['kabuller' => collect(), 'siparis' => null, 'siparisKalem' => collect(), 'tedarikciler' => collect(), 'malzemeler' => collect(), 'birimler' => collect(), 'acikSiparisler' => collect()];
@@ -15122,6 +15135,21 @@ Route::get('/sayim', function () {
         }
     } catch (\Throwable $e) {}
     return view('sayim', compact('malzemeler', 'sonSayimlar'));
+});
+// ===== WEB PANEL: Sayım Geçmişi (tüm sayımlar listesi) =====
+Route::get('/sayim/gecmis', function () {
+    $sid = _webSubeId();
+    $sayimlar = [];
+    try {
+        if (function_exists('_restoSayimEnsure')) _restoSayimEnsure();
+        if (Schema::hasTable('sayimlar') && Schema::hasTable('sayim_kalemleri')) {
+            $sayimlar = DB::table('sayimlar')->where('sube_id', $sid)->orderByDesc('id')->limit(200)->get()->map(function ($s) {
+                $agg = DB::table('sayim_kalemleri')->where('sayim_id', $s->id)->selectRaw('COUNT(*) n, COALESCE(SUM(fark_maliyet),0) fm, COALESCE(SUM(CASE WHEN fark < 0 THEN 1 ELSE 0 END),0) eksik, COALESCE(SUM(CASE WHEN fark > 0 THEN 1 ELSE 0 END),0) fazla')->first();
+                return ['id' => (int) $s->id, 'tarih' => \Carbon\Carbon::parse($s->tarih)->format('d.m.Y'), 'kalem' => (int) $agg->n, 'eksik' => (int) $agg->eksik, 'fazla' => (int) $agg->fazla, 'fark_maliyet' => round((float) $agg->fm, 2)];
+            })->all();
+        }
+    } catch (\Throwable $e) {}
+    return view('sayim_gecmis', compact('sayimlar'));
 });
 Route::post('/sayim/kaydet', function (Request $r) {
     $sid = _webSubeId();
