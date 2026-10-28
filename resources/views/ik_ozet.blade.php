@@ -197,7 +197,16 @@ body.koyu #iko{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
     <a href="/personel" class="selam-bordro {{ $bordroCls }}">
       <div class="sh-lbl"><span class="material-icons-outlined" style="font-size:14px;vertical-align:-2px">payments</span> Bu Ay Bordro</div>
       <div class="sh-deger">{{ $tl0($bordro['hakedis']) }}</div>
-      <div class="sh-alt">@if($iscilikY!==null) işçilik %{{ $iscilikY }} @if($iscilikS==='risk')· risk@elseif($iscilikS==='dikkat')· dikkat@endif @else işçilik hesaplanamadı @endif</div>
+      <div class="sh-alt">
+        @if($iscilikY !== null)
+          işçilik %{{ $iscilikY }}
+          @if($iscilikS === 'risk') · risk
+          @elseif($iscilikS === 'dikkat') · dikkat
+          @endif
+        @else
+          işçilik hesaplanamadı
+        @endif
+      </div>
     </a>
   </div>
 
@@ -233,7 +242,7 @@ body.koyu #iko{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
         <div class="k-alt" style="color:var(--sub)">
           @if($kadro['yeni_giren']>0)<span style="color:var(--yesil)">+{{ $kadro['yeni_giren'] }} yeni</span>@endif
           @if($kadro['ayrilan']>0) · <span style="color:var(--kirmizi)">-{{ $kadro['ayrilan'] }} ayrıldı</span>@endif
-          @if(!$kadro['yeni_giren']&&!$kadro['ayrilan'])bu ay değişim yok@endif
+          @if(!$kadro['yeni_giren']&&!$kadro['ayrilan']) bu ay değişim yok @endif
         </div>
       </div>
     </a>
@@ -242,7 +251,7 @@ body.koyu #iko{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
       <div class="ic">
         <div class="kb-row"><div class="k-ikon" style="background:color-mix(in srgb,{{ $devamC }} 15%,transparent);color:{{ $devamC }}"><span class="material-icons-outlined">how_to_reg</span></div><span class="k-label">Bugün Devam</span></div>
         <div class="k-deger" style="color:{{ $devamC }}">{{ $devam['gelen'] ?? '—' }}@if($devam['gelen']!==null)<span style="font-size:16px;color:var(--sub);font-weight:600">/{{ $devam['beklenen'] }}</span>@endif</div>
-        <div class="k-alt">@if($devamYuzde!==null)%{{ $devamYuzde }} geldi@else puantaj verisi yok@endif · <b style="color:var(--mavi)">{{ $devam['mesaide'] ?? '—' }}</b> mesaide</div>
+        <div class="k-alt">@if($devamYuzde!==null) %{{ $devamYuzde }} geldi @else puantaj verisi yok @endif · <b style="color:var(--mavi)">{{ $devam['mesaide'] ?? '—' }}</b> mesaide</div>
       </div>
     </a>
     <a href="/ik-izin" class="k-mini">
@@ -250,7 +259,7 @@ body.koyu #iko{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
       <div class="ic">
         <div class="kb-row"><div class="k-ikon" style="background:color-mix(in srgb,var(--amber) 15%,transparent);color:var(--amber)"><span class="material-icons-outlined">event_available</span></div><span class="k-label">Bekleyen İzin</span></div>
         <div class="k-deger" style="color:{{ $izin['bekleyen']>0?'var(--amber)':'var(--ink)' }}">{{ $izin['bekleyen'] }}</div>
-        <div class="k-alt">@if($izin['bekleyen']>0)onay bekliyor@else talep yok@endif · <b>{{ count($izin['bugun_izinli']) }}</b> kişi bugün izinli</div>
+        <div class="k-alt">@if($izin['bekleyen']>0) onay bekliyor @else talep yok @endif · <b>{{ count($izin['bugun_izinli']) }}</b> kişi bugün izinli</div>
       </div>
     </a>
   </div>
@@ -300,7 +309,13 @@ body.koyu #iko{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
     <div class="kart-baslik">
       <div class="kb-ikon" style="background:color-mix(in srgb,{{ $iscilikC }} 15%,transparent);color:{{ $iscilikC }}"><span class="material-icons-outlined">bar_chart</span></div>
       <span class="kb-ad">İşçilik / Ciro Oranı</span>
-      <span style="margin-left:auto;font-weight:800;color:{{ $iscilikC }}">%{{ $iscilikY }} @if($iscilikS==='risk')· risk@elseif($iscilikS==='dikkat')· dikkat@else· sağlıklı bant@endif</span>
+      <span style="margin-left:auto;font-weight:800;color:{{ $iscilikC }}">
+        %{{ $iscilikY }}
+        @if($iscilikS === 'risk') · risk
+        @elseif($iscilikS === 'dikkat') · dikkat
+        @else · sağlıklı bant
+        @endif
+      </span>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sub)">
       <span>Hakediş: {{ $tl0($bordro['hakedis']) }}</span>
