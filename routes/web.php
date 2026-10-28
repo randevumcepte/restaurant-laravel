@@ -14963,12 +14963,63 @@ if (!function_exists('_aiSohbetCekirdek')) {
         return ['cevap' => $kuralCevap(), 'kaynak' => 'kural_kota'];
     }
 }
+// PROAKTIF ONERI: durumu tara, en uygun 1 eylem oner (chat cevabina iliştirilir)
+if (!function_exists('_satinalmaProaktifOner')) {
+    function _satinalmaProaktifOner($sid, $bp, $soru = '')
+    {
+        try {
+            // Oncelik sirasi: kritik stok > geciken siparis > bekleyen mal kabul > mesajda malzeme adi gecen fiyat_sor
+            $kritikSayi = count(function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : []);
+            if ($kritikSayi > 0) {
+                $h = _satinalmaAsistanEylemHazirla($sid, 'kritik_siparis_olustur', []);
+                if ($h['ok'] ?? false) {
+                    $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', 'kritik_siparis_olustur', $h['params'], $h['ozet'], $soru);
+                    return ['log_id' => $log_id, 'intent' => 'kritik_siparis_olustur', 'ozet' => $h['ozet'], 'buton' => 'Kritikleri siparişe çevir'];
+                }
+            }
+            $gecikenSayi = 0;
+            if (Schema::hasTable('satinalma_siparisleri')) {
+                $gecikenSayi = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)
+                    ->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])
+                    ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count();
+            }
+            if ($gecikenSayi > 0) {
+                $h = _satinalmaAsistanEylemHazirla($sid, 'tedarikci_hatirlat', []);
+                if ($h['ok'] ?? false) {
+                    $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', 'tedarikci_hatirlat', $h['params'], $h['ozet'], $soru);
+                    return ['log_id' => $log_id, 'intent' => 'tedarikci_hatirlat', 'ozet' => $h['ozet'], 'buton' => 'Tedarikçileri hatırlat'];
+                }
+            }
+            // Soruda bir malzeme adi geciyorsa fiyat_sor öner
+            if ($soru && preg_match('/\b(biber|tuz|un|yağ|yag|salça|salca|zeytinyağı|zeytinyagi|domates|soğan|sogan|et|tavuk|dana|peynir|süt|sut)\b/iu', $soru, $mt)) {
+                $h = _satinalmaAsistanEylemHazirla($sid, 'fiyat_sor', ['malzeme' => $mt[1]]);
+                if ($h['ok'] ?? false) {
+                    $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', 'fiyat_sor', $h['params'], $h['ozet'], $soru);
+                    return ['log_id' => $log_id, 'intent' => 'fiyat_sor', 'ozet' => $h['ozet'], 'buton' => $mt[1] . ' için fiyat sor'];
+                }
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+}
+
 Route::post('/satinalma-asistan/sor', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'cevap' => 'Yetkisiz.'], 403);
     $sid = _webSubeId();
     $soru = trim((string) $r->input('soru'));
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
+    // NIYET MOTORU: eylem komutu mu? (ör: "kritikleri siparişe çevir")
+    $niyet = _satinalmaAsistanNiyet($sid, $bp, $soru);
+    if (($niyet['tip'] ?? '') === 'eylem') {
+        $h = _satinalmaAsistanEylemHazirla($sid, $niyet['intent'], $niyet['params'] ?? []);
+        if (($h['ok'] ?? false)) {
+            $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', $niyet['intent'], $h['params'], $h['ozet'], $soru);
+            return response()->json(['ok' => 1, 'kaynak' => 'eylem', 'tip' => 'eylem', 'cevap' => 'Anladım, şunu yapabilirim:', 'eylem_oneri' => ['log_id' => $log_id, 'intent' => $niyet['intent'], 'ozet' => $h['ozet']]]);
+        } else {
+            return response()->json(['ok' => 1, 'kaynak' => 'eylem', 'cevap' => '⚠️ ' . ($h['hata'] ?? 'Bu işlemi yapamadım.')]);
+        }
+    }
     // Sohbet (selam/teşekkür/veda) -> rapor DÖKME, kısa sıcak cevap ver (bedava)
     $sohbet = _satinalmaSohbetCevap($soru);
     if ($sohbet !== null) return response()->json(['ok' => 1, 'kaynak' => 'sohbet', 'cevap' => $sohbet]);
@@ -14985,7 +15036,11 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
             'alan' => 'satinalma', 'sube_id' => $sid, 'soru' => $soru, 'baglam' => $baglam, 'sys' => $sys,
             'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam),
         ]);
-        return response()->json(['ok' => 1, 'kaynak' => $cek['kaynak'], 'cevap' => $cek['cevap'], 'teklif_export' => $teklif]);
+        // PROAKTIF ONERI: AI cevabina otomatik "istersen senin icin yapabilirim" eklenir
+        $eylemOneri = _satinalmaProaktifOner($sid, $bp, $soru);
+        $resp = ['ok' => 1, 'kaynak' => $cek['kaynak'], 'cevap' => $cek['cevap'], 'teklif_export' => $teklif];
+        if ($eylemOneri) $resp['eylem_oneri'] = $eylemOneri;
+        return response()->json($resp);
     } catch (\Throwable $e) {
         return response()->json(['ok' => 1, 'kaynak' => 'kural', 'cevap' => 'Şu an cevap veremedim, tekrar dene.']);
     }

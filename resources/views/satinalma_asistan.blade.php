@@ -193,6 +193,24 @@
   @keyframes saBounce{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
   @keyframes saShine{to{background-position:200% center}}
 
+  /* AI eylem onerisi balonu (chat icinde) */
+  .sa-eylem-balon{background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(79,70,229,.04));border:1.5px solid rgba(124,58,237,.3);border-radius:16px;padding:14px 16px;margin:10px 0;max-width:92%;align-self:flex-start}
+  .sa-eylem-balon .se-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--mor1);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px}
+  .sa-eylem-balon .se-ozet{font-size:13.5px;color:var(--ink);line-height:1.5;margin-bottom:10px}
+  .sa-eylem-balon .se-kilit{font-size:11.5px;color:var(--sub);margin-bottom:12px}
+  .sa-eylem-balon .se-btn-grup{display:flex;gap:9px;justify-content:flex-end}
+  .sa-eylem-balon .se-yap{background:linear-gradient(135deg,#10B981,#059669);color:#fff;border:0;border-radius:10px;padding:9px 18px;font-weight:800;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:5px;box-shadow:0 3px 10px rgba(16,185,129,.3)}
+  .sa-eylem-balon .se-yap:hover{opacity:.9}
+  .sa-eylem-balon .se-vaz{background:var(--card2);color:var(--sub2);border:1px solid var(--line);border-radius:10px;padding:9px 16px;font-weight:700;cursor:pointer;font-size:13px}
+  .sa-eylem-balon .se-sonuc{font-size:13px;line-height:1.5;padding:11px 13px;border-radius:9px;background:var(--card2);margin-top:12px}
+  .sa-eylem-balon .se-sonuc.ok{border-left:3px solid #10B981;color:#047857}
+  .sa-eylem-balon .se-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
+  .sa-eylem-balon .se-sonuc.vz{border-left:3px solid var(--sub);color:var(--sub2)}
+  /* Hazır chip bar (sayfa ustu) */
+  .sa-chipbar{display:flex;flex-wrap:wrap;gap:7px;padding:10px 16px 2px}
+  .sa-chip{background:var(--card);border:1.5px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;transition:all .13s;display:inline-flex;align-items:center;gap:5px}
+  .sa-chip:hover{background:color-mix(in srgb,var(--mor1) 10%,var(--card));border-color:var(--mor1);color:var(--mor1)}
+
   /* Export + teklif balonları */
   .sa-export{align-self:flex-start;max-width:92%;background:var(--card);border:1px solid var(--line);
     border-radius:16px;border-bottom-left-radius:6px;padding:12px 14px;
@@ -317,6 +335,14 @@
   {{-- Araç çubuğu (sadece sohbet sayacı) --}}
   <div id="saArac">
     <div class="sa-sayac" id="saSayac" style="display:none"><span class="dot"></span><span id="saSayacTxt">0 mesaj</span></div>
+  </div>
+
+  {{-- Hazır AI eylem chip'leri — tıkla, modal açılır, Yap/Vazgeç --}}
+  <div class="sa-chipbar">
+    <button type="button" class="sa-chip" onclick="saChip('kritik_siparis_olustur')">🛒 Kritikleri siparişe çevir</button>
+    <button type="button" class="sa-chip" onclick="saChip('tedarikci_hatirlat')">📞 Geciken tedarikçileri hatırlat</button>
+    <button type="button" class="sa-chip" onclick="saChip('mal_kabul_onayla')">📧 Bekleyen mal kabulü onayla</button>
+    <button type="button" class="sa-chip" onclick="saSor('biber için fiyat sor')">💬 Örnek: biber için fiyat sor</button>
   </div>
 
   {{-- Sohbet --}}
@@ -460,10 +486,61 @@ async function saSor(metin){
     bekle.remove();
     saBubble(j.cevap||'Cevap alınamadı.',false);
     if(j.exportlar && j.exportlar.length){ saExportButonlar(j.exportlar); }
+    // Eylem onerisi: AI "istersen senin için yapabilirim" diyor -> Yap/Vazgec balonu
+    if(j.eylem_oneri && j.eylem_oneri.log_id){ saEylemBalonu(j.eylem_oneri); }
   }catch(e){ bekle.remove(); saBubble('Bağlantı hatası, tekrar dene.',false); }
   saBusy=false;
   document.getElementById('saGnd').disabled=false;
   document.getElementById('saInput').focus();
+}
+
+// Eylem onerisi balonu (AI'nin "istersen yapabilirim" sorusu + Yap/Vazgec)
+function saEylemBalonu(e){
+  const akis=document.getElementById('saChat');
+  const d=document.createElement('div');
+  d.className='sa-eylem-balon';
+  d.innerHTML=
+    '<div class="se-h"><span class="material-icons-outlined" style="font-size:16px">auto_awesome</span> İstersen bunu senin için yapabilirim:</div>'+
+    '<div class="se-ozet">'+saEsc(e.ozet)+'</div>'+
+    '<div class="se-kilit"><span class="material-icons-outlined" style="font-size:13px;color:#10B981;vertical-align:-2px">lock</span> Onayın IP ile imzalı log\'a yazılacak, geri alınamaz.</div>'+
+    '<div class="se-btn-grup">'+
+      '<button class="se-vaz" onclick="saEylemVazgec(this,'+e.log_id+')">Vazgeç</button>'+
+      '<button class="se-yap" onclick="saEylemYap(this,'+e.log_id+')"><span class="material-icons-outlined" style="font-size:15px">check</span> Yap</button>'+
+    '</div>'+
+    '<div class="se-sonuc" style="display:none"></div>';
+  akis.appendChild(d);
+  akis.scrollTop=akis.scrollHeight;
+}
+
+async function saEylemYap(btn,log_id){
+  const b=btn.closest('.sa-eylem-balon');
+  const son=b.querySelector('.se-sonuc');
+  btn.disabled=true; btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">hourglass_bottom</span> Yürütülüyor';
+  try{
+    const r=await fetch('/api/ai-eylem/onayla',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({log_id})});
+    const j=await r.json();
+    const s=(j&&j.sonuc)||{};
+    son.style.display='block'; son.className='se-sonuc '+(s.ok?'ok':'hata');
+    son.textContent=s.mesaj||'Sonuç alınamadı.';
+    btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> Yap';
+    b.querySelector('.se-vaz').style.display='none';
+  }catch(e){ son.style.display='block'; son.className='se-sonuc hata'; son.textContent='Bağlantı hatası'; btn.disabled=false; btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> Yap'; }
+}
+
+async function saEylemVazgec(btn,log_id){
+  const b=btn.closest('.sa-eylem-balon');
+  try{ await fetch('/api/ai-eylem/vazgec',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({log_id})}); }catch(e){}
+  b.querySelector('.se-sonuc').style.display='block';
+  b.querySelector('.se-sonuc').className='se-sonuc vz';
+  b.querySelector('.se-sonuc').textContent='Vazgeçildi, bir şey yapılmadı.';
+  b.querySelector('.se-btn-grup').style.display='none';
+}
+
+// Sayfa ustundeki hazir chip'ler
+function saChip(intent){
+  const metin={'kritik_siparis_olustur':'kritik stokları siparişe çevir','tedarikci_hatirlat':'geciken tedarikçileri hatırlat','mal_kabul_onayla':'bekleyen mal kabullerini onayla'}[intent];
+  if(!metin) return;
+  saSor(metin);
 }
 </script>
 @endsection
