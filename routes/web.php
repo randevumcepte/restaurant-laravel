@@ -13245,18 +13245,158 @@ Route::post('/siparis/onay/{token}/degisiklik', function (Request $r, $token) {
 });
 Route::get('/satinalma-siparis-detay', function (Request $r) {
     $sid = _webSubeId(); $id = (int) $r->query('id');
-    $d = ['s' => null, 'kalemler' => collect(), 'tedarikci' => null];
+    $d = ['s' => null, 'kalemler' => collect(), 'tedarikci' => null, 'tedarikciler' => collect(), 'malzemeler' => collect(), 'birimler' => collect(), 'tedarikciIstat' => null];
     try {
         if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
         $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
         if (!$s) return redirect('/satinalma-siparis')->with('sa_hata', 'Sipariş bulunamadı.');
         $d['s'] = $s;
         $d['tedarikci'] = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
-        $birim = DB::table('birimler')->pluck('kisaltma', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+        $d['tedarikciler'] = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'eposta']);
+        $d['malzemeler'] = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id', 'kritik_stok', 'guncel_maliyet']);
+        $d['birimler'] = DB::table('birimler')->get(['id', 'ad', 'kisaltma']);
+        $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+
+        // Mevcut stok (sube bazli)
+        $stokMap = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+        // Kritik stok seviyeleri
+        $kritikMap = DB::table('malzemeler')->pluck('kritik_stok', 'id');
+
         $d['kalemler'] = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->get()
-            ->map(function ($k) use ($birim, $malAd) { $k->malzeme = $malAd[$k->malzeme_id] ?? '—'; $k->birim = $birim[$k->alis_birim_id] ?? ''; return $k; });
+            ->map(function ($k) use ($birim, $malAd, $stokMap, $kritikMap, $sid) {
+                $k->malzeme = $malAd[$k->malzeme_id] ?? '—';
+                $k->birim = $birim[$k->alis_birim_id] ?? '';
+                $k->mevcut_stok = round((float) ($stokMap[$k->malzeme_id] ?? 0), 3);
+                $k->kritik_stok = round((float) ($kritikMap[$k->malzeme_id] ?? 0), 3);
+                // Son alis: alis_fatura_kalemleri son 90 gun
+                $k->son_alis = null;
+                try {
+                    if (Schema::hasTable('alis_fatura_kalemleri')) {
+                        $sa = DB::table('alis_fatura_kalemleri as f')
+                            ->join('alis_faturalari as af', 'f.fatura_id', '=', 'af.id')
+                            ->leftJoin('tedarikciler as t', 'af.tedarikci_id', '=', 't.id')
+                            ->where('af.sube_id', $sid)
+                            ->where('f.malzeme_id', $k->malzeme_id)
+                            ->orderByDesc('af.tarih')->limit(1)
+                            ->select('f.miktar', 'f.birim_fiyat', 'af.tarih', 't.ad as tedarikci')->first();
+                        if ($sa) $k->son_alis = ['miktar' => (float) $sa->miktar, 'fiyat' => (float) $sa->birim_fiyat, 'tarih' => $sa->tarih, 'tedarikci' => $sa->tedarikci];
+                    }
+                } catch (\Throwable $e) {}
+                return $k;
+            });
+
+        // Tedarikci istatistigi (son 30 gun)
+        if ($s->tedarikci_id) {
+            try {
+                $son30 = DB::table('satinalma_siparisleri')->where('sube_id', $sid)->where('tedarikci_id', $s->tedarikci_id)
+                    ->whereDate('tarih', '>=', today()->subDays(30))->whereNotIn('durum', ['iptal', 'taslak']);
+                $d['tedarikciIstat'] = ['siparis_say' => (clone $son30)->count(), 'toplam_tutar' => round((float) (clone $son30)->sum('genel_toplam'), 0)];
+            } catch (\Throwable $e) {}
+        }
     } catch (\Throwable $e) {}
     return view('satinalma_siparis_detay', $d);
+});
+
+// Sipariş detay API endpoint'leri (editable için)
+Route::post('/api/satinalma-siparis/kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $id = (int) $r->input('id');
+    $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$s) return response()->json(['ok' => 0, 'hata' => 'Sipariş bulunamadı']);
+    if ($s->durum !== 'taslak') return response()->json(['ok' => 0, 'hata' => 'Sadece taslak sipariş düzenlenebilir']);
+    try {
+        $ted = (int) $r->input('tedarikci_id', 0);
+        $teslim = $r->input('beklenen_teslim');
+        $notlar = (string) $r->input('notlar', '');
+        $kalemler = $r->input('kalemler', []);
+        if (is_string($kalemler)) $kalemler = json_decode($kalemler, true) ?: [];
+
+        // Siparis baslik guncelle
+        $top = 0;
+        foreach ($kalemler as $k) $top += ((float) ($k['miktar'] ?? 0)) * ((float) ($k['birim_fiyat'] ?? 0));
+        DB::table('satinalma_siparisleri')->where('id', $id)->update([
+            'tedarikci_id' => $ted ?: null,
+            'beklenen_teslim' => $teslim ?: null,
+            'notlar' => mb_substr($notlar, 0, 500),
+            'genel_toplam' => round($top, 2),
+            'updated_at' => now(),
+        ]);
+        // Kalemleri sil ve yeniden ekle (basit yöntem)
+        DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->delete();
+        foreach ($kalemler as $k) {
+            $mid = (int) ($k['malzeme_id'] ?? 0);
+            $mik = (float) ($k['miktar'] ?? 0);
+            $fiyat = (float) ($k['birim_fiyat'] ?? 0);
+            if (!$mid || $mik <= 0) continue;
+            DB::table('satinalma_siparis_kalemleri')->insert([
+                'siparis_id' => $id, 'malzeme_id' => $mid,
+                'alis_birim_id' => (int) ($k['alis_birim_id'] ?? 0),
+                'miktar' => $mik, 'teslim_edilen' => 0, 'birim_fiyat' => $fiyat,
+                'satir_toplam' => round($mik * $fiyat, 2),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        return response()->json(['ok' => 1, 'mesaj' => 'Sipariş kaydedildi', 'toplam' => round($top, 2)]);
+    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Kaydedilemedi: ' . $e->getMessage()]); }
+});
+
+Route::post('/api/satinalma-siparis/gonder', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $id = (int) $r->input('id');
+    $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$s) return response()->json(['ok' => 0, 'hata' => 'Sipariş bulunamadı']);
+    if (!$s->tedarikci_id) return response()->json(['ok' => 0, 'hata' => 'Tedarikçi seçilmemiş. Önce tedarikçi seç ve kaydet.']);
+    $ted = DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first();
+    if (!$ted) return response()->json(['ok' => 0, 'hata' => 'Tedarikçi bilgisi yok']);
+    $kalemler = DB::table('satinalma_siparis_kalemleri as k')
+        ->join('malzemeler as m', 'k.malzeme_id', '=', 'm.id')
+        ->leftJoin('birimler as b', 'k.alis_birim_id', '=', 'b.id')
+        ->where('k.siparis_id', $id)->select('m.ad', 'k.miktar', 'b.kisaltma as birim', 'k.birim_fiyat')->get();
+    if ($kalemler->isEmpty()) return response()->json(['ok' => 0, 'hata' => 'Kalem yok']);
+
+    $isletme = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: 'İşletme');
+    $satir = []; $satir[] = "{$isletme} siparişi — {$s->siparis_no}";
+    if ($s->beklenen_teslim) $satir[] = "Beklenen teslim: " . \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y');
+    $satir[] = "Kalemler:";
+    foreach ($kalemler as $k) $satir[] = "• {$k->ad}: " . rtrim(rtrim(number_format((float) $k->miktar, 2, ',', '.'), '0'), ',') . " {$k->birim}";
+    $satir[] = "Toplam: " . number_format((float) $s->genel_toplam, 0, ',', '.') . "₺";
+    if ($s->notlar) $satir[] = "Not: " . $s->notlar;
+    $satir[] = "Lütfen teslim süresini ve son fiyatı teyit edin. Teşekkürler.";
+    $mesaj = implode("\n", $satir);
+
+    $wa_ok = false; $mail_ok = false;
+    if (!empty($ted->telefon) && function_exists('_restoWaGonder')) { try { $wa_ok = (bool) _restoWaGonder($sid, $ted->telefon, $mesaj); } catch (\Throwable $e) {} }
+    // Mail: tedarikci.eposta varsa Laravel Mail ile gonder (best effort)
+    try {
+        if (!empty($ted->eposta) && filter_var($ted->eposta, FILTER_VALIDATE_EMAIL)) {
+            \Illuminate\Support\Facades\Mail::raw($mesaj, function ($m) use ($ted, $s, $isletme) {
+                $m->to($ted->eposta)->subject("Sipariş {$s->siparis_no} — {$isletme}");
+            });
+            $mail_ok = true;
+        }
+    } catch (\Throwable $e) {}
+
+    DB::table('satinalma_siparisleri')->where('id', $id)->update(['durum' => 'gonderildi', 'updated_at' => now()]);
+    $kanal = $wa_ok && $mail_ok ? 'WhatsApp + Mail' : ($wa_ok ? 'WhatsApp' : ($mail_ok ? 'Mail' : 'kayıt'));
+    return response()->json(['ok' => 1, 'mesaj' => "✓ Sipariş tedarikçiye gönderildi ({$kanal})", 'wa' => $wa_ok, 'mail' => $mail_ok]);
+});
+
+Route::post('/api/satinalma-siparis/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $id = (int) $r->input('id');
+    $durum = (string) $r->input('durum');
+    if (!in_array($durum, ['taslak', 'gonderildi', 'onaylandi', 'kismi', 'tamamlandi', 'iptal'])) return response()->json(['ok' => 0, 'hata' => 'Geçersiz durum']);
+    $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$s) return response()->json(['ok' => 0, 'hata' => 'Sipariş bulunamadı']);
+    DB::table('satinalma_siparisleri')->where('id', $id)->update(['durum' => $durum, 'updated_at' => now()]);
+    return response()->json(['ok' => 1]);
 });
 
 // ===== FAZ 2: Mal Kabul (irsaliye / GRN) — stoğu yazan adım =====
@@ -14742,7 +14882,7 @@ Route::get('/satinalma-brief', function () {
         $bugunYapilacak[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'oncelik' => 'yuksek',
             'baslik' => "$kritikSayi kritik malzeme için taslak sipariş oluştur",
             'aciklama' => count($kritikAdlari) ? implode(', ', $kritikAdlari) . (count($kritikStoklar) > 3 ? ', +' . (count($kritikStoklar) - 3) : '') : '',
-            'tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'params' => [], 'buton' => 'Taslak Hazırla'];
+            'tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'params' => [], 'buton' => 'Siparişi Hazırla'];
     }
     if ($gecikenSip > 0) {
         $bugunYapilacak[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'oncelik' => 'yuksek',
