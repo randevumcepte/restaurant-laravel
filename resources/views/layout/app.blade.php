@@ -201,6 +201,8 @@
         $gruplar['Personel'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
         $gruplar['Ayarlar & Entegrasyon'][] = ['/bildirim-ayar', 'notifications_active', 'Bildirim Ayarları', '#0EA5E9'];
     }
+    // PROFİLİM — her roldeki personele görünür (kişisel bilgi + PIN + oturum). herkese açık (bildirim-ayar gibi).
+    $gruplar['Ayarlar & Entegrasyon'][] = ['/profilim', 'account_circle', 'Profilim', '#7C3AED'];
     // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
     if (config('services.resteos.ik_acik', true)) {
         array_unshift($gruplar['Personel'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
@@ -280,18 +282,18 @@
 <div class="rk-wrap">
     <div class="rk-side-backdrop" id="rkSideBackdrop" onclick="rkSideTog(false)"></div>
     <aside class="rk-side" id="rkSide">
-        <div class="rk-side-head">
+        <a href="/profilim" class="rk-side-head" style="text-decoration:none; color:inherit; display:block" title="Profilim">
             <div class="ad">🍔 ResteOS</div>
             <div class="sube">{{ $aktifSubeAd }}</div>
             <div class="kul">{{ $kulAd }} · {{ $kulRol }}</div>
-        </div>
+        </a>
         <nav class="rk-menu">
             @foreach ($gruplar as $grupAd => $items)
                 @php
                     $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
                         if (!$_pp) return true;
                         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
-                        if (in_array($it[0], ['/bildirim-ayar'])) return true;                 // herkese açık (kişisel bildirim tercihi)
+                        if (in_array($it[0], ['/bildirim-ayar', '/profilim'])) return true;    // herkese açık (kişisel ayarlar)
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));
