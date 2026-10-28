@@ -5,215 +5,319 @@
 
 @push('head')
 <style>
-  #sb { max-width: 920px; }
-  .sb-orb{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(124,58,237,.35);flex:none}
-  .sb-blok{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--golge);padding:16px 18px;margin-bottom:14px}
-  .sb-blok h4{font-size:12.5px;font-weight:800;color:var(--sub2);letter-spacing:.3px;margin:0 0 10px;display:flex;align-items:center;gap:7px;text-transform:uppercase}
-  .sb-anlat{font-size:15.5px;line-height:1.65;color:var(--ink)}
-  .sb-sat{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
-  .sb-sat:last-child{border-bottom:0}
-  .sb-dot{width:9px;height:9px;border-radius:50%;flex:none}
-  .sb-mini{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border-radius:20px;padding:5px 12px;font-size:12.5px;color:var(--sub2);margin:3px 6px 3px 0}
-  .sb-link{color:var(--mavi);font-size:12px;text-decoration:none;white-space:nowrap}
-  .sb-vd{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;letter-spacing:.4px}
-  .sb-yorum{font-size:14px;line-height:1.62;color:var(--ink);margin:2px 0 8px}
-  .sb-oz{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-top:7px}
-  .sb-ai{background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(79,70,229,.10));border:1px solid rgba(124,58,237,.25)}
+  #sb { max-width: 1100px; margin: 0 auto; }
+
+  /* ─── HERO: selam + özet rozetler ─── */
+  .sb-hero { background: linear-gradient(135deg, var(--mor1), var(--mavi)); border-radius: 24px; padding: 24px 28px; margin-bottom: 18px; color: #fff; box-shadow: 0 12px 36px rgba(124, 58, 237, .32); position: relative; overflow: hidden; }
+  .sb-hero::before { content: ''; position: absolute; top: -80px; right: -60px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(255, 255, 255, .18), transparent 70%); border-radius: 50%; pointer-events: none; }
+  .sb-hero::after { content: ''; position: absolute; bottom: -60px; left: 20%; width: 200px; height: 200px; background: radial-gradient(circle, rgba(255, 255, 255, .1), transparent 70%); border-radius: 50%; pointer-events: none; }
+  .sb-hero-ic { display: flex; align-items: center; gap: 16px; position: relative; z-index: 1; }
+  .sb-orb { width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 255, 255, .22); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 0 0 0 rgba(255, 255, 255, .35); animation: sbPulse 2.4s ease-out infinite; }
+  .sb-orb .material-icons-outlined { color: #fff; font-size: 30px; }
+  @keyframes sbPulse { 0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .4); } 70% { box-shadow: 0 0 0 14px rgba(255, 255, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); } }
+  .sb-selam { font-size: 24px; font-weight: 900; line-height: 1.1; letter-spacing: -.5px; margin-bottom: 4px; }
+  .sb-alt { font-size: 13px; color: rgba(255, 255, 255, .85); font-weight: 600; }
+  .sb-rozetler { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 1; }
+  .sb-roz { display: inline-flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, .22); padding: 7px 13px; border-radius: 14px; font-size: 12.5px; font-weight: 700; backdrop-filter: blur(6px); border: 1px solid rgba(255, 255, 255, .15); }
+  .sb-roz .material-icons-outlined { font-size: 15px; }
+
+  /* ─── GENEL DEĞERLENDİRME ─── */
+  .sb-genel { background: linear-gradient(135deg, rgba(124, 58, 237, .08), rgba(79, 70, 229, .04)); border: 1px solid rgba(124, 58, 237, .22); border-radius: 18px; padding: 16px 20px; margin-bottom: 18px; }
+  .sb-genel h4 { font-size: 12px; font-weight: 800; color: var(--mor1); letter-spacing: .5px; text-transform: uppercase; margin: 0 0 8px; display: flex; align-items: center; gap: 7px; }
+  .sb-genel .metin { font-size: 14.5px; line-height: 1.65; color: var(--ink); }
+
+  /* ─── İKİ KOLONLU GRID: Dün Yapılanlar + Bugün Yapılacaklar ─── */
+  .sb-ikili { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-bottom: 18px; }
+  @media (max-width: 900px) { .sb-ikili { grid-template-columns: 1fr; } }
+
+  /* ─── Dün Yapılanlar (sol) — minimal checklist ─── */
+  .sb-dun-blok { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; box-shadow: var(--golge); }
+  .sb-dun-blok h3 { font-size: 13px; font-weight: 800; color: var(--sub2); letter-spacing: .5px; text-transform: uppercase; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .sb-dun-blok h3 .ikon-ct { width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, #10B981, #059669); color: #fff; display: flex; align-items: center; justify-content: center; }
+  .sb-dun-blok h3 .ikon-ct .material-icons-outlined { font-size: 17px; }
+  .sb-dun-sat { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+  .sb-dun-sat:first-of-type { border-top: 0; padding-top: 0; }
+  .sb-dun-sat .check { width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, #10B981 15%, transparent); color: #10B981; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-dun-sat .check .material-icons-outlined { font-size: 15px; }
+  .sb-dun-sat .mtn { flex: 1; min-width: 0; color: var(--ink); font-weight: 600; }
+  .sb-dun-sat .mtn .ozel { color: var(--sub); font-weight: 500; }
+  .sb-dun-sat a { color: var(--mor1); font-size: 11.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .sb-dun-bos { text-align: center; padding: 24px 10px; color: var(--sub); font-size: 13px; }
+
+  /* ─── Bugün Yapılacaklar (sağ) — her satır Yap/Vazgeç butonu ─── */
+  .sb-bugun-blok { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; box-shadow: var(--golge); }
+  .sb-bugun-blok h3 { font-size: 13px; font-weight: 800; color: var(--sub2); letter-spacing: .5px; text-transform: uppercase; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
+  .sb-bugun-blok h3 .ikon-ct { width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, #7C3AED, #4F46E5); color: #fff; display: flex; align-items: center; justify-content: center; }
+  .sb-bugun-blok h3 .ikon-ct .material-icons-outlined { font-size: 17px; }
+  .sb-bugun-blok h3 .sayi { margin-left: auto; background: color-mix(in srgb, var(--mor1) 15%, transparent); color: var(--mor1); padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800; text-transform: none; letter-spacing: 0; }
+
+  .sb-yap-sat { position: relative; background: var(--card2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; transition: box-shadow .14s, transform .14s, border-color .14s; }
+  .sb-yap-sat:last-child { margin-bottom: 0; }
+  .sb-yap-sat:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .07); transform: translateY(-1px); }
+  .sb-yap-sat.oncelik-yuksek { border-left: 3px solid #F43F5E; }
+  .sb-yap-sat.oncelik-orta { border-left: 3px solid #F59E0B; }
+  .sb-yap-sat.oncelik-dusuk { border-left: 3px solid #4F46E5; }
+  .sb-yap-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+  .sb-yap-ikon { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+  .sb-yap-ikon .material-icons-outlined { font-size: 20px; }
+  .sb-yap-ic { flex: 1; min-width: 0; }
+  .sb-yap-bas { font-size: 14px; font-weight: 700; color: var(--ink); line-height: 1.35; margin-bottom: 3px; }
+  .sb-yap-aci { font-size: 12px; color: var(--sub); line-height: 1.45; }
+  .sb-yap-onc-roz { font-size: 9.5px; font-weight: 900; padding: 3px 8px; border-radius: 20px; letter-spacing: .4px; flex-shrink: 0; color: #fff; }
+  .sb-yap-onc-roz.yuksek { background: #F43F5E; }
+  .sb-yap-onc-roz.orta { background: #F59E0B; }
+  .sb-yap-onc-roz.dusuk { background: #4F46E5; }
+
+  .sb-yap-btn-grup { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 10px; }
+  .sb-yap-btn-grup .kilit { font-size: 10.5px; color: var(--sub2); display: inline-flex; align-items: center; gap: 4px; margin-right: auto; }
+  .sb-yap-btn-grup .kilit .material-icons-outlined { font-size: 12px; color: #10B981; }
+  .sb-btn-vaz { background: var(--card); border: 1px solid var(--line); color: var(--sub2); padding: 8px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: all .13s; }
+  .sb-btn-vaz:hover { color: var(--kirmizi); border-color: var(--kirmizi); }
+  .sb-btn-yap { background: linear-gradient(135deg, #10B981, #059669); color: #fff; border: 0; padding: 9px 18px; border-radius: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 3px 10px rgba(16, 185, 129, .3); transition: transform .13s, box-shadow .13s; }
+  .sb-btn-yap:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(16, 185, 129, .42); }
+  .sb-btn-yap .material-icons-outlined { font-size: 15px; }
+  .sb-btn-yap:disabled { opacity: .6; cursor: wait; }
+  .sb-btn-link { background: color-mix(in srgb, var(--mavi) 13%, transparent); color: var(--mavi); border: 0; padding: 9px 18px; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; transition: all .13s; }
+  .sb-btn-link:hover { background: var(--mavi); color: #fff; }
+  .sb-btn-link .material-icons-outlined { font-size: 15px; }
+
+  .sb-yap-sonuc { display: none; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border-radius: 9px; margin-top: 10px; }
+  .sb-yap-sonuc.ok { background: color-mix(in srgb, #10B981 10%, transparent); color: #047857; border-left: 3px solid #10B981; display: block; }
+  .sb-yap-sonuc.hata { background: color-mix(in srgb, var(--kirmizi) 10%, transparent); color: var(--kirmizi); border-left: 3px solid var(--kirmizi); display: block; }
+  .sb-yap-sonuc.vz { background: var(--card2); color: var(--sub2); border-left: 3px solid var(--sub); display: block; }
+
+  .sb-bugun-bos { text-align: center; padding: 28px 10px; color: var(--sub); font-size: 13.5px; }
+  .sb-bugun-bos .material-icons-outlined { font-size: 44px; color: #10B981; display: block; margin: 0 auto 8px; opacity: .7; }
+
+  /* ─── Alt bloklar: Yaklaşan Teslimler + Fiyat Hareketleri ─── */
+  .sb-blok { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; box-shadow: var(--golge); margin-bottom: 14px; }
+  .sb-blok h4 { font-size: 12.5px; font-weight: 800; color: var(--sub2); letter-spacing: .3px; margin: 0 0 10px; display: flex; align-items: center; gap: 7px; text-transform: uppercase; }
+  .sb-blok h4 .sage { margin-left: auto; font-size: 11px; color: var(--sub); font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .sb-sat { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .sb-sat:first-of-type { border-top: 0; }
+  .sb-sat .ad { flex: 1; min-width: 0; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-sat .alt { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
+  .sb-sat .roz-k { font-size: 10.5px; font-weight: 800; padding: 2px 9px; border-radius: 20px; color: #fff; flex-shrink: 0; letter-spacing: .3px; }
+
+  /* ─── Rakam şeridi (altta) ─── */
+  .sb-mini-bar { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 11px 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; box-shadow: var(--golge); }
+  .sb-mini-bar .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--card2); border-radius: 20px; padding: 5px 11px; font-size: 12px; color: var(--sub2); font-weight: 600; }
+  .sb-mini-bar .link { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--mor1); text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+
+  .sb-genel .boldv { font-weight: 800; color: var(--mor1); }
 </style>
 @endpush
 
 @section('content')
 <div class="rk-body">
 <div id="sb">
-  @php
-    $saat = (int) now()->format('H');
-    $selam = $saat < 11 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
-    $adK = $ad ? trim(explode(' ', trim($ad))[0]) : null;
-    $tl = fn($v) => number_format((float) round((float) $v), 0, ',', '.') . '₺';
-    $vd = ['iyi'=>['İYİ','var(--yesil)'],'notr'=>['NÖTR','var(--sub)'],'dikkat'=>['DİKKAT','var(--amber)'],'risk'=>['RİSK','var(--kirmizi)']];
+@php
+  $saat = (int) now()->format('H');
+  $selam = $saat < 11 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
+  $adK = $ad ? trim(explode(' ', trim($ad))[0]) : 'Satın Almacı';
+  $tl = fn($v) => number_format((float) round((float) $v), 0, ',', '.') . '₺';
+  $butceC = $butceYuzde === null ? 'var(--sub)' : ($butceYuzde > 100 ? '#F43F5E' : ($butceYuzde >= 85 ? '#F59E0B' : '#10B981'));
 
-    // Analiz blokları: her biri (ikon, başlık, değer, yorum, risk, öneri, link, lbl, durum)
-    $analiz = [];
+  // Genel değerlendirme cümlesi (kural tabanlı)
+  $degerleme = [];
+  if ($kritikSayi > 0)   $degerleme[] = "<span class='boldv'>$kritikSayi kritik stok</span> acil siparişlik";
+  if ($gecikenSip > 0)   $degerleme[] = "<span class='boldv'>$gecikenSip sipariş gecikti</span>";
+  if ($yeniTalep > 0)    $degerleme[] = "<span class='boldv'>$yeniTalep yeni talep</span> inceleme bekliyor";
+  if ($teklifBekleyen > 0) $degerleme[] = "<span class='boldv'>$teklifBekleyen teklif</span> karar bekliyor";
+  if ($butceYuzde !== null && $butceYuzde > 100) $degerleme[] = "bütçe <span class='boldv'>%{$butceYuzde} aşıldı</span>";
+  $aiOzet = count($degerleme)
+    ? "Bugünün gündemi: " . implode(" · ", array_slice($degerleme, 0, 4)) . "."
+    : "Satın alma operasyonu yolunda — acil aksiyon yok. Par-seviyelerini sürdür.";
+@endphp
 
-    // Stok Durumu
-    $kritikAdlari = array_slice(array_map(fn($k) => $k['ad'], $kritikStoklar), 0, 3);
-    if ($kritikSayi >= 5) {
-        $analiz[] = ['ikon'=>'inventory_2','baslik'=>'Stok Durumu','deger'=>"$kritikSayi malzeme kritik",
-            'yorum'=>"Deponda **$kritikSayi malzeme** kritik eşiğin altında" . (count($kritikAdlari) ? " (örn. ".implode(', ', $kritikAdlari).")" : "") . ". Mutfak gün içinde bu kalemlerden birini isteyince üretim durabilir.",
-            'risk'=>"Üretim duruşu — menüde eksik ürün gözükür, müşteri kaybı",
-            'oneri'=>"Sipariş Önerisi'nden kritikleri tek tıkla tedarikçiye RFQ olarak yollayabilirsin.",
-            'link'=>'/siparis-onerisi','lbl'=>'Sipariş Öner','durum'=>'risk'];
-    } elseif ($kritikSayi > 0) {
-        $analiz[] = ['ikon'=>'inventory_2','baslik'=>'Stok Durumu','deger'=>"$kritikSayi kritik",
-            'yorum'=>"**$kritikSayi malzeme** kritik seviyede" . (count($kritikAdlari) ? " ({$kritikAdlari[0]}" . (count($kritikAdlari) > 1 ? ", +" . (count($kritikAdlari)-1) : "") . ")" : "") . ". Henüz üretim riski oluşmadı ama yarına kalmasın.",
-            'risk'=>null,
-            'oneri'=>"Sipariş önerisi ekranından otomatik hesaplanan miktarları gözden geçir.",
-            'link'=>'/siparis-onerisi','lbl'=>'Sipariş Öner','durum'=>'dikkat'];
-    } else {
-        $analiz[] = ['ikon'=>'inventory_2','baslik'=>'Stok Durumu','deger'=>'Yeterli',
-            'yorum'=>"Kritik seviyede malzeme yok. Üretim rahat.",
-            'risk'=>null,'oneri'=>"Par-seviye (hedef_stok) kontrolünü sürdür.",
-            'link'=>'/stok','lbl'=>'Stok','durum'=>'iyi'];
-    }
-
-    // Talep Akışı
-    if ($yeniTalep + $onaydaTalep > 0) {
-        $durumT = $yeniTalep >= 5 ? 'dikkat' : 'notr';
-        $analiz[] = ['ikon'=>'assignment','baslik'=>'Talep Akışı','deger'=>"$yeniTalep yeni · $onaydaTalep onayda",
-            'yorum'=>($yeniTalep > 0 ? "Departmanlardan **$yeniTalep yeni talep** geldi — fiyat araştırılmayı bekliyor. " : "") . ($onaydaTalep > 0 ? "**$onaydaTalep talep** patron onayında." : ""),
-            'risk'=>null,
-            'oneri'=>"Yeni talepler için RFQ gönder; onaydakileri patron ekranından takip et.",
-            'link'=>'/satinalma-talep','lbl'=>'Talepleri Aç','durum'=>$durumT];
-    }
-
-    // Teklif / Fiyat
-    $fkKirmizi = $fiyatHareketleri->where('uyari','kirmizi')->count();
-    $fkSari = $fiyatHareketleri->where('uyari','sari')->count();
-    if ($teklifBekleyen > 0 || $fkKirmizi + $fkSari > 0) {
-        $durumF = $fkKirmizi > 0 ? 'risk' : ($teklifBekleyen > 0 ? 'dikkat' : 'notr');
-        $yorum = "";
-        if ($teklifBekleyen > 0) $yorum .= "**$teklifBekleyen teklif** gelmiş, karşılaştırıp seçmen gerekiyor. ";
-        if ($fkKirmizi > 0) $yorum .= "Son 30 günde **$fkKirmizi üründe sert fiyat artışı** sinyali var. ";
-        if ($fkSari > 0 && $fkKirmizi == 0) $yorum .= "Son 30 günde $fkSari üründe hafif fiyat değişimi. ";
-        $analiz[] = ['ikon'=>'trending_up','baslik'=>'Teklif & Fiyat','deger'=>"$teklifBekleyen teklif · $fkKirmizi kırmızı",
-            'yorum'=>trim($yorum),
-            'risk'=>$fkKirmizi > 0 ? "Gizli zam — maliyet şişer, kârsız satış riski" : null,
-            'oneri'=>"Fiyat radarından alternatif tedarikçi karşılaştırması yap.",
-            'link'=>$teklifBekleyen > 0 ? '/gelen-teklifler' : '/fiyat-radari','lbl'=>$teklifBekleyen > 0 ? 'Teklifleri İncele' : 'Fiyat Radarı','durum'=>$durumF];
-    }
-
-    // Tedarikçi Takibi
-    if ($gecikenSip + $acikSip > 0) {
-        $durumT2 = $gecikenSip > 0 ? 'risk' : 'notr';
-        $yorum2 = "";
-        if ($gecikenSip > 0) $yorum2 .= "**$gecikenSip sipariş** beklenen teslim tarihini geçti. ";
-        if ($acikSip > 0) $yorum2 .= "Toplam **$acikSip açık sipariş** var.";
-        $analiz[] = ['ikon'=>'local_shipping','baslik'=>'Tedarikçi Takibi','deger'=>"$acikSip açık · $gecikenSip geciken",
-            'yorum'=>trim($yorum2),
-            'risk'=>$gecikenSip > 0 ? "Geç gelen malzeme → mutfak eksik, menüde iptal" : null,
-            'oneri'=>$gecikenSip > 0 ? "Geciken siparişlerin tedarikçilerini bugün WhatsApp'tan ara." : "Teslim takvimi düzenli.",
-            'link'=>'/satinalma-siparis','lbl'=>'Siparişleri Aç','durum'=>$durumT2];
-    }
-
-    // Bütçe
-    if ($ayButce > 0) {
-        $durumB = $butceYuzde > 100 ? 'risk' : ($butceYuzde >= 85 ? 'dikkat' : 'iyi');
-        $analiz[] = ['ikon'=>'savings','baslik'=>'Aylık Bütçe','deger'=>"%$butceYuzde kullanıldı",
-            'yorum'=>"Bu ay bütçenin **%$butceYuzde**'i kullanıldı: " . $tl($ayHarcama) . " / " . $tl($ayButce) . "." . ($butceYuzde > 100 ? " Bütçe **aşıldı**." : ($butceYuzde >= 85 ? " Ay sonuna dikkat et." : "")),
-            'risk'=>$butceYuzde > 100 ? "Hedef aşımı — mali kapanışta kârsız" : null,
-            'oneri'=>$butceYuzde > 100 ? "Acil olmayan talepleri bir sonraki aya ertele." : "Harcama hızın sürdürülebilir.",
-            'link'=>'/satinalma-butce','lbl'=>'Bütçeyi Aç','durum'=>$durumB];
-    }
-
-    // AI özet cümlesi (kural motorlu — en önemli 2-3 sinyali birleştir)
-    $aiOzetSatirlari = [];
-    if ($kritikSayi > 0) $aiOzetSatirlari[] = "**$kritikSayi kritik stok** acil siparişlik";
-    if ($gecikenSip > 0) $aiOzetSatirlari[] = "**$gecikenSip sipariş gecikti**";
-    if ($yeniTalep > 0) $aiOzetSatirlari[] = "**$yeniTalep yeni talep** inceleme bekliyor";
-    if ($teklifBekleyen > 0) $aiOzetSatirlari[] = "**$teklifBekleyen teklif** karar bekliyor";
-    if ($butceYuzde !== null && $butceYuzde > 100) $aiOzetSatirlari[] = "bütçe **%$butceYuzde** aşıldı";
-    $aiOzet = count($aiOzetSatirlari)
-        ? "Bugünün gündemi: " . implode(" · ", array_slice($aiOzetSatirlari, 0, 4)) . "."
-        : "Satın alma operasyonu yolunda — acil aksiyon yok, par-seviyeleri sürdür.";
-
-    // **bold** -> <b>bold</b>
-    $bold = fn($s) => preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', e($s));
-  @endphp
-
-  {{-- ÜST: orb + selam + yenile --}}
-  <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
-    <div class="sb-orb"><span class="material-icons-outlined" style="color:#fff;font-size:26px">wb_sunny</span></div>
-    <div style="flex:1">
-      <div style="font-size:20px;font-weight:800;color:var(--ink)">{{ $selam }}{{ $adK ? ', '.$adK : '' }} ☕</div>
-      <div class="rk-sub" style="font-size:12.5px">{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }} · satınalma brifingi · <span style="color:var(--sub)">kural motoru</span></div>
-    </div>
-    <div style="display:flex;gap:6px">
-      <a href="/satinalma-brief" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
+{{-- HERO --}}
+<div class="sb-hero">
+  <div class="sb-hero-ic">
+    <div class="sb-orb"><span class="material-icons-outlined">wb_sunny</span></div>
+    <div style="flex:1;min-width:0">
+      <div class="sb-selam">{{ $selam }}, {{ $adK }}! ☕</div>
+      <div class="sb-alt">{{ \Carbon\Carbon::now()->translatedFormat('l, d F Y') }} · Satınalma Sabah Brifingi</div>
     </div>
   </div>
+  <div class="sb-rozetler">
+    <span class="sb-roz"><span class="material-icons-outlined">task_alt</span>{{ count($dunYapilanlar) }} dün yapıldı</span>
+    <span class="sb-roz"><span class="material-icons-outlined">pending_actions</span>{{ count($bugunYapilacak) }} bugün yapılacak</span>
+    @if ($kritikSayi > 0)<span class="sb-roz" style="background:rgba(244,63,94,.35)"><span class="material-icons-outlined">warning_amber</span>{{ $kritikSayi }} kritik</span>@endif
+    @if ($gecikenSip > 0)<span class="sb-roz" style="background:rgba(234,88,12,.35)"><span class="material-icons-outlined">local_shipping</span>{{ $gecikenSip }} geciken</span>@endif
+  </div>
+</div>
 
-  {{-- GENEL DEĞERLENDİRME (gradient border — patron-ai'deki "AI Değerlendirmesi" eşdeğeri) --}}
-  <div class="sb-blok sb-ai" style="margin-top:10px">
-    <h4 style="color:var(--mor1)"><span class="material-icons-outlined" style="font-size:17px">auto_awesome</span> Genel Değerlendirme</h4>
-    <div style="font-size:14.5px;line-height:1.65;color:var(--ink)">{!! $bold($aiOzet) !!}</div>
+{{-- GENEL DEĞERLENDİRME --}}
+<div class="sb-genel">
+  <h4><span class="material-icons-outlined" style="font-size:16px">auto_awesome</span> AI Değerlendirmesi</h4>
+  <div class="metin">{!! $aiOzet !!}</div>
+</div>
+
+{{-- İKİ KOLONLU: Dün Yapılanlar + Bugün Yapılacaklar --}}
+<div class="sb-ikili">
+
+  {{-- DÜN YAPILANLAR --}}
+  <div class="sb-dun-blok">
+    <h3><span class="ikon-ct"><span class="material-icons-outlined">done_all</span></span> Dün Yapılanlar</h3>
+    @forelse ($dunYapilanlar as $y)
+      <div class="sb-dun-sat">
+        <div class="check"><span class="material-icons-outlined">check</span></div>
+        <div class="mtn">{{ $y['mtn'] }}</div>
+        @if (!empty($y['link']))<a href="{{ $y['link'] }}">Aç →</a>@endif
+      </div>
+    @empty
+      <div class="sb-dun-bos">Dün hareket yok.<br><span style="font-size:11.5px">Belki rapor günüdür?</span></div>
+    @endforelse
   </div>
 
-  {{-- ANALİZ BLOKLARI (her başlık: durum + yorum + risk + öneri) --}}
-  @foreach ($analiz as $a)
-    @php [$et,$rk] = $vd[$a['durum']] ?? $vd['notr']; @endphp
-    <div class="sb-blok">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <span class="material-icons-outlined" style="color:{{ $rk }};font-size:22px">{{ $a['ikon'] }}</span>
-        <span style="font-weight:800;font-size:15px;color:var(--ink)">{{ $a['baslik'] }}</span>
-        <span class="rk-sub" style="font-size:12.5px">· {{ $a['deger'] }}</span>
-        <span class="sb-vd" style="background:{{ $rk }};margin-left:auto">{{ $et }}</span>
+  {{-- BUGÜN YAPILACAKLAR --}}
+  <div class="sb-bugun-blok">
+    <h3><span class="ikon-ct"><span class="material-icons-outlined">pending_actions</span></span> Bugün Yapılacaklar <span class="sayi">{{ count($bugunYapilacak) }}</span></h3>
+    @forelse ($bugunYapilacak as $i => $y)
+      <div class="sb-yap-sat oncelik-{{ $y['oncelik'] }}" data-ix="{{ $i }}">
+        <div class="sb-yap-head">
+          <div class="sb-yap-ikon" style="background:{{ $y['renk'] }}">
+            <span class="material-icons-outlined">{{ $y['ikon'] }}</span>
+          </div>
+          <div class="sb-yap-ic">
+            <div class="sb-yap-bas">{{ $y['baslik'] }}</div>
+            @if (!empty($y['aciklama']))<div class="sb-yap-aci">{{ $y['aciklama'] }}</div>@endif
+          </div>
+          <span class="sb-yap-onc-roz {{ $y['oncelik'] }}">{{ ['yuksek' => 'ACİL', 'orta' => 'ORTA', 'dusuk' => 'DÜŞÜK'][$y['oncelik']] }}</span>
+        </div>
+        <div class="sb-yap-btn-grup">
+          @if ($y['tip'] === 'eylem')
+            <span class="kilit"><span class="material-icons-outlined">lock</span> Onay IP ile imzalı log'a yazılacak</span>
+            <button class="sb-btn-vaz" onclick="briefVazgec(this)">Vazgeç</button>
+            <button class="sb-btn-yap" onclick="briefYap(this, '{{ $y['intent'] }}', {{ json_encode($y['params'] ?? []) }})">
+              <span class="material-icons-outlined">check</span> Yap
+            </button>
+          @else
+            <a href="{{ $y['url'] }}" class="sb-btn-link"><span class="material-icons-outlined">arrow_forward</span> Aç</a>
+          @endif
+        </div>
+        <div class="sb-yap-sonuc"></div>
       </div>
-      <div class="sb-yorum">{!! $bold($a['yorum']) !!}</div>
-      @if (!empty($a['risk']))
-        <div class="sb-oz" style="background:rgba(244,63,94,.10);color:var(--kirmizi)"><span>🔴</span><span><b>Risk:</b> {{ $a['risk'] }}</span></div>
-      @endif
-      <div class="sb-oz" style="background:var(--card2)">
-        <span>✅</span>
-        <span style="flex:1;color:var(--sub2)"><b style="color:var(--ink)">Öneri:</b> {!! $bold($a['oneri']) !!}</span>
-        @if (!empty($a['link']))<a href="{{ $a['link'] }}" class="rk-btn" style="padding:4px 12px;background:var(--mor1);align-self:center;white-space:nowrap">{{ $a['lbl'] }} →</a>@endif
+    @empty
+      <div class="sb-bugun-bos">
+        <span class="material-icons-outlined">check_circle</span>
+        <div>Her şey yolunda — bugün için acil aksiyon yok.</div>
+        <div style="font-size:11.5px;margin-top:4px">Par-seviye kontrollerini ve fiyat takibini sürdür.</div>
       </div>
+    @endforelse
+  </div>
+
+</div>
+
+{{-- YAKLAŞAN TESLİMLER --}}
+@if ($yaklasanTeslimler->count())
+<div class="sb-blok">
+  <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mavi)">local_shipping</span> Yaklaşan Teslimler <span class="sage">önümüzdeki 7 gün</span></h4>
+  @foreach ($yaklasanTeslimler as $s)
+    @php
+      $bt = \Carbon\Carbon::parse($s->beklenen_teslim)->startOfDay();
+      $bg = (int) today()->startOfDay()->diffInDays($bt, false);
+      if ($bg < 0)       { $dm = abs($bg) . ' gün geciken'; $dc = '#F43F5E'; }
+      elseif ($bg === 0) { $dm = 'Bugün'; $dc = '#F59E0B'; }
+      elseif ($bg === 1) { $dm = 'Yarın'; $dc = '#F59E0B'; }
+      else               { $dm = $bg . ' gün sonra'; $dc = '#4F46E5'; }
+    @endphp
+    <div class="sb-sat">
+      <span class="material-icons-outlined" style="font-size:18px;color:var(--sub);flex-shrink:0">inventory_2</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">{{ $s->tedarikci ?: 'Tedarikçi —' }}</div>
+        <div style="font-size:11.5px;color:var(--sub)">{{ $s->siparis_no ?: '#'.$s->id }} · {{ $tl($s->genel_toplam) }}</div>
+      </div>
+      <span class="roz-k" style="background:{{ $dc }}">{{ $dm }}</span>
     </div>
   @endforeach
+</div>
+@endif
 
-  {{-- YAKLAŞAN TESLİMLER (patron-ai'deki "Bugünkü Gündem" eşdeğeri) --}}
-  @if ($yaklasanTeslimler->count())
-  <div class="sb-blok">
-    <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mavi)">local_shipping</span> Yaklaşan Teslimler (7 gün)</h4>
-    @foreach ($yaklasanTeslimler as $s)
-      @php
-        $bt = \Carbon\Carbon::parse($s->beklenen_teslim)->startOfDay();
-        $bg = (int) today()->startOfDay()->diffInDays($bt, false);
-        if ($bg < 0)      { $dm = abs($bg) . ' gün geciken'; $dc = 'var(--kirmizi)'; }
-        elseif ($bg === 0){ $dm = 'Bugün'; $dc = 'var(--amber)'; }
-        elseif ($bg === 1){ $dm = 'Yarın'; $dc = 'var(--amber)'; }
-        else              { $dm = $bg . ' gün sonra'; $dc = 'var(--mavi)'; }
-      @endphp
-      <div class="sb-sat" style="align-items:flex-start">
-        <span style="font-weight:800;color:{{ $dc }};min-width:94px;font-size:12.5px">{{ $dm }}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600">{{ $s->tedarikci ?: 'Tedarikçi —' }}</div>
-          <div class="rk-sub" style="font-size:11.5px">{{ $s->siparis_no ?: '#'.$s->id }} · {{ $tl($s->genel_toplam) }}</div>
-        </div>
-        <a href="/satinalma-siparis" class="sb-link">Aç →</a>
+{{-- FİYAT HAREKETLERİ --}}
+@if ($fiyatHareketleri->count())
+<div class="sb-blok">
+  <h4><span class="material-icons-outlined" style="font-size:17px;color:#EC4899">trending_up</span> Son Fiyat Hareketleri <span class="sage">30 gün</span></h4>
+  @foreach ($fiyatHareketleri as $f)
+    @php $rnk = $f->uyari === 'kirmizi' ? '#F43F5E' : '#F59E0B'; $yz = (float) $f->fiyat_farki_yuzde; @endphp
+    <div class="sb-sat">
+      <span class="material-icons-outlined" style="font-size:18px;color:{{ $rnk }}">{{ $yz > 0 ? 'north_east' : 'south_east' }}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">{{ $f->ad }}</div>
+        <div style="font-size:11.5px;color:var(--sub)">{{ number_format((float) $f->birim_fiyat, 2, ',', '.') }}₺ · {{ \Carbon\Carbon::parse($f->tarih)->diffForHumans() }}</div>
       </div>
-    @endforeach
-  </div>
-  @endif
+      <span class="roz-k" style="background:{{ $rnk }}">{{ $yz > 0 ? '+' : '' }}{{ number_format($yz, 1, ',', '.') }}%</span>
+    </div>
+  @endforeach
+</div>
+@endif
 
-  {{-- FİYAT HAREKETLERİ (patron-ai'deki "Dünden Devam" eşdeğeri) --}}
-  @if ($fiyatHareketleri->count())
-  <div class="sb-blok">
-    <h4><span class="material-icons-outlined" style="font-size:17px;color:#EC4899">trending_up</span> Son Fiyat Hareketleri (30 gün)</h4>
-    @foreach ($fiyatHareketleri as $f)
-      @php $rnk = $f->uyari === 'kirmizi' ? 'var(--kirmizi)' : 'var(--amber)'; $yz = (float) $f->fiyat_farki_yuzde; @endphp
-      <div class="sb-sat">
-        <span class="material-icons-outlined" style="font-size:18px;color:{{ $rnk }}">{{ $yz > 0 ? 'north_east' : 'south_east' }}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600">{{ $f->ad }}</div>
-          <div class="rk-sub" style="font-size:11.5px">{{ number_format((float) $f->birim_fiyat, 2, ',', '.') }}₺ · {{ \Carbon\Carbon::parse($f->tarih)->diffForHumans() }}</div>
-        </div>
-        <span class="sb-vd" style="background:{{ $rnk }}">{{ $yz > 0 ? '+' : '' }}{{ number_format($yz, 1, ',', '.') }}%</span>
-      </div>
-    @endforeach
-  </div>
-  @endif
-
-  {{-- RAKAM ŞERİDİ (küçük chip'ler — patron-ai'deki alt şerit eşdeğeri) --}}
-  <div class="sb-blok" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
-    <span class="sb-mini">💰 Bu ay {{ $tl($ayHarcama) }}</span>
-    @if ($ayButce > 0)<span class="sb-mini">🎯 Bütçe %{{ $butceYuzde }}</span>@endif
-    <span class="sb-mini">📄 Dün {{ $dunGelenFatura }} fatura</span>
-    <span class="sb-mini">📦 Dün {{ $dunMalKabul }} mal kabul</span>
-    <span class="sb-mini">⚠️ {{ $kritikSayi }} kritik stok</span>
-    <span class="sb-mini">🚚 {{ $gecikenSip }} geciken</span>
-    <a href="/satinalma-ozet" class="sb-link" style="margin-left:auto;font-size:12.5px">Detaylı özet →</a>
-  </div>
+{{-- RAKAM ŞERİDİ --}}
+<div class="sb-mini-bar">
+  <span class="chip">💰 Bu ay {{ $tl($ayHarcama) }}</span>
+  @if ($ayButce > 0)<span class="chip" style="color:{{ $butceC }}">🎯 Bütçe %{{ $butceYuzde }}</span>@endif
+  <span class="chip">📄 Dün {{ $dunGelenFatura }} fatura</span>
+  <span class="chip">📦 Dün {{ $dunMalKabul }} mal kabul</span>
+  <span class="chip">⚠️ {{ $kritikSayi }} kritik</span>
+  <span class="chip">🚚 {{ $gecikenSip }} geciken</span>
+  <a href="/satinalma-ozet" class="link">Detaylı özet <span class="material-icons-outlined" style="font-size:14px;vertical-align:-3px">arrow_forward</span></a>
+</div>
 
 </div>
 </div>
+
+@push('scripts')
+<script>
+async function briefYap(btn, intent, params){
+  const row = btn.closest('.sb-yap-sat');
+  const son = row.querySelector('.sb-yap-sonuc');
+  btn.disabled = true; btn.innerHTML = '<span class="material-icons-outlined">hourglass_bottom</span> Yürütülüyor...';
+  try {
+    // 1) Eylem onerisi oluştur: brief-özel endpoint intent + params'ı doğrudan alır, log yazar
+    const r1 = await fetch('/api/satinalma-brief/eylem-oner', {
+      method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrf, 'Accept': 'application/json'},
+      body: JSON.stringify({intent, params})
+    });
+    const j1 = await r1.json();
+    if (!j1 || !j1.ok || !j1.log_id) {
+      son.className = 'sb-yap-sonuc hata';
+      son.textContent = 'Öneri oluşturulamadı: ' + (j1.hata || 'bilinmeyen hata');
+      btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> Yap';
+      return;
+    }
+    // 2) Onayla (ortak endpoint): dispatch satınalma modülüne gider, yürütür, zincire yazar
+    const r2 = await fetch('/api/ai-eylem/onayla', {
+      method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrf, 'Accept': 'application/json'},
+      body: JSON.stringify({log_id: j1.log_id})
+    });
+    const j2 = await r2.json();
+    const s = (j2 && j2.sonuc) || {};
+    son.className = 'sb-yap-sonuc ' + (s.ok ? 'ok' : 'hata');
+    son.textContent = s.mesaj || (s.ok ? 'Yürütüldü.' : 'Hata oluştu.');
+    btn.innerHTML = s.ok ? '<span class="material-icons-outlined">check_circle</span> Tamamlandı' : '<span class="material-icons-outlined">check</span> Yap';
+    if (s.ok) {
+      // Vazgeç butonunu gizle, Yap butonunu kalıcı yeşil tut
+      const vz = row.querySelector('.sb-btn-vaz'); if (vz) vz.style.display = 'none';
+      row.querySelector('.kilit').style.display = 'none';
+    } else {
+      btn.disabled = false;
+    }
+  } catch (e) {
+    son.className = 'sb-yap-sonuc hata'; son.textContent = 'Bağlantı hatası.';
+    btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> Yap';
+  }
+}
+
+async function briefVazgec(btn){
+  const row = btn.closest('.sb-yap-sat');
+  const son = row.querySelector('.sb-yap-sonuc');
+  son.className = 'sb-yap-sonuc vz';
+  son.textContent = 'Vazgeçildi, bir şey yapılmadı.';
+  row.querySelector('.sb-btn-yap').style.display = 'none';
+  btn.style.display = 'none';
+  row.querySelector('.kilit').style.display = 'none';
+}
+</script>
+@endpush
+
 @endsection

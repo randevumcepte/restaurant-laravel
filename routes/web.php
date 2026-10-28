@@ -14714,11 +14714,83 @@ Route::get('/satinalma-brief', function () {
     }
     if (empty($oneriler)) $oneriler[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'mtn' => 'Satın alma operasyonu yolunda — acil aksiyon yok.', 'link' => '/satinalma-ozet', 'buton' => 'Özete Dön'];
 
+    // ---- DÜN YAPILANLAR (satir satir, ikon + metin + opsiyonel link) ----
+    $dunYapilanlar = [];
+    try {
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $siparisSay = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereDate('tarih', $dun)->whereNotIn('durum', ['taslak', 'iptal'])->count();
+            $siparisTop = (float) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereDate('tarih', $dun)->whereNotIn('durum', ['taslak', 'iptal'])->sum('genel_toplam');
+            if ($siparisSay > 0) $dunYapilanlar[] = ['ikon' => 'shopping_cart_checkout', 'renk' => '#4F46E5', 'mtn' => "{$siparisSay} sipariş kesildi · toplam " . number_format($siparisTop, 0, ',', '.') . "₺", 'link' => '/satinalma-siparis'];
+        }
+        if ($dunMalKabul > 0) $dunYapilanlar[] = ['ikon' => 'inventory', 'renk' => '#10B981', 'mtn' => "{$dunMalKabul} mal kabul yapıldı", 'link' => '/mal-kabul-liste'];
+        if ($dunGelenFatura > 0) $dunYapilanlar[] = ['ikon' => 'receipt_long', 'renk' => '#F59E0B', 'mtn' => "{$dunGelenFatura} fatura işlendi · toplam " . number_format($dunHarcama, 0, ',', '.') . "₺", 'link' => '/alis-fatura'];
+        if (Schema::hasTable('satinalma_talepleri')) {
+            $yeniTalepDun = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->whereDate('created_at', $dun)->count();
+            if ($yeniTalepDun > 0) $dunYapilanlar[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'mtn' => "{$yeniTalepDun} yeni talep oluşturuldu", 'link' => '/satinalma-talep'];
+        }
+        // AI eylem log: dün onaylanan eylemler
+        if (Schema::hasTable('ai_eylem_log')) {
+            $aiOnay = (int) DB::table('ai_eylem_log')->where('sube_id', $sid)->where('modul', 'satinalma')->where('tip', 'onaylandi')->whereDate('created_at', $dun)->count();
+            if ($aiOnay > 0) $dunYapilanlar[] = ['ikon' => 'auto_awesome', 'renk' => '#7C3AED', 'mtn' => "{$aiOnay} AI eylemi onaylandı", 'link' => '/ai-eylem-log'];
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- BUGÜN YAPILACAKLAR (her satir: ikon, oncelik, baslik, aciklama, tip=eylem|link, intent, url) ----
+    $bugunYapilacak = [];
+    if ($kritikSayi > 0) {
+        $kritikAdlari = array_slice(array_map(fn($k) => $k['ad'], $kritikStoklar), 0, 3);
+        $bugunYapilacak[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'oncelik' => 'yuksek',
+            'baslik' => "$kritikSayi kritik malzeme için taslak sipariş oluştur",
+            'aciklama' => count($kritikAdlari) ? implode(', ', $kritikAdlari) . (count($kritikStoklar) > 3 ? ', +' . (count($kritikStoklar) - 3) : '') : '',
+            'tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'params' => []];
+    }
+    if ($gecikenSip > 0) {
+        $bugunYapilacak[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'oncelik' => 'yuksek',
+            'baslik' => "$gecikenSip geciken tedarikçiye WhatsApp hatırlatma gönder",
+            'aciklama' => 'Her birine kişiselleştirilmiş mesaj: tedarikçi adı + sipariş no + gecikme günü',
+            'tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'params' => []];
+    }
+    if ($teklifBekleyen > 0) {
+        $bugunYapilacak[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'oncelik' => 'orta',
+            'baslik' => "$teklifBekleyen teklif karşılaştır ve en uygununu seç",
+            'aciklama' => 'Gelen teklifleri birbiriyle kıyasla, siparişe çevir',
+            'tip' => 'link', 'url' => '/gelen-teklifler'];
+    }
+    if ($yeniTalep > 0) {
+        $bugunYapilacak[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'oncelik' => 'orta',
+            'baslik' => "$yeniTalep yeni talebi incele ve RFQ gönder",
+            'aciklama' => 'Departmanlardan gelen talepleri fiyat araştırmasına çevir',
+            'tip' => 'link', 'url' => '/satinalma-talep'];
+    }
+    try {
+        if (Schema::hasTable('mal_kabuller') && Schema::hasColumn('mal_kabuller', 'durum')) {
+            $taslakMK = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->where('durum', 'taslak')->count();
+            if ($taslakMK > 0) $bugunYapilacak[] = ['ikon' => 'inventory', 'renk' => '#10B981', 'oncelik' => 'orta',
+                'baslik' => "$taslakMK bekleyen mal kabulünü stoğa işle",
+                'aciklama' => 'Taslak kayıtları onaylayarak stok hareketine çevir',
+                'tip' => 'eylem', 'intent' => 'mal_kabul_onayla', 'params' => []];
+        }
+    } catch (\Throwable $e) {}
+    if ($butceYuzde !== null && $butceYuzde > 85) {
+        $bugunYapilacak[] = ['ikon' => 'savings', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'oncelik' => $butceYuzde > 100 ? 'yuksek' : 'orta',
+            'baslik' => "Bütçe %{$butceYuzde} kullanılmış — kontrol et" . ($butceYuzde > 100 ? ' (AŞIM!)' : ''),
+            'aciklama' => 'Harcama hızını gözden geçir, acil olmayan talepleri ertele',
+            'tip' => 'link', 'url' => '/satinalma-butce'];
+    }
+    if ($fiyatHareketleri->count() > 0) {
+        $kirmizi = $fiyatHareketleri->where('uyari', 'kirmizi')->count();
+        if ($kirmizi > 0) $bugunYapilacak[] = ['ikon' => 'trending_up', 'renk' => '#EC4899', 'oncelik' => 'dusuk',
+            'baslik' => "$kirmizi üründe sert fiyat artışı — alternatif tedarikçi araştır",
+            'aciklama' => 'Fiyat Radarı\'ndan sinyali olan ürünlere alternatif ara',
+            'tip' => 'link', 'url' => '/fiyat-radari'];
+    }
+
     return view('satinalma_brief', compact(
         'ad', 'dun', 'dunGelenFatura', 'dunHarcama', 'dunMalKabul',
         'ayHarcama', 'ayButce', 'butceYuzde',
         'kritikStoklar', 'kritikSayi', 'yeniTalep', 'onaydaTalep', 'teklifBekleyen', 'gecikenSip', 'acikSip',
-        'fiyatHareketleri', 'yaklasanTeslimler', 'oneriler'
+        'fiyatHareketleri', 'yaklasanTeslimler', 'oneriler',
+        'dunYapilanlar', 'bugunYapilacak'
     ));
 });
 
@@ -14903,6 +14975,19 @@ Route::get('/satinalma-asistan', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     return view('satinalma_asistan');
+});
+
+// Brief sayfasindaki yapilacak satirlarindan buton tiklanirsa cagrilir — intent + params al, log yaz
+Route::post('/api/satinalma-brief/eylem-oner', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $intent = (string) $r->input('intent');
+    $params = (array) $r->input('params', []);
+    $h = _satinalmaAsistanEylemHazirla($sid, $intent, $params);
+    if (!($h['ok'] ?? false)) return response()->json(['ok' => 0, 'hata' => $h['hata'] ?? 'Yapamadım']);
+    $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', $intent, $h['params'], $h['ozet'], 'Sabah brifingi - tek tik eylem');
+    return response()->json(['ok' => 1, 'log_id' => $log_id, 'ozet' => $h['ozet']]);
 });
 
 // Yeni: eylem onerisi hazirla + log ortak altyapiya yaz, log_id dondur
