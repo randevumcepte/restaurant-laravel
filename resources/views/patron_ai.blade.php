@@ -71,6 +71,52 @@
     </div>
   </div>
 
+  {{-- Hazır AI eylem chip'leri — tıklanınca Yap/Vazgeç modal açılır, log zincire yazılır --}}
+  <div class="pai-blok" style="padding:12px 14px;margin-top:10px;margin-bottom:14px">
+    <div style="font-size:11.5px;font-weight:800;color:var(--sub2);letter-spacing:.3px;margin-bottom:9px;text-transform:uppercase;display:flex;align-items:center;gap:6px">
+      <span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">bolt</span> Hazır AI Eylemleri — tıkla, onay iste, log'lanır
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px">
+      <button class="pai-chip" onclick="paiEylemOner('kritik_siparis_olustur')">🛒 Kritikleri siparişe çevir</button>
+      <button class="pai-chip" onclick="paiEylemOner('tedarikci_hatirlat')">📞 Geciken tedarikçileri hatırlat</button>
+      <button class="pai-chip" onclick="paiEylemOner('eksik_bilgi_iste')">📝 Eksik özlük bilgisi iste</button>
+      <button class="pai-chip" onclick="paiEylemOner('dogum_gunu_kutla')">🎂 Doğum günü kutla</button>
+      <button class="pai-chip" onclick="paiEylemOner('gelmeyene_sor')">⏰ Vardiyada gelmeyene sor</button>
+    </div>
+  </div>
+
+  <style>
+  .pai-chip{background:var(--card2);border:1px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;transition:all .13s}
+  .pai-chip:hover{background:color-mix(in srgb,var(--mor1) 10%,var(--card));border-color:var(--mor1);color:var(--mor1)}
+  .pai-eylem-mod{display:none;position:fixed;inset:0;background:rgba(10,15,30,.55);z-index:9999;align-items:center;justify-content:center;padding:16px}
+  .pai-eylem-mod.acik{display:flex}
+  .pai-eylem-mod .ic{background:var(--card);border-radius:18px;max-width:520px;width:100%;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+  .pai-eylem-mod h3{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 8px;display:flex;align-items:center;gap:9px}
+  .pai-eylem-mod .ozet{background:var(--card2);border-left:3px solid var(--mor1);border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.5;color:var(--ink);margin:10px 0 16px}
+  .pai-eylem-mod .uyari{font-size:11.5px;color:var(--sub);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+  .pai-eylem-mod .uyari .material-icons-outlined{font-size:14px;color:var(--amber)}
+  .pai-eylem-mod .btnler{display:flex;gap:9px;justify-content:flex-end}
+  .pai-eylem-mod .btn-yap{background:linear-gradient(135deg,#10B981,#059669);color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:800;cursor:pointer;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,.3)}
+  .pai-eylem-mod .btn-vaz{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:13.5px}
+  .pai-sonuc{font-size:13px;color:var(--ink);line-height:1.5;padding:12px 14px;border-radius:10px;background:var(--card2);margin-top:12px}
+  .pai-sonuc.ok{border-left:3px solid #10B981;color:#047857}
+  .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
+  </style>
+
+  {{-- Eylem onay modali --}}
+  <div class="pai-eylem-mod" id="paiEylemMod" onclick="if(event.target===this)this.classList.remove('acik')">
+    <div class="ic">
+      <h3><span class="material-icons-outlined" style="color:var(--mor1)">auto_awesome</span> AI eylem onayı</h3>
+      <div class="ozet" id="paiEylemOzet"></div>
+      <div class="uyari"><span class="material-icons-outlined">lock</span> Onayın IP'n (<b id="paiEylemIp">—</b>) ile birlikte imzalı log'a yazılacak. Geri alınamaz, yasal kanıt niteliğinde.</div>
+      <div class="btnler">
+        <button class="btn-vaz" onclick="paiEylemVazgec()">Vazgeç</button>
+        <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> Yap</button>
+      </div>
+      <div id="paiEylemSonuc" style="display:none" class="pai-sonuc"></div>
+    </div>
+  </div>
+
   @if ($demo)
   <div style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:12px;padding:10px 14px;margin:4px 2px 14px;font-size:12.5px;color:var(--amber)">
     <span class="material-icons-outlined" style="font-size:18px">theater_comedy</span>
@@ -225,6 +271,53 @@
 <script>
 function takipDurum(id, durum) {
   api('/api/patron-ai/takip-durum', { id: id, durum: durum }).then(function () { location.reload(); }).catch(function () { location.reload(); });
+}
+
+// AI eylem onay akışı — chip tıklanınca modal aç, Yap/Vazgeç
+var _paiEylemLogId = null;
+async function paiEylemOner(intent){
+  try{
+    const r = await fetch('/api/patron-ai/eylem-oner', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'}, body: JSON.stringify({intent})});
+    const j = await r.json();
+    if (!j.ok || !j.log_id) { alert(j.hata || 'Önerilemedi.'); return; }
+    _paiEylemLogId = j.log_id;
+    document.getElementById('paiEylemOzet').textContent = j.ozet;
+    document.getElementById('paiEylemSonuc').style.display = 'none';
+    document.getElementById('paiEylemYapBtn').disabled = false;
+    document.getElementById('paiEylemYapBtn').style.opacity = '1';
+    // IP göstergesi (basit)
+    try { document.getElementById('paiEylemIp').textContent = (await (await fetch('https://api.ipify.org?format=json')).json()).ip || 'tespit edilemedi'; } catch(e){ document.getElementById('paiEylemIp').textContent = 'tespit edilemedi'; }
+    document.getElementById('paiEylemMod').classList.add('acik');
+  }catch(e){ alert('Bağlantı hatası'); }
+}
+
+async function paiEylemYap(){
+  if (!_paiEylemLogId) return;
+  const btn = document.getElementById('paiEylemYapBtn');
+  btn.disabled = true; btn.style.opacity = '.6'; btn.innerHTML = '<span class="material-icons-outlined" style="font-size:17px">hourglass_bottom</span> Yürütülüyor...';
+  try{
+    const r = await fetch('/api/ai-eylem/onayla', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'}, body: JSON.stringify({log_id: _paiEylemLogId})});
+    const j = await r.json();
+    const son = j.sonuc || {};
+    const el = document.getElementById('paiEylemSonuc');
+    el.style.display = 'block';
+    el.className = 'pai-sonuc ' + (son.ok ? 'ok' : 'hata');
+    el.textContent = son.mesaj || 'Yürütme sonucu alınamadı.';
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size:17px">check</span> Yap';
+  }catch(e){
+    const el = document.getElementById('paiEylemSonuc');
+    el.style.display = 'block'; el.className = 'pai-sonuc hata'; el.textContent = 'Bağlantı hatası';
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+async function paiEylemVazgec(){
+  if (!_paiEylemLogId) { document.getElementById('paiEylemMod').classList.remove('acik'); return; }
+  try{
+    await fetch('/api/ai-eylem/vazgec', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'}, body: JSON.stringify({log_id: _paiEylemLogId})});
+  }catch(e){}
+  document.getElementById('paiEylemMod').classList.remove('acik');
+  _paiEylemLogId = null;
 }
 </script>
 @endpush

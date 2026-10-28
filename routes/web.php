@@ -7500,6 +7500,51 @@ Route::post('/api/ai-eylem/onayla', function (Request $r) {
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
 });
 
+// Patron modulu icin eylem hazirla + uygula (ortak dispatch icin)
+if (!function_exists('_patronAsistanEylemUygula')) {
+    function _patronAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        // Patron bir eyleme karar verdiginde ilgili departman modulune delege et
+        switch ($intent) {
+            case 'kritik_siparis_olustur':  // satinalma delegasyonu
+                if (function_exists('_satinalmaAsistanEylemUygula')) return _satinalmaAsistanEylemUygula($sid, $bp, 'kritik_siparis_olustur', $params);
+                return ['ok' => false, 'mesaj' => 'Satınalma modülü hazır değil.'];
+            case 'tedarikci_hatirlat':
+                if (function_exists('_satinalmaAsistanEylemUygula')) return _satinalmaAsistanEylemUygula($sid, $bp, 'tedarikci_hatirlat', $params);
+                return ['ok' => false, 'mesaj' => 'Satınalma modülü hazır değil.'];
+            case 'eksik_bilgi_iste':  // ik delegasyonu
+                if (function_exists('_ikAsistanEylemUygula')) return _ikAsistanEylemUygula($sid, $bp, 'mesaj', ['key' => 'eksik-bilgi-iste']);
+                return ['ok' => false, 'mesaj' => 'İK modülü hazır değil.'];
+            case 'dogum_gunu_kutla':
+                if (function_exists('_ikAsistanEylemUygula')) return _ikAsistanEylemUygula($sid, $bp, 'mesaj', ['key' => 'dogum-kutla']);
+                return ['ok' => false, 'mesaj' => 'İK modülü hazır değil.'];
+            case 'gelmeyene_sor':
+                if (function_exists('_ikAsistanEylemUygula')) return _ikAsistanEylemUygula($sid, $bp, 'mesaj', ['key' => 'gelmeyene-sor']);
+                return ['ok' => false, 'mesaj' => 'İK modülü hazır değil.'];
+        }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen patron eylem: ' . $intent];
+    }
+}
+
+// Patron paneli icin hazir eylem onerisi olustur (chip'lerden tetiklenir)
+Route::post('/api/patron-ai/eylem-oner', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $intent = (string) $r->input('intent');
+    $sayilar = [
+        'kritik_siparis_olustur' => ['ozet' => 'Kritik stoklardan tedarikçi bazlı taslak siparişler oluşturulacak.'],
+        'tedarikci_hatirlat'     => ['ozet' => 'Geciken siparişlerin tedarikçisine WhatsApp hatırlatma gönderilecek.'],
+        'eksik_bilgi_iste'       => ['ozet' => 'Özlük bilgisi eksik personele WhatsApp ile eksik bilgi talebi gönderilecek.'],
+        'dogum_gunu_kutla'       => ['ozet' => 'Doğum günü bu hafta içinde olan personele WhatsApp kutlama mesajı gönderilecek.'],
+        'gelmeyene_sor'          => ['ozet' => 'Bugün vardiyada olup giriş yapmayan personele WhatsApp mesajı gönderilecek.'],
+    ];
+    $meta = $sayilar[$intent] ?? null;
+    if (!$meta) return response()->json(['ok' => 0, 'hata' => 'Bilinmeyen eylem']);
+    $log_id = _aiEylemLogYaz($sid, $bp, 'patron', $intent, [], $meta['ozet'], 'Patron paneli hazır eylem');
+    return response()->json(['ok' => 1, 'log_id' => $log_id, 'ozet' => $meta['ozet']]);
+});
+
 Route::post('/api/ai-eylem/vazgec', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
