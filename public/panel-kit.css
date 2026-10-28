@@ -18,15 +18,17 @@ a{text-decoration:none}
 .rk-wrap{display:flex;min-height:100vh}
 .rk-side{width:258px;flex:0 0 258px;background:var(--card);border-right:1px solid var(--line);position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:30}
 .rk-side-head{background:linear-gradient(135deg,var(--mor1),var(--mavi));padding:18px 18px 16px;color:#fff}
-.rk-side-head .ad{font-size:20px;font-weight:800;line-height:1.1}
-.rk-side-head .sube{font-size:13.5px;margin-top:4px;opacity:.97}
-.rk-side-head .kul{font-size:11.5px;color:#E9D5FF;margin-top:1px}
+.rk-side-head .ad{font-size:20px;font-weight:800;line-height:1.1;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.15);letter-spacing:-.2px}
+.rk-side-head .sube{font-size:13.5px;margin-top:4px;color:rgba(255,255,255,.95) !important}
+.rk-side-head .kul{font-size:11.5px;color:#E9D5FF !important;margin-top:2px}
 .rk-menu{flex:1;overflow-y:auto;padding:6px 0}
-.rk-menu a{display:flex;align-items:center;gap:12px;padding:9px 18px;color:var(--ink);font-size:14.5px;font-weight:600}
-.rk-menu a .material-icons-outlined{font-size:21px}
-.rk-menu a:hover{background:var(--card2)}
-.rk-menu a.aktif{background:color-mix(in srgb, var(--mor1) 13%, transparent)}
-.rk-menu a.aktif,.rk-menu a.aktif .material-icons-outlined{color:var(--mor1)}
+.rk-menu a{display:flex;align-items:center;gap:12px;padding:10px 18px;color:var(--ink);font-size:14px;font-weight:600;border-radius:0;transition:background .12s,color .12s;position:relative}
+.rk-menu a .material-icons-outlined{font-size:21px;color:var(--sub);transition:color .12s}
+.rk-menu a:hover{background:color-mix(in srgb,var(--mor1) 7%,transparent);color:var(--mor1)}
+.rk-menu a:hover .material-icons-outlined{color:var(--mor1)}
+.rk-menu a.aktif{background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1);font-weight:700}
+.rk-menu a.aktif .material-icons-outlined{color:var(--mor1)}
+.rk-menu a.aktif::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;background:linear-gradient(180deg,var(--mor1),var(--mavi));border-radius:0 3px 3px 0}
 .rk-side-foot{border-top:1px solid var(--line)}
 .rk-side-foot a{display:flex;align-items:center;gap:12px;padding:12px 18px;color:#F87171;font-weight:700;font-size:14.5px}
 .rk-main{flex:1;margin-left:258px;min-height:100vh;display:flex;flex-direction:column}
@@ -90,6 +92,10 @@ a{text-decoration:none}
 .rk-flash.err{background:color-mix(in srgb,var(--kirmizi) 14%,transparent);color:var(--kirmizi)}
 .rk-grid{display:grid;gap:16px}
 .rk-sub{color:var(--sub)} .rk-sub2{color:var(--sub2)} .rk-ink{color:var(--ink)}
+
+/* ---- Pin kart aktif ikon duzeltmesi (beyaz ikon-beyaz container kontrast sorunu) ---- */
+.rk-pin.aktif .pi{background:rgba(255,255,255,.95) !important}
+.rk-pin.aktif .pi .material-icons-outlined{color:var(--mor1) !important}
 
 /* ---- Menu ikonu rozeti (iOS/Linear tarzi minimal) ---- */
 .rk-ikon-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}

@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=10">
+    <link rel="stylesheet" href="/panel-kit.css?v=11">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -328,9 +328,9 @@
                                 $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url));
                                 $badge = $_menuBadge[$url] ?? 0;
                             @endphp
-                            <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>
+                            <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}">
                                 <span class="rk-ikon-wrap">
-                                    <span class="material-icons-outlined" @if($renk && !$aktif) style="color:{{ $renk }}" @endif>{{ $ikon }}</span>
+                                    <span class="material-icons-outlined">{{ $ikon }}</span>
                                     @if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif
                                 </span>
                                 {{ $ad }}
