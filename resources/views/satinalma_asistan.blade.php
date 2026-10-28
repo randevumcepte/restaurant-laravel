@@ -13,38 +13,18 @@
   body.koyu #saWrap{--card:#1b2235;--card2:#161C2E;--ink:#e2e8f0;--sub:#a4b1c7;--sub2:#8694ad;--line:#2c3650;--bg:#0B1020}
   .rk-main{background:var(--bg)}
 
-  /* --- Hero (sade + canlı AI küresi) --- */
-  #saHero{text-align:center;padding:36px 20px 16px}
-  #saHero .sa-orb{width:84px;height:84px;border-radius:50%;margin:0 auto 18px;position:relative;
-    background:
-      radial-gradient(circle at 28% 28%, #c084fc 0%, transparent 42%),
-      radial-gradient(circle at 72% 72%, #f472b6 0%, transparent 42%),
-      radial-gradient(circle at 72% 28%, #60a5fa 0%, transparent 42%),
-      radial-gradient(circle at 28% 72%, #818cf8 0%, transparent 42%),
-      radial-gradient(circle at 50% 50%, #7C3AED 0%, #4F46E5 100%);
-    box-shadow:
-      0 20px 50px -12px rgba(124,58,237,.5),
-      0 0 40px -8px rgba(236,72,153,.35),
-      inset 0 2px 20px rgba(255,255,255,.18),
-      inset 0 -8px 16px rgba(0,0,0,.1);
-    animation:saBreath 4.5s ease-in-out infinite}
-  /* İçte dolaşan parlaklık (fluid shine) */
-  #saHero .sa-orb::before{content:'';position:absolute;top:14%;left:18%;width:38%;height:34%;
-    border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.5) 0%,transparent 70%);
-    filter:blur(4px);animation:saOrbShine 7s ease-in-out infinite}
-  /* Soft dış glow halka (dönmez, nabız atar) */
-  #saHero .sa-orb::after{content:'';position:absolute;inset:-12px;border-radius:50%;
-    background:radial-gradient(circle,color-mix(in srgb,#7C3AED 35%,transparent) 0%,transparent 70%);
-    z-index:-1;animation:saGlow 4.5s ease-in-out infinite}
-  @keyframes saBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-  @keyframes saOrbShine{
-    0%,100%{transform:translate(0,0) scale(1);opacity:.6}
-    25%{transform:translate(30%,-10%) scale(.9);opacity:.8}
-    50%{transform:translate(50%,30%) scale(1.1);opacity:.5}
-    75%{transform:translate(-10%,40%) scale(.95);opacity:.7}
-  }
-  @keyframes saGlow{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.85;transform:scale(1.08)}}
-
+  /* --- Hero (sohbet başlangıcında) --- */
+  #saHero{text-align:center;padding:30px 20px 20px}
+  #saHero .sa-orb-xl{width:72px;height:72px;border-radius:50%;margin:0 auto 14px;
+    background:conic-gradient(from 180deg at 50% 50%, #7C3AED 0deg, #4F46E5 90deg, #EC4899 180deg, #F59E0B 270deg, #7C3AED 360deg);
+    display:flex;align-items:center;justify-content:center;position:relative;
+    box-shadow:0 10px 30px -8px rgba(124,58,237,.4), inset 0 0 20px rgba(255,255,255,.15);
+    animation:saOrbit 8s linear infinite}
+  #saHero .sa-orb-xl::before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--card)}
+  #saHero .sa-orb-xl .material-icons-outlined{position:relative;z-index:1;font-size:32px;
+    background:linear-gradient(135deg,#7C3AED,#4F46E5,#EC4899);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+    font-weight:900}
+  @keyframes saOrbit{to{transform:rotate(360deg)}}
   #saHero h1{font-size:24px;font-weight:800;color:var(--ink);margin:0 0 6px;letter-spacing:-.5px}
   #saHero p{font-size:14px;color:var(--sub);margin:0 auto;max-width:460px;line-height:1.5}
 
@@ -74,8 +54,7 @@
   #saArac .sa-sayac .dot{width:6px;height:6px;border-radius:50%;background:var(--yesil);box-shadow:0 0 8px var(--yesil)}
 
   /* --- Chat alanı --- */
-  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 200px}
-  #saChat > *{scroll-margin-bottom:180px}
+  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 20px}
   .sa-msg{max-width:88%;padding:12px 15px;border-radius:16px;font-size:13.5px;line-height:1.6;
     white-space:pre-wrap;word-wrap:break-word;animation:saIn .25s ease-out}
   @keyframes saIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -183,7 +162,7 @@
 
   {{-- Hero (sohbet başlamadan önce) --}}
   <div id="saHero">
-    <div class="sa-orb"></div>
+    <div class="sa-orb-xl"><span class="material-icons-outlined">auto_awesome</span></div>
     <h1>Satınalma AI Asistanı</h1>
     <p>Stok, fiyat ve tedarikçi verini anında yorumlar. Soru sor, somut aksiyon al.</p>
   </div>
