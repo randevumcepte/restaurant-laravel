@@ -6,27 +6,84 @@
 
 @section('content')
 <style>
-  /* ===== Satınalma AI — modern tasarım ===== */
+  /* ===== Satınalma AI — premium tasarım ===== */
   #saWrap{--mor1:#7C3AED;--mavi:#4F46E5;--pembe:#EC4899;--yesil:#10B981;--amber:#F59E0B;
     --card:#fff;--card2:#f8fafc;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;--bg:#f8fafc;
     max-width:860px;margin:0 auto;padding-bottom:120px}
   body.koyu #saWrap{--card:#1b2235;--card2:#161C2E;--ink:#e2e8f0;--sub:#a4b1c7;--sub2:#8694ad;--line:#2c3650;--bg:#0B1020}
   .rk-main{background:var(--bg)}
 
-  /* --- Hero (sohbet başlangıcında) --- */
-  #saHero{text-align:center;padding:30px 20px 20px}
-  #saHero .sa-orb-xl{width:72px;height:72px;border-radius:50%;margin:0 auto 14px;
-    background:conic-gradient(from 180deg at 50% 50%, #7C3AED 0deg, #4F46E5 90deg, #EC4899 180deg, #F59E0B 270deg, #7C3AED 360deg);
-    display:flex;align-items:center;justify-content:center;position:relative;
-    box-shadow:0 10px 30px -8px rgba(124,58,237,.4), inset 0 0 20px rgba(255,255,255,.15);
-    animation:saOrbit 8s linear infinite}
-  #saHero .sa-orb-xl::before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--card)}
-  #saHero .sa-orb-xl .material-icons-outlined{position:relative;z-index:1;font-size:32px;
-    background:linear-gradient(135deg,#7C3AED,#4F46E5,#EC4899);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
-    font-weight:900}
+  /* --- Hero: premium AI nebula orb --- */
+  #saHero{text-align:center;padding:40px 20px 18px;position:relative}
+
+  #saHero .sa-orb-stage{position:relative;width:140px;height:140px;margin:0 auto 20px;
+    display:flex;align-items:center;justify-content:center;
+    animation:saOrbIn .9s cubic-bezier(.34,1.56,.64,1) both}
+  @keyframes saOrbIn{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+
+  /* Dış atmosfer glow */
+  #saHero .sa-orb-stage::before{content:'';position:absolute;inset:-25px;border-radius:50%;
+    background:
+      radial-gradient(circle at 35% 40%, rgba(168,85,247,.45) 0%, transparent 55%),
+      radial-gradient(circle at 65% 60%, rgba(236,72,153,.35) 0%, transparent 55%),
+      radial-gradient(circle at 50% 50%, rgba(59,130,246,.3) 0%, transparent 60%);
+    filter:blur(16px);animation:saAura 6s ease-in-out infinite;z-index:0}
+  @keyframes saAura{0%,100%{opacity:.65;transform:scale(1)}50%{opacity:.95;transform:scale(1.08)}}
+
+  /* Ana küre: dark holographic base */
+  #saHero .sa-orb{width:120px;height:120px;border-radius:50%;position:relative;z-index:1;
+    background:radial-gradient(circle at 30% 25%, #1e1b4b 0%, #0a0520 60%, #000 100%);
+    overflow:hidden;
+    box-shadow:
+      0 20px 50px -12px rgba(124,58,237,.4),
+      0 0 50px -10px rgba(236,72,153,.3),
+      inset 0 2px 6px rgba(255,255,255,.15),
+      inset 0 -10px 25px rgba(0,0,0,.5),
+      inset 0 0 40px rgba(99,102,241,.2);
+    animation:saBreath 5s ease-in-out infinite}
+  @keyframes saBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+
+  /* Nebula katmanları — her biri bağımsız dolaşır, mix-blend:screen ile karışır */
+  #saHero .sa-orb .layer{position:absolute;width:170%;height:170%;top:-35%;left:-35%;
+    mix-blend-mode:screen;filter:blur(14px);pointer-events:none}
+  #saHero .sa-orb .l1{background:radial-gradient(circle at 30% 40%, #a855f7 0%, transparent 32%);
+    animation:saFloat1 7s ease-in-out infinite}
+  #saHero .sa-orb .l2{background:radial-gradient(circle at 70% 60%, #ec4899 0%, transparent 32%);
+    animation:saFloat2 9s ease-in-out infinite}
+  #saHero .sa-orb .l3{background:
+    radial-gradient(circle at 60% 30%, #3b82f6 0%, transparent 28%),
+    radial-gradient(circle at 40% 75%, #f59e0b 0%, transparent 25%);
+    animation:saFloat3 11s ease-in-out infinite}
+  @keyframes saFloat1{0%,100%{transform:translate(0,0) scale(1)}
+    33%{transform:translate(22%,-18%) scale(1.1)}
+    66%{transform:translate(-18%,22%) scale(.95)}}
+  @keyframes saFloat2{0%,100%{transform:translate(0,0) scale(1)}
+    33%{transform:translate(-22%,20%) scale(.9)}
+    66%{transform:translate(18%,-22%) scale(1.1)}}
+  @keyframes saFloat3{0%,100%{transform:translate(0,0) scale(1)}
+    50%{transform:translate(12%,15%) scale(1.05)}}
+
+  /* Üstteki parlak highlight (cam yüzeyi) */
+  #saHero .sa-orb .shine{position:absolute;top:10%;left:18%;width:48%;height:36%;
+    background:radial-gradient(ellipse at center, rgba(255,255,255,.55) 0%, transparent 65%);
+    filter:blur(5px);z-index:2;pointer-events:none;animation:saShinePath 6s ease-in-out infinite}
+  @keyframes saShinePath{0%,100%{transform:translate(0,0) scale(1);opacity:.6}
+    50%{transform:translate(14%,8%) scale(1.1);opacity:.85}}
+
+  /* Orb etrafında dönen küçük parlak partikül */
+  #saHero .sa-orb-stage .orbit{position:absolute;inset:0;z-index:3;pointer-events:none;
+    animation:saOrbit 14s linear infinite}
+  #saHero .sa-orb-stage .orbit::before{content:'';position:absolute;top:-4px;left:50%;
+    width:8px;height:8px;border-radius:50%;transform:translateX(-50%);
+    background:radial-gradient(circle, #fff 0%, #c4b5fd 40%, transparent 70%);
+    box-shadow:0 0 12px rgba(255,255,255,.9), 0 0 24px rgba(168,85,247,.6)}
   @keyframes saOrbit{to{transform:rotate(360deg)}}
-  #saHero h1{font-size:24px;font-weight:800;color:var(--ink);margin:0 0 6px;letter-spacing:-.5px}
-  #saHero p{font-size:14px;color:var(--sub);margin:0 auto;max-width:460px;line-height:1.5}
+
+  #saHero h1{font-size:26px;font-weight:800;color:var(--ink);margin:0 0 8px;letter-spacing:-.6px;
+    animation:saInUp .5s ease-out .15s both}
+  #saHero p{font-size:14px;color:var(--sub);margin:0 auto;max-width:460px;line-height:1.55;
+    animation:saInUp .5s ease-out .25s both}
+  @keyframes saInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
   /* --- Hızlı öneri kartları (grid) --- */
   #saOneriler{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:22px 0 14px;padding:0 2px}
@@ -41,7 +98,7 @@
   .sa-oneri-bas{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
   .sa-oneri-alt{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.4}
 
-  /* --- Araç çubuğu (Rapor indir) --- */
+  /* --- Araç çubuğu --- */
   #saArac{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:0 2px}
   .sa-arac-btn{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;
     background:color-mix(in srgb,var(--yesil) 10%,var(--card));
@@ -53,8 +110,9 @@
   #saArac .sa-sayac{margin-left:auto;font-size:11.5px;color:var(--sub2);font-weight:600;display:inline-flex;align-items:center;gap:5px}
   #saArac .sa-sayac .dot{width:6px;height:6px;border-radius:50%;background:var(--yesil);box-shadow:0 0 8px var(--yesil)}
 
-  /* --- Chat alanı --- */
-  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 20px}
+  /* --- Chat --- */
+  #saChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 200px}
+  #saChat > *{scroll-margin-bottom:180px}
   .sa-msg{max-width:88%;padding:12px 15px;border-radius:16px;font-size:13.5px;line-height:1.6;
     white-space:pre-wrap;word-wrap:break-word;animation:saIn .25s ease-out}
   @keyframes saIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -67,14 +125,16 @@
   .sa-msg-wrap.ben{align-self:flex-end;flex-direction:row-reverse}
   .sa-msg-wrap.ai{align-self:flex-start}
   .sa-msg-wrap .sa-avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;
-    align-items:center;justify-content:center;color:#fff;margin-top:4px}
-  .sa-msg-wrap.ai .sa-avatar{background:conic-gradient(from 180deg,#7C3AED,#4F46E5,#EC4899,#F59E0B,#7C3AED);
-    position:relative}
-  .sa-msg-wrap.ai .sa-avatar::before{content:'';position:absolute;inset:2px;border-radius:50%;background:var(--card)}
-  .sa-msg-wrap.ai .sa-avatar .material-icons-outlined{position:relative;z-index:1;font-size:15px;
-    background:linear-gradient(135deg,#7C3AED,#EC4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+    align-items:center;justify-content:center;color:#fff;margin-top:4px;position:relative;overflow:hidden}
+  .sa-msg-wrap.ai .sa-avatar{background:radial-gradient(circle at 30% 30%, #1e1b4b, #000);
+    box-shadow:0 2px 8px rgba(124,58,237,.4), inset 0 0 10px rgba(168,85,247,.3)}
+  .sa-msg-wrap.ai .sa-avatar::after{content:'';position:absolute;inset:0;border-radius:50%;
+    background:
+      radial-gradient(circle at 30% 40%, #a855f7 0%, transparent 40%),
+      radial-gradient(circle at 70% 60%, #ec4899 0%, transparent 40%);
+    mix-blend-mode:screen;filter:blur(4px)}
   .sa-msg-wrap.ben .sa-avatar{background:linear-gradient(135deg,var(--sub),var(--sub2));color:#fff}
-  .sa-msg-wrap.ben .sa-avatar .material-icons-outlined{font-size:16px}
+  .sa-msg-wrap.ben .sa-avatar .material-icons-outlined{font-size:16px;position:relative;z-index:1}
 
   /* AI mesaj içi formatlar */
   .sa-msg.ai .sa-h{display:block;font-weight:700;font-size:14px;color:var(--mor1);margin:8px 0 4px;letter-spacing:.1px}
@@ -82,17 +142,20 @@
   .sa-msg.ai b{font-weight:700;color:var(--ink)}
   .sa-msg.ai .sa-mad{color:var(--mor1);font-weight:700;margin-right:4px}
 
-  /* --- AI düşünüyor --- */
+  /* AI düşünüyor */
   .sa-yaziyor{align-self:flex-start;display:inline-flex;align-items:center;gap:10px;
     background:var(--card);border:1px solid var(--line);border-radius:16px;border-bottom-left-radius:6px;
     padding:10px 14px;box-shadow:0 2px 10px -2px rgba(0,0,0,.05)}
-  .sa-yaziyor .sa-orb{width:26px;height:26px;border-radius:50%;flex-shrink:0;
-    background:conic-gradient(from 180deg,#7C3AED,#4F46E5,#EC4899,#7C3AED);
-    display:flex;align-items:center;justify-content:center;position:relative;
-    animation:saPulse 1.4s ease-in-out infinite}
-  .sa-yaziyor .sa-orb::before{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--card)}
-  .sa-yaziyor .sa-orb .material-icons-outlined{position:relative;z-index:1;font-size:14px;
-    background:linear-gradient(135deg,#7C3AED,#EC4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sa-yaziyor .sa-mini-orb{width:26px;height:26px;border-radius:50%;flex-shrink:0;position:relative;overflow:hidden;
+    background:radial-gradient(circle at 30% 30%, #1e1b4b, #000);animation:saPulse 1.5s ease-in-out infinite;
+    box-shadow:0 0 10px rgba(168,85,247,.5)}
+  .sa-yaziyor .sa-mini-orb::after{content:'';position:absolute;inset:0;border-radius:50%;
+    background:
+      radial-gradient(circle at 30% 40%, #a855f7 0%, transparent 45%),
+      radial-gradient(circle at 70% 60%, #ec4899 0%, transparent 45%);
+    mix-blend-mode:screen;filter:blur(3px)}
+  @keyframes saPulse{0%,100%{transform:scale(1);box-shadow:0 0 10px rgba(168,85,247,.5)}
+    50%{transform:scale(1.1);box-shadow:0 0 20px rgba(168,85,247,.8)}}
   .sa-yaziyor .sa-yz-txt{font-size:12.5px;font-weight:700;
     background:linear-gradient(90deg,#7C3AED,#4F46E5,#EC4899,#7C3AED);background-size:200% auto;
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
@@ -103,10 +166,9 @@
   .sa-yaziyor .sa-dots i:nth-child(2){background:#4F46E5;animation-delay:.18s}
   .sa-yaziyor .sa-dots i:nth-child(3){background:#EC4899;animation-delay:.36s}
   @keyframes saBounce{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
-  @keyframes saPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{transform:scale(1.08);box-shadow:0 0 0 8px rgba(124,58,237,0)}}
   @keyframes saShine{to{background-position:200% center}}
 
-  /* --- Export butonları balonu --- */
+  /* Export + teklif balonları */
   .sa-export{align-self:flex-start;max-width:92%;background:var(--card);border:1px solid var(--line);
     border-radius:16px;border-bottom-left-radius:6px;padding:12px 14px;
     display:flex;flex-wrap:wrap;gap:7px;animation:saIn .25s ease-out;box-shadow:0 2px 10px -2px rgba(0,0,0,.05)}
@@ -125,7 +187,7 @@
     border:0;border-radius:10px;cursor:pointer;font-weight:700;transition:transform .12s}
   .sa-teklif .evet:hover{transform:translateY(-1px)}
 
-  /* --- Floating input bar --- */
+  /* Floating input bar */
   #saInputBar{position:sticky;bottom:14px;z-index:30;margin-top:16px;padding:4px}
   #saInputBar .wrap{display:flex;gap:8px;align-items:center;padding:8px 8px 8px 16px;
     border-radius:999px;background:var(--card);border:1px solid var(--line);
@@ -150,8 +212,10 @@
   #saInputBar .ipucu{text-align:center;font-size:10.5px;color:var(--sub2);margin-top:6px;font-weight:500}
 
   @media (max-width:640px){
-    #saHero{padding:20px 14px 14px}
-    #saHero h1{font-size:20px}
+    #saHero{padding:30px 14px 14px}
+    #saHero h1{font-size:22px}
+    #saHero .sa-orb-stage{width:120px;height:120px}
+    #saHero .sa-orb{width:100px;height:100px}
     #saOneriler{grid-template-columns:1fr}
     .sa-msg{max-width:92%;font-size:13px}
     #saInputBar{bottom:10px}
@@ -162,7 +226,15 @@
 
   {{-- Hero (sohbet başlamadan önce) --}}
   <div id="saHero">
-    <div class="sa-orb-xl"><span class="material-icons-outlined">auto_awesome</span></div>
+    <div class="sa-orb-stage">
+      <div class="sa-orb">
+        <div class="layer l1"></div>
+        <div class="layer l2"></div>
+        <div class="layer l3"></div>
+        <div class="shine"></div>
+      </div>
+      <div class="orbit"></div>
+    </div>
     <h1>Satınalma AI Asistanı</h1>
     <p>Stok, fiyat ve tedarikçi verini anında yorumlar. Soru sor, somut aksiyon al.</p>
   </div>
@@ -236,7 +308,6 @@ function saFormat(t){
   return h;
 }
 
-// Hero ve öneri kartlarını gizle (ilk mesajdan sonra)
 function saHeroGizle(){
   const h=document.getElementById('saHero'); if(h) h.style.display='none';
   const o=document.getElementById('saOneriler'); if(o) o.style.display='none';
@@ -250,11 +321,10 @@ function saSayacGuncelle(){
   if(el){el.style.display=''; tx.textContent=n+' mesaj';}
 }
 
-// AI "düşünüyor"
 function saYaziyor(){
   const d=document.createElement('div');
   d.className='sa-yaziyor';
-  d.innerHTML='<span class="sa-orb"><span class="material-icons-outlined">auto_awesome</span></span>'+
+  d.innerHTML='<span class="sa-mini-orb"></span>'+
     '<span class="sa-yz-txt">AI düşünüyor</span>'+
     '<span class="sa-dots"><i></i><i></i><i></i></span>';
   document.getElementById('saChat').appendChild(d);
@@ -262,13 +332,12 @@ function saYaziyor(){
   return d;
 }
 
-// Mesaj balonu (avatar + içerik)
 function saBubble(metin, ben){
   const w=document.createElement('div');
   w.className='sa-msg-wrap '+(ben?'ben':'ai');
   const av=document.createElement('div');
   av.className='sa-avatar';
-  av.innerHTML='<span class="material-icons-outlined">'+(ben?'person':'auto_awesome')+'</span>';
+  if(ben) av.innerHTML='<span class="material-icons-outlined">person</span>';
   const m=document.createElement('div');
   m.className='sa-msg '+(ben?'ben':'ai');
   if(ben) m.textContent=metin; else m.innerHTML=saFormat(metin);
