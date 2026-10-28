@@ -6714,7 +6714,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok', '/satinalma-brief' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_personel', '/ik-risk' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya + sicil + işe alım + AI asistan + risk radarı (gor_personel yetkisi)
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
@@ -14222,6 +14222,107 @@ if (!function_exists('_satinalmaKuralCevap')) {
         return "(AI bakiyesi yok — veriden özet)\n• " . implode("\n• ", $p);
     }
 }
+// ============================ SATIN ALMA SABAH BRIFING ============================
+// Patron-AI brief'in satinalmaya ozel versiyonu: dun ozeti + bugunun gundem + fiyat sinyali + tedarikci + oneriler.
+Route::get('/satinalma-brief', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $ad = $bp->ad ?? 'Satın Almacı';
+    $dun = \Carbon\Carbon::yesterday()->toDateString();
+    $buAy = date('Y-m');
+    $ayBas = $buAy . '-01';
+    $ayBit = date('Y-m-d', strtotime('first day of next month', strtotime($ayBas)));
+
+    // ---- Dün özeti ----
+    $dunGelenFatura = 0; $dunHarcama = 0.0; $dunMalKabul = 0;
+    try {
+        if (Schema::hasTable('alis_faturalari')) {
+            $dunGelenFatura = (int) DB::table('alis_faturalari')->where('sube_id', $sid)->whereDate('tarih', $dun)->count();
+            $dunHarcama = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->whereDate('tarih', $dun)->sum('toplam');
+        }
+        if (Schema::hasTable('mal_kabuller')) {
+            $dunMalKabul = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->whereDate('tarih', $dun)->count();
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- Bu ay harcama + bütçe ----
+    $ayHarcama = 0.0; $ayButce = 0.0;
+    try {
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $ayHarcama = (float) DB::table('satinalma_siparisleri')->where('sube_id', $sid)
+                ->whereNotIn('durum', ['iptal', 'taslak'])
+                ->where('tarih', '>=', $ayBas)->where('tarih', '<', $ayBit)->sum('genel_toplam');
+        }
+        $ayButce = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', $buAy)->value('tutar') ?: 0);
+    } catch (\Throwable $e) {}
+    $butceYuzde = $ayButce > 0 ? round($ayHarcama / $ayButce * 100) : null;
+
+    // ---- Bugünün gündemi ----
+    $kritikStoklar = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+    $kritikSayi = count($kritikStoklar);
+    $yeniTalep = 0; $onaydaTalep = 0; $teklifBekleyen = 0; $gecikenSip = 0; $acikSip = 0;
+    try {
+        if (Schema::hasTable('satinalma_talepleri')) {
+            $yeniTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+            $onaydaTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count();
+        }
+        if (Schema::hasTable('rfq_gonderim')) $teklifBekleyen = (int) DB::table('rfq_gonderim')->where('sube_id', $sid)->where('durum', 'teklif_geldi')->count();
+        $gecikenSip = function_exists('_gecikenSiparisler') ? (int) _gecikenSiparisler($sid) : 0;
+        if (Schema::hasTable('satinalma_siparisleri')) $acikSip = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])->count();
+    } catch (\Throwable $e) {}
+
+    // ---- Son fiyat hareketleri (son 30 gün sarı/kırmızı uyarı) ----
+    $fiyatHareketleri = collect();
+    try {
+        if (Schema::hasTable('alis_fatura_kalemleri')) {
+            $fiyatHareketleri = DB::table('alis_fatura_kalemleri')
+                ->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
+                ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
+                ->where('alis_faturalari.sube_id', $sid)
+                ->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
+                ->where('alis_faturalari.tarih', '>=', today()->subDays(30))
+                ->orderByDesc('alis_faturalari.tarih')->limit(6)
+                ->get(['malzemeler.ad', 'alis_fatura_kalemleri.uyari', 'alis_fatura_kalemleri.fiyat_farki_yuzde', 'alis_fatura_kalemleri.birim_fiyat', 'alis_faturalari.tarih']);
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- Yaklaşan teslimler (önümüzdeki 7 gün) + geciken'ler ----
+    $yaklasanTeslimler = collect();
+    try {
+        if (Schema::hasTable('satinalma_siparisleri')) {
+            $yaklasanTeslimler = DB::table('satinalma_siparisleri')
+                ->leftJoin('tedarikciler', 'satinalma_siparisleri.tedarikci_id', '=', 'tedarikciler.id')
+                ->where('satinalma_siparisleri.sube_id', $sid)
+                ->whereIn('satinalma_siparisleri.durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])
+                ->whereNotNull('satinalma_siparisleri.beklenen_teslim')
+                ->where('satinalma_siparisleri.beklenen_teslim', '<=', today()->addDays(7))
+                ->orderBy('satinalma_siparisleri.beklenen_teslim')->limit(6)
+                ->get(['satinalma_siparisleri.id', 'satinalma_siparisleri.siparis_no', 'satinalma_siparisleri.beklenen_teslim', 'satinalma_siparisleri.genel_toplam', 'tedarikciler.ad as tedarikci']);
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- Öneriler (rule-based, aksiyon odaklı) ----
+    $oneriler = [];
+    if ($kritikSayi > 0) $oneriler[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'mtn' => "$kritikSayi malzeme kritik seviyede — hemen sipariş önerisini aç.", 'link' => '/siparis-onerisi', 'buton' => 'Sipariş Öner'];
+    if ($gecikenSip > 0) $oneriler[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'mtn' => "$gecikenSip sipariş gecikti — tedarikçileri ara.", 'link' => '/satinalma-siparis', 'buton' => 'Siparişleri Aç'];
+    if ($yeniTalep > 0) $oneriler[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'mtn' => "$yeniTalep yeni talep var — fiyat araştır veya RFQ gönder.", 'link' => '/satinalma-talep', 'buton' => 'Talepleri Aç'];
+    if ($teklifBekleyen > 0) $oneriler[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'mtn' => "$teklifBekleyen teklif geldi — en uygununu seçip onayla.", 'link' => '/gelen-teklifler', 'buton' => 'Teklifleri İncele'];
+    if ($butceYuzde !== null && $butceYuzde > 85) $oneriler[] = ['ikon' => 'savings', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'mtn' => "Bu ay bütçenin %{$butceYuzde}'i harcandı" . ($butceYuzde > 100 ? ' — aşım var!' : ' — dikkat.'), 'link' => '/satinalma-butce', 'buton' => 'Bütçeyi Aç'];
+    if ($fiyatHareketleri->count() > 0) {
+        $kirmiziSayi = $fiyatHareketleri->where('uyari', 'kirmizi')->count();
+        if ($kirmiziSayi > 0) $oneriler[] = ['ikon' => 'trending_up', 'renk' => '#EC4899', 'mtn' => "Son 30 günde $kirmiziSayi üründe sert fiyat artışı — alternatif tedarikçi araştır.", 'link' => '/fiyat-radari', 'buton' => 'Fiyat Radarı'];
+    }
+    if (empty($oneriler)) $oneriler[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'mtn' => 'Satın alma operasyonu yolunda — acil aksiyon yok.', 'link' => '/satinalma-ozet', 'buton' => 'Özete Dön'];
+
+    return view('satinalma_brief', compact(
+        'ad', 'dun', 'dunGelenFatura', 'dunHarcama', 'dunMalKabul',
+        'ayHarcama', 'ayButce', 'butceYuzde',
+        'kritikStoklar', 'kritikSayi', 'yeniTalep', 'onaydaTalep', 'teklifBekleyen', 'gecikenSip', 'acikSip',
+        'fiyatHareketleri', 'yaklasanTeslimler', 'oneriler'
+    ));
+});
+
 Route::get('/satinalma-asistan', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
