@@ -148,6 +148,7 @@
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
         'Stok & Tedarik' => [
+            ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
             ['/satinalma-ozet', 'space_dashboard', 'Satın Alma Özeti', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
