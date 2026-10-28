@@ -207,51 +207,98 @@ try {
 
 @push('head')
 <style>
-/* ===== PERSONEL SAYFASI — Flutter personel_screen.dart BİREBİR ===== */
-#pnl{--mor1:#7C3AED;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;--sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;--card:#fff;--card2:#f1f5f9;--ink:#1e293b}
-body.koyu #pnl{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b}
+/* ===== PERSONEL SAYFASI — Modern yeniden tasarım ===== */
+#pnl{--mor1:#7C3AED;--mor2:#A855F7;--mavi:#4F46E5;--mavi2:#6366F1;--yesil:#10B981;--yesil2:#34D399;--kirmizi:#F43F5E;--amber:#F59E0B;--cyan:#06B6D4;
+  --sub:#64748b;--sub2:#94a3b8;--line:#e2e8f0;--card:#fff;--card2:#f8fafc;--card3:#f1f5f9;--ink:#0f172a;--bg:#f6f7fb}
+body.koyu #pnl{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--card3:#222a40;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--bg:#0f1623}
+#pnl *{box-sizing:border-box}
 
-/* ── Ay Seçici ── */
-#pnl .ay-bar{display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 0 10px}
-#pnl .ay-btn{width:34px;height:34px;border:none;background:none;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--mor1);transition:background .15s}
-#pnl .ay-btn:hover{background:color-mix(in srgb,var(--mor1) 12%,transparent)}
-#pnl .ay-btn.dis{opacity:.3;pointer-events:none}
-#pnl .ay-metin{font-weight:700;font-size:15px;color:var(--ink);min-width:120px;text-align:center}
+/* HERO ÖZET */
+#pnl .hero{background:linear-gradient(135deg,var(--mor1) 0%,var(--mavi) 100%);border-radius:22px;padding:22px 24px;margin-bottom:18px;color:#fff;position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(124,58,237,.25)}
+#pnl .hero::before{content:'';position:absolute;top:-100px;right:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(255,255,255,.15),transparent 70%);border-radius:50%;pointer-events:none}
+#pnl .hero::after{content:'';position:absolute;bottom:-70px;left:30%;width:220px;height:220px;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);border-radius:50%;pointer-events:none}
+#pnl .hero-ust{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;position:relative}
+#pnl .hero-ust .h-lbl{font-size:11.5px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.7px;display:flex;align-items:center;gap:7px}
+#pnl .hero-ust .h-lbl .material-icons-outlined{font-size:16px}
+#pnl .hero-ust .h-toplam{font-size:36px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1px;margin-top:6px}
+#pnl .hero-ust .h-info{font-size:12.5px;color:rgba(255,255,255,.78);margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#pnl .hero-ust .h-info .mini-dot{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700}
+#pnl .hero-nav{display:inline-flex;align-items:center;background:rgba(255,255,255,.18);backdrop-filter:blur(10px);border-radius:14px;padding:4px;border:1px solid rgba(255,255,255,.22)}
+#pnl .hero-nav .ay-btn{width:34px;height:34px;border:0;background:transparent;cursor:pointer;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .14s}
+#pnl .hero-nav .ay-btn:hover{background:rgba(255,255,255,.18)}
+#pnl .hero-nav .ay-btn.dis{opacity:.35;pointer-events:none}
+#pnl .hero-nav .ay-metin{font-weight:800;font-size:14px;color:#fff;padding:0 10px;min-width:112px;text-align:center}
 
-/* ── Özet kart (Flutter _ozetKart gradient) ── */
-#pnl .ozet-kart{background:linear-gradient(135deg,var(--mor1),var(--mavi));border-radius:18px;padding:18px 20px;margin-bottom:14px;color:#fff}
-#pnl .ozet-kart .bas{font-size:12px;color:rgba(255,255,255,.7);margin-bottom:2px}
-#pnl .ozet-kart .toplam{font-size:28px;font-weight:800;margin-bottom:12px}
-#pnl .ozet-kart .mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-#pnl .ozet-kart .mini{display:flex;flex-direction:column;gap:2px}
-#pnl .ozet-kart .mini .v{font-size:14px;font-weight:700;word-break:break-all}
-#pnl .ozet-kart .mini .l{font-size:10px;color:rgba(255,255,255,.6)}
+#pnl .hero-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;position:relative;z-index:1}
+#pnl .kpi-chip{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:13px;padding:11px 13px;backdrop-filter:blur(10px)}
+#pnl .kpi-chip .l{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:5px}
+#pnl .kpi-chip .l .material-icons-outlined{font-size:13px}
+#pnl .kpi-chip .v{font-size:16px;font-weight:900;color:#fff;line-height:1;margin-top:4px;letter-spacing:-.3px}
 
-/* ── Grup başlık (Flutter MBolumBaslik) ── */
-#pnl .grp-bas{display:flex;align-items:center;gap:8px;margin:14px 0 6px}
-#pnl .grp-bas .cubuk{width:4px;height:18px;border-radius:2px;flex:none}
-#pnl .grp-bas .ad{font-weight:800;font-size:14px;color:var(--ink)}
-#pnl .grp-bas .sayi{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
+/* ARAÇ BAR: arama + rol filtre + aktif filtre + ekle */
+#pnl .arac-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+#pnl .arama{flex:1;min-width:220px;position:relative}
+#pnl .arama .material-icons-outlined{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--sub2);font-size:20px}
+#pnl .arama input{width:100%;height:42px;padding:0 14px 0 40px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-size:14px;font-weight:600;transition:border-color .15s,box-shadow .15s}
+#pnl .arama input:focus{outline:none;border-color:var(--mor1);box-shadow:0 0 0 3px rgba(124,58,237,.14)}
+#pnl .filtre{display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto;max-width:100%}
+#pnl .filtre::-webkit-scrollbar{display:none}
+#pnl .filtre{scrollbar-width:none}
+#pnl .f-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:999px;background:var(--card);border:1.5px solid var(--line);font-size:12.5px;font-weight:700;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none;white-space:nowrap}
+#pnl .f-chip:hover{color:var(--ink);border-color:var(--sub2)}
+#pnl .f-chip.aktif{border-color:transparent;color:#fff}
+#pnl .f-chip .say{font-size:10.5px;background:rgba(0,0,0,.08);padding:1px 7px;border-radius:999px;font-weight:800}
+#pnl .f-chip.aktif .say{background:rgba(255,255,255,.25)}
+#pnl .ekle-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;border:0;border-radius:12px;padding:11px 20px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,.3);transition:transform .14s,box-shadow .14s}
+#pnl .ekle-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(124,58,237,.4)}
+#pnl .ekle-btn .material-icons-outlined{font-size:19px}
 
-/* ── Personel kart (Flutter _masaustuKart) ── */
-#pnl .p-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
-#pnl .p-kart:hover{box-shadow:0 4px 18px rgba(0,0,0,.08);border-color:color-mix(in srgb,var(--mor1) 35%,transparent)}
+/* GRUP BAŞLIK */
+#pnl .grp-bas{display:flex;align-items:center;gap:9px;margin:18px 2px 10px}
+#pnl .grp-bas .gi{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff}
+#pnl .grp-bas .gi .material-icons-outlined{font-size:17px}
+#pnl .grp-bas .ad{font-weight:800;font-size:15px;color:var(--ink);letter-spacing:-.2px}
+#pnl .grp-bas .sayi{font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px}
+#pnl .grp-bas .sp{flex:1;height:1px;background:var(--line);margin-left:4px}
+
+/* PERSONEL KART */
+#pnl .p-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px;margin-bottom:6px}
+#pnl .p-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;position:relative;overflow:hidden}
+#pnl .p-kart:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.08);border-color:color-mix(in srgb,var(--mor1) 25%,var(--line))}
 #pnl .p-kart.pasif{opacity:.55}
-#pnl .avatar{width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px}
-#pnl .p-kart .p-meta{min-width:0;flex:1}
-#pnl .p-kart .p-ad{font-weight:800;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#pnl .p-kart .p-alt{display:flex;align-items:center;gap:7px;margin-top:4px;flex-wrap:wrap}
-#pnl .p-kart .p-maas{font-size:12px;color:var(--sub)}
-#pnl .p-kart .p-prim{font-size:12px;color:var(--yesil)}
-#pnl .p-kart .p-net{text-align:right;flex:none}
-#pnl .p-kart .p-net .v{font-weight:800;font-size:16px}
-#pnl .p-kart .p-net .l{font-size:10px;color:var(--sub);text-align:right}
+#pnl .p-kart .strip{position:absolute;left:0;top:0;bottom:0;width:3px}
+#pnl .avatar{width:46px;height:46px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px}
+#pnl .p-meta{min-width:0}
+#pnl .p-ad{font-weight:800;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
+#pnl .p-alt{display:flex;align-items:center;gap:7px;margin-top:5px;flex-wrap:wrap}
+#pnl .p-maas{font-size:11.5px;color:var(--sub);font-weight:600;display:inline-flex;align-items:center;gap:3px}
+#pnl .p-maas .material-icons-outlined{font-size:13px;color:var(--sub2)}
+#pnl .p-prim{font-size:11px;color:var(--yesil);font-weight:800;background:color-mix(in srgb,var(--yesil) 10%,transparent);padding:1px 7px;border-radius:999px}
+#pnl .p-net{text-align:right;flex:none}
+#pnl .p-net .v{font-weight:900;font-size:16px;letter-spacing:-.3px;line-height:1}
+#pnl .p-net .l{font-size:10px;color:var(--sub2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
 
-/* ── Rozet ── */
-#pnl .rozet{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid;white-space:nowrap}
+/* ROZET */
+#pnl .rozet{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;white-space:nowrap}
+#pnl .rozet.pasif{color:var(--sub);background:var(--card3)}
 
-/* ── Grid ── */
-#pnl .p-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-bottom:6px}
+/* Boş durum */
+#pnl .bos{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:48px 20px;text-align:center;color:var(--sub)}
+#pnl .bos .material-icons-outlined{font-size:40px;color:var(--sub2);margin-bottom:10px;opacity:.6}
+#pnl .bos .b{font-size:14.5px;font-weight:800;color:var(--ink);margin-bottom:4px}
+
+/* Responsive */
+@media(max-width:900px){
+  #pnl .hero-ust{flex-direction:column;align-items:stretch}
+  #pnl .hero-ust .h-toplam{font-size:30px}
+  #pnl .hero-kpi{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:640px){
+  #pnl .arac-bar{flex-direction:column;align-items:stretch}
+  #pnl .ekle-btn{width:100%;justify-content:center}
+  #pnl .hero{padding:18px}
+  #pnl .hero-ust .h-toplam{font-size:26px}
+}
 
 /* =====================================================================
    DETAY PANEL (Flutter PersonelDetayScreen — sağdan kayar)
@@ -334,68 +381,99 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
   <div class="rk-flash err">{{ session('hata') }}</div>
 @endif
 
-{{-- ── Ay Seçici (Flutter _aySecici) ── --}}
-<div class="ay-bar">
-  <a href="/personel?ay={{ $oncekiKey }}" class="ay-btn" title="Önceki ay">
-    <span class="material-icons-outlined" style="font-size:22px">chevron_left</span>
-  </a>
-  <span class="ay-metin">{{ $ayMetin }}</span>
-  <a href="{{ $gelecekMi ? '#' : '/personel?ay='.$sonrakiKey }}" class="ay-btn{{ $gelecekMi ? ' dis' : '' }}" title="Sonraki ay">
-    <span class="material-icons-outlined" style="font-size:22px">chevron_right</span>
-  </a>
-</div>
+@php
+  // Grup ikonları
+  $grupIk = ['Yöneticiler'=>'admin_panel_settings','Garsonlar'=>'room_service','Mutfak / Ustalar'=>'soup_kitchen','Kasiyerler'=>'point_of_sale','Diğer'=>'groups'];
+@endphp
 
-{{-- ── Özet Kart (Flutter _ozetKart) ── --}}
-<div class="ozet-kart">
-  <div class="bas">Bu Ay Personel Gideri</div>
-  <div class="toplam">{{ $tl($ozet['maas'] + $ozet['prim']) }}</div>
-  <div class="mini-grid">
-    <div class="mini"><span class="v">{{ $tl($ozet['maas']) }}</span><span class="l">Maaş</span></div>
-    <div class="mini"><span class="v">{{ $tl($ozet['prim']) }}</span><span class="l">Prim</span></div>
-    <div class="mini"><span class="v">{{ $tl($ozet['odenen']) }}</span><span class="l">Ödenen</span></div>
-    <div class="mini"><span class="v">{{ $tl($ozet['net_kalan']) }}</span><span class="l">Kalan</span></div>
+{{-- HERO ÖZET: ay nav + bordro + 4 KPI chip --}}
+<div class="hero">
+  <div class="hero-ust">
+    <div>
+      <div class="h-lbl"><span class="material-icons-outlined">payments</span>Bu Ay Personel Gideri</div>
+      <div class="h-toplam">{{ $tl($ozet['maas'] + $ozet['prim']) }}</div>
+      <div class="h-info">
+        <span class="mini-dot"><span class="material-icons-outlined" style="font-size:14px">groups</span>{{ count($personeller) }} personel</span>
+        <span class="mini-dot"><span class="material-icons-outlined" style="font-size:14px">check_circle</span>{{ $aktifSayi }} aktif</span>
+        @if($ozet['net_kalan']>0)<span class="mini-dot" style="background:rgba(244,63,94,.25)"><span class="material-icons-outlined" style="font-size:14px">warning</span>{{ $tl($ozet['net_kalan']) }} ödenmedi</span>@endif
+      </div>
+    </div>
+    <div class="hero-nav">
+      <a href="/personel?ay={{ $oncekiKey }}" class="ay-btn" title="Önceki ay">
+        <span class="material-icons-outlined" style="font-size:20px">chevron_left</span>
+      </a>
+      <span class="ay-metin">{{ $ayMetin }}</span>
+      <a href="{{ $gelecekMi ? '#' : '/personel?ay='.$sonrakiKey }}" class="ay-btn{{ $gelecekMi ? ' dis' : '' }}" title="Sonraki ay">
+        <span class="material-icons-outlined" style="font-size:20px">chevron_right</span>
+      </a>
+    </div>
   </div>
-</div>
-
-{{-- Üst şerit: personel sayısı + Personel Ekle butonu --}}
-<div class="rk-bolum" style="justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-  <div style="display:inline-flex;gap:8px;flex-wrap:wrap">
-    <span class="rk-rozet" style="color:var(--mor1);border-color:color-mix(in srgb,var(--mor1) 45%,transparent);background:color-mix(in srgb,var(--mor1) 12%,transparent)">
-      <span class="material-icons-outlined" style="font-size:16px">groups</span>{{ count($personeller) }} personel
-    </span>
-    <span class="rk-rozet" style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 45%,transparent);background:color-mix(in srgb,var(--yesil) 12%,transparent)">
-      <span class="material-icons-outlined" style="font-size:16px">check_circle</span>{{ $aktifSayi }} aktif
-    </span>
+  <div class="hero-kpi">
+    <div class="kpi-chip"><div class="l"><span class="material-icons-outlined">attach_money</span>Maaş</div><div class="v">{{ $tl($ozet['maas']) }}</div></div>
+    <div class="kpi-chip"><div class="l"><span class="material-icons-outlined">add_circle</span>Prim</div><div class="v">{{ $tl($ozet['prim']) }}</div></div>
+    <div class="kpi-chip"><div class="l"><span class="material-icons-outlined">check_circle</span>Ödenen</div><div class="v">{{ $tl($ozet['odenen']) }}</div></div>
+    <div class="kpi-chip"><div class="l"><span class="material-icons-outlined">account_balance_wallet</span>Kalan</div><div class="v">{{ $tl($ozet['net_kalan']) }}</div></div>
   </div>
-  @if ($duzenleyebilir)
-    <button type="button" class="rk-btn" style="background:var(--mor1)" onclick="personelAc(null)">
-      <span class="material-icons-outlined" style="font-size:18px">person_add_alt</span> Personel Ekle
-    </button>
-  @endif
 </div>
 
 @if (!$duzenleyebilir)
-  <div class="rk-flash err" style="font-weight:600">
+  <div class="rk-flash err" style="font-weight:600;margin-bottom:12px">
     Personel ve yetkileri yalnızca işletme sahibi düzenleyebilir. Görüntülüyorsunuz.
   </div>
 @endif
 
+{{-- ARAÇ BAR: Arama · Rol filtre · Aktif filtre · Ekle --}}
+<div class="arac-bar">
+  <div class="arama">
+    <span class="material-icons-outlined">search</span>
+    <input type="text" id="prAra" placeholder="İsim veya role göre ara…" oninput="prFiltre()">
+  </div>
+  <div class="filtre" id="prRolF">
+    @php
+      $rolSay = ['hepsi'=>count($personeller)];
+      foreach ($personeller as $pp) { $rr = $pp['rol'] ?? 'diger'; $rolSay[$rr] = ($rolSay[$rr] ?? 0) + 1; }
+    @endphp
+    <div class="f-chip aktif" data-rol="hepsi" style="background:var(--mor1);color:#fff;border-color:var(--mor1)" onclick="prRolFil(this)">Tümü <span class="say">{{ $rolSay['hepsi'] }}</span></div>
+    @foreach(['sahip','mudur','satinalmaci','garson','mutfak','kasa'] as $rk)
+      @if(($rolSay[$rk]??0)>0)
+        @php $rc = $renkAl($rk); @endphp
+        <div class="f-chip" data-rol="{{ $rk }}" style="--rc:{{ $rc }}" onclick="prRolFil(this)">
+          {{ $rolAd[$rk] ?? $rk }} <span class="say">{{ $rolSay[$rk] }}</span>
+        </div>
+      @endif
+    @endforeach
+  </div>
+  <div class="filtre" id="prAktifF">
+    <div class="f-chip aktif" data-aktif="all" style="background:var(--ink);color:#fff;border-color:var(--ink)" onclick="prAktifFil(this)">Hepsi</div>
+    <div class="f-chip" data-aktif="1" onclick="prAktifFil(this)">Aktif</div>
+    <div class="f-chip" data-aktif="0" onclick="prAktifFil(this)">Pasif</div>
+  </div>
+  @if ($duzenleyebilir)
+    <button type="button" class="ekle-btn" onclick="personelAc(null)">
+      <span class="material-icons-outlined">person_add_alt</span>Personel Ekle
+    </button>
+  @endif
+</div>
+
 @if (empty($personeller))
-  <div class="rk-card" style="text-align:center;padding:38px">
-    <span class="rk-sub">Henüz personel yok.</span>
+  <div class="bos">
+    <span class="material-icons-outlined">group_off</span>
+    <div class="b">Henüz personel yok</div>
+    <div>Yukarıdaki "Personel Ekle" butonundan ekle.</div>
   </div>
 @else
-  {{-- Role göre gruplu kart ızgarası (Flutter _masaustuGovde / _grupSira) --}}
+  <div id="prListe">
   @foreach ($grupSira as $grup)
     @continue (empty($siraliGruplar[$grup]))
-    @php $gRenk = $grupRenk[$grup] ?? '#64748B'; @endphp
-    <div class="grp-bas">
-      <span class="cubuk" style="background:{{ $gRenk }}"></span>
+    @php $gRenk = $grupRenk[$grup] ?? '#64748B'; $gIk = $grupIk[$grup] ?? 'groups'; @endphp
+    <div class="grp-bas" data-grup="{{ $grup }}">
+      <div class="gi" style="background:linear-gradient(135deg,{{ $gRenk }},color-mix(in srgb,{{ $gRenk }} 70%,#000))"><span class="material-icons-outlined">{{ $gIk }}</span></div>
       <span class="ad">{{ $grup }}</span>
       <span class="sayi" style="color:{{ $gRenk }};background:color-mix(in srgb,{{ $gRenk }} 13%,transparent)">{{ count($siraliGruplar[$grup]) }}</span>
+      <span class="sp"></span>
     </div>
 
-    <div class="p-grid">
+    <div class="p-grid" data-grup-liste="{{ $grup }}">
       @foreach ($siraliGruplar[$grup] as $p)
         @php
           $pid    = (int)($p['id'] ?? 0);
@@ -405,40 +483,92 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
           $harf   = mb_strtoupper(mb_substr($p['ad'] ?? '?', 0, 1));
           $h      = $hesapMap[$pid] ?? ['maas'=>0,'prim_hesap'=>0,'net'=>0];
           $net    = (float)($h['net'] ?? 0);
-          $netRenk = $net > 0 ? 'var(--ink)' : 'var(--sub)';
-          // Detay panel için JSON (personel bilgisi + hesap + hareketler)
-          $detayData = array_merge($p, $h, [
-              'hareketler' => $hareketDetayMap[$pid] ?? [],
-          ]);
+          $netRenk = $net > 0 ? 'var(--kirmizi)' : 'var(--yesil)';
+          $detayData = array_merge($p, $h, ['hareketler' => $hareketDetayMap[$pid] ?? []]);
         @endphp
-        {{-- Flutter _masaustuKart / _personelKart --}}
         <div class="p-kart{{ $aktif ? '' : ' pasif' }}"
              onclick='detayAc(@json($detayData))'
-             data-pid="{{ $pid }}">
+             data-pid="{{ $pid }}"
+             data-ad="{{ mb_strtolower($p['ad'] ?? '') }}"
+             data-rol="{{ $rol }}"
+             data-aktif="{{ $aktif ? 1 : 0 }}">
+          <div class="strip" style="background:{{ $renk }}"></div>
           <div class="avatar" style="background:color-mix(in srgb,{{ $renk }} 18%,transparent);color:{{ $renk }}">{{ $harf }}</div>
           <div class="p-meta">
             <div class="p-ad">{{ $p['ad'] ?? '—' }}</div>
             <div class="p-alt">
-              <span class="rozet" style="color:{{ $renk }};border-color:color-mix(in srgb,{{ $renk }} 45%,transparent);background:color-mix(in srgb,{{ $renk }} 16%,transparent)">{{ $rolAd[$rol] ?? $rol }}</span>
+              <span class="rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 14%,transparent)">{{ $rolAd[$rol] ?? $rol }}</span>
               @if (!$aktif)
-                <span class="rozet" style="color:var(--sub);border-color:var(--line);background:var(--card2)">Pasif</span>
+                <span class="rozet pasif">Pasif</span>
               @endif
-              <span class="p-maas">Maaş {{ $tl($h['maas'] ?? 0) }}</span>
+              <span class="p-maas"><span class="material-icons-outlined">payments</span>{{ $tl($h['maas'] ?? 0) }}</span>
               @if (($h['prim_hesap'] ?? 0) > 0)
-                <span class="p-prim">+prim {{ $tl($h['prim_hesap']) }}</span>
+                <span class="p-prim">+{{ $tl($h['prim_hesap']) }}</span>
               @endif
             </div>
           </div>
           <div class="p-net">
-            <div class="v" style="color:{{ $netRenk }}">{{ $tl($net) }}</div>
-            <div class="l">kalan</div>
+            <div class="v" style="color:{{ $net > 0 ? 'var(--kirmizi)' : 'var(--yesil)' }}">{{ $tl($net) }}</div>
+            <div class="l">{{ $net > 0 ? 'ödenmedi' : 'kapandı' }}</div>
           </div>
-          <span class="material-icons-outlined" style="font-size:20px;color:var(--sub);flex:none">chevron_right</span>
         </div>
       @endforeach
     </div>
   @endforeach
+  </div>
+  <div class="bos" id="prBosFiltre" style="display:none;margin-top:10px">
+    <span class="material-icons-outlined">search_off</span>
+    <div class="b">Eşleşen personel yok</div>
+    <div>Arama veya filtreyi temizle.</div>
+  </div>
 @endif
+
+<script>
+function prRolFil(el){
+  document.querySelectorAll('#prRolF .f-chip').forEach(c=>{
+    c.classList.remove('aktif');
+    c.style.background=''; c.style.color=''; c.style.borderColor='';
+  });
+  el.classList.add('aktif');
+  var r = el.dataset.rol;
+  if (r === 'hepsi') { el.style.background='var(--mor1)'; el.style.color='#fff'; el.style.borderColor='var(--mor1)'; }
+  else { var rc = el.style.getPropertyValue('--rc'); el.style.background=rc; el.style.color='#fff'; el.style.borderColor=rc; }
+  prFiltre();
+}
+function prAktifFil(el){
+  document.querySelectorAll('#prAktifF .f-chip').forEach(c=>{
+    c.classList.remove('aktif');
+    c.style.background=''; c.style.color=''; c.style.borderColor='';
+  });
+  el.classList.add('aktif');
+  el.style.background='var(--ink)'; el.style.color='#fff'; el.style.borderColor='var(--ink)';
+  prFiltre();
+}
+function prFiltre(){
+  var q = (document.getElementById('prAra')?.value || '').toLowerCase().trim();
+  var rolF = document.querySelector('#prRolF .f-chip.aktif')?.dataset.rol || 'hepsi';
+  var aktF = document.querySelector('#prAktifF .f-chip.aktif')?.dataset.aktif || 'all';
+  var gorunen = 0;
+  document.querySelectorAll('#prListe .p-kart').forEach(k=>{
+    var ok = true;
+    if (q && !(k.dataset.ad||'').includes(q)) ok = false;
+    if (rolF !== 'hepsi' && k.dataset.rol !== rolF) ok = false;
+    if (aktF !== 'all' && k.dataset.aktif !== aktF) ok = false;
+    k.style.display = ok ? '' : 'none';
+    if (ok) gorunen++;
+  });
+  // Grup başlıklarını da gizle (grubun hiç görünen kartı yoksa)
+  document.querySelectorAll('[data-grup-liste]').forEach(gr=>{
+    var grup = gr.dataset.grupListe;
+    var hasVisible = Array.from(gr.querySelectorAll('.p-kart')).some(k => k.style.display !== 'none');
+    gr.style.display = hasVisible ? '' : 'none';
+    var bas = document.querySelector('[data-grup="'+grup+'"]');
+    if (bas) bas.style.display = hasVisible ? '' : 'none';
+  });
+  var bos = document.getElementById('prBosFiltre');
+  if (bos) bos.style.display = (gorunen === 0) ? 'block' : 'none';
+}
+</script>
 
 {{-- ===================================================================
      DETAY PANEL (Flutter PersonelDetayScreen)
