@@ -1,7 +1,7 @@
 @extends('layout.app')
-@section('title', 'Satınalma Siparişi')
+@section('title', 'Sipariş İşlemleri')
 @section('rk_ikon', 'shopping_cart_checkout')
-@section('baslik', 'Satınalma Siparişi')
+@section('baslik', 'Sipariş İşlemleri')
 
 @push('head')
 <style>
