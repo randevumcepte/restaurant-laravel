@@ -13,20 +13,89 @@
   body.koyu #saWrap{--card:#1b2235;--card2:#161C2E;--ink:#e2e8f0;--sub:#a4b1c7;--sub2:#8694ad;--line:#2c3650;--bg:#0B1020}
   .rk-main{background:var(--bg)}
 
-  /* --- Hero (sohbet başlangıcında) --- */
-  #saHero{text-align:center;padding:30px 20px 20px}
-  #saHero .sa-orb-xl{width:72px;height:72px;border-radius:50%;margin:0 auto 14px;
-    background:conic-gradient(from 180deg at 50% 50%, #7C3AED 0deg, #4F46E5 90deg, #EC4899 180deg, #F59E0B 270deg, #7C3AED 360deg);
-    display:flex;align-items:center;justify-content:center;position:relative;
-    box-shadow:0 10px 30px -8px rgba(124,58,237,.4), inset 0 0 20px rgba(255,255,255,.15);
-    animation:saOrbit 8s linear infinite}
-  #saHero .sa-orb-xl::before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--card)}
-  #saHero .sa-orb-xl .material-icons-outlined{position:relative;z-index:1;font-size:32px;
-    background:linear-gradient(135deg,#7C3AED,#4F46E5,#EC4899);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
-    font-weight:900}
-  @keyframes saOrbit{to{transform:rotate(360deg)}}
-  #saHero h1{font-size:24px;font-weight:800;color:var(--ink);margin:0 0 6px;letter-spacing:-.5px}
-  #saHero p{font-size:14px;color:var(--sub);margin:0 auto;max-width:460px;line-height:1.5}
+  /* --- Hero (sohbet başlangıcında) WOW tasarım --- */
+  #saHero{position:relative;text-align:center;padding:40px 20px 10px;overflow:hidden;isolation:isolate}
+
+  /* Mesh gradient blob'lar — arka plan */
+  #saHero .sa-bg-mesh{position:absolute;inset:-40px;z-index:-1;pointer-events:none;overflow:hidden;filter:blur(60px);opacity:.55}
+  body.koyu #saHero .sa-bg-mesh{opacity:.4}
+  #saHero .sa-bg-mesh .blob{position:absolute;border-radius:50%;will-change:transform}
+  #saHero .sa-bg-mesh .b1{width:280px;height:280px;background:#7C3AED;top:-60px;left:10%;animation:saBlob1 14s ease-in-out infinite}
+  #saHero .sa-bg-mesh .b2{width:240px;height:240px;background:#EC4899;top:30px;right:5%;animation:saBlob2 16s ease-in-out infinite}
+  #saHero .sa-bg-mesh .b3{width:220px;height:220px;background:#4F46E5;bottom:-40px;left:40%;animation:saBlob3 18s ease-in-out infinite}
+  #saHero .sa-bg-mesh .b4{width:180px;height:180px;background:#F59E0B;top:40%;right:35%;animation:saBlob1 20s ease-in-out infinite reverse}
+  @keyframes saBlob1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,-30px) scale(1.15)}}
+  @keyframes saBlob2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-50px,20px) scale(.9)}}
+  @keyframes saBlob3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,-40px) scale(1.1)}}
+
+  /* Hero içerik */
+  #saHero .sa-hero-inner{position:relative;z-index:1}
+
+  /* Orb + ring */
+  #saHero .sa-orb-wrap{position:relative;width:100px;height:100px;margin:0 auto 20px;animation:saIn .6s cubic-bezier(.34,1.56,.64,1) both}
+  #saHero .sa-ring{position:absolute;inset:-6px;border-radius:50%;
+    background:conic-gradient(from 0deg,#7C3AED,#4F46E5,#EC4899,#F59E0B,#10B981,#7C3AED);
+    animation:saSpin 6s linear infinite;mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px))}
+  #saHero .sa-ring-outer{position:absolute;inset:-20px;border-radius:50%;border:1px dashed color-mix(in srgb,var(--mor1) 25%,transparent);
+    animation:saSpin 30s linear infinite reverse}
+  #saHero .sa-orb-xl{position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 180deg,#7C3AED,#4F46E5,#EC4899,#F59E0B,#7C3AED);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 20px 50px -10px rgba(124,58,237,.5), 0 0 60px -10px rgba(236,72,153,.3), inset 0 0 30px rgba(255,255,255,.15);
+    animation:saPulseBig 3s ease-in-out infinite}
+  #saHero .sa-orb-xl::before{content:'';position:absolute;inset:5px;border-radius:50%;
+    background:var(--card);box-shadow:inset 0 2px 10px color-mix(in srgb,var(--mor1) 15%,transparent)}
+  #saHero .sa-orb-xl .material-icons-outlined{position:relative;z-index:1;font-size:44px;
+    background:linear-gradient(135deg,#7C3AED,#4F46E5,#EC4899);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+    animation:saSparkle 2.5s ease-in-out infinite}
+  @keyframes saSpin{to{transform:rotate(360deg)}}
+  @keyframes saPulseBig{0%,100%{box-shadow:0 20px 50px -10px rgba(124,58,237,.5), 0 0 60px -10px rgba(236,72,153,.3), inset 0 0 30px rgba(255,255,255,.15)}
+    50%{box-shadow:0 24px 60px -8px rgba(124,58,237,.65), 0 0 80px -5px rgba(236,72,153,.45), inset 0 0 30px rgba(255,255,255,.2)}}
+  @keyframes saSparkle{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.1) rotate(5deg)}}
+
+  /* Online rozet */
+  #saHero .sa-online{position:absolute;top:-6px;right:-10px;display:inline-flex;align-items:center;gap:5px;
+    padding:4px 9px;border-radius:999px;background:var(--card);border:1px solid color-mix(in srgb,var(--yesil) 35%,var(--line));
+    color:var(--yesil);font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;
+    box-shadow:0 4px 12px rgba(0,0,0,.08)}
+  #saHero .sa-online .dot{width:7px;height:7px;border-radius:50%;background:var(--yesil);
+    box-shadow:0 0 0 0 var(--yesil);animation:saOnlinePulse 1.6s ease-out infinite}
+  @keyframes saOnlinePulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--yesil) 70%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
+
+  /* Shimmer başlık */
+  #saHero h1{font-size:30px;font-weight:900;margin:0 0 8px;letter-spacing:-.8px;
+    background:linear-gradient(90deg,var(--ink) 0%,var(--mor1) 25%,var(--mavi) 50%,var(--pembe) 75%,var(--ink) 100%);
+    background-size:200% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+    animation:saShimmer 4s linear infinite, saInUp .6s ease-out .1s both}
+  @keyframes saShimmer{to{background-position:200% center}}
+
+  #saHero p{font-size:14.5px;color:var(--sub);margin:0 auto;max-width:480px;line-height:1.55;
+    animation:saInUp .6s ease-out .2s both}
+
+  /* Rotating örnek soru */
+  #saHero .sa-rotator{margin-top:14px;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;
+    border-radius:999px;background:color-mix(in srgb,var(--mor1) 7%,var(--card));
+    border:1px solid color-mix(in srgb,var(--mor1) 25%,var(--line));
+    font-size:12.5px;animation:saInUp .6s ease-out .3s both}
+  #saHero .sa-rotator .et{color:var(--sub2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  #saHero .sa-rotator .rot{color:var(--mor1);font-weight:700;transition:opacity .3s ease}
+
+  @keyframes saIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+  @keyframes saInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+  /* Sparkle partiküller — hero'nun etrafında */
+  #saHero .sa-spark{position:absolute;pointer-events:none;color:var(--mor1);opacity:0;
+    animation:saSparkFloat 4s ease-in-out infinite}
+  #saHero .sa-spark:nth-child(1){top:20%;left:15%;animation-delay:0s;color:#7C3AED}
+  #saHero .sa-spark:nth-child(2){top:60%;left:8%;animation-delay:1s;color:#EC4899}
+  #saHero .sa-spark:nth-child(3){top:30%;right:12%;animation-delay:2s;color:#F59E0B}
+  #saHero .sa-spark:nth-child(4){top:70%;right:20%;animation-delay:.5s;color:#4F46E5}
+  #saHero .sa-spark:nth-child(5){top:10%;left:50%;animation-delay:1.5s;color:#10B981}
+  #saHero .sa-spark .material-icons-outlined{font-size:14px}
+  @keyframes saSparkFloat{0%,100%{opacity:0;transform:translateY(0) scale(.5)}
+    40%,60%{opacity:.7;transform:translateY(-12px) scale(1)}}
 
   /* --- Hızlı öneri kartları (grid) --- */
   #saOneriler{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:22px 0 14px;padding:0 2px}
@@ -163,9 +232,31 @@
 
   {{-- Hero (sohbet başlamadan önce) --}}
   <div id="saHero">
-    <div class="sa-orb-xl"><span class="material-icons-outlined">auto_awesome</span></div>
-    <h1>Satınalma AI Asistanı</h1>
-    <p>Stok, fiyat ve tedarikçi verini anında yorumlar. Soru sor, somut aksiyon al.</p>
+    <div class="sa-bg-mesh">
+      <div class="blob b1"></div><div class="blob b2"></div>
+      <div class="blob b3"></div><div class="blob b4"></div>
+    </div>
+
+    <span class="sa-spark"><span class="material-icons-outlined">auto_awesome</span></span>
+    <span class="sa-spark"><span class="material-icons-outlined">star</span></span>
+    <span class="sa-spark"><span class="material-icons-outlined">auto_awesome</span></span>
+    <span class="sa-spark"><span class="material-icons-outlined">star</span></span>
+    <span class="sa-spark"><span class="material-icons-outlined">auto_awesome</span></span>
+
+    <div class="sa-hero-inner">
+      <div class="sa-orb-wrap">
+        <div class="sa-ring-outer"></div>
+        <div class="sa-ring"></div>
+        <div class="sa-orb-xl"><span class="material-icons-outlined">auto_awesome</span></div>
+        <div class="sa-online"><span class="dot"></span>Çevrimiçi</div>
+      </div>
+      <h1>Satınalma AI Asistanı</h1>
+      <p>Stok, fiyat ve tedarikçi verini anında yorumlar. Soru sor, somut aksiyon al.</p>
+      <div class="sa-rotator">
+        <span class="et">Örnek</span>
+        <span class="rot" id="saRot">"Bu hafta ne almalıyım?"</span>
+      </div>
+    </div>
   </div>
 
   {{-- Hızlı öneri kartları --}}
@@ -241,7 +332,29 @@ function saFormat(t){
 function saHeroGizle(){
   const h=document.getElementById('saHero'); if(h) h.style.display='none';
   const o=document.getElementById('saOneriler'); if(o) o.style.display='none';
+  if (saRotTimer) { clearInterval(saRotTimer); saRotTimer=null; }
 }
+
+// Hero'da örnek soru metnini döngüyle değiştir
+const SA_ORNEKLER=[
+  '"Bu hafta ne almalıyım?"',
+  '"Soğana gizli zam var mı?"',
+  '"Et Dünyası ile pazarlık payım ne?"',
+  '"Bu ay en çok nereye harcadım?"',
+  '"Hangi tedarikçi daha ucuz tavuk veriyor?"',
+  '"Kritik stokta kaç kalem var?"',
+  '"Son 30 günde en çok artan fiyat hangisi?"'
+];
+let saRotIdx=0, saRotTimer=null;
+function saRotStart(){
+  const el=document.getElementById('saRot'); if(!el) return;
+  saRotTimer=setInterval(()=>{
+    saRotIdx=(saRotIdx+1)%SA_ORNEKLER.length;
+    el.style.opacity='0';
+    setTimeout(()=>{ el.textContent=SA_ORNEKLER[saRotIdx]; el.style.opacity='1'; }, 300);
+  }, 3200);
+}
+document.addEventListener('DOMContentLoaded', saRotStart);
 
 function saSayacGuncelle(){
   const n=document.querySelectorAll('#saChat .sa-msg-wrap, #saChat .sa-yaziyor, #saChat .sa-export, #saChat .sa-teklif').length;
