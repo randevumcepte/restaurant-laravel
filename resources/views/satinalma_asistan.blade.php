@@ -298,13 +298,24 @@
         <div class="sa-oneri-alt">Hangi tedarikçi — hangi kalem</div>
       </div>
     </button>
+    <button type="button" class="sa-oneri" onclick="saSor('Siparişlerimde geciken var mı?')">
+      <div class="sa-oneri-ikon" style="background:linear-gradient(135deg,#F97316,#EAB308)"><span class="material-icons-outlined">schedule</span></div>
+      <div>
+        <div class="sa-oneri-bas">Geciken sipariş var mı?</div>
+        <div class="sa-oneri-alt">Açık siparişlerin durumu</div>
+      </div>
+    </button>
+    <button type="button" class="sa-oneri" onclick="saSor('Hangi malzemede fire fazla?')">
+      <div class="sa-oneri-ikon" style="background:linear-gradient(135deg,#0EA5E9,#6366F1)"><span class="material-icons-outlined">delete_sweep</span></div>
+      <div>
+        <div class="sa-oneri-bas">Fire & zayiat analizi</div>
+        <div class="sa-oneri-alt">Nerede ne kadar kayıp var</div>
+      </div>
+    </button>
   </div>
 
-  {{-- Araç çubuğu --}}
+  {{-- Araç çubuğu (sadece sohbet sayacı) --}}
   <div id="saArac">
-    <button type="button" class="sa-arac-btn" onclick="saRaporMenu()">
-      <span class="material-icons-outlined">file_download</span> Rapor İndir (Excel)
-    </button>
     <div class="sa-sayac" id="saSayac" style="display:none"><span class="dot"></span><span id="saSayacTxt">0 mesaj</span></div>
   </div>
 
