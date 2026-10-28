@@ -13158,6 +13158,60 @@ Route::post('/satinalma-siparis/ekle', function (Request $r) {
         return redirect('/satinalma-siparis-detay?id=' . $spid)->with('sa_ok', $sno . ' oluşturuldu.');
     } catch (\Throwable $e) { return redirect('/satinalma-siparis')->with('sa_hata', 'Sipariş oluşturulamadı.'); }
 });
+// Bos AI/taslak sipariş için kritik stoktan kalem yükle
+Route::post('/satinalma-siparis/ai-doldur', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/satinalma-siparis')->with('sa_hata', 'Yetkisiz.');
+    $sid = _webSubeId(); $id = (int) $r->input('id');
+    try {
+        $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$s) return redirect('/satinalma-siparis')->with('sa_hata', 'Sipariş bulunamadı.');
+        if ($s->durum !== 'taslak') return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_hata', 'Sadece taslak siparişe kritik stok yüklenebilir.');
+        $mevcut = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->count();
+        if ($mevcut > 0) return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_hata', 'Siparişte zaten kalem var — önce temizle.');
+        $kritik = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+        if (empty($kritik)) return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_hata', 'Şu an kritik stok yok.');
+        // Tedarikçi-malzeme katalog (fiyat ipucu)
+        $katalog = [];
+        if (Schema::hasTable('tedarikci_malzeme')) {
+            foreach (DB::table('tedarikci_malzeme')->whereIn('malzeme_id', array_map(fn($k) => $k['id'], $kritik))->where('aktif', 1)->get() as $rr) {
+                // Siparişin tedarikçisi varsa onu önceliklendir
+                if ($s->tedarikci_id && (int) $rr->tedarikci_id === (int) $s->tedarikci_id) { $katalog[$rr->malzeme_id] = $rr; }
+                elseif (!isset($katalog[$rr->malzeme_id]) || (float) $rr->guncel_fiyat < (float) $katalog[$rr->malzeme_id]->guncel_fiyat) { $katalog[$rr->malzeme_id] = $rr; }
+            }
+        }
+        $ara = 0; $kalemOlusan = 0;
+        foreach ($kritik as $k) {
+            $miktar = (float) ($k['oneri'] ?? 0);
+            if ($miktar <= 0) continue;
+            $fiyat = isset($katalog[$k['id']]) ? (float) $katalog[$k['id']]->guncel_fiyat : 0;
+            $birim_id = isset($katalog[$k['id']]) ? (int) $katalog[$k['id']]->alis_birim_id : 0;
+            try {
+                DB::table('satinalma_siparis_kalemleri')->insert([
+                    'siparis_id' => $id,
+                    'malzeme_id' => (int) $k['id'],
+                    'alis_birim_id' => $birim_id ?: null,
+                    'miktar' => $miktar,
+                    'teslim_edilen' => 0,
+                    'birim_fiyat' => $fiyat,
+                    'iskonto_yuzde' => 0, 'kdv_yuzde' => 0,
+                    'satir_toplam' => round($fiyat * $miktar, 2),
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $ara += $fiyat * $miktar; $kalemOlusan++;
+            } catch (\Throwable $e) {}
+        }
+        if ($kalemOlusan === 0) return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_hata', 'Kalem yazılamadı.');
+        try {
+            DB::table('satinalma_siparisleri')->where('id', $id)->update([
+                'ara_toplam' => round($ara, 2), 'genel_toplam' => round($ara, 2), 'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+        return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_ok', $kalemOlusan . ' kalem kritik stoktan yüklendi.');
+    } catch (\Throwable $e) {
+        return redirect('/satinalma-siparis-detay?id=' . $id)->with('sa_hata', 'Yüklenemedi.');
+    }
+});
 Route::post('/satinalma-siparis/durum', function (Request $r) {
     $sid = _webSubeId();
     try {
@@ -15052,23 +15106,47 @@ if (!function_exists('_satinalmaAsistanEylemUygula')) {
                 $olusan = 0;
                 foreach ($grup as $tid => $items) {
                     $no = 'AI-' . now()->format('ymdHi') . '-' . ($tid ?: 'X');
-                    $top = 0;
-                    foreach ($items as $it) $top += (float) $it['fiyat'] * (float) $it['oneri'];
+                    try {
+                        if (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->where('siparis_no', $no)->exists()) {
+                            $no .= '-' . now()->format('s');
+                        }
+                    } catch (\Throwable $e) {}
+                    $ara = 0;
+                    foreach ($items as $it) $ara += (float) ($it['fiyat'] ?? 0) * (float) ($it['oneri'] ?? 0);
                     $sid_ins = DB::table('satinalma_siparisleri')->insertGetId([
                         'sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $no,
                         'tarih' => today()->toDateString(), 'durum' => 'taslak',
-                        'genel_toplam' => round($top, 2), 'notlar' => 'AI asistanı: kritik stok otomatik sipariş',
+                        'ara_toplam' => round($ara, 2), 'iskonto' => 0, 'kdv_toplam' => 0,
+                        'genel_toplam' => round($ara, 2), 'notlar' => 'AI asistanı: kritik stok otomatik sipariş',
                         'created_at' => now(), 'updated_at' => now(),
                     ]);
+                    $kalemOlusan = 0;
                     foreach ($items as $it) {
-                        DB::table('satinalma_siparis_kalemleri')->insert([
-                            'siparis_id' => $sid_ins, 'malzeme_id' => (int) $it['id'],
-                            'alis_birim_id' => (int) ($it['birim_id'] ?: 0),
-                            'miktar' => (float) $it['oneri'], 'teslim_edilen' => 0,
-                            'birim_fiyat' => (float) ($it['fiyat'] ?: 0),
-                            'satir_toplam' => round((float) $it['fiyat'] * (float) $it['oneri'], 2),
-                            'created_at' => now(), 'updated_at' => now(),
-                        ]);
+                        $miktar = (float) ($it['oneri'] ?? 0);
+                        if ($miktar <= 0) continue; // bos miktarli kalem olusturma
+                        try {
+                            DB::table('satinalma_siparis_kalemleri')->insert([
+                                'siparis_id' => $sid_ins,
+                                'malzeme_id' => (int) $it['id'],
+                                'alis_birim_id' => ((int) ($it['birim_id'] ?? 0)) ?: null,
+                                'miktar' => $miktar,
+                                'teslim_edilen' => 0,
+                                'birim_fiyat' => (float) ($it['fiyat'] ?? 0),
+                                'iskonto_yuzde' => 0, // explicit default (eski kurulumlarda kolon default'u olmayabilir)
+                                'kdv_yuzde' => 0,
+                                'satir_toplam' => round((float) ($it['fiyat'] ?? 0) * $miktar, 2),
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                            $kalemOlusan++;
+                        } catch (\Throwable $e) {
+                            try { \Log::warning('AI siparis kalem insert hatasi', ['siparis_id' => $sid_ins, 'malzeme_id' => $it['id'] ?? null, 'hata' => $e->getMessage()]); } catch (\Throwable $ee) {}
+                        }
+                    }
+                    // Hic kalem yazilamadıysa bos siparisi sil
+                    if ($kalemOlusan === 0) {
+                        try { DB::table('satinalma_siparisleri')->where('id', $sid_ins)->delete(); } catch (\Throwable $e) {}
+                        continue;
                     }
                     $olusan++;
                 }

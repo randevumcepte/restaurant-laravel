@@ -238,6 +238,21 @@
       <div style="text-align:center;padding:30px 20px;color:var(--sub);font-size:13.5px">
         <span class="material-icons-outlined" style="font-size:36px;color:var(--sub2);display:block;margin-bottom:6px">inbox</span>
         Henüz kalem yok. Yukarıdan "Kalem Ekle" ile başla.
+        @if (($duzenlenebilir ?? false) && $s->durum === 'taslak')
+          <div style="margin-top:14px">
+            <form method="POST" action="/satinalma-siparis/ai-doldur" style="display:inline"
+                  onsubmit="return rkOnayForm(this, 'Kritik stok listesindeki tüm malzemeler bu siparişe kalem olarak eklenecek. Devam?', 'var(--mor1)', 'Yükle')">
+              @csrf
+              <input type="hidden" name="id" value="{{ $s->id }}">
+              <button type="submit"
+                      style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;border:0;border-radius:11px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,.3)">
+                <span class="material-icons-outlined" style="font-size:17px">auto_awesome</span>
+                Kritik Stoktan Yükle
+              </button>
+            </form>
+            <div style="font-size:11.5px;color:var(--sub2);margin-top:7px">AI kritik stok listesindeki malzemeleri önerilerle (ve varsa tedarikçi fiyatlarıyla) ekler</div>
+          </div>
+        @endif
       </div>
     @endif
   </div>
