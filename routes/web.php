@@ -13977,6 +13977,10 @@ Route::post('/siparis-onerisi/talep', function (Request $r) {
     } catch (\Throwable $e) { return redirect('/siparis-onerisi')->with('so_hata', 'Talep gönderilemedi.'); }
 });
 
+// ===== SATIN ALMA İŞLEMLERİ (hub sayfası — tüm özellikleri kart grid'de topla) =====
+Route::get('/satinalma-islemleri', function () {
+    return view('satinalma_islemleri');
+});
 // ===== SATIN ALMA ÖZETİ (satın almacının kendi verileri — ciro/kâr YOK) =====
 Route::get('/satinalma-ozet', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
