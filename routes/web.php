@@ -25685,8 +25685,8 @@ Route::get('/profilim', function () {
         if (Schema::hasTable('personel_departman')) {
             $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
                 ->where('pd.personel_id', $pid)->where('pd.sube_id', $sid)
-                ->select('d.ad', 'd.kod', 'd.renk', 'd.ikon', 'pd.sorumlu')->first();
-            if ($pd) $dep = ['ad' => $pd->ad, 'kod' => $pd->kod, 'renk' => $pd->renk ?: '#7C3AED', 'ikon' => $pd->ikon, 'sorumlu' => (int) $pd->sorumlu === 1];
+                ->select('d.id', 'd.ad', 'd.kod', 'd.renk', 'd.ikon', 'pd.sorumlu')->first();
+            if ($pd) $dep = ['id' => (int) $pd->id, 'ad' => $pd->ad, 'kod' => $pd->kod, 'renk' => $pd->renk ?: '#7C3AED', 'ikon' => $pd->ikon, 'sorumlu' => (int) $pd->sorumlu === 1];
         }
     } catch (\Throwable $e) {}
 

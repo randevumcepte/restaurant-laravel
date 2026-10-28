@@ -363,6 +363,26 @@
                 @endif
             </div>
 
+            {{-- Yönettiğin bağlantılar — sadece sahip/müdür rolüne ve departman atamasına sahip olanlara --}}
+            @if (!empty($dep['id']) && in_array($rol, ['sahip','mudur']))
+                @php $drenk = $dep['renk'] ?? '#7C3AED'; @endphp
+                <div class="pm-blok" style="background:color-mix(in srgb,{{ $drenk }} 5%,var(--card));border:1px solid color-mix(in srgb,{{ $drenk }} 28%,var(--line))">
+                    <h3><span class="material-icons-outlined" style="color:{{ $drenk }}">hub</span> Yönettiğin Bağlantılar</h3>
+                    <div style="color:var(--sub);font-size:12.5px;line-height:1.5;margin:-4px 0 12px">
+                        <b style="color:var(--ink)">{{ $dep['ad'] }}</b> departmanının mail (SMTP/IMAP) ve WhatsApp hesaplarını buradan yönet.
+                        Bu ayarlar <b>kişisel değildir</b> — tüm departman adına kullanılır.
+                    </div>
+                    <a href="/departman-baglanti?dep={{ $dep['id'] }}"
+                       style="display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:12px;background:{{ $drenk }};color:#fff;text-decoration:none;font-weight:700;font-size:13.5px;box-shadow:0 4px 14px color-mix(in srgb,{{ $drenk }} 30%,transparent);transition:transform .12s,box-shadow .15s"
+                       onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 18px color-mix(in srgb,{{ $drenk }} 40%,transparent)'"
+                       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 14px color-mix(in srgb,{{ $drenk }} 30%,transparent)'">
+                        <span class="material-icons-outlined" style="font-size:18px">settings</span>
+                        {{ $dep['ad'] }} Bağlantı Ayarları
+                        <span class="material-icons-outlined" style="font-size:16px;opacity:.85">arrow_forward</span>
+                    </a>
+                </div>
+            @endif
+
             {{-- Kısayollar (role-aware) --}}
             <div class="pm-blok">
                 <h3><span class="material-icons-outlined" style="color:#F59E0B">bolt</span> Kısayollar</h3>
