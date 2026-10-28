@@ -88,10 +88,26 @@
   .sb-btn-link:hover { background: var(--mavi); color: #fff; }
   .sb-btn-link .material-icons-outlined { font-size: 15px; }
 
-  .sb-yap-sonuc { display: none; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border-radius: 9px; margin-top: 10px; }
-  .sb-yap-sonuc.ok { background: color-mix(in srgb, #10B981 10%, transparent); color: #047857; border-left: 3px solid #10B981; display: block; }
+  .sb-yap-sonuc { display: none; font-size: 13.5px; line-height: 1.5; padding: 14px 16px; border-radius: 11px; margin-top: 12px; font-weight: 600; }
+  .sb-yap-sonuc.ok { background: linear-gradient(135deg, color-mix(in srgb, #10B981 18%, transparent), color-mix(in srgb, #10B981 8%, transparent)); color: #047857; border: 1.5px solid color-mix(in srgb, #10B981 42%, transparent); display: flex; align-items: center; gap: 10px; animation: sbSonucIn .35s cubic-bezier(.34, 1.56, .64, 1); }
+  .sb-yap-sonuc.ok .ok-ikon { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #10B981, #059669); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; animation: sbPulseIkon 1.6s ease-out 1; }
+  .sb-yap-sonuc.ok .ok-ikon .material-icons-outlined { font-size: 20px; font-weight: 900; }
+  .sb-yap-sonuc.ok .ok-metin b { color: #047857; font-weight: 800; font-size: 15px; display: block; margin-bottom: 2px; }
   .sb-yap-sonuc.hata { background: color-mix(in srgb, var(--kirmizi) 10%, transparent); color: var(--kirmizi); border-left: 3px solid var(--kirmizi); display: block; }
   .sb-yap-sonuc.vz { background: var(--card2); color: var(--sub2); border-left: 3px solid var(--sub); display: block; }
+  @keyframes sbSonucIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes sbPulseIkon { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .6); } 70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+
+  /* Toast sag ustte */
+  .sb-toast { position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #10B981, #059669); color: #fff; padding: 14px 20px 14px 16px; border-radius: 14px; box-shadow: 0 16px 44px rgba(16, 185, 129, .4); z-index: 10000; display: none; align-items: center; gap: 11px; font-size: 14px; font-weight: 700; max-width: 400px; animation: sbToastIn .3s cubic-bezier(.34, 1.56, .64, 1); }
+  .sb-toast.goruli { display: flex; }
+  .sb-toast.cikis { animation: sbToastOut .25s ease forwards; }
+  .sb-toast .material-icons-outlined { font-size: 24px; }
+  .sb-toast .mt { line-height: 1.3; }
+  .sb-toast .mt b { display: block; font-size: 13.5px; font-weight: 800; margin-bottom: 2px; letter-spacing: -.2px; }
+  .sb-toast .mt span { font-size: 12.5px; opacity: .9; font-weight: 500; }
+  @keyframes sbToastIn { from { transform: translateX(50px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes sbToastOut { to { transform: translateX(50px); opacity: 0; } }
 
   .sb-bugun-bos { text-align: center; padding: 28px 10px; color: var(--sub); font-size: 13.5px; }
   .sb-bugun-bos .material-icons-outlined { font-size: 44px; color: #10B981; display: block; margin: 0 auto 8px; opacity: .7; }
@@ -258,6 +274,12 @@
 </div>
 @endif
 
+{{-- Başarı Toast (sağ üst) --}}
+<div class="sb-toast" id="sbToast">
+  <span class="material-icons-outlined">check_circle</span>
+  <div class="mt"><b id="sbToastBaslik">İşlem tamamlandı</b><span id="sbToastMetin"></span></div>
+</div>
+
 {{-- RAKAM ŞERİDİ --}}
 <div class="sb-mini-bar">
   <span class="chip">💰 Bu ay {{ $tl($ayHarcama) }}</span>
@@ -280,6 +302,20 @@ const BRIEF_SONUC_LINK = {
   'tedarikci_hatirlat':     {'url':'/satinalma-siparis', 'lbl':'Siparişleri Aç'},
   'mal_kabul_onayla':       {'url':'/mal-kabul-liste', 'lbl':'Mal Kabulü Aç'},
 };
+
+// Toast — sağ üstte 4.5 sn görünür
+let _sbToastTimer = null;
+function sbToastGoster(baslik, metin){
+  const t = document.getElementById('sbToast');
+  document.getElementById('sbToastBaslik').textContent = baslik;
+  document.getElementById('sbToastMetin').textContent = (metin || '').replace(/^✓\s*/, '');
+  t.classList.remove('cikis'); t.classList.add('goruli');
+  clearTimeout(_sbToastTimer);
+  _sbToastTimer = setTimeout(() => {
+    t.classList.add('cikis');
+    setTimeout(() => { t.classList.remove('goruli', 'cikis'); }, 300);
+  }, 4500);
+}
 
 async function briefYap(btn, intent, params){
   const row = btn.closest('.sb-yap-sat');
@@ -305,8 +341,18 @@ async function briefYap(btn, intent, params){
     });
     const j2 = await r2.json();
     const s = (j2 && j2.sonuc) || {};
-    son.className = 'sb-yap-sonuc ' + (s.ok ? 'ok' : 'hata');
-    son.textContent = s.mesaj || (s.ok ? 'Yürütüldü.' : 'Hata oluştu.');
+    const mesaj = s.mesaj || (s.ok ? 'Yürütüldü.' : 'Hata oluştu.');
+    if (s.ok) {
+      // Prominent success state - büyük ikon + bold başlık + mesaj
+      son.className = 'sb-yap-sonuc ok';
+      son.innerHTML = '<div class="ok-ikon"><span class="material-icons-outlined">check</span></div>' +
+                      '<div class="ok-metin"><b>İŞLEM BAŞARIYLA TAMAMLANDI</b>' + mesaj.replace(/</g, '&lt;') + '</div>';
+      // Toast (sağ üstte, 4.5 sn görünür)
+      sbToastGoster('İşlem tamamlandı', mesaj);
+    } else {
+      son.className = 'sb-yap-sonuc hata';
+      son.textContent = '⚠️ ' + mesaj;
+    }
     if (s.ok) {
       // Basari: butonu "tamam" state'ine cevir, cursor:wait kalmasin
       btn.disabled = false;
