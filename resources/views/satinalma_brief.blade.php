@@ -77,6 +77,13 @@
   .sb-btn-yap:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(16, 185, 129, .42); }
   .sb-btn-yap .material-icons-outlined { font-size: 15px; }
   .sb-btn-yap:disabled { opacity: .6; cursor: wait; }
+  .sb-btn-yap.ok-tamam { background: linear-gradient(135deg, #059669, #047857); cursor: default; opacity: 1; }
+  .sb-btn-yap.ok-tamam:hover { transform: none; box-shadow: 0 3px 10px rgba(5, 150, 105, .3); }
+  .sb-yap-sat.tamam { opacity: .92; }
+  .sb-yap-sat.tamam .sb-yap-head { opacity: .75; }
+  .sb-ac-link { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; color: var(--mor1); font-size: 12.5px; font-weight: 700; text-decoration: none; }
+  .sb-ac-link:hover { text-decoration: underline; }
+  .sb-ac-link .material-icons-outlined { font-size: 15px; }
   .sb-btn-link { background: color-mix(in srgb, var(--mavi) 13%, transparent); color: var(--mavi); border: 0; padding: 9px 18px; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; transition: all .13s; }
   .sb-btn-link:hover { background: var(--mavi); color: #fff; }
   .sb-btn-link .material-icons-outlined { font-size: 15px; }
@@ -267,6 +274,13 @@
 
 @push('scripts')
 <script>
+// intent -> yürütme sonrası kullanıcıyı yönlendirmek için ilgili ekran
+const BRIEF_SONUC_LINK = {
+  'kritik_siparis_olustur': {'url':'/satinalma-siparis', 'lbl':'Siparişleri Aç'},
+  'tedarikci_hatirlat':     {'url':'/satinalma-siparis', 'lbl':'Siparişleri Aç'},
+  'mal_kabul_onayla':       {'url':'/mal-kabul-liste', 'lbl':'Mal Kabulü Aç'},
+};
+
 async function briefYap(btn, intent, params){
   const row = btn.closest('.sb-yap-sat');
   const son = row.querySelector('.sb-yap-sonuc');
@@ -293,11 +307,25 @@ async function briefYap(btn, intent, params){
     const s = (j2 && j2.sonuc) || {};
     son.className = 'sb-yap-sonuc ' + (s.ok ? 'ok' : 'hata');
     son.textContent = s.mesaj || (s.ok ? 'Yürütüldü.' : 'Hata oluştu.');
-    btn.innerHTML = s.ok ? '<span class="material-icons-outlined">check_circle</span> Tamamlandı' : '<span class="material-icons-outlined">check</span> İşlemi Yap';
     if (s.ok) {
+      // Basari: butonu "tamam" state'ine cevir, cursor:wait kalmasin
+      btn.disabled = false;
+      btn.classList.add('ok-tamam');
+      btn.innerHTML = '<span class="material-icons-outlined">check_circle</span> Tamamlandı';
+      btn.onclick = null;
+      row.classList.add('tamam');
       row.querySelector('.kilit').style.display = 'none';
+      // Ilgili sayfaya hizli link ekle
+      const link = BRIEF_SONUC_LINK[intent];
+      if (link && !row.querySelector('.sb-ac-link')) {
+        const a = document.createElement('a');
+        a.className = 'sb-ac-link'; a.href = link.url;
+        a.innerHTML = link.lbl + ' <span class="material-icons-outlined">arrow_forward</span>';
+        btn.insertAdjacentElement('afterend', a);
+      }
     } else {
       btn.disabled = false;
+      btn.innerHTML = '<span class="material-icons-outlined">check</span> İşlemi Yap';
     }
   } catch (e) {
     son.className = 'sb-yap-sonuc hata'; son.textContent = 'Bağlantı hatası.';
