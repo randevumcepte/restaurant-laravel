@@ -13311,40 +13311,57 @@ Route::get('/satinalma-siparis-detay', function (Request $r) {
             $mevcutKalem = DB::table('satinalma_siparis_kalemleri')->where('siparis_id', $id)->count();
             if ($mevcutKalem === 0) {
                 $kritik = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
-                if (!empty($kritik)) {
-                    // Katalog fiyatları (siparişin tedarikçisi varsa önceliklendir)
+                $hataListe = []; $yazilan = 0; $ara = 0;
+                if (empty($kritik)) {
+                    $hataListe[] = 'Şu an kritik stok yok (durum düzelmiş olabilir).';
+                } else {
+                    // Katalog fiyatları
                     $katalog = [];
-                    if (Schema::hasTable('tedarikci_malzeme')) {
-                        foreach (DB::table('tedarikci_malzeme')->whereIn('malzeme_id', array_map(fn($k) => $k['id'], $kritik))->where('aktif', 1)->get() as $rr) {
-                            if ($s->tedarikci_id && (int) $rr->tedarikci_id === (int) $s->tedarikci_id) $katalog[$rr->malzeme_id] = $rr;
-                            elseif (!isset($katalog[$rr->malzeme_id]) || (float) $rr->guncel_fiyat < (float) $katalog[$rr->malzeme_id]->guncel_fiyat) $katalog[$rr->malzeme_id] = $rr;
+                    try {
+                        if (Schema::hasTable('tedarikci_malzeme')) {
+                            foreach (DB::table('tedarikci_malzeme')->whereIn('malzeme_id', array_map(fn($k) => $k['id'], $kritik))->where('aktif', 1)->get() as $rr) {
+                                if ($s->tedarikci_id && (int) $rr->tedarikci_id === (int) $s->tedarikci_id) $katalog[$rr->malzeme_id] = $rr;
+                                elseif (!isset($katalog[$rr->malzeme_id]) || (float) $rr->guncel_fiyat < (float) $katalog[$rr->malzeme_id]->guncel_fiyat) $katalog[$rr->malzeme_id] = $rr;
+                            }
                         }
+                    } catch (\Throwable $e) { $hataListe[] = 'Katalog yüklenemedi: ' . $e->getMessage(); }
+
+                    // Hangi kolonlar DB'de MEVCUT? (eski kurulumlarda bazı kolonlar olmayabilir)
+                    $kolVar = [];
+                    foreach (['siparis_id','malzeme_id','alis_birim_id','miktar','teslim_edilen','birim_fiyat','iskonto_yuzde','kdv_yuzde','satir_toplam','created_at','updated_at'] as $kn) {
+                        try { $kolVar[$kn] = Schema::hasColumn('satinalma_siparis_kalemleri', $kn); } catch (\Throwable $e) { $kolVar[$kn] = false; }
                     }
-                    $ara = 0; $yazilan = 0;
+
                     foreach ($kritik as $k) {
                         $miktar = (float) ($k['oneri'] ?? 0);
                         if ($miktar <= 0) continue;
                         $fiyat = isset($katalog[$k['id']]) ? (float) $katalog[$k['id']]->guncel_fiyat : 0;
                         $birim_id = isset($katalog[$k['id']]) ? (int) $katalog[$k['id']]->alis_birim_id : 0;
+                        $row = ['siparis_id' => $id, 'malzeme_id' => (int) $k['id']];
+                        if ($kolVar['alis_birim_id'])  $row['alis_birim_id']  = $birim_id ?: null;
+                        if ($kolVar['miktar'])         $row['miktar']         = $miktar;
+                        if ($kolVar['teslim_edilen'])  $row['teslim_edilen']  = 0;
+                        if ($kolVar['birim_fiyat'])    $row['birim_fiyat']    = $fiyat;
+                        if ($kolVar['iskonto_yuzde'])  $row['iskonto_yuzde']  = 0;
+                        if ($kolVar['kdv_yuzde'])      $row['kdv_yuzde']      = 0;
+                        if ($kolVar['satir_toplam'])   $row['satir_toplam']   = round($fiyat * $miktar, 2);
+                        if ($kolVar['created_at'])     $row['created_at']     = now();
+                        if ($kolVar['updated_at'])     $row['updated_at']     = now();
                         try {
-                            DB::table('satinalma_siparis_kalemleri')->insert([
-                                'siparis_id' => $id,
-                                'malzeme_id' => (int) $k['id'],
-                                'alis_birim_id' => $birim_id ?: null,
-                                'miktar' => $miktar, 'teslim_edilen' => 0,
-                                'birim_fiyat' => $fiyat,
-                                'iskonto_yuzde' => 0, 'kdv_yuzde' => 0,
-                                'satir_toplam' => round($fiyat * $miktar, 2),
-                                'created_at' => now(), 'updated_at' => now(),
-                            ]);
+                            DB::table('satinalma_siparis_kalemleri')->insert($row);
                             $ara += $fiyat * $miktar; $yazilan++;
-                        } catch (\Throwable $e) {}
+                        } catch (\Throwable $e) {
+                            $hataListe[] = ($k['ad'] ?? '#'.$k['id']) . ': ' . $e->getMessage();
+                        }
                     }
                     if ($yazilan > 0) {
                         try { DB::table('satinalma_siparisleri')->where('id', $id)->update(['ara_toplam' => round($ara, 2), 'genel_toplam' => round($ara, 2), 'updated_at' => now()]); } catch (\Throwable $e) {}
-                        // Siparisi yeniden cek (guncel genel_toplam icin)
                         $s = DB::table('satinalma_siparisleri')->where('id', $id)->where('sube_id', $sid)->first();
                     }
+                }
+                // Hiç yazamadıysak, hatayı session flash'a koy (ekranda görelim)
+                if ($yazilan === 0 && !empty($hataListe)) {
+                    try { session()->flash('sa_hata', 'Otomatik dolduramadı: ' . implode(' | ', array_slice($hataListe, 0, 3))); } catch (\Throwable $e) {}
                 }
             }
         }
