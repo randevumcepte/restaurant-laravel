@@ -198,6 +198,7 @@
             ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
             ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
             ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
+            ['/ai-eylem-log', 'verified_user', 'AI Eylem Günlüğü', '#7C3AED'],
         ],
     ];
     // DEPARTMAN + BİLDİRİM (additif, flag ile). gor_personel yetkisi olan departmanı görür; bildirim herkese açık.

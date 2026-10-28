@@ -6714,6 +6714,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
+            '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok', '/satinalma-brief' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_personel', '/ik-risk' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya + sicil + işe alım + AI asistan + risk radarı (gor_personel yetkisi)
@@ -7506,6 +7507,107 @@ Route::post('/api/ai-eylem/vazgec', function (Request $r) {
     if (!$log_id) return response()->json(['ok' => 0, 'hata' => 'log_id gerekli']);
     $sonuc = _aiEylemVazgec($log_id, $bp);
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
+// ============================ AI EYLEM LOG SAYFASI (Faz B) ============================
+// Sahip/mudur: AI'nin yaptigi tum eylemleri gorur, zinciri dogrular, PDF export alir.
+Route::get('/ai-eylem-log', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _aiEylemLogEnsure();
+    $sid = _webSubeId();
+
+    $modulFil  = (string) $r->query('modul', '');
+    $kararFil  = (string) $r->query('karar', '');
+    $kulFil    = (int) $r->query('kullanici_id', 0);
+    $basTarih  = (string) $r->query('bas', now()->subDays(30)->toDateString());
+    $bitTarih  = (string) $r->query('bit', now()->toDateString());
+
+    // Her 'onerildi' olayi icin: en son karar durumunu ve varsa yurutme sonucunu getir.
+    $sorgu = DB::table('ai_eylem_log as o')->where('o.tip', 'onerildi')->where('o.sube_id', $sid);
+    if ($modulFil) $sorgu->where('o.modul', $modulFil);
+    if ($kulFil)   $sorgu->where('o.kullanici_id', $kulFil);
+    $sorgu->whereBetween('o.created_at', [$basTarih . ' 00:00:00', $bitTarih . ' 23:59:59']);
+    $onerilerRaw = $sorgu->orderByDesc('o.id')->limit(500)->get();
+
+    // Toplu olarak kararlari + yurutme sonuclarini cek
+    $idList = $onerilerRaw->pluck('id')->all();
+    $kararlar = $idList ? DB::table('ai_eylem_log')->whereIn('ref_id', $idList)->orderBy('id')->get()->groupBy('ref_id') : collect();
+
+    $satirlar = $onerilerRaw->map(function ($o) use ($kararlar) {
+        $k = $kararlar[$o->id] ?? collect();
+        $karar = optional($k->firstWhere('tip', 'onaylandi')) ? 'onaylandi' : (optional($k->firstWhere('tip', 'reddedildi')) ? 'reddedildi' : (optional($k->firstWhere('tip', 'zamanasimi')) ? 'zamanasimi' : 'bekliyor'));
+        $yurut = $k->firstWhere('tip', 'yurutuldu') ?: $k->firstWhere('tip', 'yurutme_hatasi');
+        return (object) [
+            'id'           => $o->id,
+            'created_at'   => $o->created_at,
+            'modul'        => $o->modul,
+            'intent'       => $o->intent,
+            'ozet'         => $o->ozet,
+            'params'       => $o->params,
+            'ai_yaniti'    => $o->ai_yaniti,
+            'kullanici_ad' => $o->kullanici_ad,
+            'kullanici_rol'=> $o->kullanici_rol,
+            'ip_adres'     => $o->ip_adres,
+            'imza'         => $o->imza,
+            'onceki_imza'  => $o->onceki_imza,
+            'karar'        => $karar,
+            'karar_at'     => optional($k->firstWhere('tip', $karar))->created_at ?? null,
+            'yurut_ok'     => $yurut ? (bool) $yurut->sonuc_ok : null,
+            'yurut_mesaj'  => $yurut ? $yurut->sonuc_mesaj : null,
+            'olay_sayisi'  => 1 + $k->count(),
+        ];
+    });
+
+    // Filtre: karar
+    if ($kararFil) $satirlar = $satirlar->filter(fn ($s) => $s->karar === $kararFil)->values();
+
+    // Dropdown icin kullanicilar
+    $kullanicilar = DB::table('ai_eylem_log')->where('sube_id', $sid)->where('kullanici_id', '>', 0)
+        ->select('kullanici_id', 'kullanici_ad')->distinct()->orderBy('kullanici_ad')->get();
+
+    // Toplam satir sayisi
+    $toplamSatir = DB::table('ai_eylem_log')->count();
+
+    return view('ai_eylem_log', compact('satirlar', 'kullanicilar', 'modulFil', 'kararFil', 'kulFil', 'basTarih', 'bitTarih', 'toplamSatir'));
+});
+
+// Zincir dogrulama (AJAX)
+Route::get('/api/ai-eylem/zincir-dogrula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    return response()->json(['ok' => 1, 'durum' => _aiEylemZincirDogrula()]);
+});
+
+// Satir detayi (modal icin)
+Route::get('/api/ai-eylem/detay', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $log_id = (int) $r->query('id');
+    $log = DB::table('ai_eylem_log')->where('id', $log_id)->where('sube_id', $sid)->first();
+    if (!$log) return response()->json(['ok' => 0, 'hata' => 'Bulunamadı']);
+    $olaylar = DB::table('ai_eylem_log')->where('ref_id', $log_id)->orderBy('id')->get();
+    return response()->json(['ok' => 1, 'oneri' => $log, 'olaylar' => $olaylar]);
+});
+
+// PDF Export (basit HTML print-ready)
+Route::get('/ai-eylem-log/pdf', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _aiEylemLogEnsure();
+    $sid = _webSubeId();
+    $bas = (string) $r->query('bas', now()->subDays(30)->toDateString());
+    $bit = (string) $r->query('bit', now()->toDateString());
+    $sube = DB::table('subeler')->where('id', $sid)->first();
+    $satirlar = DB::table('ai_eylem_log')->where('tip', 'onerildi')->where('sube_id', $sid)
+        ->whereBetween('created_at', [$bas . ' 00:00:00', $bit . ' 23:59:59'])
+        ->orderBy('id')->get();
+    $idList = $satirlar->pluck('id')->all();
+    $kararlar = $idList ? DB::table('ai_eylem_log')->whereIn('ref_id', $idList)->orderBy('id')->get()->groupBy('ref_id') : collect();
+    $dogrulama = _aiEylemZincirDogrula();
+    $uretildiAt = now();
+    return view('ai_eylem_log_pdf', compact('satirlar', 'kararlar', 'sube', 'bas', 'bit', 'dogrulama', 'uretildiAt', 'bp'));
 });
 
 // ============================ PATRON AI — SABAH BRİFİNGİ (Faz 3) ============================
