@@ -59,12 +59,12 @@
               <td class="sag">
                 <form method="POST" action="/siparis-onerisi/par" style="display:inline-flex;gap:4px;align-items:center" onclick="event.stopPropagation()">
                   @csrf<input type="hidden" name="malzeme_id" value="{{ $o->id }}">
-                  <input type="number" name="hedef_stok" value="{{ $num($o->hedef) }}" step="0.001" min="0" class="rk-inp" style="width:72px;padding:5px 7px;font-size:12px">
+                  <input type="number" name="hedef_stok" value="{{ (float) $o->hedef }}" step="0.001" min="0" class="rk-inp" style="width:72px;padding:5px 7px;font-size:12px">
                   <button class="rk-btn bos" style="padding:5px 7px" title="Hedef stoğu (par) kaydet"><span class="material-icons-outlined" style="font-size:14px">save</span></button>
                 </form>
               </td>
               <td class="sag rk-sub2">{{ $num($o->gunluk) }}</td>
-              <td class="sag"><input type="number" class="so-mik rk-inp" value="{{ $num($o->oneri) }}" step="0.001" min="0" style="width:84px;padding:5px 7px;font-weight:800" oninput="soTutar()"></td>
+              <td class="sag"><input type="number" class="so-mik rk-inp" value="{{ (float) $o->oneri }}" step="0.001" min="0" style="width:84px;padding:5px 7px;font-weight:800" oninput="soTutar()"></td>
               <td>{{ $o->ted['ad'] }} @if($o->ted['fiyat']>0)<span class="rk-sub2" style="font-size:11px">({{ $tl($o->ted['fiyat']) }})</span>@endif</td>
               <td class="sag so-ttr" style="font-weight:700">{{ $tl($o->oneri * $o->ted['fiyat']) }}</td>
             </tr>
