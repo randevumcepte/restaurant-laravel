@@ -24931,14 +24931,38 @@ Route::get('/profilim', function () {
     if (!$p) return redirect('/dashboard')->with('hata', 'Personel bulunamadı.');
     $sid = (int) $p->sube_id; $pid = (int) $p->id;
     $subeRow = DB::table('subeler')->where('id', $sid)->first();
-    // İzin
+    $bugunTarih = today();
+
+    // ---- DEPARTMAN ----
+    $dep = null;
+    try {
+        if (Schema::hasTable('personel_departman')) {
+            $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
+                ->where('pd.personel_id', $pid)->where('pd.sube_id', $sid)
+                ->select('d.ad', 'd.kod', 'd.renk', 'd.ikon', 'pd.sorumlu')->first();
+            if ($pd) $dep = ['ad' => $pd->ad, 'kod' => $pd->kod, 'renk' => $pd->renk ?: '#7C3AED', 'ikon' => $pd->ikon, 'sorumlu' => (int) $pd->sorumlu === 1];
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- DAHILI (SIP) ----
+    $dahili = null;
+    try {
+        if (Schema::hasTable('dahililer')) {
+            $d2 = DB::table('dahililer')->where('personel_id', $pid)->first();
+            if ($d2) $dahili = (string) ($d2->ext ?? $d2->dahili ?? '');
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- İZİN ----
     $buYil = (int) now()->year;
     $hak = _ikYillikHak($p->ise_baslama ?? null);
     $kullanilan = _ikIzinKullanilan($sid, $pid, $buYil);
-    // Bordro
+
+    // ---- BORDRO ----
     [$ay, $bas, $bit] = _restoAyAralik(null);
     $hesap = _restoPersonelHesap($sid, $p, $bas, $bit);
-    // Hareketler
+
+    // ---- HAREKETLER ----
     $hareketler = [];
     try {
         foreach (DB::table('personel_hareketleri')->where('sube_id', $sid)->where('personel_id', $pid)
@@ -24946,20 +24970,28 @@ Route::get('/profilim', function () {
             $hareketler[] = (array) $h;
         }
     } catch (\Throwable $e) {}
-    // Vardiya bu hafta
+
+    // ---- VARDIYA bu hafta + sonraki ----
     $hb = \Carbon\Carbon::now()->startOfWeek(\Carbon\Carbon::MONDAY);
     $gunAd = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-    $vardiya = [];
+    $vardiya = []; $sonraki = null;
     try {
-        foreach (DB::table('personel_vardiya')->where('sube_id', $sid)->where('personel_id', $pid)
+        $vs = DB::table('personel_vardiya')->where('sube_id', $sid)->where('personel_id', $pid)
             ->whereBetween('tarih', [$hb->toDateString(), $hb->copy()->addDays(13)->toDateString()])
-            ->orderBy('tarih')->orderBy('baslangic')->get() as $v) {
+            ->orderBy('tarih')->orderBy('baslangic')->get();
+        foreach ($vs as $v) {
             $c = \Carbon\Carbon::parse($v->tarih);
-            $vardiya[] = ['tarih' => $v->tarih, 'gun' => $gunAd[$c->dayOfWeekIso - 1] ?? '', 'tarih_kisa' => $c->format('d.m'),
+            $satir = ['tarih' => $v->tarih, 'gun' => $gunAd[$c->dayOfWeekIso - 1] ?? '', 'tarih_kisa' => $c->format('d.m'),
                 'bas' => substr($v->baslangic, 0, 5), 'bit' => substr($v->bitis, 0, 5), 'pozisyon' => $v->pozisyon ?? ''];
+            $vardiya[] = $satir;
+            if ($sonraki === null) {
+                $vb = \Carbon\Carbon::parse($v->tarih . ' ' . substr($v->baslangic, 0, 5));
+                if ($vb->isFuture() || $vb->isToday()) $sonraki = $satir;
+            }
         }
     } catch (\Throwable $e) {}
-    // Sicil sayıları
+
+    // ---- SİCİL ----
     $sicil = ['zimmet' => 0, 'belge' => 0, 'egitim' => 0, 'skt_yaklasan' => 0];
     try {
         if (Schema::hasTable('personel_zimmet')) $sicil['zimmet'] = (int) DB::table('personel_zimmet')->where('personel_id', $pid)->whereNull('iade_tarihi')->count();
@@ -24970,7 +25002,8 @@ Route::get('/profilim', function () {
         }
         if (Schema::hasTable('personel_egitim')) $sicil['egitim'] = (int) DB::table('personel_egitim')->where('personel_id', $pid)->count();
     } catch (\Throwable $e) {}
-    // Mesai durum
+
+    // ---- MESAİ DURUM ----
     $mesai = ['acik' => false, 'giris' => null, 'dakika' => 0];
     try {
         if (Schema::hasTable('personel_mesai')) {
@@ -24979,10 +25012,87 @@ Route::get('/profilim', function () {
             if ($m && !empty($m->giris_at)) {
                 $g = \Carbon\Carbon::parse($m->giris_at);
                 $mesai = ['acik' => true, 'giris' => $g->format('H:i'), 'dakika' => $g->diffInMinutes(now())];
+            } else {
+                $m2 = DB::table('personel_mesai')->where('sube_id', $sid)->where('personel_id', $pid)
+                    ->whereDate('giris_at', $bugunTarih)->orderByDesc('id')->first();
+                if ($m2 && !empty($m2->giris_at) && !empty($m2->cikis_at)) {
+                    $g = \Carbon\Carbon::parse($m2->giris_at); $c = \Carbon\Carbon::parse($m2->cikis_at);
+                    $mesai = ['acik' => false, 'giris' => $g->format('H:i'), 'dakika' => $g->diffInMinutes($c)];
+                }
             }
         }
     } catch (\Throwable $e) {}
-    // Cihazlar
+
+    // ---- BUGÜN ----
+    $bugun = ['ciro' => 0, 'masa' => 0, 'cagri' => 0, 'bahsis' => 0];
+    try {
+        if (Schema::hasColumn('adisyonlar', 'acan_personel_id')) {
+            $bugun['masa'] = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('acan_personel_id', $pid)->whereDate('acilis', $bugunTarih)->count();
+        }
+        if (Schema::hasTable('odemeler')) {
+            $sum = DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)->whereDate('created_at', $bugunTarih)->selectRaw('COALESCE(SUM(tutar),0) t, COALESCE(SUM(bahsis),0) b')->first();
+            $bugun['ciro'] = (float) ($sum->t ?? 0);
+            $bugun['bahsis'] = (float) ($sum->b ?? 0);
+        }
+        if (Schema::hasTable('cagri_loglari')) {
+            $bugun['cagri'] = (int) DB::table('cagri_loglari')->where('sube_id', $sid)->where('kapatan_id', $pid)->whereDate('created_at', $bugunTarih)->count();
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- ATAMA (garson sorumluluğu) ----
+    $atamaOzet = null;
+    try {
+        if (Schema::hasTable('personel_atama')) {
+            $a = DB::table('personel_atama')->where('personel_id', $pid)->get();
+            $bolge = $a->where('tip', 'bolge')->count();
+            $masa = $a->where('tip', 'masa')->count();
+            if ($bolge + $masa > 0) $atamaOzet = ['bolge' => $bolge, 'masa' => $masa];
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- ROZETLER (türetilmiş) ----
+    $rozetler = [];
+    try {
+        if (!empty($p->ise_baslama)) {
+            $yil = (int) \Carbon\Carbon::parse($p->ise_baslama)->diffInYears(now());
+            if ($yil >= 1) $rozetler[] = ['ad' => $yil . '. Yıl', 'ikon' => '🎉', 'renk' => '#F59E0B'];
+        }
+        if (!empty($p->dogum_tarihi)) {
+            $d3 = \Carbon\Carbon::parse($p->dogum_tarihi)->setYear(now()->year);
+            if ($d3->between(now()->startOfWeek(), now()->endOfWeek())) {
+                $rozetler[] = ['ad' => 'Doğum Günün Kutlu Olsun!', 'ikon' => '🎂', 'renk' => '#EC4899'];
+            }
+        }
+        if (Schema::hasColumn('adisyonlar', 'acan_personel_id')) {
+            $tm = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('acan_personel_id', $pid)->count();
+            if ($tm >= 1000)     $rozetler[] = ['ad' => '1000+ Masa', 'ikon' => '🏆', 'renk' => '#F59E0B'];
+            elseif ($tm >= 500)  $rozetler[] = ['ad' => '500+ Masa', 'ikon' => '🥇', 'renk' => '#F59E0B'];
+            elseif ($tm >= 100)  $rozetler[] = ['ad' => '100+ Masa', 'ikon' => '🥈', 'renk' => '#94A3B8'];
+        }
+        if (Schema::hasTable('personel_mesai')) {
+            $son14 = (int) DB::table('personel_mesai')->where('sube_id', $sid)->where('personel_id', $pid)
+                ->where('giris_at', '>=', now()->subDays(14)->startOfDay())->count();
+            if ($son14 >= 10) $rozetler[] = ['ad' => 'Devamlı', 'ikon' => '🔥', 'renk' => '#EF4444'];
+        }
+        if (Schema::hasTable('cagri_loglari')) {
+            $buAyC = (int) DB::table('cagri_loglari')->where('sube_id', $sid)->where('kapatan_id', $pid)
+                ->where('created_at', '>=', now()->startOfMonth())->count();
+            if ($buAyC >= 50) $rozetler[] = ['ad' => 'Çağrı Avcısı', 'ikon' => '📢', 'renk' => '#8B5CF6'];
+        }
+        if (Schema::hasTable('odemeler')) {
+            $benim = (float) DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)
+                ->where('created_at', '>=', now()->startOfWeek())->sum('tutar');
+            if ($benim > 0) {
+                $enY = (float) DB::table('odemeler')->where('sube_id', $sid)
+                    ->where('created_at', '>=', now()->startOfWeek())
+                    ->whereNotNull('personel_id')->groupBy('personel_id')->selectRaw('SUM(tutar) t')
+                    ->orderByDesc('t')->limit(1)->value('t');
+                if ($enY > 0 && $benim >= $enY) $rozetler[] = ['ad' => 'Haftanın Yıldızı', 'ikon' => '⭐', 'renk' => '#F59E0B'];
+            }
+        }
+    } catch (\Throwable $e) {}
+
+    // ---- CİHAZLAR ----
     $cihazlar = [];
     try {
         if (Schema::hasTable('cihaz_tokenlari')) {
@@ -24992,9 +25102,54 @@ Route::get('/profilim', function () {
             }
         }
     } catch (\Throwable $e) {}
+
+    // ---- YETKİ / LİMİT ----
+    $yetki = ['iskonto_limit' => (float) ($p->iskonto_limit ?? 0), 'ikram_limit' => (float) ($p->ikram_limit ?? 0)];
     $iban = (string) ($p->iban ?? '');
     $ibanMask = $iban !== '' ? ('••••' . substr(preg_replace('/\s+/', '', $iban), -4)) : '';
-    return view('profilim', compact('p', 'subeRow', 'hak', 'kullanilan', 'hesap', 'ay', 'hareketler', 'vardiya', 'sicil', 'mesai', 'cihazlar', 'ibanMask'));
+
+    return view('profilim', compact(
+        'p', 'subeRow', 'dep', 'dahili', 'hak', 'kullanilan', 'hesap', 'ay',
+        'hareketler', 'vardiya', 'sonraki', 'sicil', 'mesai', 'bugun',
+        'atamaOzet', 'rozetler', 'cihazlar', 'yetki', 'ibanMask'
+    ));
+});
+
+// Profil fotoğrafı yükle (web form — file upload)
+Route::post('/profilim-foto', function (Request $r) {
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/profilim')->with('hata', 'Oturum bulunamadı.');
+    _restoPersonelKolonEnsure();
+    if ($r->has('sil')) {
+        try { DB::table('personeller')->where('id', $bp->id)->update(['foto' => null]); return redirect('/profilim')->with('ok', 'Fotoğraf kaldırıldı.'); }
+        catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Silinemedi.'); }
+    }
+    if (!$r->hasFile('foto')) return redirect('/profilim')->with('hata', 'Dosya seçilmedi.');
+    $f = $r->file('foto');
+    if (!$f->isValid()) return redirect('/profilim')->with('hata', 'Dosya geçersiz.');
+    $mime = $f->getMimeType();
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'])) return redirect('/profilim')->with('hata', 'Sadece JPG/PNG/WEBP kabul edilir.');
+    if ($f->getSize() > 2 * 1024 * 1024) return redirect('/profilim')->with('hata', 'Max 2MB.');
+    try {
+        $bin = file_get_contents($f->getRealPath());
+        // GD varsa 400x400 kare resize + jpeg kalitesini düşür → DB şişmesin
+        if (function_exists('imagecreatefromstring')) {
+            $src = @imagecreatefromstring($bin);
+            if ($src) {
+                $w = imagesx($src); $h = imagesy($src);
+                $k = min($w, $h); $ox = (int) (($w - $k) / 2); $oy = (int) (($h - $k) / 2);
+                $out = imagecreatetruecolor(400, 400);
+                imagecopyresampled($out, $src, 0, 0, $ox, $oy, 400, 400, $k, $k);
+                ob_start(); imagejpeg($out, null, 82); $bin = ob_get_clean();
+                imagedestroy($src); imagedestroy($out);
+                $mime = 'image/jpeg';
+            }
+        }
+        $data = 'data:' . $mime . ';base64,' . base64_encode($bin);
+        if (strlen($data) > 500000) return redirect('/profilim')->with('hata', 'Dosya çok büyük (işlendikten sonra).');
+        DB::table('personeller')->where('id', $bp->id)->update(['foto' => $data]);
+        return redirect('/profilim')->with('ok', 'Fotoğraf güncellendi.');
+    } catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Yüklenemedi.'); }
 });
 
 // Kişisel bilgi kaydet (web form)
