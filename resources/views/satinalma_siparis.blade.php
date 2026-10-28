@@ -78,6 +78,19 @@ body.koyu #sas{--card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
 #sas .kart-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
 #sas .s-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;position:relative;overflow:hidden;text-decoration:none;color:inherit;display:block}
 #sas .s-kart:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:color-mix(in srgb,var(--mor1) 25%,var(--line))}
+/* AI tarafından oluşturulan sipariş kartları: mor gradient border + hafif tint arka plan */
+#sas .s-kart.ai-sip{background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 5%,var(--card)),var(--card));border:1.5px solid color-mix(in srgb,var(--mor1) 32%,transparent);box-shadow:0 2px 10px color-mix(in srgb,var(--mor1) 10%,transparent)}
+#sas .s-kart.ai-sip:hover{border-color:var(--mor1);box-shadow:0 8px 24px color-mix(in srgb,var(--mor1) 22%,transparent)}
+#sas .ai-rozet{position:absolute;top:12px;right:12px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:4px 9px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;box-shadow:0 3px 10px rgba(124,58,237,.3);z-index:2}
+#sas .ai-rozet .material-icons-outlined{font-size:12px}
+/* AI rozeti varsa onay-badge'i sol-üstte açsın (çakışmasın) */
+#sas .s-kart.ai-sip .onay-badge{left:12px;right:auto}
+/* Eksik taslak uyarı şeridi */
+#sas .eksik-uyari{background:color-mix(in srgb,#F59E0B 12%,transparent);border-left:3px solid #F59E0B;border-radius:7px;padding:7px 10px;margin:6px 0 10px;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#B45309;font-weight:700}
+body.koyu #sas .eksik-uyari{color:#FBBF24}
+#sas .eksik-uyari .material-icons-outlined{font-size:14px}
+/* AI rozeti varsa sağ üstteki durum pili aşağı kaysın */
+#sas .s-kart.ai-sip .ust{padding-top:20px}
 #sas .s-kart .strip{position:absolute;left:0;top:0;bottom:0;width:4px}
 #sas .s-kart .ust{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
 #sas .s-kart .sn{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.2}
@@ -334,7 +347,14 @@ body.koyu #sas{--card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
         $da = $durumAd[$s->durum] ?? $s->durum;
         $di = $durumIk[$s->durum] ?? 'help';
         $tedHarf = mb_strtoupper(mb_substr($s->tedarikci ?? '?', 0, 1));
-        $tarihFmt = $s->tarih ? \Carbon\Carbon::parse($s->tarih)->format('d.m.Y') : '—';
+        // Tarih + saat (created_at'ten alırız, created_at yoksa tarih'ten)
+        $zamanKaynak = $s->created_at ?? $s->tarih;
+        $tarihFmt = $zamanKaynak ? \Carbon\Carbon::parse($zamanKaynak)->format('d.m.Y H:i') : '—';
+        $tarihDiff = $zamanKaynak ? \Carbon\Carbon::parse($zamanKaynak)->diffForHumans() : '';
+        // AI olusturdu mu? (siparis_no AI- ile baslıyor veya notlar'da AI geçiyor)
+        $aiOlusturdu = (strpos((string) $s->siparis_no, 'AI-') === 0) || (strpos((string) ($s->notlar ?? ''), 'AI') !== false);
+        // Eksik taslak uyarısı (tedarikçi veya tutar 0)
+        $eksikTaslak = $s->durum === 'taslak' && (empty($s->tedarikci_id) || (float) $s->genel_toplam <= 0);
         // Beklenen teslim durumu
         $teslimCls = ''; $teslimTxt = ''; $teslimIk = 'event';
         if (!empty($s->beklenen_teslim) && !in_array($s->durum, ['tamamlandi','iptal'])) {
@@ -358,12 +378,15 @@ body.koyu #sas{--card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
         }
         if ($onayDurum === 'bekliyor') $hizliTag .= ' onay';
       @endphp
-      <a href="/satinalma-siparis-detay?id={{ $s->id }}" class="s-kart"
+      <a href="/satinalma-siparis-detay?id={{ $s->id }}" class="s-kart{{ $aiOlusturdu ? ' ai-sip' : '' }}{{ $eksikTaslak ? ' eksik-taslak' : '' }}"
          data-durum="{{ $s->durum }}"
          data-ara="{{ mb_strtolower($s->siparis_no . ' ' . ($s->tedarikci ?? '')) }}"
          data-hizli="{{ $hizliTag }}"
          data-tutar="{{ (float) $s->genel_toplam }}">
         <div class="strip" style="background:{{ $dr }}"></div>
+        @if ($aiOlusturdu)
+          <div class="ai-rozet"><span class="material-icons-outlined">auto_awesome</span> AI Hazırladı</div>
+        @endif
         @if($onayDurum === 'onaylandi')
           <div class="onay-badge"><span class="material-icons-outlined">verified</span>Tedarikçi onayladı</div>
         @elseif($onayDurum === 'bekliyor')
@@ -375,12 +398,25 @@ body.koyu #sas{--card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
         <div class="ust">
           <div style="min-width:0">
             <div class="sn">{{ $s->siparis_no }}</div>
-            <div class="sn-sub"><span class="material-icons-outlined">event</span>{{ $tarihFmt }}</div>
+            <div class="sn-sub"><span class="material-icons-outlined">schedule</span>{{ $tarihFmt }}@if($tarihDiff) · {{ $tarihDiff }}@endif</div>
           </div>
           <span class="d-pill" style="background:color-mix(in srgb,{{ $dr }} 14%,transparent);color:{{ $dr }}">
             <span class="material-icons-outlined">{{ $di }}</span>{{ $da }}
           </span>
         </div>
+
+        @if ($eksikTaslak)
+          <div class="eksik-uyari">
+            <span class="material-icons-outlined">warning_amber</span>
+            @if (empty($s->tedarikci_id) && (float) $s->genel_toplam <= 0)
+              Tedarikçi + fiyat eksik — düzenle
+            @elseif (empty($s->tedarikci_id))
+              Tedarikçi seçilmedi
+            @else
+              Fiyatlar girilmedi
+            @endif
+          </div>
+        @endif
 
         <div class="orta">
           <div class="av" style="background:linear-gradient(135deg,{{ $dr }},color-mix(in srgb,{{ $dr }} 70%,#000))">{{ $tedHarf }}</div>
