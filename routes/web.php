@@ -14668,10 +14668,201 @@ Route::get('/satinalma-brief', function () {
     ));
 });
 
+// ===== SATINALMA ASISTAN — EYLEM MOTORU (Faz C: iş yapan AI) =====
+// Niyet cozme: regex kural + Haiku JSON fallback. Eylem hazirla + uygula + ortak log mekanizmasina baglanir.
+
+if (!function_exists('_satinalmaAsistanNiyet')) {
+    function _satinalmaAsistanNiyet($sid, $bp, $metin)
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olabilirim? Örnek: "kritik stokları siparişe çevir", "geciken tedarikçileri hatırlat", "bekleyen mal kabulleri onayla", "biber için tedarikçilere fiyat sor".'];
+        // KURAL MOTORU (bedava)
+        $kural = [
+            '/(kritik|eksik).*(sipariş|siparis|rfq).*(çevir|cevir|göster|goster|hazırla|hazirla|aç|ac|yolla)|siparişe\s*(çevir|dönüştür|dönüstür|donustur)/u' => 'kritik_siparis_olustur',
+            '/(geciken|gecikmiş|gecikmis|hatırlat|hatirlat|ara).*(tedarikçi|tedarikci|sipariş|siparis)|tedarikçiyi?\s*ara/u' => 'tedarikci_hatirlat',
+            '/mal\s*kabul.*(onay|işle|isle|al)|bekleyen\s*(mal\s*kabul|irsaliye)/u' => 'mal_kabul_onayla',
+            '/fiyat\s*(sor|arastir|araştır).*(tedarikçi|tedarikci|toplu)|(.+)\s*için\s*fiyat\s*(sor|arastir|araştır)/u' => 'fiyat_sor',
+        ];
+        foreach ($kural as $re => $intent) {
+            if (preg_match($re, $m, $mt)) {
+                $params = [];
+                if ($intent === 'fiyat_sor') {
+                    if (!empty($mt[2])) $params['malzeme'] = trim($mt[2]);
+                }
+                return ['tip' => 'eylem', 'intent' => $intent, 'params' => $params, 'kaynak' => 'kural'];
+            }
+        }
+        return ['tip' => 'cevap', 'intent' => 'ai_fallback', 'cevap' => '', 'params' => []];
+    }
+}
+
+if (!function_exists('_satinalmaAsistanEylemHazirla')) {
+    // Döner: ['ok'=>bool,'ozet'=>'ne olacak','params'=>normalize,'hata'=>?]
+    function _satinalmaAsistanEylemHazirla($sid, $intent, $params)
+    {
+        switch ($intent) {
+            case 'kritik_siparis_olustur':
+                $kritik = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                if (empty($kritik)) return ['ok' => false, 'hata' => 'Şu an kritik stokta malzeme yok.'];
+                $tedCount = 0; $kalemCount = count($kritik);
+                try {
+                    if (Schema::hasTable('tedarikci_malzeme')) {
+                        $mids = array_map(fn($k) => $k['id'], $kritik);
+                        $tedCount = (int) DB::table('tedarikci_malzeme')->whereIn('malzeme_id', $mids)->where('aktif', 1)->distinct()->count('tedarikci_id');
+                    }
+                } catch (\Throwable $e) {}
+                return ['ok' => true, 'params' => ['kalem_say' => $kalemCount],
+                    'ozet' => "$kalemCount kritik malzeme için tedarikçi bazlı gruplanmış TASLAK siparişler oluşturulacak. İlgili tedarikçilere henüz gönderilmeyecek — sen onayladıktan sonra 'Satınalma Siparişi' ekranından gönderebilirsin."];
+            case 'tedarikci_hatirlat':
+                $gecikenSayi = 0;
+                try {
+                    if (Schema::hasTable('satinalma_siparisleri')) {
+                        $gecikenSayi = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)
+                            ->whereIn('durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])
+                            ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count();
+                    }
+                } catch (\Throwable $e) {}
+                if ($gecikenSayi === 0) return ['ok' => false, 'hata' => 'Geciken sipariş yok. ✓'];
+                return ['ok' => true, 'params' => ['adet' => $gecikenSayi],
+                    'ozet' => "$gecikenSayi geciken siparişin tedarikçisine WhatsApp hatırlatma mesajı gönderilecek. Örn: '{Tedarikçi}, {Sipariş No} teslim bekliyoruz, güncel durumu paylaşır mısınız?'"];
+            case 'mal_kabul_onayla':
+                // Taslak mal kabulü varsa onayla (durum alanı yoksa atla)
+                $adet = 0;
+                try {
+                    if (Schema::hasTable('mal_kabuller') && Schema::hasColumn('mal_kabuller', 'durum')) {
+                        $adet = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->where('durum', 'taslak')->count();
+                    }
+                } catch (\Throwable $e) {}
+                if ($adet === 0) return ['ok' => false, 'hata' => 'Bekleyen taslak mal kabul yok.'];
+                return ['ok' => true, 'params' => ['adet' => $adet],
+                    'ozet' => "$adet taslak mal kabul onaylanacak ve stoğa işlenecek (girdiler stok_hareketleri tablosuna yazılır)."];
+            case 'fiyat_sor':
+                $malzeme = $params['malzeme'] ?? '';
+                if (!$malzeme) return ['ok' => false, 'hata' => 'Hangi malzeme için fiyat sorulsun? Örn: "biber için fiyat sor"'];
+                $mal = null;
+                try { $mal = DB::table('malzemeler')->whereRaw('LOWER(ad) LIKE ?', ['%' . mb_strtolower($malzeme) . '%'])->first(['id', 'ad']); } catch (\Throwable $e) {}
+                if (!$mal) return ['ok' => false, 'hata' => "'$malzeme' adında malzeme bulunamadı."];
+                $tedSayi = 0;
+                try {
+                    if (Schema::hasTable('tedarikciler')) {
+                        $tedSayi = (int) DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->count();
+                    }
+                } catch (\Throwable $e) {}
+                if ($tedSayi === 0) return ['ok' => false, 'hata' => 'Telefon numarası kayıtlı tedarikçi yok.'];
+                return ['ok' => true, 'params' => ['malzeme_id' => $mal->id, 'malzeme_ad' => $mal->ad],
+                    'ozet' => "**{$mal->ad}** için {$tedSayi} tedarikçiye WhatsApp ile fiyat sorgu mesajı gönderilecek. Örn: '{$mal->ad} için güncel kg/birim fiyatınızı ve teslim süresini paylaşır mısınız?'"];
+        }
+        return ['ok' => false, 'hata' => 'Bu niyeti işleyemiyorum.'];
+    }
+}
+
+if (!function_exists('_satinalmaAsistanEylemUygula')) {
+    // Onay geldikten sonra DETERMINISTIK yurutme. Döner: ['ok'=>bool,'mesaj'=>...]
+    function _satinalmaAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        try {
+            if ($intent === 'kritik_siparis_olustur') {
+                // _kritikStokListesi'yi al, tedarikçiye göre grupla, taslak sipariş oluştur
+                $kritik = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                if (empty($kritik)) return ['ok' => false, 'mesaj' => 'Kritik malzeme kalmamış.'];
+                $katalog = []; $tedAd = [];
+                if (Schema::hasTable('tedarikci_malzeme')) {
+                    foreach (DB::table('tedarikci_malzeme')->whereIn('malzeme_id', array_map(fn($k) => $k['id'], $kritik))->where('aktif', 1)->get() as $r) {
+                        if (!isset($katalog[$r->malzeme_id]) || (float) $r->guncel_fiyat < (float) $katalog[$r->malzeme_id]->guncel_fiyat) $katalog[$r->malzeme_id] = $r;
+                    }
+                }
+                if (Schema::hasTable('tedarikciler')) $tedAd = DB::table('tedarikciler')->pluck('ad', 'id')->all();
+                // Gruplandir
+                $grup = [];
+                foreach ($kritik as $k) {
+                    $tid = isset($katalog[$k['id']]) ? (int) $katalog[$k['id']]->tedarikci_id : 0;
+                    $grup[$tid][] = $k + ['fiyat' => isset($katalog[$k['id']]) ? (float) $katalog[$k['id']]->guncel_fiyat : 0, 'birim_id' => isset($katalog[$k['id']]) ? (int) $katalog[$k['id']]->alis_birim_id : 0];
+                }
+                if (!Schema::hasTable('satinalma_siparisleri') || !Schema::hasTable('satinalma_siparis_kalemleri')) return ['ok' => false, 'mesaj' => 'Sipariş tabloları hazır değil.'];
+                $olusan = 0;
+                foreach ($grup as $tid => $items) {
+                    $no = 'AI-' . now()->format('ymdHi') . '-' . ($tid ?: 'X');
+                    $top = 0;
+                    foreach ($items as $it) $top += (float) $it['fiyat'] * (float) $it['oneri'];
+                    $sid_ins = DB::table('satinalma_siparisleri')->insertGetId([
+                        'sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $no,
+                        'tarih' => today()->toDateString(), 'durum' => 'taslak',
+                        'genel_toplam' => round($top, 2), 'notlar' => 'AI asistanı: kritik stok otomatik sipariş',
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                    foreach ($items as $it) {
+                        DB::table('satinalma_siparis_kalemleri')->insert([
+                            'siparis_id' => $sid_ins, 'malzeme_id' => (int) $it['id'],
+                            'alis_birim_id' => (int) ($it['birim_id'] ?: 0),
+                            'miktar' => (float) $it['oneri'], 'teslim_edilen' => 0,
+                            'birim_fiyat' => (float) ($it['fiyat'] ?: 0),
+                            'satir_toplam' => round((float) $it['fiyat'] * (float) $it['oneri'], 2),
+                            'created_at' => now(), 'updated_at' => now(),
+                        ]);
+                    }
+                    $olusan++;
+                }
+                return ['ok' => true, 'mesaj' => "✓ $olusan taslak sipariş oluşturuldu. Satınalma Siparişi ekranından gönder."];
+            }
+            if ($intent === 'tedarikci_hatirlat') {
+                if (!Schema::hasTable('satinalma_siparisleri')) return ['ok' => false, 'mesaj' => 'Sipariş tablosu yok.'];
+                $gecikenler = DB::table('satinalma_siparisleri')->leftJoin('tedarikciler', 'satinalma_siparisleri.tedarikci_id', '=', 'tedarikciler.id')
+                    ->where('satinalma_siparisleri.sube_id', $sid)
+                    ->whereIn('satinalma_siparisleri.durum', ['siparis', 'gonderildi', 'onaylandi', 'kismi'])
+                    ->whereNotNull('satinalma_siparisleri.beklenen_teslim')
+                    ->whereDate('satinalma_siparisleri.beklenen_teslim', '<', today())
+                    ->select('satinalma_siparisleri.*', 'tedarikciler.ad as ted_ad', 'tedarikciler.telefon as ted_tel')->get();
+                if ($gecikenler->isEmpty()) return ['ok' => false, 'mesaj' => 'Geciken sipariş yok.'];
+                $isletme = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: 'İşletme');
+                $gon = 0; $telsiz = 0;
+                foreach ($gecikenler as $s) {
+                    if (empty($s->ted_tel)) { $telsiz++; continue; }
+                    $gun = (int) \Carbon\Carbon::parse($s->beklenen_teslim)->diffInDays(today());
+                    $msg = ($s->ted_ad ? $s->ted_ad : 'Merhaba') . ", {$isletme} siparişi {$s->siparis_no} teslim tarihini {$gun} gün geçti. Güncel durumu paylaşır mısınız? Teşekkürler.";
+                    if (function_exists('_restoWaGonder') && _restoWaGonder($sid, $s->ted_tel, $msg)) $gon++;
+                }
+                return ['ok' => true, 'mesaj' => "✓ $gon tedarikçiye hatırlatma gönderildi." . ($telsiz > 0 ? " ($telsiz tedarikçinin telefonu yok)" : '')];
+            }
+            if ($intent === 'mal_kabul_onayla') {
+                if (!Schema::hasTable('mal_kabuller') || !Schema::hasColumn('mal_kabuller', 'durum')) return ['ok' => false, 'mesaj' => 'Taslak mal kabul mekanizması yok.'];
+                $adet = DB::table('mal_kabuller')->where('sube_id', $sid)->where('durum', 'taslak')->update(['durum' => 'onay', 'updated_at' => now()]);
+                return ['ok' => true, 'mesaj' => "✓ $adet mal kabulü onaylandı."];
+            }
+            if ($intent === 'fiyat_sor') {
+                $mid = (int) ($params['malzeme_id'] ?? 0);
+                $mad = (string) ($params['malzeme_ad'] ?? '');
+                if (!$mid) return ['ok' => false, 'mesaj' => 'Malzeme belirtilmedi.'];
+                $isletme = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: 'İşletme');
+                $gon = 0; $telsiz = 0;
+                foreach (DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->get() as $t) {
+                    $msg = ($t->ad ? $t->ad : 'Merhaba') . ", {$isletme} olarak '{$mad}' için güncel birim fiyatınızı ve teslim sürenizi paylaşabilir misiniz? Teşekkürler.";
+                    if (function_exists('_restoWaGonder') && _restoWaGonder($sid, $t->telefon, $msg)) $gon++; else $telsiz++;
+                }
+                return ['ok' => true, 'mesaj' => "✓ {$gon} tedarikçiye '{$mad}' için fiyat soruldu." . ($telsiz > 0 ? " ($telsiz başarısız/telefonsuz)" : '')];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen niyet.'];
+    }
+}
+
 Route::get('/satinalma-asistan', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     return view('satinalma_asistan');
+});
+
+// Yeni: eylem onerisi hazirla + log ortak altyapiya yaz, log_id dondur
+Route::post('/api/satinalma-asistan/eylem-oner', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $metin = trim((string) $r->input('metin'));
+    $n = _satinalmaAsistanNiyet($sid, $bp, $metin);
+    if ($n['tip'] !== 'eylem') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap'] ?? '']);
+    $h = _satinalmaAsistanEylemHazirla($sid, $n['intent'], $n['params'] ?? []);
+    if (!($h['ok'] ?? false)) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => '⚠️ ' . ($h['hata'] ?? 'Yapamadım.')]);
+    $log_id = _aiEylemLogYaz($sid, $bp, 'satinalma', $n['intent'], $h['params'], $h['ozet'], $metin);
+    return response()->json(['ok' => 1, 'tip' => 'eylem', 'log_id' => $log_id, 'ozet' => $h['ozet'], 'intent' => $n['intent']]);
 });
 // ===== PAYLAŞIMLI AI ÇEKİRDEK MOTORU (tüm departman AI'ları kullanır) =====
 // Haiku çağrısı (ham) — metin döner veya '' (hata/boş)
