@@ -219,7 +219,6 @@
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
-        ['/entegrasyonlar', 'hub', 'Entegrasyonlar (Gmail/Takvim)', '#4F46E5'],
     ]] + $gruplar;
 
     // ===== SATIN ALMACI'ya ÖZEL MENÜ DÜZENİ =====
