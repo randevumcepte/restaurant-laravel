@@ -211,8 +211,8 @@
         <div class="sb-yap-btn-grup">
           @if ($y['tip'] === 'eylem')
             <span class="kilit"><span class="material-icons-outlined">lock</span> Onay IP ile imzalı log'a yazılacak</span>
-            <button class="sb-btn-yap" onclick="briefYap(this, '{{ $y['intent'] }}', {{ json_encode($y['params'] ?? []) }})">
-              <span class="material-icons-outlined">check</span> İşlemi Yap
+            <button class="sb-btn-yap" data-vars-metin="{{ $y['buton'] ?? 'İşlemi Yap' }}" onclick="briefYap(this, '{{ $y['intent'] }}', {{ json_encode($y['params'] ?? []) }})">
+              <span class="material-icons-outlined">check</span> {{ $y['buton'] ?? 'İşlemi Yap' }}
             </button>
           @else
             <a href="{{ $y['url'] }}" class="sb-btn-link"><span class="material-icons-outlined">arrow_forward</span> Aç</a>
@@ -331,7 +331,7 @@ async function briefYap(btn, intent, params){
     if (!j1 || !j1.ok || !j1.log_id) {
       son.className = 'sb-yap-sonuc hata';
       son.textContent = 'Öneri oluşturulamadı: ' + (j1.hata || 'bilinmeyen hata');
-      btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> İşlemi Yap';
+      btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> ' + (btn.dataset.varsMetin || 'İşlemi Yap');
       return;
     }
     // 2) Onayla (ortak endpoint): dispatch satınalma modülüne gider, yürütür, zincire yazar

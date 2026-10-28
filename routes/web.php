@@ -14735,20 +14735,20 @@ Route::get('/satinalma-brief', function () {
         }
     } catch (\Throwable $e) {}
 
-    // ---- BUGÜN YAPILACAKLAR (her satir: ikon, oncelik, baslik, aciklama, tip=eylem|link, intent, url) ----
+    // ---- BUGÜN YAPILACAKLAR (her satir: ikon, oncelik, baslik, aciklama, tip=eylem|link, intent, buton, url) ----
     $bugunYapilacak = [];
     if ($kritikSayi > 0) {
         $kritikAdlari = array_slice(array_map(fn($k) => $k['ad'], $kritikStoklar), 0, 3);
         $bugunYapilacak[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'oncelik' => 'yuksek',
             'baslik' => "$kritikSayi kritik malzeme için taslak sipariş oluştur",
             'aciklama' => count($kritikAdlari) ? implode(', ', $kritikAdlari) . (count($kritikStoklar) > 3 ? ', +' . (count($kritikStoklar) - 3) : '') : '',
-            'tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'params' => []];
+            'tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'params' => [], 'buton' => 'Taslak Hazırla'];
     }
     if ($gecikenSip > 0) {
         $bugunYapilacak[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'oncelik' => 'yuksek',
             'baslik' => "$gecikenSip geciken tedarikçiye WhatsApp hatırlatma gönder",
             'aciklama' => 'Her birine kişiselleştirilmiş mesaj: tedarikçi adı + sipariş no + gecikme günü',
-            'tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'params' => []];
+            'tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'params' => [], 'buton' => 'Hatırlatma Gönder'];
     }
     if ($teklifBekleyen > 0) {
         $bugunYapilacak[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'oncelik' => 'orta',
@@ -14768,7 +14768,7 @@ Route::get('/satinalma-brief', function () {
             if ($taslakMK > 0) $bugunYapilacak[] = ['ikon' => 'inventory', 'renk' => '#10B981', 'oncelik' => 'orta',
                 'baslik' => "$taslakMK bekleyen mal kabulünü stoğa işle",
                 'aciklama' => 'Taslak kayıtları onaylayarak stok hareketine çevir',
-                'tip' => 'eylem', 'intent' => 'mal_kabul_onayla', 'params' => []];
+                'tip' => 'eylem', 'intent' => 'mal_kabul_onayla', 'params' => [], 'buton' => 'Stoğa İşle'];
         }
     } catch (\Throwable $e) {}
     if ($butceYuzde !== null && $butceYuzde > 85) {
