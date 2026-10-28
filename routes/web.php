@@ -7265,6 +7265,249 @@ Route::get('/api/departman/panel', function (Request $r) {
     return ['ok' => 1, 'ad' => $p->ad ?? '', 'rol' => $p->rol ?? '', 'departman' => $dep, 'ai_erisim' => _aiErisim($p), 'kartlar' => $kartlar];
 });
 
+// ============================ ORTAK AI EYLEM LOG — HASH ZINCIRI (Faz A) ============================
+// Tum AI asistanlari (ik, satinalma, patron, vb.) bu altyapi ile eylem yapar.
+// Her eylem onerisi/karari/yurutmesi IMMUTABLE log satiri + SHA256 hash chain.
+// Legal defense: "haberim yoktu" iddialarini curutur, forensic kanit saglar.
+
+if (!function_exists('_aiEylemLogEnsure')) {
+    function _aiEylemLogEnsure()
+    {
+        if (cache()->get('ai_eylem_log_ensure_ok')) return;
+        if (!Schema::hasTable('ai_eylem_log')) {
+            try {
+                Schema::create('ai_eylem_log', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('modul', 30)->index();                           // ik | satinalma | patron | ...
+                    $t->string('tip', 20);                                      // onerildi | onaylandi | reddedildi | zamanasimi | yurutuldu | yurutme_hatasi
+                    $t->unsignedBigInteger('ref_id')->nullable()->index();      // onerildi event'ine referans
+                    $t->string('intent', 80);
+                    $t->longText('params')->nullable();                         // JSON
+                    $t->text('ozet')->nullable();                               // AI'nin onerisi (metin)
+                    $t->text('ai_yaniti')->nullable();                          // AI'nin tam yaniti
+                    $t->unsignedBigInteger('kullanici_id')->nullable()->index();
+                    $t->string('kullanici_ad', 120)->nullable();
+                    $t->string('kullanici_rol', 30)->nullable();
+                    $t->string('ip_adres', 45)->nullable();
+                    $t->string('user_agent', 255)->nullable();
+                    $t->boolean('sonuc_ok')->nullable();
+                    $t->text('sonuc_mesaj')->nullable();
+                    $t->char('onceki_imza', 64);
+                    $t->char('imza', 64);
+                    $t->timestamp('created_at')->nullable();
+                    $t->index(['sube_id', 'modul', 'created_at']);
+                    $t->index(['tip', 'created_at']);
+                });
+            } catch (\Throwable $e) {}
+        }
+        cache()->put('ai_eylem_log_ensure_ok', 1, now()->addHours(12));
+    }
+}
+
+if (!function_exists('_aiEylemImza')) {
+    // SHA256 hash: önceki_imza + bu satırın verileri. Chain kırılırsa tespit edilir.
+    function _aiEylemImza(array $d)
+    {
+        $alanlar = [
+            (string) ($d['sube_id'] ?? 0),
+            (string) ($d['modul'] ?? ''),
+            (string) ($d['tip'] ?? ''),
+            (string) ($d['ref_id'] ?? ''),
+            (string) ($d['intent'] ?? ''),
+            (string) ($d['params'] ?? ''),
+            (string) ($d['ozet'] ?? ''),
+            (string) ($d['kullanici_id'] ?? 0),
+            (string) ($d['created_at'] ?? ''),
+            isset($d['sonuc_ok']) && $d['sonuc_ok'] !== null ? ($d['sonuc_ok'] ? '1' : '0') : '',
+            (string) ($d['sonuc_mesaj'] ?? ''),
+            (string) ($d['onceki_imza'] ?? str_repeat('0', 64)),
+        ];
+        return hash('sha256', implode('|', $alanlar));
+    }
+}
+
+if (!function_exists('_aiEylemSonImza')) {
+    function _aiEylemSonImza()
+    {
+        try {
+            $last = DB::table('ai_eylem_log')->orderByDesc('id')->value('imza');
+            return $last ?: str_repeat('0', 64);
+        } catch (\Throwable $e) { return str_repeat('0', 64); }
+    }
+}
+
+if (!function_exists('_aiEylemLogYaz')) {
+    // Yeni "onerildi" olayi — AI eylem onermeye hazir oldugunda cagrilir.
+    // Döner: log_id (frontend'e Yap/Vazgec butonlariyla gider)
+    function _aiEylemLogYaz($sid, $bp, $modul, $intent, $params, $ozet, $ai_yaniti = '')
+    {
+        _aiEylemLogEnsure();
+        $created = now()->toDateTimeString();
+        $data = [
+            'sube_id'      => (int) $sid,
+            'modul'        => (string) $modul,
+            'tip'          => 'onerildi',
+            'ref_id'       => null,
+            'intent'       => (string) $intent,
+            'params'       => json_encode($params, JSON_UNESCAPED_UNICODE),
+            'ozet'         => (string) $ozet,
+            'ai_yaniti'    => (string) $ai_yaniti,
+            'kullanici_id' => (int) ($bp->id ?? 0),
+            'kullanici_ad' => (string) ($bp->ad ?? ''),
+            'kullanici_rol'=> (string) ($bp->rol ?? ''),
+            'ip_adres'     => (string) request()->ip(),
+            'user_agent'   => substr((string) request()->userAgent(), 0, 255),
+            'sonuc_ok'     => null,
+            'sonuc_mesaj'  => null,
+            'onceki_imza'  => _aiEylemSonImza(),
+            'created_at'   => $created,
+        ];
+        $data['imza'] = _aiEylemImza($data);
+        try { return (int) DB::table('ai_eylem_log')->insertGetId($data); } catch (\Throwable $e) { return 0; }
+    }
+}
+
+if (!function_exists('_aiEylemKararKaydet')) {
+    // Olay zincirine karar (onay/red/zamanasimi/yurutuldu/yurutme_hatasi) ekle.
+    function _aiEylemKararKaydet($refLog, $bp, $tip, $sonuc_ok = null, $sonuc_mesaj = null)
+    {
+        $created = now()->toDateTimeString();
+        $data = [
+            'sube_id'      => (int) $refLog->sube_id,
+            'modul'        => (string) $refLog->modul,
+            'tip'          => (string) $tip,
+            'ref_id'       => (int) $refLog->id,
+            'intent'       => (string) $refLog->intent,
+            'params'       => (string) $refLog->params,
+            'ozet'         => '',
+            'ai_yaniti'    => '',
+            'kullanici_id' => (int) ($bp->id ?? 0),
+            'kullanici_ad' => (string) ($bp->ad ?? ''),
+            'kullanici_rol'=> (string) ($bp->rol ?? ''),
+            'ip_adres'     => (string) request()->ip(),
+            'user_agent'   => substr((string) request()->userAgent(), 0, 255),
+            'sonuc_ok'     => $sonuc_ok === null ? null : (bool) $sonuc_ok,
+            'sonuc_mesaj'  => $sonuc_mesaj,
+            'onceki_imza'  => _aiEylemSonImza(),
+            'created_at'   => $created,
+        ];
+        $data['imza'] = _aiEylemImza($data);
+        try { return (int) DB::table('ai_eylem_log')->insertGetId($data); } catch (\Throwable $e) { return 0; }
+    }
+}
+
+if (!function_exists('_aiEylemDispatch')) {
+    // Modul + intent → ilgili asistanin eylem uygulayicisina yonlendir.
+    // Her modul kendi _{modul}AsistanEylemUygula($sid, $bp, $intent, $params) fonksiyonunu tanimlar.
+    function _aiEylemDispatch($sid, $bp, $modul, $intent, $params)
+    {
+        $fn = '_' . $modul . 'AsistanEylemUygula';
+        if (function_exists($fn)) return $fn($sid, $bp, $intent, $params);
+        return ['ok' => false, 'mesaj' => "Modül bilinmiyor: $modul"];
+    }
+}
+
+if (!function_exists('_aiEylemOnayla')) {
+    // Kullanici "Yap" butonuna basti — logu kontrol et, eylemi yurut, sonuclari zincire ekle.
+    function _aiEylemOnayla($log_id, $bp)
+    {
+        _aiEylemLogEnsure();
+        $log = DB::table('ai_eylem_log')->where('id', (int) $log_id)->where('tip', 'onerildi')->first();
+        if (!$log) return ['ok' => false, 'mesaj' => 'Öneri bulunamadı.'];
+        // Zaten karar verilmis mi?
+        $zatenKarar = DB::table('ai_eylem_log')->where('ref_id', $log->id)->whereIn('tip', ['onaylandi', 'reddedildi', 'zamanasimi'])->exists();
+        if ($zatenKarar) return ['ok' => false, 'mesaj' => 'Bu öneri zaten karara bağlanmış.'];
+        // Sure asimi (60 dk)
+        if (\Carbon\Carbon::parse($log->created_at)->diffInMinutes(now()) > 60) {
+            _aiEylemKararKaydet($log, $bp, 'zamanasimi');
+            return ['ok' => false, 'mesaj' => 'Önerinin süresi dolmuş (60 dk).'];
+        }
+        // Kullanici eslesmesi (baskasinin onerisini onaylayamazsin)
+        if ((int) ($bp->id ?? 0) !== (int) $log->kullanici_id) return ['ok' => false, 'mesaj' => 'Bu öneri başka kullanıcıya ait.'];
+        // Onay olayini zincire ekle
+        _aiEylemKararKaydet($log, $bp, 'onaylandi');
+        // Eylemi yurut
+        $params = json_decode($log->params ?: '[]', true) ?: [];
+        $sonuc = _aiEylemDispatch((int) $log->sube_id, $bp, (string) $log->modul, (string) $log->intent, $params);
+        // Sonuclari zincire ekle
+        _aiEylemKararKaydet($log, $bp, ($sonuc['ok'] ?? false) ? 'yurutuldu' : 'yurutme_hatasi', (bool) ($sonuc['ok'] ?? false), (string) ($sonuc['mesaj'] ?? ''));
+        return $sonuc;
+    }
+}
+
+if (!function_exists('_aiEylemVazgec')) {
+    // Kullanici "Vazgec" butonuna basti.
+    function _aiEylemVazgec($log_id, $bp)
+    {
+        _aiEylemLogEnsure();
+        $log = DB::table('ai_eylem_log')->where('id', (int) $log_id)->where('tip', 'onerildi')->first();
+        if (!$log) return ['ok' => false, 'mesaj' => 'Öneri bulunamadı.'];
+        $zatenKarar = DB::table('ai_eylem_log')->where('ref_id', $log->id)->whereIn('tip', ['onaylandi', 'reddedildi', 'zamanasimi'])->exists();
+        if ($zatenKarar) return ['ok' => false, 'mesaj' => 'Bu öneri zaten karara bağlanmış.'];
+        _aiEylemKararKaydet($log, $bp, 'reddedildi');
+        return ['ok' => true, 'mesaj' => 'Öneri iptal edildi, bir şey yapılmadı.'];
+    }
+}
+
+if (!function_exists('_aiEylemZincirDogrula')) {
+    // Tum log zincirini bastan sona kontrol et. Donus: [tam_sayi_satir, kirik_var_mi, ilk_kirik_satir_id]
+    function _aiEylemZincirDogrula()
+    {
+        _aiEylemLogEnsure();
+        $sayac = 0; $ilkKirik = 0; $onceki = str_repeat('0', 64);
+        try {
+            foreach (DB::table('ai_eylem_log')->orderBy('id')->cursor() as $r) {
+                $sayac++;
+                if ((string) $r->onceki_imza !== (string) $onceki) { $ilkKirik = $r->id; break; }
+                $yeni = _aiEylemImza((array) $r);
+                if ($yeni !== (string) $r->imza) { $ilkKirik = $r->id; break; }
+                $onceki = $r->imza;
+            }
+        } catch (\Throwable $e) {}
+        return ['sayi' => $sayac, 'saglam' => $ilkKirik === 0, 'ilk_kirik_id' => $ilkKirik];
+    }
+}
+
+// Zamanasimi cron — 60 dk gecmis bekleyen onerileri kapat.
+Route::get('/api/ai-eylem/zamanasimi-tara', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    _aiEylemLogEnsure();
+    $sayac = 0;
+    try {
+        $bekleyenler = DB::table('ai_eylem_log as o')
+            ->leftJoin('ai_eylem_log as k', function ($j) { $j->on('k.ref_id', '=', 'o.id')->whereIn('k.tip', ['onaylandi', 'reddedildi', 'zamanasimi']); })
+            ->where('o.tip', 'onerildi')
+            ->whereNull('k.id')
+            ->where('o.created_at', '<', now()->subMinutes(60))
+            ->select('o.*')->get();
+        foreach ($bekleyenler as $o) {
+            _aiEylemKararKaydet((object) $o, (object) ['id' => 0, 'ad' => 'SISTEM', 'rol' => 'cron'], 'zamanasimi');
+            $sayac++;
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'kapatilan' => $sayac];
+});
+
+// Kullanici API'leri
+Route::post('/api/ai-eylem/onayla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 0, 'hata' => 'log_id gerekli']);
+    $sonuc = _aiEylemOnayla($log_id, $bp);
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
+Route::post('/api/ai-eylem/vazgec', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 0, 'hata' => 'log_id gerekli']);
+    $sonuc = _aiEylemVazgec($log_id, $bp);
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
 // ============================ PATRON AI — SABAH BRİFİNGİ (Faz 3) ============================
 // İKİ KATMAN: (1) kural motoru = BEDAVA, her zaman çalışır (anahtar gerekmez). (2) Haiku anlatımı = opsiyonel,
 // yalnız config patron_ai_v2 + ANTHROPIC_API_KEY varsa; yoksa sessizce kural metnine döner. Mevcut sistem bozulmaz.
