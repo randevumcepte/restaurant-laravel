@@ -70,6 +70,31 @@
   @keyframes saShinePath{0%,100%{transform:translate(0,0) scale(1);opacity:.6}
     50%{transform:translate(14%,8%) scale(1.1);opacity:.85}}
 
+  /* Hareketli gözler — orb içinde yüzen */
+  #saHero .sa-orb .eyes{position:absolute;top:48%;left:50%;transform:translate(-50%,-50%);
+    display:flex;gap:14px;z-index:4;pointer-events:none;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.4)) drop-shadow(0 0 10px rgba(168,85,247,.5))}
+  #saHero .sa-orb .eye{width:16px;height:20px;border-radius:50%;background:#fff;
+    position:relative;overflow:hidden;animation:saBlink 5.5s infinite}
+  #saHero .sa-orb .pupil{width:9px;height:9px;border-radius:50%;background:#0a0520;
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    animation:saLook 7s ease-in-out infinite;
+    box-shadow:inset 0 1px 2px rgba(99,102,241,.5)}
+  #saHero .sa-orb .pupil::after{content:'';position:absolute;top:1.5px;left:1.5px;
+    width:3px;height:3px;border-radius:50%;background:#fff;opacity:.9}
+  @keyframes saLook{
+    0%,100%{transform:translate(-50%,-50%)}
+    15%{transform:translate(-130%,-50%)}
+    30%{transform:translate(-130%,-30%)}
+    50%{transform:translate(30%,-50%)}
+    65%{transform:translate(30%,-70%)}
+    80%{transform:translate(-50%,-30%)}
+  }
+  @keyframes saBlink{
+    0%,42%,48%,92%,96%,100%{transform:scaleY(1)}
+    45%,94%{transform:scaleY(.1)}
+  }
+
   /* Orb etrafında dönen küçük parlak partikül */
   #saHero .sa-orb-stage .orbit{position:absolute;inset:0;z-index:3;pointer-events:none;
     animation:saOrbit 14s linear infinite}
@@ -232,6 +257,10 @@
         <div class="layer l2"></div>
         <div class="layer l3"></div>
         <div class="shine"></div>
+        <div class="eyes">
+          <div class="eye"><div class="pupil"></div></div>
+          <div class="eye"><div class="pupil"></div></div>
+        </div>
       </div>
       <div class="orbit"></div>
     </div>
