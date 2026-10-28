@@ -9163,7 +9163,9 @@ Route::post('/api/ik-asistan/sor', function (Request $r) {
     if ($n['tip'] === 'eylem') {
         $h = _ikAsistanEylemHazirla($sid, $n['intent'], $n['params']);
         if (!($h['ok'] ?? false)) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => '⚠️ ' . ($h['hata'] ?? 'Bu işlemi yapamadım.')]);
-        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $h['ozet'], 'eylem' => $h['intent'], 'params' => $h['params']]);
+        // Ortak log altyapisi: 'onerildi' olayi + hash chain
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'ik', $h['intent'] ?? $n['intent'], $h['params'], $h['ozet'], $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $h['ozet'], 'eylem' => $h['intent'], 'params' => $h['params'], 'log_id' => $log_id]);
     }
     // okuma / sohbet
     if (!empty($n['cevap']) && in_array($n['intent'], ['bilinmiyor', 'ai_kapali'])) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
@@ -9178,9 +9180,16 @@ Route::post('/api/ik-asistan/uygula', function (Request $r) {
     $sid = _webSubeId();
     $eylem = (string) $r->input('eylem');
     $params = (array) $r->input('params', []);
+    $log_id = (int) $r->input('log_id', 0);
     if (in_array($eylem, ['izin_ver', 'avans_onayla']) && !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) {
         return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Bu işlemi sadece yönetici onaylayabilir.']]);
     }
+    // Ortak altyapi: log_id varsa ortak /api/ai-eylem/onayla ile aynı akis (zincire onaylandi+yurutuldu yazilir)
+    if ($log_id > 0 && function_exists('_aiEylemOnayla')) {
+        $sonuc = _aiEylemOnayla($log_id, $bp);
+        return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+    }
+    // Legacy: log_id yoksa dogrudan uygula (geri uyumluluk)
     $sonuc = _ikAsistanEylemUygula($sid, $bp, $eylem, $params);
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
 });

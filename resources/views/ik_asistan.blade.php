@@ -100,7 +100,7 @@ async function gonder(){
     const d = await post('/api/ik-asistan/sor', {metin});
     yaz.remove();
     if(d.ok!==1){ balon('Bir sorun oldu, tekrar dener misin?','ai'); btn.disabled=false; return; }
-    if(d.tip==='eylem'){ onizleGoster(d.ozet, d.eylem, d.params); }
+    if(d.tip==='eylem'){ onizleGoster(d.ozet, d.eylem, d.params, d.log_id || 0); }
     else {
       const b = balon(d.cevap||'…','ai');
       if(d.link){ const a=document.createElement('a'); a.href=d.link.url; a.className='link-btn'; a.innerHTML='<span class="material-icons-outlined" style="font-size:16px">open_in_new</span> '+d.link.lbl; b.appendChild(document.createElement('br')); b.appendChild(a); }
@@ -124,14 +124,26 @@ async function sorEylem(intent){
   hizli(map[intent]||intent);
 }
 
-function onizleGoster(ozet, eylem, params){
+function onizleGoster(ozet, eylem, params, log_id){
   const d=document.createElement('div'); d.className='onizle';
-  d.innerHTML='<div class="oh"><span class="material-icons-outlined" style="font-size:16px">task_alt</span> Onayına sunuyorum</div><div class="ot">'+ozet.replace(/</g,'&lt;')+'</div>';
+  const kilitMetin = log_id > 0 ? '<div style="font-size:11px;color:var(--sub);margin-top:4px"><span class="material-icons-outlined" style="font-size:13px;color:var(--yesil);vertical-align:-2px">lock</span> Onayın IP ile birlikte imzalı log\'a yazılacak (geri alınamaz).</div>' : '';
+  d.innerHTML='<div class="oh"><span class="material-icons-outlined" style="font-size:16px">task_alt</span> Onayına sunuyorum</div><div class="ot">'+ozet.replace(/</g,'&lt;')+'</div>'+kilitMetin;
   const ob=document.createElement('div'); ob.className='ob';
   const ok=document.createElement('button'); ok.className='btn'; ok.style.background='var(--yesil)'; ok.innerHTML='<span class="material-icons-outlined">check</span> Onayla, yap';
   const vz=document.createElement('button'); vz.className='btn ikincil'; vz.textContent='Vazgeç';
-  ok.onclick=async()=>{ ob.innerHTML='<span style="color:var(--sub);font-size:13px">Uygulanıyor…</span>'; const r=await post('/api/ik-asistan/uygula',{eylem,params}); const s=(r&&r.sonuc)||{}; d.remove(); balon(s.ok?(s.mesaj||'✓ Tamam'):('⚠️ '+(s.mesaj||'Yapılamadı')),'ai'); };
-  vz.onclick=()=>{ d.remove(); balon('Tamam, vazgeçtim. Başka?','ai'); };
+  ok.onclick=async()=>{
+    ob.innerHTML='<span style="color:var(--sub);font-size:13px">Uygulanıyor…</span>';
+    // log_id varsa ortak altyapiya git (hash chain + legal log). Yoksa legacy flow.
+    const payload = log_id > 0 ? {eylem, params, log_id} : {eylem, params};
+    const r=await post('/api/ik-asistan/uygula', payload);
+    const s=(r&&r.sonuc)||{}; d.remove();
+    balon(s.ok?(s.mesaj||'✓ Tamam'):('⚠️ '+(s.mesaj||'Yapılamadı')),'ai');
+  };
+  vz.onclick=async()=>{
+    // log_id varsa zincire 'reddedildi' yaz
+    if (log_id > 0) { try { await post('/api/ai-eylem/vazgec', {log_id}); } catch(e){} }
+    d.remove(); balon('Tamam, vazgeçtim. Başka?','ai');
+  };
   ob.appendChild(ok); ob.appendChild(vz); d.appendChild(ob);
   akis.appendChild(d); kaydir();
 }
