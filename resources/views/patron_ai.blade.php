@@ -110,8 +110,8 @@
       <div class="ozet" id="paiEylemOzet"></div>
       <div class="uyari"><span class="material-icons-outlined">lock</span> Onayın IP'n (<b id="paiEylemIp">—</b>) ile birlikte imzalı log'a yazılacak. Geri alınamaz, yasal kanıt niteliğinde.</div>
       <div class="btnler">
-        <button class="btn-vaz" onclick="paiEylemVazgec()">Vazgeç</button>
-        <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> Yap</button>
+        <button class="btn-vaz" onclick="paiEylemKapat()">Kapat</button>
+        <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> İşlemi Yap</button>
       </div>
       <div id="paiEylemSonuc" style="display:none" class="pai-sonuc"></div>
     </div>
@@ -303,7 +303,7 @@ async function paiEylemYap(){
     el.style.display = 'block';
     el.className = 'pai-sonuc ' + (son.ok ? 'ok' : 'hata');
     el.textContent = son.mesaj || 'Yürütme sonucu alınamadı.';
-    btn.innerHTML = '<span class="material-icons-outlined" style="font-size:17px">check</span> Yap';
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size:17px">check</span> İşlemi Yap';
   }catch(e){
     const el = document.getElementById('paiEylemSonuc');
     el.style.display = 'block'; el.className = 'pai-sonuc hata'; el.textContent = 'Bağlantı hatası';
@@ -311,11 +311,8 @@ async function paiEylemYap(){
   }
 }
 
-async function paiEylemVazgec(){
-  if (!_paiEylemLogId) { document.getElementById('paiEylemMod').classList.remove('acik'); return; }
-  try{
-    await fetch('/api/ai-eylem/vazgec', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'}, body: JSON.stringify({log_id: _paiEylemLogId})});
-  }catch(e){}
+// Kapat — modal'ı kapatır, backend'e gitmez. Kullanici islemi yapmak istemediyse log 60 dk sonra zamanasimiyla kapanir.
+function paiEylemKapat(){
   document.getElementById('paiEylemMod').classList.remove('acik');
   _paiEylemLogId = null;
 }

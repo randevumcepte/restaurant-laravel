@@ -504,8 +504,7 @@ function saEylemBalonu(e){
     '<div class="se-ozet">'+saEsc(e.ozet)+'</div>'+
     '<div class="se-kilit"><span class="material-icons-outlined" style="font-size:13px;color:#10B981;vertical-align:-2px">lock</span> Onayın IP ile imzalı log\'a yazılacak, geri alınamaz.</div>'+
     '<div class="se-btn-grup">'+
-      '<button class="se-vaz" onclick="saEylemVazgec(this,'+e.log_id+')">Vazgeç</button>'+
-      '<button class="se-yap" onclick="saEylemYap(this,'+e.log_id+')"><span class="material-icons-outlined" style="font-size:15px">check</span> Yap</button>'+
+      '<button class="se-yap" onclick="saEylemYap(this,'+e.log_id+')"><span class="material-icons-outlined" style="font-size:15px">check</span> İşlemi Yap</button>'+
     '</div>'+
     '<div class="se-sonuc" style="display:none"></div>';
   akis.appendChild(d);
@@ -522,18 +521,8 @@ async function saEylemYap(btn,log_id){
     const s=(j&&j.sonuc)||{};
     son.style.display='block'; son.className='se-sonuc '+(s.ok?'ok':'hata');
     son.textContent=s.mesaj||'Sonuç alınamadı.';
-    btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> Yap';
-    b.querySelector('.se-vaz').style.display='none';
-  }catch(e){ son.style.display='block'; son.className='se-sonuc hata'; son.textContent='Bağlantı hatası'; btn.disabled=false; btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> Yap'; }
-}
-
-async function saEylemVazgec(btn,log_id){
-  const b=btn.closest('.sa-eylem-balon');
-  try{ await fetch('/api/ai-eylem/vazgec',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({log_id})}); }catch(e){}
-  b.querySelector('.se-sonuc').style.display='block';
-  b.querySelector('.se-sonuc').className='se-sonuc vz';
-  b.querySelector('.se-sonuc').textContent='Vazgeçildi, bir şey yapılmadı.';
-  b.querySelector('.se-btn-grup').style.display='none';
+    btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> İşlemi Yap';
+  }catch(e){ son.style.display='block'; son.className='se-sonuc hata'; son.textContent='Bağlantı hatası'; btn.disabled=false; btn.innerHTML='<span class="material-icons-outlined" style="font-size:15px">check</span> İşlemi Yap'; }
 }
 
 // Sayfa ustundeki hazir chip'ler

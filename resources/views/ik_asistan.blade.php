@@ -129,8 +129,7 @@ function onizleGoster(ozet, eylem, params, log_id){
   const kilitMetin = log_id > 0 ? '<div style="font-size:11px;color:var(--sub);margin-top:4px"><span class="material-icons-outlined" style="font-size:13px;color:var(--yesil);vertical-align:-2px">lock</span> Onayın IP ile birlikte imzalı log\'a yazılacak (geri alınamaz).</div>' : '';
   d.innerHTML='<div class="oh"><span class="material-icons-outlined" style="font-size:16px">task_alt</span> Onayına sunuyorum</div><div class="ot">'+ozet.replace(/</g,'&lt;')+'</div>'+kilitMetin;
   const ob=document.createElement('div'); ob.className='ob';
-  const ok=document.createElement('button'); ok.className='btn'; ok.style.background='var(--yesil)'; ok.innerHTML='<span class="material-icons-outlined">check</span> Onayla, yap';
-  const vz=document.createElement('button'); vz.className='btn ikincil'; vz.textContent='Vazgeç';
+  const ok=document.createElement('button'); ok.className='btn'; ok.style.background='var(--yesil)'; ok.innerHTML='<span class="material-icons-outlined">check</span> İşlemi Yap';
   ok.onclick=async()=>{
     ob.innerHTML='<span style="color:var(--sub);font-size:13px">Uygulanıyor…</span>';
     // log_id varsa ortak altyapiya git (hash chain + legal log). Yoksa legacy flow.
@@ -139,12 +138,7 @@ function onizleGoster(ozet, eylem, params, log_id){
     const s=(r&&r.sonuc)||{}; d.remove();
     balon(s.ok?(s.mesaj||'✓ Tamam'):('⚠️ '+(s.mesaj||'Yapılamadı')),'ai');
   };
-  vz.onclick=async()=>{
-    // log_id varsa zincire 'reddedildi' yaz
-    if (log_id > 0) { try { await post('/api/ai-eylem/vazgec', {log_id}); } catch(e){} }
-    d.remove(); balon('Tamam, vazgeçtim. Başka?','ai');
-  };
-  ob.appendChild(ok); ob.appendChild(vz); d.appendChild(ob);
+  ob.appendChild(ok); d.appendChild(ob);
   akis.appendChild(d); kaydir();
 }
 </script>

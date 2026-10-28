@@ -188,9 +188,8 @@
         <div class="sb-yap-btn-grup">
           @if ($y['tip'] === 'eylem')
             <span class="kilit"><span class="material-icons-outlined">lock</span> Onay IP ile imzalı log'a yazılacak</span>
-            <button class="sb-btn-vaz" onclick="briefVazgec(this)">Vazgeç</button>
             <button class="sb-btn-yap" onclick="briefYap(this, '{{ $y['intent'] }}', {{ json_encode($y['params'] ?? []) }})">
-              <span class="material-icons-outlined">check</span> Yap
+              <span class="material-icons-outlined">check</span> İşlemi Yap
             </button>
           @else
             <a href="{{ $y['url'] }}" class="sb-btn-link"><span class="material-icons-outlined">arrow_forward</span> Aç</a>
@@ -282,7 +281,7 @@ async function briefYap(btn, intent, params){
     if (!j1 || !j1.ok || !j1.log_id) {
       son.className = 'sb-yap-sonuc hata';
       son.textContent = 'Öneri oluşturulamadı: ' + (j1.hata || 'bilinmeyen hata');
-      btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> Yap';
+      btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> İşlemi Yap';
       return;
     }
     // 2) Onayla (ortak endpoint): dispatch satınalma modülüne gider, yürütür, zincire yazar
@@ -294,28 +293,16 @@ async function briefYap(btn, intent, params){
     const s = (j2 && j2.sonuc) || {};
     son.className = 'sb-yap-sonuc ' + (s.ok ? 'ok' : 'hata');
     son.textContent = s.mesaj || (s.ok ? 'Yürütüldü.' : 'Hata oluştu.');
-    btn.innerHTML = s.ok ? '<span class="material-icons-outlined">check_circle</span> Tamamlandı' : '<span class="material-icons-outlined">check</span> Yap';
+    btn.innerHTML = s.ok ? '<span class="material-icons-outlined">check_circle</span> Tamamlandı' : '<span class="material-icons-outlined">check</span> İşlemi Yap';
     if (s.ok) {
-      // Vazgeç butonunu gizle, Yap butonunu kalıcı yeşil tut
-      const vz = row.querySelector('.sb-btn-vaz'); if (vz) vz.style.display = 'none';
       row.querySelector('.kilit').style.display = 'none';
     } else {
       btn.disabled = false;
     }
   } catch (e) {
     son.className = 'sb-yap-sonuc hata'; son.textContent = 'Bağlantı hatası.';
-    btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> Yap';
+    btn.disabled = false; btn.innerHTML = '<span class="material-icons-outlined">check</span> İşlemi Yap';
   }
-}
-
-async function briefVazgec(btn){
-  const row = btn.closest('.sb-yap-sat');
-  const son = row.querySelector('.sb-yap-sonuc');
-  son.className = 'sb-yap-sonuc vz';
-  son.textContent = 'Vazgeçildi, bir şey yapılmadı.';
-  row.querySelector('.sb-btn-yap').style.display = 'none';
-  btn.style.display = 'none';
-  row.querySelector('.kilit').style.display = 'none';
 }
 </script>
 @endpush
