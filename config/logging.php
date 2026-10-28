@@ -54,7 +54,9 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            // 'daily' = rotating log (default max 14 gün, LOG_DAILY_DAYS ile değiştirilebilir)
+            // Eskiden 'single' idi → tek dosyaya sonsuz yazıyordu, disk doluyordu.
+            'channels' => explode(',', (string) env('LOG_STACK', 'daily')),
             'ignore_exceptions' => false,
         ],
 
@@ -68,8 +70,8 @@ return [
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
-            'max_files' => env('LOG_DAILY_DAYS', 14),
+            'level' => env('LOG_LEVEL', 'info'), // debug→info: önemsiz log'ları yazma, disk şişmesin
+            'max_files' => env('LOG_DAILY_DAYS', 7), // 14→7: 1 hafta tutmak yeterli
             'replace_placeholders' => true,
         ],
 
