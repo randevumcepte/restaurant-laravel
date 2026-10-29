@@ -19471,7 +19471,31 @@ if (!function_exists('_mrpGuzelBirim')) {
         return [round($miktar, 3), $kis ?: 'ad'];
     }
 }
-// Plan listesinden ([{urun_id|recete_id, adet}]) birleşik malzeme ihtiyacı + net stok + maliyet
+// Genel birim çevrimi (kg<->g, lt<->ml). Bilinmeyen/aynı -> 1.
+if (!function_exists('_mrpBirimDonustur')) {
+    function _mrpBirimDonustur($fromId, $toId)
+    {
+        if (!$fromId || !$toId || (int) $fromId === (int) $toId) return 1.0;
+        $k = DB::table('birimler')->whereIn('id', [(int) $fromId, (int) $toId])->pluck('kisaltma', 'id');
+        $f = strtolower((string) ($k[$fromId] ?? '')); $t = strtolower((string) ($k[$toId] ?? ''));
+        $g = ['kg' => ['g' => 1000], 'g' => ['kg' => 0.001], 'lt' => ['ml' => 1000], 'ml' => ['lt' => 0.001]];
+        return isset($g[$f][$t]) ? (float) $g[$f][$t] : 1.0;
+    }
+}
+// Reçete çarpanı: girilen (adet, seçilen birim) -> reçetenin VERİM birimine çevir / verim_miktar.
+// verim "4 porsiyon" ise 1000 porsiyon=carpan 250; verim "1000 g" ise 5 kg girince carpan 5.
+if (!function_exists('_mrpCarpan')) {
+    function _mrpCarpan($receteId, $adet, $birimId = null)
+    {
+        $rec = DB::table('receteler')->where('id', (int) $receteId)->first(['verim_miktar', 'verim_birim_id']);
+        if (!$rec) return (float) $adet;
+        $verim = ((float) ($rec->verim_miktar ?? 0) > 0) ? (float) $rec->verim_miktar : 1.0;
+        $vBirim = (int) ($rec->verim_birim_id ?? 0);
+        $sel = (int) ($birimId ?: $vBirim);
+        return ((float) $adet * _mrpBirimDonustur($sel, $vBirim)) / $verim;
+    }
+}
+// Plan listesinden ([{urun_id|recete_id, adet, birim_id}]) birleşik malzeme ihtiyacı + net stok + maliyet
 if (!function_exists('_uretimPlaniHesapla')) {
     function _uretimPlaniHesapla($sid, array $plan)
     {
@@ -19537,7 +19561,7 @@ if (!function_exists('_uretimPlaniDetay')) {
             $receteId = (int) ($p['recete_id'] ?? 0);
             if ($receteId <= 0 && !empty($p['urun_id'])) $receteId = (int) DB::table('receteler')->where('urun_id', (int) $p['urun_id'])->where('tip', 'urun')->value('id');
             if ($receteId <= 0) continue;
-            $ih = []; _restoReceteHammadde($receteId, $adet, $ih);
+            $ih = []; _restoReceteHammadde($receteId, _mrpCarpan($receteId, $adet, $p['birim_id'] ?? null), $ih);
             if (empty($ih)) continue;
             $urunAd = !empty($p['urun_id']) ? DB::table('urunler')->where('id', (int) $p['urun_id'])->value('ad') : null;
             $mal = DB::table('malzemeler')->whereIn('id', array_keys($ih))->get(['id', 'ad', 'temel_birim_id'])->keyBy('id');
@@ -19560,10 +19584,14 @@ Route::get('/uretim-plani', function () {
     $sid = _webSubeId();
     // Reçetesi olan aktif ürünler
     $urunler = DB::table('urunler as u')->join('receteler as r', 'r.urun_id', '=', 'u.id')
+        ->leftJoin('birimler as b', 'b.id', '=', 'r.verim_birim_id')
         ->where('u.sube_id', $sid)->where('u.aktif', 1)->where('r.tip', 'urun')
-        ->orderBy('u.ad')->get(['u.id', 'u.ad', 'u.fiyat', 'r.id as recete_id']);
+        ->orderBy('u.ad')->get(['u.id', 'u.ad', 'u.fiyat', 'r.id as recete_id', 'r.verim_miktar', 'r.verim_birim_id', 'b.kisaltma as verim_birim', 'b.tip as verim_tip']);
     $tahmin = _uretimSatisTahmin($sid, 7); // haftalık öneri
-    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '']);
+    // Birim seçici için: ağırlık (kg/g) ve hacim (lt/ml) birim id'leri
+    $birimAll = DB::table('birimler')->get(['id', 'kisaltma', 'tip']);
+    $birimMap = []; foreach ($birimAll as $b) { $birimMap[strtolower($b->kisaltma)] = (int) $b->id; }
+    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '', 'birimMap' => $birimMap]);
 });
 // Hesapla (AJAX): plan -> malzeme ihtiyacı JSON
 Route::post('/uretim-plani/hesapla', function (Request $r) {
