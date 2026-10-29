@@ -30,6 +30,7 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #up .urun-sat .ad{flex:1;font-size:13px;font-weight:600;color:var(--ink);line-height:1.2}
 #up .urun-sat .adet{width:76px;padding:7px 8px;border:1px solid var(--line);border-radius:9px;text-align:center;font-size:14px;font-weight:700;color:var(--ink);background:var(--card)}
 #up .urun-sat .bg{font-size:10px;color:var(--sub2)}
+#up .urun-sat .birim{font-size:10.5px;font-weight:700;color:var(--mor1);border:1px solid var(--line);border-radius:7px;padding:2px 4px;background:var(--card);cursor:pointer}
 #up .bos-liste{text-align:center;color:var(--sub);padding:30px;font-size:13px}
 #up .mal-tablo{width:100%;border-collapse:separate;border-spacing:0 5px;font-size:12.5px}
 #up .mal-tablo th{text-align:left;color:#fff;font-weight:800;font-size:10.5px;padding:9px 10px;text-transform:uppercase;letter-spacing:.4px;background:linear-gradient(135deg,var(--mor1),var(--mavi))}
@@ -101,13 +102,28 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       <input class="urun-ara" placeholder="🔍 Ürün ara..." oninput="ara(this.value)">
       <div class="urun-liste" id="urunListe">
         @forelse ($urunler as $u)
+          @php
+            $vt = strtolower($u->verim_tip ?? '');
+            $vbid = (int) ($u->verim_birim_id ?? 0);
+            $vb = $u->verim_birim ?: 'porsiyon';
+            $secenek = [];
+            if ($vt === 'agirlik') $secenek = [['kg', $birimMap['kg'] ?? 0], ['g', $birimMap['g'] ?? 0]];
+            elseif ($vt === 'hacim') $secenek = [['lt', $birimMap['lt'] ?? 0], ['ml', $birimMap['ml'] ?? 0]];
+            $secenek = array_values(array_filter($secenek, fn ($s) => $s[1] > 0));
+          @endphp
           <div class="urun-sat" data-ad="{{ mb_strtolower($u->ad) }}">
             <span class="ad">{{ $u->ad }}</span>
-            <div style="display:flex;flex-direction:column;align-items:center">
-              <input class="adet" type="number" min="0" step="1" value="0"
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+              <input class="adet" type="number" min="0" step="any" value="0"
                 data-urun="{{ $u->id }}" data-recete="{{ $u->recete_id }}" data-haftalik="{{ $tahmin[$u->id] ?? 0 }}"
-                oninput="satDolu(this)">
-              <span class="bg">adet</span>
+                data-vbirim="{{ $vbid }}" oninput="satDolu(this)">
+              @if(count($secenek) > 1)
+                <select class="birim">
+                  @foreach($secenek as $s)<option value="{{ $s[1] }}">{{ $s[0] }}</option>@endforeach
+                </select>
+              @else
+                <span class="bg">{{ $vb }}</span>
+              @endif
             </div>
           </div>
         @empty
@@ -157,7 +173,11 @@ function planTopla(){
   const plan=[];
   document.querySelectorAll('#urunListe .adet').forEach(inp=>{
     const adet=+inp.value||0;
-    if(adet>0)plan.push({urun_id:+inp.dataset.urun,recete_id:+inp.dataset.recete,adet:adet});
+    if(adet>0){
+      const sel=inp.parentElement.querySelector('.birim');
+      const birim_id=sel?(+sel.value):(+inp.dataset.vbirim||0);
+      plan.push({urun_id:+inp.dataset.urun,recete_id:+inp.dataset.recete,adet:adet,birim_id:birim_id});
+    }
   });
   return plan;
 }
