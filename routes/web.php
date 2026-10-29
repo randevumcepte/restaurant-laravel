@@ -6797,6 +6797,9 @@ if (!function_exists('_panelSayfaKategori')) {
                 'gor_dashboard' => 'Dashboard / Özet', 'gor_yazici' => 'Yazıcı Ayarları', 'gor_bagli_cihaz' => 'Bağlı Cihazlar',
                 'gor_isletme_konum' => 'İşletme Konum', 'gor_sebep' => 'İptal / İkram Sebepleri', 'gor_odeme_ayar' => 'Ödeme / Kaçak Önleme (hassas)', 'gor_copilot' => 'Patron Asistan',
             ],
+            '🤖 Yapay Zekâ (premium)' => [
+                'gor_ai_asistan' => 'AI Asistanı Kullanımı — departman asistanları (İK / Satınalma / Mutfak / Finans …)',
+            ],
         ];
     }
 }
@@ -6817,9 +6820,9 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
-            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_stok', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
-            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_personel', '/ik-risk' => 'gor_personel', // İnsan Kaynakları: özet + izin + vardiya + sicil + işe alım + AI asistan + risk radarı (gor_personel yetkisi)
+            '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_ai_asistan', '/ik-risk' => 'gor_personel', // İK ekranları gor_personel; İK AI asistanı PREMIUM = gor_ai_asistan
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
@@ -6859,7 +6862,7 @@ if (!function_exists('_kademeSayfalar')) {
         $tum = _panelSayfaKeys();
         switch ($kademe) {
             case 'sahip': return $tum;
-            case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar'])); // ödeme/kaçak hariç her şey
+            case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar', 'gor_ai_asistan'])); // ödeme/kaçak + AI asistan (premium, patron elle verir) hariç her şey
             case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
             case 'satinalma': return ['gor_stok', 'gor_cari']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
             case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
@@ -8136,12 +8139,14 @@ if (!function_exists('_patronAiAnaliz')) {
 if (!function_exists('_patronAiAnalizZengin')) {
     // AI AÇIKSA: her analiz bloğunun yorum/risk/öneri/durum'unu Haiku ÖZGÜN yazar (kalıp değil) + genel özet.
     // Kapalıysa/başarısızsa kural şablonuna düşer. Günde 1 AI çağrısı (3 saat önbellek; force bypass).
-    function _patronAiAnalizZengin($sid, $veri, $tip = 'sabah', $ad = null, $force = false, $demo = false)
+    function _patronAiAnalizZengin($sid, $veri, $tip = 'sabah', $ad = null, $force = false, $demo = false, $cacheOnly = false)
     {
         $base = _patronAiAnaliz($veri, $tip, $ad);
         $sonuc = ['bloklar' => $base, 'ozet' => null, 'kaynak' => 'kural'];
         if (!config('services.resteos.patron_ai_v2', false)) return $sonuc;
         $ck = 'patron_ai_analizz:' . (int) $sid . ':' . now()->toDateString() . ':' . $tip . ($demo ? ':demo' : '');
+        // Sadece önbellek: üretim (Haiku çağrısı) YAPMA — hazırsa anında ver, değilse kural ile dön (sayfa bloklanmaz).
+        if ($cacheOnly && !$force && !\Illuminate\Support\Facades\Cache::has($ck)) return $sonuc;
         if ($force) \Illuminate\Support\Facades\Cache::forget($ck);
         return \Illuminate\Support\Facades\Cache::remember($ck, now()->addHours(3), function () use ($sid, $veri, $tip, $ad, $base, $sonuc) {
             $hitap = $ad ? trim(explode(' ', trim($ad))[0]) : 'patron';
@@ -8611,7 +8616,7 @@ if (!function_exists('_ikIzinEnsure')) {
     }
 }
 if (!function_exists('_ikGuard')) {
-    // İK sayfası erişimi: sahip/müdür VEYA gor_personel yetkisi. Yetkili personel objesi döner, yoksa null.
+    // İK EKRANLARI erişimi (özet/izin/vardiya/sicil/aday/risk): sahip/müdür VEYA gor_personel yetkisi.
     function _ikGuard()
     {
         $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -8619,6 +8624,23 @@ if (!function_exists('_ikGuard')) {
         if (in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return $bp;
         if (function_exists('_panelYetkiVar') && _panelYetkiVar($bp, 'gor_personel')) return $bp;
         return null;
+    }
+}
+if (!function_exists('_aiAsistanGuard')) {
+    // AI ASİSTAN erişimi (PREMIUM — ücretli): sahip/müdür (üst yönetim) her zaman; ALT personel SADECE
+    // patronun verdiği gor_ai_asistan yetkisi + ilgili departman yetkisi ($ekYetki) varsa. Böylece bir
+    // departmanda çok kişi olsa da AI'yı yalnızca yetkilendirilen (departman müdürü) kullanır.
+    // config.ai_asistan kapalıysa alt personele hiç açılmaz (ileride şube lisansına bağlanır).
+    function _aiAsistanGuard($ekYetki = null)
+    {
+        $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$bp) return null;
+        if (in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return $bp;      // üst yönetim muaf
+        if (!config('services.resteos.ai_asistan', true)) return null;       // premium kapalı → alt personel yok
+        if (!function_exists('_panelYetkiVar')) return null;
+        if (!_panelYetkiVar($bp, 'gor_ai_asistan')) return null;             // AI kullanım yetkisi ŞART (patron verir)
+        if ($ekYetki && !_panelYetkiVar($bp, $ekYetki)) return null;         // ilgili departman yetkisi de ŞART
+        return $bp;
     }
 }
 if (!function_exists('_ikYillikHak')) {
@@ -9251,14 +9273,14 @@ if (!function_exists('_ikAsistanEylemUygula')) {
 }
 Route::get('/ik-asistan', function () {
     if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
-    $bp = _ikGuard();
-    if (!$bp) return redirect('/pos-giris');
+    $bp = _aiAsistanGuard('gor_personel');
+    if (!$bp) return redirect('/ik-ozet')->with('hata', 'AI Asistanı için yetkin yok. İşletme sahibinden "AI Asistanı Kullanımı" yetkisini iste.');
     return view('ik_asistan', ['aiAcik' => (bool) config('services.resteos.patron_ai_v2', false)]);
 });
 Route::post('/api/ik-asistan/sor', function (Request $r) {
     if (!config('services.resteos.ik_acik', true)) return response()->json(['ok' => 0], 403);
-    $bp = _ikGuard();
-    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $bp = _aiAsistanGuard('gor_personel');
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
     $sid = _webSubeId();
     $metin = trim((string) $r->input('metin'));
     $n = _ikAsistanNiyet($sid, $bp, $metin);
@@ -9277,8 +9299,8 @@ Route::post('/api/ik-asistan/sor', function (Request $r) {
 });
 Route::post('/api/ik-asistan/uygula', function (Request $r) {
     if (!config('services.resteos.ik_acik', true)) return response()->json(['ok' => 0], 403);
-    $bp = _ikGuard();
-    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $bp = _aiAsistanGuard('gor_personel');
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
     // YAZMA eylemleri yalnızca sahip/müdür (veya İK sorumlusu gor_personel zaten guard'da). Avans/izin para/hak → yönetici.
     $sid = _webSubeId();
     $eylem = (string) $r->input('eylem');
@@ -15365,8 +15387,8 @@ if (!function_exists('_satinalmaAsistanEylemUygula')) {
 }
 
 Route::get('/satinalma-asistan', function () {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    $bp = _aiAsistanGuard('gor_stok'); // PREMIUM: sahip/müdür VEYA gor_ai_asistan + gor_stok
+    if (!$bp) return redirect('/satinalma-ozet')->with('hata', 'AI Asistanı için yetkin yok. İşletme sahibinden "AI Asistanı Kullanımı" yetkisini iste.');
     return view('satinalma_asistan');
 });
 
@@ -15385,8 +15407,8 @@ Route::post('/api/satinalma-brief/eylem-oner', function (Request $r) {
 
 // Yeni: eylem onerisi hazirla + log ortak altyapiya yaz, log_id dondur
 Route::post('/api/satinalma-asistan/eylem-oner', function (Request $r) {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $bp = _aiAsistanGuard('gor_stok'); // PREMIUM
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
     $sid = _webSubeId();
     $metin = trim((string) $r->input('metin'));
     $n = _satinalmaAsistanNiyet($sid, $bp, $metin);
@@ -15482,8 +15504,8 @@ if (!function_exists('_satinalmaProaktifOner')) {
 }
 
 Route::post('/satinalma-asistan/sor', function (Request $r) {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'cevap' => 'Yetkisiz.'], 403);
+    $bp = _aiAsistanGuard('gor_stok'); // PREMIUM
+    if (!$bp) return response()->json(['ok' => 0, 'cevap' => 'AI Asistanı yetkiniz yok.'], 403);
     $sid = _webSubeId();
     $soru = trim((string) $r->input('soru'));
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
@@ -19270,6 +19292,32 @@ if (!function_exists('_uretimSatisTahmin')) {
         return $out;
     }
 }
+// Ürün bazında reçete gramaj detayı (her ürünün kendi hammadde listesi, planlanan adet için)
+if (!function_exists('_uretimPlaniDetay')) {
+    function _uretimPlaniDetay(array $plan)
+    {
+        $out = [];
+        $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        foreach ($plan as $p) {
+            $adet = (float) ($p['adet'] ?? 0); if ($adet <= 0) continue;
+            $receteId = (int) ($p['recete_id'] ?? 0);
+            if ($receteId <= 0 && !empty($p['urun_id'])) $receteId = (int) DB::table('receteler')->where('urun_id', (int) $p['urun_id'])->where('tip', 'urun')->value('id');
+            if ($receteId <= 0) continue;
+            $ih = []; _restoReceteHammadde($receteId, $adet, $ih);
+            if (empty($ih)) continue;
+            $urunAd = !empty($p['urun_id']) ? DB::table('urunler')->where('id', (int) $p['urun_id'])->value('ad') : null;
+            $mal = DB::table('malzemeler')->whereIn('id', array_keys($ih))->get(['id', 'ad', 'temel_birim_id'])->keyBy('id');
+            $kalemler = [];
+            foreach ($ih as $mid => $miktar) {
+                $m = $mal[$mid] ?? null; if (!$m) continue;
+                [$gm, $gb] = _mrpGuzelBirim($miktar, $birimKis[$m->temel_birim_id] ?? '');
+                $kalemler[] = ['ad' => $m->ad, 'miktar' => $gm, 'birim' => $gb];
+            }
+            $out[] = ['urun' => $urunAd ?: 'Ürün', 'adet' => (int) $adet, 'kalemler' => $kalemler];
+        }
+        return $out;
+    }
+}
 // Ekran: üretim planı
 Route::get('/uretim-plani', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -19293,7 +19341,8 @@ Route::post('/uretim-plani/hesapla', function (Request $r) {
     $rows = _uretimPlaniHesapla($sid, $plan);
     $toplam = round(array_sum(array_column($rows, 'tahmini_maliyet')), 2);
     $alinacak = array_values(array_filter($rows, fn ($x) => !$x['yeterli']));
-    return response()->json(['ok' => 1, 'rows' => $rows, 'alinacak' => $alinacak, 'toplam' => $toplam]);
+    $detay = _uretimPlaniDetay($plan);
+    return response()->json(['ok' => 1, 'rows' => $rows, 'alinacak' => $alinacak, 'toplam' => $toplam, 'detay' => $detay]);
 });
 // Talep oluştur: net malzemeler -> satinalma_talepleri + kalemleri (teslim tarihi + not)
 Route::post('/uretim-plani/talep', function (Request $r) {
