@@ -4116,7 +4116,7 @@ Route::get('/itibar', function () {
     $ort = round((float) DB::table('memnuniyet')->where('sube_id', $sid)->avg('puan'), 1);
     $bekleyen = DB::table('memnuniyet')->where('sube_id', $sid)->where('durum', 'yeni')->count();
     $dagilim = []; for ($i = 5; $i >= 1; $i--) $dagilim[$i] = DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', $i)->count();
-    $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('id')->get(['id', 'qr_token', 'ad', 'no', 'masa_no']);
+    $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->whereNotNull('qr_token')->orderBy('id')->get();
     $googleLink = (string) resto_ayar_al('google_yorum_link_' . $sid, '');
     $waNo = (string) resto_ayar_al('memnuniyet_wa_' . $sid, '');
     $patronMu = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
@@ -10251,30 +10251,36 @@ Route::get('/patron-ai', function () {
     $bp = null;
     try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     $sid = _webSubeId();
-    $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
     $tip = request('tip') === 'aksam' ? 'aksam' : 'sabah';
     $ad = $bp->ad ?? null;
     $demo = request()->boolean('demo');
+
+    // KABUK: ağır veriye dokunmaz, ANINDA döner (hız). İçerik ?frag=1 ile async yüklenir.
+    if (!request()->boolean('frag')) {
+        return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => $demo]);
+    }
+
+    // FRAGMAN: tüm ağır hesap burada (brief + AI analiz + departman denetimi + süreklilik + whatsapp).
     if ($demo) {
         $b = _patronAiBriefDemo($sid, $ad);
-        return view('patron_ai', ['brief' => $b, 'personel' => $bp, 'ad' => $ad, 'tuketim' => $b['tuketim'],
-            'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'], 'tip' => 'sabah', 'anlatim' => [],
-            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'demo' => true]);
+        return view('patron_ai_frag', ['brief' => $b, 'ad' => $ad, 'tuketim' => $b['tuketim'],
+            'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'], 'tip' => 'sabah',
+            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'denetim' => [], 'demo' => true]);
     }
+    $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
+    $analiz = []; $aiOzet = null; $aiVar = false; $denetim = [];
     try { $brief = _patronAiBriefUret($sid, $tip, request()->boolean('force'), $ad); } catch (\Throwable $e) {}
     try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
     try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
-    $anlatim = []; $analiz = []; $aiOzet = null; $aiVar = false; $denetim = [];
     try { if ($brief) {
-        $anlatim = _patronAiAnlatim($brief['veri'] ?? [], $tip, $ad);
         $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, request()->boolean('force'));
         $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
         $denetim = _departmanDenetim($sid, $tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday());
     } } catch (\Throwable $e) {}
-    return view('patron_ai', ['brief' => $brief, 'personel' => $bp, 'ad' => $ad, 'tuketim' => $tuketim,
-        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'anlatim' => $anlatim, 'analiz' => $analiz,
-        'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'denetim' => $denetim]);
+    return view('patron_ai_frag', ['brief' => $brief, 'ad' => $ad, 'tuketim' => $tuketim,
+        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'analiz' => $analiz,
+        'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'denetim' => $denetim, 'demo' => false]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
