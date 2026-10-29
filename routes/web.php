@@ -4257,6 +4257,76 @@ Route::post('/kampanya/gonder', function (Request $r) {
     return response()->json(['ok' => 1, 'gonderilen' => $gonderilen, 'atlanan' => $atlanan, 'hedef' => $musteriler->count()]);
 });
 
+// ============================================================================
+// SATICI YAŞLANDIRMA + AI NAKİT DANIŞMANI: ödenmemiş alış faturalarını vade gününe
+// göre kovalara böl (gecikmiş/yaklaşan) + AI "önce şunu öde" tavsiyesi. Ödendi işaretle.
+// ============================================================================
+if (!function_exists('_tedarikciYaslandirma')) {
+    function _tedarikciYaslandirma($sid)
+    {
+        $bugun = today();
+        $out = ['tedarikciler' => [], 'toplam' => 0, 'gecikmis' => 0, 'hafta' => 0, 'ay' => 0, 'ileri' => 0];
+        try {
+            if (!Schema::hasTable('alis_faturalari')) return $out;
+            $ted = DB::table('tedarikciler')->get(['id', 'ad', 'odeme_vade_gun'])->keyBy('id');
+            $fat = DB::table('alis_faturalari')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'odendi'])
+                ->get(['id', 'tedarikci_id', 'tarih', 'toplam', 'vade_tarihi', 'fatura_no', 'durum']);
+            $sup = [];
+            foreach ($fat as $f) {
+                $tid = (int) ($f->tedarikci_id ?? 0); $tutar = (float) $f->toplam; if ($tutar <= 0) continue;
+                $vg = (int) ($ted[$tid]->odeme_vade_gun ?? 0);
+                $vade = $f->vade_tarihi ? \Carbon\Carbon::parse($f->vade_tarihi) : ($vg > 0 ? \Carbon\Carbon::parse($f->tarih)->addDays($vg) : \Carbon\Carbon::parse($f->tarih));
+                $gun = (int) $bugun->diffInDays($vade, false); // >0 yaklaşan, <0 gecikmiş
+                if (!isset($sup[$tid])) $sup[$tid] = ['id' => $tid, 'ad' => $ted[$tid]->ad ?? '—', 'toplam' => 0, 'gecikmis' => 0, 'hafta' => 0, 'ay' => 0, 'ileri' => 0, 'faturalar' => []];
+                $sup[$tid]['toplam'] += $tutar;
+                $k = $gun < 0 ? 'gecikmis' : ($gun <= 7 ? 'hafta' : ($gun <= 30 ? 'ay' : 'ileri'));
+                $sup[$tid][$k] += $tutar; $out[$k] += $tutar; $out['toplam'] += $tutar;
+                $sup[$tid]['faturalar'][] = ['id' => (int) $f->id, 'no' => $f->fatura_no, 'tarih' => substr((string) $f->tarih, 0, 10), 'vade' => $vade->toDateString(), 'tutar' => $tutar, 'gun' => $gun];
+            }
+            usort($sup, fn ($a, $b) => $b['gecikmis'] <=> $a['gecikmis'] ?: $b['toplam'] <=> $a['toplam']);
+            foreach ($sup as &$s) usort($s['faturalar'], fn ($a, $b) => $a['gun'] <=> $b['gun']);
+            $out['tedarikciler'] = $sup;
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+}
+Route::get('/tedarikci-yaslandirma', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $y = _tedarikciYaslandirma($sid);
+    // AI nakit danışmanı (özet -> tavsiye); AI kapalı/veri yoksa kural
+    $tavsiye = null;
+    try {
+        if ($y['toplam'] > 0 && function_exists('_patronAiCagir')) {
+            $enler = array_slice(array_map(fn ($s) => $s['ad'] . ' (gecikmiş ' . round($s['gecikmis']) . '₺, toplam ' . round($s['toplam']) . '₺)', $y['tedarikciler']), 0, 5);
+            $sys = 'Sen bir restoranın finans/nakit akışı danışmanısın. Tedarikçi borç yaşlandırma verisine bakıp KISA (en fazla 4 madde), somut, önceliklendirilmiş ödeme tavsiyesi ver (önce hangi tedarikçiye öde, neden). Türkçe, net, eyleme dönük. Rakamları kullan.';
+            $user = 'Toplam borç: ' . round($y['toplam']) . '₺. Gecikmiş: ' . round($y['gecikmis']) . '₺. Bu hafta vade: ' . round($y['hafta']) . '₺. 8-30 gün: ' . round($y['ay']) . '₺. En borçlular: ' . implode('; ', $enler);
+            $tavsiye = _patronAiCagir($sys, $user, 400, $bp, $sid);
+        }
+    } catch (\Throwable $e) {}
+    if (!$tavsiye && $y['toplam'] > 0) {
+        $p = [];
+        if ($y['gecikmis'] > 0) $p[] = '🔴 ' . round($y['gecikmis']) . '₺ gecikmiş borç var — önce bunları kapat (en çok geciken tedarikçiden başla).';
+        if ($y['hafta'] > 0) $p[] = '🟠 Bu hafta ' . round($y['hafta']) . '₺ vade doluyor — nakit ayır.';
+        if (!empty($y['tedarikciler'][0])) $p[] = '⭐ En kritik: ' . $y['tedarikciler'][0]['ad'] . ' (' . round($y['tedarikciler'][0]['toplam']) . '₺).';
+        $tavsiye = $p ? implode("\n", $p) : null;
+    }
+    return view('tedarikci_yaslandirma', ['y' => $y, 'tavsiye' => $tavsiye, 'patronMu' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::post('/tedarikci-yaslandirma/odendi', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $fid = (int) $r->input('fatura_id'); $tid = (int) $r->input('tedarikci_id');
+    try {
+        $q = DB::table('alis_faturalari')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'odendi']);
+        if ($fid) $q->where('id', $fid); elseif ($tid) $q->where('tedarikci_id', $tid); else return back();
+        $q->update(['durum' => 'odendi', 'updated_at' => now()]);
+    } catch (\Throwable $e) {}
+    return back()->with('ok', 'Ödendi olarak işaretlendi.');
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -6959,7 +7029,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', // satın alma talep havuzu + üretim planı = stok/mutfak-yönetim; reçeteler menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti / satıcı yaşlandırma
         ];
     }
 }
