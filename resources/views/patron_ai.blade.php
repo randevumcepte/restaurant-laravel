@@ -5,23 +5,109 @@
 
 @push('head')
 <style>
-  #pai { max-width: 920px; }
-  .pai-orb{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(124,58,237,.35);flex:none}
-  .pai-blok{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--golge);padding:16px 18px;margin-bottom:14px}
-  .pai-blok h4{font-size:12.5px;font-weight:800;color:var(--sub2);letter-spacing:.3px;margin:0 0 10px;display:flex;align-items:center;gap:7px;text-transform:uppercase}
-  .pai-anlat{font-size:15.5px;line-height:1.65;color:var(--ink)}
-  .pai-oneri{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-  .pai-oneri:last-child{border-bottom:0}
-  .pai-no{width:24px;height:24px;border-radius:12px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none}
-  .pai-sat{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  #pai{max-width:980px;margin:0 auto}
+  /* ---------- HERO ---------- */
+  .pai-hero{position:relative;overflow:hidden;border-radius:24px;padding:22px 24px;margin-bottom:16px;
+    background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 42%,#4F46E5 100%);
+    box-shadow:0 14px 40px rgba(79,70,229,.28)}
+  .pai-hero::before{content:'';position:absolute;width:280px;height:280px;border-radius:50%;top:-120px;right:-60px;
+    background:radial-gradient(circle,rgba(255,255,255,.22),transparent 70%);animation:paiFloat 9s ease-in-out infinite}
+  .pai-hero::after{content:'';position:absolute;width:220px;height:220px;border-radius:50%;bottom:-130px;left:30%;
+    background:radial-gradient(circle,rgba(246,206,99,.18),transparent 70%);animation:paiFloat 11s ease-in-out infinite reverse}
+  @keyframes paiFloat{0%,100%{transform:translate(0,0)}50%{transform:translate(-18px,14px)}}
+  .pai-hero-row{position:relative;z-index:2;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .pai-orb{width:54px;height:54px;border-radius:17px;flex:none;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.16);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.28);
+    box-shadow:0 8px 22px rgba(0,0,0,.18)}
+  .pai-orb .material-icons-outlined{color:#fff;font-size:29px;animation:paiPulse 3.4s ease-in-out infinite}
+  @keyframes paiPulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.14);opacity:1}}
+  .pai-selam{font-size:23px;font-weight:800;color:#fff;line-height:1.2;letter-spacing:-.3px}
+  .pai-alt{font-size:12.5px;color:rgba(255,255,255,.82);margin-top:3px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .pai-ai-rozet{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);
+    padding:2px 9px;border-radius:20px;font-weight:700;font-size:11px;color:#fff}
+  /* segment tabs */
+  .pai-seg{display:inline-flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:13px;padding:3px}
+  .pai-tab{border:0;background:transparent;color:rgba(255,255,255,.82);font-weight:700;font-size:13px;padding:7px 15px;border-radius:10px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+  .pai-tab.aktif{background:#fff;color:#4F46E5;box-shadow:0 3px 10px rgba(0,0,0,.14)}
+  .pai-ref{width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s}
+  .pai-ref:hover{background:rgba(255,255,255,.24)}
+  .pai-ref.spin .material-icons-outlined{animation:paiSpin .7s linear infinite}
+  @keyframes paiSpin{to{transform:rotate(360deg)}}
+
+  /* ---------- ACTION CHIPS ---------- */
+  .pai-chipler{display:flex;flex-wrap:wrap;gap:8px}
+  .pai-chip{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:9px 14px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;transition:all .14s;box-shadow:var(--golge)}
+  .pai-chip:hover{border-color:var(--mor1);color:var(--mor1);transform:translateY(-2px);box-shadow:0 8px 20px rgba(124,58,237,.16)}
+  .pai-chip .material-icons-outlined{font-size:17px}
+  .pai-grup-bas{font-size:11px;font-weight:800;color:var(--sub2);letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:7px;margin:0 2px 10px}
+  .pai-grup-bas .material-icons-outlined{font-size:15px;color:var(--mor1)}
+
+  /* ---------- KPI STRIP ---------- */
+  .pai-kpiler{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .pai-kpi{position:relative;border-radius:18px;padding:15px 16px;border:1px solid var(--line);background:var(--card);box-shadow:var(--golge);overflow:hidden}
+  .pai-kpi .ic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:11px}
+  .pai-kpi .ic .material-icons-outlined{font-size:20px}
+  .pai-kpi .buyuk{font-size:24px;font-weight:800;color:var(--ink);line-height:1;letter-spacing:-.5px}
+  .pai-kpi .etk{font-size:12px;color:var(--sub);margin-top:5px;font-weight:600}
+  .pai-kpi .delta{position:absolute;top:14px;right:14px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px}
+
+  /* ---------- BLOKLAR ---------- */
+  .pai-blok{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--golge);padding:17px 19px;margin-bottom:14px}
+  .pai-blok h4{font-size:12px;font-weight:800;color:var(--sub2);letter-spacing:.4px;margin:0 0 12px;display:flex;align-items:center;gap:8px;text-transform:uppercase}
+  .pai-blok h4 .material-icons-outlined{font-size:17px}
+
+  /* AI değerlendirmesi — standout */
+  .pai-ozet{position:relative;overflow:hidden;border-radius:20px;padding:18px 20px;margin-bottom:16px;
+    background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 12%,var(--card)),color-mix(in srgb,var(--mavi) 10%,var(--card)));
+    border:1px solid color-mix(in srgb,var(--mor1) 28%,var(--line))}
+  .pai-ozet .lbl{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--mor1);letter-spacing:.4px;text-transform:uppercase;margin-bottom:8px}
+  .pai-ozet .metin{font-size:15px;line-height:1.68;color:var(--ink);white-space:pre-line}
+
+  /* analiz kartı */
+  .pai-an{border-radius:18px;padding:16px 18px;margin-bottom:12px;background:var(--card);border:1px solid var(--line);box-shadow:var(--golge);border-left:4px solid var(--line)}
+  .pai-an-bas{display:flex;align-items:center;gap:11px;margin-bottom:9px}
+  .pai-an-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
+  .pai-an-ic .material-icons-outlined{font-size:21px}
+  .pai-an-bas .t{font-weight:800;font-size:15.5px;color:var(--ink)}
+  .pai-an-bas .d{font-size:12.5px;color:var(--sub);font-weight:600}
+  .pai-vd{font-size:10px;font-weight:800;padding:4px 11px;border-radius:20px;color:#fff;letter-spacing:.5px;margin-left:auto}
+  .pai-yorum{font-size:14px;line-height:1.62;color:var(--ink);margin:2px 0 10px}
+  .pai-oz{display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.55;padding:11px 13px;border-radius:12px;margin-top:8px}
+  .pai-oz .material-icons-outlined{font-size:17px;flex:none;margin-top:1px}
+
+  /* satır listeleri */
+  .pai-sat{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line);font-size:13.5px}
   .pai-sat:last-child{border-bottom:0}
   .pai-dot{width:9px;height:9px;border-radius:50%;flex:none}
-  .pai-mini{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border-radius:20px;padding:5px 12px;font-size:12.5px;color:var(--sub2);margin:3px 6px 3px 0}
-  .pai-link{color:var(--mavi);font-size:12px;text-decoration:none;white-space:nowrap}
-  .pai-vd{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;color:#fff;letter-spacing:.4px}
-  .pai-yorum{font-size:14px;line-height:1.62;color:var(--ink);margin:2px 0 8px}
-  .pai-oz{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-top:7px}
-  .pai-ai{background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(79,70,229,.10));border:1px solid rgba(124,58,237,.25)}
+  .pai-mini{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border-radius:20px;padding:6px 13px;font-size:12.5px;color:var(--sub2);font-weight:600}
+  .pai-link{color:var(--mavi);font-size:12.5px;text-decoration:none;white-space:nowrap;font-weight:700}
+  .pai-link:hover{text-decoration:underline}
+  .pai-btn-sm{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:10px;background:var(--mor1);color:#fff;font-size:12.5px;font-weight:700;text-decoration:none;white-space:nowrap;border:0;cursor:pointer}
+  .pai-btn-sm.bos{background:var(--card2);color:var(--sub2);border:1px solid var(--line)}
+
+  /* ---------- SKELETON ---------- */
+  .pai-sk{background:linear-gradient(90deg,var(--card2) 25%,color-mix(in srgb,var(--card2) 55%,var(--card)) 37%,var(--card2) 63%);background-size:400% 100%;animation:paiSh 1.3s ease-in-out infinite;border-radius:12px}
+  @keyframes paiSh{0%{background-position:100% 0}100%{background-position:-100% 0}}
+
+  /* ---------- EYLEM MODAL ---------- */
+  .pai-eylem-mod{display:none;position:fixed;inset:0;background:rgba(10,15,30,.55);backdrop-filter:blur(3px);z-index:9999;align-items:center;justify-content:center;padding:16px}
+  .pai-eylem-mod.acik{display:flex}
+  .pai-eylem-mod .ic{background:var(--card);border-radius:20px;max-width:520px;width:100%;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
+  .pai-eylem-mod h3{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 8px;display:flex;align-items:center;gap:9px}
+  .pai-eylem-mod .ozet{background:var(--card2);border-left:3px solid var(--mor1);border-radius:12px;padding:13px 15px;font-size:13.5px;line-height:1.55;color:var(--ink);margin:12px 0 16px}
+  .pai-eylem-mod .uyari{font-size:11.5px;color:var(--sub);margin-bottom:16px;display:flex;align-items:center;gap:6px}
+  .pai-eylem-mod .uyari .material-icons-outlined{font-size:14px;color:var(--amber)}
+  .pai-eylem-mod .btnler{display:flex;gap:9px;justify-content:flex-end}
+  .pai-eylem-mod .btn-yap{background:linear-gradient(135deg,#10B981,#059669);color:#fff;border:0;border-radius:12px;padding:12px 22px;font-weight:800;cursor:pointer;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 14px rgba(16,185,129,.32)}
+  .pai-eylem-mod .btn-vaz{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:12px;padding:12px 18px;font-weight:700;cursor:pointer;font-size:13.5px}
+  .pai-sonuc{font-size:13px;color:var(--ink);line-height:1.5;padding:12px 14px;border-radius:12px;background:var(--card2);margin-top:12px}
+  .pai-sonuc.ok{border-left:3px solid #10B981;color:#047857}
+  .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
+
+  @media (max-width:560px){
+    .pai-selam{font-size:20px}
+    .pai-hero{padding:18px 18px}
+  }
 </style>
 @endpush
 
@@ -29,251 +115,117 @@
 <div class="rk-body">
 <div id="pai">
   @php
-    $v = $brief['veri'] ?? [];
-    $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
-    $kayipTop = array_sum($v['kayip'] ?? []);
-    $kaynak = $brief['kaynak'] ?? 'kural';
     $adK = $ad ? trim(explode(' ', trim($ad))[0]) : null;
     $saat = (int) now()->format('H');
     $selam = $saat < 11 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
-    $takvim = $v['takvim'] ?? [];
-    $eposta = $v['eposta'] ?? [];
-    // **bold** -> <b>bold</b> (önce güvenli kaçış, sonra vurgu)
-    $bold = fn ($s) => preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', e($s));
-    $anlatimL = $anlatim ?? [];
-    $analizL = $analiz ?? [];
-    $aiVar = $aiVar ?? false;
-    $aiOzet = $aiOzet ?? null;
+    $tip = $tip ?? 'sabah';
     $demo = $demo ?? false;
-    $vd = ['iyi' => ['İYİ', 'var(--yesil)'], 'notr' => ['NÖTR', 'var(--sub)'], 'dikkat' => ['DİKKAT', 'var(--amber)'], 'risk' => ['RİSK', 'var(--kirmizi)']];
-    // öneriye akıllı buton
-    $oneriLink = function ($o) {
-        $o = mb_strtolower($o);
-        if (str_contains($o, 'sipariş') || str_contains($o, 'kritik') || str_contains($o, 'malzeme') || str_contains($o, 'porsiyon')) return ['/siparis-onerisi', 'Sipariş'];
-        if (str_contains($o, 'e-posta') || str_contains($o, 'mail')) return ['/entegrasyonlar', 'Mailler'];
-        if (str_contains($o, 'tedarikçi') || str_contains($o, 'whatsapp')) return ['/whatsapp', 'WhatsApp'];
-        if (str_contains($o, 'food-cost') || str_contains($o, 'ciro') || str_contains($o, 'kayıp')) return ['/dashboard', 'Özet'];
-        return [null, null];
-    };
   @endphp
 
-  {{-- ÜST: orb + selam + sekme --}}
-  <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
-    <div class="pai-orb"><span class="material-icons-outlined" style="color:#fff;font-size:26px">auto_awesome</span></div>
-    <div style="flex:1">
-      <div style="font-size:20px;font-weight:800;color:var(--ink)">{{ $selam }}{{ $adK ? ', '.$adK : '' }} 👋</div>
-      <div class="rk-sub" style="font-size:12.5px">{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }} · {{ ($tip ?? 'sabah') === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }} @if($brief)· <span style="color:{{ $aiVar?'var(--mor1)':'var(--sub)' }}">{{ $aiVar?'✨ AI yazdı':'kural motoru' }}</span>@endif</div>
-    </div>
-    <div style="display:flex;gap:6px">
-      <a href="/patron-ai?tip=sabah" class="rk-btn {{ (!$demo && ($tip??'sabah')==='sabah')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'sabah')==='sabah')?'background:var(--mor1)':'' }}">Sabah</a>
-      <a href="/patron-ai?tip=aksam" class="rk-btn {{ (!$demo && ($tip??'')==='aksam')?'':'bos' }}" style="padding:6px 12px;{{ (!$demo && ($tip??'')==='aksam')?'background:var(--mor1)':'' }}">Akşam</a>
-      <a href="/patron-ai?tip={{ $tip??'sabah' }}&force=1" class="rk-btn bos" style="padding:6px 10px" title="Yenile"><span class="material-icons-outlined" style="font-size:16px">refresh</span></a>
-    </div>
-  </div>
-
-  {{-- Hazır AI eylem chip'leri — tıklanınca Yap/Vazgeç modal açılır, log zincire yazılır --}}
-  <div class="pai-blok" style="padding:12px 14px;margin-top:10px;margin-bottom:14px">
-    <div style="font-size:11.5px;font-weight:800;color:var(--sub2);letter-spacing:.3px;margin-bottom:9px;text-transform:uppercase;display:flex;align-items:center;gap:6px">
-      <span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">bolt</span> Hazır AI Eylemleri — tıkla, onay iste, log'lanır
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:7px">
-      <button class="pai-chip" onclick="paiEylemOner('kritik_siparis_olustur')">🛒 Kritikleri siparişe çevir</button>
-      <button class="pai-chip" onclick="paiEylemOner('tedarikci_hatirlat')">📞 Geciken tedarikçileri hatırlat</button>
-      <button class="pai-chip" onclick="paiEylemOner('eksik_bilgi_iste')">📝 Eksik özlük bilgisi iste</button>
-      <button class="pai-chip" onclick="paiEylemOner('dogum_gunu_kutla')">🎂 Doğum günü kutla</button>
-      <button class="pai-chip" onclick="paiEylemOner('gelmeyene_sor')">⏰ Vardiyada gelmeyene sor</button>
-    </div>
-  </div>
-
-  <style>
-  .pai-chip{background:var(--card2);border:1px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;transition:all .13s}
-  .pai-chip:hover{background:color-mix(in srgb,var(--mor1) 10%,var(--card));border-color:var(--mor1);color:var(--mor1)}
-  .pai-eylem-mod{display:none;position:fixed;inset:0;background:rgba(10,15,30,.55);z-index:9999;align-items:center;justify-content:center;padding:16px}
-  .pai-eylem-mod.acik{display:flex}
-  .pai-eylem-mod .ic{background:var(--card);border-radius:18px;max-width:520px;width:100%;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
-  .pai-eylem-mod h3{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 8px;display:flex;align-items:center;gap:9px}
-  .pai-eylem-mod .ozet{background:var(--card2);border-left:3px solid var(--mor1);border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.5;color:var(--ink);margin:10px 0 16px}
-  .pai-eylem-mod .uyari{font-size:11.5px;color:var(--sub);margin-bottom:14px;display:flex;align-items:center;gap:6px}
-  .pai-eylem-mod .uyari .material-icons-outlined{font-size:14px;color:var(--amber)}
-  .pai-eylem-mod .btnler{display:flex;gap:9px;justify-content:flex-end}
-  .pai-eylem-mod .btn-yap{background:linear-gradient(135deg,#10B981,#059669);color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:800;cursor:pointer;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(16,185,129,.3)}
-  .pai-eylem-mod .btn-vaz{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:13.5px}
-  .pai-sonuc{font-size:13px;color:var(--ink);line-height:1.5;padding:12px 14px;border-radius:10px;background:var(--card2);margin-top:12px}
-  .pai-sonuc.ok{border-left:3px solid #10B981;color:#047857}
-  .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
-  </style>
-
-  {{-- Eylem onay modali --}}
-  <div class="pai-eylem-mod" id="paiEylemMod" onclick="if(event.target===this)this.classList.remove('acik')">
-    <div class="ic">
-      <h3><span class="material-icons-outlined" style="color:var(--mor1)">auto_awesome</span> AI eylem onayı</h3>
-      <div class="ozet" id="paiEylemOzet"></div>
-      <div class="uyari"><span class="material-icons-outlined">lock</span> Onayın IP'n (<b id="paiEylemIp">—</b>) ile birlikte imzalı log'a yazılacak. Geri alınamaz, yasal kanıt niteliğinde.</div>
-      <div class="btnler">
-        <button class="btn-vaz" onclick="paiEylemKapat()">Kapat</button>
-        <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> İşlemi Yap</button>
-      </div>
-      <div id="paiEylemSonuc" style="display:none" class="pai-sonuc"></div>
-    </div>
-  </div>
-
-  @if ($demo)
-  <div style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:12px;padding:10px 14px;margin:4px 2px 14px;font-size:12.5px;color:var(--amber)">
-    <span class="material-icons-outlined" style="font-size:18px">theater_comedy</span>
-    <span style="flex:1;color:var(--sub2)"><b style="color:var(--amber)">DEMO VERİ</b> — bunlar gerçek değil; AI'ın sistemde veri olunca nasıl yorumlayacağını göstermek içindir.</span>
-    <a href="/patron-ai" class="rk-btn bos" style="padding:4px 12px">Gerçek veriye dön</a>
-  </div>
-  @endif
-
-  @if (!empty($tuketim))
-    @php $yz=$tuketim['yuzde']??0; $br=$yz>=90?'var(--kirmizi)':($yz>=70?'var(--amber)':'var(--yesil)'); @endphp
-    <div style="display:flex;align-items:center;gap:10px;margin:4px 2px 14px;font-size:11.5px;color:var(--sub)">
-      <span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span>
-      <span>Bu ay dahil AI</span>
-      <div style="flex:1;max-width:220px;height:6px;background:var(--card2);border-radius:4px;overflow:hidden"><div style="height:100%;width:{{ $yz }}%;background:{{ $br }}"></div></div>
-      <span>{{ $tuketim['kullanim'] }}/{{ $tuketim['hak'] }}</span>
-    </div>
-  @endif
-
-  @if (!$brief)
-    <div class="pai-blok" style="text-align:center;color:var(--sub)">Brifing üretilemedi.</div>
-  @else
-    {{-- AI DEĞERLENDİRMESİ (anahtar açıkken Haiku'nun özgün genel yorumu) --}}
-    @if ($aiVar && !empty($aiOzet))
-    <div class="pai-blok pai-ai">
-      <h4 style="color:var(--mor1)"><span class="material-icons-outlined" style="font-size:17px">auto_awesome</span> AI Değerlendirmesi</h4>
-      <div style="font-size:14.5px;line-height:1.65;color:var(--ink);white-space:pre-line">{!! $bold($aiOzet) !!}</div>
-    </div>
-    @endif
-
-    {{-- ANALİZ BLOKLARI (her başlık: durum + yorum + risk + öneri) --}}
-    @foreach ($analizL as $a)
-      @php [$et,$rk] = $vd[$a['durum']] ?? $vd['notr']; @endphp
-      <div class="pai-blok">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <span class="material-icons-outlined" style="color:{{ $rk }};font-size:22px">{{ $a['ikon'] }}</span>
-          <span style="font-weight:800;font-size:15px;color:var(--ink)">{{ $a['baslik'] }}</span>
-          <span class="rk-sub" style="font-size:12.5px">· {{ $a['deger'] }}</span>
-          <span class="pai-vd" style="background:{{ $rk }};margin-left:auto">{{ $et }}</span>
-        </div>
-        <div class="pai-yorum">{!! $bold($a['yorum']) !!}</div>
-        @if (!empty($a['risk']))
-          <div class="pai-oz" style="background:rgba(244,63,94,.10);color:var(--kirmizi)"><span>🔴</span><span><b>Risk:</b> {{ $a['risk'] }}</span></div>
-        @endif
-        <div class="pai-oz" style="background:var(--card2)">
-          <span>✅</span>
-          <span style="flex:1;color:var(--sub2)"><b style="color:var(--ink)">Öneri:</b> {!! $bold($a['oneri']) !!}</span>
-          @if (!empty($a['link']))<a href="{{ $a['link'] }}" class="rk-btn" style="padding:4px 12px;background:var(--mor1);align-self:center;white-space:nowrap">{{ $a['lbl'] }} →</a>@endif
+  {{-- ============ HERO (anında render — veri beklemez) ============ --}}
+  <div class="pai-hero">
+    <div class="pai-hero-row">
+      <div class="pai-orb"><span class="material-icons-outlined">auto_awesome</span></div>
+      <div style="flex:1;min-width:180px">
+        <div class="pai-selam">{{ $selam }}{{ $adK ? ', '.$adK : '' }} 👋</div>
+        <div class="pai-alt">
+          <span>{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }}</span>
+          <span>·</span>
+          <span id="pai-tip-etiket">{{ $tip === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }}</span>
+          <span class="pai-ai-rozet" id="pai-kaynak-rozet">✨ Patron AI</span>
         </div>
       </div>
-    @endforeach
-
-    {{-- DEPARTMAN DENETİMİ — her departmanı tek tek incele --}}
-    @php $denetimL = $denetim ?? []; @endphp
-    @if (count($denetimL))
-    <div class="pai-blok">
-      <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">apartment</span> Departman Denetimi</h4>
-      @php $sonGrup = null; @endphp
-      @foreach ($denetimL as $dn)
-        @php [$det,$drk] = $vd[$dn['durum']] ?? $vd['notr']; @endphp
-        @if (($dn['grup'] ?? null) !== $sonGrup)
-          <div style="font-size:11px;font-weight:700;color:var(--sub2);margin:10px 2px 4px;text-transform:uppercase">{{ $dn['grup'] ?: 'Diğer' }}</div>
-          @php $sonGrup = $dn['grup'] ?? null; @endphp
-        @endif
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
-          <span class="material-icons-outlined" style="color:{{ $dn['renk']?:'var(--mavi)' }};font-size:20px">{{ $dn['ikon']?:'badge' }}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:13.5px">{{ $dn['ad'] }}</div>
-            <div class="rk-sub" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $dn['ozet'] }}</div>
-          </div>
-          @if (!empty($dn['uyari_say']))<span class="rk-rozet" style="background:var(--amber)">{{ $dn['uyari_say'] }} uyarı</span>@endif
-          <span class="pai-vd" style="background:{{ $drk }}">{{ $det }}</span>
-          <a href="/departman-rapor?id={{ $dn['id'] }}" class="rk-btn bos" style="padding:4px 12px;white-space:nowrap">Detay →</a>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div class="pai-seg">
+          <button class="pai-tab {{ $tip==='sabah'?'aktif':'' }}" data-tip="sabah" onclick="paiYukle('sabah',false)">☀️ Sabah</button>
+          <button class="pai-tab {{ $tip==='aksam'?'aktif':'' }}" data-tip="aksam" onclick="paiYukle('aksam',false)">🌙 Akşam</button>
         </div>
-      @endforeach
+        <button class="pai-ref" id="pai-ref" onclick="paiYukle(paiTip,true)" title="Yenile"><span class="material-icons-outlined" style="font-size:19px">refresh</span></button>
+      </div>
     </div>
-    @endif
+  </div>
 
-    {{-- DÜNDEN DEVAM (süreklilik) --}}
-    @php $sk = $sureklilik ?? ['acik'=>[],'kapanan'=>[]]; @endphp
-    @if (count($sk['acik']) || count($sk['kapanan']))
-    <div class="pai-blok">
-      <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mavi)">history</span> Dünden Devam</h4>
-      @foreach ($sk['kapanan'] as $k)
-        <div class="pai-sat"><span class="material-icons-outlined" style="font-size:18px;color:var(--yesil)">check_circle</span><span style="flex:1">{{ $k['konu'] }}</span><span class="rk-sub" style="font-size:11px">{{ $k['durum']==='devredildi'?'devredildi':'çözüldü' }}</span></div>
-      @endforeach
-      @foreach ($sk['acik'] as $a)
-        <div class="pai-sat">
-          <span class="pai-dot" style="background:var(--amber)"></span>
-          <span style="flex:1">{{ $a['konu'] }}</span>
-          <span class="rk-sub" style="font-size:11px">{{ $a['gun']>0 ? $a['gun'].' gündür açık' : 'bugün' }}</span>
-          <button class="rk-btn bos" style="padding:3px 10px;color:var(--yesil)" onclick="takipDurum({{ $a['id'] }},'cozuldu')">Çözüldü</button>
-        </div>
-      @endforeach
+  {{-- ============ HAZIR AI EYLEMLERİ (statik) ============ --}}
+  <div class="pai-blok" style="padding:15px 17px">
+    <div class="pai-grup-bas"><span class="material-icons-outlined">bolt</span> Hazır AI Eylemleri — tıkla, onay iste, log'lanır</div>
+    <div class="pai-chipler">
+      <button class="pai-chip" onclick="paiEylemOner('kritik_siparis_olustur')"><span>🛒</span> Kritikleri siparişe çevir</button>
+      <button class="pai-chip" onclick="paiEylemOner('tedarikci_hatirlat')"><span>📞</span> Geciken tedarikçileri hatırlat</button>
+      <button class="pai-chip" onclick="paiEylemOner('eksik_bilgi_iste')"><span>📝</span> Eksik özlük bilgisi iste</button>
+      <button class="pai-chip" onclick="paiEylemOner('dogum_gunu_kutla')"><span>🎂</span> Doğum günü kutla</button>
+      <button class="pai-chip" onclick="paiEylemOner('gelmeyene_sor')"><span>⏰</span> Vardiyada gelmeyene sor</button>
     </div>
-    @endif
+  </div>
 
-    {{-- BUGÜNKÜ GÜNDEM (takvim) --}}
-    @if (count($takvim))
-    <div class="pai-blok">
-      <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">event</span> Bugünkü Gündem</h4>
-      @foreach ($takvim as $ev)
-        <div class="pai-sat" style="align-items:flex-start">
-          <span style="font-weight:800;color:var(--mavi);min-width:42px">{{ $ev['saat'] ?? '' }}</span>
-          <div style="flex:1"><div style="font-weight:600">{{ $ev['baslik'] }}</div>@if(!empty($ev['not']))<div class="rk-sub" style="font-size:11.5px">📝 {{ $ev['not'] }}</div>@endif</div>
-        </div>
-      @endforeach
+  {{-- ============ İÇERİK (async yüklenir) ============ --}}
+  <div id="pai-icerik" style="margin-top:16px">
+    {{-- İlk görünüm: shimmer skeleton (JS verisiyle değişir) --}}
+    <div class="pai-kpiler">
+      @for ($i=0;$i<5;$i++)<div class="pai-kpi"><div class="pai-sk" style="width:36px;height:36px;border-radius:11px;margin-bottom:11px"></div><div class="pai-sk" style="width:70%;height:22px;margin-bottom:8px"></div><div class="pai-sk" style="width:50%;height:12px"></div></div>@endfor
     </div>
-    @endif
-
-    {{-- İLETİŞİM (mail + whatsapp) --}}
-    @php $wa = $whatsapp ?? ['giden'=>0,'gelen'=>[]]; @endphp
-    @if (count($eposta) || $wa['giden'] || count($wa['gelen']))
-    <div class="pai-blok">
-      <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--yesil)">forum</span> İletişim</h4>
-      @if (count($eposta))
-        <div style="font-size:12px;font-weight:700;color:var(--sub2);margin:2px 0 6px">📨 Yanıt bekleyen e-posta ({{ count($eposta) }})</div>
-        @foreach ($eposta as $e)
-          <div class="pai-sat"><span class="material-icons-outlined" style="font-size:17px;color:var(--amber)">mail_outline</span><div style="flex:1"><div style="font-weight:600">{{ $e['subject'] ?? '' }}</div><div class="rk-sub" style="font-size:11px">{{ $e['from'] ?? '' }}</div></div>@if(!empty($e['link']))<a href="{{ $e['link'] }}" target="_blank" class="pai-link">Aç →</a>@endif</div>
-        @endforeach
-      @endif
-      @if ($wa['giden'] || count($wa['gelen']))
-        <div style="font-size:12px;font-weight:700;color:var(--sub2);margin:12px 0 6px">💬 WhatsApp</div>
-        <div class="rk-sub" style="font-size:12.5px;margin-bottom:4px">Bugün sistemden <b>{{ $wa['giden'] }}</b> mesaj gönderildi.</div>
-        @foreach ($wa['gelen'] as $g)
-          <div class="pai-sat"><span class="material-icons-outlined" style="font-size:17px;color:#25D366">chat</span><div style="flex:1"><div>{{ $g['mesaj'] }}</div><div class="rk-sub" style="font-size:11px">{{ $g['telefon'] }} · {{ $g['saat'] }}</div></div><a href="/whatsapp" class="pai-link">Yanıtla →</a></div>
-        @endforeach
-      @endif
-      @if (!config('services.google_oauth.client_id') && !config('services.graph_oauth.client_id') && !count($wa['gelen']) && !$wa['giden'])
-        <div class="rk-sub" style="font-size:11.5px">Mail/Takvim için <a href="/entegrasyonlar" style="color:var(--mavi)">Entegrasyonlar</a>'dan Gmail/Microsoft bağla; WhatsApp için köprüyü aç.</div>
-      @endif
-    </div>
-    @endif
-
-    {{-- RAKAM ŞERİDİ (küçük, link) --}}
-    <div class="pai-blok" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
-      <span class="pai-mini">💰 Ciro {{ $tl($v['dun_ciro']??0) }}</span>
-      <span class="pai-mini">🍽 FC %{{ $v['food_cost_yuzde']??0 }}</span>
-      <span class="pai-mini">📉 Kayıp {{ $tl($kayipTop) }}</span>
-      <span class="pai-mini">👥 {{ $v['misafir']??0 }} misafir</span>
-      <span class="pai-mini">⚠️ {{ $v['kritik_sayi']??0 }} kritik stok</span>
-      <a href="/dashboard" class="pai-link" style="margin-left:auto;font-size:12.5px">Detaylı özet →</a>
-    </div>
-
-    @if (config('services.resteos.patron_ai_v2', false) === false)
-      <div class="rk-sub" style="font-size:11px;margin-top:4px">💡 AI doğal-dil anlatımı kapalı (kural motoru). Açmak: <code>RESTEOS_PATRON_AI_V2=true</code> + Anthropic anahtarı.</div>
-    @endif
-  @endif
+    <div class="pai-ozet"><div class="pai-sk" style="width:140px;height:13px;margin-bottom:12px"></div><div class="pai-sk" style="width:100%;height:14px;margin-bottom:8px"></div><div class="pai-sk" style="width:88%;height:14px"></div></div>
+    @for ($i=0;$i<3;$i++)<div class="pai-blok"><div class="pai-sk" style="width:45%;height:16px;margin-bottom:12px"></div><div class="pai-sk" style="width:100%;height:13px;margin-bottom:7px"></div><div class="pai-sk" style="width:80%;height:13px"></div></div>@endfor
+  </div>
 </div>
+</div>
+
+{{-- Eylem onay modali --}}
+<div class="pai-eylem-mod" id="paiEylemMod" onclick="if(event.target===this)this.classList.remove('acik')">
+  <div class="ic">
+    <h3><span class="material-icons-outlined" style="color:var(--mor1)">auto_awesome</span> AI eylem onayı</h3>
+    <div class="ozet" id="paiEylemOzet"></div>
+    <div class="uyari"><span class="material-icons-outlined">lock</span> Onayın IP'n (<b id="paiEylemIp">—</b>) ile birlikte imzalı log'a yazılacak. Geri alınamaz, yasal kanıt niteliğinde.</div>
+    <div class="btnler">
+      <button class="btn-vaz" onclick="paiEylemKapat()">Kapat</button>
+      <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> İşlemi Yap</button>
+    </div>
+    <div id="paiEylemSonuc" style="display:none" class="pai-sonuc"></div>
+  </div>
 </div>
 
 @push('scripts')
 <script>
+var paiTip = @json($tip ?? 'sabah');
+var paiDemo = @json((bool)($demo ?? false));
+var paiYukluyor = false;
+
+function paiYukle(tip, force){
+  if (paiYukluyor) return;
+  paiYukluyor = true;
+  paiTip = tip;
+  document.querySelectorAll('.pai-tab').forEach(function(b){ b.classList.toggle('aktif', b.dataset.tip===tip); });
+  var etk = document.getElementById('pai-tip-etiket'); if (etk) etk.textContent = (tip==='aksam'?'akşam raporu':'sabah brifingi');
+  var ref = document.getElementById('pai-ref'); if (ref && force) ref.classList.add('spin');
+  var box = document.getElementById('pai-icerik');
+  box.style.opacity = '.5'; box.style.transition = 'opacity .15s';
+  var qs = new URLSearchParams({frag:'1', tip:tip});
+  if (force) qs.set('force','1');
+  if (paiDemo) qs.set('demo','1');
+  fetch('/patron-ai?'+qs.toString(), {headers:{'X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin'})
+    .then(function(r){ return r.text(); })
+    .then(function(html){
+      box.innerHTML = html; box.style.opacity = '1';
+      // kaynak rozeti güncelle
+      var k = box.querySelector('[data-kaynak]');
+      var rz = document.getElementById('pai-kaynak-rozet');
+      if (k && rz) rz.textContent = (k.dataset.kaynak==='ai') ? '✨ AI yazdı' : '⚙️ kural motoru';
+    })
+    .catch(function(){
+      box.innerHTML = '<div class="pai-blok" style="text-align:center;color:var(--sub);padding:30px">İçerik yüklenemedi.<br><a href="#" onclick="paiYukle(paiTip,false);return false" style="color:var(--mavi);font-weight:700">Tekrar dene →</a></div>';
+      box.style.opacity = '1';
+    })
+    .finally(function(){
+      paiYukluyor = false;
+      if (ref) ref.classList.remove('spin');
+    });
+}
+document.addEventListener('DOMContentLoaded', function(){ paiYukle(paiTip, false); });
+
 function takipDurum(id, durum) {
-  api('/api/patron-ai/takip-durum', { id: id, durum: durum }).then(function () { location.reload(); }).catch(function () { location.reload(); });
+  api('/api/patron-ai/takip-durum', { id: id, durum: durum }).then(function () { paiYukle(paiTip,false); }).catch(function () { paiYukle(paiTip,false); });
 }
 
-// AI eylem onay akışı — chip tıklanınca modal aç, Yap/Vazgeç
+// AI eylem onay akışı
 var _paiEylemLogId = null;
 async function paiEylemOner(intent){
   try{
@@ -285,7 +237,6 @@ async function paiEylemOner(intent){
     document.getElementById('paiEylemSonuc').style.display = 'none';
     document.getElementById('paiEylemYapBtn').disabled = false;
     document.getElementById('paiEylemYapBtn').style.opacity = '1';
-    // IP göstergesi (basit)
     try { document.getElementById('paiEylemIp').textContent = (await (await fetch('https://api.ipify.org?format=json')).json()).ip || 'tespit edilemedi'; } catch(e){ document.getElementById('paiEylemIp').textContent = 'tespit edilemedi'; }
     document.getElementById('paiEylemMod').classList.add('acik');
   }catch(e){ alert('Bağlantı hatası'); }
@@ -311,7 +262,6 @@ async function paiEylemYap(){
   }
 }
 
-// Kapat — modal'ı kapatır, backend'e gitmez. Kullanici islemi yapmak istemediyse log 60 dk sonra zamanasimiyla kapanir.
 function paiEylemKapat(){
   document.getElementById('paiEylemMod').classList.remove('acik');
   _paiEylemLogId = null;
