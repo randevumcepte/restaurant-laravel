@@ -4108,24 +4108,19 @@ Route::post('/memnuniyet/kaydet', function (Request $r) {
     return response()->json(['ok' => 1]);
 });
 // YÖNETİCİ: memnuniyet / itibar panosu
-Route::get('/itibar', function (Request $r) {
+Route::get('/itibar', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
-    try {
-        _memnuniyetEnsure(); _masaQrEnsure(); $sid = _webSubeId();
-        $liste = DB::table('memnuniyet')->where('sube_id', $sid)->orderByDesc('created_at')->limit(200)->get();
-        $ort = round((float) DB::table('memnuniyet')->where('sube_id', $sid)->avg('puan'), 1);
-        $bekleyen = DB::table('memnuniyet')->where('sube_id', $sid)->where('durum', 'yeni')->count();
-        $dagilim = []; for ($i = 5; $i >= 1; $i--) $dagilim[$i] = DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', $i)->count();
-        $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->whereNotNull('qr_token')->orderBy('id')->get();
-        $googleLink = (string) resto_ayar_al('google_yorum_link_' . $sid, '');
-        $waNo = (string) resto_ayar_al('memnuniyet_wa_' . $sid, '');
-        $patronMu = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
-        return view('memnuniyet_panel', compact('liste', 'ort', 'bekleyen', 'dagilim', 'masalar', 'googleLink', 'waNo', 'patronMu'));
-    } catch (\Throwable $e) {
-        if ($r->query('dbg') === '1') return response('ITIBAR_HATA: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(), 500)->header('Content-Type', 'text/plain; charset=utf-8');
-        throw $e;
-    }
+    _memnuniyetEnsure(); _masaQrEnsure(); $sid = _webSubeId();
+    $liste = DB::table('memnuniyet')->where('sube_id', $sid)->orderByDesc('created_at')->limit(200)->get();
+    $ort = round((float) DB::table('memnuniyet')->where('sube_id', $sid)->avg('puan'), 1);
+    $bekleyen = DB::table('memnuniyet')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+    $dagilim = []; for ($i = 5; $i >= 1; $i--) $dagilim[$i] = DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', $i)->count();
+    $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->whereNotNull('qr_token')->orderBy('id')->get();
+    $googleLink = (string) resto_ayar_al('google_yorum_link_' . $sid, '');
+    $waNo = (string) resto_ayar_al('memnuniyet_wa_' . $sid, '');
+    $patronMu = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
+    return view('memnuniyet_panel', compact('liste', 'ort', 'bekleyen', 'dagilim', 'masalar', 'googleLink', 'waNo', 'patronMu'));
 });
 Route::post('/itibar/coz', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
