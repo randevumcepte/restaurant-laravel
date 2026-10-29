@@ -9304,7 +9304,7 @@ if (!function_exists('_ikAsistanOku')) {
                 if (!count($e)) return ['cevap' => 'Harika — eksik özlük bilgisi olan personel yok. ✓'];
                 $s = count($e) . ' personelin özlük bilgisi eksik:';
                 foreach (array_slice($e, 0, 20) as $x) $s .= "\n• " . $x['ad'] . ' — ' . implode(', ', $x['eksik']);
-                return ['cevap' => $s, 'aksiyon' => ['intent' => 'mesaj_eksik', 'lbl' => 'Hepsinden bilgi iste (WhatsApp)']];
+                return ['cevap' => $s, 'aksiyon' => ['intent' => 'mesaj_eksik', 'lbl' => 'Hepsinden bilgi iste (WhatsApp)', 'soru' => 'eksik bilgi iste']];
             case 'liste_izinli':
                 $bugun = now()->toDateString();
                 $list = DB::table('personel_izinler')->join('personeller', 'personeller.id', '=', 'personel_izinler.personel_id')
@@ -9465,7 +9465,21 @@ Route::get('/ik-asistan', function () {
     if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
     $bp = _aiAsistanGuard('gor_personel');
     if (!$bp) return redirect('/ik-ozet')->with('hata', 'AI Asistanı için yetkin yok. İşletme sahibinden "AI Asistanı Kullanımı" yetkisini iste.');
-    return view('ik_asistan', ['aiAcik' => (bool) config('services.resteos.patron_ai_v2', false)]);
+    // ORTAK zengin asistan tasarımı (departman_asistan) — İK config'iyle
+    return view('departman_asistan', [
+        'baslik' => 'İK AI Asistanı',
+        'selam' => 'İnsan kaynakları işlerinde yardımcın olayım — bilgi veririm ya da işini yaparım. Bir şey değiştireceksem önce özetler, onayını beklerim.',
+        'hizli' => [
+            ['Genel durum', 'Genel özet ver', 'insights', 'linear-gradient(135deg,#7C3AED,#4F46E5)', 'İşçilik, devam, bordro özeti'],
+            ['Eksik özlük', 'Eksik belgeli personelleri listele', 'badge', 'linear-gradient(135deg,#F59E0B,#F97316)', 'IBAN/TC/doğum tarihi eksik olanlar'],
+            ['Bugün devam', 'Bugün kim izinli, kim gelmedi', 'event_available', 'linear-gradient(135deg,#0EA5E9,#4F46E5)', 'İzinli & gelmeyen personel'],
+            ['Bekleyen onaylar', 'Onay bekleyen izin ve avans talepleri', 'pending_actions', 'linear-gradient(135deg,#F97316,#EAB308)', 'İzin & avans talepleri'],
+            ['Risk radarı', 'Riskli personelleri göster', 'crisis_alert', 'linear-gradient(135deg,#F43F5E,#F97316)', 'Devamsızlık / avans / ayrılma riski'],
+            ['En çok avans', 'Bu ay en çok avans alan kim', 'payments', 'linear-gradient(135deg,#10B981,#06B6D4)', 'Bu ayki avans dağılımı'],
+        ],
+        'sorUrl' => '/api/ik-asistan/sor', 'uygulaUrl' => '/api/ik-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'İK ile ilgili ne yapmak istersin?',
+    ]);
 });
 Route::post('/api/ik-asistan/sor', function (Request $r) {
     if (!config('services.resteos.ik_acik', true)) return response()->json(['ok' => 0], 403);
@@ -9545,6 +9559,7 @@ if (!function_exists('_departmanAsistanNiyet')) {
         if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Nasıl yardımcı olayım?', 'kaynak' => 'kural'];
         // --- KURAL MOTORU (departmana göre) ---
         $kurallar = $kod === 'mutfak' ? [
+            '/acil.*(sipariş|siparis|talep|satın|satin)|satın\s*alma\s*talep|kritik.*(sipariş|siparis|talep)/u' => ['eylem', 'acil_stok_talep'],
             '/fire|zayiat|israf/u' => ['cevap', 'fire'],
             '/bekle|hazırlan|hazirlan|kuyruk|sipariş|siparis/u' => ['cevap', 'bekleyen'],
             '/çok sat|cok sat|en çok|en cok|popüler|populer/u' => ['cevap', 'en_cok_satan'],
@@ -9611,7 +9626,7 @@ if (!function_exists('_departmanAsistanOku')) {
                         $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
                         if (!count($k)) return ['cevap' => 'Kritik seviyede malzeme yok. ✓'];
                         $t = count($k) . ' malzeme kritik seviyede:'; foreach (array_slice($k, 0, 12) as $x) $t .= "\n• " . ($x['ad'] ?? '') . ' (' . ($x['mevcut'] ?? 0) . '/' . ($x['kritik'] ?? 0) . ' ' . ($x['birim'] ?? '') . ')';
-                        return ['cevap' => $t, 'aksiyon' => ['intent' => 'acil_stok_talep', 'lbl' => 'Acil satın alma talebi oluştur']];
+                        return ['cevap' => $t, 'aksiyon' => ['intent' => 'acil_stok_talep', 'lbl' => 'Acil satın alma talebi oluştur', 'soru' => 'kritik malzemeler için acil satın alma talebi oluştur']];
                 }
             } else { // finans
                 switch ($intent) {
@@ -9692,7 +9707,11 @@ Route::get('/departman-asistan', function () {
     if (!$tanim) return redirect('/dashboard');
     $bp = _aiAsistanGuard($tanim['yetki']); // PREMIUM: sahip/müdür VEYA gor_ai_asistan + departman yetkisi
     if (!$bp) return redirect('/dashboard')->with('hata', 'AI Asistanı için yetkin yok. İşletme sahibinden "AI Asistanı Kullanımı" yetkisini iste.');
-    return view('departman_asistan', ['kod' => $kod, 'tanim' => $tanim]);
+    return view('departman_asistan', [
+        'baslik' => $tanim['ad'], 'selam' => $tanim['selam'], 'hizli' => $tanim['hizli'],
+        'sorUrl' => '/api/departman-asistan/sor', 'uygulaUrl' => '/api/departman-asistan/uygula',
+        'ekParam' => ['dep' => $kod], 'placeholder' => $tanim['ad'] . '\'na sor…',
+    ]);
 });
 Route::post('/api/departman-asistan/sor', function (Request $r) {
     $kod = (string) $r->input('dep');
