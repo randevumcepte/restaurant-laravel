@@ -4139,6 +4139,124 @@ Route::post('/itibar-ayar', function (Request $r) {
     return back()->with('ok', 'Ayarlar kaydedildi.');
 });
 
+// ============================================================================
+// AI PAZARLAMA / KAMPANYA MOTORU: segment (win-back/doğum günü/VIP/son30/tümü) ->
+// AI kişiselleştirilmiş metin ({ad} yer tutucu) -> onayla -> WhatsApp toplu gönder.
+// Mevcut _restoWaGonder + kontör + wa log kullanır. AI off -> kural şablonu.
+// ============================================================================
+if (!function_exists('_kampanyaEnsure')) {
+    function _kampanyaEnsure()
+    {
+        if (cache()->get('kampanya_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('kampanya_gonderimleri')) {
+                Schema::create('kampanya_gonderimleri', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('segment', 30); $t->text('mesaj')->nullable();
+                    $t->integer('hedef')->default(0); $t->integer('gonderilen')->default(0); $t->integer('atlanan')->default(0);
+                    $t->unsignedBigInteger('gonderen_id')->nullable(); $t->string('gonderen_ad', 120)->nullable();
+                    $t->timestamps();
+                });
+            }
+            cache()->put('kampanya_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_kampanyaSegmentler')) {
+    function _kampanyaSegmentler()
+    {
+        return [
+            'winback' => ['Geri Kazan', 'Son 30-120 gündür gelmeyen müşteriler', 'person_off', '#F59E0B'],
+            'dogum'   => ['Doğum Günü', 'Bu hafta doğum günü olanlar', 'cake', '#EC4899'],
+            'vip'     => ['VIP / Sadık', 'Toplam 5.000₺+ harcayan müşteriler', 'workspace_premium', '#F6CE63'],
+            'son30'   => ['Son 30 Gün Aktif', 'Son 30 günde gelen müşteriler', 'bolt', '#10B981'],
+            'tumu'    => ['Tüm Müşteriler', 'Telefonu olan herkes', 'groups', '#4F46E5'],
+        ];
+    }
+}
+if (!function_exists('_kampanyaSorgu')) {
+    function _kampanyaSorgu($sid, $segment)
+    {
+        $q = DB::table('musteriler as m')->where('m.sube_id', $sid)->whereNotNull('m.telefon')->where('m.telefon', '!=', '');
+        if (Schema::hasColumn('musteriler', 'silindi_at')) $q->whereNull('m.silindi_at');
+        if ($segment === 'vip') {
+            $q->where('m.toplam_harcama', '>=', 5000);
+        } elseif ($segment === 'dogum') {
+            if (Schema::hasColumn('musteriler', 'dogum_tarihi')) {
+                $q->whereNotNull('m.dogum_tarihi')->whereRaw("DATE_FORMAT(m.dogum_tarihi,'%m-%d') BETWEEN ? AND ?", [date('m-d'), date('m-d', strtotime('+7 days'))]);
+            } else { $q->whereRaw('1=0'); }
+        } elseif ($segment === 'winback') {
+            $ids = DB::table('adisyonlar')->where('durum', 'odendi')->whereNotNull('musteri_id')->groupBy('musteri_id')
+                ->havingRaw('MAX(kapanis) BETWEEN ? AND ?', [now()->subDays(120)->toDateTimeString(), now()->subDays(30)->toDateTimeString()])->pluck('musteri_id');
+            $q->whereIn('m.id', $ids);
+        } elseif ($segment === 'son30') {
+            $ids = DB::table('adisyonlar')->where('durum', 'odendi')->whereNotNull('musteri_id')->where('kapanis', '>=', now()->subDays(30))->distinct()->pluck('musteri_id');
+            $q->whereIn('m.id', $ids);
+        }
+        return $q;
+    }
+}
+// Kampanya paneli
+Route::get('/kampanya', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _kampanyaEnsure(); $sid = _webSubeId();
+    $segmentler = _kampanyaSegmentler(); $sayilar = [];
+    foreach ($segmentler as $k => $v) { try { $sayilar[$k] = (clone _kampanyaSorgu($sid, $k))->count(); } catch (\Throwable $e) { $sayilar[$k] = 0; } }
+    $kontor = 0; try { $sube = DB::table('subeler')->find($sid); $kontor = \App\Services\KontorServisi::bakiye($sube); } catch (\Throwable $e) {}
+    $gecmis = DB::table('kampanya_gonderimleri')->where('sube_id', $sid)->orderByDesc('created_at')->limit(15)->get();
+    return view('kampanya', compact('segmentler', 'sayilar', 'kontor', 'gecmis'));
+});
+// AI kampanya metni üret ({ad} yer tutucu korunur)
+Route::post('/kampanya/ai-metin', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $sid = _webSubeId();
+    $segment = (string) $r->input('segment', 'tumu');
+    $teklif = trim((string) $r->input('teklif', ''));
+    $segmentler = _kampanyaSegmentler();
+    $segAd = $segmentler[$segment][1] ?? 'müşteriler';
+    $sube = DB::table('subeler')->find($sid);
+    $subeAd = $sube->ad ?? 'Restoranımız';
+    $sys = 'Sen bir restoranın pazarlama uzmanısın. WhatsApp için KISA (en fazla 3 cümle), samimi, sıcak, 1-2 emoji\'li bir kampanya mesajı yaz. Müşteriye "{ad}" diye hitap et — bu {ad} yer tutucusunu AYNEN bırak, isimle değiştirme. Restoran adını kullan. Spam/abartı olmasın, doğal olsun. SADECE mesaj metnini döndür, başka açıklama yazma.';
+    $user = 'Restoran: ' . $subeAd . '. Hedef kitle: ' . $segAd . '.' . ($teklif !== '' ? ' Kampanya/teklif: ' . $teklif : ' Genel bir davet/hatırlatma.');
+    $metin = null;
+    try { if (function_exists('_patronAiCagir')) $metin = _patronAiCagir($sys, $user, 300, $bp, $sid); } catch (\Throwable $e) {}
+    if (!$metin) { // kural şablonu (AI kapalı/kota)
+        $tpl = ['winback' => 'Merhaba {ad}! 💛 Seni özledik, bir süredir yoklar. ' . $subeAd . ' olarak seni tekrar ağırlamak isteriz!',
+            'dogum' => 'İyi ki doğdun {ad}! 🎂 ' . $subeAd . ' ailesi olarak doğum gününü kutlarız, seni aramızda görmek isteriz!',
+            'vip' => 'Merhaba {ad}! ⭐ Değerli bir müşterimiz olarak ' . $subeAd . '\'de seni özel bir sürprizle ağırlamak isteriz.',
+            'son30' => 'Merhaba {ad}! 😊 ' . $subeAd . '\'de yeni lezzetler seni bekliyor, tekrar bekleriz!',
+            'tumu' => 'Merhaba {ad}! 😊 ' . $subeAd . '\'den selam! Seni aramızda görmek isteriz.'];
+        $metin = $tpl[$segment] ?? $tpl['tumu'];
+        if ($teklif !== '') $metin .= ' ' . $teklif;
+    }
+    return response()->json(['ok' => 1, 'metin' => $metin]);
+});
+// Kampanyayı gönder (WhatsApp toplu, {ad} kişiselleştir)
+Route::post('/kampanya/gonder', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    _kampanyaEnsure(); $sid = _webSubeId();
+    $segment = (string) $r->input('segment', 'tumu');
+    $mesaj = trim((string) $r->input('mesaj', ''));
+    if ($mesaj === '') return response()->json(['ok' => 0, 'hata' => 'Mesaj boş.']);
+    $kol = ['m.id', 'm.ad', 'm.telefon']; if (Schema::hasColumn('musteriler', 'telefon_norm')) $kol[] = 'm.telefon_norm';
+    $musteriler = _kampanyaSorgu($sid, $segment)->limit(500)->get($kol);
+    $gonderilen = 0; $atlanan = 0;
+    foreach ($musteriler as $m) {
+        $tel = (!empty($m->telefon_norm) ? $m->telefon_norm : _waTelNorm($m->telefon));
+        if (!$tel) { $atlanan++; continue; }
+        $kisisel = str_replace('{ad}', ($m->ad ?: 'değerli müşterimiz'), $mesaj);
+        $ok = false; try { $ok = _restoWaGonder($sid, $tel, $kisisel); } catch (\Throwable $e) {}
+        if ($ok) $gonderilen++; else $atlanan++;
+    }
+    DB::table('kampanya_gonderimleri')->insert(['sube_id' => $sid, 'segment' => $segment, 'mesaj' => mb_substr($mesaj, 0, 500),
+        'hedef' => $musteriler->count(), 'gonderilen' => $gonderilen, 'atlanan' => $atlanan,
+        'gonderen_id' => $bp->id ?? null, 'gonderen_ad' => $bp->ad ?? '', 'created_at' => now(), 'updated_at' => now()]);
+    return response()->json(['ok' => 1, 'gonderilen' => $gonderilen, 'atlanan' => $atlanan, 'hedef' => $musteriler->count()]);
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -6840,6 +6958,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', // satın alma talep havuzu + üretim planı = stok/mutfak-yönetim; reçeteler menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
+            '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
         ];
     }

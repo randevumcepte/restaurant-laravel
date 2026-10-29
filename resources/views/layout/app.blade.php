@@ -188,6 +188,7 @@
         ],
         'Sadakat & Müşteri' => [
             ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
+            ['/kampanya', 'campaign', 'AI Kampanya', '#EC4899'],
             ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
             ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
             ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
