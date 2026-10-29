@@ -6833,6 +6833,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/yazici-ayarlari' => 'gor_yazici', '/bagli-cihazlar' => 'gor_bagli_cihaz', '/isletme-konum' => 'gor_isletme_konum',
             '/sebep-yonetimi' => 'gor_sebep', '/odeme-ayar' => 'gor_odeme_ayar', '/copilot' => 'gor_copilot',
             '/departman-yonetim' => 'gor_personel', // departman/yetki yönetimi: personel yetkisi olana görünür (/bildirim-ayar haritada YOK = herkese açık)
+            '/departman-asistan' => 'gor_ai_asistan', '/departman-asistan?dep=mutfak' => 'gor_ai_asistan', '/departman-asistan?dep=finans' => 'gor_ai_asistan', // departman AI asistanları (PREMIUM; departman yetkisi guard'da süzülür)
             '/patron-ai' => 'gor_copilot',          // Patron AI sabah brifingi: copilot yetkisi olana (sahip/müdür)
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
@@ -9319,6 +9320,222 @@ Route::post('/api/ik-asistan/uygula', function (Request $r) {
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
 });
 
+// ============================ DEPARTMAN AI ASİSTANI (genel motor — Mutfak/Finans + genişletilebilir) ============================
+// gor_ai_asistan PREMIUM korumalı. Her departman: hızlı sorular + niyet (kural+Haiku) + okuma + onaylı eylem.
+// Güvenlik modeli İK asistanıyla aynı: AI niyet çözer, OKUMA anında, YAZMA önce özet+onay → deterministik kod yürütür.
+if (!function_exists('_departmanAsistanTanim')) {
+    function _departmanAsistanTanim($kod)
+    {
+        $t = [
+            'mutfak' => ['ad' => 'Mutfak AI Asistanı', 'ikon' => 'soup_kitchen', 'renk' => '#F59E0B', 'yetki' => 'gor_mutfak',
+                'selam' => 'Mutfağın gözü kulağı olayım — hazırlık, satış, fire ve kritik malzemeyi takip ederim.',
+                'hizli' => [
+                    ['Bugün mutfak durumu', 'Bugün mutfak durumu nedir', 'insights', '#F59E0B'],
+                    ['Şu an ne bekliyor', 'Şu an hazırlanacak ne var', 'pending_actions', '#4F46E5'],
+                    ['En çok satan', 'Bu ay en çok satan ürünler', 'trending_up', '#10B981'],
+                    ['Fire durumu', 'Fire ve zayiat ne durumda', 'delete_sweep', '#F43F5E'],
+                    ['Kritik malzeme', 'Kritik seviyedeki malzemeler neler', 'inventory_2', '#EC4899'],
+                ]],
+            'finans' => ['ad' => 'Finans AI Asistanı', 'ikon' => 'account_balance', 'renk' => '#4F46E5', 'yetki' => 'gor_finans',
+                'selam' => 'Mali işlerinde yanındayım — gelir-gider, tahsilat ve gider analizini anında veririm.',
+                'hizli' => [
+                    ['Bu ay kâr-zarar', 'Bu ay kâr-zarar durumu nedir', 'analytics', '#4F46E5'],
+                    ['Bugün tahsilat', 'Bugün ne kadar tahsilat oldu', 'payments', '#10B981'],
+                    ['En çok gider', 'Bu ay en çok nereye harcadım', 'pie_chart', '#F43F5E'],
+                    ['Bu ay giderler', 'Bu ayki giderleri listele', 'receipt_long', '#F59E0B'],
+                    ['Gider ekle', 'Gider eklemek istiyorum', 'add_card', '#7C3AED'],
+                ]],
+        ];
+        return $t[$kod] ?? null;
+    }
+}
+if (!function_exists('_departmanAsistanNiyet')) {
+    function _departmanAsistanNiyet($sid, $bp, $kod, $metin)
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Nasıl yardımcı olayım?', 'kaynak' => 'kural'];
+        // --- KURAL MOTORU (departmana göre) ---
+        $kurallar = $kod === 'mutfak' ? [
+            '/fire|zayiat|israf/u' => ['cevap', 'fire'],
+            '/bekle|hazırlan|hazirlan|kuyruk|sipariş|siparis/u' => ['cevap', 'bekleyen'],
+            '/çok sat|cok sat|en çok|en cok|popüler|populer/u' => ['cevap', 'en_cok_satan'],
+            '/kritik|stok|malzeme|bitiyor|tüken|tuken/u' => ['cevap', 'kritik_stok'],
+            '/özet|ozet|durum|nasıl|nasil/u' => ['cevap', 'mutfak_ozet'],
+        ] : [
+            '/kâr|kar|zarar|net|gelir|kazanç|kazanc/u' => ['cevap', 'finans_ozet'],
+            '/tahsilat|nakit|kart|kasa/u' => ['cevap', 'tahsilat'],
+            '/en çok|en cok|nereye harca|en fazla gider/u' => ['cevap', 'en_cok_gider'],
+            '/gider ekle|harcama ekle|masraf ekle|gider gir/u' => ['eylem', 'gider_ekle'],
+            '/gider|harcama|masraf|liste/u' => ['cevap', 'gider_liste'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => '', 'kaynak' => 'kural'];
+        // --- HAIKU (JSON niyet) ---
+        $bugun = now()->toDateString();
+        if ($kod === 'mutfak') {
+            $sys = "Sen bir restoranın Mutfak AI asistanısın. Şefin mesajını analiz et, SADECE JSON döndür: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{...},\"ozet\":\"...\",\"cevap\":\"\"}. "
+                . "OKUMA niyetleri: mutfak_ozet, bekleyen, en_cok_satan, fire, kritik_stok, bilinmiyor. "
+                . "YAZMA niyeti: acil_stok_talep (kritik malzemeler için satın alma talebi oluştur). "
+                . "Bugün {$bugun}. tip=eylem ise ozet'e yapılacak işi net yaz. Emin değilsen tip=cevap intent=bilinmiyor cevap'a kısa soru. UYDURMA.";
+        } else {
+            $sys = "Sen bir restoranın Finans AI asistanısın. Mali işler sorumlusunun mesajını analiz et, SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{...},\"ozet\":\"...\",\"cevap\":\"\"}. "
+                . "OKUMA niyetleri: finans_ozet, tahsilat, en_cok_gider, gider_liste, bilinmiyor. "
+                . "YAZMA niyeti: gider_ekle (params: tutar[sayı], kategori[kira|fatura|malzeme|maas|vergi|diger], aciklama). "
+                . "Bugün {$bugun}. tip=eylem ise ozet'e net yaz. Emin değilsen tip=cevap intent=bilinmiyor. UYDURMA.";
+        }
+        $ai = _patronAiCagir($sys, $metin, 600, $bp, $sid);
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => '', 'kaynak' => 'kural'];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}');
+        if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?', 'kaynak' => 'ai'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? ''), 'kaynak' => 'ai'];
+    }
+}
+if (!function_exists('_departmanAsistanOku')) {
+    function _departmanAsistanOku($sid, $kod, $intent, $params)
+    {
+        $tl = fn ($n) => number_format((float) ($n ?? 0), 0, ',', '.') . '₺';
+        [$ay, $bas, $bit] = _restoAyAralik(null); $ds = now()->toDateString();
+        try {
+            if ($kod === 'mutfak') {
+                switch ($intent) {
+                    case 'mutfak_ozet':
+                        $gonderilen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
+                        $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                        $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereDate('created_at', $ds)->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t');
+                        $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+                        return ['cevap' => "Bugün mutfak: {$gonderilen} ürün hazırlandı, şu an {$bekleyen} ürün bekliyor." . ($fire > 0 ? " Fire: " . $tl($fire) . "." : " Fire yok.") . ($krit > 0 ? " ⚠️ {$krit} malzeme kritik seviyede." : "")];
+                    case 'bekleyen':
+                        $b = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                        return ['cevap' => $b > 0 ? "Şu an {$b} ürün hazırlanmayı bekliyor." . ($b >= 15 ? " Kuyruk yoğun, hız gerekebilir." : "") : "Harika — bekleyen ürün yok, kuyruk temiz. ✓", 'link' => ['url' => '/mutfak', 'lbl' => 'Mutfak ekranını aç']];
+                    case 'en_cok_satan':
+                        $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->leftJoin('urunler', 'urunler.id', '=', 'adisyon_kalemleri.urun_id')
+                            ->where('adisyonlar.sube_id', $sid)->whereBetween('adisyonlar.created_at', [$bas, $bit])
+                            ->groupBy('adisyon_kalemleri.urun_id', 'urunler.ad')->selectRaw('COALESCE(urunler.ad,"?") ad, SUM(adisyon_kalemleri.adet) a')->orderByDesc('a')->limit(7)->get();
+                        if (!count($rows)) return ['cevap' => 'Bu ay satış kaydı yok.'];
+                        $t = 'Bu ay en çok satan:'; foreach ($rows as $i => $r) $t .= "\n" . ($i + 1) . ". {$r->ad} — {$r->a} adet";
+                        return ['cevap' => $t];
+                    case 'fire':
+                        $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereBetween('created_at', [$bas, $bit])->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t');
+                        return ['cevap' => $fire > 0 ? ("Bu ay fire/zayiat: " . $tl($fire) . ". Kaynağını incelemek israfı azaltır.") : 'Bu ay fire kaydı yok. 👍', 'link' => ['url' => '/sayim', 'lbl' => 'Fire/Sayım']];
+                    case 'kritik_stok':
+                        $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                        if (!count($k)) return ['cevap' => 'Kritik seviyede malzeme yok. ✓'];
+                        $t = count($k) . ' malzeme kritik seviyede:'; foreach (array_slice($k, 0, 12) as $x) $t .= "\n• " . ($x['ad'] ?? '') . ' (' . ($x['mevcut'] ?? 0) . '/' . ($x['kritik'] ?? 0) . ' ' . ($x['birim'] ?? '') . ')';
+                        return ['cevap' => $t, 'aksiyon' => ['intent' => 'acil_stok_talep', 'lbl' => 'Acil satın alma talebi oluştur']];
+                }
+            } else { // finans
+                switch ($intent) {
+                    case 'finans_ozet':
+                        $gelir = (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereBetween('odemeler.created_at', [$bas, $bit])->sum('odemeler.tutar');
+                        $gider = Schema::hasTable('giderler') ? (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->sum('tutar') : 0;
+                        $net = $gelir - $gider;
+                        return ['cevap' => "Bu ay: Gelir " . $tl($gelir) . ", Gider " . $tl($gider) . ", Net " . $tl($net) . "." . ($net < 0 ? " ⚠️ Net negatif — gider kontrolü gerek." : ""), 'link' => ['url' => '/finans', 'lbl' => 'Finans / Kâr-Zarar']];
+                    case 'tahsilat':
+                        $nakit = (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $ds)->where('odemeler.tip', 'nakit')->sum('odemeler.tutar');
+                        $kart = (float) DB::table('odemeler')->join('adisyonlar', 'adisyonlar.id', '=', 'odemeler.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('odemeler.created_at', $ds)->whereIn('odemeler.tip', ['kredi', 'kart', 'yemek_karti'])->sum('odemeler.tutar');
+                        return ['cevap' => "Bugün tahsilat: toplam " . $tl($nakit + $kart) . " (nakit " . $tl($nakit) . " / kart " . $tl($kart) . ")."];
+                    case 'en_cok_gider':
+                        if (!Schema::hasTable('giderler')) return ['cevap' => 'Gider kaydı yok.'];
+                        $rows = DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->groupBy('kategori')->selectRaw('kategori, SUM(tutar) t')->orderByDesc('t')->limit(6)->get();
+                        if (!count($rows)) return ['cevap' => 'Bu ay gider kaydı yok.'];
+                        $t = 'Bu ay en çok gider:'; foreach ($rows as $r) $t .= "\n• " . ucfirst($r->kategori) . " — " . $tl($r->t);
+                        return ['cevap' => $t];
+                    case 'gider_liste':
+                        if (!Schema::hasTable('giderler')) return ['cevap' => 'Gider kaydı yok.'];
+                        $rows = DB::table('giderler')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->orderByDesc('tarih')->limit(12)->get();
+                        if (!count($rows)) return ['cevap' => 'Bu ay gider kaydı yok.'];
+                        $t = 'Bu ayki son giderler:'; foreach ($rows as $r) $t .= "\n• " . \Carbon\Carbon::parse($r->tarih)->format('d.m') . ' ' . ucfirst($r->kategori) . ' — ' . $tl($r->tutar) . ($r->aciklama ? ' (' . $r->aciklama . ')' : '');
+                        return ['cevap' => $t, 'link' => ['url' => '/gider', 'lbl' => 'Giderler']];
+                }
+            }
+        } catch (\Throwable $e) {}
+        return ['cevap' => $kod === 'mutfak'
+            ? 'Şunları sorabilirsin: bugün mutfak durumu, bekleyen ürünler, en çok satan, fire, kritik malzeme.'
+            : 'Şunları sorabilirsin: bu ay kâr-zarar, bugün tahsilat, en çok gider, gider listesi, gider ekle.'];
+    }
+}
+if (!function_exists('_departmanAsistanEylemHazirla')) {
+    function _departmanAsistanEylemHazirla($sid, $kod, $intent, $params)
+    {
+        if ($kod === 'mutfak' && $intent === 'acil_stok_talep') {
+            $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+            if (!count($k)) return ['ok' => false, 'hata' => 'Şu an kritik seviyede malzeme yok, talep gerekmiyor.'];
+            $adlar = implode(', ', array_map(fn ($x) => $x['ad'] ?? '', array_slice($k, 0, 8)));
+            return ['ok' => true, 'intent' => 'acil_stok_talep', 'params' => [], 'ozet' => count($k) . ' kritik malzeme için acil satın alma talebi oluşturulacak: ' . $adlar . ($k && count($k) > 8 ? ' …' : '') . '. Satınalma birimine düşecek.'];
+        }
+        if ($kod === 'finans' && $intent === 'gider_ekle') {
+            $tutar = round((float) str_replace(',', '.', (string) ($params['tutar'] ?? 0)), 2);
+            if ($tutar <= 0) return ['ok' => false, 'hata' => 'Tutar anlaşılamadı. Örn: "elektrik faturası 3500 TL gider ekle".'];
+            $kat = in_array($params['kategori'] ?? 'diger', ['kira', 'fatura', 'malzeme', 'maas', 'vergi', 'diger']) ? $params['kategori'] : 'diger';
+            $acik = trim((string) ($params['aciklama'] ?? ''));
+            return ['ok' => true, 'intent' => 'gider_ekle', 'params' => ['tutar' => $tutar, 'kategori' => $kat, 'aciklama' => $acik],
+                'ozet' => number_format($tutar, 0, ',', '.') . '₺ tutarında "' . ucfirst($kat) . '" gideri eklenecek' . ($acik ? ' (' . $acik . ')' : '') . '.'];
+        }
+        return ['ok' => false, 'hata' => 'Bu işlemi henüz yapamıyorum.'];
+    }
+}
+if (!function_exists('_departmanAsistanEylemUygula')) {
+    function _departmanAsistanEylemUygula($sid, $bp, $kod, $intent, $params)
+    {
+        try {
+            if ($kod === 'mutfak' && $intent === 'acil_stok_talep') {
+                if (function_exists('_satinalmaAsistanEylemUygula')) {
+                    $r = _satinalmaAsistanEylemUygula($sid, $bp, 'kritik_siparis_olustur', []);
+                    if (is_array($r)) return ['ok' => ($r['ok'] ?? false), 'mesaj' => $r['mesaj'] ?? '✓ Talep oluşturuldu.'];
+                }
+                return ['ok' => false, 'mesaj' => 'Satın alma talebi oluşturulamadı.'];
+            }
+            if ($kod === 'finans' && $intent === 'gider_ekle') {
+                if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
+                $tutar = round((float) ($params['tutar'] ?? 0), 2);
+                if ($tutar <= 0) return ['ok' => false, 'mesaj' => 'Tutar geçersiz.'];
+                DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => $params['kategori'] ?? 'diger', 'aciklama' => trim((string) ($params['aciklama'] ?? '')) ?: null, 'tutar' => $tutar, 'tarih' => now()->toDateString(), 'created_by' => (int) $bp->id]);
+                return ['ok' => true, 'mesaj' => '✓ ' . number_format($tutar, 0, ',', '.') . '₺ gider kaydedildi.'];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'İşlem hatası: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen işlem.'];
+    }
+}
+Route::get('/departman-asistan', function () {
+    $kod = (string) request('dep');
+    $tanim = _departmanAsistanTanim($kod);
+    if (!$tanim) return redirect('/dashboard');
+    $bp = _aiAsistanGuard($tanim['yetki']); // PREMIUM: sahip/müdür VEYA gor_ai_asistan + departman yetkisi
+    if (!$bp) return redirect('/dashboard')->with('hata', 'AI Asistanı için yetkin yok. İşletme sahibinden "AI Asistanı Kullanımı" yetkisini iste.');
+    return view('departman_asistan', ['kod' => $kod, 'tanim' => $tanim]);
+});
+Route::post('/api/departman-asistan/sor', function (Request $r) {
+    $kod = (string) $r->input('dep');
+    $tanim = _departmanAsistanTanim($kod);
+    if (!$tanim) return response()->json(['ok' => 0], 404);
+    $bp = _aiAsistanGuard($tanim['yetki']);
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
+    $sid = _webSubeId();
+    $metin = trim((string) $r->input('metin'));
+    $n = _departmanAsistanNiyet($sid, $bp, $kod, $metin);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI şu an kapalı ama temel sorulara yanıt verebilirim — yukarıdaki hızlı soruları dene.']);
+    if ($n['tip'] === 'eylem') {
+        $h = _departmanAsistanEylemHazirla($sid, $kod, $n['intent'], $n['params']);
+        if (!($h['ok'] ?? false)) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => '⚠️ ' . ($h['hata'] ?? 'Yapamadım.')]);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'departman:' . $kod, $h['intent'], $h['params'], $h['ozet'], $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $h['ozet'], 'eylem' => $h['intent'], 'params' => $h['params'], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && in_array($n['intent'], ['bilinmiyor', 'ai_kapali'])) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $o = _departmanAsistanOku($sid, $kod, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $o['cevap'], 'aksiyon' => $o['aksiyon'] ?? null, 'link' => $o['link'] ?? null]);
+});
+Route::post('/api/departman-asistan/uygula', function (Request $r) {
+    $kod = (string) $r->input('dep');
+    $tanim = _departmanAsistanTanim($kod);
+    if (!$tanim) return response()->json(['ok' => 0], 404);
+    $bp = _aiAsistanGuard($tanim['yetki']);
+    if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
+    $sid = _webSubeId();
+    $sonuc = _departmanAsistanEylemUygula($sid, $bp, $kod, (string) $r->input('eylem'), (array) $r->input('params', []));
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
 // ===== İK: PERSONEL RİSK RADARI (devamsızlık + avans + kıdem → erken uyarı) =====
 if (!function_exists('_ikRiskAnaliz')) {
     // Her aktif personel için risk skoru + nedenler. Deterministik (kural). Döner: sıralı liste.
@@ -10276,33 +10493,50 @@ Route::get('/patron-ai', function () {
     $tip = request('tip') === 'aksam' ? 'aksam' : 'sabah';
     $ad = $bp->ad ?? null;
     $demo = request()->boolean('demo');
+    $force = request()->boolean('force');
+    $gunKarar = ($tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday());
 
-    // KABUK: ağır veriye dokunmaz, ANINDA döner (hız). İçerik ?frag=1 ile async yüklenir.
-    if (!request()->boolean('frag')) {
-        return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => $demo]);
+    // --- LAZY FRAGMAN 1: departman denetimi (TEK yavaş parça — ayrı yüklenir) ---
+    if (request('frag') === 'denetim') {
+        $denetim = [];
+        try { $denetim = _departmanDenetim($sid, $gunKarar); } catch (\Throwable $e) {}
+        return view('patron_ai_denetim', ['denetim' => $denetim]);
     }
 
-    // FRAGMAN: tüm ağır hesap burada (brief + AI analiz + departman denetimi + süreklilik + whatsapp).
+    // --- LAZY FRAGMAN 2: AI analiz üretimi (önbellek soğuksa Haiku'yu burada üret, sayfayı bloklama) ---
+    if (request('frag') === 'analiz') {
+        $brief = null; $analiz = []; $aiOzet = null; $aiVar = false;
+        try { $brief = _patronAiBriefUret($sid, $tip, $force, $ad); } catch (\Throwable $e) {}
+        try { if ($brief) {
+            $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, $force); // üretir + önbelleğe yazar
+            $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
+        } } catch (\Throwable $e) {}
+        return response()->json(['ok' => 1, 'ai_var' => $aiVar, 'ozet' => $aiOzet,
+            'html' => view('patron_ai_analiz', ['analiz' => $analiz])->render()]);
+    }
+
+    // --- ANA SAYFA: HIZLI veriler SENKRON render (rakamlar ilk boyamada DOLU). Yalnız denetim lazy. ---
     if ($demo) {
         $b = _patronAiBriefDemo($sid, $ad);
-        return view('patron_ai_frag', ['brief' => $b, 'ad' => $ad, 'tuketim' => $b['tuketim'],
-            'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'], 'tip' => 'sabah',
-            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'denetim' => [], 'demo' => true]);
+        return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => 'sabah', 'demo' => true,
+            'brief' => $b, 'tuketim' => $b['tuketim'], 'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'],
+            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false]);
     }
     $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
-    $analiz = []; $aiOzet = null; $aiVar = false; $denetim = [];
-    try { $brief = _patronAiBriefUret($sid, $tip, request()->boolean('force'), $ad); } catch (\Throwable $e) {}
+    $analiz = []; $aiOzet = null; $aiVar = false; $aiSoguk = false;
+    try { $brief = _patronAiBriefUret($sid, $tip, $force, $ad); } catch (\Throwable $e) {}
     try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
     try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
     try { if ($brief) {
-        $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, request()->boolean('force'));
+        // SADECE ÖNBELLEK: hazırsa tam AI, değilse kural (Haiku çağrısı sayfayı bekletmez; soğuksa JS ?frag=analiz ile tamamlar)
+        $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, false, false, true);
         $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
-        $denetim = _departmanDenetim($sid, $tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday());
+        $aiSoguk = (config('services.resteos.patron_ai_v2', false) && !$aiVar); // AI açık ama henüz üretilmemiş
     } } catch (\Throwable $e) {}
-    return view('patron_ai_frag', ['brief' => $brief, 'ad' => $ad, 'tuketim' => $tuketim,
-        'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp, 'tip' => $tip, 'analiz' => $analiz,
-        'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'denetim' => $denetim, 'demo' => false]);
+    return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
+        'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
+        'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
@@ -19249,7 +19483,7 @@ if (!function_exists('_uretimPlaniHesapla')) {
                 $receteId = (int) DB::table('receteler')->where('urun_id', (int) $p['urun_id'])->where('tip', 'urun')->value('id');
             }
             if ($receteId <= 0) continue;
-            _restoReceteHammadde($receteId, $adet, $ihtiyac);
+            _restoReceteHammadde($receteId, _mrpCarpan($receteId, $adet, $p['birim_id'] ?? null), $ihtiyac);
         }
         if (empty($ihtiyac)) return [];
         $stok = _restoStokMevcut($sid);
