@@ -6732,7 +6732,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', // satın alma talep havuzu; reçeteler menü/mutfak alanı — satın almacı görmez
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_menu', // satın alma talep havuzu; reçeteler + üretim planı = menü/mutfak alanı
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
         ];
     }
@@ -19080,6 +19080,137 @@ if (!function_exists('_kritikStokListesi')) {
         return $out;
     }
 }
+// ============================================================================
+// ÜRETİM PLANI → MALZEME İHTİYAÇ PLANLAMA (MRP): reçete×adet patlat → topla →
+// net stok düş → satınalma talebi (teslim tarihi + not). Opsiyonel AI/satış tahmini.
+// ============================================================================
+if (!function_exists('_uretimTalepKolonEnsure')) {
+    function _uretimTalepKolonEnsure()
+    {
+        if (cache()->get('satinalma_talep_teslim_ok')) return;
+        try {
+            if (Schema::hasTable('satinalma_talepleri') && !Schema::hasColumn('satinalma_talepleri', 'teslim_tarihi')) {
+                Schema::table('satinalma_talepleri', function ($t) { $t->date('teslim_tarihi')->nullable(); });
+            }
+            cache()->put('satinalma_talep_teslim_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Temel birim miktarını insana güzel göster (g>=1000->kg, ml>=1000->lt)
+if (!function_exists('_mrpGuzelBirim')) {
+    function _mrpGuzelBirim($miktar, $kis)
+    {
+        $k = strtolower((string) $kis);
+        if ($k === 'g' && $miktar >= 1000) return [round($miktar / 1000, 3), 'kg'];
+        if ($k === 'ml' && $miktar >= 1000) return [round($miktar / 1000, 3), 'lt'];
+        return [round($miktar, 3), $kis ?: 'ad'];
+    }
+}
+// Plan listesinden ([{urun_id|recete_id, adet}]) birleşik malzeme ihtiyacı + net stok + maliyet
+if (!function_exists('_uretimPlaniHesapla')) {
+    function _uretimPlaniHesapla($sid, array $plan)
+    {
+        $ihtiyac = [];
+        foreach ($plan as $p) {
+            $adet = (float) ($p['adet'] ?? 0); if ($adet <= 0) continue;
+            $receteId = (int) ($p['recete_id'] ?? 0);
+            if ($receteId <= 0 && !empty($p['urun_id'])) {
+                $receteId = (int) DB::table('receteler')->where('urun_id', (int) $p['urun_id'])->where('tip', 'urun')->value('id');
+            }
+            if ($receteId <= 0) continue;
+            _restoReceteHammadde($receteId, $adet, $ihtiyac);
+        }
+        if (empty($ihtiyac)) return [];
+        $stok = _restoStokMevcut($sid);
+        $mal = DB::table('malzemeler')->whereIn('id', array_keys($ihtiyac))->get(['id', 'ad', 'temel_birim_id', 'guncel_maliyet'])->keyBy('id');
+        $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $rows = [];
+        foreach ($ihtiyac as $mid => $need) {
+            $m = $mal[$mid] ?? null; if (!$m) continue;
+            $mevcut = (float) ($stok[$mid] ?? 0);
+            $net = max(0, round($need - $mevcut, 3));
+            $kis = $birimKis[$m->temel_birim_id] ?? '';
+            [$gLazim, $gBirim] = _mrpGuzelBirim($need, $kis);
+            [$gMevcut] = _mrpGuzelBirim($mevcut, $kis);
+            [$gNet] = _mrpGuzelBirim($net, $kis);
+            $maliyet = round($net * (float) ($m->guncel_maliyet ?? 0), 2);
+            $rows[] = ['malzeme_id' => (int) $mid, 'ad' => $m->ad,
+                'lazim' => $gLazim, 'mevcut' => $gMevcut, 'net' => $gNet, 'birim' => $gBirim,
+                'net_temel' => $net, 'tahmini_maliyet' => $maliyet, 'yeterli' => $net <= 0];
+        }
+        usort($rows, fn ($a, $b) => $b['tahmini_maliyet'] <=> $a['tahmini_maliyet']);
+        return $rows;
+    }
+}
+// Satış geçmişinden (son 30 gün ort.) dönem bazlı adet önerisi [urun_id=>adet]
+if (!function_exists('_uretimSatisTahmin')) {
+    function _uretimSatisTahmin($sid, $gunSayi = 7)
+    {
+        $out = [];
+        try {
+            $from = now()->subDays(30);
+            $rows = DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
+                ->where('a.sube_id', $sid)->whereNotNull('a.kapanis')->where('a.kapanis', '>=', $from)
+                ->where('k.durum', '!=', 'iptal')->whereNotNull('k.urun_id')
+                ->selectRaw('k.urun_id, SUM(k.adet) toplam')->groupBy('k.urun_id')->get();
+            foreach ($rows as $r) {
+                $gunluk = (float) $r->toplam / 30.0;
+                $out[(int) $r->urun_id] = max(1, (int) round($gunluk * max(1, (int) $gunSayi)));
+            }
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+}
+// Ekran: üretim planı
+Route::get('/uretim-plani', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _satinalmaTalepEnsure(); _uretimTalepKolonEnsure();
+    $sid = _webSubeId();
+    // Reçetesi olan aktif ürünler
+    $urunler = DB::table('urunler as u')->join('receteler as r', 'r.urun_id', '=', 'u.id')
+        ->where('u.sube_id', $sid)->where('u.aktif', 1)->where('r.tip', 'urun')
+        ->orderBy('u.ad')->get(['u.id', 'u.ad', 'u.fiyat', 'r.id as recete_id']);
+    $tahmin = _uretimSatisTahmin($sid, 7); // haftalık öneri
+    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '']);
+});
+// Hesapla (AJAX): plan -> malzeme ihtiyacı JSON
+Route::post('/uretim-plani/hesapla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0], 403);
+    $sid = _webSubeId();
+    $plan = $r->input('plan', []);
+    if (!is_array($plan) || !$plan) return response()->json(['ok' => 1, 'rows' => [], 'toplam' => 0]);
+    $rows = _uretimPlaniHesapla($sid, $plan);
+    $toplam = round(array_sum(array_column($rows, 'tahmini_maliyet')), 2);
+    $alinacak = array_values(array_filter($rows, fn ($x) => !$x['yeterli']));
+    return response()->json(['ok' => 1, 'rows' => $rows, 'alinacak' => $alinacak, 'toplam' => $toplam]);
+});
+// Talep oluştur: net malzemeler -> satinalma_talepleri + kalemleri (teslim tarihi + not)
+Route::post('/uretim-plani/talep', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _satinalmaTalepEnsure(); _uretimTalepKolonEnsure();
+    $sid = _webSubeId();
+    $plan = json_decode((string) $r->input('plan_json', '[]'), true) ?: [];
+    $teslim = $r->input('teslim_tarihi');
+    $not = trim((string) $r->input('not', ''));
+    $rows = _uretimPlaniHesapla($sid, $plan);
+    $alinacak = array_values(array_filter($rows, fn ($x) => !$x['yeterli']));
+    if (!$alinacak) return redirect('/uretim-plani')->with('mrp_hata', 'Satın alınacak malzeme yok (stok yeterli).');
+    $notTam = 'Üretim planından otomatik' . ($not !== '' ? ' — ' . $not : '');
+    $ins = ['sube_id' => $sid, 'departman' => 'Mutfak (üretim planı)', 'isteyen_id' => $bp->id ?? null,
+        'isteyen_ad' => $bp->ad ?? '', 'aciliyet' => 'normal', 'durum' => 'yeni', 'not' => $notTam,
+        'created_at' => now(), 'updated_at' => now()];
+    if ($teslim) { try { $ins['teslim_tarihi'] = \Carbon\Carbon::parse($teslim)->toDateString(); } catch (\Throwable $e) {} }
+    $talepId = DB::table('satinalma_talepleri')->insertGetId($ins);
+    foreach ($alinacak as $k) {
+        DB::table('talep_kalemleri')->insert(['talep_id' => $talepId, 'malzeme_id' => $k['malzeme_id'],
+            'ad' => $k['ad'], 'miktar' => $k['net'], 'birim' => $k['birim'], 'created_at' => now(), 'updated_at' => now()]);
+    }
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📋 Üretim Planı Talebi', ($bp->ad ?? 'Mutfak') . ' üretim planından ' . count($alinacak) . ' kalemlik satın alma talebi oluşturdu.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+    return redirect('/satinalma-talep')->with('ok', 'Üretim planından ' . count($alinacak) . ' kalemlik talep oluşturuldu.');
+});
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
     $sid = _webSubeId();

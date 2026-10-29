@@ -151,6 +151,7 @@
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
             ['/satinalma-ozet', 'space_dashboard', 'Satın Alma Özeti', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
+            ['/uretim-plani', 'calculate', 'Üretim Planı → Malzeme', '#10B981'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Sipariş İşlemleri', '#4F46E5'],
