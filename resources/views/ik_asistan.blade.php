@@ -28,9 +28,13 @@ body.koyu #ika{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
 #ika .btn{border:none;cursor:pointer;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;color:#fff;display:inline-flex;align-items:center;gap:5px}
 #ika .btn .material-icons-outlined{font-size:17px}
 #ika .btn.ikincil{background:var(--card2);color:var(--sub)}
-#ika .cipler{display:flex;gap:8px;flex-wrap:wrap;padding:4px 18px 8px}
-#ika .cip{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:600;color:var(--sub);cursor:pointer}
-#ika .cip:hover{border-color:var(--mor1);color:var(--mor1)}
+#ika .oneriler{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px;padding:4px 18px 10px}
+#ika .oneri{display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:13px;background:var(--card);border:1px solid var(--line);cursor:pointer;text-align:left;transition:all .16s;font-family:inherit}
+#ika .oneri:hover{border-color:color-mix(in srgb,var(--mor1) 35%,var(--line));transform:translateY(-2px);box-shadow:0 8px 20px -6px rgba(124,58,237,.16)}
+#ika .oneri-ik{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+#ika .oneri-ik .material-icons-outlined{font-size:18px}
+#ika .oneri-bas{font-size:13px;font-weight:700;color:var(--ink);line-height:1.3}
+#ika .oneri-alt{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.35}
 #ika .giris{display:flex;gap:9px;padding:10px 18px 16px;align-items:flex-end}
 #ika .giris textarea{flex:1;resize:none;border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--card);color:var(--ink);max-height:120px;min-height:46px}
 #ika .giris textarea:focus{outline:none;border-color:var(--mor1)}
@@ -61,12 +65,31 @@ body.koyu #ika{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#
 Bir şey değiştirecek veya mesaj gönderecek olursam, <b>önce ne yapacağımı gösterir, onayını beklerim.</b></div>
   </div>
 
-  <div class="cipler">
-    <div class="cip" onclick="hizli('Genel özet ver')">Özet</div>
-    <div class="cip" onclick="hizli('Eksik belgelileri listele')">Eksik belgeliler</div>
-    <div class="cip" onclick="hizli('Bugün kim izinli')">Bugün izinli</div>
-    <div class="cip" onclick="hizli('Bekleyen izin talepleri')">Bekleyen izinler</div>
-    <div class="cip" onclick="hizli('Bu ay en çok avans alan kim')">En çok avans</div>
+  <div class="oneriler">
+    <button type="button" class="oneri" onclick="hizli('Genel özet ver')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#7C3AED,#4F46E5)"><span class="material-icons-outlined">insights</span></div>
+      <div><div class="oneri-bas">Genel durum</div><div class="oneri-alt">İşçilik, devam, bordro özeti</div></div>
+    </button>
+    <button type="button" class="oneri" onclick="hizli('Eksik belgeli personelleri listele')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#F59E0B,#F97316)"><span class="material-icons-outlined">badge</span></div>
+      <div><div class="oneri-bas">Eksik özlük</div><div class="oneri-alt">IBAN/TC/doğum tarihi eksik olanlar</div></div>
+    </button>
+    <button type="button" class="oneri" onclick="hizli('Bugün kim izinli, kim gelmedi')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#0EA5E9,#4F46E5)"><span class="material-icons-outlined">event_available</span></div>
+      <div><div class="oneri-bas">Bugün devam</div><div class="oneri-alt">İzinli & gelmeyen personel</div></div>
+    </button>
+    <button type="button" class="oneri" onclick="hizli('Onay bekleyen izin ve avans talepleri')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#F97316,#EAB308)"><span class="material-icons-outlined">pending_actions</span></div>
+      <div><div class="oneri-bas">Bekleyen onaylar</div><div class="oneri-alt">İzin & avans talepleri</div></div>
+    </button>
+    <button type="button" class="oneri" onclick="hizli('Riskli personelleri göster')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#F43F5E,#F97316)"><span class="material-icons-outlined">crisis_alert</span></div>
+      <div><div class="oneri-bas">Risk radarı</div><div class="oneri-alt">Devamsızlık / avans / ayrılma riski</div></div>
+    </button>
+    <button type="button" class="oneri" onclick="hizli('Bu ay en çok avans alan kim')">
+      <div class="oneri-ik" style="background:linear-gradient(135deg,#10B981,#06B6D4)"><span class="material-icons-outlined">payments</span></div>
+      <div><div class="oneri-bas">En çok avans</div><div class="oneri-alt">Bu ayki avans dağılımı</div></div>
+    </button>
   </div>
 
   <div class="giris">
