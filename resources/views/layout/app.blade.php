@@ -187,6 +187,7 @@
             ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
         ],
         'Sadakat & Müşteri' => [
+            ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
             ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
             ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
             ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],

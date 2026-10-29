@@ -4037,6 +4037,108 @@ Route::get('/masa-afisler', function (Request $r) {
     return view('masa_afis', ['masalar' => $masalar, 'sube' => DB::table('subeler')->find($subeId)]);
 });
 
+// ============================================================================
+// İTİBAR / MEMNUNİYET NABZI (Faz1 Google'sız): müşteri masada QR okutur → "nasıldı?"
+// → mutlu=Google'a davet / mutsuz=sebep+not → DÜŞÜK PUAN yöneticiye ANINDA uyarı (masada çöz).
+// ============================================================================
+if (!function_exists('_memnuniyetEnsure')) {
+    function _memnuniyetEnsure()
+    {
+        if (cache()->get('memnuniyet_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('memnuniyet')) {
+                Schema::create('memnuniyet', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->unsignedBigInteger('masa_id')->nullable();
+                    $t->string('masa_ad', 60)->nullable();
+                    $t->tinyInteger('puan')->default(0);          // 1-5
+                    $t->string('sebepler', 200)->nullable();      // "Servis,Temizlik"
+                    $t->text('not')->nullable();
+                    $t->string('kanal', 20)->default('qr');
+                    $t->string('durum', 15)->default('yeni');     // yeni / cozuldu
+                    $t->unsignedBigInteger('cozen_id')->nullable();
+                    $t->timestamp('cozuldu_at')->nullable();
+                    $t->timestamps();
+                    $t->index(['sube_id', 'durum']);
+                });
+            }
+            cache()->put('memnuniyet_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_memnuniyetMasaAd')) {
+    function _memnuniyetMasaAd($masa)
+    {
+        return $masa->ad ?? ($masa->no ?? ($masa->masa_no ?? ('Masa ' . $masa->id)));
+    }
+}
+// MÜŞTERİ: memnuniyet sayfası (masa QR token)
+Route::get('/memnuniyet/{token}', function ($token) {
+    _masaQrEnsure(); _memnuniyetEnsure();
+    $masa = DB::table('masalar')->where('qr_token', $token)->first();
+    if (!$masa) abort(404);
+    $sube = DB::table('subeler')->find($masa->sube_id);
+    $googleLink = (string) resto_ayar_al('google_yorum_link_' . $masa->sube_id, '');
+    return view('memnuniyet_musteri', ['token' => $token, 'masaAd' => _memnuniyetMasaAd($masa), 'sube' => $sube, 'googleLink' => $googleLink]);
+});
+// MÜŞTERİ: kaydet (düşük puan → yöneticiye anında uyarı)
+Route::post('/memnuniyet/kaydet', function (Request $r) {
+    _memnuniyetEnsure();
+    $masa = DB::table('masalar')->where('qr_token', (string) $r->input('token'))->first();
+    if (!$masa) return response()->json(['ok' => 0], 404);
+    $puan = (int) $r->input('puan');
+    if ($puan < 1 || $puan > 5) return response()->json(['ok' => 0]);
+    $sebepler = trim((string) $r->input('sebepler', ''));
+    $not = trim((string) $r->input('not', ''));
+    $masaAd = _memnuniyetMasaAd($masa);
+    $id = DB::table('memnuniyet')->insertGetId([
+        'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'masa_ad' => $masaAd,
+        'puan' => $puan, 'sebepler' => $sebepler ?: null, 'not' => $not ?: null,
+        'kanal' => 'qr', 'durum' => ($puan <= 3 ? 'yeni' : 'cozuldu'),
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    if ($puan <= 3) { // MUTSUZ → anında uyarı (masada yakala+çöz)
+        $baslik = '⚠️ ' . $masaAd . ' memnun değil (' . $puan . '/5)';
+        $govde = 'Sebep: ' . ($sebepler ?: 'belirtilmedi') . ($not ? ' — "' . mb_substr($not, 0, 80) . '"' : '') . '. Hemen masaya git!';
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($masa->sube_id, $baslik, $govde, ['tur' => 'memnuniyet', 'id' => (string) $id], ['sahip', 'mudur'], null); } catch (\Throwable $e) {}
+        $waNo = (string) resto_ayar_al('memnuniyet_wa_' . $masa->sube_id, '');
+        if ($waNo) { try { _restoWaGonder($masa->sube_id, $waNo, $baslik . "\n" . $govde); } catch (\Throwable $e) {} }
+    }
+    return response()->json(['ok' => 1]);
+});
+// YÖNETİCİ: memnuniyet / itibar panosu
+Route::get('/itibar', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _memnuniyetEnsure(); _masaQrEnsure(); $sid = _webSubeId();
+    $liste = DB::table('memnuniyet')->where('sube_id', $sid)->orderByDesc('created_at')->limit(200)->get();
+    $ort = round((float) DB::table('memnuniyet')->where('sube_id', $sid)->avg('puan'), 1);
+    $bekleyen = DB::table('memnuniyet')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+    $dagilim = []; for ($i = 5; $i >= 1; $i--) $dagilim[$i] = DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', $i)->count();
+    $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('id')->get(['id', 'qr_token', 'ad', 'no', 'masa_no']);
+    $googleLink = (string) resto_ayar_al('google_yorum_link_' . $sid, '');
+    $waNo = (string) resto_ayar_al('memnuniyet_wa_' . $sid, '');
+    $patronMu = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
+    return view('memnuniyet_panel', compact('liste', 'ort', 'bekleyen', 'dagilim', 'masalar', 'googleLink', 'waNo', 'patronMu'));
+});
+Route::post('/itibar/coz', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _memnuniyetEnsure();
+    DB::table('memnuniyet')->where('id', (int) $r->input('id'))->where('sube_id', _webSubeId())
+        ->update(['durum' => 'cozuldu', 'cozen_id' => $bp->id ?? null, 'cozuldu_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Çözüldü olarak işaretlendi.');
+});
+Route::post('/itibar-ayar', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    $sid = _webSubeId();
+    resto_ayar_yaz('google_yorum_link_' . $sid, trim((string) $r->input('google_link', '')));
+    resto_ayar_yaz('memnuniyet_wa_' . $sid, trim((string) $r->input('wa_no', '')));
+    return back()->with('ok', 'Ayarlar kaydedildi.');
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -6732,7 +6834,8 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_menu', // satın alma talep havuzu; reçeteler + üretim planı = menü/mutfak alanı
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', // satın alma talep havuzu + üretim planı = stok/mutfak-yönetim; reçeteler menü alanı
+            '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti
         ];
     }
