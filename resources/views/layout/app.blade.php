@@ -146,6 +146,7 @@
             ['/qr-menu-rengi', 'color_lens', 'QR Menü Rengi', '#EC4899'],
             ['/indirimler', 'local_offer', 'İndirimler', '#22C55E'],
             ['/happy-hour', 'local_bar', 'Happy Hour', '#F59E0B'],
+            ['/fix-menu', 'dinner_dining', 'Fix Menü', '#8B5CF6'],
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
         'Stok & Tedarik' => [
