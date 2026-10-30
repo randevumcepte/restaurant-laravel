@@ -75,13 +75,29 @@ textarea{height:74px;resize:vertical}
       <div style="margin-top:14px"><a href="{{ url('/teklif-ver/'.$rfq->token) }}" style="color:var(--mor1);font-weight:800;font-size:13.5px;text-decoration:none">← Teklifi düzenle</a></div>
     </div>
   @else
-    <form method="POST" action="{{ url('/teklif-ver/'.$rfq->token) }}" id="tf">
+    @php
+      $zaten = (($rfq->durum ?? '') === 'teklif_geldi') || !empty($rfq->yanit_at);
+      $zatenTarih = !empty($rfq->yanit_at) ? \Carbon\Carbon::parse($rfq->yanit_at)->format('d.m.Y H:i') : '';
+    @endphp
+    <form method="POST" action="{{ url('/teklif-ver/'.$rfq->token) }}" id="tf" data-zaten="{{ $zaten ? 1 : 0 }}">
       @csrf
 
       <div class="card sel">
         <div class="greet">Merhaba{{ $ted && $ted->yetkili ? ', ' : '' }}<span>{{ $ted->yetkili ?? ($ted->ad ?? '') }}</span></div>
         <div class="muted">Aşağıdaki ürünler için birim fiyatınızı ve teslim tarihinizi girin, <b>Gönder</b>'e basın. Tüm ürünlere fiyat vermek zorunda değilsiniz — veremediğinizi boş bırakın.</div>
       </div>
+
+      @if($zaten)
+      <div class="card" style="border:1.5px solid #F59E0B;background:color-mix(in srgb,#F59E0B 8%,#fff)">
+        <div style="display:flex;gap:11px;align-items:flex-start">
+          <div style="font-size:26px;line-height:1">⚠️</div>
+          <div>
+            <div style="font-weight:800;font-size:15px;color:#92600a;margin-bottom:3px">Bu teklif daha önce gönderildi</div>
+            <div style="font-size:13px;color:#7a5307;line-height:1.5">Bu firma için {{ $zatenTarih ? $zatenTarih.' tarihinde' : 'daha önce' }} bir teklif alındı. Aşağıda <b>gönderilen fiyatlar</b> görünüyor. Değişiklik yapmak istemiyorsanız sayfayı kapatabilirsiniz. <b>Güncellemek istiyorsanız</b> fiyatları düzenleyip aşağıdaki onay kutusunu işaretleyin.</div>
+          </div>
+        </div>
+      </div>
+      @endif
 
       <div class="kbas">Ürünler ({{ count($kalemler) }})</div>
       <div class="card" style="margin-top:0">
@@ -117,10 +133,16 @@ textarea{height:74px;resize:vertical}
         </div>
       </div>
 
+      @if($zaten)
+      <label style="display:flex;align-items:center;gap:10px;margin:16px 16px 0;padding:13px 15px;background:color-mix(in srgb,#F59E0B 10%,#fff);border:1.5px solid #F59E0B;border-radius:13px;cursor:pointer">
+        <input type="checkbox" id="guncelleOnay" style="width:20px;height:20px;accent-color:#F59E0B;flex:0 0 20px">
+        <span style="font-size:13.5px;font-weight:700;color:#92600a">Evet, mevcut teklifimi bu yeni fiyatlarla <b>güncellemek</b> istiyorum.</span>
+      </label>
+      @endif
       <div class="gonder">
         <button type="submit" id="gonderBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          Teklifi Gönder
+          {{ $zaten ? 'Teklifi Güncelle' : 'Teklifi Gönder' }}
         </button>
       </div>
       <p class="note">Bu bağlantı yalnızca size özeldir. Fiyatlarınız doğrudan {{ $sube->ad ?? 'işletmeye' }} iletilir.</p>
@@ -133,6 +155,8 @@ textarea{height:74px;resize:vertical}
 document.getElementById('tf')?.addEventListener('submit',function(e){
   const fiyatlar=[...document.querySelectorAll('input[name^="fiyat["]')].map(i=>parseFloat(i.value)||0);
   if(!fiyatlar.some(v=>v>0)){ e.preventDefault(); alert('En az bir ürüne fiyat girin.'); return; }
+  const zaten=this.dataset.zaten==='1'; const onay=document.getElementById('guncelleOnay');
+  if(zaten && onay && !onay.checked){ e.preventDefault(); alert('Bu teklif daha önce gönderilmiş. Güncellemek için önce onay kutusunu işaretleyin.'); onay.focus(); return; }
   const b=document.getElementById('gonderBtn'); b.disabled=true; b.innerHTML='Gönderiliyor...';
 });
 </script>
