@@ -413,37 +413,36 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 @section('content')
 <div id="sta">
 
-{{-- ─── Özet rozet şeridi ─── --}}
-<div class="sta-ozet-bar">
-    {{-- Yeni --}}
-    <div class="sta-rozet">
-        <div class="sr-ikon-circ" style="background:color-mix(in srgb,#4F46E5 13%,transparent)">
-            <span class="material-icons-outlined" style="color:#4F46E5">inbox</span>
-        </div>
-        <div>
-            <div class="sr-sayi" id="staOzetYeni">{{ $ozet->yeni }}</div>
-            <div class="sr-etiket">Yeni</div>
-        </div>
+{{-- ─── Filtre çubuğu: durum çipleri (sayılı) + arama ─── --}}
+<style>
+#sta .sta-filtre{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+#sta .sta-chips{display:flex;gap:7px;flex-wrap:wrap;flex:1;min-width:0}
+#sta .sta-chip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line,#e2e8f0);background:var(--card,#fff);color:var(--sub,#64748b);border-radius:22px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
+#sta .sta-chip b{background:var(--card2,#f1f5f9);color:var(--ink,#1e293b);border-radius:11px;padding:1px 8px;font-size:11.5px;font-weight:800;min-width:20px;text-align:center}
+#sta .sta-chip:hover{border-color:var(--cr,#7C3AED);color:var(--cr,#7C3AED)}
+#sta .sta-chip.akt{background:var(--cr,#7C3AED);border-color:var(--cr,#7C3AED);color:#fff}
+#sta .sta-chip.akt b{background:rgba(255,255,255,.26);color:#fff}
+#sta .sta-arama{display:flex;align-items:center;gap:7px;background:var(--card,#fff);border:1.5px solid var(--line,#e2e8f0);border-radius:12px;padding:0 12px;min-width:210px;flex:0 0 auto}
+#sta .sta-arama .material-icons-outlined{font-size:19px;color:var(--sub2,#94a3b8)}
+#sta .sta-arama input{border:0;outline:0;background:transparent;color:var(--ink,#1e293b);font-size:13.5px;padding:10px 0;width:100%;font-family:inherit}
+#sta .sta-filtre-bos{display:none;text-align:center;color:var(--sub2,#94a3b8);padding:34px;font-size:13.5px}
+#sta .sta-kart.islem::after{content:'';position:absolute;top:11px;right:38px;width:8px;height:8px;border-radius:50%;background:#F59E0B;box-shadow:0 0 0 0 rgba(245,158,11,.5);animation:staPulse 1.8s infinite}
+@keyframes staPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}70%{box-shadow:0 0 0 7px rgba(245,158,11,0)}100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}}
+@media(max-width:640px){#sta .sta-arama{flex:1;min-width:140px}}
+</style>
+<div class="sta-filtre">
+    <div class="sta-chips" id="staChips">
+        <button class="sta-chip akt" data-d="" style="--cr:#7C3AED" onclick="staFiltreDurum(this)">Tümü <b>{{ $talepler->count() }}</b></button>
+        @foreach(['yeni','teklif','onayda','onaylandi','siparis','tamamlandi'] as $d)
+            @php $c = $talepler->where('durum',$d)->count(); @endphp
+            @if($c > 0)
+            <button class="sta-chip" data-d="{{ $d }}" style="--cr:{{ $durumRenk[$d] }}" onclick="staFiltreDurum(this)">{{ $durumMetin[$d] }} <b>{{ $c }}</b></button>
+            @endif
+        @endforeach
     </div>
-    {{-- Onayda --}}
-    <div class="sta-rozet">
-        <div class="sr-ikon-circ" style="background:color-mix(in srgb,#F59E0B 13%,transparent)">
-            <span class="material-icons-outlined" style="color:#F59E0B">pending_actions</span>
-        </div>
-        <div>
-            <div class="sr-sayi" id="staOzetOnayda">{{ $ozet->onayda }}</div>
-            <div class="sr-etiket">Onayda</div>
-        </div>
-    </div>
-    {{-- Tamamlanan --}}
-    <div class="sta-rozet">
-        <div class="sr-ikon-circ" style="background:color-mix(in srgb,#10B981 13%,transparent)">
-            <span class="material-icons-outlined" style="color:#10B981">task_alt</span>
-        </div>
-        <div>
-            <div class="sr-sayi" id="staOzetTamamlanan">{{ $ozet->tamamlanan }}</div>
-            <div class="sr-etiket">Tamamlanan</div>
-        </div>
+    <div class="sta-arama">
+        <span class="material-icons-outlined">search</span>
+        <input id="staAra" placeholder="Departman / kişi ara…" oninput="staFiltreAra()">
     </div>
 </div>
 
@@ -479,9 +478,10 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
     @php
         $renk = $durumRenk[$talep->durum] ?? '#64748b';
         $metin = $durumMetin[$talep->durum] ?? $talep->durum;
-        $seritRenk = ($talep->aciliyet === 'acil') ? '#F43F5E' : '#4F46E5';
+        $seritRenk = ($talep->aciliyet === 'acil') ? '#F43F5E' : ($durumRenk[$talep->durum] ?? '#4F46E5');
+        $islem = in_array($talep->durum, ['teklif', 'onayda']);
     @endphp
-    <div class="sta-kart" onclick="staDetayAc({{ $talep->id }})">
+    <div class="sta-kart {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.($talep->isteyen_ad ?? '')) }}" onclick="staDetayAc({{ $talep->id }})">
         <div class="sta-serit" style="background:{{ $seritRenk }}"></div>
         <div class="sta-bilgi">
             <div class="sta-dept">
@@ -513,6 +513,7 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
     </div>
 @endforelse
 </div>
+<div class="sta-filtre-bos" id="staFiltreBos">Bu filtreye uygun talep yok. <b>Tümü</b>'ne dönüp tekrar dene.</div>
 
 </div>{{-- #sta --}}
 
@@ -1168,6 +1169,24 @@ function escHtml(s) {
 function escAttr(s) {
     return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+/* ─── Liste filtre (durum çipleri + arama) ─── */
+let staAktifFiltre = '';
+window.staFiltreDurum = function(b) {
+    document.querySelectorAll('#staChips .sta-chip').forEach(x => x.classList.remove('akt'));
+    b.classList.add('akt'); staAktifFiltre = b.dataset.d || ''; staFiltreUygula();
+};
+window.staFiltreAra = function() { staFiltreUygula(); };
+window.staFiltreUygula = function() {
+    const q = (document.getElementById('staAra')?.value || '').toLowerCase().trim();
+    let gorunen = 0;
+    document.querySelectorAll('#staListe .sta-kart').forEach(k => {
+        const okD = !staAktifFiltre || k.dataset.durum === staAktifFiltre;
+        const okA = !q || (k.dataset.ara || '').includes(q);
+        const g = okD && okA; k.style.display = g ? '' : 'none'; if (g) gorunen++;
+    });
+    const bos = document.getElementById('staFiltreBos'); if (bos) bos.style.display = gorunen ? 'none' : 'block';
+};
 
 })();
 </script>

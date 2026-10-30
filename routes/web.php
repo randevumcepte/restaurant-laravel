@@ -21079,8 +21079,7 @@ Route::get('/satinalma-talep', function () {
     $kritikler = $satinalmaci ? _kritikStokListesi($sid) : [];
     $q = DB::table('satinalma_talepleri')->where('sube_id', $sid);
     if (!$satinalmaci) $q->where('isteyen_id', $pp->id ?? 0);
-    $talepler = $q->orderByRaw("CASE durum WHEN 'yeni' THEN 1 WHEN 'teklif' THEN 2 WHEN 'onayda' THEN 3 WHEN 'onaylandi' THEN 4 WHEN 'siparis' THEN 5 WHEN 'tamamlandi' THEN 6 ELSE 9 END")
-        ->orderByDesc('created_at')->limit(200)
+    $talepler = $q->orderByDesc('created_at')->limit(200)
         ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at'])
         ->map(function ($t) { $t->kalem_sayisi = DB::table('talep_kalemleri')->where('talep_id', $t->id)->count(); return $t; });
     $ozet = (object) [
