@@ -518,9 +518,10 @@ Route::post('/pos/kalem-ekle', function (Request $r) {
     $u = DB::table('urunler')->find($r->urun_id);
     if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $gid = (int) $r->input('garson_id') ?: null;
+    $hhFiyat = function_exists('_happyHourFiyat') ? _happyHourFiyat($u->id, (float) $u->fiyat, _webSubeId()) : (float) $u->fiyat;
     DB::table('adisyon_kalemleri')->insert([
         'adisyon_id' => $r->adisyon_id, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => 1,
-        'birim_fiyat' => $u->fiyat, 'tutar' => $u->fiyat, 'durum' => 'yeni', 'gonderim_zamani' => null,
+        'birim_fiyat' => $hhFiyat, 'tutar' => $hhFiyat, 'durum' => 'yeni', 'gonderim_zamani' => null,
         'personel_id' => $gid, 'created_at' => now(), 'updated_at' => now(),
     ]);
     return _adisyonToplamGuncelle($r->adisyon_id);
@@ -4413,6 +4414,99 @@ Route::post('/satinalma-onay-seviye/sil', function (Request $r) {
     return back()->with('ok', 'Silindi.');
 });
 
+// ============================================================================
+// HAPPY HOUR: zaman-bazlı otomatik fiyat/indirim. Ürün veya kategori, tarih+saat+gün
+// penceresinde POS'ta otomatik uygulanır. _happyHourFiyat POS fiyat noktalarına bağlanır.
+// ============================================================================
+if (!function_exists('_happyHourEnsure')) {
+    function _happyHourEnsure()
+    {
+        if (cache()->get('happy_hour_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('happy_hour')) {
+                Schema::create('happy_hour', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('ad', 80)->nullable();
+                    $t->unsignedBigInteger('urun_id')->nullable();      // belirli ürün
+                    $t->unsignedBigInteger('kategori_id')->nullable();  // ya da kategori (ürün boşsa)
+                    $t->date('baslangic_tarih')->nullable(); $t->date('bitis_tarih')->nullable();
+                    $t->string('baslangic_saat', 5)->nullable(); $t->string('bitis_saat', 5)->nullable(); // "17:00"
+                    $t->string('gunler', 20)->nullable();   // "1,2,3,4,5" (1=Pzt..7=Paz)
+                    $t->decimal('indirim_yuzde', 5, 2)->default(0);
+                    $t->decimal('happy_fiyat', 12, 2)->default(0);      // sabit fiyat (varsa indirim yerine)
+                    $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                });
+            }
+            cache()->put('happy_hour_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// POS fiyat noktası: bir ürünün ŞU AN happy hour fiyatı (yoksa normal fiyat). POS'u ASLA kırmaz.
+if (!function_exists('_happyHourFiyat')) {
+    function _happyHourFiyat($urunId, $normalFiyat, $sube)
+    {
+        try {
+            $say = cache()->remember('happy_hour_say_' . $sube, 120, function () use ($sube) {
+                return Schema::hasTable('happy_hour') ? DB::table('happy_hour')->where('sube_id', $sube)->where('aktif', 1)->count() : 0;
+            });
+            if ($say <= 0) return $normalFiyat;
+            $simdi = now(); $saat = $simdi->format('H:i'); $gun = (string) $simdi->dayOfWeekIso; $bugun = $simdi->toDateString();
+            $katId = (int) (DB::table('urunler')->where('id', $urunId)->value('kategori_id') ?? 0);
+            foreach (DB::table('happy_hour')->where('sube_id', $sube)->where('aktif', 1)->get() as $h) {
+                if ($h->baslangic_tarih && $bugun < $h->baslangic_tarih) continue;
+                if ($h->bitis_tarih && $bugun > $h->bitis_tarih) continue;
+                if ($h->gunler && !in_array($gun, explode(',', $h->gunler))) continue;
+                if ($h->baslangic_saat && $h->bitis_saat) {
+                    if ($h->baslangic_saat <= $h->bitis_saat) { if (!($saat >= $h->baslangic_saat && $saat <= $h->bitis_saat)) continue; }
+                    else { if (!($saat >= $h->baslangic_saat || $saat <= $h->bitis_saat)) continue; } // gece yarısı aşan
+                }
+                if ($h->urun_id && (int) $h->urun_id !== (int) $urunId) continue;
+                if (!$h->urun_id && $h->kategori_id && (int) $h->kategori_id !== $katId) continue;
+                if ((float) $h->happy_fiyat > 0) return (float) $h->happy_fiyat;
+                if ((float) $h->indirim_yuzde > 0) return round($normalFiyat * (1 - (float) $h->indirim_yuzde / 100), 2);
+            }
+        } catch (\Throwable $e) {}
+        return $normalFiyat;
+    }
+}
+Route::get('/happy-hour', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _happyHourEnsure(); $sid = _webSubeId();
+    $kurallar = DB::table('happy_hour')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->get();
+    $urunler = DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    $kategoriler = Schema::hasTable('menu_kategorileri') ? DB::table('menu_kategorileri')->where('sube_id', $sid)->orderBy('ad')->get(['id', 'ad']) : collect();
+    $urunAd = $urunler->pluck('ad', 'id'); $katAd = $kategoriler->pluck('ad', 'id');
+    return view('happy_hour', compact('kurallar', 'urunler', 'kategoriler', 'urunAd', 'katAd'));
+});
+Route::post('/happy-hour/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _happyHourEnsure(); $sid = _webSubeId();
+    DB::table('happy_hour')->insert([
+        'sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Happy Hour',
+        'urun_id' => (int) $r->input('urun_id') ?: null, 'kategori_id' => (int) $r->input('kategori_id') ?: null,
+        'baslangic_tarih' => $r->input('baslangic_tarih') ?: null, 'bitis_tarih' => $r->input('bitis_tarih') ?: null,
+        'baslangic_saat' => $r->input('baslangic_saat') ?: null, 'bitis_saat' => $r->input('bitis_saat') ?: null,
+        'gunler' => implode(',', (array) $r->input('gunler', [])) ?: null,
+        'indirim_yuzde' => (float) str_replace(',', '.', (string) $r->input('indirim_yuzde', 0)),
+        'happy_fiyat' => (float) str_replace(',', '.', (string) $r->input('happy_fiyat', 0)),
+        'aktif' => 1, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    cache()->forget('happy_hour_say_' . $sid);
+    return back()->with('ok', 'Happy Hour kuralı eklendi.');
+});
+Route::post('/happy-hour/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    $sid = _webSubeId();
+    $h = DB::table('happy_hour')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
+    if ($h) { if ($r->input('sil')) DB::table('happy_hour')->where('id', $h->id)->delete(); else DB::table('happy_hour')->where('id', $h->id)->update(['aktif' => $h->aktif ? 0 : 1, 'updated_at' => now()]); }
+    cache()->forget('happy_hour_say_' . $sid);
+    return back()->with('ok', 'Güncellendi.');
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -7112,7 +7206,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', // satın alma talep havuzu + üretim planı = stok/mutfak-yönetim; reçeteler menü alanı
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
@@ -22306,9 +22400,10 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $p->sube_id)->first();
         if (!$u) continue;
         if ($u->tukendi) { $tukendiAtlanan[] = $u->ad; continue; } // 86: tukenen urun siparise eklenmez
+        $hhF = function_exists('_happyHourFiyat') ? _happyHourFiyat($u->id, (float) $u->fiyat, $p->sube_id) : (float) $u->fiyat;
         DB::table('adisyon_kalemleri')->insert([
             'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
-            'adet' => $adet, 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
+            'adet' => $adet, 'birim_fiyat' => $hhF, 'tutar' => $hhF * $adet,
             'durum' => 'gonderildi', 'personel_id' => $p->id, 'gonderim_zamani' => now(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
