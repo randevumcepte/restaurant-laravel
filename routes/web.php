@@ -4698,6 +4698,77 @@ Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
     return back()->with('ok', 'Guncellendi.');
 });
 
+// ============================================================================
+// DEMIRBAS (YALIN): ekipman kayit + bakim/ariza gecmisi + zimmet. Vergi amortismani DEGIL.
+// ============================================================================
+if (!function_exists('_demirbasEnsure')) {
+    function _demirbasEnsure()
+    {
+        if (cache()->get('demirbas_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('demirbaslar')) {
+                Schema::create('demirbaslar', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('ad', 150); $t->string('kod', 50)->nullable(); $t->string('kategori', 60)->nullable();
+                    $t->date('alis_tarih')->nullable(); $t->decimal('alis_bedel', 14, 2)->default(0);
+                    $t->string('lokasyon', 100)->nullable(); $t->unsignedBigInteger('zimmet_personel_id')->nullable();
+                    $t->string('durum', 20)->default('aktif'); $t->text('not')->nullable();
+                    $t->timestamps();
+                });
+            }
+            if (!Schema::hasTable('demirbas_bakim')) {
+                Schema::create('demirbas_bakim', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('demirbas_id')->index();
+                    $t->date('tarih'); $t->string('tip', 20)->default('bakim'); // bakim/ariza
+                    $t->text('aciklama')->nullable(); $t->decimal('maliyet', 12, 2)->default(0);
+                    $t->timestamps();
+                });
+            }
+            cache()->put('demirbas_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/demirbas', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _demirbasEnsure(); $sid = _webSubeId();
+    $liste = DB::table('demirbaslar')->where('sube_id', $sid)->orderByDesc('id')->get();
+    $bakimlar = DB::table('demirbas_bakim')->whereIn('demirbas_id', $liste->pluck('id'))->orderByDesc('tarih')->get()->groupBy('demirbas_id');
+    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    $persAd = $personeller->pluck('ad', 'id');
+    $toplamDeger = $liste->where('durum', '!=', 'hurda')->sum('alis_bedel');
+    return view('demirbas', compact('liste', 'bakimlar', 'personeller', 'persAd', 'toplamDeger'));
+});
+Route::post('/demirbas/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _demirbasEnsure(); $sid = _webSubeId();
+    DB::table('demirbaslar')->insert(['sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Demirbas', 'kod' => trim((string) $r->input('kod')) ?: null,
+        'kategori' => trim((string) $r->input('kategori')) ?: null, 'alis_tarih' => $r->input('alis_tarih') ?: null,
+        'alis_bedel' => (float) str_replace(',', '.', (string) $r->input('alis_bedel', 0)), 'lokasyon' => trim((string) $r->input('lokasyon')) ?: null,
+        'zimmet_personel_id' => (int) $r->input('zimmet_personel_id') ?: null, 'durum' => 'aktif', 'not' => trim((string) $r->input('not')) ?: null,
+        'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Demirbas eklendi.');
+});
+Route::post('/demirbas/bakim-ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _demirbasEnsure();
+    DB::table('demirbas_bakim')->insert(['demirbas_id' => (int) $r->input('demirbas_id'), 'tarih' => $r->input('tarih') ?: today()->toDateString(),
+        'tip' => $r->input('tip') === 'ariza' ? 'ariza' : 'bakim', 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
+        'maliyet' => (float) str_replace(',', '.', (string) $r->input('maliyet', 0)), 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Bakim/ariza kaydedildi.');
+});
+Route::post('/demirbas/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    $sid = _webSubeId(); $id = (int) $r->input('id');
+    if ($r->input('sil')) { DB::table('demirbaslar')->where('sube_id', $sid)->where('id', $id)->delete(); DB::table('demirbas_bakim')->where('demirbas_id', $id)->delete(); }
+    elseif ($r->filled('yeni_durum')) { DB::table('demirbaslar')->where('sube_id', $sid)->where('id', $id)->update(['durum' => (string) $r->input('yeni_durum'), 'updated_at' => now()]); }
+    return back()->with('ok', 'Guncellendi.');
+});
+
+
 
 
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
@@ -7402,7 +7473,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', '/demirbas' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }
