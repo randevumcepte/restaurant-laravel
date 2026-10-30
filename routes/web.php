@@ -4629,6 +4629,76 @@ Route::post('/mustahsil/sil', function (Request $r) {
     return back()->with('ok', 'Silindi.');
 });
 
+// ============================================================================
+// FIYAT ANLASMALARI: tedarikci-malzeme icin sozlesmeli donemsel sabit fiyat.
+// _anlasmaliFiyat() satinalma/RFQ'da otomatik kullanilabilir; B1 'anlasmali atla' ile uyumlu.
+// ============================================================================
+if (!function_exists('_fiyatAnlasmaEnsure')) {
+    function _fiyatAnlasmaEnsure()
+    {
+        if (cache()->get('fiyat_anlasma_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('fiyat_anlasmalari')) {
+                Schema::create('fiyat_anlasmalari', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->unsignedBigInteger('tedarikci_id'); $t->unsignedBigInteger('malzeme_id');
+                    $t->decimal('birim_fiyat', 12, 4)->default(0); $t->string('birim', 20)->nullable();
+                    $t->date('baslangic')->nullable(); $t->date('bitis')->nullable();
+                    $t->text('not')->nullable(); $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps(); $t->index(['tedarikci_id', 'malzeme_id']);
+                });
+            }
+            cache()->put('fiyat_anlasma_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_anlasmaliFiyat')) {
+    function _anlasmaliFiyat($tedarikciId, $malzemeId, $sube)
+    {
+        try {
+            if (!Schema::hasTable('fiyat_anlasmalari')) return null;
+            $bugun = today()->toDateString();
+            $a = DB::table('fiyat_anlasmalari')->where('sube_id', $sube)->where('tedarikci_id', (int) $tedarikciId)->where('malzeme_id', (int) $malzemeId)->where('aktif', 1)
+                ->where(function ($q) use ($bugun) { $q->whereNull('baslangic')->orWhere('baslangic', '<=', $bugun); })
+                ->where(function ($q) use ($bugun) { $q->whereNull('bitis')->orWhere('bitis', '>=', $bugun); })
+                ->orderByDesc('id')->first();
+            return $a ? (float) $a->birim_fiyat : null;
+        } catch (\Throwable $e) { return null; }
+    }
+}
+Route::get('/fiyat-anlasmalari', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    _fiyatAnlasmaEnsure(); $sid = _webSubeId();
+    $liste = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->limit(200)->get();
+    $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
+    $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
+    $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad']);
+    return view('fiyat_anlasmalari', compact('liste', 'tedAd', 'malAd', 'tedarikciler', 'malzemeler'));
+});
+Route::post('/fiyat-anlasmalari/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return back();
+    _fiyatAnlasmaEnsure(); $sid = _webSubeId();
+    $tid = (int) $r->input('tedarikci_id'); $mid = (int) $r->input('malzeme_id');
+    if (!$tid || !$mid) return back()->with('ok', 'Tedarikci ve malzeme sec.');
+    DB::table('fiyat_anlasmalari')->insert(['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid,
+        'birim_fiyat' => (float) str_replace(',', '.', (string) $r->input('birim_fiyat', 0)), 'birim' => trim((string) $r->input('birim')) ?: null,
+        'baslangic' => $r->input('baslangic') ?: null, 'bitis' => $r->input('bitis') ?: null, 'not' => trim((string) $r->input('not')) ?: null,
+        'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Fiyat anlasmasi eklendi.');
+});
+Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return back();
+    $sid = _webSubeId();
+    $a = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
+    if ($a) { if ($r->input('sil')) DB::table('fiyat_anlasmalari')->where('id', $a->id)->delete(); else DB::table('fiyat_anlasmalari')->where('id', $a->id)->update(['aktif' => $a->aktif ? 0 : 1, 'updated_at' => now()]); }
+    return back()->with('ok', 'Guncellendi.');
+});
+
+
 
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
@@ -7332,7 +7402,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }
