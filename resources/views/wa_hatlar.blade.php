@@ -170,9 +170,7 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     @endforelse
   </div>
 
-</div></div>
-
-{{-- QR MODAL --}}
+{{-- QR MODAL (#wh içinde olmalı ki CSS kapsamı uygulansın) --}}
 <div id="qrModal">
   <div class="qrkart">
     <h3 id="qrBaslik">Hat Bağla</h3>
@@ -190,6 +188,8 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
     <button class="qrkapat" onclick="qrKapat()">Kapat</button>
   </div>
 </div>
+
+</div></div>{{-- .pano + #wh kapanış --}}
 
 <script>
 let whHat=0, qrTimer=null, durumTimer=null;
