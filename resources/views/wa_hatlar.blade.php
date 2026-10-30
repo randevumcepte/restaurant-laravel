@@ -70,17 +70,22 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   @if(session('hata'))<div class="flash err">{{ session('hata') }}</div>@endif
 
   <div class="aciklama">
-    <b>Çoklu WhatsApp hattı:</b> Müşteri yazışmaları (sipariş, hatırlatma, kampanya) <b>müşteri hattından</b>; tedarikçi teklifleri <b>satın alma hattından</b>; onay/yönetim bildirimleri <b>yönetim hattından</b> gider. Her hat ayrı bir WhatsApp numarasıdır — departman sorumlusu kendi şirket telefonundaki WhatsApp'ı QR ile bağlar. Gelen mesaj da doğru hatta/akışa düşer, karışmaz.
-    <div class="legend">
-      @foreach($amacLabel as $k=>$v)<span class="lg" style="background:color-mix(in srgb,{{ $amacRenk[$k] }} 14%,transparent);color:{{ $amacRenk[$k] }}">{{ $v }}</span>@endforeach
-    </div>
+    @if($isAdmin)
+      <b>Çoklu WhatsApp hattı:</b> Müşteri yazışmaları (sipariş, hatırlatma, kampanya) <b>müşteri hattından</b>; tedarikçi teklifleri <b>satın alma hattından</b>; onay/yönetim bildirimleri <b>yönetim hattından</b> gider. Her hat ayrı bir WhatsApp numarasıdır — <b>sahibi (departman sorumlusu) kendi hesabından girip kendi şirket telefonuyla bağlar/yeniden bağlar</b>. Sen hattı oluşturup bir sorumluya atarsın; bağlamayı o kişi kendi yapar.
+      <div class="legend">
+        @foreach($amacLabel as $k=>$v)<span class="lg" style="background:color-mix(in srgb,{{ $amacRenk[$k] }} 14%,transparent);color:{{ $amacRenk[$k] }}">{{ $v }}</span>@endforeach
+      </div>
+    @else
+      <b>Sana atanan WhatsApp hattı:</b> Aşağıdaki hattı <b>kendi şirket telefonunla</b> QR okutarak bağla. Bağlantı koparsa yine buradan <b>"Bağlan / QR"</b> ile yeniden bağlarsın — yöneticiyi beklemene gerek yok.
+    @endif
   </div>
 
   @unless($sidecarVar)
     <div class="flash err">⚠️ WhatsApp sunucusu (bridge) ayarlı değil. Önce <b>/wa-yonetim</b> → sidecar URL + servis token gir. Hat bağlama onsuz çalışmaz.</div>
   @endunless
 
-  {{-- YENİ HAT --}}
+  {{-- YENİ HAT (sadece sahip/müdür) --}}
+  @if($isAdmin)
   <div class="kart">
     <div class="kb"><span class="material-icons-outlined">add_link</span> Yeni Hat Ekle</div>
     <form method="POST" action="/wa-hatlar/ekle">@csrf
@@ -104,6 +109,7 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       </div>
     </form>
   </div>
+  @endif
 
   {{-- HATLAR --}}
   <div class="kart">
@@ -124,11 +130,15 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
         </div>
         <div class="hat-aks">
           <button class="btn yesil sm" onclick="qrAc({{ $h->id }},'{{ addslashes($h->ad) }}')"><span class="material-icons-outlined">qr_code_2</span> Bağlan / QR</button>
+          <button class="btn gri sm" onclick="baglantiKes({{ $h->id }})"><span class="material-icons-outlined">link_off</span> Bağlantıyı kes</button>
+          @if($isAdmin)
           <form method="POST" action="/wa-hatlar/guncelle" style="margin:0"><input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ $h->id }}"><input type="hidden" name="varsayilan" value="1"><button class="btn gri sm" type="submit">⭐ Varsayılan yap</button></form>
           <form method="POST" action="/wa-hatlar/guncelle" style="margin:0"><input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ $h->id }}"><input type="hidden" name="aktif" value="{{ $h->aktif?0:1 }}"><button class="btn gri sm" type="submit">{{ $h->aktif?'⏸ Pasifleştir':'▶ Aktifleştir' }}</button></form>
           <button class="btn gri sm" onclick="document.getElementById('dz{{ $h->id }}').classList.toggle('ac')"><span class="material-icons-outlined">edit</span> Düzenle</button>
           <form method="POST" action="/wa-hatlar/sil" style="margin:0" onsubmit="return confirm('Hat silinsin mi? Bağlantı da kesilir.')"><input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ $h->id }}"><button class="btn kir sm" type="submit">🗑 Sil</button></form>
+          @endif
         </div>
+        @if($isAdmin)
         <div class="duzen" id="dz{{ $h->id }}">
           <form method="POST" action="/wa-hatlar/guncelle">@csrf<input type="hidden" name="id" value="{{ $h->id }}">
             <div class="satir">
@@ -147,9 +157,16 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
             </div>
           </form>
         </div>
+        @endif
       </div>
     @empty
-      <div class="bos">Henüz hat yok. Yukarıdan ekle.</div>
+      <div class="bos">
+        @if($isAdmin)
+          Henüz hat yok. Yukarıdan ekle.
+        @else
+          Sana atanmış bir WhatsApp hattı yok.<br>Yöneticinin bir hat oluşturup <b>sahip</b> olarak seni ataması gerekiyor.
+        @endif
+      </div>
     @endforelse
   </div>
 
@@ -203,6 +220,11 @@ async function pairEt(){
   try{const r=await fetch('/api/wa-hat/pair',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:whHat,phone})});const j=await r.json();const b=j.body||{};$('#pairKod').textContent=b.code||b.pairCode||b.pairingCode||'Kod alınamadı';}catch(e){$('#pairKod').textContent='Hata';}
 }
 function qrKapat(){$('#qrModal').classList.remove('ac');if(qrTimer)clearInterval(qrTimer);if(durumTimer)clearInterval(durumTimer);}
+async function baglantiKes(id){
+  if(!confirm('Bu hattın WhatsApp bağlantısı kesilsin mi? Tekrar bağlamak için QR okutman gerekir.'))return;
+  try{await fetch('/api/wa-hat/cikis',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:id})});}catch(e){}
+  location.reload();
+}
 $('#qrModal').addEventListener('click',function(e){if(e.target===this)qrKapat();});
 // açılışta her hattın durumunu bir kez tazele
 @foreach($hatlar as $h)

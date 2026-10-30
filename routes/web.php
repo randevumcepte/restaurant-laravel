@@ -7160,17 +7160,17 @@ if (!function_exists('_waHatYetkili')) {
     }
 }
 Route::get('/wa-hatlar', function () {
-    $bp = _waHatYetkili();
-    if ($bp === null) return redirect('/pos-giris');
-    if ($bp === false) return redirect('/patron-ai')->with('hata', 'Yetkisiz (sadece sahip/müdür).');
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
     $sid = _webSubeId();
     _waHatMusteriGaranti($sid);
-    $hatlar = DB::table('wa_hatlar as h')->leftJoin('personeller as p', 'p.id', '=', 'h.personel_id')
-        ->where('h.sube_id', $sid)->orderByDesc('h.varsayilan')->orderBy('h.id')
-        ->get(['h.*', 'p.ad as sahip_ad']);
-    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
+    $admin = in_array($bp->rol ?? '', ['sahip', 'mudur']);
+    $q = DB::table('wa_hatlar as h')->leftJoin('personeller as p', 'p.id', '=', 'h.personel_id')->where('h.sube_id', $sid);
+    if (!$admin) $q->where('h.personel_id', $bp->id); // sorumlu SADECE kendi hattını görür/bağlar
+    $hatlar = $q->orderByDesc('h.varsayilan')->orderBy('h.id')->get(['h.*', 'p.ad as sahip_ad']);
+    $personeller = $admin ? DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']) : collect();
     return _waNoCache(response()->view('wa_hatlar', [
-        'hatlar' => $hatlar, 'personeller' => $personeller,
+        'hatlar' => $hatlar, 'personeller' => $personeller, 'isAdmin' => $admin,
         'sidecarVar' => ((string) resto_ayar_al('wa_sidecar_url', '')) !== '',
         'webhook' => url('/api/wa/gelen'),
     ]));
@@ -7215,39 +7215,40 @@ Route::post('/wa-hatlar/sil', function (Request $r) {
     try { DB::table('wa_hatlar')->where('id', $hat->id)->delete(); } catch (\Throwable $e) {}
     return back()->with('ok', 'Hat silindi.');
 });
-// Hatta-özel bridge proxy: hat id → session_key → köprü (şubeye kilitli)
-if (!function_exists('_waHatSessionKey')) {
-    function _waHatSessionKey($r)
+// Hatta-özel bridge proxy: hat id → session_key. Erişim: sahip/müdür VEYA hattın sahibi personel.
+if (!function_exists('_waHatErisimSK')) {
+    function _waHatErisimSK($r)
     {
+        $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$bp) return 0;
         $sid = _webSubeId();
         $hatId = (int) ($r->input('hat') ?: $r->query('hat'));
-        return (int) DB::table('wa_hatlar')->where('id', $hatId)->where('sube_id', $sid)->value('session_key');
+        $hat = DB::table('wa_hatlar')->where('id', $hatId)->where('sube_id', $sid)->first();
+        if (!$hat) return 0;
+        $admin = in_array($bp->rol ?? '', ['sahip', 'mudur']);
+        if ($admin || (int) $hat->personel_id === (int) $bp->id) return (int) $hat->session_key;
+        return 0;
     }
 }
 Route::get('/api/wa-hat/durum', function (Request $r) {
-    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
-    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    $sk = _waHatErisimSK($r); if (!$sk) return response()->json(['ok' => false], 403);
     return _waNoCache(response()->json(_waBridge('GET', '/session/' . $sk . '/status')));
 });
 Route::post('/api/wa-hat/baglan', function (Request $r) {
-    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
-    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    $sk = _waHatErisimSK($r); if (!$sk) return response()->json(['ok' => false], 403);
     return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/start')));
 });
 Route::get('/api/wa-hat/qr', function (Request $r) {
-    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
-    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    $sk = _waHatErisimSK($r); if (!$sk) return response()->json(['ok' => false], 403);
     return _waNoCache(response()->json(_waBridge('GET', '/session/' . $sk . '/qr')));
 });
 Route::post('/api/wa-hat/cikis', function (Request $r) {
-    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
-    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    $sk = _waHatErisimSK($r); if (!$sk) return response()->json(['ok' => false], 403);
     try { DB::table('wa_hatlar')->where('session_key', $sk)->update(['durum' => 'bekliyor', 'updated_at' => now()]); } catch (\Throwable $e) {}
     return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/logout')));
 });
 Route::post('/api/wa-hat/pair', function (Request $r) {
-    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
-    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    $sk = _waHatErisimSK($r); if (!$sk) return response()->json(['ok' => false], 403);
     return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/pair-phone', ['phone' => (string) $r->input('phone')])));
 });
 
@@ -7771,7 +7772,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/wa-hatlar' => 'gor_dashboard',        // Çoklu WhatsApp hattı yönetimi (route içinde ayrıca sahip/müdür kilidi)
+            // '/wa-hatlar' HARİTASIZ: her personel kendi hattını bağlayabilsin (route içinde login + sahiplik kontrolü; menüde herkese-açık listede)
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)

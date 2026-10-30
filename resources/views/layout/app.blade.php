@@ -317,7 +317,7 @@
                     $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
                         if (!$_pp) return true;
                         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
-                        if (in_array($it[0], ['/bildirim-ayar', '/profilim'])) return true;    // herkese açık (kişisel ayarlar)
+                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar'])) return true; // herkese açık (kişisel: kendi WA hattını bağlar)
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));
