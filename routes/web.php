@@ -4327,6 +4327,92 @@ Route::post('/tedarikci-yaslandirma/odendi', function (Request $r) {
     return back()->with('ok', 'Ödendi olarak işaretlendi.');
 });
 
+// ============================================================================
+// ÇOK-KADEMELİ SATINALMA ONAYI + VEKİL ATAMA (flag'li — kurumsal/çok-şube için).
+// Seviye tanımları: her kademede onaylayan personel + opsiyonel vekil (tarihli) +
+// "anlaşmalı atla" (fiyat anlaşması olanlar onayı atlar). Config ekranı; enforcement
+// _onaylayabilir() helper'ıyla mevcut akışa opsiyonel bağlanır (flag kapalı=hiç dokunmaz).
+// ============================================================================
+if (!function_exists('_onaySeviyeEnsure')) {
+    function _onaySeviyeEnsure()
+    {
+        if (cache()->get('onay_seviye_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('satinalma_onay_seviyeleri')) {
+                Schema::create('satinalma_onay_seviyeleri', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->integer('seviye')->default(1);
+                    $t->unsignedBigInteger('onaylayan_id')->nullable();
+                    $t->unsignedBigInteger('vekil_id')->nullable();
+                    $t->date('vekil_bitis')->nullable();
+                    $t->tinyInteger('anlasma_atla')->default(0);
+                    $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                    $t->index(['sube_id', 'seviye']);
+                });
+            }
+            cache()->put('onay_seviye_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_cokKademeliAcik')) {
+    function _cokKademeliAcik($sid) { return (string) resto_ayar_al('cok_kademeli_onay_' . $sid, '0') === '1'; }
+}
+// Bu personel şu an hangi seviyeleri onaylayabilir (kendi + aktif vekili olduğu). Dizi: [seviye...]
+if (!function_exists('_onaylayabilir')) {
+    function _onaylayabilir($personelId, $sid)
+    {
+        if (!_cokKademeliAcik($sid)) return [];
+        $out = [];
+        try {
+            $bugun = today()->toDateString();
+            foreach (DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->where('aktif', 1)->get() as $s) {
+                if ((int) $s->onaylayan_id === (int) $personelId) $out[] = (int) $s->seviye;
+                elseif ((int) $s->vekil_id === (int) $personelId && (!$s->vekil_bitis || $s->vekil_bitis >= $bugun)) $out[] = (int) $s->seviye;
+            }
+        } catch (\Throwable $e) {}
+        return array_unique($out);
+    }
+}
+Route::get('/satinalma-onay-seviye', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _onaySeviyeEnsure(); $sid = _webSubeId();
+    $seviyeler = DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->orderBy('seviye')->get();
+    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
+    $adMap = $personeller->pluck('ad', 'id');
+    $acik = _cokKademeliAcik($sid);
+    return view('onay_seviye', compact('seviyeler', 'personeller', 'adMap', 'acik'));
+});
+Route::post('/satinalma-onay-seviye/flag', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    resto_ayar_yaz('cok_kademeli_onay_' . _webSubeId(), $r->input('acik') ? '1' : '0');
+    return back()->with('ok', 'Kaydedildi.');
+});
+Route::post('/satinalma-onay-seviye/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _onaySeviyeEnsure(); $sid = _webSubeId();
+    $onaylayan = (int) $r->input('onaylayan_id'); if (!$onaylayan) return back()->with('ok', 'Onaylayan seç.');
+    $sonSeviye = (int) DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->max('seviye');
+    DB::table('satinalma_onay_seviyeleri')->insert([
+        'sube_id' => $sid, 'seviye' => $sonSeviye + 1, 'onaylayan_id' => $onaylayan,
+        'vekil_id' => (int) $r->input('vekil_id') ?: null, 'vekil_bitis' => $r->input('vekil_bitis') ?: null,
+        'anlasma_atla' => $r->input('anlasma_atla') ? 1 : 0, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return back()->with('ok', 'Onay seviyesi eklendi.');
+});
+Route::post('/satinalma-onay-seviye/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    $sid = _webSubeId();
+    DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->delete();
+    // seviyeleri yeniden sırala (1,2,3...)
+    try { $i = 1; foreach (DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->orderBy('seviye')->get() as $s) { DB::table('satinalma_onay_seviyeleri')->where('id', $s->id)->update(['seviye' => $i++]); } } catch (\Throwable $e) {}
+    return back()->with('ok', 'Silindi.');
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -7029,7 +7115,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', // satın alma talep havuzu + üretim planı = stok/mutfak-yönetim; reçeteler menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', // yeni: karne / OCR / bütçe / satın alma özeti / satıcı yaşlandırma
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }

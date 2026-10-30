@@ -164,6 +164,7 @@
             ['/satinalma-analiz', 'leaderboard', 'Satınalma Analizi · Karne', '#4F46E5'],
             ['/tedarikci-karne', 'grading', 'Tedarikçi Karnesi', '#0EA5E9'],
             ['/tedarikci-yaslandirma', 'account_balance_wallet', 'Satıcı Yaşlandırma', '#F43F5E'],
+            ['/satinalma-onay-seviye', 'approval', 'Onay Seviyeleri', '#8B5CF6'],
             ['/satinalma-butce', 'savings', 'Satınalma Bütçe', '#10B981'],
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
             ['/satinalma-brief', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
