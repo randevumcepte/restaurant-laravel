@@ -140,80 +140,86 @@
   .pai-sonuc.ok{border-left:3px solid #10B981;color:#047857}
   .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
 
-  /* ============ YENİ DASHBOARD (referans tasarım) ============ */
-  #pai{max-width:1240px}
-  .pai-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
-  .pai-hero-ic{width:56px;height:56px;border-radius:16px;flex:none;display:flex;align-items:center;justify-content:center;font-size:28px;background:linear-gradient(135deg,#FDBA74,#F59E0B);box-shadow:0 8px 20px rgba(245,158,11,.28)}
-  .pai-hero-ic.aksam{background:linear-gradient(135deg,#6366F1,#4F46E5);box-shadow:0 8px 20px rgba(79,70,229,.28)}
-  .pai-hero-selam{font-size:24px;font-weight:900;color:var(--ink);line-height:1.15;letter-spacing:-.4px}
-  .pai-hero-alt{font-size:13px;color:var(--sub);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  /* ====== PATRON AI DASHBOARD (referans tasarım · kompakt · tek ekran) ====== */
+  #pai{max-width:1280px;margin:0 auto;--rose:#F56A8B;--pgreen:#2FBE94;--pamber:#F6A623;--pblue:#5B8DEF;--pred:#F5576C}
+  #pai *{box-sizing:border-box}
+  #pai .t-rose{background:rgba(245,106,139,.13);color:var(--rose)} #pai .t-green{background:rgba(47,190,148,.14);color:var(--pgreen)}
+  #pai .t-amber{background:rgba(246,166,35,.15);color:var(--pamber)} #pai .t-blue{background:rgba(91,141,239,.14);color:var(--pblue)}
+  #pai .t-red{background:rgba(245,87,108,.13);color:var(--pred)} #pai .t-mor{background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1)}
+
+  .pai-hero{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:11px}
+  .pai-hero-ic{width:46px;height:46px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,#FDB44B,#F6A623);box-shadow:0 10px 22px rgba(246,166,35,.3)}
+  .pai-hero-ic.aksam{background:linear-gradient(135deg,#6366F1,#4F46E5);box-shadow:0 10px 22px rgba(79,70,229,.3)}
+  .pai-hero-selam{font-size:21px;font-weight:800;color:var(--ink);line-height:1.15;letter-spacing:-.5px}
+  .pai-hero-alt{font-size:12px;color:var(--sub);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:500}
   .pai-hero-sag{margin-left:auto;display:flex;align-items:center;gap:9px}
 
-  .pai-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}
-  .pai-k{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 17px;box-shadow:0 2px 10px rgba(16,24,40,.04);position:relative}
-  .pai-k .kic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin-bottom:11px}
-  .pai-k .kic .material-icons-outlined{font-size:23px}
-  .pai-k .kbuyuk{font-size:24px;font-weight:900;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums}
-  .pai-k .ketk{font-size:12.5px;color:var(--sub);font-weight:600;margin-top:5px}
-  .pai-k .kalt{font-size:11px;color:var(--sub2);margin-top:3px}
-  .pai-k .kdelta{position:absolute;top:16px;right:16px;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px}
+  .pai-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:11px}
+  .pai-k{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-k .kic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:7px}
+  .pai-k .kic .material-icons-outlined{font-size:19px}
+  .pai-k .kbuyuk{font-size:19px;font-weight:800;color:var(--ink);line-height:1;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .pai-k .kbuyuk small{font-size:12px;font-weight:700;color:var(--sub)}
+  .pai-k .ketk{font-size:11.5px;color:var(--ink);font-weight:700;margin-top:5px}
+  .pai-k .kalt{font-size:10px;color:var(--sub);margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pai-k .kdelta{position:absolute;top:12px;right:12px;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:20px}
 
-  .pai-mid{display:grid;grid-template-columns:1.75fr 1fr;gap:16px;margin-bottom:18px;align-items:start}
-  .pai-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 20px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
-  .pai-card-head{display:flex;align-items:center;gap:9px;margin-bottom:15px}
+  .pai-mid{display:grid;grid-template-columns:1.72fr 1fr;gap:12px;margin-bottom:4px;align-items:start}
+  .pai-card,.pai-aipanel{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:14px 15px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-aipanel{background:linear-gradient(170deg,color-mix(in srgb,var(--mor1) 6%,var(--card)),var(--card) 60%);border-color:color-mix(in srgb,var(--mor1) 18%,var(--line))}
+  .pai-card-head{display:flex;align-items:center;gap:9px;margin-bottom:11px}
   .pai-card-head .material-icons-outlined{font-size:20px;color:var(--mor1)}
-  .pai-card-head .b{font-size:16px;font-weight:800;color:var(--ink)}
-  .pai-card-head .link{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+  .pai-card-head .b{font-size:15px;font-weight:800;color:var(--ink)}
+  .pai-card-head .cnt{background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1);border-radius:20px;padding:1px 9px;font-size:12px;font-weight:800}
+  .pai-card-head .link{margin-left:auto;font-size:12px;font-weight:700;color:var(--mor1);text-decoration:none}
 
-  .pai-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .pai-task{display:flex;gap:12px;align-items:flex-start;background:var(--card2);border:1px solid var(--line);border-radius:15px;padding:13px 14px}
-  .pai-task .tic{width:40px;height:40px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center}
-  .pai-task .tic .material-icons-outlined{font-size:20px}
-  .pai-task .trot{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:20px;margin-bottom:5px}
-  .pai-task .tbas{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
-  .pai-task .talt{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.4}
-  .pai-task .tbtn{margin-top:9px;display:inline-flex;align-items:center;gap:5px;border:0;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;background:var(--mor1);color:#fff;text-decoration:none}
+  .pai-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pai-task{display:flex;align-items:center;gap:11px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+  .pai-task .tic{width:35px;height:35px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center}
+  .pai-task .tic .material-icons-outlined{font-size:17px}
+  .pai-task .tmid{flex:1;min-width:0}
+  .pai-task .trot{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px}
+  .pai-task .tbas{font-size:12px;font-weight:700;color:var(--ink);line-height:1.25;margin-top:3px}
+  .pai-task .talt{font-size:10px;color:var(--sub);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pai-task .tbtn{flex:none;border:0;border-radius:9px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7B5CFA,#6A49F2);color:#fff;text-decoration:none;white-space:nowrap}
   .pai-task .tbtn.sade{background:var(--card);color:var(--sub);border:1px solid var(--line)}
 
-  .pai-aipanel{background:linear-gradient(160deg,color-mix(in srgb,var(--mor1) 7%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--mor1) 20%,var(--line));border-radius:20px;padding:18px 19px;box-shadow:0 2px 10px rgba(124,58,237,.06)}
-  .pai-aipanel .ust{display:flex;align-items:center;gap:10px;margin-bottom:11px}
-  .pai-aipanel .rob{width:40px;height:40px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--mor1),var(--mavi));box-shadow:0 6px 16px rgba(124,58,237,.3)}
-  .pai-aipanel .rob .material-icons-outlined{color:#fff;font-size:22px}
-  .pai-aipanel .bas{font-size:15.5px;font-weight:800;color:var(--ink)}
-  .pai-aipanel .verdict{font-size:13px;line-height:1.6;color:var(--sub);white-space:pre-line;margin-bottom:15px}
-  .pai-aipanel .yapar-bas{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;color:var(--mor1);text-transform:uppercase;letter-spacing:.3px;margin-bottom:9px}
-  .pai-aiact{display:flex;flex-direction:column;gap:8px}
-  .pai-aiact a,.pai-aiact button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;text-decoration:none;transition:.15s;font-family:inherit}
-  .pai-aiact a:hover,.pai-aiact button:hover{border-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 5%,var(--card))}
-  .pai-aiact .aic{width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1)}
-  .pai-aiact .aic .material-icons-outlined{font-size:17px}
-  .pai-aiact .material-icons-outlined.ok{margin-left:auto;color:var(--sub2);font-size:18px}
+  .pai-aipanel .ust{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .pai-aipanel .rob{width:36px;height:36px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--mor1),var(--mavi));box-shadow:0 8px 18px rgba(124,58,237,.3)}
+  .pai-aipanel .rob .material-icons-outlined{color:#fff;font-size:20px}
+  .pai-aipanel .bas{font-size:15px;font-weight:800;color:var(--ink)}
+  .pai-aipanel .verdict{font-size:11.5px;line-height:1.55;color:var(--sub);white-space:pre-line;margin-bottom:11px}
+  .pai-aipanel .yapar-bas{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink);margin-bottom:8px}
+  .pai-aipanel .yapar-bas .mini{background:var(--mor1);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px}
+  .pai-aiact{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .pai-aiact a,.pai-aiact button{display:flex;align-items:center;gap:9px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:8px;font-size:10.5px;font-weight:600;color:var(--ink);cursor:pointer;text-decoration:none;transition:.15s;font-family:inherit;line-height:1.3}
+  .pai-aiact a:hover,.pai-aiact button:hover{border-color:var(--mor1)}
+  .pai-aiact .aic{width:29px;height:29px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1)}
+  .pai-aiact .aic .material-icons-outlined{font-size:16px}
 
-  .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:800;color:var(--ink);margin:4px 2px 13px}
+  .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:10px 2px 8px}
   .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
-  .pai-sec-bas .link{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+  .pai-sec-bas .link{margin-left:auto;font-size:12px;font-weight:700;color:var(--mor1);text-decoration:none}
 
-  /* Departman kartları (denetim fragment grid) */
-  .pai-dep-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;margin-bottom:18px}
-  .pai-dep{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
-  .pai-dep .dust{display:flex;align-items:center;gap:9px;margin-bottom:9px}
-  .pai-dep .dic{width:36px;height:36px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center}
-  .pai-dep .dic .material-icons-outlined{font-size:19px}
-  .pai-dep .dad{font-size:13.5px;font-weight:800;color:var(--ink)}
-  .pai-dep .droz{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:20px;display:inline-block;margin-top:2px}
-  .pai-dep .doz{font-size:11.5px;color:var(--sub);line-height:1.45;min-height:32px;margin-bottom:10px}
-  .pai-dep .dbar{height:6px;border-radius:5px;background:var(--card2);overflow:hidden;margin-bottom:9px}
+  .pai-dep-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .pai-dep{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-dep .dust{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+  .pai-dep .dic{width:33px;height:33px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center}
+  .pai-dep .dic .material-icons-outlined{font-size:17px}
+  .pai-dep .dad{font-size:12.5px;font-weight:800;color:var(--ink)}
+  .pai-dep .droz{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px;display:inline-block;margin-top:2px}
+  .pai-dep .doz{font-size:10px;color:var(--sub);line-height:1.4;min-height:26px;margin-bottom:8px}
+  .pai-dep .dbar{height:5px;border-radius:5px;background:var(--card2);overflow:hidden;margin-bottom:7px}
   .pai-dep .dbar i{display:block;height:100%;border-radius:5px}
-  .pai-dep .dlink{font-size:11.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+  .pai-dep .dlink{font-size:10.5px;font-weight:700;color:var(--mor1);text-decoration:none}
 
-  /* Detaylı analiz grid */
-  #pai-analiz.pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
-  #pai-analiz.pai-analiz-grid .pai-an{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:16px;padding:15px;margin:0}
+  #pai-analiz.pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:12px}
+  #pai-analiz.pai-analiz-grid .pai-an{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:14px;padding:12px;margin:0}
 
   @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} .pai-dep-grid{grid-template-columns:repeat(3,1fr)} }
-  @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} #pai-analiz.pai-analiz-grid{grid-template-columns:1fr} }
-  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-dep-grid{grid-template-columns:1fr 1fr} .pai-hero-selam{font-size:20px} .pai-hero-sag{margin-left:0;width:100%} }
-  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} }
+  @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} .pai-aiact{grid-template-columns:1fr} #pai-analiz.pai-analiz-grid{grid-template-columns:1fr} }
+  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-dep-grid{grid-template-columns:1fr 1fr} .pai-hero-sag{margin-left:0;width:100%} }
+  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} .pai-dep-grid{grid-template-columns:1fr} }
 </style>
 @endpush
 
@@ -285,32 +291,32 @@
   <div class="pai-kpis">
     <div class="pai-k">
       @if (!empty($v['kiyas_etiket']) && $ciroY != 0)<span class="kdelta" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}">{{ $ciroY>0?'▲ +':'▼ ' }}{{ number_format(abs($ciroY),1,',','.') }}%</span>@endif
-      <div class="kic" style="background:color-mix(in srgb,{{ $ciroR }} 13%,transparent);color:{{ $ciroR }}"><span class="material-icons-outlined">payments</span></div>
+      <div class="kic t-rose"><span class="material-icons-outlined">payments</span></div>
       <div class="kbuyuk">{{ $tl($v['dun_ciro'] ?? 0) }}</div>
       <div class="ketk">{{ $tip==='aksam'?'Bugünkü ciro':'Dünkü ciro' }}</div>
       @if (($v['dun_ciro'] ?? 0) == 0)<div class="kalt" style="color:var(--kirmizi)">veri kontrolü gerekli</div>@elseif (!empty($v['kisi_basi']))<div class="kalt">kişi başı {{ $tl($v['kisi_basi']) }}</div>@endif
     </div>
     <div class="pai-k">
-      <div class="kic" style="background:color-mix(in srgb,{{ $kayipR }} 13%,transparent);color:{{ $kayipR }}"><span class="material-icons-outlined">delete_outline</span></div>
+      <div class="kic t-green"><span class="material-icons-outlined">delete_outline</span></div>
       <div class="kbuyuk">{{ $tl($kayipTop) }}</div>
       <div class="ketk">Kayıp / Zayiat</div>
       <div class="kalt">{{ $tip==='aksam'?'(bugün)':'(dün)' }}</div>
     </div>
     <div class="pai-k">
-      <div class="kic" style="background:color-mix(in srgb,{{ $kritR }} 13%,transparent);color:{{ $kritR }}"><span class="material-icons-outlined">inventory_2</span></div>
-      <div class="kbuyuk" style="color:{{ $krit>0?'var(--kirmizi)':'var(--ink)' }}">{{ $krit }} <span style="font-size:13px;font-weight:700;color:var(--sub)">ürün</span></div>
+      <div class="kic t-amber"><span class="material-icons-outlined">inventory_2</span></div>
+      <div class="kbuyuk" style="color:{{ $krit>0?'var(--pred)':'var(--ink)' }}">{{ $krit }} <small>ürün</small></div>
       <div class="ketk">Kritik stok</div>
       <div class="kalt">{{ $krit>0 ? Illuminate\Support\Str::limit(implode(', ', array_slice($v['kritik'] ?? [], 0, 3)), 34) : 'sorun yok 👍' }}</div>
     </div>
     <div class="pai-k">
-      <div class="kic" style="background:color-mix(in srgb,var(--mavi) 13%,transparent);color:var(--mavi)"><span class="material-icons-outlined">receipt_long</span></div>
+      <div class="kic t-blue"><span class="material-icons-outlined">receipt_long</span></div>
       <div class="kbuyuk">{{ (int)($acikAdisyon ?? 0) }}</div>
       <div class="ketk">Açık adisyon</div>
       <div class="kalt">{{ ($acikAdisyon ?? 0)>0 ? 'incelenmesi gerekiyor' : 'hepsi kapalı' }}</div>
     </div>
     <div class="pai-k">
-      <div class="kic" style="background:color-mix(in srgb,var(--amber) 13%,transparent);color:var(--amber)"><span class="material-icons-outlined">fact_check</span></div>
-      <div class="kbuyuk">{{ $onayTop }} <span style="font-size:13px;font-weight:700;color:var(--sub)">işlem</span></div>
+      <div class="kic t-blue"><span class="material-icons-outlined">fact_check</span></div>
+      <div class="kbuyuk">{{ $onayTop }} <small>işlem</small></div>
       <div class="ketk">Onay bekleyen</div>
       <div class="kalt">{{ (int)($onayOp ?? 0) }} operasyon + {{ (int)($onaySa ?? 0) }} satın alma</div>
     </div>
@@ -319,21 +325,21 @@
   {{-- ============ ORTA: Öncelikler (sol) + AI öneri (sağ) ============ --}}
   <div class="pai-mid">
     <div class="pai-card">
-      <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($islerL))<span class="pai-ck-say" style="background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1);border:0;margin:0">{{ count($islerL) }}</span>@endif<a href="/dashboard" class="link">Tümünü gör →</a></div>
+      <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($islerL))<span class="cnt">{{ count($islerL) }}</span>@endif<a href="/dashboard" class="link">Tümünü gör →</a></div>
       @if (count($islerL))
       <div class="pai-task-grid">
         @foreach ($islerL as $is)
           @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; $rk = $is['renk'] ?? 'var(--mor1)'; @endphp
           <div class="pai-task">
             <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
-            <div style="flex:1;min-width:0">
+            <div class="tmid">
               @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
               <div class="tbas">{{ $is['baslik'] ?? '' }}</div>
               @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
-              @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
-              @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
-              @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
             </div>
+            @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+            @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
+            @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
           </div>
         @endforeach
       </div>
@@ -344,12 +350,12 @@
     <div class="pai-aipanel">
       <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">Patron AI ne öneriyor?</div></div>
       <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
-      <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px">auto_awesome</span> Senin için şunları yapabilirim</div>
+      <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span> Senin için şunları yapabilirim <span class="mini">AI</span></div>
       <div class="pai-aiact">
-        <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla<span class="material-icons-outlined ok">chevron_right</span></button>
-        <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder<span class="material-icons-outlined ok">chevron_right</span></button>
-        <a href="/dashboard"><span class="aic"><span class="material-icons-outlined">receipt_long</span></span>Açık adisyonları listele<span class="material-icons-outlined ok">chevron_right</span></a>
-        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Onay bekleyen işlemleri aç<span class="material-icons-outlined ok">chevron_right</span></a>
+        <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla</button>
+        <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder</button>
+        <a href="/dashboard"><span class="aic"><span class="material-icons-outlined">receipt_long</span></span>Açık adisyonları listele</a>
+        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Onay bekleyen işlemleri aç</a>
       </div>
     </div>
   </div>
