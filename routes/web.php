@@ -9923,7 +9923,7 @@ if (!function_exists('_departmanAsistanNiyet')) {
             '/en çok|en cok|nereye harca|en fazla gider/u' => ['cevap', 'en_cok_gider'],
             '/gider ekle|harcama ekle|masraf ekle|gider gir/u' => ['eylem', 'gider_ekle'],
             '/gider|harcama|masraf|liste/u' => ['cevap', 'gider_liste'],
-        ];
+        ]);
         foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => '', 'kaynak' => 'kural'];
         // --- HAIKU (JSON niyet) ---
         $bugun = now()->toDateString();
@@ -9938,7 +9938,8 @@ if (!function_exists('_departmanAsistanNiyet')) {
                 . "YAZMA niyeti: gider_ekle (params: tutar[sayı], kategori[kira|fatura|malzeme|maas|vergi|diger], aciklama). "
                 . "Bugün {$bugun}. tip=eylem ise ozet'e net yaz. Emin değilsen tip=cevap intent=bilinmiyor. UYDURMA.";
         }
-        $ai = _patronAiCagir($sys, $metin, 600, $bp, $sid);
+        $sys .= " BAĞLAM: Önceki mesajları MUTLAKA dikkate al; kullanıcı bir turda eylem deyip (ör. 'gider ekle') sonra eksik bilgiyi (tutar/açıklama) verdiyse BİRLEŞTİR ve tamamla. AZ SORU sor, sadece zorunlu tek eksiği iste; ASLA 'daha spesifik ol' deme; anladığını göster, kullanıcının zamanını alma.";
+        $ai = _patronAiCagir($sys, $metin, 600, $bp, $sid, $gecmis);
         if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => '', 'kaynak' => 'kural'];
         $s = strpos($ai, '{'); $e = strrpos($ai, '}');
         if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
@@ -10073,7 +10074,8 @@ Route::post('/api/departman-asistan/sor', function (Request $r) {
     if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
     $sid = _webSubeId();
     $metin = trim((string) $r->input('metin'));
-    $n = _departmanAsistanNiyet($sid, $bp, $kod, $metin);
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _departmanAsistanNiyet($sid, $bp, $kod, $metin, $gecmis);
     if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI şu an kapalı ama temel sorulara yanıt verebilirim — yukarıdaki hızlı soruları dene.']);
     if ($n['tip'] === 'eylem') {
         $h = _departmanAsistanEylemHazirla($sid, $kod, $n['intent'], $n['params']);
