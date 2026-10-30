@@ -6053,7 +6053,9 @@ if (!function_exists('_waTelNorm')) {
 }
 if (!function_exists('_restoWaGonder')) {
     // Outbound: musteriye WA mesaji (whatsmeow bridge). Konfig yoksa / hata -> false (sessiz).
-    function _restoWaGonder($subeId, $tel, $mesaj)
+    // $amac: hangi hattan gidecek — 'musteri' (vars.) | 'satinalma' | 'yonetim' | 'genel'
+    // $personelId: belirli bir sorumlunun hattından gönder (müdür/departman). Hat yoksa müşteri hattına düşer.
+    function _restoWaGonder($subeId, $tel, $mesaj, $amac = 'musteri', $personelId = null)
     {
         // KONTÖR: kontörlü dönemde bakiye yoksa gönderme (ücretsiz/deneme döneminde her zaman geçer).
         if (!\App\Services\KontorServisi::yeterliMi($subeId)) return false;
@@ -6062,8 +6064,10 @@ if (!function_exists('_restoWaGonder')) {
         // Tam JID geldiyse (or. LID "<lid>@lid") dokunma; degilse numarayi normalize et
         $jid = (strpos((string) $tel, '@') !== false) ? (string) $tel : _waTelNorm($tel);
         if ($base === '' || $jid === '' || trim((string) $mesaj) === '') return false;
+        // Hangi hattan (bridge oturumu) gidecek — amaca/sorumluya göre. Hat yoksa legacy: oturum=subeId.
+        $sessionKey = function_exists('_waHatAnahtari') ? _waHatAnahtari($subeId, $amac, $personelId) : (int) $subeId;
         try {
-            $ch = curl_init($base . '/session/' . (int) $subeId . '/send');
+            $ch = curl_init($base . '/session/' . (int) $sessionKey . '/send');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'X-Service-Token: ' . $token],
@@ -6079,6 +6083,78 @@ if (!function_exists('_restoWaGonder')) {
             try { _waLog($subeId, $jid, (string) $mesaj, $ok ? 1 : 2, $ok ? null : ('http ' . $kod)); } catch (\Throwable $e) {} // istatistik logu
             return $ok;
         } catch (\Throwable $e) { return false; }
+    }
+}
+// ============ WHATSAPP HATLARI (çoklu numara: müşteri / satın alma / yönetim) ============
+// Her şubenin birden fazla WA hattı olur. Her hat = ayrı bridge oturumu (session_key).
+// Müşteri hattı legacy uyumlu: session_key = sube_id (mevcut bağlı cihaz dokunulmaz).
+if (!function_exists('_waHatEnsure')) {
+    function _waHatEnsure()
+    {
+        if (cache()->get('wa_hat_ensure_ok')) return;
+        if (!Schema::hasTable('wa_hatlar')) {
+            try { Schema::create('wa_hatlar', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('ad', 80);                         // "Müşteri Hattı", "Satın Alma", "Müdür Ahmet"
+                $t->string('amac', 16)->default('musteri');   // musteri | satinalma | yonetim | genel
+                $t->unsignedBigInteger('personel_id')->nullable(); // hattın sahibi (departman sorumlusu/müdür)
+                $t->unsignedBigInteger('session_key')->unique(); // bridge oturum anahtarı
+                $t->string('numara', 40)->nullable();         // bağlanınca bridge'den düşer (gösterim)
+                $t->tinyInteger('varsayilan')->default(0);    // o amaç için varsayılan hat
+                $t->tinyInteger('aktif')->default(1);
+                $t->string('durum', 16)->nullable();          // bekliyor | bagli
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('wa_hat_ensure_ok', 1, now()->addHours(6));
+    }
+}
+// Bir şube için müşteri varsayılan hattı yoksa oluştur (session_key = sube_id → legacy cihaz korunur)
+if (!function_exists('_waHatMusteriGaranti')) {
+    function _waHatMusteriGaranti($subeId)
+    {
+        _waHatEnsure();
+        try {
+            $var = DB::table('wa_hatlar')->where('sube_id', $subeId)->where('amac', 'musteri')->exists();
+            if (!$var) {
+                // session_key çakışmasın: müşteri = sube_id (küçük), yeni hatlar ≥100000
+                $cakisma = DB::table('wa_hatlar')->where('session_key', (int) $subeId)->exists();
+                if (!$cakisma) DB::table('wa_hatlar')->insert(['sube_id' => (int) $subeId, 'ad' => 'Müşteri Hattı', 'amac' => 'musteri', 'session_key' => (int) $subeId, 'varsayilan' => 1, 'aktif' => 1, 'durum' => 'bagli', 'created_at' => now(), 'updated_at' => now()]);
+            }
+        } catch (\Throwable $e) {}
+    }
+}
+// Yeni hat için benzersiz oturum anahtarı (≥100000 → hiçbir şube id ile çakışmaz)
+if (!function_exists('_waHatYeniAnahtar')) {
+    function _waHatYeniAnahtar()
+    {
+        _waHatEnsure();
+        try { $m = (int) DB::table('wa_hatlar')->max('session_key'); } catch (\Throwable $e) { $m = 0; }
+        return max(100000, $m + 1);
+    }
+}
+// Amaca/sorumluya göre gönderilecek hattın oturum anahtarını döndür. Hat yoksa legacy: sube_id.
+if (!function_exists('_waHatAnahtari')) {
+    function _waHatAnahtari($subeId, $amac = 'musteri', $personelId = null)
+    {
+        _waHatEnsure();
+        try {
+            // 1) Belirli sorumlunun hattı (müdür/departman)
+            if ($personelId) {
+                $k = DB::table('wa_hatlar')->where('sube_id', $subeId)->where('personel_id', (int) $personelId)->where('aktif', 1)->orderByDesc('varsayilan')->value('session_key');
+                if ($k) return (int) $k;
+            }
+            // 2) Amaç için varsayılan / herhangi aktif hat
+            $k = DB::table('wa_hatlar')->where('sube_id', $subeId)->where('amac', $amac)->where('aktif', 1)->orderByDesc('varsayilan')->orderBy('id')->value('session_key');
+            if ($k) return (int) $k;
+            // 3) Satın alma/yönetim hattı yoksa müşteri hattına düş (mesaj yine de gitsin)
+            if ($amac !== 'musteri') {
+                $k = DB::table('wa_hatlar')->where('sube_id', $subeId)->where('amac', 'musteri')->where('aktif', 1)->orderByDesc('varsayilan')->value('session_key');
+                if ($k) return (int) $k;
+            }
+        } catch (\Throwable $e) {}
+        return (int) $subeId; // legacy
     }
 }
 // WhatsApp mesaj logu (istatistik: başarılı/başarısız + günlük hacim grafiği)
@@ -6621,17 +6697,38 @@ Route::post('/api/wa/gelen', function (Request $r) {
         }
         return response()->json(['ok' => 1, 'tip' => 'insan_devraldi']);
     }
+    // Hat bağlandı → o hattın numarasını/durumunu kaydet (çoklu hat yönetim ekranında görünsün)
+    if (in_array($event, ['connected', 'session.connected', 'ready'])) {
+        $sk = (int) ($r->input('salonId') ?: $r->input('session') ?: 0);
+        $num = (string) ($r->input('number') ?: $r->input('me') ?: $r->input('phone') ?: $r->input('jid') ?: '');
+        if ($sk > 0) { try { _waHatEnsure(); $upd = ['durum' => 'bagli', 'updated_at' => now()]; if ($num !== '') $upd['numara'] = preg_replace('/@.*$/', '', $num); DB::table('wa_hatlar')->where('session_key', $sk)->update($upd); } catch (\Throwable $e) {} }
+        return response()->json(['ok' => 1, 'tip' => 'connected']);
+    }
     if ($event !== '' && $event !== 'message.received') {
         return response()->json(['ok' => 1, 'tip' => 'ignored', 'event' => $event]);
     }
-    // Oturum id = salonId (bridge alan adi) = bizim sube_id
-    $subeId = (int) ($r->input('salonId') ?: $r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
+    // Oturum id = salonId (bridge) → hangi HAT? Hat varsa gerçek şube + amaç ondan; yoksa legacy (salonId=sube_id).
+    $sessionKey = (int) ($r->input('salonId') ?: $r->input('sube_id') ?: $r->input('session') ?: DB::table('subeler')->min('id'));
+    _waHatEnsure();
+    $hat = null; try { $hat = DB::table('wa_hatlar')->where('session_key', $sessionKey)->first(); } catch (\Throwable $e) {}
+    $subeId = $hat ? (int) $hat->sube_id : $sessionKey;
+    $hatAmac = $hat->amac ?? 'musteri';
     $from = (string) ($r->input('from') ?: $r->input('tel') ?: $r->input('gonderen'));
     $fromJid = (string) $r->input('fromJid');           // cevap hedefi (LID ise "<lid>@lid")
     $yanitHedef = $fromJid !== '' ? $fromJid : $from;   // _restoWaGonder tam JID'i oldugu gibi yollar
     $text = trim((string) ($r->input('text') ?: $r->input('mesaj') ?: $r->input('body')));
     $s = DB::table('subeler')->find($subeId);
     if (!$s || $from === '') return response()->json(['ok' => 0], 200);
+    // OPERASYONEL HAT (satın alma / yönetim): müşteri sipariş botu ÇALIŞMAZ.
+    if ($hatAmac !== 'musteri') {
+        try { _waLog($subeId, $from, $text, 1, 'hat:' . $hatAmac, 'gelen'); } catch (\Throwable $e) {}
+        if ($hatAmac === 'satinalma' && $text !== '' && function_exists('_rfqTeklifIsle')) {
+            $n = 0;
+            try { $n = _rfqTeklifIsle($subeId, $text, 'whatsapp', 'wa-' . substr(md5($from . '|' . $text), 0, 16)); } catch (\Throwable $e) {}
+            if (!empty($n)) { try { _restoWaGonder($subeId, $yanitHedef, 'Teklifiniz alındı, teşekkür ederiz. 🙏', 'satinalma'); } catch (\Throwable $e) {} }
+        }
+        return response()->json(['ok' => 1, 'tip' => 'operasyonel', 'amac' => $hatAmac]);
+    }
     // İNSAN DEVRALMA GUARD: personel bu sohbeti elle devraldiysa AI sus.
     // Akilli geri-alma: personel 'wa_ai_sessizlik_esik_dk' dk (vars. 3) boyunca sessizse ve
     // musteri tekrar yaziyorsa AI otomatik devralir (personel 'AI'a geri ver' demeyi unutsa bile).
@@ -7051,6 +7148,107 @@ Route::get('/wa-yonetim', function () {
         'karsilama' => (string) resto_ayar_al('wa_karsilama', ''),
         'webhook' => url('/api/wa/gelen'),
     ]));
+});
+
+// ============ ÇOKLU WHATSAPP HATTI YÖNETİMİ (müşteri / satın alma / yönetim) ============
+if (!function_exists('_waHatYetkili')) {
+    function _waHatYetkili()
+    {
+        $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$bp) return null;
+        return in_array($bp->rol ?? '', ['sahip', 'mudur']) ? $bp : false;
+    }
+}
+Route::get('/wa-hatlar', function () {
+    $bp = _waHatYetkili();
+    if ($bp === null) return redirect('/pos-giris');
+    if ($bp === false) return redirect('/patron-ai')->with('hata', 'Yetkisiz (sadece sahip/müdür).');
+    $sid = _webSubeId();
+    _waHatMusteriGaranti($sid);
+    $hatlar = DB::table('wa_hatlar as h')->leftJoin('personeller as p', 'p.id', '=', 'h.personel_id')
+        ->where('h.sube_id', $sid)->orderByDesc('h.varsayilan')->orderBy('h.id')
+        ->get(['h.*', 'p.ad as sahip_ad']);
+    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
+    return _waNoCache(response()->view('wa_hatlar', [
+        'hatlar' => $hatlar, 'personeller' => $personeller,
+        'sidecarVar' => ((string) resto_ayar_al('wa_sidecar_url', '')) !== '',
+        'webhook' => url('/api/wa/gelen'),
+    ]));
+});
+Route::post('/wa-hatlar/ekle', function (Request $r) {
+    $bp = _waHatYetkili(); if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId(); _waHatEnsure();
+    $ad = trim((string) $r->input('ad'));
+    $amac = in_array($r->input('amac'), ['musteri', 'satinalma', 'yonetim', 'genel']) ? $r->input('amac') : 'genel';
+    $pid = (int) $r->input('personel_id') ?: null;
+    if ($ad === '') return back()->with('hata', 'Hat adı gir.');
+    $sk = _waHatYeniAnahtar();
+    try { DB::table('wa_hatlar')->insert(['sube_id' => $sid, 'ad' => mb_substr($ad, 0, 80), 'amac' => $amac, 'personel_id' => $pid, 'session_key' => $sk, 'varsayilan' => 0, 'aktif' => 1, 'durum' => 'bekliyor', 'created_at' => now(), 'updated_at' => now()]); }
+    catch (\Throwable $e) { return back()->with('hata', 'Eklenemedi.'); }
+    return back()->with('ok', '"' . $ad . '" hattı eklendi. Şimdi QR ile bağla.');
+});
+Route::post('/wa-hatlar/guncelle', function (Request $r) {
+    $bp = _waHatYetkili(); if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId(); _waHatEnsure();
+    $id = (int) $r->input('id');
+    $hat = DB::table('wa_hatlar')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$hat) return back()->with('hata', 'Hat bulunamadı.');
+    $upd = ['updated_at' => now()];
+    if ($r->filled('ad')) $upd['ad'] = mb_substr(trim((string) $r->input('ad')), 0, 80);
+    if (in_array($r->input('amac'), ['musteri', 'satinalma', 'yonetim', 'genel'])) $upd['amac'] = $r->input('amac');
+    if ($r->has('personel_id')) $upd['personel_id'] = (int) $r->input('personel_id') ?: null;
+    if ($r->has('aktif')) $upd['aktif'] = (int) $r->boolean('aktif');
+    if ($r->boolean('varsayilan')) {
+        $amac = $upd['amac'] ?? $hat->amac;
+        try { DB::table('wa_hatlar')->where('sube_id', $sid)->where('amac', $amac)->update(['varsayilan' => 0]); } catch (\Throwable $e) {}
+        $upd['varsayilan'] = 1;
+    }
+    try { DB::table('wa_hatlar')->where('id', $id)->update($upd); } catch (\Throwable $e) {}
+    return back()->with('ok', 'Hat güncellendi.');
+});
+Route::post('/wa-hatlar/sil', function (Request $r) {
+    $bp = _waHatYetkili(); if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId(); _waHatEnsure();
+    $hat = DB::table('wa_hatlar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
+    if (!$hat) return back()->with('hata', 'Hat bulunamadı.');
+    try { _waBridge('POST', '/session/' . (int) $hat->session_key . '/logout'); } catch (\Throwable $e) {}
+    try { DB::table('wa_hatlar')->where('id', $hat->id)->delete(); } catch (\Throwable $e) {}
+    return back()->with('ok', 'Hat silindi.');
+});
+// Hatta-özel bridge proxy: hat id → session_key → köprü (şubeye kilitli)
+if (!function_exists('_waHatSessionKey')) {
+    function _waHatSessionKey($r)
+    {
+        $sid = _webSubeId();
+        $hatId = (int) ($r->input('hat') ?: $r->query('hat'));
+        return (int) DB::table('wa_hatlar')->where('id', $hatId)->where('sube_id', $sid)->value('session_key');
+    }
+}
+Route::get('/api/wa-hat/durum', function (Request $r) {
+    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
+    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    return _waNoCache(response()->json(_waBridge('GET', '/session/' . $sk . '/status')));
+});
+Route::post('/api/wa-hat/baglan', function (Request $r) {
+    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
+    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/start')));
+});
+Route::get('/api/wa-hat/qr', function (Request $r) {
+    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
+    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    return _waNoCache(response()->json(_waBridge('GET', '/session/' . $sk . '/qr')));
+});
+Route::post('/api/wa-hat/cikis', function (Request $r) {
+    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
+    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    try { DB::table('wa_hatlar')->where('session_key', $sk)->update(['durum' => 'bekliyor', 'updated_at' => now()]); } catch (\Throwable $e) {}
+    return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/logout')));
+});
+Route::post('/api/wa-hat/pair', function (Request $r) {
+    if (!_waHatYetkili()) return response()->json(['ok' => false], 403);
+    $sk = _waHatSessionKey($r); if (!$sk) return response()->json(['ok' => false], 404);
+    return _waNoCache(response()->json(_waBridge('POST', '/session/' . $sk . '/pair-phone', ['phone' => (string) $r->input('phone')])));
 });
 
 // ===================== WhatsApp KONTÖR (kredi) — paket durum + talep + admin yükle =====================
@@ -7573,6 +7771,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
+            '/wa-hatlar' => 'gor_dashboard',        // Çoklu WhatsApp hattı yönetimi (route içinde ayrıca sahip/müdür kilidi)
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
@@ -12585,7 +12784,7 @@ if (!function_exists('_rfqSupMapGonder')) {
                 . "\n\n(İsterseniz bu mesaja yanıt olarak da yazabilirsiniz; lütfen " . $kod . " kodunu belirtin.) Teşekkürler.";
             $kanal = [];
             if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
-            if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
+            if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg, 'satinalma')) { $kanal[] = 'wa'; $waSay++; }
             DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
             $gonderilen++;
         }

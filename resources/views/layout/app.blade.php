@@ -205,6 +205,7 @@
         'Ayarlar & Entegrasyon' => [
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
+            ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],
             ['/bagli-cihazlar', 'devices_other', 'Bağlı Cihazlar', '#0EA5E9'],
             ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#14B8A6'],
             ['/isletme-konum', 'my_location', 'İşletme Konum', null],
