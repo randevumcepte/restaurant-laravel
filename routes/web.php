@@ -4507,6 +4507,72 @@ Route::post('/happy-hour/durum', function (Request $r) {
     return back()->with('ok', 'Güncellendi.');
 });
 
+// ============================================================================
+// FIX MENÜ / TABLDOT: sabit fiyatlı set menü (kurs grupları + ürünler). İftar/etkinlik/prix-fixe.
+// ============================================================================
+if (!function_exists('_fixMenuEnsure')) {
+    function _fixMenuEnsure()
+    {
+        if (cache()->get('fix_menu_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('fix_menu')) {
+                Schema::create('fix_menu', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('ad', 100); $t->decimal('fiyat', 12, 2)->default(0);
+                    $t->text('aciklama')->nullable(); $t->tinyInteger('aktif')->default(1);
+                    $t->timestamps();
+                });
+            }
+            if (!Schema::hasTable('fix_menu_kalem')) {
+                Schema::create('fix_menu_kalem', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('fix_menu_id')->index();
+                    $t->string('grup', 60)->nullable();  // "Ana Yemek", "Tatlı"...
+                    $t->unsignedBigInteger('urun_id')->nullable(); $t->string('urun_ad', 150)->nullable();
+                    $t->tinyInteger('zorunlu')->default(1);
+                    $t->timestamps();
+                });
+            }
+            cache()->put('fix_menu_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/fix-menu', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _fixMenuEnsure(); $sid = _webSubeId();
+    $menuler = DB::table('fix_menu')->where('sube_id', $sid)->orderByDesc('id')->get();
+    $kalemler = DB::table('fix_menu_kalem')->whereIn('fix_menu_id', $menuler->pluck('id'))->get()->groupBy('fix_menu_id');
+    $urunler = DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    return view('fix_menu', compact('menuler', 'kalemler', 'urunler'));
+});
+Route::post('/fix-menu/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _fixMenuEnsure(); $sid = _webSubeId();
+    $id = DB::table('fix_menu')->insertGetId(['sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Set Menü',
+        'fiyat' => (float) str_replace(',', '.', (string) $r->input('fiyat', 0)), 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
+        'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Set menü oluşturuldu. Şimdi ürün ekle.')->with('acik_menu', $id);
+});
+Route::post('/fix-menu/kalem-ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _fixMenuEnsure();
+    $uid = (int) $r->input('urun_id');
+    $uad = $uid ? DB::table('urunler')->where('id', $uid)->value('ad') : trim((string) $r->input('urun_ad'));
+    DB::table('fix_menu_kalem')->insert(['fix_menu_id' => (int) $r->input('fix_menu_id'), 'grup' => trim((string) $r->input('grup')) ?: null,
+        'urun_id' => $uid ?: null, 'urun_ad' => $uad ?: 'Ürün', 'zorunlu' => $r->input('zorunlu') ? 1 : 0, 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Ürün eklendi.')->with('acik_menu', (int) $r->input('fix_menu_id'));
+});
+Route::post('/fix-menu/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    $sid = _webSubeId();
+    if ($r->input('kalem_id')) { DB::table('fix_menu_kalem')->where('id', (int) $r->input('kalem_id'))->delete(); }
+    elseif ($r->input('menu_id')) { $mid = (int) $r->input('menu_id'); DB::table('fix_menu')->where('sube_id', $sid)->where('id', $mid)->delete(); DB::table('fix_menu_kalem')->where('fix_menu_id', $mid)->delete(); }
+    return back()->with('ok', 'Silindi.');
+});
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -7206,7 +7272,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
+            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
