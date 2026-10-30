@@ -4768,6 +4768,54 @@ Route::post('/demirbas/durum', function (Request $r) {
     return back()->with('ok', 'Guncellendi.');
 });
 
+// ============================================================================
+// PERSONEL YEMEGI (Tabldot dilimi): calisan ne yedi -> maliyet takibi. Aylik ozet.
+// ============================================================================
+if (!function_exists('_personelYemekEnsure')) {
+    function _personelYemekEnsure()
+    {
+        if (cache()->get('personel_yemek_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('personel_yemek')) {
+                Schema::create('personel_yemek', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->unsignedBigInteger('personel_id')->nullable();
+                    $t->date('tarih'); $t->string('aciklama', 200)->nullable(); $t->decimal('tutar', 12, 2)->default(0);
+                    $t->timestamps(); $t->index(['sube_id', 'tarih']);
+                });
+            }
+            cache()->put('personel_yemek_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/personel-yemek', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _personelYemekEnsure(); $sid = _webSubeId();
+    $ay = $r_ay = request('ay') ?: date('Y-m');
+    $liste = DB::table('personel_yemek')->where('sube_id', $sid)->whereBetween('tarih', [$ay . '-01', \Carbon\Carbon::parse($ay . '-01')->endOfMonth()->toDateString()])->orderByDesc('tarih')->orderByDesc('id')->limit(300)->get();
+    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
+    $persAd = $personeller->pluck('ad', 'id');
+    $ayToplam = $liste->sum('tutar');
+    $kisiOzet = $liste->groupBy('personel_id')->map(fn ($g) => ['adet' => $g->count(), 'tutar' => $g->sum('tutar')]);
+    return view('personel_yemek', compact('liste', 'personeller', 'persAd', 'ayToplam', 'kisiOzet', 'ay'));
+});
+Route::post('/personel-yemek/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _personelYemekEnsure(); $sid = _webSubeId();
+    DB::table('personel_yemek')->insert(['sube_id' => $sid, 'personel_id' => (int) $r->input('personel_id') ?: null,
+        'tarih' => $r->input('tarih') ?: today()->toDateString(), 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
+        'tutar' => (float) str_replace(',', '.', (string) $r->input('tutar', 0)), 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Personel yemegi kaydedildi.');
+});
+Route::post('/personel-yemek/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    DB::table('personel_yemek')->where('sube_id', _webSubeId())->where('id', (int) $r->input('id'))->delete();
+    return back()->with('ok', 'Silindi.');
+});
+
+
 
 
 
@@ -7473,7 +7521,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', '/demirbas' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }

@@ -199,6 +199,7 @@
             ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
             ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
             ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
+            ['/personel-yemek', 'lunch_dining', 'Personel Yemeği', '#F59E0B'],
         ],
         'Ayarlar & Entegrasyon' => [
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
