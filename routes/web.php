@@ -4815,6 +4815,61 @@ Route::post('/personel-yemek/sil', function (Request $r) {
     return back()->with('ok', 'Silindi.');
 });
 
+// ============================================================================
+// SOCIAL MEDIA (AI icerik): konu/urun/etkinlik -> AI caption+hashtag uret -> taslak/kopyala.
+// Paylasim (Instagram/Facebook) Meta Graph API gerektirir (musteri kurar); burada icerik uretimi+taslak.
+// ============================================================================
+if (!function_exists('_socialEnsure')) {
+    function _socialEnsure()
+    {
+        if (cache()->get('social_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('social_posts')) {
+                Schema::create('social_posts', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('platform', 20)->default('instagram'); $t->string('konu', 200)->nullable();
+                    $t->text('metin')->nullable(); $t->string('durum', 15)->default('taslak');
+                    $t->timestamps();
+                });
+            }
+            cache()->put('social_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/social-media', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
+    _socialEnsure(); $sid = _webSubeId();
+    $taslaklar = DB::table('social_posts')->where('sube_id', $sid)->orderByDesc('id')->limit(30)->get();
+    return view('social_media', compact('taslaklar'));
+});
+Route::post('/social-media/ai', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $sid = _webSubeId();
+    $konu = trim((string) $r->input('konu'));
+    $platform = (string) $r->input('platform', 'instagram');
+    $sube = DB::table('subeler')->find($sid); $subeAd = $sube->ad ?? 'Restoranimiz';
+    $sys = 'Sen bir restoranin sosyal medya uzmanisin. ' . ($platform === 'instagram' ? 'Instagram' : 'Facebook') . ' icin ETKILEYICI, kisa bir gonderi metni yaz: 2-4 cumle + 1-2 satir uygun hashtag (5-8 adet). Samimi, istah acici, emoji kullan (abartma). Restoran adini dogal kullan. SADECE gonderi metnini dondur.';
+    $user = 'Restoran: ' . $subeAd . '. Gonderi konusu: ' . ($konu !== '' ? $konu : 'genel bir davet/tanitim') . '.';
+    $metin = null;
+    try { if (function_exists('_patronAiCagir')) $metin = _patronAiCagir($sys, $user, 400, $bp, $sid); } catch (\Throwable $e) {}
+    if (!$metin) {
+        $metin = "✨ " . $subeAd . " sizi bekliyor! " . ($konu !== '' ? $konu . ' ' : '') . "Lezzet ve keyif bir arada 😋\n\n#" . preg_replace('/\s+/', '', $subeAd) . " #restoran #lezzet #yemek #foodie #nefis";
+    }
+    return response()->json(['ok' => 1, 'metin' => $metin]);
+});
+Route::post('/social-media/kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    _socialEnsure(); $sid = _webSubeId();
+    if ($r->input('sil')) { DB::table('social_posts')->where('sube_id', $sid)->where('id', (int) $r->input('sil'))->delete(); return back()->with('ok', 'Silindi.'); }
+    DB::table('social_posts')->insert(['sube_id' => $sid, 'platform' => (string) $r->input('platform', 'instagram'),
+        'konu' => trim((string) $r->input('konu')) ?: null, 'metin' => trim((string) $r->input('metin')) ?: null, 'durum' => 'taslak', 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Taslak kaydedildi.');
+});
+
+
 
 
 
@@ -7520,7 +7575,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
-            '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
+            '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
