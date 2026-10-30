@@ -153,15 +153,16 @@ async function birimDegis(sel){
 }
 function aiOner(){
   const g=aktifGun();
-  let dolan=0;
+  let dolan=0, ilk=null;
   document.querySelectorAll('#urunListe .adet').forEach(inp=>{
     const haftalik=+inp.dataset.haftalik||0;
-    let v=0;
-    if(g===7)v=haftalik; else if(g===1)v=Math.max(haftalik>0?1:0,Math.round(haftalik/7)); else v=Math.round(haftalik*30/7);
-    inp.value=v; satDolu(inp); if(v>0)dolan++;
+    if(haftalik<=0) return; // satış geçmişi yoksa DOKUNMA (elle gireni silme)
+    let v=(g===7)?haftalik:(g===1?Math.max(1,Math.round(haftalik/7)):Math.round(haftalik*30/7));
+    if(v>0){ inp.value=v; satDolu(inp); dolan++; if(!ilk)ilk=inp; }
   });
-  if(dolan>0) toast('✨ '+dolan+' ürüne geçmiş satıştan öneri dolduruldu — "Hesapla"ya bas');
-  else toast('⚠️ Son 30 günde bu ürünlerde satış geçmişi yok. Adetleri elle girin.',true);
+  if(dolan>0){ if(ilk)ilk.closest('.urun-sat').scrollIntoView({block:'center',behavior:'smooth'});
+    toast('✨ '+dolan+' ürüne geçmiş satıştan öneri dolduruldu — şimdi "Hesapla"ya bas'); }
+  else toast('⚠️ Son 30 günde satış geçmişi yok. Adetleri elle gir, sonra "Hesapla".',true);
 }
 function toast(msg,uyari){
   let t=document.getElementById('mrpToast');
