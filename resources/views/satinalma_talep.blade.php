@@ -413,6 +413,71 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 @section('content')
 <div id="sta">
 
+<style>
+/* ===== KPI kartları ===== */
+#sta .sta-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+#sta .kpi{display:flex;align-items:center;gap:14px;background:var(--card,#fff);border:1px solid var(--line,#eef1f6);border-radius:18px;padding:16px 18px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
+#sta .kpi .kic{width:52px;height:52px;border-radius:15px;display:flex;align-items:center;justify-content:center;flex:0 0 52px}
+#sta .kpi .kic .material-icons-outlined{font-size:26px;color:#fff}
+#sta .kpi .ksay{font-size:27px;font-weight:900;line-height:1;color:var(--ink,#1e293b)}
+#sta .kpi .keti{font-size:13px;color:var(--sub,#64748b);font-weight:600;margin-top:5px}
+#sta .kpi.mor .kic{background:linear-gradient(135deg,#7C3AED,#6D28D9)}
+#sta .kpi.yesil .kic{background:linear-gradient(135deg,#10B981,#059669)}
+#sta .kpi.amber .kic{background:linear-gradient(135deg,#F59E0B,#D97706)}
+#sta .kpi.mavi .kic{background:linear-gradient(135deg,#0EA5E9,#0284C7)}
+
+/* ===== Tablo ===== */
+#sta .sta-tablo{background:var(--card,#fff);border:1px solid var(--line,#eef1f6);border-radius:18px;box-shadow:0 2px 12px rgba(16,24,40,.05);overflow:hidden}
+#sta .st-head,#sta .st-row{display:grid;grid-template-columns:150px 1.7fr 110px 140px 1.3fr 120px;align-items:center;gap:14px;padding:14px 20px}
+#sta .st-head{background:var(--card2,#f8fafc);border-bottom:1px solid var(--line,#eef1f6);font-size:11.5px;font-weight:800;color:var(--sub2,#94a3b8);text-transform:uppercase;letter-spacing:.5px}
+#sta .st-row{border-bottom:1px solid var(--line,#f1f5f9);cursor:pointer;transition:background .12s}
+#sta .st-row:last-child{border-bottom:0}
+#sta .st-row:hover{background:color-mix(in srgb,var(--mor1,#7C3AED) 4%,transparent)}
+#sta .st-no{font-size:13.5px;font-weight:800;color:var(--ink,#1e293b)}
+#sta .st-tarih{font-size:11.5px;color:var(--sub2,#94a3b8);margin-top:2px}
+#sta .st-urun{display:flex;align-items:center;gap:12px;min-width:0}
+#sta .st-urun .uic{width:42px;height:42px;border-radius:12px;background:color-mix(in srgb,var(--mor1,#7C3AED) 10%,transparent);display:flex;align-items:center;justify-content:center;flex:0 0 42px}
+#sta .st-urun .uic .material-icons-outlined{font-size:21px;color:var(--mor1,#7C3AED)}
+#sta .st-urun .ubas{font-size:14px;font-weight:700;color:var(--ink,#1e293b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sta .st-urun .ualt{font-size:12px;color:var(--sub,#64748b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+#sta .st-tutar{font-size:15px;font-weight:800;color:var(--ink,#1e293b)}
+#sta .st-tutar.yok{font-size:12px;font-weight:600;color:var(--sub2,#94a3b8)}
+#sta .st-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:5px 12px;border-radius:20px}
+#sta .st-pill .dot{width:7px;height:7px;border-radius:50%}
+#sta .st-eden{display:flex;align-items:center;gap:10px;min-width:0}
+#sta .st-ava{width:36px;height:36px;border-radius:50%;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff}
+#sta .st-eden .ead{font-size:13px;font-weight:700;color:var(--ink,#1e293b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sta .st-eden .erol{font-size:11px;color:var(--sub2,#94a3b8)}
+#sta .st-islem{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+#sta .st-detay{border:1px solid var(--line,#e2e8f0);background:var(--card,#fff);color:var(--mor1,#7C3AED);border-radius:10px;padding:7px 15px;font-size:12.5px;font-weight:700;cursor:pointer}
+#sta .st-detay:hover{background:var(--mor1,#7C3AED);color:#fff;border-color:var(--mor1,#7C3AED)}
+#sta .st-row.islem .st-no::before{content:'●';color:#F59E0B;margin-right:5px;font-size:10px;animation:staPulse2 1.6s infinite}
+@keyframes staPulse2{50%{opacity:.3}}
+#sta .st-foot{display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-top:1px solid var(--line,#f1f5f9);font-size:12.5px;color:var(--sub,#64748b);font-weight:600}
+#sta .st-mobiletiket{display:none}
+
+/* ===== Responsive: tablo → kart ===== */
+@media(max-width:980px){
+  #sta .sta-kpi{grid-template-columns:repeat(2,1fr)}
+  #sta .st-head{display:none}
+  #sta .st-row{grid-template-columns:1fr;gap:12px;padding:16px;border-bottom:8px solid var(--card2,#f1f5f9)}
+  #sta .st-mobiletiket{display:block;font-size:10.5px;font-weight:800;color:var(--sub2,#94a3b8);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  #sta .st-urun{order:-1;padding-bottom:12px;border-bottom:1px solid var(--line,#f1f5f9)}
+  #sta .st-detay{width:100%;padding:11px}
+}
+@media(max-width:520px){ #sta .sta-kpi{grid-template-columns:1fr 1fr} #sta .kpi{padding:13px} #sta .kpi .ksay{font-size:22px} #sta .kpi .kic{width:44px;height:44px;flex:0 0 44px} }
+</style>
+
+@php
+  $kpiNo = fn($n) => number_format((int)$n, 0, ',', '.');
+@endphp
+<div class="sta-kpi">
+  <div class="kpi mor"><div class="kic"><span class="material-icons-outlined">description</span></div><div><div class="ksay">{{ $ozet->toplam }}</div><div class="keti">Toplam Talep</div></div></div>
+  <div class="kpi amber"><div class="kic"><span class="material-icons-outlined">hourglass_top</span></div><div><div class="ksay">{{ $ozet->beklemede }}</div><div class="keti">Beklemede</div></div></div>
+  <div class="kpi yesil"><div class="kic"><span class="material-icons-outlined">check_circle</span></div><div><div class="ksay">{{ $ozet->onaylandi }}</div><div class="keti">Onaylandı / Sipariş</div></div></div>
+  <div class="kpi mavi"><div class="kic"><span class="material-icons-outlined">task_alt</span></div><div><div class="ksay">{{ $ozet->tamamlanan }}</div><div class="keti">Tamamlandı</div></div></div>
+</div>
+
 {{-- ─── Filtre çubuğu: durum çipleri (sayılı) + arama ─── --}}
 <style>
 #sta .sta-filtre{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
@@ -464,47 +529,70 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 
 
 {{-- ─── Gelen kutusu listesi ─── --}}
-<div class="sta-liste" id="staListe">
-@forelse ($talepler as $talep)
+<div class="sta-tablo">
+  <div class="st-head">
+    <div>Talep No / Tarih</div>
+    <div>Departman / Ürünler</div>
+    <div>Tutar</div>
+    <div>Durum</div>
+    <div>Talep Eden</div>
+    <div style="text-align:right">İşlemler</div>
+  </div>
+  <div id="staListe">
+  @forelse ($talepler as $talep)
     @php
-        $renk = $durumRenk[$talep->durum] ?? '#64748b';
-        $metin = $durumMetin[$talep->durum] ?? $talep->durum;
-        $seritRenk = ($talep->aciliyet === 'acil') ? '#F43F5E' : ($durumRenk[$talep->durum] ?? '#4F46E5');
-        $islem = in_array($talep->durum, ['teklif', 'onayda']);
+      $renk = $durumRenk[$talep->durum] ?? '#64748b';
+      $metin = $durumMetin[$talep->durum] ?? $talep->durum;
+      $islem = in_array($talep->durum, ['teklif', 'onayda']);
+      $acil = $talep->aciliyet === 'acil';
+      $ad = $talep->isteyen_ad ?: '—';
+      $parts = preg_split('/\s+/', trim($ad));
+      $bas = mb_strtoupper(mb_substr($parts[0] ?? '-', 0, 1)) . (count($parts) > 1 ? mb_strtoupper(mb_substr(end($parts), 0, 1)) : '');
+      $avaPal = ['#7C3AED','#0EA5E9','#10B981','#F59E0B','#EC4899','#6366F1','#14B8A6'];
+      $avaRenk = $avaPal[abs(crc32($ad)) % count($avaPal)];
     @endphp
-    <div class="sta-kart {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.($talep->isteyen_ad ?? '')) }}" onclick="staDetayAc({{ $talep->id }})">
-        <div class="sta-serit" style="background:{{ $seritRenk }}"></div>
-        <div class="sta-bilgi">
-            <div class="sta-dept">
-                <span class="material-icons-outlined" style="font-size:17px;color:{{ $seritRenk }}">{{ $talep->aciliyet === 'acil' ? 'priority_high' : 'storefront' }}</span>
-                {{ $talep->departman }}
-                @if ($talep->aciliyet === 'acil')
-                    <span class="roz acil">ACİL</span>
-                @endif
-            </div>
-            <div class="sta-alt">
-                <span>{{ $talep->isteyen_ad }}</span>
-                &nbsp;·&nbsp;
-                <span>{{ \Carbon\Carbon::parse($talep->created_at)->diffForHumans() }}</span>
-            </div>
+    <div class="st-row {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.$ad.' '.$talep->kalem_ozet) }}" onclick="staDetayAc({{ $talep->id }})">
+      <div>
+        <span class="st-mobiletiket">Talep No</span>
+        <div>
+          <div class="st-no">#{{ $talep->id }} @if($acil)<span class="roz acil" style="margin-left:4px">ACİL</span>@endif</div>
+          <div class="st-tarih">{{ \Carbon\Carbon::parse($talep->created_at)->format('d.m.Y H:i') }}</div>
         </div>
-        <div class="sta-meta">
-            <span class="sta-durum-roz" style="background:{{ $renk }}">{{ $metin }}</span>
-            <span class="sta-kalem-cnt">
-                <span class="material-icons-outlined">format_list_bulleted</span>
-                {{ $talep->kalem_sayisi ?? 0 }} kalem
-            </span>
+      </div>
+      <div class="st-urun">
+        <div class="uic"><span class="material-icons-outlined">{{ $acil ? 'priority_high' : 'inventory_2' }}</span></div>
+        <div style="min-width:0">
+          <div class="ubas">{{ $talep->departman }}</div>
+          <div class="ualt">{{ $talep->kalem_ozet ?: ($talep->kalem_sayisi.' kalem') }}</div>
         </div>
-        <span class="material-icons-outlined" style="font-size:20px;color:var(--sub2);flex-shrink:0">chevron_right</span>
+      </div>
+      <div>
+        <span class="st-mobiletiket">Tutar</span>
+        @if($talep->tutar)<span class="st-tutar">{{ $kpiNo($talep->tutar) }} ₺</span>@else<span class="st-tutar yok">teklif bekleniyor</span>@endif
+      </div>
+      <div>
+        <span class="st-mobiletiket">Durum</span>
+        <span class="st-pill" style="background:color-mix(in srgb,{{ $renk }} 13%,transparent);color:{{ $renk }}"><span class="dot" style="background:{{ $renk }}"></span>{{ $metin }}</span>
+      </div>
+      <div class="st-eden">
+        <span class="st-mobiletiket">Talep Eden</span>
+        <span class="st-ava" style="background:{{ $avaRenk }}">{{ $bas }}</span>
+        <div style="min-width:0">
+          <div class="ead">{{ $ad }}</div>
+          <div class="erol">{{ $talep->departman }}</div>
+        </div>
+      </div>
+      <div class="st-islem">
+        <button class="st-detay" onclick="event.stopPropagation();staDetayAc({{ $talep->id }})">Detay</button>
+      </div>
     </div>
-@empty
-    <div class="sta-bos">
-        <span class="material-icons-outlined">assignment</span>
-        <p>Henüz talep yok.</p>
-    </div>
-@endforelse
+  @empty
+    <div class="sta-bos" style="padding:44px;text-align:center;color:var(--sub2,#94a3b8)"><span class="material-icons-outlined" style="font-size:40px;opacity:.4;display:block;margin-bottom:8px">assignment</span>Henüz talep yok.</div>
+  @endforelse
+  <div class="sta-filtre-bos" id="staFiltreBos">Bu filtreye uygun talep yok. <b>Tümü</b>'ne dönüp tekrar dene.</div>
+  </div>
+  <div class="st-foot"><span>Toplam <b>{{ $talepler->count() }}</b> kayıt</span><span>En yeni üstte</span></div>
 </div>
-<div class="sta-filtre-bos" id="staFiltreBos">Bu filtreye uygun talep yok. <b>Tümü</b>'ne dönüp tekrar dene.</div>
 
 </div>{{-- #sta --}}
 
@@ -1091,13 +1179,16 @@ window.staAnlasmaliDirekt = function() {
     }, 'var(--mor1)', 'Onaylı');
 };
 
-function staDetListeYenile(yeniDurum) {
-    const kart = document.querySelector(`#staListe .sta-kart[onclick*="(${aktifTalepId})"]`);
-    if (kart) {
-        const rz = kart.querySelector('.sta-durum-roz');
-        if (rz) { rz.textContent = durumMetinler[yeniDurum] || yeniDurum; rz.style.background = durumRenkler[yeniDurum] || '#64748b'; }
-    }
+function staRowDurumGuncelle(id, yeniDurum) {
+    const row = document.querySelector(`#staListe .st-row[onclick*="(${id})"]`);
+    if (!row) return;
+    const renk = durumRenkler[yeniDurum] || '#64748b';
+    const pill = row.querySelector('.st-pill');
+    if (pill) { pill.style.background = `color-mix(in srgb, ${renk} 13%, transparent)`; pill.style.color = renk; pill.innerHTML = `<span class="dot" style="background:${renk}"></span>${durumMetinler[yeniDurum] || yeniDurum}`; }
+    row.dataset.durum = yeniDurum;
+    row.classList.toggle('islem', ['teklif','onayda'].includes(yeniDurum));
 }
+function staDetListeYenile(yeniDurum) { staRowDurumGuncelle(aktifTalepId, yeniDurum); }
 
 window.staDetKapat = function() {
     document.getElementById('staDetModal').classList.remove('acik');
@@ -1118,11 +1209,7 @@ window.staDurumGuncelle = async function(yeniDurum) {
             roz.textContent = durumMetinler[yeniDurum] || yeniDurum;
             roz.style.background = durumRenkler[yeniDurum] || '#64748b';
             // Listede de güncelle
-            const kart = document.querySelector(`#staListe .sta-kart[onclick*="${aktifTalepId}"]`);
-            if (kart) {
-                const rz = kart.querySelector('.sta-durum-roz');
-                if (rz) { rz.textContent = durumMetinler[yeniDurum] || yeniDurum; rz.style.background = durumRenkler[yeniDurum] || '#64748b'; }
-            }
+            staRowDurumGuncelle(aktifTalepId, yeniDurum);
         } else {
             toast('⚠ ' + (res.mesaj || 'Hata'), '#F43F5E');
         }
@@ -1171,7 +1258,7 @@ window.staFiltreAra = function() { staFiltreUygula(); };
 window.staFiltreUygula = function() {
     const q = (document.getElementById('staAra')?.value || '').toLowerCase().trim();
     let gorunen = 0;
-    document.querySelectorAll('#staListe .sta-kart').forEach(k => {
+    document.querySelectorAll('#staListe .st-row').forEach(k => {
         const okD = !staAktifFiltre || k.dataset.durum === staAktifFiltre;
         const okA = !q || (k.dataset.ara || '').includes(q);
         const g = okD && okA; k.style.display = g ? '' : 'none'; if (g) gorunen++;

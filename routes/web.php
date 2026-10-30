@@ -21080,12 +21080,31 @@ Route::get('/satinalma-talep', function () {
     $q = DB::table('satinalma_talepleri')->where('sube_id', $sid);
     if (!$satinalmaci) $q->where('isteyen_id', $pp->id ?? 0);
     $talepler = $q->orderByDesc('created_at')->limit(200)
-        ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at'])
-        ->map(function ($t) { $t->kalem_sayisi = DB::table('talep_kalemleri')->where('talep_id', $t->id)->count(); return $t; });
+        ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at']);
+    // Kalem özeti + tahmini tutar (tek sorguda, N+1 yok)
+    $ids = $talepler->pluck('id')->all();
+    $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['id', 'talep_id', 'ad', 'miktar']) : collect();
+    $minFiyat = $kalemRows->count() ? DB::table('talep_teklifleri')->whereIn('talep_kalem_id', $kalemRows->pluck('id')->all())
+        ->selectRaw('talep_kalem_id, MIN(fiyat) mf')->groupBy('talep_kalem_id')->pluck('mf', 'talep_kalem_id') : collect();
+    $tutarMap = []; $ozetMap = [];
+    foreach ($kalemRows as $k) {
+        if (isset($minFiyat[$k->id])) $tutarMap[$k->talep_id] = ($tutarMap[$k->talep_id] ?? 0) + (float) $minFiyat[$k->id] * (float) $k->miktar;
+        $ozetMap[$k->talep_id][] = $k->ad;
+    }
+    $talepler = $talepler->map(function ($t) use ($tutarMap, $ozetMap) {
+        $adlar = $ozetMap[$t->id] ?? [];
+        $t->kalem_sayisi = count($adlar);
+        $t->kalem_ozet = implode(', ', array_slice($adlar, 0, 3)) . (count($adlar) > 3 ? ' +' . (count($adlar) - 3) : '');
+        $t->tutar = $tutarMap[$t->id] ?? null;
+        return $t;
+    });
     $ozet = (object) [
+        'toplam' => $talepler->count(),
+        'beklemede' => $talepler->whereIn('durum', ['yeni', 'teklif', 'onayda'])->count(),
+        'onaylandi' => $talepler->whereIn('durum', ['onaylandi', 'siparis'])->count(),
+        'tamamlanan' => $talepler->where('durum', 'tamamlandi')->count(),
         'yeni' => $talepler->where('durum', 'yeni')->count(),
         'onayda' => $talepler->whereIn('durum', ['teklif', 'onayda'])->count(),
-        'tamamlanan' => $talepler->where('durum', 'tamamlandi')->count(),
     ];
     $malzemeler = DB::table('malzemeler')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
         ->orderBy('malzemeler.ad')->get(['malzemeler.id', 'malzemeler.ad', 'birimler.kisaltma as birim_kisaltma']);
