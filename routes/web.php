@@ -14812,7 +14812,11 @@ Route::get('/tedarikci-detay', function (Request $r) {
                 ->get(['tm.id', 'tm.malzeme_id', 'tm.guncel_fiyat', 'tm.aktif', 'm.ad', 'm.temel_birim_id'])
                 ->map(function ($x) use ($birim2) { $x->birim = $birim2[$x->temel_birim_id] ?? ''; return $x; });
         }
-        if (Schema::hasTable('malzemeler')) $d['malzemeList'] = DB::table('malzemeler')->where('sube_id', $sid)->orderBy('ad')->get(['id', 'ad']);
+        if (Schema::hasTable('malzemeler')) {
+            $mq = DB::table('malzemeler')->orderBy('ad');
+            if (Schema::hasColumn('malzemeler', 'sube_id')) $mq->where('sube_id', $sid); // malzemeler çoğu kurulumda global (sube_id yok)
+            $d['malzemeList'] = $mq->get(['id', 'ad']);
+        }
     } catch (\Throwable $e) {}
     return view('tedarikci_detay', $d);
 });
