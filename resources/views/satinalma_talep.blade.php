@@ -1052,10 +1052,14 @@ window.staFiyatArastir = function() {
     if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', git, 'var(--mor1)', 'Evet, gönder');
     else git();
 };
-window.staPatronaGonder = async function() {
-    const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId });
-    if (res.ok) { toast('✓ Patrona gönderildi', '#10B981'); staDetListeYenile('onayda'); staDetayAc(aktifTalepId); }
-    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+window.staPatronaGonder = async function(kismi) {
+    const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId, kismi: kismi ? 1 : 0 });
+    if (res.ok) {
+        toast('✓ ' + (res.mesaj || 'Patrona gönderildi'), '#10B981');
+        staDetListeYenile(res.yeni_talep ? 'teklif' : 'onayda'); staDetayAc(aktifTalepId);
+    } else if (res.kismi_teklif) {
+        rkOnay('Sadece öneri verdiğin <b>' + res.onerili + ' kalemi</b> ŞİMDİ onaya gönderelim mi?<br><br>Kalan <b>' + res.bekleyen + ' kalem</b> ayrı bir talepte <b>teklif beklemeye devam eder</b> — beklemezsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
+    } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
 window.staOnayla = async function() {
     const res = await api('/satinalma-talep/onayla', { id: aktifTalepId });

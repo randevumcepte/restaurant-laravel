@@ -21265,11 +21265,32 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
     $id = (int) $r->input('id');
     $talep = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $p->sube_id)->first();
     if (!$talep) return response()->json(['ok' => false, 'mesaj' => 'Bulunamadı.']);
-    $eksik = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNull('onerilen_tedarikci_id')->count();
-    if ($eksik > 0) return response()->json(['ok' => false, 'mesaj' => $eksik . ' kalemde öneri (⭐) yok. Her kaleme bir tedarikçi öner.']);
-    DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onayda', 'updated_at' => now()]);
-    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($talep->sube_id, '📋 Onay bekleyen satın alma', $talep->departman . ' talebi onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['sahip', 'mudur']); } catch (\Throwable $e) {}
-    return response()->json(['ok' => true]);
+    $toplam = DB::table('talep_kalemleri')->where('talep_id', $id)->count();
+    $onerili = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNotNull('onerilen_tedarikci_id')->count();
+    if ($onerili === 0) return response()->json(['ok' => false, 'mesaj' => 'En az bir kaleme ⭐ ile tedarikçi öner (teklif gelen kaleme).']);
+    // TAM: tüm kalemlerde öneri var → talep komple onaya gider
+    if ($onerili >= $toplam) {
+        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onayda', 'updated_at' => now()]);
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($talep->sube_id, '📋 Onay bekleyen satın alma', $talep->departman . ' talebi onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $id], ['sahip', 'mudur']); } catch (\Throwable $e) {}
+        return response()->json(['ok' => true, 'mesaj' => 'Onaya gönderildi.']);
+    }
+    // KISMİ: bazı kalemlerde öneri yok. Onay almadan bölme.
+    $bekleyen = $toplam - $onerili;
+    if (!(int) $r->input('kismi')) {
+        return response()->json(['ok' => false, 'kismi_teklif' => true, 'onerili' => $onerili, 'bekleyen' => $bekleyen,
+            'mesaj' => $onerili . ' kalemde öneri var, ' . $bekleyen . ' kalemde teklif bekleniyor.']);
+    }
+    // KISMİ ONAY: öneri verilen kalemleri YENİ talebe (onayda) ayır; kalanlar bu talepte teklif beklemede kalır
+    $childId = (int) DB::table('satinalma_talepleri')->insertGetId([
+        'sube_id' => $talep->sube_id, 'departman' => $talep->departman, 'isteyen_id' => $talep->isteyen_id ?? null, 'isteyen_ad' => $talep->isteyen_ad ?? null,
+        'aciliyet' => $talep->aciliyet ?? 'normal', 'durum' => 'onayda',
+        'not' => 'Kısmi onay — Talep #' . $id . ' için gelen teklifler (' . $onerili . ' kalem).',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('talep_kalemleri')->where('talep_id', $id)->whereNotNull('onerilen_tedarikci_id')->update(['talep_id' => $childId, 'updated_at' => now()]);
+    DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'teklif', 'updated_at' => now()]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($talep->sube_id, '📋 Onay bekleyen satın alma', $talep->departman . ' talebinden ' . $onerili . ' kalem onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $childId], ['sahip', 'mudur']); } catch (\Throwable $e) {}
+    return response()->json(['ok' => true, 'yeni_talep' => $childId, 'mesaj' => $onerili . ' kalem onaya gönderildi (yeni talep #' . $childId . '). Kalan ' . $bekleyen . ' kalem teklif beklemeye devam ediyor.']);
 });
 // Patron/üst yönetim: kaleme tedarikçi seç (öneriyi onayla veya override)
 Route::post('/satinalma-talep/patron-sec', function (Request $r) {
