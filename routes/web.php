@@ -16727,13 +16727,24 @@ Route::post('/api/satinalma-asistan/eylem-oner', function (Request $r) {
 // ===== PAYLAŞIMLI AI ÇEKİRDEK MOTORU (tüm departman AI'ları kullanır) =====
 // Haiku çağrısı (ham) — metin döner veya '' (hata/boş)
 if (!function_exists('_aiHaikuCagir')) {
-    function _aiHaikuCagir($apiKey, $sys, $baglam, $soru, $model = 'claude-haiku-4-5-20251001', $maxTok = 500)
+    function _aiHaikuCagir($apiKey, $sys, $baglam, $soru, $model = 'claude-haiku-4-5-20251001', $maxTok = 500, $gecmis = [])
     {
         try {
+            // KONUŞMA GEÇMİŞİ -> messages (Anthropic: ilk 'user', roller alternatif). Son = veri+soru.
+            $msgs = [];
+            foreach ((array) $gecmis as $g) {
+                $rol = (($g['rol'] ?? 'user') === 'ai') ? 'assistant' : 'user';
+                $ic = trim((string) ($g['metin'] ?? ''));
+                if ($ic === '') continue;
+                if ($msgs && $msgs[count($msgs) - 1]['role'] === $rol) $msgs[count($msgs) - 1]['content'] .= "\n" . $ic;
+                else $msgs[] = ['role' => $rol, 'content' => mb_substr($ic, 0, 1000)];
+            }
+            while ($msgs && $msgs[0]['role'] !== 'user') array_shift($msgs);
+            if ($msgs && $msgs[count($msgs) - 1]['role'] === 'user') $msgs[] = ['role' => 'assistant', 'content' => '…'];
+            $msgs[] = ['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru];
             $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
                 ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $model, 'max_tokens' => $maxTok, 'system' => $sys,
-                    'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru]],
+                    'model' => $model, 'max_tokens' => $maxTok, 'system' => $sys, 'messages' => $msgs,
                 ]);
             if (!$resp->successful()) return '';
             return trim((string) ($resp->json('content.0.text') ?? ''));
@@ -16747,6 +16758,7 @@ if (!function_exists('_aiSohbetCekirdek')) {
     {
         $alan = $o['alan']; $sid = (int) $o['sube_id']; $soru = trim((string) $o['soru']);
         $baglam = $o['baglam'] ?? []; $kuralCevap = $o['kuralCevap'];
+        $gecmis = $o['gecmis'] ?? []; // KONUŞMA GEÇMİŞİ (bağlam) — varsa önbellek atlanır, Haiku'ya geçilir
         $apiKey = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$apiKey) return ['cevap' => $kuralCevap(), 'kaynak' => 'kural'];
         // Veri parmak izi: rakam/stok değişince anahtar değişir -> önbellek otomatik tazelenir (bayatlamaz)
@@ -16755,12 +16767,11 @@ if (!function_exists('_aiSohbetCekirdek')) {
         $onbKey = "resto_{$alan}_ai_cev:{$sid}:{$kova}:{$fp}";
         $gunKey = "resto_{$alan}_ai_gun:{$sid}:" . date('Y-m-d');
         $limit = (int) ($o['limit'] ?? config('services.anthropic.sohbet_gunluk_limit', 80));
-        $onbek = cache()->get($onbKey);
-        if ($onbek) return ['cevap' => $onbek, 'kaynak' => 'onbellek']; // aynı soru + veri değişmemiş -> BEDAVA
+        if (empty($gecmis)) { $onbek = cache()->get($onbKey); if ($onbek) return ['cevap' => $onbek, 'kaynak' => 'onbellek']; } // bağlamsızsa önbellek (BEDAVA)
         if ((int) cache()->get($gunKey, 0) < $limit) {
-            $c = _aiHaikuCagir($apiKey, $o['sys'], $baglam, $soru, $o['model'] ?? 'claude-haiku-4-5-20251001', $o['max_tokens'] ?? 500);
+            $c = _aiHaikuCagir($apiKey, $o['sys'], $baglam, $soru, $o['model'] ?? 'claude-haiku-4-5-20251001', $o['max_tokens'] ?? 500, $gecmis);
             if ($c !== '') {
-                cache()->put($onbKey, $c, now()->addHours(2));
+                if (empty($gecmis)) cache()->put($onbKey, $c, now()->addHours(2)); // bağlamlı cevapları önbelleğe yazma (diyalog dinamik)
                 cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->addHours(26));
                 return ['cevap' => $c, 'kaynak' => 'haiku'];
             }
@@ -16814,6 +16825,7 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
     if (!$bp) return response()->json(['ok' => 0, 'cevap' => 'AI Asistanı yetkiniz yok.'], 403);
     $sid = _webSubeId();
     $soru = trim((string) $r->input('soru'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
     // NIYET MOTORU: eylem komutu mu? (ör: "kritikleri siparişe çevir")
     $niyet = _satinalmaAsistanNiyet($sid, $bp, $soru);
@@ -16840,7 +16852,7 @@ Route::post('/satinalma-asistan/sor', function (Request $r) {
         // Paylaşımlı çekirdek: öğrenen önbellek (aynı soru+veri = BEDAVA) + günlük kota
         $cek = _aiSohbetCekirdek([
             'alan' => 'satinalma', 'sube_id' => $sid, 'soru' => $soru, 'baglam' => $baglam, 'sys' => $sys,
-            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam),
+            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam), 'gecmis' => $gecmis,
         ]);
         // PROAKTIF ONERI: AI cevabina otomatik "istersen senin icin yapabilirim" eklenir
         $eylemOneri = _satinalmaProaktifOner($sid, $bp, $soru);
@@ -17182,6 +17194,7 @@ Route::post('/api/patron/satinalma-asistan', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $soru = trim((string) $r->input('soru'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
     if ($soru === '') return response()->json(['ok' => 0, 'cevap' => 'Bir soru yaz.']);
     // Sohbet (selam/teşekkür/veda) -> rapor DÖKME, kısa cevap (bedava)
     if (function_exists('_satinalmaSohbetCevap')) { $sh = _satinalmaSohbetCevap($soru); if ($sh !== null) return response()->json(['ok' => 1, 'kaynak' => 'sohbet', 'cevap' => $sh]); }
@@ -17191,7 +17204,7 @@ Route::post('/api/patron/satinalma-asistan', function (Request $r) {
         // Paylaşımlı çekirdek: öğrenen önbellek (aynı soru+veri = BEDAVA) + günlük kota
         $cek = _aiSohbetCekirdek([
             'alan' => 'satinalma', 'sube_id' => (int) $p->sube_id, 'soru' => $soru, 'baglam' => $baglam, 'sys' => $sys,
-            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam),
+            'kuralCevap' => fn () => _satinalmaKuralCevap($soru, $baglam), 'gecmis' => $gecmis,
         ]);
         return response()->json(['ok' => 1, 'kaynak' => $cek['kaynak'], 'cevap' => $cek['cevap']]);
     } catch (\Throwable $e) {

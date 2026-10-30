@@ -476,12 +476,15 @@ async function saSor(metin){
   if(saTeklifAcik && /^(evet|evt|olur|aktar|tabii|tabi|tamam|he|hı|hi|ok|okey|peki|yes)\b/i.test(soru)){
     saBubble(soru,true); saBubble('Tamam, '+(SA_AD[saTeklifTip]||'rapor')+' indiriliyor… 📥',false); saIndir(saTeklifTip); saTeklifAcik=false; return;
   }
+  // KONUŞMA GEÇMİŞİ: yeni mesajdan ÖNCEki balonları topla (son 8) -> AI bağlamı hatırlasın
+  const gecmis=[];
+  document.querySelectorAll('#saChat .sa-msg').forEach(el=>{ const t=el.textContent.trim(); if(t) gecmis.push({rol: el.classList.contains('ben')?'user':'ai', metin:t}); });
   saBubble(soru,true);
   saBusy=true;
   document.getElementById('saGnd').disabled=true;
   const bekle=saYaziyor();
   try{
-    const r=await fetch('/satinalma-asistan/sor',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({soru})});
+    const r=await fetch('/satinalma-asistan/sor',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':SA_CSRF,'Accept':'application/json'},body:JSON.stringify({soru, gecmis:gecmis.slice(-8)})});
     const j=await r.json();
     bekle.remove();
     saBubble(j.cevap||'Cevap alınamadı.',false);
