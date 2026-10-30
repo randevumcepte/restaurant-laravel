@@ -350,6 +350,10 @@ body.koyu .sta-tek { background: #1b2235; }
 .sta-tek .tk-ucuz { font-size: 9.5px; font-weight: 800; color: var(--yesil,#10B981); background: color-mix(in srgb,var(--yesil) 14%,transparent); padding: 1px 5px; border-radius: 6px; }
 
 /* mini teklif ekleme formu */
+.sta-elle-ac { margin-top: 7px; background: transparent; border: 1px dashed var(--line,#cbd5e1); color: var(--sub,#64748b); border-radius: 9px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.sta-elle-ac:hover { color: var(--mor1,#7C3AED); border-color: var(--mor1,#7C3AED); }
+.sta-kalem-banner { background: color-mix(in srgb,#7C3AED 8%,transparent); border: 1px solid color-mix(in srgb,#7C3AED 25%,transparent); border-radius: 11px; padding: 10px 13px; font-size: 12.5px; color: var(--ink,#1e293b); line-height: 1.5; margin-bottom: 11px; }
+.sta-kalem-banner b { color: var(--mor1,#7C3AED); }
 .sta-tek-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .sta-tek-form select, .sta-tek-form input {
   padding: 7px 9px; border: 1px solid var(--line,#e2e8f0); border-radius: 9px;
@@ -896,6 +900,10 @@ function staKalemleriCiz(kalemler, durum) {
     const duzenle = ['yeni','teklif','onayda'].includes(durum);
     const patronSecebilir = patronMu && durum === 'onayda';
     let html = '';
+    if (duzenle && durum !== 'onayda') {
+        const _ts = kalemler.reduce((s,k)=>s+((k.teklifler||[]).length),0);
+        html += `<div class="sta-kalem-banner">💡 <b>Fiyatı sen girmezsin.</b> Aşağıda <b>"Fiyat Araştır"</b> ile tedarikçilere istek gider; onlar linkten kendi <b>fiyat + teslim tarihini</b> girer, teklifler buraya düşer.${_ts?'':' <br><span style="color:var(--sub)">Tedarikçiyle telefonda konuştuysan "✋ Elle teklif gir" ile kendin de ekleyebilirsin.</span>'}</div>`;
+    }
     kalemler.forEach(k => {
         const teklifler = k.teklifler || [];
         const enUcuz = teklifler.length ? Math.min(...teklifler.map(x=>parseFloat(x.fiyat)||Infinity)) : null;
@@ -934,7 +942,8 @@ function staKalemleriCiz(kalemler, durum) {
         }
         // teklif ekleme formu (satın almacı, düzenlenebilir durumda)
         if (duzenle) {
-            html += `<div class="sta-tek-form">
+            html += `<button type="button" class="sta-elle-ac" onclick="this.style.display='none';this.nextElementSibling.style.display='flex'">✋ Elle teklif gir (tedarikçiyle zaten konuştuysan)</button>
+              <div class="sta-tek-form" style="display:none">
                 <select class="tf-ted">${staTedDropdown()}</select>
                 <input class="tf-fiyat" type="number" step="0.01" min="0" placeholder="Fiyat ₺">
                 <input class="tf-gun" type="number" min="0" placeholder="gün">
