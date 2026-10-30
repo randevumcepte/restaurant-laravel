@@ -11561,6 +11561,12 @@ if (!function_exists('_patronAiBugununIsleri')) {
                     'baslik' => $c . ' işlem onayını bekliyor', 'aciklama' => 'İskonto / ikram / iptal / ödeme geri alma',
                     'aksiyon' => ['tip' => 'info']];
             }} catch (\Throwable $e) {}
+            try { if (Schema::hasTable('satinalma_talepleri')) {
+                $o = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count();
+                if ($o > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'fact_check', 'renk' => 'var(--amber)', 'oncelik' => 1,
+                    'baslik' => $o . ' satın alma onayınızı bekliyor', 'aciklama' => 'Satın almacı teklifleri gönderdi — tedarikçi seçip onayla',
+                    'aksiyon' => ['tip' => 'link', 'url' => '/satinalma-talep', 'lbl' => 'Onayla']];
+            }} catch (\Throwable $e) {}
             try { if (Schema::hasTable('ik_self_talep')) {
                 $c = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count();
                 if ($c > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'payments', 'renk' => 'var(--amber)', 'oncelik' => 2,
