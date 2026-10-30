@@ -139,6 +139,81 @@
   .pai-sonuc{font-size:13px;color:var(--ink);line-height:1.5;padding:12px 14px;border-radius:12px;background:var(--card2);margin-top:12px}
   .pai-sonuc.ok{border-left:3px solid #10B981;color:#047857}
   .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
+
+  /* ============ YENİ DASHBOARD (referans tasarım) ============ */
+  #pai{max-width:1240px}
+  .pai-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
+  .pai-hero-ic{width:56px;height:56px;border-radius:16px;flex:none;display:flex;align-items:center;justify-content:center;font-size:28px;background:linear-gradient(135deg,#FDBA74,#F59E0B);box-shadow:0 8px 20px rgba(245,158,11,.28)}
+  .pai-hero-ic.aksam{background:linear-gradient(135deg,#6366F1,#4F46E5);box-shadow:0 8px 20px rgba(79,70,229,.28)}
+  .pai-hero-selam{font-size:24px;font-weight:900;color:var(--ink);line-height:1.15;letter-spacing:-.4px}
+  .pai-hero-alt{font-size:13px;color:var(--sub);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pai-hero-sag{margin-left:auto;display:flex;align-items:center;gap:9px}
+
+  .pai-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}
+  .pai-k{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 17px;box-shadow:0 2px 10px rgba(16,24,40,.04);position:relative}
+  .pai-k .kic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin-bottom:11px}
+  .pai-k .kic .material-icons-outlined{font-size:23px}
+  .pai-k .kbuyuk{font-size:24px;font-weight:900;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums}
+  .pai-k .ketk{font-size:12.5px;color:var(--sub);font-weight:600;margin-top:5px}
+  .pai-k .kalt{font-size:11px;color:var(--sub2);margin-top:3px}
+  .pai-k .kdelta{position:absolute;top:16px;right:16px;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px}
+
+  .pai-mid{display:grid;grid-template-columns:1.75fr 1fr;gap:16px;margin-bottom:18px;align-items:start}
+  .pai-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px 20px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
+  .pai-card-head{display:flex;align-items:center;gap:9px;margin-bottom:15px}
+  .pai-card-head .material-icons-outlined{font-size:20px;color:var(--mor1)}
+  .pai-card-head .b{font-size:16px;font-weight:800;color:var(--ink)}
+  .pai-card-head .link{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+
+  .pai-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .pai-task{display:flex;gap:12px;align-items:flex-start;background:var(--card2);border:1px solid var(--line);border-radius:15px;padding:13px 14px}
+  .pai-task .tic{width:40px;height:40px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center}
+  .pai-task .tic .material-icons-outlined{font-size:20px}
+  .pai-task .trot{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:20px;margin-bottom:5px}
+  .pai-task .tbas{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
+  .pai-task .talt{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.4}
+  .pai-task .tbtn{margin-top:9px;display:inline-flex;align-items:center;gap:5px;border:0;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;background:var(--mor1);color:#fff;text-decoration:none}
+  .pai-task .tbtn.sade{background:var(--card);color:var(--sub);border:1px solid var(--line)}
+
+  .pai-aipanel{background:linear-gradient(160deg,color-mix(in srgb,var(--mor1) 7%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--mor1) 20%,var(--line));border-radius:20px;padding:18px 19px;box-shadow:0 2px 10px rgba(124,58,237,.06)}
+  .pai-aipanel .ust{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+  .pai-aipanel .rob{width:40px;height:40px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--mor1),var(--mavi));box-shadow:0 6px 16px rgba(124,58,237,.3)}
+  .pai-aipanel .rob .material-icons-outlined{color:#fff;font-size:22px}
+  .pai-aipanel .bas{font-size:15.5px;font-weight:800;color:var(--ink)}
+  .pai-aipanel .verdict{font-size:13px;line-height:1.6;color:var(--sub);white-space:pre-line;margin-bottom:15px}
+  .pai-aipanel .yapar-bas{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;color:var(--mor1);text-transform:uppercase;letter-spacing:.3px;margin-bottom:9px}
+  .pai-aiact{display:flex;flex-direction:column;gap:8px}
+  .pai-aiact a,.pai-aiact button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;text-decoration:none;transition:.15s;font-family:inherit}
+  .pai-aiact a:hover,.pai-aiact button:hover{border-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 5%,var(--card))}
+  .pai-aiact .aic{width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1)}
+  .pai-aiact .aic .material-icons-outlined{font-size:17px}
+  .pai-aiact .material-icons-outlined.ok{margin-left:auto;color:var(--sub2);font-size:18px}
+
+  .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:800;color:var(--ink);margin:4px 2px 13px}
+  .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
+  .pai-sec-bas .link{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+
+  /* Departman kartları (denetim fragment grid) */
+  .pai-dep-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;margin-bottom:18px}
+  .pai-dep{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 2px 10px rgba(16,24,40,.04)}
+  .pai-dep .dust{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .pai-dep .dic{width:36px;height:36px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center}
+  .pai-dep .dic .material-icons-outlined{font-size:19px}
+  .pai-dep .dad{font-size:13.5px;font-weight:800;color:var(--ink)}
+  .pai-dep .droz{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 8px;border-radius:20px;display:inline-block;margin-top:2px}
+  .pai-dep .doz{font-size:11.5px;color:var(--sub);line-height:1.45;min-height:32px;margin-bottom:10px}
+  .pai-dep .dbar{height:6px;border-radius:5px;background:var(--card2);overflow:hidden;margin-bottom:9px}
+  .pai-dep .dbar i{display:block;height:100%;border-radius:5px}
+  .pai-dep .dlink{font-size:11.5px;font-weight:700;color:var(--mor1);text-decoration:none}
+
+  /* Detaylı analiz grid */
+  #pai-analiz.pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+  #pai-analiz.pai-analiz-grid .pai-an{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:16px;padding:15px;margin:0}
+
+  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} .pai-dep-grid{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} #pai-analiz.pai-analiz-grid{grid-template-columns:1fr} }
+  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-dep-grid{grid-template-columns:1fr 1fr} .pai-hero-selam{font-size:20px} .pai-hero-sag{margin-left:0;width:100%} }
+  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} }
 </style>
 @endpush
 
@@ -173,19 +248,18 @@
     foreach (['risk', 'dikkat'] as $sev) { foreach ($analizL as $a) { if (($a['durum'] ?? '') === $sev) { $oncelik = $a; break 2; } } }
   @endphp
 
-  {{-- ============ ÜST BAR ============ --}}
-  <div class="pai-top">
-    <div class="pai-orb"><span class="material-icons-outlined">auto_awesome</span></div>
-    <div style="flex:1;min-width:170px">
-      <div class="pai-selam">{{ $selam }}{{ $adK ? ', '.$adK : '' }} 👋</div>
-      <div class="pai-alt">
-        <span>{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }}</span>
-        <span>·</span>
+  {{-- ============ HERO (selamlama) ============ --}}
+  <div class="pai-hero">
+    <div class="pai-hero-ic {{ $tip==='aksam'?'aksam':'' }}">{{ $tip==='aksam'?'🌙':'☀️' }}</div>
+    <div style="min-width:160px">
+      <div class="pai-hero-selam">{{ $selam }}{{ $adK ? ' '.$adK : '' }} 👋</div>
+      <div class="pai-hero-alt">
+        <span>{{ \Carbon\Carbon::now()->translatedFormat('l, d F') }}</span><span>·</span>
         <span>{{ $tip === 'aksam' ? 'akşam raporu' : 'sabah brifingi' }}</span>
         <span class="pai-badge" id="pai-kaynak">{!! $aiVar ? '✨ AI yazdı' : ($aiSoguk ? '⏳ AI hazırlanıyor' : '⚙️ kural motoru') !!}</span>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:9px">
+    <div class="pai-hero-sag">
       <div class="pai-seg">
         <a href="/patron-ai?tip=sabah{{ $demo?'&demo=1':'' }}" class="pai-tab {{ $tip==='sabah'?'aktif':'' }}">☀️ Sabah</a>
         <a href="/patron-ai?tip=aksam{{ $demo?'&demo=1':'' }}" class="pai-tab {{ $tip==='aksam'?'aktif':'' }}">🌙 Akşam</a>
@@ -205,98 +279,77 @@
   @if (!$brief)
     <div class="pai-blok" style="text-align:center;color:var(--sub);padding:34px">Bugün için henüz brifing üretilmedi. <a href="/patron-ai?force=1" class="pai-link">Şimdi üret →</a></div>
   @else
-  {{-- ============ BUGÜNÜN İŞLERİ — GM KOKPİTİ (SENKRON, ilk boyamada DOLU) ============ --}}
-  @php $islerL = $isler['isler'] ?? []; $bitenlerL = $isler['bitenler'] ?? []; @endphp
-  <div class="pai-cockpit">
-    <div class="pai-ck-head">
-      <span class="pai-ck-lbl"><span class="material-icons-outlined" style="font-size:16px">checklist</span> Bugünün İşleri</span>
-      @if (count($islerL))<span class="pai-ck-say">{{ count($islerL) }}</span>@endif
+  @php $islerL = $isler['isler'] ?? []; $bitenlerL = $isler['bitenler'] ?? []; $onayTop = (int)($onayOp ?? 0) + (int)($onaySa ?? 0); @endphp
+
+  {{-- ============ 5 KPI ============ --}}
+  <div class="pai-kpis">
+    <div class="pai-k">
+      @if (!empty($v['kiyas_etiket']) && $ciroY != 0)<span class="kdelta" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}">{{ $ciroY>0?'▲ +':'▼ ' }}{{ number_format(abs($ciroY),1,',','.') }}%</span>@endif
+      <div class="kic" style="background:color-mix(in srgb,{{ $ciroR }} 13%,transparent);color:{{ $ciroR }}"><span class="material-icons-outlined">payments</span></div>
+      <div class="kbuyuk">{{ $tl($v['dun_ciro'] ?? 0) }}</div>
+      <div class="ketk">{{ $tip==='aksam'?'Bugünkü ciro':'Dünkü ciro' }}</div>
+      @if (($v['dun_ciro'] ?? 0) == 0)<div class="kalt" style="color:var(--kirmizi)">veri kontrolü gerekli</div>@elseif (!empty($v['kisi_basi']))<div class="kalt">kişi başı {{ $tl($v['kisi_basi']) }}</div>@endif
     </div>
-    <div class="pai-ck-verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
-    @if (count($islerL))
-    <div class="pai-is-list">
-      @foreach ($islerL as $is)
-        @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; @endphp
-        <div class="pai-is">
-          <div class="pai-is-ic"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
-          <div style="flex:1;min-width:0">
-            <div class="pai-is-t">{{ $is['baslik'] ?? '' }}</div>
-            @if (!empty($is['grup']) || !empty($is['aciklama']))<div class="pai-is-a">{{ $is['grup'] ?? '' }}{{ (!empty($is['grup']) && !empty($is['aciklama']))?' · ':'' }}{{ $is['aciklama'] ?? '' }}</div>@endif
+    <div class="pai-k">
+      <div class="kic" style="background:color-mix(in srgb,{{ $kayipR }} 13%,transparent);color:{{ $kayipR }}"><span class="material-icons-outlined">delete_outline</span></div>
+      <div class="kbuyuk">{{ $tl($kayipTop) }}</div>
+      <div class="ketk">Kayıp / Zayiat</div>
+      <div class="kalt">{{ $tip==='aksam'?'(bugün)':'(dün)' }}</div>
+    </div>
+    <div class="pai-k">
+      <div class="kic" style="background:color-mix(in srgb,{{ $kritR }} 13%,transparent);color:{{ $kritR }}"><span class="material-icons-outlined">inventory_2</span></div>
+      <div class="kbuyuk" style="color:{{ $krit>0?'var(--kirmizi)':'var(--ink)' }}">{{ $krit }} <span style="font-size:13px;font-weight:700;color:var(--sub)">ürün</span></div>
+      <div class="ketk">Kritik stok</div>
+      <div class="kalt">{{ $krit>0 ? Illuminate\Support\Str::limit(implode(', ', array_slice($v['kritik'] ?? [], 0, 3)), 34) : 'sorun yok 👍' }}</div>
+    </div>
+    <div class="pai-k">
+      <div class="kic" style="background:color-mix(in srgb,var(--mavi) 13%,transparent);color:var(--mavi)"><span class="material-icons-outlined">receipt_long</span></div>
+      <div class="kbuyuk">{{ (int)($acikAdisyon ?? 0) }}</div>
+      <div class="ketk">Açık adisyon</div>
+      <div class="kalt">{{ ($acikAdisyon ?? 0)>0 ? 'incelenmesi gerekiyor' : 'hepsi kapalı' }}</div>
+    </div>
+    <div class="pai-k">
+      <div class="kic" style="background:color-mix(in srgb,var(--amber) 13%,transparent);color:var(--amber)"><span class="material-icons-outlined">fact_check</span></div>
+      <div class="kbuyuk">{{ $onayTop }} <span style="font-size:13px;font-weight:700;color:var(--sub)">işlem</span></div>
+      <div class="ketk">Onay bekleyen</div>
+      <div class="kalt">{{ (int)($onayOp ?? 0) }} operasyon + {{ (int)($onaySa ?? 0) }} satın alma</div>
+    </div>
+  </div>
+
+  {{-- ============ ORTA: Öncelikler (sol) + AI öneri (sağ) ============ --}}
+  <div class="pai-mid">
+    <div class="pai-card">
+      <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($islerL))<span class="pai-ck-say" style="background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1);border:0;margin:0">{{ count($islerL) }}</span>@endif<a href="/dashboard" class="link">Tümünü gör →</a></div>
+      @if (count($islerL))
+      <div class="pai-task-grid">
+        @foreach ($islerL as $is)
+          @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; $rk = $is['renk'] ?? 'var(--mor1)'; @endphp
+          <div class="pai-task">
+            <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
+            <div style="flex:1;min-width:0">
+              @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
+              <div class="tbas">{{ $is['baslik'] ?? '' }}</div>
+              @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
+              @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+              @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
+              @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
+            </div>
           </div>
-          @if (($ak['tip'] ?? '') === 'eylem')
-            <button class="pai-is-btn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
-          @elseif (($ak['tip'] ?? '') === 'link')
-            <a class="pai-is-btn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
-          @elseif (($ak['tip'] ?? '') === 'ajanda')
-            <button class="pai-is-btn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>
-          @endif
-        </div>
-      @endforeach
-    </div>
-    @else
-      <div class="pai-ck-bos">✅ Bekleyen iş yok — her şey yolunda görünüyor 👍</div>
-    @endif
-    @if (count($bitenlerL))
-    <div class="pai-ck-bitti">
-      <span style="font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:rgba(255,255,255,.75)">Bugün çözülenler:</span>
-      @foreach ($bitenlerL as $bt)<span class="pai-bitti-chip">✓ {{ $bt }}</span>@endforeach
-    </div>
-    @endif
-  </div>
-
-  {{-- ============ RAKAMLAR (KPI ızgara) ============ --}}
-  <div class="pai-kpi-grid">
-    {{-- CİRO --}}
-    <div class="pai-kpi" style="background:color-mix(in srgb,{{ $ciroR }} 7%,var(--card));border-color:color-mix(in srgb,{{ $ciroR }} 20%,var(--line))">
-      <div class="ic" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}"><span class="material-icons-outlined">payments</span></div>
-      @if (!empty($v['kiyas_etiket']) && $ciroY != 0)<span class="delta" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}">{{ $ciroY>0?'▲ +':'▼ ' }}{{ number_format($ciroY,1,',','.') }}%</span>@endif
-      <div class="buyuk">{{ $tl($v['dun_ciro'] ?? 0) }}</div>
-      <div class="etk">{{ $tip==='aksam'?'Bugünkü ciro':'Dünkü ciro' }}</div>
-    </div>
-
-    {{-- FOOD-COST --}}
-    <div class="b-fc pai-kpi" style="background:color-mix(in srgb,{{ $fcR }} 7%,var(--card));border-color:color-mix(in srgb,{{ $fcR }} 20%,var(--line))">
-      <div class="ic" style="background:color-mix(in srgb,{{ $fcR }} 15%,transparent);color:{{ $fcR }}"><span class="material-icons-outlined">restaurant</span></div>
-      <div class="buyuk">{{ $fc>0?'%'.number_format($fc,1,',','.'):'—' }}</div>
-      <div class="etk">Food-Cost</div>
-    </div>
-
-    {{-- MİSAFİR --}}
-    <div class="b-mis pai-kpi" style="background:color-mix(in srgb,var(--mor1) 7%,var(--card));border-color:color-mix(in srgb,var(--mor1) 20%,var(--line))">
-      <div class="ic" style="background:color-mix(in srgb,var(--mor1) 15%,transparent);color:var(--mor1)"><span class="material-icons-outlined">groups</span></div>
-      <div class="buyuk">{{ (int)($v['misafir'] ?? 0) }}</div>
-      <div class="etk">Misafir{{ !empty($v['kisi_basi'])?' · k.b. '.$tl($v['kisi_basi']):'' }}</div>
-    </div>
-
-    {{-- KAYIP --}}
-    <div class="b-kay pai-kpi" style="background:color-mix(in srgb,{{ $kayipR }} 7%,var(--card));border-color:color-mix(in srgb,{{ $kayipR }} 20%,var(--line))">
-      <div class="ic" style="background:color-mix(in srgb,{{ $kayipR }} 15%,transparent);color:{{ $kayipR }}"><span class="material-icons-outlined">trending_down</span></div>
-      <div class="buyuk">{{ $tl($kayipTop) }}</div>
-      <div class="etk">Kayıp / Zayiat</div>
-    </div>
-  </div>
-
-  {{-- KRİTİK + HAZIR EYLEMLER (geniş çift) --}}
-  <div class="pai-alt-grid">
-    {{-- KRİTİK STOK (geniş) --}}
-    <div class="pai-wide" style="background:color-mix(in srgb,{{ $kritR }} 8%,var(--card));border-color:color-mix(in srgb,{{ $kritR }} 22%,var(--line))">
-      <div class="ic" style="background:color-mix(in srgb,{{ $kritR }} 16%,transparent);color:{{ $kritR }}"><span class="material-icons-outlined">inventory_2</span></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:21px;font-weight:800;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums">{{ $krit }} <span style="font-size:13px;font-weight:700;color:var(--sub)">kritik stok</span></div>
-        <div style="font-size:11.5px;color:var(--sub);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $krit>0 ? implode(', ', array_slice($v['kritik'] ?? [], 0, 4)) : 'Sorun yok, mutfak rahat çalışır 👍' }}</div>
+        @endforeach
       </div>
-      @if ($krit>0)<button class="pai-chip" style="border-color:{{ $kritR }};color:{{ $kritR }}" onclick="paiEylemOner('kritik_siparis_olustur')">🛒 Siparişe çevir</button>@endif
+      @else<div style="color:var(--sub);padding:18px;text-align:center;font-size:13.5px">✅ Bekleyen iş yok — her şey yolunda 👍</div>@endif
+      @if (count($bitenlerL))<div style="margin-top:13px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"><span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--sub2)">Bugün çözülenler:</span>@foreach ($bitenlerL as $bt)<span class="pai-mini" style="color:var(--yesil)">✓ {{ $bt }}</span>@endforeach</div>@endif
     </div>
 
-    {{-- HAZIR EYLEMLER (geniş) --}}
-    <div class="b-act pai-wide" style="flex-direction:column;align-items:stretch;gap:9px">
-      <div style="font-size:11px;font-weight:800;color:var(--sub2);letter-spacing:.4px;text-transform:uppercase;display:flex;align-items:center;gap:6px"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">bolt</span> Hazır AI Eylemleri</div>
-      <div class="pai-chipler">
-        <button class="pai-chip" onclick="paiEylemOner('kritik_siparis_olustur')">🛒 Siparişe çevir</button>
-        <button class="pai-chip" onclick="paiEylemOner('tedarikci_hatirlat')">📞 Tedarikçi hatırlat</button>
-        <button class="pai-chip" onclick="paiEylemOner('eksik_bilgi_iste')">📝 Özlük bilgisi</button>
-        <button class="pai-chip" onclick="paiEylemOner('dogum_gunu_kutla')">🎂 Doğum günü</button>
-        <button class="pai-chip" onclick="paiEylemOner('gelmeyene_sor')">⏰ Gelmeyene sor</button>
+    <div class="pai-aipanel">
+      <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">Patron AI ne öneriyor?</div></div>
+      <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
+      <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px">auto_awesome</span> Senin için şunları yapabilirim</div>
+      <div class="pai-aiact">
+        <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla<span class="material-icons-outlined ok">chevron_right</span></button>
+        <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder<span class="material-icons-outlined ok">chevron_right</span></button>
+        <a href="/dashboard"><span class="aic"><span class="material-icons-outlined">receipt_long</span></span>Açık adisyonları listele<span class="material-icons-outlined ok">chevron_right</span></a>
+        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Onay bekleyen işlemleri aç<span class="material-icons-outlined ok">chevron_right</span></a>
       </div>
     </div>
   </div>
@@ -312,19 +365,19 @@
     </div>
   @endif
 
-  {{-- ============ DETAYLI ANALİZ ============ --}}
-  <div class="pai-bolum-bas"><span class="material-icons-outlined">insights</span> Detaylı Analiz</div>
-  <div id="pai-analiz">@include('patron_ai_analiz', ['analiz' => $analizL])</div>
-
-  {{-- ============ DEPARTMAN DENETİMİ (lazy) ============ --}}
+  {{-- ============ DEPARTMANLARIN DURUMU (lazy) ============ --}}
   @unless ($demo)
-  <div class="pai-bolum-bas"><span class="material-icons-outlined">apartment</span> Departman Denetimi</div>
+  <div class="pai-sec-bas"><span class="material-icons-outlined">apartment</span> Departmanların durumu <a href="/departman-rapor" class="link">Tüm departmanlar →</a></div>
   <div id="pai-denetim">
-    <div class="pai-blok">
-      @for ($i=0;$i<3;$i++)<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)"><div class="pai-sk" style="width:34px;height:34px;border-radius:10px"></div><div style="flex:1"><div class="pai-sk" style="width:40%;height:13px;margin-bottom:6px"></div><div class="pai-sk" style="width:70%;height:11px"></div></div><div class="pai-sk" style="width:54px;height:20px;border-radius:20px"></div></div>@endfor
+    <div class="pai-dep-grid">
+      @for ($i=0;$i<5;$i++)<div class="pai-dep"><div class="pai-sk" style="width:60%;height:14px;margin-bottom:11px;border-radius:7px"></div><div class="pai-sk" style="width:90%;height:22px;margin-bottom:11px;border-radius:7px"></div><div class="pai-sk" style="width:100%;height:6px;border-radius:5px"></div></div>@endfor
     </div>
   </div>
   @endunless
+
+  {{-- ============ DETAYLI AI ANALİZİ ============ --}}
+  <div class="pai-sec-bas"><span class="material-icons-outlined">insights</span> Detaylı AI analizi</div>
+  <div id="pai-analiz" class="pai-analiz-grid">@include('patron_ai_analiz', ['analiz' => $analizL])</div>
 
   {{-- ============ DÜNDEN DEVAM ============ --}}
   @php $sk = $sureklilik ?? ['acik'=>[],'kapanan'=>[]]; @endphp

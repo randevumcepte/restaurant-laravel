@@ -11798,7 +11798,8 @@ Route::get('/patron-ai', function () {
         ], 'bitenler' => ['2 mal kabulü tamamlandı', '1 konu çözüldü']];
         return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => 'sabah', 'demo' => true,
             'brief' => $b, 'tuketim' => $b['tuketim'], 'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'],
-            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false, 'isler' => $isler]);
+            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false, 'isler' => $isler,
+            'acikAdisyon' => 23, 'onayOp' => 2, 'onaySa' => 1]);
     }
     $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
     $analiz = []; $aiOzet = null; $aiVar = false; $aiSoguk = false; $isler = ['isler' => [], 'bitenler' => []];
@@ -11807,6 +11808,11 @@ Route::get('/patron-ai', function () {
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
     try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
     try { $isler = _patronAiBugununIsleri($sid, $bp); } catch (\Throwable $e) {}
+    // KPI ek: açık adisyon + onay bekleyen (operasyon + satın alma)
+    $paiAcik = 0; $paiOnayOp = 0; $paiOnaySa = 0;
+    try { $paiAcik = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->count(); } catch (\Throwable $e) {}
+    try { if (Schema::hasTable('onay_istekleri')) $paiOnayOp = (int) DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->count(); } catch (\Throwable $e) {}
+    try { if (Schema::hasTable('satinalma_talepleri')) $paiOnaySa = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count(); } catch (\Throwable $e) {}
     try { if ($brief) {
         // SADECE ÖNBELLEK: hazırsa tam AI, değilse kural (Haiku çağrısı sayfayı bekletmez; soğuksa JS ?frag=analiz ile tamamlar)
         $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, false, false, true);
@@ -11815,7 +11821,8 @@ Route::get('/patron-ai', function () {
     } } catch (\Throwable $e) {}
     return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
-        'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler]);
+        'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler,
+        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
