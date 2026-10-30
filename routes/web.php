@@ -14813,12 +14813,33 @@ Route::get('/tedarikci-detay', function (Request $r) {
                 ->map(function ($x) use ($birim2) { $x->birim = $birim2[$x->temel_birim_id] ?? ''; return $x; });
         }
         if (Schema::hasTable('malzemeler')) {
-            $mq = DB::table('malzemeler')->orderBy('ad');
-            if (Schema::hasColumn('malzemeler', 'sube_id')) $mq->where('sube_id', $sid); // malzemeler çoğu kurulumda global (sube_id yok)
-            $d['malzemeList'] = $mq->get(['id', 'ad']);
+            $hasKat = Schema::hasTable('malzeme_kategorileri');
+            $mq = DB::table('malzemeler as m')->orderBy('m.ad');
+            $cols = ['m.id', 'm.ad'];
+            if ($hasKat) { $mq->leftJoin('malzeme_kategorileri as k', 'k.id', '=', 'm.kategori_id'); $cols[] = 'k.ad as kategori'; }
+            if (Schema::hasColumn('malzemeler', 'sube_id')) $mq->where('m.sube_id', $sid); // malzemeler çoğu kurulumda global (sube_id yok)
+            $d['malzemeList'] = $mq->get($cols);
         }
     } catch (\Throwable $e) {}
     return view('tedarikci_detay', $d);
+});
+// Tedarikçiye TOPLU malzeme bağla (işaretle-topluca, fiyatsız)
+Route::post('/tedarikci-detay/malzeme-toplu-ekle', function (Request $r) {
+    $sid = _webSubeId();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $tid = (int) $r->input('tedarikci_id');
+    $ids = array_values(array_unique(array_filter(array_map('intval', (array) $r->input('malzeme_ids', [])))));
+    if (!$tid || !$ids) return redirect('/tedarikci-detay?id=' . $tid)->with('ted_hata', 'Malzeme seçilmedi.');
+    $say = 0;
+    try {
+        $birimMap = DB::table('malzemeler')->whereIn('id', $ids)->pluck('temel_birim_id', 'id');
+        $mevcut = DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->whereIn('malzeme_id', $ids)->pluck('malzeme_id')->map(fn ($x) => (int) $x)->all();
+        $rows = [];
+        foreach ($ids as $mid) { if (in_array($mid, $mevcut)) continue; $rows[] = ['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid, 'alis_birim_id' => $birimMap[$mid] ?? null, 'guncel_fiyat' => null, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]; $say++; }
+        if ($rows) DB::table('tedarikci_malzeme')->insert($rows);
+        if ($mevcut) DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->whereIn('malzeme_id', $mevcut)->update(['aktif' => 1, 'updated_at' => now()]);
+    } catch (\Throwable $e) { return redirect('/tedarikci-detay?id=' . $tid)->with('ted_hata', 'Eklenemedi.'); }
+    return redirect('/tedarikci-detay?id=' . $tid)->with('ted_ok', $say . ' malzeme bağlandı. Artık "Fiyat Araştır" bu tedarikçiye de gider.');
 });
 // Tedarikçiye malzeme bağla (RFQ kataloğu) — faturasız yeni tedarikçi için
 Route::post('/tedarikci-detay/malzeme-ekle', function (Request $r) {
