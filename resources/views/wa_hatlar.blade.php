@@ -193,16 +193,16 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 
 <script>
 let whHat=0, qrTimer=null, durumTimer=null;
-function $(s){return document.querySelector(s);}
+function waQ(s){return document.querySelector(s);}
 async function qrAc(id,ad){
-  whHat=id; $('#qrBaslik').textContent=ad+' — Bağla'; $('#pairKod').textContent=''; $('#pairNo').value='';
-  $('#qr').innerHTML=''; $('#qrDurum').textContent='QR hazırlanıyor…'; $('#qrModal').classList.add('ac');
+  whHat=id; waQ('#qrBaslik').textContent=ad+' — Bağla'; waQ('#pairKod').textContent=''; waQ('#pairNo').value='';
+  waQ('#qr').innerHTML=''; waQ('#qrDurum').textContent='QR hazırlanıyor…'; waQ('#qrModal').classList.add('ac');
   try{ const r=await fetch('/api/wa-hat/baglan',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:id})}); const j=await r.json(); const b=j.body||{}; if(b.qr) drawQR(b.qr);}catch(e){}
   if(qrTimer)clearInterval(qrTimer); if(durumTimer)clearInterval(durumTimer);
   setTimeout(qrGetir,900); qrTimer=setInterval(qrGetir,2500); durumTimer=setInterval(durumKontrol,3000);
 }
 function drawQR(text){
-  const box=$('#qr'); if(!text){box.innerHTML='';return;}
+  const box=waQ('#qr'); if(!text){box.innerHTML='';return;}
   if(String(text).startsWith('data:')){box.innerHTML='<img src="'+text+'">';return;}
   try{const qr=qrcode(0,'L');qr.addData(String(text));qr.make();box.innerHTML=qr.createImgTag(4,4);}catch(e){box.textContent='QR çizilemedi';}
 }
@@ -214,21 +214,21 @@ async function durumKontrol(){
     const phone=b.phone||b.number||b.jid||'';
     // GERÇEK giriş = connected VE numara geldi. whatsmeow 'connected' çoğu zaman sadece sokete bağlı demek.
     const bagli=(b.connected===true)&&!!phone;
-    if(bagli){ $('#qrDurum').textContent='✓ Bağlandı! ('+phone+')'; $('#qr').innerHTML='<div style="font-size:52px">🎉</div>'; if(qrTimer)clearInterval(qrTimer); if(durumTimer)clearInterval(durumTimer); setTimeout(()=>location.reload(),1400); }
-    else { $('#qrDurum').textContent = b.connected ? 'QR\'ı telefonunla tara…' : 'QR hazırlanıyor…'; }
+    if(bagli){ waQ('#qrDurum').textContent='✓ Bağlandı! ('+phone+')'; waQ('#qr').innerHTML='<div style="font-size:52px">🎉</div>'; if(qrTimer)clearInterval(qrTimer); if(durumTimer)clearInterval(durumTimer); setTimeout(()=>location.reload(),1400); }
+    else { waQ('#qrDurum').textContent = b.connected ? 'QR\'ı telefonunla tara…' : 'QR hazırlanıyor…'; }
   }catch(e){}
 }
 async function pairEt(){
-  const phone=$('#pairNo').value.trim(); if(!phone){alert('Numara gir');return;}
-  try{const r=await fetch('/api/wa-hat/pair',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:whHat,phone})});const j=await r.json();const b=j.body||{};$('#pairKod').textContent=b.code||b.pairCode||b.pairingCode||'Kod alınamadı';}catch(e){$('#pairKod').textContent='Hata';}
+  const phone=waQ('#pairNo').value.trim(); if(!phone){alert('Numara gir');return;}
+  try{const r=await fetch('/api/wa-hat/pair',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:whHat,phone})});const j=await r.json();const b=j.body||{};waQ('#pairKod').textContent=b.code||b.pairCode||b.pairingCode||'Kod alınamadı';}catch(e){waQ('#pairKod').textContent='Hata';}
 }
-function qrKapat(){$('#qrModal').classList.remove('ac');if(qrTimer)clearInterval(qrTimer);if(durumTimer)clearInterval(durumTimer);}
+function qrKapat(){waQ('#qrModal').classList.remove('ac');if(qrTimer)clearInterval(qrTimer);if(durumTimer)clearInterval(durumTimer);}
 async function baglantiKes(id){
   if(!confirm('Bu hattın WhatsApp bağlantısı kesilsin mi? Tekrar bağlamak için QR okutman gerekir.'))return;
   try{await fetch('/api/wa-hat/cikis',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},body:JSON.stringify({hat:id})});}catch(e){}
   location.reload();
 }
-$('#qrModal').addEventListener('click',function(e){if(e.target===this)qrKapat();});
+waQ('#qrModal').addEventListener('click',function(e){if(e.target===this)qrKapat();});
 // açılışta her hattın durumunu bir kez tazele
 @foreach($hatlar as $h)
 (async()=>{try{const r=await fetch('/api/wa-hat/durum?hat={{ $h->id }}&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};const bagli=(b.connected===true)&&!!(b.phone||b.number||b.jid);const rz=document.getElementById('drz{{ $h->id }}');if(rz){if(bagli){rz.textContent='● Bağlı';rz.className='durum-roz bagli';document.getElementById('hat{{ $h->id }}').classList.add('bagli');}else{rz.textContent='○ Bekliyor';rz.className='durum-roz bekliyor';document.getElementById('hat{{ $h->id }}').classList.remove('bagli');}}}catch(e){}})();
