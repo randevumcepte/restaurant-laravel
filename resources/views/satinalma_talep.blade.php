@@ -927,7 +927,8 @@ function staKalemleriCiz(kalemler, durum) {
                 const altlar = [];
                 if (tk.vade) altlar.push('Vade: '+escHtml(tk.vade));
                 if (tk.teslim_gun) altlar.push(tk.teslim_gun+' gün');
-                html += `<div class="${cls}" ${patronSecebilir?`onclick="staPatronSec(${k.id},${tk.tedarikci_id})"`:''} style="${patronSecebilir?'cursor:pointer':''}">
+                const kartTik = patronSecebilir ? `onclick="staPatronSec(${k.id},${tk.tedarikci_id})"` : (duzenle ? `onclick="staOneriSec(${k.id},${tk.tedarikci_id})"` : '');
+                html += `<div class="${cls}" ${kartTik} style="${(patronSecebilir||duzenle)?'cursor:pointer':''}">
                     ${yildiz}
                     <div class="tk-ted">
                       <div class="tk-ad">${escHtml(tk.tedarikci_ad)} ${ucuz?'<span class="tk-ucuz">EN UCUZ</span>':''} ${isSecili?'<span class="tk-ucuz" style="color:#10B981;background:color-mix(in srgb,#10B981 14%,transparent)">SEÇİLDİ</span>':''}</div>
@@ -1013,19 +1014,28 @@ window.staTeklifEkle = async function(kalemId, btn) {
     if (!tedId) { toast('⚠ Tedarikçi seç', '#F43F5E'); return; }
     if (!fiyat || parseFloat(fiyat) <= 0) { toast('⚠ Fiyat gir', '#F43F5E'); return; }
     const res = await api('/satinalma-talep/teklif-ekle', { talep_kalem_id: kalemId, tedarikci_id: tedId, fiyat, teslim_gun: gun||null, vade: vade||null });
-    if (res.ok) { toast('✓ Teklif eklendi', '#10B981'); staDetayAc(aktifTalepId); }
+    if (res.ok) { toast('✓ Teklif eklendi', '#10B981'); staDetayYenile(); }
     else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
 window.staTeklifSil = async function(teklifId) {
     const res = await api('/satinalma-talep/teklif-sil', { teklif_id: teklifId });
-    if (res.ok) { toast('Teklif silindi'); staDetayAc(aktifTalepId); }
+    if (res.ok) { toast('Teklif silindi'); staDetayYenile(); }
 };
 
-/* ─── ⭐ Öneri seç (satın almacı) ──────────────────────── */
+/* ─── Modal scroll yardımcıları (seçim yapınca üste zıplamasın) ── */
+function staScrollEl(){ return document.querySelector('#staDetModal .sta-modal'); }
+function staYerindeCiz(){ const sc=staScrollEl(); const y=sc?sc.scrollTop:0; staKalemleriCiz(staAktifKalemler, staAktifDurum); staAksiyonCiz(staAktifDurum); if(sc) sc.scrollTop=y; }
+async function staDetayYenile(){ const sc=staScrollEl(); const y=sc?sc.scrollTop:0; await staDetayAc(aktifTalepId); const s2=staScrollEl(); if(s2) s2.scrollTop=y; }
+
+/* ─── ⭐ Öneri seç (satın almacı) — karta tıkla, toggle, yerinde ── */
 window.staOneriSec = async function(kalemId, tedId) {
-    const res = await api('/satinalma-talep/oneri-kaydet', { talep_kalem_id: kalemId, onerilen_tedarikci_id: tedId });
-    if (res.ok) { toast('⭐ Önerin kaydedildi', '#F59E0B'); staDetayAc(aktifTalepId); }
-    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+    const k = staAktifKalemler.find(x => x.id == kalemId); if (!k) return;
+    const yeni = (k.onerilen_tedarikci_id == tedId) ? null : tedId; // aynı karta tekrar tıkla = öneriyi kaldır
+    k.onerilen_tedarikci_id = yeni;
+    staYerindeCiz(); // anında, scroll yerinde
+    const res = await api('/satinalma-talep/oneri-kaydet', { talep_kalem_id: kalemId, onerilen_tedarikci_id: yeni });
+    if (res.ok) { toast(yeni ? '⭐ Önerin kaydedildi' : 'Öneri kaldırıldı', '#F59E0B'); }
+    else { toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E'); staDetayYenile(); }
 };
 window.staGerekceKaydet = async function(kalemId, metin) {
     // mevcut öneriyi koru, sadece gerekçeyi güncelle
@@ -1036,9 +1046,13 @@ window.staGerekceKaydet = async function(kalemId, metin) {
 
 /* ─── Patron: tedarikçi seç (öneriyi onayla/override) ──── */
 window.staPatronSec = async function(kalemId, tedId) {
-    const res = await api('/satinalma-talep/patron-sec', { talep_kalem_id: kalemId, secilen_tedarikci_id: tedId });
-    if (res.ok) { toast('✓ Seçim kaydedildi', '#10B981'); staDetayAc(aktifTalepId); }
-    else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
+    const k = staAktifKalemler.find(x => x.id == kalemId); if (!k) return;
+    const yeni = (k.secilen_tedarikci_id == tedId) ? null : tedId;
+    k.secilen_tedarikci_id = yeni;
+    staYerindeCiz();
+    const res = await api('/satinalma-talep/patron-sec', { talep_kalem_id: kalemId, secilen_tedarikci_id: yeni });
+    if (res.ok) { toast(yeni ? '✓ Seçim kaydedildi' : 'Seçim kaldırıldı', '#10B981'); }
+    else { toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E'); staDetayYenile(); }
 };
 
 /* ─── Patrona gönder / onayla / PO ─────────────────────── */
@@ -1058,7 +1072,7 @@ window.staPatronaGonder = async function(kismi) {
         toast('✓ ' + (res.mesaj || 'Patrona gönderildi'), '#10B981');
         staDetListeYenile(res.yeni_talep ? 'teklif' : 'onayda'); staDetayAc(aktifTalepId);
     } else if (res.kismi_teklif) {
-        rkOnay('Sadece öneri verdiğin <b>' + res.onerili + ' kalemi</b> ŞİMDİ onaya gönderelim mi?<br><br>Kalan <b>' + res.bekleyen + ' kalem</b> ayrı bir talepte <b>teklif beklemeye devam eder</b> — beklemezsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
+        rkOnay('Sadece öneri verdiğin ' + res.onerili + ' kalemi ŞİMDİ onaya gönderelim mi? Kalan ' + res.bekleyen + ' kalem ayrı bir talepte teklif beklemeye devam eder — beklemezsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
     } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
 window.staOnayla = async function() {
