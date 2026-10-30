@@ -12548,19 +12548,41 @@ if (!function_exists('_rfqEnsure')) {
         cache()->put('rfq_ensure_ok', 1, now()->addHours(12));
     }
 }
+// RFQ portal kolonları: tedarikçinin linkle teklif vermesi için token + teslim + not
+if (!function_exists('_rfqPortalEnsure')) {
+    function _rfqPortalEnsure()
+    {
+        if (cache()->get('rfq_portal_ok')) return;
+        _rfqEnsure();
+        try {
+            if (Schema::hasTable('rfq_gonderim')) {
+                if (!Schema::hasColumn('rfq_gonderim', 'token')) Schema::table('rfq_gonderim', function ($t) { $t->string('token', 32)->nullable()->index(); });
+                if (!Schema::hasColumn('rfq_gonderim', 'teslim_tarihi')) Schema::table('rfq_gonderim', function ($t) { $t->date('teslim_tarihi')->nullable(); });
+                if (!Schema::hasColumn('rfq_gonderim', 'teklif_notu')) Schema::table('rfq_gonderim', function ($t) { $t->string('teklif_notu', 400)->nullable(); });
+                if (!Schema::hasColumn('rfq_gonderim', 'yanit_at')) Schema::table('rfq_gonderim', function ($t) { $t->timestamp('yanit_at')->nullable(); });
+            }
+        } catch (\Throwable $e) {}
+        cache()->put('rfq_portal_ok', 1, now()->addHours(6));
+    }
+}
 if (!function_exists('_rfqSupMapGonder')) {
     // supMap[tedarikci_id] = [kalemler] → her tedarikçiye RFQ-kod'lu fiyat isteği (mail + WhatsApp). ['gonderilen','mail','wa'] döner.
     function _rfqSupMapGonder($sid, $supMap, $talepId = 0, $depId = 0)
     {
+        _rfqPortalEnsure();
         $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
         $gonderilen = 0; $mailSay = 0; $waSay = 0;
         foreach ($supMap as $tid => $items) {
             $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
-            $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
+            $token = \Illuminate\Support\Str::random(28);
+            $rfqId = (int) DB::table('rfq_gonderim')->insertGetId(['sube_id' => $sid, 'talep_id' => $talepId ?: null, 'tedarikci_id' => $tid, 'kod' => '', 'token' => $token, 'kalemler_json' => json_encode($items, JSON_UNESCAPED_UNICODE), 'kanal' => '', 'durum' => 'gonderildi', 'created_at' => now(), 'updated_at' => now()]);
             $kod = 'RFQ-' . $rfqId;
+            $link = url('/teklif-ver/' . $token);
             $satir = '';
             foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
-            $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir . "\n\nLütfen yanıtınızda " . $kod . " kodunu belirtin. Teşekkürler.";
+            $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir
+                . "\n\n✅ Fiyat ve teslim tarihinizi tek ekrandan girip gönderin:\n" . $link
+                . "\n\n(İsterseniz bu mesaja yanıt olarak da yazabilirsiniz; lütfen " . $kod . " kodunu belirtin.) Teşekkürler.";
             $kanal = [];
             if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
             if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg)) { $kanal[] = 'wa'; $waSay++; }
@@ -12592,7 +12614,60 @@ Route::post('/fiyat-arastir', function (Request $r) {
     }
     if (!$supMap) return redirect($geri)->with('hata', 'Bu ürünlere bağlı tedarikçi yok (malzeme-tedarikçi kataloğu boş). Önce tedarikçilere ürün ekle.');
     $res = _rfqSupMapGonder($sid, $supMap, $talepId, $depId);
-    return redirect($geri)->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Gelen teklifler otomatik okunacak.');
+    return redirect($geri)->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Tedarikçiler linkten fiyat+teslim girecek, otomatik düşecek.');
+});
+// ───────── TEDARİKÇİ TEKLİF PORTALI (public, tokenli) ─────────
+// Tedarikçi mail/WhatsApp'taki linke tıklar → fiyat + teslim tarihi girer → gönderir.
+Route::get('/teklif-ver/{token}', function ($token) {
+    _rfqPortalEnsure();
+    $rfq = DB::table('rfq_gonderim')->where('token', $token)->first();
+    if (!$rfq) abort(404);
+    $ted = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->first();
+    $sube = DB::table('subeler')->where('id', $rfq->sube_id)->first();
+    $kalemler = json_decode($rfq->kalemler_json ?? '[]', true) ?: [];
+    $mevcut = [];
+    try { foreach (DB::table('rfq_teklif')->where('rfq_id', $rfq->id)->get() as $x) $mevcut[(int) $x->malzeme_id] = $x->fiyat; } catch (\Throwable $e) {}
+    return view('teklif_portal', compact('rfq', 'ted', 'sube', 'kalemler', 'mevcut'));
+});
+Route::post('/teklif-ver/{token}', function (Request $r, $token) {
+    _rfqPortalEnsure(); _rfqTeklifEnsure();
+    $rfq = DB::table('rfq_gonderim')->where('token', $token)->first();
+    if (!$rfq) abort(404);
+    $sid = (int) $rfq->sube_id;
+    $fiyatlar = (array) $r->input('fiyat', []);
+    $teslim = $r->input('teslim_tarihi');
+    $not = trim((string) $r->input('not', ''));
+    $vade = trim((string) $r->input('vade', ''));
+    $kalemler = json_decode($rfq->kalemler_json ?? '[]', true) ?: [];
+    $teslimGun = null;
+    if ($teslim) { try { $teslimGun = max(0, now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($teslim)->startOfDay(), false)); } catch (\Throwable $e) {} }
+    $say = 0;
+    foreach ($kalemler as $k) {
+        $mid = (int) ($k['malzeme_id'] ?? 0);
+        $f = (float) str_replace(',', '.', (string) ($fiyatlar[$mid] ?? ($fiyatlar[(string) $mid] ?? 0)));
+        if ($mid <= 0 || $f <= 0) continue;
+        try { DB::table('rfq_teklif')->where('rfq_id', $rfq->id)->where('malzeme_id', $mid)->where('kaynak', 'portal')->delete(); } catch (\Throwable $e) {}
+        try { DB::table('rfq_teklif')->insert(['sube_id' => $sid, 'rfq_id' => $rfq->id, 'tedarikci_id' => $rfq->tedarikci_id, 'malzeme_id' => $mid, 'urun_ad' => mb_substr($k['ad'] ?? '', 0, 160), 'fiyat' => $f, 'ham_metin' => mb_substr($not, 0, 500), 'kaynak' => 'portal', 'kaynak_ref' => 'portal-' . $rfq->id, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        // TALEP KÖPRÜSÜ → detay modalında teklif olarak görünür
+        if (!empty($rfq->talep_id) && Schema::hasTable('talep_teklifleri')) {
+            try {
+                $tk = DB::table('talep_kalemleri')->where('talep_id', $rfq->talep_id)->where('malzeme_id', $mid)->value('id');
+                if ($tk) {
+                    DB::table('talep_teklifleri')->where('talep_kalem_id', $tk)->where('tedarikci_id', $rfq->tedarikci_id)->delete();
+                    DB::table('talep_teklifleri')->insert(['talep_kalem_id' => $tk, 'tedarikci_id' => $rfq->tedarikci_id, 'fiyat' => $f, 'teslim_gun' => $teslimGun, 'vade' => $vade ? mb_substr($vade, 0, 80) : null, 'not' => 'Tedarikçi portalı' . ($teslim ? (' · teslim ' . $teslim) : ''), 'created_at' => now()]);
+                }
+            } catch (\Throwable $e) {}
+        }
+        $say++;
+    }
+    if ($say) {
+        try { DB::table('rfq_gonderim')->where('id', $rfq->id)->update(['durum' => 'teklif_geldi', 'teslim_tarihi' => $teslim ?: null, 'teklif_notu' => $not ?: null, 'yanit_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        if (!empty($rfq->talep_id)) { try { DB::table('satinalma_talepleri')->where('id', $rfq->talep_id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+        $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat girdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfq->id], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+    }
+    $rfq = DB::table('rfq_gonderim')->where('token', $token)->first();
+    return view('teklif_portal', ['rfq' => $rfq, 'ted' => DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->first(), 'sube' => DB::table('subeler')->where('id', $sid)->first(), 'kalemler' => $kalemler, 'mevcut' => [], 'gonderildi' => $say]);
 });
 // Fiyat Araştır — TEDARİKÇİ SEÇİMLİ (kritik ürünler + her ürünün tedarikçileri, işaretle-gönder)
 Route::get('/fiyat-arastir-sec', function () {

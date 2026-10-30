@@ -823,7 +823,7 @@ window.staDetayAc = async function(id) {
         const t = res.talep;
         const kalemler = res.kalemler || [];
 
-        document.getElementById('staDetDept').textContent = t.departman + ' Talebi';
+        document.getElementById('staDetDept').textContent = '#' + id + ' · ' + t.departman + ' Talebi';
         document.getElementById('staDetIsteyenAlt').textContent = (t.isteyen_ad || '') + '  ·  ' + staRelative(t.created_at);
 
         const acilRoz = document.getElementById('staDetAcilRoz');
@@ -960,14 +960,20 @@ function staKalemleriCiz(kalemler, durum) {
 /* ─── Aksiyon barı (durum + role göre) ─────────────────── */
 function staAksiyonCiz(durum) {
     const box = document.getElementById('staDetAksiyon');
+    const teklifSay = (staAktifKalemler||[]).reduce((s,k)=>s+((k.teklifler||[]).length),0);
     let html = '';
     if (['yeni','teklif','onayda'].includes(durum)) {
         // satın almacı: patrona gönder
-        const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Fiyat Araştır ile tüm tedarikçilere teklif iste (AI yanıtları buraya düşürür), ya da elle teklif gir → ⭐ ile öner → Patrona Gönder.';
+        const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Fiyat Araştır ile tüm tedarikçilere teklif iste → tedarikçi linkten fiyat+teslim girer → teklifler buraya düşer → ⭐ ile öner → Patrona Gönder.';
         html += `<div class="sta-aks-info">${notu}</div>`;
         if (durum !== 'onayda') {
             html += `<button class="sta-aks-btn" style="background:#7C3AED" onclick="staFiyatArastir()"><span class="material-icons-outlined">request_quote</span>Fiyat Araştır (tüm tedarikçilere)</button>`;
-            html += `<button class="sta-aks-btn" style="background:#F59E0B" onclick="staPatronaGonder()"><span class="material-icons-outlined">send</span>Patrona Gönder (Onaya)</button>`;
+            if (teklifSay > 0) {
+                html += `<button class="sta-aks-btn" style="background:#F59E0B" onclick="staPatronaGonder()"><span class="material-icons-outlined">send</span>Patrona Gönder (Onaya) · ${teklifSay} teklif</button>`;
+            } else {
+                html += `<button class="sta-aks-btn" style="background:#cbd5e1;color:#64748b;cursor:not-allowed" disabled title="Önce en az bir teklif gelmeli"><span class="material-icons-outlined">hourglass_empty</span>Patrona Gönder — teklif bekleniyor</button>`;
+                html += `<div class="sta-aks-info" style="font-size:11px;opacity:.8">⏳ Henüz teklif gelmedi. Tedarikçiler fiyatı girince (veya elle teklif eklersen) "Patrona Gönder" aktifleşir.</div>`;
+            }
         }
         // Anlaşmalı tedarikçiye ⭐ önerilen + fiyatı olan kalemler → patron onayı atlanır, direkt sipariş + tedarikçiye WhatsApp
         html += `<button class="sta-aks-btn" style="background:#0EA5E9" onclick="staAnlasmaliDirekt()"><span class="material-icons-outlined">bolt</span>Anlaşmalıdan Direkt Sipariş</button>`;
