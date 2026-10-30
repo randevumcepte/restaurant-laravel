@@ -47,7 +47,8 @@
   .sa-oneri-ikon .material-icons-outlined{font-size:19px}
   .sa-oneri-bas{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
   .sa-oneri-alt{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.4}
-  #asChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 200px}
+  #asChat{display:flex;flex-direction:column;gap:12px;min-height:60px;padding:4px 2px 180px}
+  #asChat > *{scroll-margin-bottom:200px}
   .sa-msg{max-width:88%;padding:12px 15px;border-radius:16px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-wrap:break-word;animation:saIn .25s ease-out}
   @keyframes saIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   .sa-msg.ben{align-self:flex-end;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;border-bottom-right-radius:6px;box-shadow:0 4px 14px -4px rgba(124,58,237,.4)}
