@@ -170,11 +170,15 @@ async function asSor(metin){
   const inp=document.getElementById('asInput');
   const soru=(metin||inp.value||'').trim();
   if(!soru) return;
-  inp.value=''; asHeroGizle(); asBubble(soru,true);
+  inp.value=''; asHeroGizle();
+  // KONUŞMA GEÇMİŞİ: yeni mesajdan ÖNCEki balonları topla (son 8) -> AI bağlamı hatırlasın
+  const gecmis=[];
+  document.querySelectorAll('#asChat .sa-msg').forEach(el=>{ const t=el.textContent.trim(); if(t) gecmis.push({rol: el.classList.contains('ben')?'user':'ai', metin:t}); });
+  asBubble(soru,true);
   asBusy=true; document.getElementById('asGnd').disabled=true;
   const bekle=asYaziyor();
   try{
-    const body=Object.assign({}, AS_EK, {metin:soru});
+    const body=Object.assign({}, AS_EK, {metin:soru, gecmis:gecmis.slice(-8)});
     const r=await fetch(AS_SOR,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':AS_CSRF,'Accept':'application/json'},body:JSON.stringify(body)});
     const j=await r.json();
     bekle.remove();
