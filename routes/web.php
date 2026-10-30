@@ -14804,8 +14804,39 @@ Route::get('/tedarikci-detay', function (Request $r) {
             }
         }
         $d['ekstre'] = $ek->sortByDesc('tarih')->values();
+        // RFQ KATALOĞU: elle bağlı malzemeler (tedarikci_malzeme) — "Fiyat Araştır" bunu kullanır
+        if (Schema::hasTable('tedarikci_malzeme')) {
+            $birim2 = DB::table('birimler')->pluck('kisaltma', 'id');
+            $d['saglanan'] = DB::table('tedarikci_malzeme as tm')->join('malzemeler as m', 'm.id', '=', 'tm.malzeme_id')
+                ->where('tm.tedarikci_id', $id)->where('tm.sube_id', $sid)->orderBy('m.ad')
+                ->get(['tm.id', 'tm.malzeme_id', 'tm.guncel_fiyat', 'tm.aktif', 'm.ad', 'm.temel_birim_id'])
+                ->map(function ($x) use ($birim2) { $x->birim = $birim2[$x->temel_birim_id] ?? ''; return $x; });
+        }
+        if (Schema::hasTable('malzemeler')) $d['malzemeList'] = DB::table('malzemeler')->where('sube_id', $sid)->orderBy('ad')->get(['id', 'ad']);
     } catch (\Throwable $e) {}
     return view('tedarikci_detay', $d);
+});
+// Tedarikçiye malzeme bağla (RFQ kataloğu) — faturasız yeni tedarikçi için
+Route::post('/tedarikci-detay/malzeme-ekle', function (Request $r) {
+    $sid = _webSubeId();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $tid = (int) $r->input('tedarikci_id'); $mid = (int) $r->input('malzeme_id');
+    $fiyat = (float) str_replace(',', '.', (string) $r->input('fiyat', 0));
+    if (!$tid || !$mid) return redirect('/tedarikci-detay?id=' . $tid)->with('ted_hata', 'Malzeme seç.');
+    try {
+        $mz = DB::table('malzemeler')->where('id', $mid)->first(['temel_birim_id']);
+        if (DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->exists()) {
+            DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->update(['aktif' => 1, 'guncel_fiyat' => $fiyat > 0 ? $fiyat : DB::raw('guncel_fiyat'), 'updated_at' => now()]);
+            return redirect('/tedarikci-detay?id=' . $tid)->with('ted_ok', 'Zaten bağlıydı — güncellendi.');
+        }
+        DB::table('tedarikci_malzeme')->insert(['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid, 'alis_birim_id' => $mz->temel_birim_id ?? null, 'guncel_fiyat' => $fiyat > 0 ? $fiyat : null, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        return redirect('/tedarikci-detay?id=' . $tid)->with('ted_ok', 'Malzeme bağlandı. Artık "Fiyat Araştır" bu tedarikçiye de gider.');
+    } catch (\Throwable $e) { return redirect('/tedarikci-detay?id=' . $tid)->with('ted_hata', 'Eklenemedi.'); }
+});
+Route::post('/tedarikci-detay/malzeme-sil', function (Request $r) {
+    $sid = _webSubeId(); $tid = (int) $r->input('tedarikci_id'); $rowId = (int) $r->input('id');
+    try { DB::table('tedarikci_malzeme')->where('id', $rowId)->where('tedarikci_id', $tid)->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/tedarikci-detay?id=' . $tid)->with('ted_ok', 'Malzeme bağlantısı kaldırıldı.');
 });
 Route::post('/tedarikci-detay/odeme', function (Request $r) {
     $sid = _webSubeId();

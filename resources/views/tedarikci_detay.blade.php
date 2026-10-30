@@ -9,6 +9,8 @@
   $ted = $ted ?? null;
   $katalog = $katalog ?? collect();
   $ekstre = $ekstre ?? collect();
+  $saglanan = $saglanan ?? collect();
+  $malzemeList = $malzemeList ?? collect();
   $borc = (float) ($borc ?? 0); $odeme = (float) ($odeme ?? 0); $bakiye = (float) ($bakiye ?? 0);
   $tl = fn($v) => number_format(round((float) $v), 0, ',', '.') . '₺';
   $tl2 = fn($v) => number_format((float) $v, 2, ',', '.') . '₺';
@@ -87,6 +89,45 @@
     </table>
   </div>
 @endif
+
+{{-- SAĞLADIĞI MALZEMELER (RFQ KATALOĞU) --}}
+<div class="rk-bolum" style="margin-top:22px;justify-content:space-between">
+  <div style="display:flex;align-items:center;gap:8px"><span class="cubuk" style="background:#7C3AED"></span><span class="b">Sağladığı Malzemeler <span class="rk-sub2" style="font-weight:600;font-size:12px">(Fiyat Araştır için)</span></span>
+    <span class="rk-rozet" style="color:#7C3AED;background:color-mix(in srgb,#7C3AED 13%,transparent);border-color:color-mix(in srgb,#7C3AED 40%,transparent)">{{ $saglanan->count() }}</span></div>
+</div>
+<div class="rk-card" style="padding:15px">
+  <div class="rk-sub" style="font-size:12.5px;line-height:1.55;margin-bottom:12px">
+    Bu tedarikçinin <b>hangi malzemeleri sattığını</b> buradan işaretle. <b>"Fiyat Araştır"</b> sadece burada bağlı tedarikçilere teklif isteği gönderir. (Fatura girdikçe bu liste otomatik da büyür.) Fiyat opsiyonel — biliyorsan gir, yoksa boş bırak; tedarikçi kendi girecek.
+  </div>
+  <form method="POST" action="/tedarikci-detay/malzeme-ekle" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+    @csrf<input type="hidden" name="tedarikci_id" value="{{ $ted->id ?? '' }}">
+    <div style="flex:1;min-width:180px">
+      <label style="font-size:11px;font-weight:700;color:var(--sub);display:block;margin-bottom:4px">Malzeme</label>
+      <select name="malzeme_id" required style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:13.5px">
+        <option value="">— malzeme seç —</option>
+        @foreach ($malzemeList as $m)<option value="{{ $m->id }}">{{ $m->ad }}</option>@endforeach
+      </select>
+    </div>
+    <div style="flex:0 0 130px">
+      <label style="font-size:11px;font-weight:700;color:var(--sub);display:block;margin-bottom:4px">Fiyat ₺ (ops.)</label>
+      <input type="number" step="0.01" min="0" name="fiyat" placeholder="boş bırak" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:13.5px">
+    </div>
+    <button type="submit" class="rk-btn" style="background:#7C3AED;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">+ Bağla</button>
+  </form>
+  @if ($saglanan->isEmpty())
+    <div class="rk-sub2" style="text-align:center;padding:14px;font-size:12.5px">Henüz bağlı malzeme yok. Yukarıdan ekle ki Fiyat Araştır bu tedarikçiye teklif isteyebilsin.</div>
+  @else
+    <div style="display:flex;flex-direction:column;gap:7px">
+      @foreach ($saglanan as $s)
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px">
+          <span style="flex:1;font-weight:600;font-size:13.5px">{{ $s->ad }} <span class="rk-sub2" style="font-size:11px">/ {{ $s->birim }}</span></span>
+          @if ($s->guncel_fiyat)<span class="rk-sub" style="font-size:12.5px;font-weight:700">{{ number_format((float)$s->guncel_fiyat,2,',','.') }} ₺</span>@else<span class="rk-sub2" style="font-size:11.5px">fiyat girilmedi</span>@endif
+          <form method="POST" action="/tedarikci-detay/malzeme-sil" style="margin:0" onsubmit="return confirm('Bağlantı kaldırılsın mı?')">@csrf<input type="hidden" name="tedarikci_id" value="{{ $ted->id ?? '' }}"><input type="hidden" name="id" value="{{ $s->id }}"><button type="submit" style="background:transparent;border:1px solid color-mix(in srgb,#F43F5E 40%,transparent);color:#F43F5E;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer">Kaldır</button></form>
+        </div>
+      @endforeach
+    </div>
+  @endif
+</div>
 
 {{-- EKSTRE --}}
 <div class="rk-bolum" style="margin-top:22px"><span class="cubuk" style="background:var(--mor1)"></span><span class="b">Cari Ekstre</span>
