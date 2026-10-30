@@ -6698,10 +6698,11 @@ Route::post('/api/wa/gelen', function (Request $r) {
         return response()->json(['ok' => 1, 'tip' => 'insan_devraldi']);
     }
     // Hat bağlandı → o hattın numarasını/durumunu kaydet (çoklu hat yönetim ekranında görünsün)
-    if (in_array($event, ['connected', 'session.connected', 'ready'])) {
+    if (in_array($event, ['connected', 'session.connected', 'ready', 'logged_in', 'pair.success'])) {
         $sk = (int) ($r->input('salonId') ?: $r->input('session') ?: 0);
         $num = (string) ($r->input('number') ?: $r->input('me') ?: $r->input('phone') ?: $r->input('jid') ?: '');
-        if ($sk > 0) { try { _waHatEnsure(); $upd = ['durum' => 'bagli', 'updated_at' => now()]; if ($num !== '') $upd['numara'] = preg_replace('/@.*$/', '', $num); DB::table('wa_hatlar')->where('session_key', $sk)->update($upd); } catch (\Throwable $e) {} }
+        // GERÇEK giriş = numara geldi. Sadece soket bağlanması (numarasız) "bağlı" sayılmaz.
+        if ($sk > 0 && $num !== '') { try { _waHatEnsure(); DB::table('wa_hatlar')->where('session_key', $sk)->update(['durum' => 'bagli', 'numara' => preg_replace('/@.*$/', '', $num), 'updated_at' => now()]); } catch (\Throwable $e) {} }
         return response()->json(['ok' => 1, 'tip' => 'connected']);
     }
     if ($event !== '' && $event !== 'message.received') {

@@ -211,8 +211,11 @@ async function qrGetir(){
 }
 async function durumKontrol(){
   try{const r=await fetch('/api/wa-hat/durum?hat='+whHat+'&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};
-    const bagli=b.connected||b.loggedIn||b.ready||(b.status==='connected')||b.number;
-    if(bagli){ $('#qrDurum').textContent='✓ Bağlandı!'; $('#qr').innerHTML='🎉'; if(qrTimer)clearInterval(qrTimer); if(durumTimer)clearInterval(durumTimer); setTimeout(()=>location.reload(),1300); }
+    const phone=b.phone||b.number||b.jid||'';
+    // GERÇEK giriş = connected VE numara geldi. whatsmeow 'connected' çoğu zaman sadece sokete bağlı demek.
+    const bagli=(b.connected===true)&&!!phone;
+    if(bagli){ $('#qrDurum').textContent='✓ Bağlandı! ('+phone+')'; $('#qr').innerHTML='<div style="font-size:52px">🎉</div>'; if(qrTimer)clearInterval(qrTimer); if(durumTimer)clearInterval(durumTimer); setTimeout(()=>location.reload(),1400); }
+    else { $('#qrDurum').textContent = b.connected ? 'QR\'ı telefonunla tara…' : 'QR hazırlanıyor…'; }
   }catch(e){}
 }
 async function pairEt(){
@@ -228,7 +231,7 @@ async function baglantiKes(id){
 $('#qrModal').addEventListener('click',function(e){if(e.target===this)qrKapat();});
 // açılışta her hattın durumunu bir kez tazele
 @foreach($hatlar as $h)
-(async()=>{try{const r=await fetch('/api/wa-hat/durum?hat={{ $h->id }}&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};const bagli=b.connected||b.loggedIn||b.ready||(b.status==='connected')||b.number;const rz=document.getElementById('drz{{ $h->id }}');if(rz){if(bagli){rz.textContent='● Bağlı';rz.className='durum-roz bagli';document.getElementById('hat{{ $h->id }}').classList.add('bagli');}else{rz.textContent='○ Bekliyor';rz.className='durum-roz bekliyor';}}}catch(e){}})();
+(async()=>{try{const r=await fetch('/api/wa-hat/durum?hat={{ $h->id }}&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};const bagli=(b.connected===true)&&!!(b.phone||b.number||b.jid);const rz=document.getElementById('drz{{ $h->id }}');if(rz){if(bagli){rz.textContent='● Bağlı';rz.className='durum-roz bagli';document.getElementById('hat{{ $h->id }}').classList.add('bagli');}else{rz.textContent='○ Bekliyor';rz.className='durum-roz bekliyor';document.getElementById('hat{{ $h->id }}').classList.remove('bagli');}}}catch(e){}})();
 @endforeach
 </script>
 @endsection
