@@ -20676,7 +20676,21 @@ Route::get('/uretim-plani', function () {
     // Birim seçici için: ağırlık (kg/g) ve hacim (lt/ml) birim id'leri
     $birimAll = DB::table('birimler')->get(['id', 'kisaltma', 'tip']);
     $birimMap = []; foreach ($birimAll as $b) { $birimMap[strtolower($b->kisaltma)] = (int) $b->id; }
-    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '', 'birimMap' => $birimMap]);
+    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '', 'birimMap' => $birimMap, 'birimAll' => $birimAll]);
+});
+// Üretim planı: bir ürünün verim (üretim) birimini reçeteye kalıcı kaydet
+Route::post('/uretim-plani/birim-kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0], 403);
+    $sid = _webSubeId();
+    $recete = (int) $r->input('recete_id'); $birim = (int) $r->input('birim_id');
+    if ($recete <= 0 || $birim <= 0) return response()->json(['ok' => 0]);
+    $sahip = DB::table('receteler as r')->join('urunler as u', 'u.id', '=', 'r.urun_id')
+        ->where('r.id', $recete)->where('u.sube_id', $sid)->exists();
+    if (!$sahip) return response()->json(['ok' => 0], 403);
+    try { DB::table('receteler')->where('id', $recete)->update(['verim_birim_id' => $birim]); }
+    catch (\Throwable $e) { return response()->json(['ok' => 0]); }
+    return response()->json(['ok' => 1]);
 });
 // Hesapla (AJAX): plan -> malzeme ihtiyacı JSON
 Route::post('/uretim-plani/hesapla', function (Request $r) {

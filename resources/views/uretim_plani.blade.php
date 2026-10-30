@@ -30,7 +30,7 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #up .urun-sat .ad{flex:1;font-size:13px;font-weight:600;color:var(--ink);line-height:1.2}
 #up .urun-sat .adet{width:76px;padding:7px 8px;border:1px solid var(--line);border-radius:9px;text-align:center;font-size:14px;font-weight:700;color:var(--ink);background:var(--card)}
 #up .urun-sat .bg{font-size:10px;color:var(--sub2)}
-#up .urun-sat .birim{font-size:10.5px;font-weight:700;color:var(--mor1);border:1px solid var(--line);border-radius:7px;padding:2px 4px;background:var(--card);cursor:pointer}
+#up .urun-sat .birim{font-size:10.5px;font-weight:800;color:var(--mor1);border:1.5px solid color-mix(in srgb,var(--mor1) 45%,var(--line));border-radius:7px;padding:3px 4px;background:color-mix(in srgb,var(--mor1) 7%,var(--card));cursor:pointer;appearance:menulist-button}
 #up .bos-liste{text-align:center;color:var(--sub);padding:30px;font-size:13px}
 #up .mal-tablo{width:100%;border-collapse:separate;border-spacing:0 5px;font-size:12.5px}
 #up .mal-tablo th{text-align:left;color:#fff;font-weight:800;font-size:10.5px;padding:9px 10px;text-transform:uppercase;letter-spacing:.4px;background:linear-gradient(135deg,var(--mor1),var(--mavi))}
@@ -102,28 +102,18 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
       <input class="urun-ara" placeholder="🔍 Ürün ara..." oninput="ara(this.value)">
       <div class="urun-liste" id="urunListe">
         @forelse ($urunler as $u)
-          @php
-            $vt = strtolower($u->verim_tip ?? '');
-            $vbid = (int) ($u->verim_birim_id ?? 0);
-            $vb = $u->verim_birim ?: 'porsiyon';
-            $secenek = [];
-            if ($vt === 'agirlik') $secenek = [['kg', $birimMap['kg'] ?? 0], ['g', $birimMap['g'] ?? 0]];
-            elseif ($vt === 'hacim') $secenek = [['lt', $birimMap['lt'] ?? 0], ['ml', $birimMap['ml'] ?? 0]];
-            $secenek = array_values(array_filter($secenek, fn ($s) => $s[1] > 0));
-          @endphp
+          @php $vbid = (int) ($u->verim_birim_id ?? 0); @endphp
           <div class="urun-sat" data-ad="{{ mb_strtolower($u->ad) }}">
             <span class="ad">{{ $u->ad }}</span>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
               <input class="adet" type="number" min="0" step="any" value="0"
                 data-urun="{{ $u->id }}" data-recete="{{ $u->recete_id }}" data-haftalik="{{ $tahmin[$u->id] ?? 0 }}"
                 data-vbirim="{{ $vbid }}" oninput="satDolu(this)">
-              @if(count($secenek) > 1)
-                <select class="birim">
-                  @foreach($secenek as $s)<option value="{{ $s[1] }}">{{ $s[0] }}</option>@endforeach
-                </select>
-              @else
-                <span class="bg">{{ $vb }}</span>
-              @endif
+              <select class="birim" data-recete="{{ $u->recete_id }}" onchange="birimDegis(this)" title="Üretim birimi — seçince reçeteye kaydedilir">
+                @foreach($birimAll as $b)
+                  <option value="{{ $b->id }}" @if($vbid === (int) $b->id) selected @endif>{{ $b->kisaltma }}</option>
+                @endforeach
+              </select>
             </div>
           </div>
         @empty
@@ -151,6 +141,16 @@ function donemSec(b){document.querySelectorAll('#donem button').forEach(x=>x.cla
 function aktifGun(){return +document.querySelector('#donem button.akt').dataset.g;}
 function ara(q){q=(q||'').toLowerCase();document.querySelectorAll('#urunListe .urun-sat').forEach(s=>{s.style.display=s.dataset.ad.includes(q)?'':'none';});}
 function satDolu(inp){inp.closest('.urun-sat').classList.toggle('dolu',(+inp.value)>0);}
+async function birimDegis(sel){
+  const recete=+sel.dataset.recete, birim_id=+sel.value;
+  const ad=sel.closest('.urun-sat').querySelector('.ad').innerText;
+  try{
+    const r=await fetch('/uretim-plani/birim-kaydet',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':MRP_CSRF,'Accept':'application/json'},body:JSON.stringify({recete_id:recete,birim_id})});
+    const j=await r.json();
+    if(j.ok) toast('✓ '+ad+' birimi "'+sel.options[sel.selectedIndex].text+'" olarak kaydedildi');
+    else toast('⚠️ Birim kaydedilemedi',true);
+  }catch(e){toast('⚠️ Birim kaydedilemedi',true);}
+}
 function aiOner(){
   const g=aktifGun();
   let dolan=0;
