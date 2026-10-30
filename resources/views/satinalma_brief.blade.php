@@ -108,6 +108,42 @@
   .sb-mini-bar{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .sb-mini-bar .chip{display:inline-flex;align-items:center;gap:5px;background:var(--card2);border-radius:20px;padding:5px 11px;font-size:11.5px;color:var(--sub);font-weight:600}
   .sb-mini-bar .link{margin-left:auto;font-size:12px;font-weight:700;color:var(--mor1);text-decoration:none;display:inline-flex;align-items:center;gap:3px}
+
+  /* ===== 5 KPI (referans gibi) ===== */
+  .sb-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:12px}
+  .sb-k{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:11px 12px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .sb-k .kic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+  .sb-k .kic .material-icons-outlined{font-size:19px}
+  .sb-k .kv{font-size:19px;font-weight:800;color:var(--ink);line-height:1;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .sb-k .kv small{font-size:12px;font-weight:700;color:var(--sub)}
+  .sb-k .kl{font-size:11.5px;color:var(--ink);font-weight:700;margin-top:5px}
+  .sb-k .ks{font-size:10px;color:var(--sub);margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #sb .t-rose{background:rgba(245,106,139,.13);color:var(--rose)} #sb .t-green{background:rgba(47,190,148,.14);color:var(--pgreen)}
+  #sb .t-amber{background:rgba(246,166,35,.15);color:var(--pamber)} #sb .t-blue{background:rgba(91,141,239,.14);color:var(--pblue)}
+  #sb .t-red{background:rgba(245,87,108,.13);color:var(--pred)} #sb .t-mor{background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1)}
+
+  /* ===== mid: yapılacaklar + AI panel ===== */
+  .sb-mid{display:grid;grid-template-columns:1.6fr 1fr;gap:13px;margin-bottom:13px;align-items:start}
+  @media(max-width:1100px){.sb-kpis{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:900px){.sb-mid{grid-template-columns:1fr}}
+  @media(max-width:560px){.sb-kpis{grid-template-columns:1fr 1fr}}
+  .sb-aipanel{background:linear-gradient(170deg,color-mix(in srgb,var(--mor1) 7%,var(--card)),var(--card) 60%);border:1px solid color-mix(in srgb,var(--mor1) 18%,var(--line));border-radius:17px;padding:15px 16px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .sb-aipanel .ust{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sb-aipanel .rob{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 8px 18px rgba(124,58,237,.3)}
+  .sb-aipanel .rob .material-icons-outlined{color:#fff;font-size:20px}
+  .sb-aipanel .bas{font-size:15px;font-weight:800;color:var(--ink)}
+  .sb-aipanel .verdict{font-size:12px;line-height:1.55;color:var(--sub);margin-bottom:12px}
+  .sb-aipanel .verdict .boldv{font-weight:800;color:var(--mor1)}
+  .sb-aipanel .yapar{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink);margin-bottom:8px}
+  .sb-aipanel .yapar .mini{background:var(--mor1);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px}
+  .sb-aiact{display:flex;flex-direction:column;gap:7px}
+  .sb-aiact a{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:9px 11px;font-size:11.5px;font-weight:600;color:var(--ink);text-decoration:none;transition:.15s}
+  .sb-aiact a:hover{border-color:var(--mor1)}
+  .sb-aiact .aic{width:29px;height:29px;border-radius:9px;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1);display:flex;align-items:center;justify-content:center;flex:none}
+  .sb-aiact .aic .material-icons-outlined{font-size:16px}
+  .sb-ch{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px;letter-spacing:-.2px}
+  .sb-ch .ikon-ct{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+  .sb-ch .sayi{margin-left:auto;background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1);padding:1px 9px;border-radius:20px;font-size:12px;font-weight:800}
 </style>
 @endpush
 
@@ -150,32 +186,36 @@
   </div>
 </div>
 
-{{-- GENEL DEĞERLENDİRME --}}
-<div class="sb-genel">
-  <h4><span class="material-icons-outlined" style="font-size:16px">auto_awesome</span> AI Değerlendirmesi</h4>
-  <div class="metin">{!! $aiOzet !!}</div>
+{{-- 5 KPI (referans gibi) --}}
+<div class="sb-kpis">
+  <div class="sb-k">
+    <div class="kic t-rose"><span class="material-icons-outlined">payments</span></div>
+    <div class="kv">{{ $tl($ayHarcama) }}</div><div class="kl">Bu ay harcama</div>
+    @if ($ayButce > 0)<div class="ks" style="color:{{ $butceC }}">bütçe %{{ $butceYuzde }}</div>@else<div class="ks">(bütçe tanımsız)</div>@endif
+  </div>
+  <div class="sb-k">
+    <div class="kic t-amber"><span class="material-icons-outlined">inventory_2</span></div>
+    <div class="kv" style="color:{{ $kritikSayi>0?'var(--pred)':'var(--ink)' }}">{{ $kritikSayi }} <small>ürün</small></div><div class="kl">Kritik stok</div>
+    <div class="ks">{{ $kritikSayi>0?'acil sipariş gerekli':'sorun yok 👍' }}</div>
+  </div>
+  <div class="sb-k">
+    <div class="kic t-blue"><span class="material-icons-outlined">assignment</span></div>
+    <div class="kv">{{ $yeniTalep }}</div><div class="kl">Yeni talep</div><div class="ks">inceleme bekliyor</div>
+  </div>
+  <div class="sb-k">
+    <div class="kic t-mor"><span class="material-icons-outlined">request_quote</span></div>
+    <div class="kv">{{ $teklifBekleyen }}</div><div class="kl">Teklif</div><div class="ks">karar bekliyor</div>
+  </div>
+  <div class="sb-k">
+    <div class="kic t-red"><span class="material-icons-outlined">local_shipping</span></div>
+    <div class="kv">{{ $gecikenSip }}</div><div class="kl">Geciken sipariş</div><div class="ks">{{ $acikSip }} açık sipariş</div>
+  </div>
 </div>
 
-{{-- İKİ KOLONLU: Dün Yapılanlar + Bugün Yapılacaklar --}}
-<div class="sb-ikili">
-
-  {{-- DÜN YAPILANLAR --}}
-  <div class="sb-dun-blok">
-    <h3><span class="ikon-ct"><span class="material-icons-outlined">done_all</span></span> Dün Yapılanlar</h3>
-    @forelse ($dunYapilanlar as $y)
-      <div class="sb-dun-sat">
-        <div class="check"><span class="material-icons-outlined">check</span></div>
-        <div class="mtn">{{ $y['mtn'] }}</div>
-        @if (!empty($y['link']))<a href="{{ $y['link'] }}">Aç →</a>@endif
-      </div>
-    @empty
-      <div class="sb-dun-bos">Dün hareket yok.<br><span style="font-size:11.5px">Belki rapor günüdür?</span></div>
-    @endforelse
-  </div>
-
-  {{-- BUGÜN YAPILACAKLAR --}}
+{{-- MID: Bugün Yapılacaklar (sol) + Patron AI ne öneriyor (sağ) --}}
+<div class="sb-mid">
   <div class="sb-bugun-blok">
-    <h3><span class="ikon-ct"><span class="material-icons-outlined">pending_actions</span></span> Bugün Yapılacaklar <span class="sayi">{{ count($bugunYapilacak) }}</span></h3>
+    <div class="sb-ch"><span class="ikon-ct" style="background:linear-gradient(135deg,#7B5CFA,#4F46E5)"><span class="material-icons-outlined">track_changes</span></span> Bugün Yapılacaklar <span class="sayi">{{ count($bugunYapilacak) }}</span></div>
     @forelse ($bugunYapilacak as $i => $y)
       <div class="sb-yap-sat oncelik-{{ $y['oncelik'] }}" data-ix="{{ $i }}">
         <div class="sb-yap-head">
@@ -209,6 +249,28 @@
     @endforelse
   </div>
 
+  {{-- PATRON AI NE ÖNERİYOR (sağ) --}}
+  <div class="sb-aipanel">
+    <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">Patron AI ne öneriyor?</div></div>
+    <div class="verdict">{!! $aiOzet !!}</div>
+    <div class="yapar"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span> Hızlı işlemler <span class="mini">AI</span></div>
+    <div class="sb-aiact">
+      <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">assignment</span></span>Yeni talepleri incele</a>
+      <a href="/gelen-teklifler"><span class="aic"><span class="material-icons-outlined">request_quote</span></span>Gelen teklifleri karşılaştır</a>
+      <a href="/satinalma-siparis"><span class="aic"><span class="material-icons-outlined">shopping_cart_checkout</span></span>Siparişleri yönet</a>
+      <a href="/mal-kabul-liste"><span class="aic"><span class="material-icons-outlined">inventory</span></span>Mal kabulleri aç</a>
+    </div>
+  </div>
+</div>
+
+{{-- DÜN YAPILANLAR (altta) --}}
+<div class="sb-dun-blok" style="margin-bottom:13px">
+  <div class="sb-ch"><span class="ikon-ct" style="background:linear-gradient(135deg,#2FBE94,#059669)"><span class="material-icons-outlined">done_all</span></span> Dün Yapılanlar</div>
+  @forelse ($dunYapilanlar as $y)
+    <div class="sb-dun-sat"><div class="check"><span class="material-icons-outlined">check</span></div><div class="mtn">{{ $y['mtn'] }}</div>@if (!empty($y['link']))<a href="{{ $y['link'] }}">Aç →</a>@endif</div>
+  @empty
+    <div class="sb-dun-bos">Dün hareket yok. <span style="font-size:11.5px">Belki rapor günüdür?</span></div>
+  @endforelse
 </div>
 
 {{-- YAKLAŞAN TESLİMLER --}}
