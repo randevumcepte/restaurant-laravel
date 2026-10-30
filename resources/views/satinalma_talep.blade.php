@@ -462,15 +462,6 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 </div>
 @endif
 
-{{-- ─── Satın alma WhatsApp no ayarı (patron) ─── --}}
-@if ($patronMu ?? false)
-<div class="sta-wa-ayar">
-    <span class="material-icons-outlined" style="color:#25D366">chat</span>
-    <span style="font-size:12.5px;color:var(--sub);font-weight:600">Yeni talepte bildirim gidecek WhatsApp no:</span>
-    <input id="staWaTel" type="tel" value="{{ $waTel }}" placeholder="5xxxxxxxxx" style="flex:1;min-width:120px;max-width:200px">
-    <button onclick="staWaKaydet()" class="sta-wa-btn">Kaydet</button>
-</div>
-@endif
 
 {{-- ─── Gelen kutusu listesi ─── --}}
 <div class="sta-liste" id="staListe">
