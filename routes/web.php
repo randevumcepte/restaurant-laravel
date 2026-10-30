@@ -4573,6 +4573,63 @@ Route::post('/fix-menu/sil', function (Request $r) {
     return back()->with('ok', 'Silindi.');
 });
 
+// ============================================================================
+// MÜSTAHSİL MAKBUZU: çiftçiden/halden (vergi mükellefi olmayan) alışta yasal belge.
+// ============================================================================
+if (!function_exists('_mustahsilEnsure')) {
+    function _mustahsilEnsure()
+    {
+        if (cache()->get('mustahsil_ensure_ok')) return;
+        try {
+            if (!Schema::hasTable('mustahsil_makbuzlari')) {
+                Schema::create('mustahsil_makbuzlari', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('makbuz_no', 40)->nullable(); $t->date('tarih');
+                    $t->string('mustahsil_ad', 150); $t->string('mustahsil_tc', 20)->nullable(); $t->string('mustahsil_adres', 255)->nullable();
+                    $t->string('urun_ad', 150); $t->decimal('miktar', 12, 3)->default(0); $t->string('birim', 20)->nullable();
+                    $t->decimal('birim_fiyat', 12, 2)->default(0); $t->decimal('brut', 14, 2)->default(0);
+                    $t->decimal('stopaj_oran', 5, 2)->default(2); $t->decimal('stopaj', 14, 2)->default(0);
+                    $t->decimal('bagkur_oran', 5, 2)->default(0); $t->decimal('bagkur', 14, 2)->default(0);
+                    $t->decimal('net', 14, 2)->default(0); $t->timestamps();
+                });
+            }
+            cache()->put('mustahsil_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/mustahsil', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
+    _mustahsilEnsure(); $sid = _webSubeId();
+    $liste = DB::table('mustahsil_makbuzlari')->where('sube_id', $sid)->orderByDesc('id')->limit(100)->get();
+    $toplam = ['brut' => $liste->sum('brut'), 'stopaj' => $liste->sum('stopaj'), 'net' => $liste->sum('net')];
+    return view('mustahsil', compact('liste', 'toplam'));
+});
+Route::post('/mustahsil/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return back();
+    _mustahsilEnsure(); $sid = _webSubeId();
+    $miktar = (float) str_replace(',', '.', (string) $r->input('miktar', 0));
+    $bf = (float) str_replace(',', '.', (string) $r->input('birim_fiyat', 0));
+    $brut = round($miktar * $bf, 2);
+    $so = (float) str_replace(',', '.', (string) $r->input('stopaj_oran', 2));
+    $bo = (float) str_replace(',', '.', (string) $r->input('bagkur_oran', 0));
+    $stopaj = round($brut * $so / 100, 2); $bagkur = round($brut * $bo / 100, 2); $net = round($brut - $stopaj - $bagkur, 2);
+    $no = trim((string) $r->input('makbuz_no')) ?: ('MM' . date('ymd') . str_pad((string) (DB::table('mustahsil_makbuzlari')->where('sube_id', $sid)->count() + 1), 4, '0', STR_PAD_LEFT));
+    DB::table('mustahsil_makbuzlari')->insert(['sube_id' => $sid, 'makbuz_no' => $no, 'tarih' => $r->input('tarih') ?: today()->toDateString(),
+        'mustahsil_ad' => trim((string) $r->input('mustahsil_ad')) ?: '-', 'mustahsil_tc' => trim((string) $r->input('mustahsil_tc')) ?: null, 'mustahsil_adres' => trim((string) $r->input('mustahsil_adres')) ?: null,
+        'urun_ad' => trim((string) $r->input('urun_ad')) ?: '-', 'miktar' => $miktar, 'birim' => trim((string) $r->input('birim')) ?: null, 'birim_fiyat' => $bf,
+        'brut' => $brut, 'stopaj_oran' => $so, 'stopaj' => $stopaj, 'bagkur_oran' => $bo, 'bagkur' => $bagkur, 'net' => $net, 'created_at' => now(), 'updated_at' => now()]);
+    return back()->with('ok', 'Mustahsil makbuzu kaydedildi. Net odenecek: ' . number_format($net, 2, ',', '.') . ' TL');
+});
+Route::post('/mustahsil/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return back();
+    DB::table('mustahsil_makbuzlari')->where('sube_id', _webSubeId())->where('id', (int) $r->input('id'))->delete();
+    return back()->with('ok', 'Silindi.');
+});
+
+
 // ===== MASA & QR YONETIMI (uygulama ici: ekle / arsivle / geri getir) — qr_token KALICI, asla degismez =====
 // Bolge zorunluysa (bolge_id NOT NULL) varsayilan bolge dondur; hic yoksa "Salon" olustur
 if (!function_exists('_masaVarsayilanBolge')) {
@@ -7275,7 +7332,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }
@@ -8223,26 +8280,37 @@ if (!function_exists('_patronAiEnsure')) {
 if (!function_exists('_patronAiCagir')) {
     // Anthropic (Haiku). Flag kapalı / anahtar yok / İZİN yok / hata -> null (çağıran kural metnine düşer = SOFT LANDING).
     // $personel verilirse izin+günlük limit kontrol edilir; başarılı çağrı AYLIK HAVUZA işlenir (metreleme).
-    function _patronAiCagir($system, $user, $maxTokens = 400, $personel = null, $subeId = null)
+    function _patronAiCagir($system, $user, $maxTokens = 400, $personel = null, $subeId = null, $gecmis = [])
     {
         if (!config('services.resteos.patron_ai_v2', false)) return null;
         $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$key) return null;
-        // ÖĞRENEN ÖNBELLEK (tüm departman AI'ları kapsar): aynı system+user (veri değişince user değişir
-        // -> otomatik tazelenir) daha önce yanıtlandıysa BEDAVA dön; kredi/kota harcanmaz, tekrar Haiku'ya gitmez.
+        // ÖĞRENEN ÖNBELLEK: aynı system+user daha önce yanıtlandıysa BEDAVA dön.
+        // KONUŞMA BAĞLAMI (geçmiş) varsa önbellek ATLANIR — her diyalog turu dinamiktir.
         $onbKey = 'resto_ai_cagir:' . md5($system . '|' . $user);
-        $onbek = cache()->get($onbKey);
-        if ($onbek !== null) return $onbek;
+        if (empty($gecmis)) { $onbek = cache()->get($onbKey); if ($onbek !== null) return $onbek; }
         // İzin: departman/pool/günlük limit. Sistem (brief/cron) = $personel null -> izinli.
         if (function_exists('_aiIzin')) { $izin = _aiIzin($personel); if (!($izin['ok'] ?? true)) return null; }
         $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        // KONUŞMA GEÇMİŞİ -> messages (Anthropic: ilk 'user', roller alternatif). Son = yeni $user.
+        $msgs = [];
+        foreach ((array) $gecmis as $g) {
+            $rol = (($g['rol'] ?? 'user') === 'ai') ? 'assistant' : 'user';
+            $ic = trim((string) ($g['metin'] ?? ''));
+            if ($ic === '') continue;
+            if ($msgs && $msgs[count($msgs) - 1]['role'] === $rol) $msgs[count($msgs) - 1]['content'] .= "\n" . $ic;
+            else $msgs[] = ['role' => $rol, 'content' => mb_substr($ic, 0, 1200)];
+        }
+        while ($msgs && $msgs[0]['role'] !== 'user') array_shift($msgs);
+        if ($msgs && $msgs[count($msgs) - 1]['role'] === 'user') $msgs[] = ['role' => 'assistant', 'content' => '…'];
+        $msgs[] = ['role' => 'user', 'content' => $user];
         try {
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 14, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
                 CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'temperature' => 0.4, 'system' => $system,
-                    'messages' => [['role' => 'user', 'content' => $user]]], JSON_UNESCAPED_UNICODE),
+                    'messages' => $msgs], JSON_UNESCAPED_UNICODE),
             ]);
             $res = curl_exec($ch);
             $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -9496,12 +9564,12 @@ if (!function_exists('_ikAsistanPersonelBul')) {
 if (!function_exists('_ikAsistanNiyet')) {
     // Kullanıcı mesajından niyet + parametre çöz. Kural motoru (bedava) önce, sonra Haiku JSON.
     // Döner: ['tip'=>'cevap'|'eylem', 'intent'=>..., 'params'=>[...], 'ozet'=>..., 'cevap'=>..., 'kaynak'=>'kural'|'ai']
-    function _ikAsistanNiyet($sid, $bp, $metin)
+    function _ikAsistanNiyet($sid, $bp, $metin, $gecmis = [])
     {
         $m = mb_strtolower(trim($metin), 'UTF-8');
-        // ---- KURAL MOTORU (sık ve net komutlar, bedava) ----
+        // ---- KURAL MOTORU (sık ve net komutlar, bedava) — SADECE geçmiş yokken (bağlam gereken diyalogda AI'ya bırak) ----
         if ($m === '' ) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Nasıl yardımcı olabilirim? Örnek: "eksik belgelileri listele", "Ahmet\'e cuma-cumartesi izin ver", "bu ay en çok avans alan kim".', 'kaynak' => 'kural'];
-        $kural = [
+        $kural = empty($gecmis) ? [
             '/(genel\s*)?(özet|ozet|durum)/u' => ['cevap', 'ozet'],
             '/eksik.*(belge|bilgi|özlük|ozluk)/u' => ['cevap', 'liste_eksik'],
             '/(bugün|bugun).*(izin|izinli)|izinli.*(kim|olan)/u' => ['cevap', 'liste_izinli'],
@@ -9510,7 +9578,7 @@ if (!function_exists('_ikAsistanNiyet')) {
             '/risk|ayrıl|devamsız|riskli/u' => ['cevap', 'liste_risk'],
             '/doğum\s*gün|dogum\s*gun/u' => ['eylem', 'mesaj_dogum'],
             '/eksik.*(iste|sor|gönder|gonder)/u' => ['eylem', 'mesaj_eksik'],
-        ];
+        ] : [];
         foreach ($kural as $re => $hit) {
             if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => '', 'kaynak' => 'kural'];
         }
@@ -9518,15 +9586,17 @@ if (!function_exists('_ikAsistanNiyet')) {
         $pers = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
         $plist = $pers->map(fn ($p) => $p->ad . ' (' . $p->rol . ')')->implode(', ');
         $bugun = now()->toDateString(); $gunAdi = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][now()->dayOfWeekIso - 1] ?? '';
-        $sys = "Sen bir restoranın İnsan Kaynakları asistanısın. İK çalışanının mesajını analiz et ve SADECE geçerli JSON döndür (başka hiçbir metin yok):\n"
+        $sys = "Sen bir restoranın İnsan Kaynakları asistanısın. Meşgul bir İK çalışanıyla KONUŞUYORSUN. SADECE geçerli JSON döndür (başka metin yok):\n"
             . '{"tip":"cevap|eylem","intent":"...","params":{...},"ozet":"...","cevap":"..."}' . "\n\n"
-            . "OKUMA niyetleri (tip=cevap, bilgi sorusu): ozet, personel_bul(params.ad), liste_eksik, liste_izinli, liste_bekleyen_izin, en_cok_avans, liste_risk, bilinmiyor.\n"
-            . "YAZMA niyetleri (tip=eylem, bir şey değiştirir/gönderir): izin_ver(params: ad, baslangic, bitis, izin_tipi[yillik|hastalik|ucretsiz|mazeret|dogum|diger]), avans_onayla(params.ad opsiyonel), mesaj_dogum, mesaj_eksik, mesaj_belge, mesaj_gelmeyen.\n"
-            . "KURALLAR: Tarihleri YYYY-MM-DD yap. Bugün {$bugun} ({$gunAdi}). 'yarın','cuma','hafta sonu' gibi ifadeleri gerçek tarihe çevir. "
-            . "İsimleri şu aktif personel listesinden EŞLE (params.ad'a tam adı yaz): {$plist}. "
-            . "tip=eylem ise 'ozet' alanına yapılacak işi NET bir cümleyle Türkçe yaz (onay için gösterilecek). tip=cevap ve okuma niyeti ise 'cevap'ı boş bırak (veriyi sistem dolduracak). "
-            . "Emin değilsen tip=cevap, intent=bilinmiyor, cevap alanına kısa netleştirici bir soru yaz. UYDURMA.";
-        $ai = _patronAiCagir($sys, $metin, 700, $bp, $sid);
+            . "OKUMA (tip=cevap, bilgi): ozet, personel_bul(params.ad), liste_eksik, liste_izinli, liste_bekleyen_izin, en_cok_avans, liste_risk, bilinmiyor.\n"
+            . "YAZMA (tip=eylem, bir şey yapar/gönderir): izin_ver(ad, baslangic, bitis, izin_tipi[yillik|hastalik|ucretsiz|mazeret|dogum|diger]), avans_ver(ad, tutar), avans_toplu(tutar — tüm aktif personele), avans_onayla(ad opsiyonel — bekleyen talebi onaylar), mesaj_dogum, mesaj_eksik, mesaj_belge, mesaj_gelmeyen.\n"
+            . "EN ÖNEMLİ KURAL — BAĞLAM: Önceki mesajları MUTLAKA hesaba kat. Kullanıcı bir turda eylem söyleyip (ör. 'izin ver' / 'avans ver') sonraki turda eksik bilgiyi (isim / tutar / tarih) verdiyse BUNLARI BİRLEŞTİR ve eylemi tamamla. Tek kelimelik cevaplar ('mert gündüz', '2000', 'yarın') önceki eylemin eksik parametresidir.\n"
+            . "AZ SORU SOR: Sadece eylemi GÜVENLE yapmak için ZORUNLU olan tek eksik bilgiyi, kısa ve net sor. ASLA 'daha spesifik ol / spesifik cümle kur' deme. Anladığını göster, kullanıcının zamanını alma.\n"
+            . "MAKUL VARSAYIM: 'tüm/bütün/herkese/personellere/çalışanlara' = tüm aktif personel (avans_toplu kullan). İzin türü belirtilmediyse 'yillik' varsay. Tek kişiye avans = avans_ver.\n"
+            . "Tarihleri YYYY-MM-DD yap. Bugün {$bugun} ({$gunAdi}). 'yarın/cuma/hafta sonu' -> gerçek tarih. "
+            . "İsimleri şu aktif personel listesinden EŞLE (params.ad = tam ad): {$plist}. "
+            . "tip=eylem ise 'ozet'e yapılacak işi NET tek cümle yaz (onay için). tip=cevap+okuma ise 'cevap' boş (veriyi sistem doldurur). Soru soruyorsan tip=cevap intent=bilinmiyor, cevap=kısa soru. UYDURMA.";
+        $ai = _patronAiCagir($sys, $metin, 700, $bp, $sid, $gecmis);
         if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => '', 'kaynak' => 'kural'];
         $s = strpos($ai, '{'); $e = strrpos($ai, '}');
         if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
@@ -9624,6 +9694,20 @@ if (!function_exists('_ikAsistanEylemHazirla')) {
             case 'mesaj_eksik': return ['ok' => true, 'intent' => 'mesaj', 'params' => ['key' => 'eksik-bilgi-iste'], 'ozet' => 'Özlük bilgisi eksik olan personele WhatsApp ile eksik bilgi talebi gönderilecek.'];
             case 'mesaj_belge': return ['ok' => true, 'intent' => 'mesaj', 'params' => ['key' => 'belge-hatirlat'], 'ozet' => 'Belgesinin süresi dolan personele WhatsApp yenileme hatırlatması gönderilecek.'];
             case 'mesaj_gelmeyen': return ['ok' => true, 'intent' => 'mesaj', 'params' => ['key' => 'gelmeyene-sor'], 'ozet' => 'Bugün vardiyasında olup giriş yapmayan personele WhatsApp ile durum sorulacak.'];
+            case 'avans_ver':
+                [$p, $n] = _ikAsistanPersonelBul($sid, $params['ad'] ?? '');
+                if (!$p) return ['ok' => false, 'hata' => $n > 1 ? 'Birden fazla kişi eşleşti, tam adı yaz.' : 'Hangi personele avans vereyim? (' . ($params['ad'] ?? 'ad belirt') . ')'];
+                $tutar = round((float) str_replace(',', '.', (string) ($params['tutar'] ?? 0)), 2);
+                if ($tutar <= 0) return ['ok' => false, 'hata' => $p->ad . ' için ne kadar avans vereyim? Tutarı yaz (örn. 2000).'];
+                return ['ok' => true, 'intent' => 'avans_ver', 'params' => ['personel_id' => $p->id, 'tutar' => $tutar],
+                    'ozet' => $p->ad . ' için ' . number_format($tutar, 0, ',', '.') . '₺ avans verilecek. Kasadan çıkış + gider olarak işlenecek.'];
+            case 'avans_toplu':
+                $tutar = round((float) str_replace(',', '.', (string) ($params['tutar'] ?? 0)), 2);
+                if ($tutar <= 0) return ['ok' => false, 'hata' => 'Tüm personele kişi başı ne kadar avans vereyim? Tutarı yaz (örn. 2000).'];
+                $say = (int) DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->count();
+                if (!$say) return ['ok' => false, 'hata' => 'Aktif personel yok.'];
+                return ['ok' => true, 'intent' => 'avans_toplu', 'params' => ['tutar' => $tutar],
+                    'ozet' => $say . ' aktif personelin HER BİRİNE ' . number_format($tutar, 0, ',', '.') . '₺ avans verilecek (toplam ' . number_format($tutar * $say, 0, ',', '.') . '₺). Kasadan çıkış + gider işlenecek.'];
             default: return ['ok' => false, 'hata' => 'Bu işlemi henüz yapamıyorum.'];
         }
     }
@@ -9703,6 +9787,27 @@ if (!function_exists('_ikAsistanEylemUygula')) {
                 if (!$g) return ['ok' => false, 'mesaj' => 'Gönderilemedi — WhatsApp bağlı değil' . ($tz > 0 ? ' veya kişilerin telefonu kayıtlı değil' : '') . '.'];
                 return ['ok' => true, 'mesaj' => "✓ {$g} kişiye WhatsApp mesajı gönderildi." . ($tz > 0 ? " ({$tz} kişinin telefonu yok.)" : '')];
             }
+            if ($intent === 'avans_ver' || $intent === 'avans_toplu') {
+                _restoPersonelHareketEnsure(); _restoGiderEnsure();
+                $tutar = round((float) ($params['tutar'] ?? 0), 2);
+                if ($tutar <= 0) return ['ok' => false, 'mesaj' => 'Tutar geçersiz.'];
+                $avansIsle = function ($per) use ($sid, $bp, $tutar) {
+                    $tarih = now()->toDateString();
+                    DB::table('personel_hareketleri')->insert(['sube_id' => $sid, 'personel_id' => $per->id, 'tur' => 'avans', 'tutar' => $tutar, 'aciklama' => 'Avans (İK asistanı)', 'tarih' => $tarih, 'created_by' => (int) $bp->id]);
+                    DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => 'maas', 'aciklama' => $per->ad . ' — Avans', 'tutar' => $tutar, 'tarih' => $tarih, 'created_by' => (int) $bp->id]);
+                    try { if (function_exists('_kasaYaz')) _kasaYaz($sid, 'personel', 'cikis', $tutar, $per->ad . ' — Avans', 'personel', $per->id, (int) $bp->id); } catch (\Throwable $e) {}
+                };
+                if ($intent === 'avans_ver') {
+                    $per = DB::table('personeller')->where('id', (int) ($params['personel_id'] ?? 0))->where('sube_id', $sid)->where('aktif', 1)->first();
+                    if (!$per) return ['ok' => false, 'mesaj' => 'Personel bulunamadı.'];
+                    $avansIsle($per);
+                    return ['ok' => true, 'mesaj' => '✓ ' . $per->ad . ' için ' . number_format($tutar, 0, ',', '.') . '₺ avans işlendi (kasa + gider).'];
+                }
+                $n = 0;
+                foreach (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->get() as $per) { $avansIsle($per); $n++; }
+                if (!$n) return ['ok' => false, 'mesaj' => 'Aktif personel yok.'];
+                return ['ok' => true, 'mesaj' => "✓ {$n} personele " . number_format($tutar, 0, ',', '.') . '₺ avans işlendi (toplam ' . number_format($tutar * $n, 0, ',', '.') . '₺, kasa + gider).'];
+            }
         } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'İşlem sırasında hata: ' . $e->getMessage()]; }
         return ['ok' => false, 'mesaj' => 'Bilinmeyen işlem.'];
     }
@@ -9733,7 +9838,8 @@ Route::post('/api/ik-asistan/sor', function (Request $r) {
     if (!$bp) return response()->json(['ok' => 0, 'hata' => 'AI Asistanı yetkiniz yok'], 401);
     $sid = _webSubeId();
     $metin = trim((string) $r->input('metin'));
-    $n = _ikAsistanNiyet($sid, $bp, $metin);
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _ikAsistanNiyet($sid, $bp, $metin, $gecmis);
     if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'AI şu an kapalı. Yine de şunları yazabilirsin: "özet", "eksik belgeliler", "bugün izinli", "bekleyen izinler", "doğum günü kutla", "eksik bilgi iste".']);
     if ($n['tip'] === 'eylem') {
         $h = _ikAsistanEylemHazirla($sid, $n['intent'], $n['params']);
@@ -9799,12 +9905,12 @@ if (!function_exists('_departmanAsistanTanim')) {
     }
 }
 if (!function_exists('_departmanAsistanNiyet')) {
-    function _departmanAsistanNiyet($sid, $bp, $kod, $metin)
+    function _departmanAsistanNiyet($sid, $bp, $kod, $metin, $gecmis = [])
     {
         $m = mb_strtolower(trim($metin), 'UTF-8');
         if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Nasıl yardımcı olayım?', 'kaynak' => 'kural'];
-        // --- KURAL MOTORU (departmana göre) ---
-        $kurallar = $kod === 'mutfak' ? [
+        // --- KURAL MOTORU (departmana göre) — SADECE geçmiş yokken (diyalog ortasında AI bağlamla çözsün) ---
+        $kurallar = !empty($gecmis) ? [] : ($kod === 'mutfak' ? [
             '/acil.*(sipariş|siparis|talep|satın|satin)|satın\s*alma\s*talep|kritik.*(sipariş|siparis|talep)/u' => ['eylem', 'acil_stok_talep'],
             '/fire|zayiat|israf/u' => ['cevap', 'fire'],
             '/bekle|hazırlan|hazirlan|kuyruk|sipariş|siparis/u' => ['cevap', 'bekleyen'],
