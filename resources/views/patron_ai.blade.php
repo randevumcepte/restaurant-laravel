@@ -49,6 +49,34 @@
   .pai-oncelik-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:#4F46E5;border:0;border-radius:11px;padding:9px 16px;font-size:13px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(0,0,0,.16)}
   .pai-oncelik-btn:hover{transform:translateY(-1px)}
 
+  /* BUGÜNÜN İŞLERİ (GM kokpiti) */
+  .pai-cockpit{position:relative;overflow:hidden;border-radius:22px;padding:20px 22px;margin-bottom:16px;color:#fff;
+    background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 45%,#4F46E5 100%);box-shadow:0 14px 38px rgba(79,70,229,.3)}
+  .pai-cockpit::before{content:'';position:absolute;width:260px;height:260px;border-radius:50%;top:-120px;right:-60px;background:radial-gradient(circle,rgba(255,255,255,.2),transparent 70%);animation:paiFloat 9s ease-in-out infinite}
+  .pai-cockpit::after{content:'';position:absolute;width:200px;height:200px;border-radius:50%;bottom:-120px;left:15%;background:radial-gradient(circle,rgba(246,206,99,.15),transparent 70%);animation:paiFloat 12s ease-in-out infinite reverse}
+  .pai-ck-head{position:relative;z-index:2;display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .pai-ck-lbl{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.92)}
+  .pai-ck-say{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.26);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:800}
+  .pai-ck-verdict{position:relative;z-index:2;font-size:15px;line-height:1.6;font-weight:600;color:#fff;white-space:pre-line;margin-bottom:14px}
+  .pai-is-list{position:relative;z-index:2}
+  .pai-is{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.14)}
+  .pai-is:last-child{border-bottom:0}
+  .pai-is-ic{width:34px;height:34px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.2)}
+  .pai-is-ic .material-icons-outlined{font-size:18px;color:#fff}
+  .pai-is-t{font-size:14px;font-weight:700;color:#fff;line-height:1.3}
+  .pai-is-a{font-size:11.5px;color:rgba(255,255,255,.78);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pai-is-btn{flex:none;display:inline-flex;align-items:center;gap:5px;background:#fff;color:#4F46E5;border:0;border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 3px 10px rgba(0,0,0,.14)}
+  .pai-is-btn:hover{transform:translateY(-1px)}
+  .pai-is-btn.sade{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.24);box-shadow:none}
+  .pai-ck-bitti{position:relative;z-index:2;margin-top:13px;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .pai-bitti-chip{background:rgba(16,185,129,.26);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:600}
+  .pai-ck-bos{position:relative;z-index:2;font-size:14.5px;color:#fff;font-weight:600;padding:6px 0}
+
+  .pai-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+  .pai-alt-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px;margin-bottom:4px}
+  @media (max-width:900px){.pai-kpi-grid{grid-template-columns:repeat(2,1fr)}.pai-alt-grid{grid-template-columns:1fr}}
+  @media (max-width:540px){.pai-kpi-grid{grid-template-columns:1fr}}
+
   /* KPI TILE */
   .pai-kpi{position:relative;border-radius:18px;padding:15px 16px;border:1px solid var(--line);background:var(--card);box-shadow:var(--golge);display:flex;flex-direction:column;justify-content:center}
   .pai-kpi .ic{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
@@ -177,24 +205,49 @@
   @if (!$brief)
     <div class="pai-blok" style="text-align:center;color:var(--sub);padding:34px">Bugün için henüz brifing üretilmedi. <a href="/patron-ai?force=1" class="pai-link">Şimdi üret →</a></div>
   @else
-  {{-- ============ BENTO IZGARA (hepsi SENKRON — ilk boyamada DOLU) ============ --}}
-  <div class="pai-bento">
-
-    {{-- AI STAR --}}
-    <div class="b-ai pai-star">
-      <div class="pai-star-lbl"><span class="material-icons-outlined" style="font-size:16px">auto_awesome</span> AI Değerlendirmesi</div>
-      <div class="pai-star-metin" id="pai-verdict">{!! $bold($verdict) !!}</div>
-      @if ($oncelik)
-      <div class="pai-oncelik" id="pai-oncelik">
-        <div class="ust"><span>{{ ($oncelik['durum']??'')==='risk' ? '🔴' : '🟡' }}</span> Günün #1 önceliği</div>
-        <div class="txt">{!! $bold($oncelik['oneri']) !!}</div>
-        @if (!empty($oncelik['link']))<a href="{{ $oncelik['link'] }}" class="pai-oncelik-btn">{{ $oncelik['lbl'] ?? 'Git' }} →</a>@endif
-      </div>
-      @endif
+  {{-- ============ BUGÜNÜN İŞLERİ — GM KOKPİTİ (SENKRON, ilk boyamada DOLU) ============ --}}
+  @php $islerL = $isler['isler'] ?? []; $bitenlerL = $isler['bitenler'] ?? []; @endphp
+  <div class="pai-cockpit">
+    <div class="pai-ck-head">
+      <span class="pai-ck-lbl"><span class="material-icons-outlined" style="font-size:16px">checklist</span> Bugünün İşleri</span>
+      @if (count($islerL))<span class="pai-ck-say">{{ count($islerL) }}</span>@endif
     </div>
+    <div class="pai-ck-verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
+    @if (count($islerL))
+    <div class="pai-is-list">
+      @foreach ($islerL as $is)
+        @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; @endphp
+        <div class="pai-is">
+          <div class="pai-is-ic"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
+          <div style="flex:1;min-width:0">
+            <div class="pai-is-t">{{ $is['baslik'] ?? '' }}</div>
+            @if (!empty($is['grup']) || !empty($is['aciklama']))<div class="pai-is-a">{{ $is['grup'] ?? '' }}{{ (!empty($is['grup']) && !empty($is['aciklama']))?' · ':'' }}{{ $is['aciklama'] ?? '' }}</div>@endif
+          </div>
+          @if (($ak['tip'] ?? '') === 'eylem')
+            <button class="pai-is-btn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+          @elseif (($ak['tip'] ?? '') === 'link')
+            <a class="pai-is-btn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
+          @elseif (($ak['tip'] ?? '') === 'ajanda')
+            <button class="pai-is-btn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>
+          @endif
+        </div>
+      @endforeach
+    </div>
+    @else
+      <div class="pai-ck-bos">✅ Bekleyen iş yok — her şey yolunda görünüyor 👍</div>
+    @endif
+    @if (count($bitenlerL))
+    <div class="pai-ck-bitti">
+      <span style="font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:rgba(255,255,255,.75)">Bugün çözülenler:</span>
+      @foreach ($bitenlerL as $bt)<span class="pai-bitti-chip">✓ {{ $bt }}</span>@endforeach
+    </div>
+    @endif
+  </div>
 
+  {{-- ============ RAKAMLAR (KPI ızgara) ============ --}}
+  <div class="pai-kpi-grid">
     {{-- CİRO --}}
-    <div class="b-ciro pai-kpi" style="background:color-mix(in srgb,{{ $ciroR }} 7%,var(--card));border-color:color-mix(in srgb,{{ $ciroR }} 20%,var(--line))">
+    <div class="pai-kpi" style="background:color-mix(in srgb,{{ $ciroR }} 7%,var(--card));border-color:color-mix(in srgb,{{ $ciroR }} 20%,var(--line))">
       <div class="ic" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}"><span class="material-icons-outlined">payments</span></div>
       @if (!empty($v['kiyas_etiket']) && $ciroY != 0)<span class="delta" style="background:color-mix(in srgb,{{ $ciroR }} 15%,transparent);color:{{ $ciroR }}">{{ $ciroY>0?'▲ +':'▼ ' }}{{ number_format($ciroY,1,',','.') }}%</span>@endif
       <div class="buyuk">{{ $tl($v['dun_ciro'] ?? 0) }}</div>
@@ -221,9 +274,12 @@
       <div class="buyuk">{{ $tl($kayipTop) }}</div>
       <div class="etk">Kayıp / Zayiat</div>
     </div>
+  </div>
 
+  {{-- KRİTİK + HAZIR EYLEMLER (geniş çift) --}}
+  <div class="pai-alt-grid">
     {{-- KRİTİK STOK (geniş) --}}
-    <div class="b-krit pai-wide" style="background:color-mix(in srgb,{{ $kritR }} 8%,var(--card));border-color:color-mix(in srgb,{{ $kritR }} 22%,var(--line))">
+    <div class="pai-wide" style="background:color-mix(in srgb,{{ $kritR }} 8%,var(--card));border-color:color-mix(in srgb,{{ $kritR }} 22%,var(--line))">
       <div class="ic" style="background:color-mix(in srgb,{{ $kritR }} 16%,transparent);color:{{ $kritR }}"><span class="material-icons-outlined">inventory_2</span></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:21px;font-weight:800;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums">{{ $krit }} <span style="font-size:13px;font-weight:700;color:var(--sub)">kritik stok</span></div>
@@ -400,6 +456,18 @@ document.addEventListener('DOMContentLoaded', function(){
 
 function takipDurum(id, durum) {
   api('/api/patron-ai/takip-durum', { id: id, durum: durum }).then(function () { location.reload(); }).catch(function () { location.reload(); });
+}
+
+// Ajanda işini "bitti" yap — satırı anında kaldır, say'ı güncelle
+function paiAjandaBitti(id, btn){
+  var sat = btn.closest('.pai-is');
+  btn.disabled = true; btn.textContent = '...';
+  fetch('/ajanda/durum', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin', body: JSON.stringify({id:id, durum:'tamam'})})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (sat){ sat.style.transition='opacity .2s'; sat.style.opacity='0'; setTimeout(function(){ sat.remove(); var s=document.querySelector('.pai-ck-say'); if(s){ var n=parseInt(s.textContent)-1; if(n>0) s.textContent=n; else s.remove(); } }, 200); }
+    })
+    .catch(function(){ btn.disabled=false; btn.textContent='Bitti'; });
 }
 
 // AI eylem onay akışı

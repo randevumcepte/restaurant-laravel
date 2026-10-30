@@ -10873,6 +10873,265 @@ Route::post('/acil-siparis-gec', function (Request $r) {
     return redirect('/satinalma-siparis')->with('ok', $olusan . ' tedarikçiye sipariş geçildi (' . implode(', ', $noList) . ')' . ($waGitti ? ', ' . $waGitti . ' tanesi WhatsApp ile iletildi' : '') . '.');
 });
 
+// ============================ AJANDA: TAKVİM + NOT + HATIRLATICI (Faz 0) ============================
+if (!function_exists('_aiAjandaEnsure')) {
+    function _aiAjandaEnsure()
+    {
+        if (cache()->get('ai_ajanda_ensure_ok')) return;
+        if (!Schema::hasTable('ai_ajanda')) {
+            try { Schema::create('ai_ajanda', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->unsignedBigInteger('personel_id')->nullable()->index();
+                $t->string('tip', 14)->default('hatirlatma');
+                $t->string('baslik', 220);
+                $t->text('aciklama')->nullable();
+                $t->timestamp('baslar_at')->nullable()->index();
+                $t->timestamp('biter_at')->nullable();
+                $t->tinyInteger('tum_gun')->default(0);
+                $t->integer('hatirlat_dk')->default(30);
+                $t->string('katilimcilar', 600)->nullable();
+                $t->string('durum', 10)->default('acik');
+                $t->tinyInteger('hatirlatildi')->default(0);
+                $t->string('kaynak', 20)->nullable();
+                $t->timestamps();
+            }); } catch (\Throwable $e) {}
+        }
+        cache()->put('ai_ajanda_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_aiAjandaSorgu')) {
+    function _aiAjandaSorgu($sid, $bp)
+    {
+        $pid = is_object($bp) ? (int) ($bp->id ?? 0) : 0;
+        $rol = is_object($bp) ? ($bp->rol ?? '') : '';
+        $q = DB::table('ai_ajanda')->where('sube_id', (int) $sid);
+        if (!in_array($rol, ['sahip', 'mudur']) && $pid) {
+            $q->where(function ($w) use ($pid) { $w->where('personel_id', $pid)->orWhereNull('personel_id'); });
+        }
+        return $q;
+    }
+}
+
+// ============================ PATRON AI — "BUGÜNÜN İŞLERİ" OPERASYON RADARI (Faz 1) ============================
+if (!function_exists('_patronAiBugununIsleri')) {
+    function _patronAiBugununIsleri($sid, $bp = null)
+    {
+        $sid = (int) $sid;
+        $isler = []; $bitenler = [];
+        $rol = is_object($bp) ? ($bp->rol ?? '') : '';
+        $patronMu = in_array($rol, ['sahip', 'mudur']);
+
+        try {
+            _aiAjandaEnsure();
+            $q = _aiAjandaSorgu($sid, $bp)->where('durum', 'acik')
+                ->where(function ($w) { $w->whereDate('baslar_at', today())->orWhereNull('baslar_at'); });
+            foreach ($q->orderByRaw('baslar_at IS NULL, baslar_at')->limit(12)->get() as $a) {
+                $saat = $a->baslar_at ? \Carbon\Carbon::parse($a->baslar_at)->format('H:i') : '';
+                $ik = ['randevu' => 'event', 'toplanti' => 'groups', 'hatirlatma' => 'alarm', 'not' => 'sticky_note_2', 'dogumgunu' => 'cake'][$a->tip] ?? 'event';
+                $isler[] = ['grup' => 'Ajandan', 'ikon' => $ik, 'renk' => 'var(--mor1)', 'oncelik' => ($saat ? 2 : 6),
+                    'baslik' => ($saat ? $saat . ' · ' : '') . $a->baslik, 'aciklama' => (string) ($a->aciklama ?? ''),
+                    'aksiyon' => ['tip' => 'ajanda', 'id' => (int) $a->id, 'lbl' => 'Bitti']];
+            }
+        } catch (\Throwable $e) {}
+
+        if ($patronMu) {
+            try { if (Schema::hasTable('onay_istekleri')) {
+                $c = (int) DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->count();
+                if ($c > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'how_to_reg', 'renk' => 'var(--amber)', 'oncelik' => 1,
+                    'baslik' => $c . ' işlem onayını bekliyor', 'aciklama' => 'İskonto / ikram / iptal / ödeme geri alma',
+                    'aksiyon' => ['tip' => 'info']];
+            }} catch (\Throwable $e) {}
+            try { if (Schema::hasTable('ik_self_talep')) {
+                $c = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count();
+                if ($c > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'payments', 'renk' => 'var(--amber)', 'oncelik' => 2,
+                    'baslik' => $c . ' avans talebi bekliyor', 'aciklama' => 'Personel avans onayı',
+                    'aksiyon' => ['tip' => 'link', 'url' => '/ik-ozet', 'lbl' => 'Aç']];
+            }} catch (\Throwable $e) {}
+        }
+
+        try {
+            $risk = function_exists('_restoUretimRiski') ? _restoUretimRiski($sid, 3) : ['kritik' => [], 'riskli' => []];
+            $krit = $risk['kritik'] ?? [];
+            if (count($krit)) {
+                $adlar = implode(', ', array_slice(array_map(fn ($k) => $k['ad'] ?? '', $krit), 0, 4));
+                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'inventory_2', 'renk' => 'var(--kirmizi)', 'oncelik' => 1,
+                    'baslik' => count($krit) . ' malzeme kritik seviyede', 'aciklama' => $adlar,
+                    'aksiyon' => ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => 'Siparişe çevir']];
+            }
+            $riskli = $risk['riskli'] ?? [];
+            if (count($riskli)) {
+                $r = $riskli[0];
+                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'production_quantity_limits', 'renk' => 'var(--amber)', 'oncelik' => 3,
+                    'baslik' => ($r['urun'] ?? 'Bir ürün') . ' için ~' . ($r['yapilabilir'] ?? $r['porsiyon'] ?? 0) . ' porsiyon kaldı',
+                    'aciklama' => 'Üretim riski' . (!empty($r['darbogaz']) ? ' · ' . $r['darbogaz'] : ''),
+                    'aksiyon' => ['tip' => 'link', 'url' => '/uretim-riski', 'lbl' => 'Gör']];
+            }
+        } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'beklenen_teslim')) {
+            $g = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)
+                ->whereNotIn('durum', ['teslim', 'iptal', 'kapandi', 'tamam'])
+                ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count();
+            if ($g > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'local_shipping', 'renk' => 'var(--amber)', 'oncelik' => 3,
+                'baslik' => $g . ' sipariş teslim tarihini geçti', 'aciklama' => 'Tedarikçiye hatırlatılabilir',
+                'aksiyon' => ['tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'lbl' => 'Hatırlat']];
+        }} catch (\Throwable $e) {}
+        try { if (Schema::hasTable('satinalma_talepleri')) {
+            $t = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count();
+            if ($t > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'assignment', 'renk' => 'var(--mavi)', 'oncelik' => 2,
+                'baslik' => $t . ' bekleyen satın alma talebi', 'aciklama' => 'Mutfak/departmandan gelen talepler',
+                'aksiyon' => ['tip' => 'link', 'url' => '/satinalma-talep', 'lbl' => 'İncele']];
+        }} catch (\Throwable $e) {}
+
+        try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+            $bugun = today()->toDateString();
+            $vardiyali = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun)->pluck('personel_id')->unique();
+            if ($vardiyali->count()) {
+                $girenler = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->pluck('personel_id')->unique();
+                $gelmeyen = $vardiyali->diff($girenler)->count();
+                if ($gelmeyen > 0) $isler[] = ['grup' => 'Personel', 'ikon' => 'person_off', 'renk' => 'var(--amber)', 'oncelik' => 2,
+                    'baslik' => $gelmeyen . ' personel vardiyada ama giriş yapmadı', 'aciklama' => 'Nerede olduklarını sorabilirsin',
+                    'aksiyon' => ['tip' => 'eylem', 'intent' => 'gelmeyene_sor', 'lbl' => 'Sor']];
+            }
+        }} catch (\Throwable $e) {}
+
+        try { if (Schema::hasTable('adisyonlar')) {
+            $a = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')
+                ->whereDate('created_at', '<', today())->count();
+            if ($a > 0) $isler[] = ['grup' => 'Operasyon', 'ikon' => 'receipt_long', 'renk' => 'var(--kirmizi)', 'oncelik' => 1,
+                'baslik' => $a . ' adisyon dünden açık kaldı', 'aciklama' => 'Kapatılması / incelenmesi gerekebilir',
+                'aksiyon' => ['tip' => 'link', 'url' => '/dashboard', 'lbl' => 'Gör']];
+        }} catch (\Throwable $e) {}
+
+        try { if (Schema::hasTable('mal_kabuller')) {
+            $m = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->where('created_at', '>=', now()->subDay())->count();
+            if ($m > 0) $bitenler[] = $m . ' mal kabulü tamamlandı';
+        }} catch (\Throwable $e) {}
+        try { if (Schema::hasTable('patron_ai_takip')) {
+            $c = (int) DB::table('patron_ai_takip')->where('sube_id', $sid)->whereIn('durum', ['cozuldu', 'devredildi'])
+                ->where('updated_at', '>=', now()->subDay())->count();
+            if ($c > 0) $bitenler[] = $c . ' konu çözüldü/devredildi';
+        }} catch (\Throwable $e) {}
+
+        usort($isler, fn ($a, $b) => ($a['oncelik'] ?? 9) <=> ($b['oncelik'] ?? 9));
+        return ['isler' => $isler, 'bitenler' => $bitenler];
+    }
+}
+
+// ----- AJANDA WEB -----
+Route::get('/ajanda', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _aiAjandaEnsure();
+    $sid = _webSubeId();
+    $liste = _aiAjandaSorgu($sid, $bp)->where('durum', 'acik')->orderByRaw('baslar_at IS NULL, baslar_at')->limit(100)->get();
+    $gecmis = _aiAjandaSorgu($sid, $bp)->whereIn('durum', ['tamam', 'iptal'])->orderByDesc('updated_at')->limit(20)->get();
+    return view('ajanda', ['personel' => $bp, 'liste' => $liste, 'gecmis' => $gecmis]);
+});
+Route::post('/ajanda/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _aiAjandaEnsure();
+    $sid = _webSubeId();
+    $tip = in_array($r->tip, ['randevu', 'toplanti', 'hatirlatma', 'not', 'dogumgunu']) ? $r->tip : 'hatirlatma';
+    $baslik = trim((string) $r->baslik);
+    if ($baslik === '') return back()->with('hata', 'Başlık gerekli.');
+    $baslar = null;
+    if ($tip !== 'not' && $r->filled('tarih')) {
+        $saat = $r->filled('saat') ? $r->saat : '09:00';
+        try { $baslar = \Carbon\Carbon::parse($r->tarih . ' ' . $saat); } catch (\Throwable $e) { $baslar = null; }
+    }
+    $isletmeGenel = $r->boolean('isletme') && in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
+    DB::table('ai_ajanda')->insert([
+        'sube_id' => $sid, 'personel_id' => $isletmeGenel ? null : (int) $bp->id, 'tip' => $tip,
+        'baslik' => mb_substr($baslik, 0, 220), 'aciklama' => $r->filled('aciklama') ? mb_substr((string) $r->aciklama, 0, 2000) : null,
+        'baslar_at' => $baslar, 'tum_gun' => $r->boolean('tum_gun') ? 1 : 0,
+        'hatirlat_dk' => (int) ($r->input('hatirlat_dk', 30)), 'katilimcilar' => $r->filled('katilimcilar') ? mb_substr((string) $r->katilimcilar, 0, 600) : null,
+        'durum' => 'acik', 'hatirlatildi' => 0, 'kaynak' => 'web', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return back()->with('ok', 'Ajandaya eklendi.');
+});
+Route::post('/ajanda/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0], 401);
+    _aiAjandaEnsure();
+    $sid = _webSubeId();
+    $durum = in_array($r->durum, ['tamam', 'iptal', 'acik']) ? $r->durum : 'tamam';
+    $n = _aiAjandaSorgu($sid, $bp)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
+    if ($r->expectsJson() || $r->ajax()) return response()->json(['ok' => $n ? 1 : 0]);
+    return back()->with('ok', 'Güncellendi.');
+});
+Route::post('/ajanda/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _aiAjandaEnsure();
+    $sid = _webSubeId();
+    _aiAjandaSorgu($sid, $bp)->where('id', (int) $r->id)->delete();
+    return back()->with('ok', 'Silindi.');
+});
+
+// ----- AJANDA API (Bearer — Flutter paritesi) -----
+Route::get('/api/ajanda/liste', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    _aiAjandaEnsure();
+    $rows = _aiAjandaSorgu($p->sube_id, $p)->where('durum', 'acik')->orderByRaw('baslar_at IS NULL, baslar_at')->limit(100)->get();
+    return ['ok' => 1, 'liste' => $rows];
+});
+Route::post('/api/ajanda/ekle', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    _aiAjandaEnsure();
+    $tip = in_array($r->tip, ['randevu', 'toplanti', 'hatirlatma', 'not', 'dogumgunu']) ? $r->tip : 'hatirlatma';
+    $baslik = trim((string) $r->baslik);
+    if ($baslik === '') return response()->json(['ok' => 0, 'hata' => 'Başlık gerekli']);
+    $baslar = null;
+    if ($tip !== 'not' && $r->filled('baslar_at')) { try { $baslar = \Carbon\Carbon::parse($r->baslar_at); } catch (\Throwable $e) {} }
+    $id = DB::table('ai_ajanda')->insertGetId([
+        'sube_id' => (int) $p->sube_id, 'personel_id' => (int) $p->id, 'tip' => $tip,
+        'baslik' => mb_substr($baslik, 0, 220), 'aciklama' => $r->filled('aciklama') ? mb_substr((string) $r->aciklama, 0, 2000) : null,
+        'baslar_at' => $baslar, 'hatirlat_dk' => (int) $r->input('hatirlat_dk', 30),
+        'durum' => 'acik', 'hatirlatildi' => 0, 'kaynak' => 'app', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    return ['ok' => 1, 'id' => $id];
+});
+Route::post('/api/ajanda/durum', function (Request $r) {
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
+    _aiAjandaEnsure();
+    $durum = in_array($r->durum, ['tamam', 'iptal', 'acik']) ? $r->durum : 'tamam';
+    $n = _aiAjandaSorgu($p->sube_id, $p)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
+    return ['ok' => $n ? 1 : 0];
+});
+// CRON: zamanı gelen hatırlatmaları push ile gönder. curl "/api/ajanda/hatirlat-tara?key=SANTRAL_SECRET"
+Route::get('/api/ajanda/hatirlat-tara', function (Request $r) {
+    $g = function_exists('_santralAuthGuard') ? _santralAuthGuard($r) : null; if ($g) return $g;
+    _aiAjandaEnsure();
+    $n = 0;
+    try {
+        $adaylar = DB::table('ai_ajanda')->where('durum', 'acik')->where('hatirlatildi', 0)
+            ->whereNotNull('baslar_at')->where('hatirlat_dk', '>', 0)
+            ->where('baslar_at', '>=', now()->subHours(2))->where('baslar_at', '<=', now()->addHours(26))->limit(300)->get();
+        foreach ($adaylar as $a) {
+            $tetikZaman = \Carbon\Carbon::parse($a->baslar_at)->subMinutes((int) $a->hatirlat_dk);
+            if (now()->lt($tetikZaman)) continue;
+            $saat = \Carbon\Carbon::parse($a->baslar_at)->format('H:i');
+            $ikonMetin = ['randevu' => '📅', 'toplanti' => '👥', 'hatirlatma' => '⏰', 'dogumgunu' => '🎂'][$a->tip] ?? '⏰';
+            $baslik = $ikonMetin . ' Hatırlatma';
+            $govde = $saat . ' · ' . $a->baslik . ($a->aciklama ? ' — ' . mb_substr($a->aciklama, 0, 80) : '');
+            try {
+                if (!empty($a->personel_id)) {
+                    $tok = DB::table('cihaz_tokenlari')->where('sube_id', (int) $a->sube_id)->where('personel_id', (int) $a->personel_id)->pluck('token')->all();
+                    if ($tok && function_exists('_fcmGonder')) _fcmGonder((int) $a->sube_id, $tok, $baslik, $govde, ['tur' => 'ajanda', 'id' => (int) $a->id]);
+                    elseif (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder((int) $a->sube_id, $baslik, $govde, ['tur' => 'ajanda'], ['sahip', 'mudur'], 'ajanda');
+                } elseif (function_exists('_fcmSubeyeGonder')) {
+                    _fcmSubeyeGonder((int) $a->sube_id, $baslik, $govde, ['tur' => 'ajanda'], ['sahip', 'mudur'], 'ajanda');
+                }
+            } catch (\Throwable $e) {}
+            DB::table('ai_ajanda')->where('id', $a->id)->update(['hatirlatildi' => 1, 'updated_at' => now()]);
+            $n++;
+        }
+    } catch (\Throwable $e) {}
+    return ['ok' => 1, 'gonderildi' => $n];
+});
+
 // WEB: Patron AI sayfası
 Route::get('/patron-ai', function () {
     $bp = null;
@@ -10906,16 +11165,23 @@ Route::get('/patron-ai', function () {
     // --- ANA SAYFA: HIZLI veriler SENKRON render (rakamlar ilk boyamada DOLU). Yalnız denetim lazy. ---
     if ($demo) {
         $b = _patronAiBriefDemo($sid, $ad);
+        $isler = ['isler' => [
+            ['grup' => 'Ajandan', 'ikon' => 'event', 'renk' => 'var(--mor1)', 'baslik' => '19:00 · Tedarikçi toplantısı', 'aciklama' => 'Et & süt tedarikçisi — fiyat görüşmesi', 'aksiyon' => ['tip' => 'info']],
+            ['grup' => 'Satın Alma', 'ikon' => 'inventory_2', 'renk' => 'var(--kirmizi)', 'baslik' => '4 malzeme kritik seviyede', 'aciklama' => 'Dana Antrikot, Somon, Mozzarella, Fesleğen', 'aksiyon' => ['tip' => 'info', 'lbl' => 'Siparişe çevir']],
+            ['grup' => 'Personel', 'ikon' => 'person_off', 'renk' => 'var(--amber)', 'baslik' => '1 personel vardiyada ama giriş yapmadı', 'aciklama' => 'Nerede olduğunu sorabilirsin', 'aksiyon' => ['tip' => 'info', 'lbl' => 'Sor']],
+            ['grup' => 'Ajandan', 'ikon' => 'cake', 'renk' => 'var(--mor1)', 'baslik' => 'Yarın eşinin doğum günü 🎂', 'aciklama' => 'Notun: gül almayı unutma', 'aksiyon' => ['tip' => 'info']],
+        ], 'bitenler' => ['2 mal kabulü tamamlandı', '1 konu çözüldü']];
         return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => 'sabah', 'demo' => true,
             'brief' => $b, 'tuketim' => $b['tuketim'], 'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'],
-            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false]);
+            'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false, 'isler' => $isler]);
     }
     $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
-    $analiz = []; $aiOzet = null; $aiVar = false; $aiSoguk = false;
+    $analiz = []; $aiOzet = null; $aiVar = false; $aiSoguk = false; $isler = ['isler' => [], 'bitenler' => []];
     try { $brief = _patronAiBriefUret($sid, $tip, $force, $ad); } catch (\Throwable $e) {}
     try { $tuketim = _aiKrediDurum($sid); } catch (\Throwable $e) {}
     try { $sureklilik = _patronAiSureklilik($sid); } catch (\Throwable $e) {}
     try { $whatsapp = _patronAiWhatsapp($sid); } catch (\Throwable $e) {}
+    try { $isler = _patronAiBugununIsleri($sid, $bp); } catch (\Throwable $e) {}
     try { if ($brief) {
         // SADECE ÖNBELLEK: hazırsa tam AI, değilse kural (Haiku çağrısı sayfayı bekletmez; soğuksa JS ?frag=analiz ile tamamlar)
         $az = _patronAiAnalizZengin($sid, $brief['veri'] ?? [], $tip, $ad, false, false, true);
@@ -10924,7 +11190,7 @@ Route::get('/patron-ai', function () {
     } } catch (\Throwable $e) {}
     return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
-        'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk]);
+        'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
