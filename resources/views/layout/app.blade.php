@@ -224,7 +224,7 @@
     $gruplar['Ayarlar & Entegrasyon'][] = ['/profilim', 'account_circle', 'Profilim', '#7C3AED'];
     // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
     if (config('services.resteos.ik_acik', true)) {
-        array_unshift($gruplar['Personel'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
+        array_unshift($gruplar['Personel'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
         $gruplar['Personel'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
         $gruplar['Personel'][] = ['/ik-risk', 'crisis_alert', 'Risk Radarı', '#F97316'];
         $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
@@ -235,6 +235,9 @@
         $gruplar['Panel'][] = ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'];
         $gruplar['Kasa & Finans'][] = ['/departman-asistan?dep=finans', 'account_balance', 'Finans AI Asistanı', '#4F46E5'];
     }
+    // DEPARTMAN SABAH BRİFİNGLERİ — her departman kendi verisiyle (patron ?dep ile görür; departman personeli üstteki "Sabah Brifingim"den kendisininkine girer)
+    $gruplar['Panel'][] = ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Sabah Brifingi', '#F59E0B'];
+    if (isset($gruplar['Kasa & Finans'])) $gruplar['Kasa & Finans'][] = ['/departman-brief?dep=finans', 'wb_sunny', 'Finans Sabah Brifingi', '#F59E0B'];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],

@@ -3313,6 +3313,23 @@ Route::get('/fiyatlandirma', function () {
     return view('fiyatlandirma');
 });
 
+// ============================ ÖNBELLEK TEMİZLE (tek tık — sahip) ============================
+// Menü/sayfa değişiklikleri sunucuda görünmezse: derlenmiş blade + route/config önbelleğini temizler. Güvenli (yalnız cache).
+Route::get('/cache-temizle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    $adminOk = !_adminKapi($r); // süper-admin veya geçerli admin key de geçer
+    if (!$adminOk && (!$bp || ($bp->rol ?? '') !== 'sahip')) return redirect('/pos-giris');
+    $cikti = [];
+    foreach (['view:clear', 'cache:clear', 'config:clear', 'route:clear'] as $k) {
+        try { Artisan::call($k); $cikti[] = "✓ $k"; } catch (\Throwable $e) { $cikti[] = "✗ $k — " . $e->getMessage(); }
+    }
+    return '<div style="font-family:sans-serif;max-width:520px;margin:80px auto;text-align:center;padding:32px;border:1px solid #e2e8f0;border-radius:16px">'
+        . '<div style="font-size:48px">🧹</div><h2 style="color:#0f172a">Önbellek temizlendi</h2>'
+        . '<p style="color:#64748b;font-size:13px">Sayfayı yenile; menü/değişiklikler görünür olmalı.</p>'
+        . '<pre style="text-align:left;color:#334155;background:#f8fafc;padding:12px;border-radius:10px;font-size:13px">' . e(implode("\n", $cikti)) . '</pre>'
+        . '<a href="/dashboard" style="display:inline-block;margin-top:12px;background:#4f46e5;color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Panele dön →</a></div>';
+});
+
 // ============================ DEMO VERI YUKLE (tek tik) ============================
 // Tum tablolari (yeni eklenenler dahil) taze demo veriyle doldurur. Idempotent.
 Route::get('/demo-veri-yukle', function (Request $r) {
