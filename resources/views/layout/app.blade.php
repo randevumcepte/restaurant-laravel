@@ -224,7 +224,7 @@
     $gruplar['Ayarlar & Entegrasyon'][] = ['/profilim', 'account_circle', 'Profilim', '#7C3AED'];
     // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
     if (config('services.resteos.ik_acik', true)) {
-        array_unshift($gruplar['Personel'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-ozet', 'groups', 'İK — Özet', '#10B981'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
+        array_unshift($gruplar['Personel'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
         $gruplar['Personel'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
         $gruplar['Personel'][] = ['/ik-risk', 'crisis_alert', 'Risk Radarı', '#F97316'];
         $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];

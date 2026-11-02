@@ -9971,17 +9971,8 @@ if (!function_exists('_ikAiYorum')) {
 
 // WEB: İK Özet sayfası
 Route::get('/ik-ozet', function () {
-    if (!config('services.resteos.ik_acik', true)) return redirect('/dashboard');
-    $bp = _ikGuard();
-    if (!$bp) return redirect('/pos-giris');
-    _restoPersonelKolonEnsure();
-    _restoPersonelHareketEnsure();
-    $sid = _webSubeId();
-    $ay = request('ay');
-    $veri = _ikOzetVeri($sid, $ay);
-    $ai = _ikAiYorum($sid, $veri, request()->boolean('force'));
-    $gundem = _ikGunGundem($sid);
-    return view('ik_ozet', ['veri' => $veri, 'ai' => $ai, 'gundem' => $gundem]);
+    // İK Özet sayfası kaldırıldı — tüm içeriği İK Sabah Brifingi'ne taşındı. Eski link/yer imleri kırılmasın diye yönlendirilir.
+    return redirect('/departman-brief?dep=ik');
 });
 
 // ===== İK: PROAKTİF GÜNÜN GÜNDEMİ (sabah brifingi — bugüne özel yapılacaklar) =====
@@ -17314,28 +17305,50 @@ if (!function_exists('_departmanBriefVeri')) {
         $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
-        // ================= İK =================
+        // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
         if ($kod === 'ik') {
-            $vard = 0; $giren = 0; $gelmeyen = 0;
-            try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
-                $vIds = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $ds)->pluck('personel_id')->unique();
-                $gIds = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->pluck('personel_id')->unique();
-                $vard = $vIds->count(); $giren = $gIds->count(); $gelmeyen = $vIds->diff($gIds)->count();
-            } } catch (\Throwable $e) {}
-            $toplamPers = 0; try { $toplamPers = (int) DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->count(); } catch (\Throwable $e) {}
-            $izin = 0; $avans = 0; try { if (Schema::hasTable('ik_self_talep')) { $izin = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'izin')->where('durum', 'talep')->count(); $avans = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count(); } } catch (\Throwable $e) {}
-            $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $vard . '</small>', 'label' => 'Bugün mesaide', 'alt' => $vard > 0 ? ($gelmeyen . ' gelmeyen') : 'vardiya planı yok'];
-            $kpis[] = ['ikon' => 'person_off', 'tint' => $gelmeyen > 0 ? 't-red' : 't-green', 'deger' => $gelmeyen, 'label' => 'Gelmeyen', 'alt' => $gelmeyen > 0 ? 'takip gerekli' : 'tam kadro 👍'];
-            $kpis[] = ['ikon' => 'event_available', 'tint' => $izin > 0 ? 't-blue' : 't-green', 'deger' => $izin, 'label' => 'Bekleyen izin', 'alt' => $izin > 0 ? 'onay bekliyor' : 'yok'];
-            $kpis[] = ['ikon' => 'payments', 'tint' => $avans > 0 ? 't-amber' : 't-green', 'deger' => $avans, 'label' => 'Bekleyen avans', 'alt' => $avans > 0 ? 'onay bekliyor' : 'yok'];
-            $kpis[] = ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => $toplamPers, 'label' => 'Aktif personel', 'alt' => 'kadro'];
-            if ($gelmeyen > 0) { $isler[] = ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'OPERASYON', 'baslik' => "$gelmeyen personel giriş yapmadı", 'aciklama' => 'Vardiyada ama mesai başlatmadı', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']]; $sinyal[] = "<b>$gelmeyen</b> gelmeyen"; }
-            if ($izin > 0) { $isler[] = ['ikon' => 'event_available', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$izin izin talebi onay bekliyor", 'aciklama' => 'Personel izin talepleri', 'aksiyon' => ['url' => '/ik-izin', 'lbl' => 'İncele']]; $sinyal[] = "<b>$izin</b> izin onayda"; }
-            if ($avans > 0) { $isler[] = ['ikon' => 'payments', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$avans avans talebi onay bekliyor", 'aciklama' => 'Personel avans talepleri', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Onayla']]; $sinyal[] = "<b>$avans</b> avans onayda"; }
-            $hizli = [['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı']];
-            $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'Devamsızlık', 'alt' => 'bugün', 'durum' => $gelmeyen > 2 ? 'risk' : ($gelmeyen > 0 ? 'dikkat' : 'iyi'), 'yorum' => $gelmeyen > 0 ? "Bugün $gelmeyen kişi vardiyada olduğu halde giriş yapmadı. Arayıp teyit et." : 'Devamsızlık yok, kadro tam. 👍'];
-            $analiz[] = ['ikon' => 'approval', 'renk' => '#F59E0B', 'baslik' => 'Onay Yükü', 'alt' => 'izin + avans', 'durum' => ($izin + $avans) > 3 ? 'dikkat' : 'notr', 'yorum' => ($izin + $avans) > 0 ? (($izin + $avans) . " talep onayını bekliyor ($izin izin, $avans avans).") : 'Bekleyen izin/avans talebi yok.'];
-            $analiz[] = ['ikon' => 'groups', 'renk' => '#10B981', 'baslik' => 'Kadro', 'alt' => 'doluluk', 'durum' => 'notr', 'yorum' => "$toplamPers aktif personel. Bugün vardiyada $giren/$vard giriş yaptı."];
+            $ikv = null;
+            try {
+                if (function_exists('_restoPersonelKolonEnsure')) _restoPersonelKolonEnsure();
+                if (function_exists('_restoPersonelHareketEnsure')) _restoPersonelHareketEnsure();
+                if (function_exists('_ikOzetVeri')) $ikv = _ikOzetVeri($sid, null);
+            } catch (\Throwable $e) { $ikv = null; }
+            $dv = $ikv['devam'] ?? []; $brd = $ikv['bordro'] ?? []; $kad = $ikv['kadro'] ?? []; $izn = $ikv['izin'] ?? [];
+            $gelen = $dv['gelen'] ?? null; $akt = (int) ($kad['aktif'] ?? 0); $mesaide = $dv['mesaide'] ?? null;
+            $bekIzin = (int) ($izn['bekleyen'] ?? 0);
+            $iscilik = $ikv['iscilik_yuzde'] ?? null; $iscSaglik = $ikv['iscilik_saglik'] ?? 'iyi';
+            $hakedis = (float) ($brd['hakedis'] ?? 0); $odenen = (float) ($brd['odenen'] ?? 0); $netOde = (float) ($brd['net'] ?? 0);
+            $aiAks = $ikv['ai_aksiyonlar'] ?? [];
+            $adetOf = function ($key) use ($aiAks) { foreach ($aiAks as $a) { if (($a['key'] ?? '') === $key) return (int) ($a['adet'] ?? 0); } return 0; };
+            $bekAvans = $adetOf('avans'); $eksikSay = count($ikv['eksik_belge'] ?? []);
+            $gelmeyen = ($gelen !== null && $akt) ? max(0, $akt - (int) $gelen) : 0;
+            $yg = (int) ($kad['yeni_giren'] ?? 0); $ayr = (int) ($kad['ayrilan'] ?? 0);
+            $iscTint = $iscSaglik === 'risk' ? 't-red' : ($iscSaglik === 'dikkat' ? 't-amber' : 't-green');
+            // KPI'lar (özetin 8 kartı + gelmeyen)
+            $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => ($gelen === null ? '—' : $gelen) . '<small>/' . $akt . '</small>', 'label' => 'Bugün işe gelen', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' gelmeyen') : 'tam katılım 👍'];
+            $kpis[] = ['ikon' => 'login', 'tint' => 't-blue', 'deger' => ($mesaide === null ? '—' : $mesaide), 'label' => 'Şu an mesaide', 'alt' => 'aktif çalışan'];
+            $kpis[] = ['ikon' => 'percent', 'tint' => $iscTint, 'deger' => $iscilik === null ? '—' : ('%' . $iscilik), 'label' => 'İşçilik / ciro', 'alt' => 'ideal %25-35'];
+            $kpis[] = ['ikon' => 'payments', 'tint' => 't-rose', 'deger' => $tl($hakedis), 'label' => 'Bu ay bordro', 'alt' => 'hakediş'];
+            $kpis[] = ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => $akt, 'label' => 'Aktif personel', 'alt' => "$yg giren · $ayr ayrılan"];
+            $kpis[] = ['ikon' => 'event_available', 'tint' => $bekIzin > 0 ? 't-amber' : 't-green', 'deger' => $bekIzin, 'label' => 'Bekleyen izin', 'alt' => $bekIzin > 0 ? 'onay bekliyor' : 'yok'];
+            $kpis[] = ['ikon' => 'request_quote', 'tint' => $bekAvans > 0 ? 't-amber' : 't-green', 'deger' => $bekAvans, 'label' => 'Bekleyen avans', 'alt' => $bekAvans > 0 ? 'onay bekliyor' : 'yok'];
+            $kpis[] = ['ikon' => 'assignment_ind', 'tint' => $eksikSay > 0 ? 't-amber' : 't-green', 'deger' => $eksikSay, 'label' => 'Eksik özlük', 'alt' => $eksikSay > 0 ? 'IBAN/TC eksik' : 'tam 👍'];
+            // Öncelikler — özetin "AI iş aksiyonları"ndan birebir
+            $grupMap = ['izin' => 'ONAY BEKLEYEN', 'avans' => 'ONAY BEKLEYEN', 'basvuru' => 'ONAY BEKLEYEN', 'maas' => 'ÖZLÜK', 'eksik-bilgi-iste' => 'ÖZLÜK', 'belge-hatirlat' => 'HATIRLATMA', 'dogum-kutla' => 'HATIRLATMA', 'yildonumu-kutla' => 'HATIRLATMA', 'gelmeyene-sor' => 'OPERASYON'];
+            $renkMap = ['ONAY BEKLEYEN' => '#F59E0B', 'ÖZLÜK' => '#4F46E5', 'HATIRLATMA' => '#A855F7', 'OPERASYON' => '#EC4899', 'İK' => '#7C3AED'];
+            foreach ($aiAks as $a) {
+                $grup = $grupMap[$a['key'] ?? ''] ?? 'İK';
+                $url = $a['url'] ?? '/ik-asistan';
+                $lbl = ($a['tip'] ?? '') === 'wa' ? 'AI’a yaptır' : 'Aç';
+                $isler[] = ['ikon' => $a['ikon'] ?? 'task_alt', 'renk' => $renkMap[$grup] ?? '#7C3AED', 'grup' => $grup, 'baslik' => $a['metin'] ?? ($a['lbl'] ?? ''), 'aciklama' => ($a['tip'] ?? '') === 'wa' ? 'Tek tıkla WhatsApp ile' : '', 'aksiyon' => ['url' => $url, 'lbl' => $lbl]];
+                if (!empty($a['adet'])) $sinyal[] = '<b>' . $a['adet'] . '</b> ' . mb_strtolower(str_replace(['Hepsinden ', 'Gelmeyene '], '', $a['lbl'] ?? ''));
+            }
+            // Detaylı AI analizi
+            $analiz[] = ['ikon' => 'percent', 'renk' => '#4F46E5', 'baslik' => 'İşçilik Maliyeti', 'alt' => 'bordro / ciro', 'durum' => $iscSaglik, 'yorum' => $iscilik !== null ? ("İşçilik/ciro %$iscilik. İdeal bant %25–35." . ($iscSaglik === 'risk' ? ' Yüksek — vardiya/fazla mesaiyi gözden geçir.' : ($iscSaglik === 'dikkat' ? ' Üst banda yakın, takip et.' : ' Sağlıklı. 👍'))) : 'Ciro verisi yok, oran hesaplanamadı.'];
+            $analiz[] = ['ikon' => 'payments', 'renk' => '#F56A8B', 'baslik' => 'Bordro', 'alt' => 'bu ay', 'durum' => $netOde > 0 ? 'dikkat' : 'notr', 'yorum' => 'Hakediş ' . $tl($hakedis) . ' · ödenen ' . $tl($odenen) . ' · kalan ' . $tl($netOde) . '.'];
+            $analiz[] = ['ikon' => 'badge', 'renk' => '#F59E0B', 'baslik' => 'Özlük & Sirkülasyon', 'alt' => 'bu ay', 'durum' => $eksikSay > 0 ? 'dikkat' : ($ayr > $yg ? 'dikkat' : 'iyi'), 'yorum' => ($eksikSay > 0 ? "$eksikSay personelde eksik özlük bilgisi var. " : 'Özlük bilgileri tam. ') . "$yg yeni giren, $ayr ayrılan."];
+            // Hızlı erişim (özetin aksiyon menüsü)
+            $hizli = [['url' => '/personel', 'ikon' => 'badge', 'lbl' => 'Personel & Maaş'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-aday', 'ikon' => 'how_to_reg', 'lbl' => 'İşe Alım'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı'], ['url' => '/garson-performans', 'ikon' => 'emoji_events', 'lbl' => 'Performans']];
         }
         // ================= SATIN ALMA =================
         elseif ($kod === 'satinalma') {
@@ -17446,8 +17459,8 @@ if (!function_exists('_departmanBriefVeri')) {
             if (!count($analiz)) $analiz[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'baslik' => $tmpl['ad'] ?? 'Departman', 'alt' => 'durum', 'durum' => count($sinyal) ? 'dikkat' : 'iyi', 'yorum' => count($sinyal) ? 'Bugün dikkat gereken işler var — soldaki önceliklere bak.' : 'Departman operasyonu yolunda görünüyor. 👍'];
         }
 
-        // Ortak: hızlı linkleri tekilleştir, KPI'ları 5'e kırp
-        $kpis = array_slice($kpis, 0, 5);
+        // Ortak: hızlı linkleri tekilleştir, KPI'ları makul sınıra kırp (grid 5-geniş, fazlası alt satıra sarar)
+        $kpis = array_slice($kpis, 0, 10);
         $gorulen = []; $hizliT = []; foreach ($hizli as $h) { if (isset($gorulen[$h['url']])) continue; $gorulen[$h['url']] = 1; $hizliT[] = $h; } $hizli = array_slice($hizliT, 0, 6);
 
         $rozetler = [['ikon' => 'pending_actions', 'metin' => count($isler) . ' iş var']];
@@ -17479,17 +17492,17 @@ if (!function_exists('_departmanBriefDemo')) {
                     ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => 10, 'label' => 'Aktif personel', 'alt' => 'kadro'],
                 ],
                 'isler' => [
-                    ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'OPERASYON', 'baslik' => '2 personel giriş yapmadı', 'aciklama' => 'Ahmet Y., Elif K. — vardiyada ama mesai yok', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']],
+                    ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'OPERASYON', 'baslik' => '2 personel giriş yapmadı', 'aciklama' => 'Ahmet Y., Elif K. — vardiyada ama mesai yok', 'aksiyon' => ['url' => '/ik-vardiya', 'lbl' => 'Gör']],
                     ['ikon' => 'event_available', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '3 izin talebi onay bekliyor', 'aciklama' => 'Yıllık + mazeret izinleri', 'aksiyon' => ['url' => '/ik-izin', 'lbl' => 'İncele']],
-                    ['ikon' => 'payments', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '1 avans talebi onay bekliyor', 'aciklama' => 'Mehmet D. — 2.500₺', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Onayla']],
-                    ['ikon' => 'cake', 'renk' => '#A855F7', 'grup' => 'HATIRLATMA', 'baslik' => 'Bu hafta 2 doğum günü', 'aciklama' => 'Zeynep Ş. (bugün), Can Ö. (Cuma)', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']],
+                    ['ikon' => 'payments', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '1 avans talebi onay bekliyor', 'aciklama' => 'Mehmet D. — 2.500₺', 'aksiyon' => ['url' => '/ik-izin', 'lbl' => 'Onayla']],
+                    ['ikon' => 'cake', 'renk' => '#A855F7', 'grup' => 'HATIRLATMA', 'baslik' => 'Bu hafta 2 doğum günü', 'aciklama' => 'Zeynep Ş. (bugün), Can Ö. (Cuma)', 'aksiyon' => ['url' => '/ik-asistan', 'lbl' => 'Kutla']],
                 ],
                 'analiz' => [
                     ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'Devamsızlık', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'Bugün 2 kişi giriş yapmadı. Son 30 günde devamsızlık %8 arttı — vardiya dağılımını gözden geçir.'],
                     ['ikon' => 'approval', 'renk' => '#F59E0B', 'baslik' => 'Onay Yükü', 'alt' => 'izin + avans', 'durum' => 'dikkat', 'yorum' => '4 talep onayını bekliyor (3 izin, 1 avans). Geciktirme moral düşürür.'],
                     ['ikon' => 'crisis_alert', 'renk' => '#EA580C', 'baslik' => 'Kıdem Riski', 'alt' => 'erken uyarı', 'durum' => 'risk', 'yorum' => '1 personelde devamsızlık + avans örüntüsü var — ayrılma riski. Birebir görüşme öner.'],
                 ],
-                'hizli' => [['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı']],
+                'hizli' => [['url' => '/personel', 'ikon' => 'badge', 'lbl' => 'Personel & Maaş'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı']],
                 'aiOzet' => 'Bugünün gündemi: <b>2</b> gelmeyen · <b>3</b> izin onayda · <b>1</b> avans onayda · kıdem riski <b>1</b> kişi.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '2 izin talebi onaylandı', 'link' => '/ik-izin'], ['ikon' => 'check', 'mtn' => '1 yeni personel işe alındı', 'link' => '/ik-aday']],
             ]);
@@ -17593,7 +17606,12 @@ Route::get('/departman-brief', function (Request $r) {
     $patron = in_array($bp->rol ?? '', ['sahip', 'mudur']);
     $istenen = (string) $r->query('dep', '');
     $kendi = _departmanBriefKod($bp, $sid);
-    $kod = ($patron && $istenen) ? $istenen : $kendi;          // patron her departmanı görebilir; personel sadece kendi
+    // Patron her departmanı görür; diğer personel ya kendi departmanı ya da o departmanın bir sayfa yetkisine sahipse
+    $yetkiliMi = false;
+    if ($istenen && !$patron) {
+        try { $sayfa = (function_exists('_departmanSablonlari') ? (_departmanSablonlari()[$istenen]['sayfa'] ?? []) : []); foreach ($sayfa as $y) { if (function_exists('_panelYetkiVar') && _panelYetkiVar($bp, $y)) { $yetkiliMi = true; break; } } } catch (\Throwable $e) {}
+    }
+    $kod = ($istenen && ($patron || $yetkiliMi)) ? $istenen : $kendi;
     $demo = $r->query('demo') == '1';
     $veri = $demo ? _departmanBriefDemo($kod) : _departmanBriefVeri($sid, $bp, $kod);
     $veri['demo'] = $demo; $veri['kod'] = $kod;
