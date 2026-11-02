@@ -354,7 +354,7 @@
       <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
       <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span> Senin için şunları yapabilirim <span class="mini">AI</span></div>
       <div class="pai-aiact">
-        <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla</button>
+        <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>{{ ($devirSa ?? false) ? 'Kritik stok → satın almaya sipariş talebi gönder' : 'Kritik stok için sipariş taslağı hazırla' }}</button>
         <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder</button>
         <button onclick="paiEylemOner('eksik_bilgi_iste')"><span class="aic"><span class="material-icons-outlined">badge</span></span>Eksik özlük bilgisini iste</button>
         <button onclick="paiEylemOner('dogum_gunu_kutla')"><span class="aic"><span class="material-icons-outlined">cake</span></span>Doğum günü kutlaması gönder</button>

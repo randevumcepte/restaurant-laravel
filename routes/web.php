@@ -11643,12 +11643,31 @@ if (!function_exists('_patronAiBugununIsleri')) {
     }
 }
 
+// Bir alanda (satın alma / ik) patron DIŞINDA sorumlu var mı? Varsa delege eder, yoksa patron kendi yapar.
+if (!function_exists('_patronDevirVar')) {
+    function _patronDevirVar($sid, $alan)
+    {
+        try {
+            if ($alan === 'satinalma') {
+                if (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'satinalmaci')->exists()) return true;
+                if (Schema::hasTable('departmanlar') && DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)
+                    ->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('kod', 'like', '%stok%')->orWhere('ad', 'like', '%atın Alma%')->orWhere('ad', 'like', '%Stok%')->orWhere('ad', 'like', '%Depo%'); })->exists()) return true;
+            } elseif ($alan === 'ik') {
+                if (Schema::hasTable('departmanlar') && DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)
+                    ->where(function ($w) { $w->where('kod', 'like', '%ik%')->orWhere('ad', 'like', '%İnsan%')->orWhere('ad', 'like', '%Personel%')->orWhere('grup', 'like', '%İK%'); })->exists()) return true;
+            }
+        } catch (\Throwable $e) {}
+        return false;
+    }
+}
 // Patron AI — bir "iş" kartının POPUP detayı + popup içinde biten aksiyon(lar). Sayfaya yönlendirme YOK.
 Route::get('/api/patron-ai/is-detay', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return response()->json(['ok' => 0], 401);
     $sid = _webSubeId();
     $pop = (string) $r->query('pop');
+    $devirSa = _patronDevirVar($sid, 'satinalma'); // satın alma sorumlusu/departmanı var mı?
+    $devirIk = _patronDevirVar($sid, 'ik');
     $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
     $o = ['ok' => 1, 'baslik' => 'Detay', 'aciklama' => '', 'satirlar' => [], 'aksiyonlar' => [], 'satir_aksiyon' => null, 'bos' => 'Kayıt yok.'];
     try {
@@ -11656,7 +11675,8 @@ Route::get('/api/patron-ai/is-detay', function (Request $r) {
             $o['baslik'] = 'Kritik Stok'; $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
             $o['aciklama'] = count($k) . ' malzeme kritik seviyede — mutfak aksayabilir.';
             foreach ($k as $x) $o['satirlar'][] = ['ad' => $x['ad'], 'alt' => 'mevcut ' . $x['mevcut'] . ' / kritik ' . $x['kritik'] . ' ' . $x['birim'], 'sag' => 'öneri ' . $x['oneri'] . ' ' . $x['birim'], 'renk' => 'var(--kirmizi)'];
-            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '🛒 Tedarikçi-bazlı sipariş taslağı hazırla'];
+            if ($devirSa) { $o['aciklama'] .= ' Satın alma sorumlusuna iletebilirsin.'; }
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => $devirSa ? '📩 Satın almaya sipariş talebi gönder' : '🛒 Tedarikçi-bazlı sipariş taslağı hazırla'];
         } elseif ($pop === 'islem_onay') {
             $o['baslik'] = 'Bekleyen İşlem Onayları'; $o['satir_aksiyon'] = 'onay';
             $liste = Schema::hasTable('onay_istekleri') ? DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('isteyen_id', '!=', (int) $bp->id)->orderByDesc('id')->get() : collect();
@@ -11689,7 +11709,7 @@ Route::get('/api/patron-ai/is-detay', function (Request $r) {
             $o['baslik'] = 'Üretim Riski'; $risk = function_exists('_restoUretimRiski') ? _restoUretimRiski($sid, 8) : ['riskli' => []];
             $o['aciklama'] = 'Az porsiyon kalan ürünler — darboğaz malzemeler bitmeden sipariş et.';
             foreach (($risk['riskli'] ?? []) as $x) $o['satirlar'][] = ['ad' => $x['urun'] ?? '-', 'alt' => 'darboğaz: ' . ($x['darbogaz'] ?? '-'), 'sag' => '~' . ($x['yapilabilir'] ?? 0) . ' porsiyon', 'renk' => 'var(--amber)'];
-            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '📩 Satın almaya sipariş talebi gönder'];
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => $devirSa ? '📩 Satın almaya sipariş talebi gönder' : '🛒 Eksik malzemeyi siparişe ekle'];
         } elseif ($pop === 'gelmeyen') {
             $o['baslik'] = 'Vardiyada Giriş Yapmayanlar';
             $bugun = today()->toDateString(); $satir = [];
@@ -11921,10 +11941,11 @@ Route::get('/patron-ai', function () {
     } } catch (\Throwable $e) {}
     // GERÇEK PANEL (layout.app — açılır-kapanır menü) + yeni içerik tasarımı. Departman denetimi SENKRON (inline, eski lazy fragman yerine)
     $paiDenetim = []; try { $paiDenetim = _departmanDenetim($sid, $gunKarar); } catch (\Throwable $e) {}
+    $paiDevirSa = function_exists('_patronDevirVar') ? _patronDevirVar($sid, 'satinalma') : false; // satın alma sorumlusu var mı → delege et
     return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
         'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler,
-        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa, 'denetim' => $paiDenetim]);
+        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa, 'denetim' => $paiDenetim, 'devirSa' => $paiDevirSa]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
