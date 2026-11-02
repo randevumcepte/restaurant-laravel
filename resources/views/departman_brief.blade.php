@@ -81,7 +81,20 @@
   .pai-dun-bos{color:var(--sub);font-size:12.5px;padding:6px 0}
   .pai-task-bos{color:var(--sub);padding:18px;text-align:center;font-size:13.5px}
 
-  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} }
+  .pai-task .trot{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px}
+  .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:14px 2px 10px}
+  .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
+  .pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:12px}
+  .pai-an{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-an-bas{display:flex;align-items:center;gap:11px;margin-bottom:9px}
+  .pai-an-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
+  .pai-an-ic .material-icons-outlined{font-size:21px}
+  .pai-an-bas .t{font-weight:800;font-size:14.5px;color:var(--ink)}
+  .pai-an-bas .d{font-size:11.5px;color:var(--sub);font-weight:600}
+  .pai-vd{font-size:10px;font-weight:800;padding:4px 11px;border-radius:20px;color:#fff;letter-spacing:.5px;margin-left:auto}
+  .pai-yorum{font-size:13px;line-height:1.55;color:var(--ink);margin:2px 0 0}
+
+  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} .pai-analiz-grid{grid-template-columns:1fr} }
   @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} .pai-aiact{grid-template-columns:1fr} }
   @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-hero-sag{margin-left:0;width:100%} .pai-hero-selam{font-size:19px} }
   @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} }
@@ -132,18 +145,19 @@
 {{-- ============ ORTA: Bugün yapılacaklar (sol) + AI öneri (sağ) ============ --}}
 <div class="pai-mid">
   <div class="pai-card">
-    <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün yapılacaklar</span>@if (count($bugunYapilacak))<span class="cnt">{{ count($bugunYapilacak) }}</span>@endif</div>
-    @if (count($bugunYapilacak))
+    <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($isler))<span class="cnt">{{ count($isler) }}</span>@endif</div>
+    @if (count($isler))
     <div class="pai-task-grid">
-      @foreach ($bugunYapilacak as $y)
-        @php $rk = $y['renk'] ?? 'var(--mor1)'; @endphp
+      @foreach ($isler as $is)
+        @php $rk = $is['renk'] ?? 'var(--mor1)'; $ak = $is['aksiyon'] ?? null; @endphp
         <div class="pai-task">
-          <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $y['ikon'] ?? 'task_alt' }}</span></div>
+          <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
           <div class="tmid">
-            <div class="tbas">{{ $y['baslik'] }}</div>
-            @if (!empty($y['aciklama']))<div class="talt">{{ $y['aciklama'] }}</div>@endif
+            @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
+            <div class="tbas">{{ $is['baslik'] }}</div>
+            @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
           </div>
-          @if (!empty($y['url']))<a class="tbtn" href="{{ $y['url'] }}">{{ $y['buton'] ?? 'Aç' }} →</a>@endif
+          @if ($ak && !empty($ak['url']))<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }}</a>@endif
         </div>
       @endforeach
     </div>
@@ -170,6 +184,29 @@
     @endif
   </div>
 </div>
+
+{{-- ============ DETAYLI AI ANALİZİ ============ --}}
+@if (count($analiz))
+<div class="pai-sec-bas"><span class="material-icons-outlined">analytics</span> Detaylı AI analizi</div>
+<div class="pai-analiz-grid">
+  @foreach ($analiz as $a)
+    @php
+      $dur = $a['durum'] ?? 'notr';
+      $durRenk = ['risk'=>'#F43F5E','dikkat'=>'#F59E0B','iyi'=>'#10B981','notr'=>'#64748B'][$dur] ?? '#64748B';
+      $durAd = ['risk'=>'RİSK','dikkat'=>'DİKKAT','iyi'=>'İYİ','notr'=>'NÖTR'][$dur] ?? 'NÖTR';
+      $rk = $a['renk'] ?? 'var(--mor1)';
+    @endphp
+    <div class="pai-an" style="border-left-color:{{ $durRenk }}">
+      <div class="pai-an-bas">
+        <div class="pai-an-ic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $a['ikon'] ?? 'insights' }}</span></div>
+        <div><div class="t">{{ $a['baslik'] }}</div>@if(!empty($a['alt']))<div class="d">{{ $a['alt'] }}</div>@endif</div>
+        <span class="pai-vd" style="background:{{ $durRenk }}">{{ $durAd }}</span>
+      </div>
+      <div class="pai-yorum">{{ $a['yorum'] ?? '' }}</div>
+    </div>
+  @endforeach
+</div>
+@endif
 
 {{-- ============ DÜN YAPILANLAR ============ --}}
 <div class="pai-blok">

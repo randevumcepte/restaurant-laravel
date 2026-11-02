@@ -17297,7 +17297,7 @@ if (!function_exists('_departmanBriefKod')) {
     }
 }
 if (!function_exists('_departmanBriefVeri')) {
-    // Departmanın sayfa yetkilerine göre KENDİ KPI/dün/bugün/hızlı-link verisini üretir. Tüm sorgular guard'lı.
+    // Departmana özel KPI + öncelik kartları (grup+aksiyon) + Detaylı AI analizi. patron-ai sayfasının AYNISI, veri departmana özel. Tüm sorgular guard'lı.
     function _departmanBriefVeri($sid, $bp, $kod)
     {
         $sid = (int) $sid;
@@ -17310,86 +17310,152 @@ if (!function_exists('_departmanBriefVeri')) {
         $dun = \Carbon\Carbon::yesterday()->toDateString();
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
-        $kpis = []; $bugun = []; $dunY = []; $hizli = []; $mini = []; $sinyal = [];
+        $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
-        if ($hasP('gor_stok')) {
-            $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
-            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik stok', 'alt' => $krit > 0 ? 'acil sipariş gerekli' : 'sorun yok 👍', 'w' => $krit > 0 ? 1 : 5];
-            if ($krit > 0) { $bugun[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'oncelik' => 'yuksek', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'url' => '/siparis-onerisi', 'buton' => 'Sipariş Öner']; $sinyal[] = "<span class='boldv'>$krit kritik stok</span>"; }
-            $hizli[] = ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok & Satın Alma'];
-            try { if (Schema::hasTable('mal_kabuller')) { $dmk = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->whereDate('created_at', $dun)->count(); if ($dmk > 0) $dunY[] = ['ikon' => 'inventory', 'mtn' => "$dmk mal kabul yapıldı", 'link' => '/mal-kabul-liste']; } } catch (\Throwable $e) {}
-        }
-        if ($hasP('gor_personel') || $hasP('gor_puantaj')) {
+        // ================= İK =================
+        if ($kod === 'ik') {
             $vard = 0; $giren = 0; $gelmeyen = 0;
             try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
                 $vIds = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $ds)->pluck('personel_id')->unique();
                 $gIds = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->pluck('personel_id')->unique();
                 $vard = $vIds->count(); $giren = $gIds->count(); $gelmeyen = $vIds->diff($gIds)->count();
             } } catch (\Throwable $e) {}
-            if ($vard > 0) { $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $vard . '</small>', 'label' => 'Bugün mesaide', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' gelmeyen') : 'tam kadro 👍', 'w' => $gelmeyen > 0 ? 1 : 4]; }
-            if ($gelmeyen > 0) { $bugun[] = ['ikon' => 'person_off', 'renk' => '#EC4899', 'oncelik' => 'orta', 'baslik' => "$gelmeyen personel giriş yapmadı", 'aciklama' => 'Arayıp teyit et', 'url' => '/ik-ozet', 'buton' => 'İK Özet']; $sinyal[] = "<span class='boldv'>$gelmeyen gelmeyen</span>"; }
-            try { if (Schema::hasTable('ik_self_talep')) {
-                $izin = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'izin')->where('durum', 'talep')->count();
-                $avans = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count();
-                if ($izin > 0) $bugun[] = ['ikon' => 'event_available', 'renk' => '#10B981', 'oncelik' => 'orta', 'baslik' => "$izin izin talebi onay bekliyor", 'url' => '/ik-izin', 'buton' => 'İzinler'];
-                if ($avans > 0) $bugun[] = ['ikon' => 'payments', 'renk' => '#F59E0B', 'oncelik' => 'orta', 'baslik' => "$avans avans talebi onay bekliyor", 'url' => '/ik-ozet', 'buton' => 'İK Özet'];
-                if ($izin + $avans > 0) $sinyal[] = "<span class='boldv'>" . ($izin + $avans) . " talep</span> onayda";
-            } } catch (\Throwable $e) {}
-            $hizli[] = ['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'];
+            $toplamPers = 0; try { $toplamPers = (int) DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->count(); } catch (\Throwable $e) {}
+            $izin = 0; $avans = 0; try { if (Schema::hasTable('ik_self_talep')) { $izin = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'izin')->where('durum', 'talep')->count(); $avans = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count(); } } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $vard . '</small>', 'label' => 'Bugün mesaide', 'alt' => $vard > 0 ? ($gelmeyen . ' gelmeyen') : 'vardiya planı yok'];
+            $kpis[] = ['ikon' => 'person_off', 'tint' => $gelmeyen > 0 ? 't-red' : 't-green', 'deger' => $gelmeyen, 'label' => 'Gelmeyen', 'alt' => $gelmeyen > 0 ? 'takip gerekli' : 'tam kadro 👍'];
+            $kpis[] = ['ikon' => 'event_available', 'tint' => $izin > 0 ? 't-blue' : 't-green', 'deger' => $izin, 'label' => 'Bekleyen izin', 'alt' => $izin > 0 ? 'onay bekliyor' : 'yok'];
+            $kpis[] = ['ikon' => 'payments', 'tint' => $avans > 0 ? 't-amber' : 't-green', 'deger' => $avans, 'label' => 'Bekleyen avans', 'alt' => $avans > 0 ? 'onay bekliyor' : 'yok'];
+            $kpis[] = ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => $toplamPers, 'label' => 'Aktif personel', 'alt' => 'kadro'];
+            if ($gelmeyen > 0) { $isler[] = ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'OPERASYON', 'baslik' => "$gelmeyen personel giriş yapmadı", 'aciklama' => 'Vardiyada ama mesai başlatmadı', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']]; $sinyal[] = "<b>$gelmeyen</b> gelmeyen"; }
+            if ($izin > 0) { $isler[] = ['ikon' => 'event_available', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$izin izin talebi onay bekliyor", 'aciklama' => 'Personel izin talepleri', 'aksiyon' => ['url' => '/ik-izin', 'lbl' => 'İncele']]; $sinyal[] = "<b>$izin</b> izin onayda"; }
+            if ($avans > 0) { $isler[] = ['ikon' => 'payments', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$avans avans talebi onay bekliyor", 'aciklama' => 'Personel avans talepleri', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Onayla']]; $sinyal[] = "<b>$avans</b> avans onayda"; }
+            $hizli = [['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı']];
+            $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'Devamsızlık', 'alt' => 'bugün', 'durum' => $gelmeyen > 2 ? 'risk' : ($gelmeyen > 0 ? 'dikkat' : 'iyi'), 'yorum' => $gelmeyen > 0 ? "Bugün $gelmeyen kişi vardiyada olduğu halde giriş yapmadı. Arayıp teyit et." : 'Devamsızlık yok, kadro tam. 👍'];
+            $analiz[] = ['ikon' => 'approval', 'renk' => '#F59E0B', 'baslik' => 'Onay Yükü', 'alt' => 'izin + avans', 'durum' => ($izin + $avans) > 3 ? 'dikkat' : 'notr', 'yorum' => ($izin + $avans) > 0 ? (($izin + $avans) . " talep onayını bekliyor ($izin izin, $avans avans).") : 'Bekleyen izin/avans talebi yok.'];
+            $analiz[] = ['ikon' => 'groups', 'renk' => '#10B981', 'baslik' => 'Kadro', 'alt' => 'doluluk', 'durum' => 'notr', 'yorum' => "$toplamPers aktif personel. Bugün vardiyada $giren/$vard giriş yaptı."];
         }
-        if ($hasP('gor_finans') || $hasP('gor_z_raporu') || $hasP('gor_kasa') || $hasP('gor_dashboard')) {
-            $bugunCiro = 0; $ayCiro = 0;
+        // ================= SATIN ALMA =================
+        elseif ($kod === 'satinalma') {
+            $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+            $geciken = function_exists('_gecikenSiparisler') ? (int) _gecikenSiparisler($sid) : 0;
+            $teklif = 0; try { if (Schema::hasTable('rfq_gonderim')) $teklif = (int) DB::table('rfq_gonderim')->where('sube_id', $sid)->where('durum', 'teklif_geldi')->count(); } catch (\Throwable $e) {}
+            $yeniTalep = 0; $onaydaTalep = 0; try { if (Schema::hasTable('satinalma_talepleri')) { $yeniTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count(); $onaydaTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count(); } } catch (\Throwable $e) {}
+            $ayHarcama = 0; $ayButce = 0; try { if (Schema::hasTable('satinalma_siparisleri')) $ayHarcama = (float) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['iptal', 'taslak'])->where('tarih', '>=', substr($ayBas, 0, 10))->sum('genel_toplam'); } catch (\Throwable $e) {}
+            try { $ayButce = (float) (DB::table('satinalma_butce')->where('sube_id', $sid)->where('yil_ay', date('Y-m'))->value('tutar') ?: 0); } catch (\Throwable $e) {}
+            $butceY = $ayButce > 0 ? round($ayHarcama / $ayButce * 100) : null;
+            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik stok', 'alt' => $krit > 0 ? 'acil sipariş' : 'sorun yok 👍'];
+            $kpis[] = ['ikon' => 'local_shipping', 'tint' => $geciken > 0 ? 't-amber' : 't-green', 'deger' => $geciken, 'label' => 'Geciken sipariş', 'alt' => $geciken > 0 ? 'tedarikçi takibi' : 'gecikme yok'];
+            $kpis[] = ['ikon' => 'request_quote', 'tint' => 't-mor', 'deger' => $teklif, 'label' => 'Gelen teklif', 'alt' => 'karar bekliyor'];
+            $kpis[] = ['ikon' => 'assignment', 'tint' => 't-blue', 'deger' => $yeniTalep, 'label' => 'Yeni talep', 'alt' => 'inceleme bekliyor'];
+            $kpis[] = ['ikon' => 'savings', 'tint' => ($butceY !== null && $butceY > 100) ? 't-red' : 't-green', 'deger' => $tl($ayHarcama), 'label' => 'Bu ay harcama', 'alt' => $butceY !== null ? "bütçe %$butceY" : '(bütçe tanımsız)'];
+            if ($krit > 0) { $isler[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'grup' => 'SATIN ALMA', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Sipariş Öner']]; $sinyal[] = "<b>$krit</b> kritik stok"; }
+            if ($geciken > 0) { $isler[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'grup' => 'SATIN ALMA', 'baslik' => "$geciken sipariş gecikti", 'aciklama' => 'Tedarikçiyi ara', 'aksiyon' => ['url' => '/satinalma-siparis', 'lbl' => 'Gör']]; $sinyal[] = "<b>$geciken</b> geciken"; }
+            if ($teklif > 0) { $isler[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$teklif teklif karşılaştır", 'aciklama' => 'En uygununu seç', 'aksiyon' => ['url' => '/gelen-teklifler', 'lbl' => 'İncele']]; $sinyal[] = "<b>$teklif</b> teklif"; }
+            if ($yeniTalep > 0) { $isler[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'grup' => 'SATIN ALMA', 'baslik' => "$yeniTalep yeni talebi incele", 'aciklama' => 'RFQ gönder / fiyat araştır', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'İncele']]; }
+            if ($onaydaTalep > 0) { $isler[] = ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$onaydaTalep talep onayda", 'aciklama' => 'Patron onayı bekliyor', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'Gör']]; }
+            $hizli = [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'savings', 'lbl' => 'Bütçe']];
+            $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Stok Riski', 'alt' => 'kritik seviye', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik seviyede — mutfak aksamadan sipariş et." : 'Kritik stok yok. 👍'];
+            $analiz[] = ['ikon' => 'savings', 'renk' => '#10B981', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => $butceY === null ? 'notr' : ($butceY > 100 ? 'risk' : ($butceY > 85 ? 'dikkat' : 'iyi')), 'yorum' => $butceY !== null ? ("Bu ay bütçenin %$butceY'i harcandı" . ($butceY > 100 ? ' — AŞIM var!' : '.')) : 'Bu ay için bütçe tanımlı değil.'];
+            $analiz[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'baslik' => 'Tedarik Hızı', 'alt' => 'geciken', 'durum' => $geciken > 2 ? 'risk' : ($geciken > 0 ? 'dikkat' : 'iyi'), 'yorum' => $geciken > 0 ? "$geciken sipariş teslim tarihini geçti — tedarikçileri sıkıştır." : 'Gecikmede sipariş yok.'];
+        }
+        // ================= FİNANS =================
+        elseif ($kod === 'finans') {
+            $bugunCiro = 0; $ayCiro = 0; $acikT = 0; $ayGider = 0;
             try { $bugunCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $ds)->sum('toplam'); } catch (\Throwable $e) {}
             try { $ayCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereBetween('kapanis', [$ayBas, $ayBit])->sum('toplam'); } catch (\Throwable $e) {}
-            $kpis[] = ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl($bugunCiro), 'label' => 'Bugün ciro', 'alt' => 'bu ay ' . $tl($ayCiro), 'w' => 2];
-            $mini[] = '💰 Bugün ' . $tl($bugunCiro);
-            try { $acikT = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->sum('toplam'); if ($acikT > 0) { $kpis[] = ['ikon' => 'receipt_long', 'tint' => 't-amber', 'deger' => $tl($acikT), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor', 'w' => 3]; } } catch (\Throwable $e) {}
+            try { $acikT = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->sum('toplam'); } catch (\Throwable $e) {}
+            try { if (Schema::hasTable('giderler')) $ayGider = (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('created_at', [$ayBas, $ayBit])->sum('tutar'); } catch (\Throwable $e) {}
+            $acikAd = 0; try { $acikAd = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl($bugunCiro), 'label' => 'Bugün ciro', 'alt' => 'kapanan adisyon'];
+            $kpis[] = ['ikon' => 'trending_up', 'tint' => 't-rose', 'deger' => $tl($ayCiro), 'label' => 'Bu ay ciro', 'alt' => 'toplam'];
+            $kpis[] = ['ikon' => 'request_quote', 'tint' => 't-red', 'deger' => $tl($ayGider), 'label' => 'Bu ay gider', 'alt' => 'toplam'];
+            $kpis[] = ['ikon' => 'account_balance', 'tint' => ($ayCiro - $ayGider) >= 0 ? 't-green' : 't-red', 'deger' => $tl($ayCiro - $ayGider), 'label' => 'Net (ay)', 'alt' => 'ciro − gider'];
+            $kpis[] = ['ikon' => 'receipt_long', 'tint' => $acikT > 0 ? 't-amber' : 't-green', 'deger' => $tl($acikT), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor'];
+            if ($acikAd > 0) { $isler[] = ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'OPERASYON', 'baslik' => "$acikAd adisyon dünden açık", 'aciklama' => 'Tahsilat/kapanış gerekli', 'aksiyon' => ['url' => '/pos', 'lbl' => 'Gör']]; $sinyal[] = "<b>$acikAd</b> açık adisyon"; }
+            if ($ayGider > 0) { $isler[] = ['ikon' => 'request_quote', 'renk' => '#F59E0B', 'grup' => 'FİNANS', 'baslik' => 'Gider kontrolü', 'aciklama' => 'Bu ay ' . $tl($ayGider) . ' harcama', 'aksiyon' => ['url' => '/gider', 'lbl' => 'İncele']]; }
+            $hizli = [['url' => '/dashboard', 'ikon' => 'dashboard', 'lbl' => 'Finans Panosu'], ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/z-raporu', 'ikon' => 'summarize', 'lbl' => 'Z Raporu'], ['url' => '/hareketler', 'ikon' => 'history', 'lbl' => 'Hareketler']];
+            $analiz[] = ['ikon' => 'payments', 'renk' => '#2FBE94', 'baslik' => 'Ciro', 'alt' => 'bu ay', 'durum' => $ayCiro > 0 ? 'iyi' : 'dikkat', 'yorum' => $ayCiro > 0 ? ('Bu ay ciro ' . $tl($ayCiro) . '. Bugün ' . $tl($bugunCiro) . '.') : 'Bu ay ciro kaydı görünmüyor — veri kontrolü gerekebilir.'];
+            $analiz[] = ['ikon' => 'request_quote', 'renk' => '#F43F5E', 'baslik' => 'Gider', 'alt' => 'bu ay', 'durum' => ($ayCiro > 0 && $ayGider > $ayCiro * 0.6) ? 'dikkat' : 'notr', 'yorum' => $ayGider > 0 ? ('Bu ay gider ' . $tl($ayGider) . '.') : 'Bu ay gider kaydı yok.'];
+            $analiz[] = ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => $acikT > 0 ? 'dikkat' : 'iyi', 'yorum' => $acikT > 0 ? ($tl($acikT) . ' açık adisyonlarda bekliyor — tahsilatı hızlandır.') : 'Açık tahsilat yok.'];
         }
-        if ($hasP('gor_gider')) {
-            try { if (Schema::hasTable('giderler')) { $ayGider = (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('created_at', [$ayBas, $ayBit])->sum('tutar'); if ($ayGider > 0) { $kpis[] = ['ikon' => 'request_quote', 'tint' => 't-red', 'deger' => $tl($ayGider), 'label' => 'Bu ay gider', 'alt' => '', 'w' => 3]; $mini[] = '🧾 Gider ' . $tl($ayGider); } } } catch (\Throwable $e) {}
-            $hizli[] = ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'];
-        }
-        if ($hasP('gor_mutfak')) {
-            $bekle = 0; $hazir = 0;
+        // ================= MUTFAK =================
+        elseif ($kod === 'mutfak') {
+            $bekle = 0; $hazir = 0; $krit = 0; $fire = 0;
             try { if (Schema::hasTable('adisyon_kalemleri')) {
                 $hazir = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
                 $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
             } } catch (\Throwable $e) {}
-            $kpis[] = ['ikon' => 'soup_kitchen', 'tint' => $bekle > 0 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => 'bugün ' . $hazir . ' hazırlandı', 'w' => $bekle > 5 ? 1 : 4];
-            if ($bekle > 8) { $bugun[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'oncelik' => 'orta', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'url' => '/mutfak', 'buton' => 'Mutfak Ekranı']; }
-            $hizli[] = ['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'];
+            $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+            try { $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereDate('created_at', $ds)->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'pending_actions', 'tint' => $bekle > 5 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => $bekle > 10 ? 'kuyruk yoğun' : 'kuyruk normal'];
+            $kpis[] = ['ikon' => 'restaurant', 'tint' => 't-blue', 'deger' => $hazir, 'label' => 'Bugün hazırlanan', 'alt' => 'adet'];
+            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => $krit > 0 ? 'tükeniyor' : 'yeterli 👍'];
+            $kpis[] = ['ikon' => 'delete_outline', 'tint' => $fire > 0 ? 't-amber' : 't-green', 'deger' => $tl($fire), 'label' => 'Fire (bugün)', 'alt' => $fire > 0 ? 'zayiat' : 'fire yok'];
+            if ($bekle > 8) { $isler[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'grup' => 'MUTFAK', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'aciklama' => 'Kuyruk yoğun — hız gerekebilir', 'aksiyon' => ['url' => '/mutfak', 'lbl' => 'Mutfak Ekranı']]; $sinyal[] = "<b>$bekle</b> bekleyen ürün"; }
+            if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Üretim aksayabilir', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
+            $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
+            $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => $bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi'), 'yorum' => $bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz, bekleyen ürün yok. 👍'];
+            $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Kritik Malzeme', 'alt' => 'stok', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik — bazı yemekler yapılamayabilir." : 'Malzeme seviyeleri yeterli.'];
+            $analiz[] = ['ikon' => 'delete_outline', 'renk' => '#EA580C', 'baslik' => 'Fire', 'alt' => 'bugün', 'durum' => $fire > 0 ? 'dikkat' : 'iyi', 'yorum' => $fire > 0 ? ('Bugün fire/zayiat ' . $tl($fire) . '. Kaynağı incele.') : 'Bugün fire kaydı yok.'];
         }
-        if ($hasP('gor_paket') || $hasP('gor_kurye')) {
-            try { if (Schema::hasTable('adisyonlar')) { $pk = (int) DB::table('adisyonlar')->where('sube_id', $sid)->whereNull('masa_id')->whereDate('created_at', $ds)->count(); $kpis[] = ['ikon' => 'delivery_dining', 'tint' => 't-blue', 'deger' => $pk, 'label' => 'Bugün paket', 'alt' => 'sipariş', 'w' => 3]; } } catch (\Throwable $e) {}
-            $hizli[] = ['url' => '/paket', 'ikon' => 'delivery_dining', 'lbl' => 'Paket Siparişler'];
-        }
-        if ($hasP('gor_rezervasyon')) {
-            try { if (Schema::hasTable('rezervasyonlar')) { $rz = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count(); $kpis[] = ['ikon' => 'event_available', 'tint' => 't-mor', 'deger' => $rz, 'label' => 'Bugün rezervasyon', 'alt' => '', 'w' => 3]; if ($rz > 0) $bugun[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'oncelik' => 'dusuk', 'baslik' => "$rz rezervasyon bugün", 'url' => '/rezervasyon', 'buton' => 'Rezervasyon']; } } catch (\Throwable $e) {}
-            $hizli[] = ['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'];
-        }
-        if ($hasP('gor_garson_cagri')) { $hizli[] = ['url' => '/garson-cagrilari', 'ikon' => 'notifications_active', 'lbl' => 'Garson Çağrıları']; }
-        if ($hasP('gor_pos')) {
-            try { $acikAd = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); if ($acikAd > 0) { $bugun[] = ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'oncelik' => 'yuksek', 'baslik' => "$acikAd adisyon dünden açık kaldı", 'url' => '/pos', 'buton' => 'POS']; $sinyal[] = "<span class='boldv'>$acikAd açık adisyon</span>"; } } catch (\Throwable $e) {}
-            $hizli[] = ['url' => '/pos', 'ikon' => 'table_restaurant', 'lbl' => 'Masalar / POS'];
+        // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
+        else {
+            if ($hasP('gor_stok')) {
+                $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+                $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik stok', 'alt' => $krit > 0 ? 'acil sipariş' : 'sorun yok 👍', 'w' => $krit > 0 ? 1 : 5];
+                if ($krit > 0) { $isler[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik stok"; $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Stok', 'alt' => 'kritik', 'durum' => $krit > 3 ? 'risk' : 'dikkat', 'yorum' => "$krit malzeme kritik seviyede."]; }
+                $hizli[] = ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'];
+            }
+            if ($hasP('gor_personel') || $hasP('gor_puantaj')) {
+                $vard = 0; $giren = 0; $gelmeyen = 0;
+                try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+                    $vIds = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $ds)->pluck('personel_id')->unique();
+                    $gIds = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->pluck('personel_id')->unique();
+                    $vard = $vIds->count(); $giren = $gIds->count(); $gelmeyen = $vIds->diff($gIds)->count();
+                } } catch (\Throwable $e) {}
+                if ($vard > 0) { $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $vard . '</small>', 'label' => 'Bugün mesaide', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' gelmeyen') : 'tam kadro 👍', 'w' => $gelmeyen > 0 ? 1 : 4]; }
+                if ($gelmeyen > 0) { $isler[] = ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'PERSONEL', 'baslik' => "$gelmeyen personel giriş yapmadı", 'aciklama' => 'Arayıp teyit et', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']]; $sinyal[] = "<b>$gelmeyen</b> gelmeyen"; }
+                $hizli[] = ['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'];
+            }
+            if ($hasP('gor_finans') || $hasP('gor_z_raporu') || $hasP('gor_kasa') || $hasP('gor_dashboard')) {
+                $bugunCiro = 0; try { $bugunCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $ds)->sum('toplam'); } catch (\Throwable $e) {}
+                $kpis[] = ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl($bugunCiro), 'label' => 'Bugün ciro', 'alt' => 'kapanan', 'w' => 2];
+            }
+            if ($hasP('gor_mutfak')) {
+                $bekle = 0; try { if (Schema::hasTable('adisyon_kalemleri')) $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
+                $kpis[] = ['ikon' => 'soup_kitchen', 'tint' => $bekle > 5 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => 'mutfak', 'w' => 4];
+                $hizli[] = ['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'];
+            }
+            if ($hasP('gor_paket') || $hasP('gor_kurye')) {
+                try { if (Schema::hasTable('adisyonlar')) { $pk = (int) DB::table('adisyonlar')->where('sube_id', $sid)->whereNull('masa_id')->whereDate('created_at', $ds)->count(); $kpis[] = ['ikon' => 'delivery_dining', 'tint' => 't-blue', 'deger' => $pk, 'label' => 'Bugün paket', 'alt' => 'sipariş', 'w' => 3]; } } catch (\Throwable $e) {}
+                $hizli[] = ['url' => '/paket', 'ikon' => 'delivery_dining', 'lbl' => 'Paket Siparişler'];
+            }
+            if ($hasP('gor_rezervasyon')) {
+                try { if (Schema::hasTable('rezervasyonlar')) { $rz = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count(); $kpis[] = ['ikon' => 'event_available', 'tint' => 't-mor', 'deger' => $rz, 'label' => 'Bugün rezervasyon', 'alt' => '', 'w' => 3]; if ($rz > 0) $isler[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'grup' => 'SERVİS', 'baslik' => "$rz rezervasyon bugün", 'aciklama' => 'Masa hazırlığı', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Gör']]; } } catch (\Throwable $e) {}
+                $hizli[] = ['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'];
+            }
+            if ($hasP('gor_garson_cagri')) { $hizli[] = ['url' => '/garson-cagrilari', 'ikon' => 'notifications_active', 'lbl' => 'Garson Çağrıları']; }
+            if ($hasP('gor_pos')) {
+                try { $acikAd = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); if ($acikAd > 0) { $isler[] = ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'OPERASYON', 'baslik' => "$acikAd adisyon dünden açık", 'aciklama' => 'Kapatılması gerek', 'aksiyon' => ['url' => '/pos', 'lbl' => 'Gör']]; $sinyal[] = "<b>$acikAd</b> açık adisyon"; } } catch (\Throwable $e) {}
+                $hizli[] = ['url' => '/pos', 'ikon' => 'table_restaurant', 'lbl' => 'Masalar / POS'];
+            }
+            usort($kpis, fn ($a, $b) => ($a['w'] ?? 5) <=> ($b['w'] ?? 5));
+            if (!count($analiz)) $analiz[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'baslik' => $tmpl['ad'] ?? 'Departman', 'alt' => 'durum', 'durum' => count($sinyal) ? 'dikkat' : 'iyi', 'yorum' => count($sinyal) ? 'Bugün dikkat gereken işler var — soldaki önceliklere bak.' : 'Departman operasyonu yolunda görünüyor. 👍'];
         }
 
-        usort($kpis, fn ($a, $b) => ($a['w'] ?? 5) <=> ($b['w'] ?? 5));
+        // Ortak: hızlı linkleri tekilleştir, KPI'ları 5'e kırp
         $kpis = array_slice($kpis, 0, 5);
-        $oncSira = ['yuksek' => 1, 'orta' => 2, 'dusuk' => 3];
-        usort($bugun, fn ($a, $b) => ($oncSira[$a['oncelik'] ?? 'orta'] ?? 2) <=> ($oncSira[$b['oncelik'] ?? 'orta'] ?? 2));
         $gorulen = []; $hizliT = []; foreach ($hizli as $h) { if (isset($gorulen[$h['url']])) continue; $gorulen[$h['url']] = 1; $hizliT[] = $h; } $hizli = array_slice($hizliT, 0, 6);
 
-        $rozetler = [['ikon' => 'pending_actions', 'metin' => count($bugun) . ' bugün yapılacak']];
-        if (count($dunY)) $rozetler[] = ['ikon' => 'task_alt', 'metin' => count($dunY) . ' dün yapıldı'];
-
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş']];
-        $aiLink = isset($aiMap[$kod]) && ($tmpl['ai'] ?? 'kapali') !== 'kapali' ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
-
+        $rozetler = [['ikon' => 'pending_actions', 'metin' => count($isler) . ' iş var']];
         $aiOzet = count($sinyal) ? ('Bugünün gündemi: ' . implode(' · ', array_slice($sinyal, 0, 4)) . '.') : (($tmpl['ad'] ?? 'Departman') . ' operasyonu yolunda — acil aksiyon görünmüyor. 👍');
 
         return [
             'ad' => $bp->ad ?? '', 'deptAd' => $tmpl['ad'] ?? 'Departman', 'deptRenk' => $tmpl['renk'] ?? '#7C3AED', 'deptIkon' => $tmpl['ikon'] ?? 'groups',
-            'kpis' => $kpis, 'bugunYapilacak' => $bugun, 'dunYapilanlar' => $dunY, 'hizli' => $hizli, 'aiLink' => $aiLink, 'aiOzet' => $aiOzet, 'rozetler' => $rozetler, 'miniBar' => $mini,
+            'kpis' => $kpis, 'isler' => $isler, 'analiz' => $analiz, 'dunYapilanlar' => $dunY, 'hizli' => $hizli, 'aiLink' => $aiLink, 'aiOzet' => $aiOzet, 'rozetler' => $rozetler,
         ];
     }
 }
@@ -17401,8 +17467,8 @@ Route::get('/departman-brief', function (Request $r) {
     $istenen = (string) $r->query('dep', '');
     $kendi = _departmanBriefKod($bp, $sid);
     $kod = ($patron && $istenen) ? $istenen : $kendi;          // patron her departmanı görebilir; personel sadece kendi
-    if ($kod === 'satinalma') return redirect('/satinalma-brief'); // satın almanın kendi zengin brifingi var — dokunmuyoruz
     $veri = _departmanBriefVeri($sid, $bp, $kod);
+    $veri['deptBaslik'] = $veri['deptAd'];
     return view('departman_brief', $veri);
 });
 
