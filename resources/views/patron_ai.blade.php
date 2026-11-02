@@ -360,7 +360,7 @@
       <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
       <a href="/patron-ai-sohbet" class="pai-sohbet-cta">
         <span class="material-icons-outlined">forum</span>
-        <div style="flex:1;min-width:0"><b>Benimle konuşmak ister misin?</b><span class="sub">Ciro, stok, onaylar… yaz sor — gerekirse işini bitireyim</span></div>
+        <div style="flex:1;min-width:0"><b>Benimle konuşmak ister misin?</b><span class="sub">Ciro, stok, onaylar… yaz sor — işini bitireyim</span></div>
         <span class="material-icons-outlined ok">arrow_forward</span>
       </a>
       <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span> Senin için şunları yapabilirim <span class="mini">AI</span></div>
