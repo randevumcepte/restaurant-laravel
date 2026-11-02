@@ -11819,11 +11819,12 @@ Route::get('/patron-ai', function () {
         $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
         $aiSoguk = (config('services.resteos.patron_ai_v2', false) && !$aiVar); // AI açık ama henüz üretilmemiş
     } } catch (\Throwable $e) {}
-    // GERÇEK PANEL (layout.app — açılır-kapanır menü) + yeni içerik tasarımı
+    // GERÇEK PANEL (layout.app — açılır-kapanır menü) + yeni içerik tasarımı. Departman denetimi SENKRON (inline, eski lazy fragman yerine)
+    $paiDenetim = []; try { $paiDenetim = _departmanDenetim($sid, $gunKarar); } catch (\Throwable $e) {}
     return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
         'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler,
-        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa]);
+        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa, 'denetim' => $paiDenetim]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================

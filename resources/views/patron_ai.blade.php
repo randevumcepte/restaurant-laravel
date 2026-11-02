@@ -202,7 +202,7 @@
   .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
   .pai-sec-bas .link{margin-left:auto;font-size:12px;font-weight:700;color:var(--mor1);text-decoration:none}
 
-  .pai-dep-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .pai-dep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
   .pai-dep{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .pai-dep .dust{display:flex;align-items:center;gap:9px;margin-bottom:7px}
   .pai-dep .dic{width:33px;height:33px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center}
@@ -217,10 +217,10 @@
   #pai-analiz.pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:12px}
   #pai-analiz.pai-analiz-grid .pai-an{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:14px;padding:12px;margin:0}
 
-  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} .pai-dep-grid{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} }
   @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} .pai-aiact{grid-template-columns:1fr} #pai-analiz.pai-analiz-grid{grid-template-columns:1fr} }
-  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-dep-grid{grid-template-columns:1fr 1fr} .pai-hero-sag{margin-left:0;width:100%} }
-  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} .pai-dep-grid{grid-template-columns:1fr} }
+  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-hero-sag{margin-left:0;width:100%} }
+  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} }
 </style>
 @endpush
 
@@ -372,15 +372,28 @@
     </div>
   @endif
 
-  {{-- ============ DEPARTMANLARIN DURUMU (lazy) ============ --}}
-  @unless ($demo)
+  {{-- ============ DEPARTMANLARIN DURUMU (inline, senkron) ============ --}}
+  @php
+    $denetimL = $denetim ?? [];
+    $depVd = ['iyi'=>['İYİ','var(--pgreen)',90],'notr'=>['NÖTR','var(--sub)',60],'dikkat'=>['DİKKAT','var(--pamber)',42],'risk'=>['RİSK','var(--pred)',24]];
+  @endphp
+  @if(count($denetimL))
   <div class="pai-sec-bas"><span class="material-icons-outlined">apartment</span> Departmanların durumu <a href="/departman-rapor" class="link">Tüm departmanlar →</a></div>
-  <div id="pai-denetim">
-    <div class="pai-dep-grid">
-      @for ($i=0;$i<5;$i++)<div class="pai-dep"><div class="pai-sk" style="width:60%;height:14px;margin-bottom:11px;border-radius:7px"></div><div class="pai-sk" style="width:90%;height:22px;margin-bottom:11px;border-radius:7px"></div><div class="pai-sk" style="width:100%;height:6px;border-radius:5px"></div></div>@endfor
-    </div>
+  <div class="pai-dep-grid">
+    @foreach($denetimL as $dn)
+      @php [$det,$drk,$dpr]=$depVd[$dn['durum']]??$depVd['notr']; $dic=$dn['renk']?:'var(--mavi)'; @endphp
+      <div class="pai-dep">
+        <div class="dust">
+          <div class="dic" style="background:color-mix(in srgb,{{ $dic }} 14%,transparent);color:{{ $dic }}"><span class="material-icons-outlined">{{ $dn['ikon']?:'badge' }}</span></div>
+          <div style="min-width:0;flex:1"><div class="dad">{{ $dn['ad'] }}</div><span class="droz" style="background:color-mix(in srgb,{{ $drk }} 14%,transparent);color:{{ $drk }}">{{ $det }}</span>@if(!empty($dn['uyari_say']))<span class="droz" style="background:color-mix(in srgb,var(--pamber) 15%,transparent);color:var(--pamber)">{{ $dn['uyari_say'] }} ⚠</span>@endif</div>
+        </div>
+        <div class="doz">{{ \Illuminate\Support\Str::limit($dn['ozet'] ?? '', 70) }}</div>
+        <div class="dbar"><i style="width:{{ $dpr }}%;background:{{ $drk }}"></i></div>
+        <a href="/departman-rapor?id={{ $dn['id'] }}" class="dlink">Detayı gör →</a>
+      </div>
+    @endforeach
   </div>
-  @endunless
+  @endif
 
   {{-- ============ DETAYLI AI ANALİZİ ============ --}}
   <div class="pai-sec-bas"><span class="material-icons-outlined">insights</span> Detaylı AI analizi</div>
