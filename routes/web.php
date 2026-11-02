@@ -11649,9 +11649,19 @@ if (!function_exists('_patronDevirVar')) {
     {
         try {
             if ($alan === 'satinalma') {
+                // 1) satınalmacı rolünde personel
                 if (DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'satinalmaci')->exists()) return true;
+                // 2) Satın Alma / Stok / Depo / Mal Kabul departmanına ATANMIŞ personel
+                if (Schema::hasColumn('personeller', 'departman_id') && Schema::hasTable('departmanlar')) {
+                    $depIds = DB::table('departmanlar')->where('sube_id', $sid)
+                        ->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('kod', 'like', '%stok%')->orWhere('kod', 'like', '%depo%')->orWhere('kod', 'like', '%mal_kabul%')->orWhere('ad', 'like', '%atın Alma%'); })->pluck('id');
+                    if ($depIds->count() && DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereIn('departman_id', $depIds)->exists()) return true;
+                }
+                // 3) ünvanı satın alma olan personel
+                if (Schema::hasColumn('personeller', 'departman_unvan') && DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('departman_unvan', 'like', '%atın Alma%')->exists()) return true;
+                // 4) aktif Satın Alma departmanı
                 if (Schema::hasTable('departmanlar') && DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)
-                    ->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('kod', 'like', '%stok%')->orWhere('ad', 'like', '%atın Alma%')->orWhere('ad', 'like', '%Stok%')->orWhere('ad', 'like', '%Depo%'); })->exists()) return true;
+                    ->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('ad', 'like', '%atın Alma%'); })->exists()) return true;
             } elseif ($alan === 'ik') {
                 if (Schema::hasTable('departmanlar') && DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)
                     ->where(function ($w) { $w->where('kod', 'like', '%ik%')->orWhere('ad', 'like', '%İnsan%')->orWhere('ad', 'like', '%Personel%')->orWhere('grup', 'like', '%İK%'); })->exists()) return true;
