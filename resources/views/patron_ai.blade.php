@@ -355,8 +355,8 @@
       <div class="pai-aiact">
         <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla</button>
         <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder</button>
-        <a href="/dashboard"><span class="aic"><span class="material-icons-outlined">receipt_long</span></span>Açık adisyonları listele</a>
-        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Satın alma onaylarını aç</a>
+        <button onclick="paiEylemOner('eksik_bilgi_iste')"><span class="aic"><span class="material-icons-outlined">badge</span></span>Eksik özlük bilgisini iste</button>
+        <button onclick="paiEylemOner('dogum_gunu_kutla')"><span class="aic"><span class="material-icons-outlined">cake</span></span>Doğum günü kutlaması gönder</button>
       </div>
     </div>
   </div>
