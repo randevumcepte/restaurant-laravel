@@ -11939,6 +11939,51 @@ if (!function_exists('_patronAiTetikKontrol')) {
             $imza = md5($r['urun'] . ':' . $r['yapilabilir']);
             if (_patronAiTetikGonder($sid, 'uretim_riski', $imza, '📉 Üretim Riski', $r['urun'] . ' için ~' . $r['yapilabilir'] . ' porsiyon kaldı (' . $r['darbogaz'] . ')', ['sahip', 'mudur', 'satinalmaci'], 'uretim_riski')) $gonderilen++;
         }
+
+        // ===== ESKALASYON / SLA (Faz 2): gün içinde uzun süre bekleyen işi AI kendi yakalar, üst kademeye nudge'lar =====
+        // Onay 2+ saattir bekliyor (iskonto/ikram/iptal/ödeme geri al)
+        try { if (Schema::hasTable('onay_istekleri')) {
+            $o = DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')
+                ->whereNotNull('created_at')->where('created_at', '<=', now()->subHours(2))->orderBy('created_at')->first(['id', 'created_at']);
+            if ($o) {
+                $sa = (int) \Carbon\Carbon::parse($o->created_at)->diffInHours(now());
+                if (_patronAiTetikGonder($sid, 'onay_sla', md5('onay:' . $o->id), '⏳ Onay Bekliyor', 'Bir onay isteği ' . $sa . ' saattir karar bekliyor — bakman gerek.', ['sahip', 'mudur'], 'onay_sla', 3)) $gonderilen++;
+            }
+        }} catch (\Throwable $e) {}
+        // Satınalma talebi 4+ saattir işlem görmedi (mutfak/departman isteği takılı kaldı)
+        try { if (Schema::hasTable('satinalma_talepleri') && Schema::hasColumn('satinalma_talepleri', 'created_at')) {
+            $t = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')
+                ->whereNotNull('created_at')->where('created_at', '<=', now()->subHours(4))->orderBy('created_at')->first(['id', 'created_at']);
+            if ($t) {
+                $sa = (int) \Carbon\Carbon::parse($t->created_at)->diffInHours(now());
+                if (_patronAiTetikGonder($sid, 'talep_sla', md5('talep:' . $t->id), '📋 Bekleyen Talep', 'Bir satın alma talebi ' . $sa . ' saattir işlem görmedi.', ['sahip', 'mudur', 'satinalmaci'], 'talep_sla', 4)) $gonderilen++;
+            }
+        }} catch (\Throwable $e) {}
+        // Satınalmacı teklif gönderdi, patron onayı 3+ saattir bekliyor
+        try { if (Schema::hasTable('satinalma_talepleri') && Schema::hasColumn('satinalma_talepleri', 'updated_at')) {
+            $oc = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')
+                ->where('updated_at', '<=', now()->subHours(3))->count();
+            if ($oc > 0) {
+                if (_patronAiTetikGonder($sid, 'satinalma_onay_sla', md5('sonay:' . $oc), '✅ Satın Alma Onayı', $oc . ' satın alma teklifi onayını bekliyor (3+ saattir).', ['sahip', 'mudur'], 'satinalma_onay_sla', 3)) $gonderilen++;
+            }
+        }} catch (\Throwable $e) {}
+        // Vardiyası başlamış ama 30+ dk'dır giriş yapmayan personel (teknikten mutfağa — operasyon aksıyor)
+        try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai') && Schema::hasColumn('personel_vardiya', 'baslangic')) {
+            $bugun = today()->toDateString();
+            $simdi = now();
+            $gec = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun)
+                ->whereNotNull('baslangic')->get(['personel_id', 'baslangic']);
+            if ($gec->count()) {
+                $girenler = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->pluck('personel_id')->unique();
+                $gelmeyen = 0;
+                foreach ($gec as $g) {
+                    try { $bas = \Carbon\Carbon::parse($bugun . ' ' . $g->baslangic); } catch (\Throwable $e) { continue; }
+                    if ($simdi->gt($bas->copy()->addMinutes(30)) && !$girenler->contains($g->personel_id)) $gelmeyen++;
+                }
+                if ($gelmeyen > 0 && _patronAiTetikGonder($sid, 'gelmeyen_sla', md5('gelmeyen:' . $bugun . ':' . $gelmeyen), '🧍 Vardiyada Yok', $gelmeyen . ' personel vardiyası başladığı hâlde giriş yapmadı.', ['sahip', 'mudur'], 'gelmeyen_sla', 2)) $gonderilen++;
+            }
+        }} catch (\Throwable $e) {}
+
         return $gonderilen;
     }
 }
