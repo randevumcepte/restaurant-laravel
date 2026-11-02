@@ -11819,10 +11819,14 @@ Route::get('/patron-ai', function () {
         $analiz = $az['bloklar']; $aiOzet = $az['ozet']; $aiVar = ($az['kaynak'] === 'ai');
         $aiSoguk = (config('services.resteos.patron_ai_v2', false) && !$aiVar); // AI açık ama henüz üretilmemiş
     } } catch (\Throwable $e) {}
-    return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
+    // Standalone tam sayfa (referans tasarım): departman denetimi senkron (AI yok, hızlı) + şube adı
+    $paiDenetim = []; try { $paiDenetim = _departmanDenetim($sid, $gunKarar); } catch (\Throwable $e) {}
+    $paiSubeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    return view('patron_ai_full', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
         'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler,
-        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa]);
+        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa,
+        'denetim' => $paiDenetim, 'subeAd' => $paiSubeAd]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================
