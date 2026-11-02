@@ -326,10 +326,10 @@
   {{-- ============ ORTA: Öncelikler (sol) + AI öneri (sağ) ============ --}}
   <div class="pai-mid">
     <div class="pai-card">
-      <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($islerL))<span class="cnt">{{ count($islerL) }}</span>@endif<a href="/dashboard" class="link">Tümünü gör →</a></div>
+      <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($islerL))<span class="cnt">{{ count($islerL) }}</span>@endif<button type="button" class="link" style="border:0;background:transparent;cursor:pointer;font-family:inherit" onclick="paiIslerAc()">Tümünü gör →</button></div>
       @if (count($islerL))
       <div class="pai-task-grid">
-        @foreach ($islerL as $is)
+        @foreach (array_slice($islerL, 0, 6) as $is)
           @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; $rk = $is['renk'] ?? 'var(--mor1)'; @endphp
           <div class="pai-task">
             <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
@@ -360,6 +360,43 @@
       </div>
     </div>
   </div>
+
+  {{-- ÖNCELİKLER — TÜMÜ POPUP --}}
+  <div class="pai-modal" id="paiIslerMod" onclick="if(event.target===this)paiIslerKapat()">
+    <div class="mk">
+      <div class="mh"><span class="material-icons-outlined">track_changes</span><h3>Bugün önceliklerin ({{ count($islerL) }})</h3><button type="button" class="kapat" onclick="paiIslerKapat()"><span class="material-icons-outlined">close</span></button></div>
+      <div class="mb">
+        @foreach ($islerL as $is)
+          @php $ak = $is['aksiyon'] ?? ['tip'=>'info']; $rk = $is['renk'] ?? 'var(--mor1)'; @endphp
+          <div class="pai-task">
+            <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
+            <div class="tmid">
+              @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
+              <div class="tbas">{{ $is['baslik'] ?? '' }}</div>
+              @if (!empty($is['aciklama']))<div class="talt" style="white-space:normal">{{ $is['aciklama'] }}</div>@endif
+            </div>
+            @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+            @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
+            @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
+          </div>
+        @endforeach
+      </div>
+    </div>
+  </div>
+  <style>
+    .pai-modal{position:fixed;inset:0;background:rgba(20,20,45,.55);display:none;align-items:center;justify-content:center;z-index:9998;padding:18px}
+    .pai-modal.acik{display:flex}
+    .pai-modal .mk{background:var(--card);border:1px solid var(--line);border-radius:18px;width:640px;max-width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+    .pai-modal .mh{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--line)}
+    .pai-modal .mh .material-icons-outlined{color:var(--mor1);font-size:20px}
+    .pai-modal .mh h3{margin:0;font-size:16px;font-weight:800;flex:1;color:var(--ink)}
+    .pai-modal .mh .kapat{border:0;background:var(--card2);width:32px;height:32px;border-radius:9px;cursor:pointer;color:var(--sub);display:flex;align-items:center;justify-content:center}
+    .pai-modal .mb{padding:14px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  </style>
+  <script>
+    window.paiIslerAc=function(){document.getElementById('paiIslerMod').classList.add('acik');};
+    window.paiIslerKapat=function(){document.getElementById('paiIslerMod').classList.remove('acik');};
+  </script>
 
   {{-- AI TÜKETİM --}}
   @if (!empty($tuketim))
