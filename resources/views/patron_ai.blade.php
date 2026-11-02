@@ -515,7 +515,6 @@
   <div class="ic">
     <h3><span class="material-icons-outlined" style="color:var(--mor1)">auto_awesome</span> AI eylem onayı</h3>
     <div class="ozet" id="paiEylemOzet"></div>
-    <div class="uyari"><span class="material-icons-outlined">lock</span> Onayın IP'n (<b id="paiEylemIp">—</b>) ile birlikte imzalı log'a yazılacak. Geri alınamaz, yasal kanıt niteliğinde.</div>
     <div class="btnler">
       <button class="btn-vaz" onclick="paiEylemKapat()">Kapat</button>
       <button class="btn-yap" id="paiEylemYapBtn" onclick="paiEylemYap()"><span class="material-icons-outlined" style="font-size:17px">check</span> İşlemi Yap</button>
@@ -592,7 +591,6 @@ async function paiEylemOner(intent){
     document.getElementById('paiEylemSonuc').style.display = 'none';
     document.getElementById('paiEylemYapBtn').disabled = false;
     document.getElementById('paiEylemYapBtn').style.opacity = '1';
-    try { document.getElementById('paiEylemIp').textContent = (await (await fetch('https://api.ipify.org?format=json')).json()).ip || 'tespit edilemedi'; } catch(e){ document.getElementById('paiEylemIp').textContent = 'tespit edilemedi'; }
     document.getElementById('paiEylemMod').classList.add('acik');
   }catch(e){ alert('Bağlantı hatası'); }
 }
