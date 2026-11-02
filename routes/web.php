@@ -17264,6 +17264,131 @@ Route::get('/satinalma-brief', function () {
     ));
 });
 
+// ===== JENERİK DEPARTMAN SABAH BRİFİNGİ — satinalma_brief tasarımı, her departman KENDİ verisiyle =====
+if (!function_exists('_departmanBriefKod')) {
+    // Kişinin departman kodu: departman_id → departmanlar.kod, yoksa rol → kod.
+    function _departmanBriefKod($bp, $sid)
+    {
+        try {
+            if (!empty($bp->departman_id) && Schema::hasTable('departmanlar')) {
+                $k = DB::table('departmanlar')->where('id', (int) $bp->departman_id)->value('kod');
+                if ($k) return (string) $k;
+            }
+        } catch (\Throwable $e) {}
+        $map = ['satinalmaci' => 'satinalma', 'mutfak' => 'mutfak', 'kasa' => 'kasa', 'garson' => 'servis', 'sahip' => 'ust_yonetim', 'mudur' => 'operasyon'];
+        return $map[$bp->rol ?? ''] ?? 'operasyon';
+    }
+}
+if (!function_exists('_departmanBriefVeri')) {
+    // Departmanın sayfa yetkilerine göre KENDİ KPI/dün/bugün/hızlı-link verisini üretir. Tüm sorgular guard'lı.
+    function _departmanBriefVeri($sid, $bp, $kod)
+    {
+        $sid = (int) $sid;
+        $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
+        $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups', 'sayfa' => [], 'ai' => 'kapali'];
+        $perms = $tmpl['sayfa'] ?? [];
+        $hasP = fn ($k) => in_array($k, $perms);
+        $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
+        $ds = now()->toDateString();
+        $dun = \Carbon\Carbon::yesterday()->toDateString();
+        try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
+
+        $kpis = []; $bugun = []; $dunY = []; $hizli = []; $mini = []; $sinyal = [];
+
+        if ($hasP('gor_stok')) {
+            $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik stok', 'alt' => $krit > 0 ? 'acil sipariş gerekli' : 'sorun yok 👍', 'w' => $krit > 0 ? 1 : 5];
+            if ($krit > 0) { $bugun[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'oncelik' => 'yuksek', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'url' => '/siparis-onerisi', 'buton' => 'Sipariş Öner']; $sinyal[] = "<span class='boldv'>$krit kritik stok</span>"; }
+            $hizli[] = ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok & Satın Alma'];
+            try { if (Schema::hasTable('mal_kabuller')) { $dmk = (int) DB::table('mal_kabuller')->where('sube_id', $sid)->whereDate('created_at', $dun)->count(); if ($dmk > 0) $dunY[] = ['ikon' => 'inventory', 'mtn' => "$dmk mal kabul yapıldı", 'link' => '/mal-kabul-liste']; } } catch (\Throwable $e) {}
+        }
+        if ($hasP('gor_personel') || $hasP('gor_puantaj')) {
+            $vard = 0; $giren = 0; $gelmeyen = 0;
+            try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+                $vIds = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $ds)->pluck('personel_id')->unique();
+                $gIds = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->pluck('personel_id')->unique();
+                $vard = $vIds->count(); $giren = $gIds->count(); $gelmeyen = $vIds->diff($gIds)->count();
+            } } catch (\Throwable $e) {}
+            if ($vard > 0) { $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $vard . '</small>', 'label' => 'Bugün mesaide', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' gelmeyen') : 'tam kadro 👍', 'w' => $gelmeyen > 0 ? 1 : 4]; }
+            if ($gelmeyen > 0) { $bugun[] = ['ikon' => 'person_off', 'renk' => '#EC4899', 'oncelik' => 'orta', 'baslik' => "$gelmeyen personel giriş yapmadı", 'aciklama' => 'Arayıp teyit et', 'url' => '/ik-ozet', 'buton' => 'İK Özet']; $sinyal[] = "<span class='boldv'>$gelmeyen gelmeyen</span>"; }
+            try { if (Schema::hasTable('ik_self_talep')) {
+                $izin = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'izin')->where('durum', 'talep')->count();
+                $avans = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count();
+                if ($izin > 0) $bugun[] = ['ikon' => 'event_available', 'renk' => '#10B981', 'oncelik' => 'orta', 'baslik' => "$izin izin talebi onay bekliyor", 'url' => '/ik-izin', 'buton' => 'İzinler'];
+                if ($avans > 0) $bugun[] = ['ikon' => 'payments', 'renk' => '#F59E0B', 'oncelik' => 'orta', 'baslik' => "$avans avans talebi onay bekliyor", 'url' => '/ik-ozet', 'buton' => 'İK Özet'];
+                if ($izin + $avans > 0) $sinyal[] = "<span class='boldv'>" . ($izin + $avans) . " talep</span> onayda";
+            } } catch (\Throwable $e) {}
+            $hizli[] = ['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'];
+        }
+        if ($hasP('gor_finans') || $hasP('gor_z_raporu') || $hasP('gor_kasa') || $hasP('gor_dashboard')) {
+            $bugunCiro = 0; $ayCiro = 0;
+            try { $bugunCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $ds)->sum('toplam'); } catch (\Throwable $e) {}
+            try { $ayCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereBetween('kapanis', [$ayBas, $ayBit])->sum('toplam'); } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl($bugunCiro), 'label' => 'Bugün ciro', 'alt' => 'bu ay ' . $tl($ayCiro), 'w' => 2];
+            $mini[] = '💰 Bugün ' . $tl($bugunCiro);
+            try { $acikT = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->sum('toplam'); if ($acikT > 0) { $kpis[] = ['ikon' => 'receipt_long', 'tint' => 't-amber', 'deger' => $tl($acikT), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor', 'w' => 3]; } } catch (\Throwable $e) {}
+        }
+        if ($hasP('gor_gider')) {
+            try { if (Schema::hasTable('giderler')) { $ayGider = (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('created_at', [$ayBas, $ayBit])->sum('tutar'); if ($ayGider > 0) { $kpis[] = ['ikon' => 'request_quote', 'tint' => 't-red', 'deger' => $tl($ayGider), 'label' => 'Bu ay gider', 'alt' => '', 'w' => 3]; $mini[] = '🧾 Gider ' . $tl($ayGider); } } } catch (\Throwable $e) {}
+            $hizli[] = ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'];
+        }
+        if ($hasP('gor_mutfak')) {
+            $bekle = 0; $hazir = 0;
+            try { if (Schema::hasTable('adisyon_kalemleri')) {
+                $hazir = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
+                $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+            } } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'soup_kitchen', 'tint' => $bekle > 0 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => 'bugün ' . $hazir . ' hazırlandı', 'w' => $bekle > 5 ? 1 : 4];
+            if ($bekle > 8) { $bugun[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'oncelik' => 'orta', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'url' => '/mutfak', 'buton' => 'Mutfak Ekranı']; }
+            $hizli[] = ['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'];
+        }
+        if ($hasP('gor_paket') || $hasP('gor_kurye')) {
+            try { if (Schema::hasTable('adisyonlar')) { $pk = (int) DB::table('adisyonlar')->where('sube_id', $sid)->whereNull('masa_id')->whereDate('created_at', $ds)->count(); $kpis[] = ['ikon' => 'delivery_dining', 'tint' => 't-blue', 'deger' => $pk, 'label' => 'Bugün paket', 'alt' => 'sipariş', 'w' => 3]; } } catch (\Throwable $e) {}
+            $hizli[] = ['url' => '/paket', 'ikon' => 'delivery_dining', 'lbl' => 'Paket Siparişler'];
+        }
+        if ($hasP('gor_rezervasyon')) {
+            try { if (Schema::hasTable('rezervasyonlar')) { $rz = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count(); $kpis[] = ['ikon' => 'event_available', 'tint' => 't-mor', 'deger' => $rz, 'label' => 'Bugün rezervasyon', 'alt' => '', 'w' => 3]; if ($rz > 0) $bugun[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'oncelik' => 'dusuk', 'baslik' => "$rz rezervasyon bugün", 'url' => '/rezervasyon', 'buton' => 'Rezervasyon']; } } catch (\Throwable $e) {}
+            $hizli[] = ['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'];
+        }
+        if ($hasP('gor_garson_cagri')) { $hizli[] = ['url' => '/garson-cagrilari', 'ikon' => 'notifications_active', 'lbl' => 'Garson Çağrıları']; }
+        if ($hasP('gor_pos')) {
+            try { $acikAd = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); if ($acikAd > 0) { $bugun[] = ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'oncelik' => 'yuksek', 'baslik' => "$acikAd adisyon dünden açık kaldı", 'url' => '/pos', 'buton' => 'POS']; $sinyal[] = "<span class='boldv'>$acikAd açık adisyon</span>"; } } catch (\Throwable $e) {}
+            $hizli[] = ['url' => '/pos', 'ikon' => 'table_restaurant', 'lbl' => 'Masalar / POS'];
+        }
+
+        usort($kpis, fn ($a, $b) => ($a['w'] ?? 5) <=> ($b['w'] ?? 5));
+        $kpis = array_slice($kpis, 0, 5);
+        $oncSira = ['yuksek' => 1, 'orta' => 2, 'dusuk' => 3];
+        usort($bugun, fn ($a, $b) => ($oncSira[$a['oncelik'] ?? 'orta'] ?? 2) <=> ($oncSira[$b['oncelik'] ?? 'orta'] ?? 2));
+        $gorulen = []; $hizliT = []; foreach ($hizli as $h) { if (isset($gorulen[$h['url']])) continue; $gorulen[$h['url']] = 1; $hizliT[] = $h; } $hizli = array_slice($hizliT, 0, 6);
+
+        $rozetler = [['ikon' => 'pending_actions', 'metin' => count($bugun) . ' bugün yapılacak']];
+        if (count($dunY)) $rozetler[] = ['ikon' => 'task_alt', 'metin' => count($dunY) . ' dün yapıldı'];
+
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş']];
+        $aiLink = isset($aiMap[$kod]) && ($tmpl['ai'] ?? 'kapali') !== 'kapali' ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
+
+        $aiOzet = count($sinyal) ? ('Bugünün gündemi: ' . implode(' · ', array_slice($sinyal, 0, 4)) . '.') : (($tmpl['ad'] ?? 'Departman') . ' operasyonu yolunda — acil aksiyon görünmüyor. 👍');
+
+        return [
+            'ad' => $bp->ad ?? '', 'deptAd' => $tmpl['ad'] ?? 'Departman', 'deptRenk' => $tmpl['renk'] ?? '#7C3AED', 'deptIkon' => $tmpl['ikon'] ?? 'groups',
+            'kpis' => $kpis, 'bugunYapilacak' => $bugun, 'dunYapilanlar' => $dunY, 'hizli' => $hizli, 'aiLink' => $aiLink, 'aiOzet' => $aiOzet, 'rozetler' => $rozetler, 'miniBar' => $mini,
+        ];
+    }
+}
+Route::get('/departman-brief', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $patron = in_array($bp->rol ?? '', ['sahip', 'mudur']);
+    $istenen = (string) $r->query('dep', '');
+    $kendi = _departmanBriefKod($bp, $sid);
+    $kod = ($patron && $istenen) ? $istenen : $kendi;          // patron her departmanı görebilir; personel sadece kendi
+    if ($kod === 'satinalma') return redirect('/satinalma-brief'); // satın almanın kendi zengin brifingi var — dokunmuyoruz
+    $veri = _departmanBriefVeri($sid, $bp, $kod);
+    return view('departman_brief', $veri);
+});
+
 // ===== SATINALMA ASISTAN — EYLEM MOTORU (Faz C: iş yapan AI) =====
 // Niyet cozme: regex kural + Haiku JSON fallback. Eylem hazirla + uygula + ortak log mekanizmasina baglanir.
 

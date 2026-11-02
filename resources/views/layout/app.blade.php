@@ -118,6 +118,7 @@
     // Gruplu menü — başlık => [[url, material-icon, etiket, renk(null=ink)], ...]
     $gruplar = [
         'Panel' => [
+            ['/departman-brief', 'wb_sunny', 'Sabah Brifingim', '#F59E0B'],
             ['/dashboard', 'dashboard', 'Özet', null],
             ['/pos', 'table_restaurant', 'Masalar', null],
             ['/mutfak', 'soup_kitchen', 'Mutfak', null],
@@ -316,7 +317,7 @@
                     $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
                         if (!$_pp) return true;
                         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
-                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar'])) return true; // herkese açık (kişisel: kendi WA hattını bağlar)
+                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/departman-brief'])) return true; // herkese açık (kişisel: kendi departman brifingi)
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));
