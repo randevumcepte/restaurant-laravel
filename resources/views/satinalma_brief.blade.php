@@ -316,6 +316,27 @@
 </div>
 @endif
 
+{{-- SON TALEPLER (özetten taşındı) --}}
+@if ($sonTalepler->count())
+<div class="sb-blok">
+  <h4><span class="material-icons-outlined" style="font-size:17px;color:var(--mor1)">assignment</span> Son Talepler <a href="/satinalma-talep" class="sage" style="text-decoration:none;color:var(--mor1);font-weight:700">tümü →</a></h4>
+  @foreach ($sonTalepler as $t)
+    @php
+      $durRenk = ['yeni'=>'#5B8DEF','teklif'=>'#F6A623','onayda'=>'#7C3AED','onaylandi'=>'#2FBE94','siparise_cevrildi'=>'#2FBE94','tamam'=>'#2FBE94','red'=>'#F5576C','reddedildi'=>'#F5576C','iptal'=>'#94A3B8'][$t->durum] ?? '#64748B';
+      $durAd = ['yeni'=>'Yeni','teklif'=>'Teklif bekliyor','onayda'=>'Onayda','onaylandi'=>'Onaylandı','siparise_cevrildi'=>'Siparişe çevrildi','tamam'=>'Tamam','red'=>'Red','reddedildi'=>'Reddedildi','iptal'=>'İptal'][$t->durum] ?? $t->durum;
+    @endphp
+    <div class="sb-sat">
+      <span class="material-icons-outlined" style="font-size:18px;color:var(--sub);flex-shrink:0">description</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">#{{ $t->id }} · {{ $t->departman ?: 'Departman —' }}</div>
+        <div style="font-size:11.5px;color:var(--sub)">{{ $t->isteyen_ad ?: '—' }} · {{ $t->kalem }} kalem · {{ \Carbon\Carbon::parse($t->created_at)->diffForHumans() }}</div>
+      </div>
+      <span class="roz-k" style="background:{{ $durRenk }}">{{ $durAd }}</span>
+    </div>
+  @endforeach
+</div>
+@endif
+
 {{-- Başarı Toast (sağ üst) --}}
 <div class="sb-toast" id="sbToast">
   <span class="material-icons-outlined">check_circle</span>
@@ -330,7 +351,7 @@
   <span class="chip">📦 Dün {{ $dunMalKabul }} mal kabul</span>
   <span class="chip">⚠️ {{ $kritikSayi }} kritik</span>
   <span class="chip">🚚 {{ $gecikenSip }} geciken</span>
-  <a href="/satinalma-ozet" class="link">Detaylı özet <span class="material-icons-outlined" style="font-size:14px;vertical-align:-3px">arrow_forward</span></a>
+  <a href="/satinalma" class="link">Satınalma paneli <span class="material-icons-outlined" style="font-size:14px;vertical-align:-3px">arrow_forward</span></a>
 </div>
 
 </div>

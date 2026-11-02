@@ -151,7 +151,6 @@
         ],
         'Stok & Tedarik' => [
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
-            ['/satinalma-ozet', 'space_dashboard', 'Satın Alma Özeti', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/uretim-plani', 'calculate', 'Üretim Planı → Malzeme', '#10B981'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
@@ -254,14 +253,14 @@
         $_ozetI = null; $_aiI = null; $_stokI = null;
         if (isset($gruplar['Stok & Tedarik'])) {
             $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI, &$_stokI) {
-                if ($it[0] === '/satinalma-ozet')    { $_ozetI = $it; return false; }
+                if ($it[0] === '/satinalma-brief')   { $_ozetI = $it; return false; }
                 if ($it[0] === '/satinalma-asistan') { $_aiI  = $it; return false; }
                 if ($it[0] === '/stok')              { $_stokI = $it; return false; }
                 return true;
             }));
         }
         // Etiketleri sadeleştir
-        if ($_ozetI) $_ozetI[2] = 'Özet';
+        if ($_ozetI) $_ozetI[2] = 'Brifing';
         if ($_aiI)   $_aiI[2]   = 'AI Asistan';
         if ($_stokI) $_stokI[2] = 'Stok & Satın Alma';
 

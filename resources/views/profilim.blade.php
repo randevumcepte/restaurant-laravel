@@ -403,7 +403,7 @@
                         <a href="/bagli-cihazlar"><span class="material-icons-outlined" style="color:#0EA5E9">devices_other</span> Bağlı cihazlar</a>
                     @endif
                     @if (in_array($rol, ['satinalmaci','satinalma']))
-                        <a href="/satinalma-ozet"><span class="material-icons-outlined" style="color:#7C3AED">space_dashboard</span> Satınalma Özeti</a>
+                        <a href="/satinalma-brief"><span class="material-icons-outlined" style="color:#7C3AED">wb_sunny</span> Satınalma Brifingi</a>
                         <a href="/satinalma-asistan"><span class="material-icons-outlined" style="color:#7C3AED">smart_toy</span> AI Asistan</a>
                     @endif
                     @if ($rol === 'kasa')

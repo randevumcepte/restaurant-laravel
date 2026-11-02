@@ -436,7 +436,7 @@ Route::post('/pos-giris', function (Request $r) {
         }
     }
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
-    return redirect($hedef ?: ($posSuz ? '/satinalma-ozet' : '/pos'));
+    return redirect($hedef ?: ($posSuz ? '/satinalma-brief' : '/pos'));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
@@ -2718,7 +2718,7 @@ Route::get('/stok', fn () => view('stok_hub'));
 // Reçeteler (web sayfası) — Flutter recete_screen ile birebir. Ürün maliyeti + food-cost + yarı mamül.
 Route::get('/recete', function () {
     if (function_exists('_posKapi')) { $k = _posKapi(); if ($k) return $k; }
-    try { $_p = _posPersonel(); if ($_p && in_array(($_p->rol ?? ''), ['satinalmaci','satinalma'])) return redirect('/satinalma-ozet'); } catch (\Throwable $e) {}
+    try { $_p = _posPersonel(); if ($_p && in_array(($_p->rol ?? ''), ['satinalmaci','satinalma'])) return redirect('/satinalma-brief'); } catch (\Throwable $e) {}
     $urunler = collect(); $malzemeler = collect(); $birimler = collect(); $yarimamuller = collect();
     try {
         $mMap = _restoUrunMaliyetMap();
@@ -16147,6 +16147,10 @@ Route::get('/satinalma-islemleri', function () {
 });
 // ===== SATIN ALMA ÖZETİ (satın almacının kendi verileri — ciro/kâr YOK) =====
 Route::get('/satinalma-ozet', function () {
+    // Özet sayfası kaldırıldı — tüm içeriği Satınalma Brifingi'ne taşındı. Eski link/yer imleri kırılmasın diye yönlendirilir.
+    return redirect('/satinalma-brief');
+});
+Route::get('/satinalma-ozet-arsiv', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
@@ -17020,7 +17024,7 @@ Route::get('/satinalma-brief', function () {
         $kirmiziSayi = $fiyatHareketleri->where('uyari', 'kirmizi')->count();
         if ($kirmiziSayi > 0) $oneriler[] = ['ikon' => 'trending_up', 'renk' => '#EC4899', 'mtn' => "Son 30 günde $kirmiziSayi üründe sert fiyat artışı — alternatif tedarikçi araştır.", 'link' => '/fiyat-radari', 'buton' => 'Fiyat Radarı'];
     }
-    if (empty($oneriler)) $oneriler[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'mtn' => 'Satın alma operasyonu yolunda — acil aksiyon yok.', 'link' => '/satinalma-ozet', 'buton' => 'Özete Dön'];
+    if (empty($oneriler)) $oneriler[] = ['ikon' => 'check_circle', 'renk' => '#10B981', 'mtn' => 'Satın alma operasyonu yolunda — acil aksiyon yok.', 'link' => '/satinalma', 'buton' => 'Panele Git'];
 
     // ---- DÜN YAPILANLAR (satir satir, ikon + metin + opsiyonel link) ----
     $dunYapilanlar = [];
@@ -17093,12 +17097,25 @@ Route::get('/satinalma-brief', function () {
             'tip' => 'link', 'url' => '/fiyat-radari'];
     }
 
+    // ---- Son Talepler (özetten taşındı: son 5 satın alma talebi — departman · isteyen · durum · kalem) ----
+    $sonTalepler = collect();
+    try {
+        $talepler = DB::table('satinalma_talepleri')->where('sube_id', $sid)
+            ->orderByDesc('created_at')->limit(5)
+            ->get(['id', 'departman', 'isteyen_ad', 'durum', 'created_at']);
+        $ids = $talepler->pluck('id')->all();
+        $kalemMap = $ids
+            ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->selectRaw('talep_id, COUNT(*) as c')->groupBy('talep_id')->pluck('c', 'talep_id')
+            : collect();
+        $sonTalepler = $talepler->map(function ($t) use ($kalemMap) { $t->kalem = (int) ($kalemMap[$t->id] ?? 0); return $t; });
+    } catch (\Throwable $e) {}
+
     return view('satinalma_brief', compact(
         'ad', 'dun', 'dunGelenFatura', 'dunHarcama', 'dunMalKabul',
         'ayHarcama', 'ayButce', 'butceYuzde',
         'kritikStoklar', 'kritikSayi', 'yeniTalep', 'onaydaTalep', 'teklifBekleyen', 'gecikenSip', 'acikSip',
         'fiyatHareketleri', 'yaklasanTeslimler', 'oneriler',
-        'dunYapilanlar', 'bugunYapilacak'
+        'dunYapilanlar', 'bugunYapilacak', 'sonTalepler'
     ));
 });
 
