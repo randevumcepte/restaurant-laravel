@@ -11720,6 +11720,28 @@ Route::post('/api/patron-ai/acik-adisyon-hatirlat', function (Request $r) {
     try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🧾 Açık adisyon hatırlatması', $n . ' adisyon dünden açık kaldı — lütfen kapatın/kontrol edin.', ['tur' => 'acik_adisyon'], ['sahip', 'mudur', 'kasa', 'garson'], 'genel'); } catch (\Throwable $e) {}
     return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => $n . ' açık adisyon için ilgili personele hatırlatma bildirimi gönderildi.']]);
 });
+// Tek talep için tedarikçilere RFQ gönder (JSON — popup'tan gerçek sonuç döner)
+Route::post('/api/patron-ai/talep-fiyat-sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur', 'satinalmaci'])) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz.'], 403);
+    $sid = _webSubeId();
+    if (function_exists('_rfqEnsure')) _rfqEnsure();
+    if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
+    $talepId = (int) $r->input('talep');
+    $mats = [];
+    try { foreach (DB::table('talep_kalemleri')->where('talep_id', $talepId)->get() as $k) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim]; } catch (\Throwable $e) {}
+    if (!$mats) return response()->json(['ok' => 0, 'mesaj' => 'Talepte kalem bulunamadı.']);
+    $supMap = [];
+    foreach ($mats as $m) {
+        try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
+            ->where('tm.malzeme_id', $m['malzeme_id'])->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
+            foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
+    }
+    if (!$supMap) return response()->json(['ok' => 0, 'mesaj' => 'Bu talepteki ürünlere bağlı tedarikçi yok — önce tedarikçi kartına ürün ekle.']);
+    $res = function_exists('_rfqSupMapGonder') ? _rfqSupMapGonder($sid, $supMap, $talepId, 0) : ['gonderilen' => 0, 'mail' => 0, 'wa' => 0];
+    if (($res['gonderilen'] ?? 0) <= 0) return response()->json(['ok' => 0, 'mesaj' => 'Tedarikçi bulundu ama gönderim yapılamadı (iletişim/kontör?).']);
+    return response()->json(['ok' => 1, 'mesaj' => $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta ' . $res['mail'] . ', WhatsApp ' . $res['wa'] . ').']);
+});
 
 // ----- AJANDA WEB -----
 Route::get('/ajanda', function () {

@@ -524,8 +524,12 @@
     }
     async function paiFiyatSor(id,btn){
       btn.disabled=true;btn.textContent='…';
-      try{await fetch('/fiyat-arastir',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({talep:id,geri:'/patron-ai'})});btn.closest('.is-row').remove();paiIsSonuc(true,'Tedarikçilere fiyat isteği (RFQ) gönderildi.');}
-      catch(e){btn.disabled=false;btn.textContent='Fiyat sor';paiIsSonuc(false,'Bağlantı hatası');}
+      try{
+        var r=await fetch('/api/patron-ai/talep-fiyat-sor',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({talep:id})});
+        var j=await r.json();
+        if(j.ok){btn.closest('.is-row').remove();paiIsSonuc(true,j.mesaj||'Fiyat isteği gönderildi.');}
+        else{btn.disabled=false;btn.textContent='Fiyat sor';paiIsSonuc(false,j.mesaj||'Gönderilemedi.');}
+      }catch(e){btn.disabled=false;btn.textContent='Fiyat sor';paiIsSonuc(false,'Bağlantı hatası');}
     }
   </script>
 
