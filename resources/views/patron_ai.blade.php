@@ -356,7 +356,7 @@
         <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>Kritik stok için sipariş taslağı hazırla</button>
         <button onclick="paiEylemOner('tedarikci_hatirlat')"><span class="aic"><span class="material-icons-outlined">local_shipping</span></span>Tedarikçiye hatırlatma gönder</button>
         <a href="/dashboard"><span class="aic"><span class="material-icons-outlined">receipt_long</span></span>Açık adisyonları listele</a>
-        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Onay bekleyen işlemleri aç</a>
+        <a href="/satinalma-talep"><span class="aic"><span class="material-icons-outlined">fact_check</span></span>Satın alma onaylarını aç</a>
       </div>
     </div>
   </div>
