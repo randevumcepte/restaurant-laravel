@@ -8598,6 +8598,151 @@ Route::post('/api/ai-eylem/vazgec', function (Request $r) {
     return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
 });
 
+// ===== PATRON AI SOHBET (serbest konuşma + iş bitiren eylemler) — jenerik asistan arayüzünü kullanır =====
+if (!function_exists('_patronAsistanNiyet')) {
+    function _patronAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Nasıl yardımcı olayım?', 'kaynak' => 'kural'];
+        // KURAL MOTORU — sadece diyalog başında (geçmiş yokken; diyalog ortasında AI bağlamla çözer)
+        $kurallar = !empty($gecmis) ? [] : [
+            '/kritik.*(sipariş|siparis|taslak|oluştur|olustur|hazırla|hazirla)|taslak sipariş/u' => ['eylem', 'kritik_siparis_olustur'],
+            '/(geciken|tedarikçi|tedarikci).*(hatırlat|hatirlat)|hatırlatma gönder|hatirlatma gonder/u' => ['eylem', 'tedarikci_hatirlat'],
+            '/eksik.*(özlük|ozluk|bilgi)|eksik bilgi iste/u' => ['eylem', 'eksik_bilgi_iste'],
+            '/(doğum günü|dogum gunu).*(kutla|mesaj|gönder|gonder)|doğum günü kutla/u' => ['eylem', 'dogum_gunu_kutla'],
+            '/(gelmeyen|giriş yapmayan|giris yapmayan).*(sor|ara)|nerede(ler)?\s*(diye)?\s*sor/u' => ['eylem', 'gelmeyene_sor'],
+            '/ciro|satış|satis|kazanç|kazanc|hasılat|hasilat|ne sattık|ne sattik/u' => ['cevap', 'ciro'],
+            '/kritik|stok|malzeme|bitiyor|tüken|tuken/u' => ['cevap', 'kritik_stok'],
+            '/(açık|acik).*(adisyon|masa|hesap)/u' => ['cevap', 'acik_adisyon'],
+            '/onay|bekleyen|iskonto|ikram/u' => ['cevap', 'onay_bekleyen'],
+            '/geciken|teslim|gecikti/u' => ['cevap', 'geciken_siparis'],
+            '/gelmeyen|vardiya|giriş yap|giris yap|devamsız|devamsiz/u' => ['cevap', 'gelmeyen_personel'],
+            '/özet|ozet|durum|gündem|gundem|ne var|bugün ne|bugun ne|nasıl gidiyor|nasil gidiyor/u' => ['cevap', 'gunun_ozeti'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => '', 'kaynak' => 'kural'];
+        // HAIKU (JSON niyet)
+        $bugun = now()->toDateString();
+        $sys = "Sen bir restoranın Patron (işletme sahibi) AI asistanısın. Patronun mesajını analiz et, SADECE JSON döndür: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA niyetleri: gunun_ozeti, ciro, kritik_stok, acik_adisyon, onay_bekleyen, geciken_siparis, gelmeyen_personel, bilinmiyor. "
+            . "EYLEM (iş yapan) niyetleri: kritik_siparis_olustur (kritik stoklardan taslak sipariş), tedarikci_hatirlat (geciken siparişlerin tedarikçisine hatırlatma), eksik_bilgi_iste (özlük bilgisi eksik personele talep), dogum_gunu_kutla (bu hafta doğum günü olanlara kutlama), gelmeyene_sor (vardiyada olup giriş yapmayana mesaj). "
+            . "Bugün {$bugun}. tip=eylem ise ozet'e yapılacak işi net Türkçe yaz. Emin değilsen tip=cevap intent=bilinmiyor, cevap'a kısa bir soru. UYDURMA — veri/niyet net değilse bilinmiyor de. "
+            . "BAĞLAM: Önceki mesajları dikkate al; eylem için en fazla tek eksik bilgiyi iste, çok soru sorma.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 500, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => '', 'kaynak' => 'kural'];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}');
+        if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?', 'kaynak' => 'ai'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? ''), 'kaynak' => 'ai'];
+    }
+}
+if (!function_exists('_patronAsistanOku')) {
+    function _patronAsistanOku($sid, $bp, $intent, $params)
+    {
+        $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
+        $ds = now()->toDateString();
+        try { [$ay, $bas, $bit] = _restoAyAralik(null); } catch (\Throwable $e) { $bas = $ds . ' 00:00:00'; $bit = $ds . ' 23:59:59'; }
+        try {
+            switch ($intent) {
+                case 'ciro':
+                    $bugunCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $ds)->sum('toplam');
+                    $ayCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereBetween('kapanis', [$bas, $bit])->sum('toplam');
+                    $acik = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->sum('toplam');
+                    return ['cevap' => "Bugün kapanan ciro: " . $tl($bugunCiro) . ". Bu ay: " . $tl($ayCiro) . "." . ($acik > 0 ? " Şu an açık adisyonlarda " . $tl($acik) . " bekliyor." : ""), 'link' => ['url' => '/dashboard', 'lbl' => 'Panoyu aç']];
+                case 'kritik_stok':
+                    $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+                    if (!count($k)) return ['cevap' => 'Kritik seviyede malzeme yok. ✓'];
+                    $t = '⚠️ ' . count($k) . ' malzeme kritik seviyede:'; foreach (array_slice($k, 0, 8) as $x) $t .= "\n• " . $x['ad'] . " (" . $x['mevcut'] . "/" . $x['kritik'] . " " . $x['birim'] . ")";
+                    return ['cevap' => $t, 'aksiyon' => ['lbl' => 'Kritikler için sipariş hazırla', 'soru' => 'kritik stoklardan taslak sipariş oluştur']];
+                case 'acik_adisyon':
+                    $acikSay = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->count();
+                    $dunAcik = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count();
+                    return ['cevap' => $acikSay . " açık adisyon var" . ($dunAcik > 0 ? ", {$dunAcik} tanesi dünden kalmış — kapatılması gerek." : "."), 'link' => ['url' => '/pos', 'lbl' => 'POS’u aç']];
+                case 'onay_bekleyen':
+                    $onay = Schema::hasTable('onay_istekleri') ? (int) DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->count() : 0;
+                    $sa = Schema::hasTable('satinalma_talepleri') ? (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count() : 0;
+                    if ($onay + $sa === 0) return ['cevap' => 'Onay bekleyen işlem yok. ✓'];
+                    return ['cevap' => "Onay bekleyen: {$onay} işlem (iskonto/ikram/iptal...) + {$sa} satın alma talebi.", 'link' => ['url' => '/patron-ai', 'lbl' => 'Patron AI panelinde incele']];
+                case 'geciken_siparis':
+                    $g = function_exists('_gecikenSiparisler') ? (int) _gecikenSiparisler($sid) : 0;
+                    if ($g === 0) return ['cevap' => 'Geciken sipariş yok. ✓'];
+                    return ['cevap' => "🚚 {$g} sipariş teslim tarihini geçti.", 'aksiyon' => ['lbl' => 'Tedarikçilere hatırlat', 'soru' => 'geciken tedarikçilere hatırlatma gönder']];
+                case 'gelmeyen_personel':
+                    $n = 0;
+                    if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+                        $vard = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $ds)->pluck('personel_id')->unique();
+                        $giren = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->pluck('personel_id')->unique();
+                        $n = $vard->diff($giren)->count();
+                    }
+                    if ($n === 0) return ['cevap' => 'Vardiyadaki herkes giriş yapmış. ✓'];
+                    return ['cevap' => "{$n} personel vardiyada ama giriş yapmamış.", 'aksiyon' => ['lbl' => 'Nerede olduklarını sor', 'soru' => 'gelmeyene sor']];
+                case 'gunun_ozeti':
+                default:
+                    $r = function_exists('_patronAiBugununIsleri') ? _patronAiBugununIsleri($sid, $bp) : ['isler' => [], 'bitenler' => []];
+                    $isler = $r['isler'] ?? [];
+                    $bugunCiro = (float) DB::table('adisyonlar')->where('sube_id', $sid)->whereNotIn('durum', ['acik', 'iptal'])->whereDate('kapanis', $ds)->sum('toplam');
+                    if (!count($isler)) return ['cevap' => "Bugün acil bir iş görünmüyor. Kapanan ciro: " . $tl($bugunCiro) . ". Her şey yolunda 👍"];
+                    $t = "Bugünün gündemi (" . count($isler) . " iş):"; foreach (array_slice($isler, 0, 6) as $i) $t .= "\n• " . $i['baslik'];
+                    $t .= "\nKapanan ciro: " . $tl($bugunCiro) . ".";
+                    return ['cevap' => $t, 'link' => ['url' => '/patron-ai', 'lbl' => 'Panelde tek tek bitir']];
+            }
+        } catch (\Throwable $e) {
+            return ['cevap' => 'Şu an bu veriyi getiremedim, birazdan tekrar dener misin?'];
+        }
+    }
+}
+Route::get('/patron-ai-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return redirect('/dashboard');
+    return view('departman_asistan', [
+        'baslik' => 'Patron AI',
+        'selam' => 'İşletmenin genel durumu, ciro, stok, onaylar — sor, gerekirse işini bitireyim.',
+        'hizli' => [
+            ['Günün özeti', 'Bugün ne durumdayız', 'insights', '#7C3AED', 'Gündem + ciro tek bakışta'],
+            ['Ciro', 'Bugün ne kadar ciro yaptık', 'payments', '#10B981', 'Bugün + bu ay'],
+            ['Kritik stok', 'Kritik seviyedeki malzemeler neler', 'inventory_2', '#F43F5E', 'Gerekirse sipariş hazırlar'],
+            ['Açık adisyonlar', 'Açık adisyon var mı', 'receipt_long', '#F59E0B', 'Dünden kalanlar dahil'],
+            ['Onay bekleyen', 'Onayımı bekleyen ne var', 'how_to_reg', '#4F46E5', 'İskonto/ikram/satın alma'],
+            ['Gelmeyen personel', 'Bugün vardiyada olup gelmeyen var mı', 'person_off', '#EC4899', 'İstersen sorar'],
+        ],
+        'sorUrl' => '/api/patron-asistan/sor', 'uygulaUrl' => '/api/patron-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'Patron AI’a sor… (ör. bugün ciro ne, kritik stok için sipariş hazırla)',
+    ]);
+});
+Route::post('/api/patron-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId();
+    $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _patronAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI şu an kapalı; yukarıdaki hızlı sorulardan birini deneyebilirsin.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'kritik_siparis_olustur' => 'Kritik stoklardan tedarikçi bazlı taslak siparişler oluşturulacak.',
+            'tedarikci_hatirlat'     => 'Geciken siparişlerin tedarikçisine WhatsApp hatırlatma gönderilecek.',
+            'eksik_bilgi_iste'       => 'Özlük bilgisi eksik personele WhatsApp ile eksik bilgi talebi gönderilecek.',
+            'dogum_gunu_kutla'       => 'Doğum günü bu hafta içinde olan personele WhatsApp kutlama mesajı gönderilecek.',
+            'gelmeyene_sor'          => 'Bugün vardiyada olup giriş yapmayan personele WhatsApp mesajı gönderilecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım — panelden deneyebilir misin?']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'patron', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $o = _patronAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $o['cevap'], 'aksiyon' => $o['aksiyon'] ?? null, 'link' => $o['link'] ?? null]);
+});
+Route::post('/api/patron-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    $sonuc = _aiEylemOnayla($log_id, $bp);
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
 // ============================ AI EYLEM LOG SAYFASI (Faz B) ============================
 // Sahip/mudur: AI'nin yaptigi tum eylemleri gorur, zinciri dogrular, PDF export alir.
 Route::get('/ai-eylem-log', function (Request $r) {

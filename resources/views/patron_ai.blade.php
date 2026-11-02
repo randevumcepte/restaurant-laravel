@@ -197,6 +197,12 @@
   .pai-aiact a:hover,.pai-aiact button:hover{border-color:var(--mor1)}
   .pai-aiact .aic{width:29px;height:29px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1)}
   .pai-aiact .aic .material-icons-outlined{font-size:16px}
+  .pai-sohbet-cta{display:flex;align-items:center;gap:11px;text-decoration:none;margin:0 0 12px;padding:11px 13px;border-radius:13px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;box-shadow:0 8px 20px rgba(124,58,237,.28);transition:transform .15s,box-shadow .15s}
+  .pai-sohbet-cta:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(124,58,237,.36)}
+  .pai-sohbet-cta > .material-icons-outlined{font-size:22px;flex:none}
+  .pai-sohbet-cta .ok{margin-left:auto;font-size:18px;opacity:.9}
+  .pai-sohbet-cta b{display:block;font-size:13px;font-weight:800;line-height:1.2}
+  .pai-sohbet-cta .sub{display:block;font-size:10.5px;opacity:.92;margin-top:2px;font-weight:500}
 
   .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:10px 2px 8px}
   .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
@@ -352,6 +358,11 @@
     <div class="pai-aipanel">
       <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">Patron AI ne öneriyor?</div></div>
       <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
+      <a href="/patron-ai-sohbet" class="pai-sohbet-cta">
+        <span class="material-icons-outlined">forum</span>
+        <div style="flex:1;min-width:0"><b>Benimle konuşmak ister misin?</b><span class="sub">Ciro, stok, onaylar… yaz sor — gerekirse işini bitireyim</span></div>
+        <span class="material-icons-outlined ok">arrow_forward</span>
+      </a>
       <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">auto_awesome</span> Senin için şunları yapabilirim <span class="mini">AI</span></div>
       <div class="pai-aiact">
         <button onclick="paiEylemOner('kritik_siparis_olustur')"><span class="aic"><span class="material-icons-outlined">inventory_2</span></span>{{ ($devirSa ?? false) ? 'Kritik stok → satın almaya sipariş talebi gönder' : 'Kritik stok için sipariş taslağı hazırla' }}</button>
