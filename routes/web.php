@@ -17459,6 +17459,133 @@ if (!function_exists('_departmanBriefVeri')) {
         ];
     }
 }
+if (!function_exists('_departmanBriefDemo')) {
+    // ?demo=1 — ekranı dolu/renkli göstermek için sahte veri (gerçek veriye dokunmaz).
+    function _departmanBriefDemo($kod)
+    {
+        $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
+        $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
+        $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
+
+        if ($kod === 'ik') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'badge', 'tint' => 't-amber', 'deger' => '8<small>/10</small>', 'label' => 'Bugün mesaide', 'alt' => '2 gelmeyen'],
+                    ['ikon' => 'person_off', 'tint' => 't-red', 'deger' => 2, 'label' => 'Gelmeyen', 'alt' => 'takip gerekli'],
+                    ['ikon' => 'event_available', 'tint' => 't-blue', 'deger' => 3, 'label' => 'Bekleyen izin', 'alt' => 'onay bekliyor'],
+                    ['ikon' => 'payments', 'tint' => 't-amber', 'deger' => 1, 'label' => 'Bekleyen avans', 'alt' => '2.500₺'],
+                    ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => 10, 'label' => 'Aktif personel', 'alt' => 'kadro'],
+                ],
+                'isler' => [
+                    ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'OPERASYON', 'baslik' => '2 personel giriş yapmadı', 'aciklama' => 'Ahmet Y., Elif K. — vardiyada ama mesai yok', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']],
+                    ['ikon' => 'event_available', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '3 izin talebi onay bekliyor', 'aciklama' => 'Yıllık + mazeret izinleri', 'aksiyon' => ['url' => '/ik-izin', 'lbl' => 'İncele']],
+                    ['ikon' => 'payments', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '1 avans talebi onay bekliyor', 'aciklama' => 'Mehmet D. — 2.500₺', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Onayla']],
+                    ['ikon' => 'cake', 'renk' => '#A855F7', 'grup' => 'HATIRLATMA', 'baslik' => 'Bu hafta 2 doğum günü', 'aciklama' => 'Zeynep Ş. (bugün), Can Ö. (Cuma)', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'Devamsızlık', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'Bugün 2 kişi giriş yapmadı. Son 30 günde devamsızlık %8 arttı — vardiya dağılımını gözden geçir.'],
+                    ['ikon' => 'approval', 'renk' => '#F59E0B', 'baslik' => 'Onay Yükü', 'alt' => 'izin + avans', 'durum' => 'dikkat', 'yorum' => '4 talep onayını bekliyor (3 izin, 1 avans). Geciktirme moral düşürür.'],
+                    ['ikon' => 'crisis_alert', 'renk' => '#EA580C', 'baslik' => 'Kıdem Riski', 'alt' => 'erken uyarı', 'durum' => 'risk', 'yorum' => '1 personelde devamsızlık + avans örüntüsü var — ayrılma riski. Birebir görüşme öner.'],
+                ],
+                'hizli' => [['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet'], ['url' => '/ik-izin', 'ikon' => 'event_available', 'lbl' => 'İzin Yönetimi'], ['url' => '/ik-vardiya', 'ikon' => 'calendar_month', 'lbl' => 'Vardiya Planlama'], ['url' => '/ik-risk', 'ikon' => 'crisis_alert', 'lbl' => 'Risk Radarı']],
+                'aiOzet' => 'Bugünün gündemi: <b>2</b> gelmeyen · <b>3</b> izin onayda · <b>1</b> avans onayda · kıdem riski <b>1</b> kişi.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '2 izin talebi onaylandı', 'link' => '/ik-izin'], ['ikon' => 'check', 'mtn' => '1 yeni personel işe alındı', 'link' => '/ik-aday']],
+            ]);
+        }
+        if ($kod === 'satinalma') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'inventory_2', 'tint' => 't-red', 'deger' => '7 <small>ürün</small>', 'label' => 'Kritik stok', 'alt' => 'acil sipariş'],
+                    ['ikon' => 'local_shipping', 'tint' => 't-amber', 'deger' => 3, 'label' => 'Geciken sipariş', 'alt' => 'tedarikçi takibi'],
+                    ['ikon' => 'request_quote', 'tint' => 't-mor', 'deger' => 5, 'label' => 'Gelen teklif', 'alt' => 'karar bekliyor'],
+                    ['ikon' => 'assignment', 'tint' => 't-blue', 'deger' => 6, 'label' => 'Yeni talep', 'alt' => 'inceleme bekliyor'],
+                    ['ikon' => 'savings', 'tint' => 't-amber', 'deger' => $tl(128500), 'label' => 'Bu ay harcama', 'alt' => 'bütçe %92'],
+                ],
+                'isler' => [
+                    ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'grup' => 'SATIN ALMA', 'baslik' => '7 malzeme kritik seviyede', 'aciklama' => 'Biber, Ayçiçek Yağı, Tuz, Domates Salçası…', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Sipariş Öner']],
+                    ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'grup' => 'SATIN ALMA', 'baslik' => '3 sipariş gecikti', 'aciklama' => 'Anıl Market (2 gün), Et A.Ş. (1 gün)', 'aksiyon' => ['url' => '/satinalma-siparis', 'lbl' => 'Gör']],
+                    ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => '5 teklif karşılaştır', 'aciklama' => 'Kıyma için 3 tedarikçi fiyat verdi', 'aksiyon' => ['url' => '/gelen-teklifler', 'lbl' => 'İncele']],
+                    ['ikon' => 'assignment', 'renk' => '#7C3AED', 'grup' => 'SATIN ALMA', 'baslik' => '6 yeni talebi incele', 'aciklama' => 'Mutfak + bardan gelen talepler', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'İncele']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Stok Riski', 'alt' => 'kritik seviye', 'durum' => 'risk', 'yorum' => '7 malzeme kritik seviyede — 3 tanesi bugün bitebilir. Mutfak aksamadan sipariş et.'],
+                    ['ikon' => 'savings', 'renk' => '#F59E0B', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => 'dikkat', 'yorum' => 'Bu ay bütçenin %92\'si harcandı. Ay bitmeden acil olmayan talepleri ertele.'],
+                    ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'baslik' => 'Tedarik Hızı', 'alt' => 'geciken', 'durum' => 'dikkat', 'yorum' => '3 sipariş teslim tarihini geçti. Anıl Market son 3 ayda 2. kez gecikti — alternatif değerlendir.'],
+                ],
+                'hizli' => [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'savings', 'lbl' => 'Bütçe']],
+                'aiOzet' => 'Bugünün gündemi: <b>7</b> kritik stok · <b>3</b> geciken · <b>5</b> teklif · bütçe <b>%92</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '4 sipariş kesildi · toplam 42.300₺', 'link' => '/satinalma-siparis'], ['ikon' => 'check', 'mtn' => '3 mal kabul yapıldı', 'link' => '/mal-kabul-liste'], ['ikon' => 'check', 'mtn' => '2 fatura işlendi', 'link' => '/alis-fatura']],
+            ]);
+        }
+        if ($kod === 'finans') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl(24800), 'label' => 'Bugün ciro', 'alt' => 'kapanan adisyon'],
+                    ['ikon' => 'trending_up', 'tint' => 't-rose', 'deger' => $tl(612000), 'label' => 'Bu ay ciro', 'alt' => 'toplam'],
+                    ['ikon' => 'request_quote', 'tint' => 't-red', 'deger' => $tl(388000), 'label' => 'Bu ay gider', 'alt' => 'toplam'],
+                    ['ikon' => 'account_balance', 'tint' => 't-green', 'deger' => $tl(224000), 'label' => 'Net (ay)', 'alt' => 'ciro − gider'],
+                    ['ikon' => 'receipt_long', 'tint' => 't-amber', 'deger' => $tl(12400), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor'],
+                ],
+                'isler' => [
+                    ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'OPERASYON', 'baslik' => '3 adisyon dünden açık', 'aciklama' => 'Toplam 12.400₺ tahsil edilmedi', 'aksiyon' => ['url' => '/pos', 'lbl' => 'Gör']],
+                    ['ikon' => 'request_quote', 'renk' => '#F59E0B', 'grup' => 'FİNANS', 'baslik' => 'Gider kontrolü', 'aciklama' => 'Bu ay gider ciroya göre yüksek seyrediyor', 'aksiyon' => ['url' => '/gider', 'lbl' => 'İncele']],
+                    ['ikon' => 'account_balance_wallet', 'renk' => '#4F46E5', 'grup' => 'CARİ', 'baslik' => '2 tedarikçi ödemesi yaklaşıyor', 'aciklama' => 'Vadesi bu hafta dolan faturalar', 'aksiyon' => ['url' => '/cari', 'lbl' => 'Gör']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'payments', 'renk' => '#2FBE94', 'baslik' => 'Ciro', 'alt' => 'bu ay', 'durum' => 'iyi', 'yorum' => 'Bu ay ciro ' . $tl(612000) . ', geçen aya göre %6 yukarıda. 👍'],
+                    ['ikon' => 'request_quote', 'renk' => '#F43F5E', 'baslik' => 'Gider', 'alt' => 'ciro oranı', 'durum' => 'dikkat', 'yorum' => 'Gider/ciro oranı %63 — sektör ortalamasının biraz üstünde. Maliyet kalemlerini gözden geçir.'],
+                    ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => 'dikkat', 'yorum' => $tl(12400) . ' açık adisyonlarda bekliyor. Tahsilatı hızlandır.'],
+                ],
+                'hizli' => [['url' => '/dashboard', 'ikon' => 'dashboard', 'lbl' => 'Finans Panosu'], ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/z-raporu', 'ikon' => 'summarize', 'lbl' => 'Z Raporu'], ['url' => '/hareketler', 'ikon' => 'history', 'lbl' => 'Hareketler']],
+                'aiOzet' => 'Bugünün gündemi: bu ay ciro <b>' . $tl(612000) . '</b> · net <b>' . $tl(224000) . '</b> · açık tahsilat <b>' . $tl(12400) . '</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => 'Günlük tahsilat ' . $tl(23600) . ' kasaya girdi', 'link' => '/z-raporu'], ['ikon' => 'check', 'mtn' => '5 gider kaydı işlendi', 'link' => '/gider']],
+            ]);
+        }
+        if ($kod === 'mutfak') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'pending_actions', 'tint' => 't-amber', 'deger' => 14, 'label' => 'Bekleyen ürün', 'alt' => 'kuyruk yoğun'],
+                    ['ikon' => 'restaurant', 'tint' => 't-blue', 'deger' => 86, 'label' => 'Bugün hazırlanan', 'alt' => 'adet'],
+                    ['ikon' => 'inventory_2', 'tint' => 't-red', 'deger' => '4 <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => 'tükeniyor'],
+                    ['ikon' => 'delete_outline', 'tint' => 't-amber', 'deger' => $tl(340), 'label' => 'Fire (bugün)', 'alt' => 'zayiat'],
+                ],
+                'isler' => [
+                    ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'grup' => 'MUTFAK', 'baslik' => '14 ürün hazırlanmayı bekliyor', 'aciklama' => 'Kuyruk yoğun — 3 masa 15+ dk bekliyor', 'aksiyon' => ['url' => '/mutfak', 'lbl' => 'Mutfak Ekranı']],
+                    ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => '4 malzeme kritik seviyede', 'aciklama' => 'Mozzarella, Domates Salçası — pizza aksayabilir', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => 'dikkat', 'yorum' => 'Şu an 14 ürün bekliyor, kuyruk yoğun. Yoğun saatte bir komi daha gerekebilir.'],
+                    ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Kritik Malzeme', 'alt' => 'stok', 'durum' => 'risk', 'yorum' => '4 malzeme kritik — Margarita ve Karışık Pizza bugün tükenebilir. Satın almaya bildir.'],
+                    ['ikon' => 'delete_outline', 'renk' => '#EA580C', 'baslik' => 'Fire', 'alt' => 'bugün', 'durum' => 'dikkat', 'yorum' => 'Bugün fire ' . $tl(340) . '. Hazırlık porsiyonlarını gözden geçir.'],
+                ],
+                'hizli' => [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']],
+                'aiOzet' => 'Bugünün gündemi: <b>14</b> bekleyen ürün · <b>4</b> kritik malzeme · fire <b>' . $tl(340) . '</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '112 ürün hazırlandı', 'link' => '/mutfak'], ['ikon' => 'check', 'mtn' => 'Akşam sayımı tamamlandı', 'link' => '/sayim']],
+            ]);
+        }
+        // Genel demo (diğer departmanlar)
+        return array_merge($base, [
+            'kpis' => [
+                ['ikon' => 'badge', 'tint' => 't-amber', 'deger' => '6<small>/7</small>', 'label' => 'Bugün mesaide', 'alt' => '1 gelmeyen'],
+                ['ikon' => 'task_alt', 'tint' => 't-blue', 'deger' => 3, 'label' => 'Açık görev', 'alt' => 'bugün'],
+                ['ikon' => 'check_circle', 'tint' => 't-green', 'deger' => 8, 'label' => 'Tamamlanan', 'alt' => 'bu hafta'],
+            ],
+            'isler' => [
+                ['ikon' => 'assignment', 'renk' => '#7C3AED', 'grup' => 'GÖREV', 'baslik' => '3 açık görev var', 'aciklama' => 'Departman görevleri', 'aksiyon' => ['url' => '/dashboard', 'lbl' => 'Gör']],
+                ['ikon' => 'person_off', 'renk' => '#EC4899', 'grup' => 'PERSONEL', 'baslik' => '1 personel giriş yapmadı', 'aciklama' => 'Vardiyada ama mesai yok', 'aksiyon' => ['url' => '/ik-ozet', 'lbl' => 'Gör']],
+            ],
+            'analiz' => [
+                ['ikon' => 'insights', 'renk' => '#10B981', 'baslik' => $tmpl['ad'], 'alt' => 'genel', 'durum' => 'iyi', 'yorum' => 'Departman operasyonu büyük ölçüde yolunda. Küçük takip işleri var.'],
+                ['ikon' => 'badge', 'renk' => '#F59E0B', 'baslik' => 'Katılım', 'alt' => 'bugün', 'durum' => 'dikkat', 'yorum' => '1 personel giriş yapmadı — kısa sürede teyit et.'],
+            ],
+            'hizli' => [['url' => '/dashboard', 'ikon' => 'dashboard', 'lbl' => 'Panel'], ['url' => '/ik-ozet', 'ikon' => 'groups', 'lbl' => 'İK Özet']],
+            'aiOzet' => 'Bugünün gündemi: <b>3</b> açık görev · <b>1</b> gelmeyen personel.',
+            'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '5 görev tamamlandı', 'link' => '/dashboard']],
+        ]);
+    }
+}
 Route::get('/departman-brief', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
@@ -17467,8 +17594,9 @@ Route::get('/departman-brief', function (Request $r) {
     $istenen = (string) $r->query('dep', '');
     $kendi = _departmanBriefKod($bp, $sid);
     $kod = ($patron && $istenen) ? $istenen : $kendi;          // patron her departmanı görebilir; personel sadece kendi
-    $veri = _departmanBriefVeri($sid, $bp, $kod);
-    $veri['deptBaslik'] = $veri['deptAd'];
+    $demo = $r->query('demo') == '1';
+    $veri = $demo ? _departmanBriefDemo($kod) : _departmanBriefVeri($sid, $bp, $kod);
+    $veri['demo'] = $demo; $veri['kod'] = $kod;
     return view('departman_brief', $veri);
 });
 

@@ -128,6 +128,14 @@
   </div>
 </div>
 
+@if (!empty($demo))
+<div style="display:flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--amber) 12%,var(--card));border:1px solid color-mix(in srgb,var(--amber) 40%,var(--line));border-radius:14px;padding:11px 15px;margin-bottom:12px;font-size:12.5px">
+  <span class="material-icons-outlined" style="font-size:18px;color:var(--amber)">theater_comedy</span>
+  <span style="flex:1;color:var(--sub)"><b style="color:var(--amber)">DEMO VERİ</b> — gerçek değil; sayfanın dolu halini gösterir.</span>
+  <a href="/departman-brief{{ !empty($kod) ? '?dep='.$kod : '' }}" style="color:var(--mor1);font-weight:700;text-decoration:none;white-space:nowrap">Gerçek veriye dön →</a>
+</div>
+@endif
+
 {{-- ============ 5 KPI ============ --}}
 @if (count($kpis))
 <div class="pai-kpis">
