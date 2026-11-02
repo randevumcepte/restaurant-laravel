@@ -338,7 +338,8 @@
               <div class="tbas">{{ $is['baslik'] ?? '' }}</div>
               @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
             </div>
-            @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+            @if (($ak['tip'] ?? '') === 'pop')<button class="tbtn" onclick="paiIsAc('{{ $is['pop'] ?? '' }}','{{ addslashes($is['baslik'] ?? '') }}')">{{ $ak['lbl'] ?? 'Aç' }}</button>
+            @elseif (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
             @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
             @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
           </div>
@@ -375,7 +376,8 @@
               <div class="tbas">{{ $is['baslik'] ?? '' }}</div>
               @if (!empty($is['aciklama']))<div class="talt" style="white-space:normal">{{ $is['aciklama'] }}</div>@endif
             </div>
-            @if (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
+            @if (($ak['tip'] ?? '') === 'pop')<button class="tbtn" onclick="paiIsAc('{{ $is['pop'] ?? '' }}','{{ addslashes($is['baslik'] ?? '') }}')">{{ $ak['lbl'] ?? 'Aç' }}</button>
+            @elseif (($ak['tip'] ?? '') === 'eylem')<button class="tbtn" onclick="paiEylemOner('{{ $ak['intent'] }}')">{{ $ak['lbl'] ?? 'Yap' }}</button>
             @elseif (($ak['tip'] ?? '') === 'link')<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }} →</a>
             @elseif (($ak['tip'] ?? '') === 'ajanda')<button class="tbtn sade" onclick="paiAjandaBitti({{ $ak['id'] }}, this)">{{ $ak['lbl'] ?? 'Bitti' }}</button>@endif
           </div>
@@ -396,6 +398,106 @@
   <script>
     window.paiIslerAc=function(){document.getElementById('paiIslerMod').classList.add('acik');};
     window.paiIslerKapat=function(){document.getElementById('paiIslerMod').classList.remove('acik');};
+  </script>
+
+  {{-- İŞ DETAY POPUP — detay + popup içinde biten aksiyonlar (sayfaya yönlendirme yok) --}}
+  <div class="pai-modal" id="paiIsMod" onclick="if(event.target===this)paiIsKapat()">
+    <div class="mk">
+      <div class="mh"><span class="material-icons-outlined">bolt</span><h3 id="paiIsBaslik">Detay</h3><button type="button" class="kapat" onclick="paiIsKapat()"><span class="material-icons-outlined">close</span></button></div>
+      <div class="mb" id="paiIsBody"></div>
+      <div class="is-sonuc" id="paiIsSonuc" style="display:none"></div>
+    </div>
+  </div>
+  <style>
+    #paiIsMod .is-aci{font-size:12.5px;color:var(--sub);background:var(--card2);border-radius:11px;padding:11px 13px;margin-bottom:12px;line-height:1.5}
+    #paiIsMod .is-liste{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+    #paiIsMod .is-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:11px}
+    #paiIsMod .is-row-ic{flex:1;min-width:0}
+    #paiIsMod .is-row-ad{font-size:13px;font-weight:700;color:var(--ink)}
+    #paiIsMod .is-row-alt{font-size:11px;color:var(--sub);margin-top:2px}
+    #paiIsMod .is-row-sag{font-size:12px;font-weight:700;color:var(--sub);white-space:nowrap}
+    #paiIsMod .is-row-btn{border:0;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7B5CFA,#6A49F2);color:#fff;margin-left:6px;font-family:inherit}
+    #paiIsMod .is-row-btn.red{background:var(--card2);color:var(--pred);border:1px solid color-mix(in srgb,var(--pred) 35%,transparent)}
+    #paiIsMod .is-ai{background:linear-gradient(170deg,color-mix(in srgb,var(--mor1) 8%,var(--card)),var(--card) 70%);border:1px solid color-mix(in srgb,var(--mor1) 20%,var(--line));border-radius:13px;padding:12px;margin-top:4px}
+    #paiIsMod .is-ai-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--mor1);margin-bottom:9px}
+    #paiIsMod .is-ai-h .material-icons-outlined{font-size:16px}
+    #paiIsMod .is-ai-btn{display:block;width:100%;text-align:left;border:0;border-radius:11px;padding:11px 13px;font-size:12.5px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7B5CFA,#6A49F2);color:#fff;margin-bottom:7px;font-family:inherit}
+    #paiIsMod .is-ai-btn:last-child{margin-bottom:0}
+    #paiIsMod .is-ai-btn:disabled{opacity:.6;cursor:wait}
+    #paiIsMod .is-sonuc{margin:0 18px 16px;padding:11px 13px;border-radius:11px;font-size:12.5px;font-weight:600}
+    #paiIsMod .is-sonuc.ok{background:rgba(47,190,148,.12);color:#047857;border-left:3px solid var(--pgreen)}
+    #paiIsMod .is-sonuc.hata{background:rgba(245,87,108,.1);color:var(--pred);border-left:3px solid var(--pred)}
+  </style>
+  <script>
+    var PAI2_CSRF=document.querySelector('meta[name=csrf-token]').content;
+    function paiEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function paiIsKapat(){document.getElementById('paiIsMod').classList.remove('acik');}
+    function paiIsSonuc(ok,msg){var el=document.getElementById('paiIsSonuc');el.style.display='block';el.className='is-sonuc '+(ok?'ok':'hata');el.textContent=msg;}
+    window.paiIsAc=async function(pop,baslik){
+      document.getElementById('paiIsBaslik').textContent=baslik||'Detay';
+      document.getElementById('paiIsSonuc').style.display='none';
+      document.getElementById('paiIsBody').innerHTML='<div style="padding:24px;text-align:center;color:var(--sub)">Yükleniyor…</div>';
+      document.getElementById('paiIsMod').classList.add('acik');
+      try{
+        var r=await fetch('/api/patron-ai/is-detay?pop='+encodeURIComponent(pop),{headers:{'Accept':'application/json'},credentials:'same-origin'});
+        var j=await r.json();
+        if(!j.ok){document.getElementById('paiIsBody').innerHTML='<div style="padding:20px;color:var(--sub)">'+(j.hata||'Detay alınamadı')+'</div>';return;}
+        var h='';
+        if(j.aciklama)h+='<div class="is-aci">'+paiEsc(j.aciklama)+'</div>';
+        if(j.satirlar&&j.satirlar.length){
+          h+='<div class="is-liste">';
+          j.satirlar.forEach(function(s){
+            var sag='';
+            if(j.satir_aksiyon==='onay')sag='<button class="is-row-btn red" onclick="paiOnayCevap('+s.id+',\'red\',this)">Reddet</button><button class="is-row-btn" onclick="paiOnayCevap('+s.id+',\'onay\',this)">Onayla</button>';
+            else if(j.satir_aksiyon==='satinalma_onayla')sag='<button class="is-row-btn" onclick="paiSaOnayla('+s.id+',this)">Onayla</button>';
+            else if(j.satir_aksiyon==='fiyat_arastir')sag='<button class="is-row-btn" onclick="paiFiyatSor('+s.id+',this)">Fiyat sor</button>';
+            else sag='<span class="is-row-sag"'+(s.renk?' style="color:'+s.renk+'"':'')+'>'+paiEsc(s.sag||'')+'</span>';
+            h+='<div class="is-row"><div class="is-row-ic"><div class="is-row-ad">'+paiEsc(s.ad)+'</div>'+(s.alt?'<div class="is-row-alt">'+paiEsc(s.alt)+'</div>':'')+'</div>'+sag+'</div>';
+          });
+          h+='</div>';
+        } else if(!(j.aksiyonlar&&j.aksiyonlar.length)){ h+='<div style="padding:16px;text-align:center;color:var(--sub2)">'+paiEsc(j.bos||'Kayıt yok.')+'</div>'; }
+        if(j.aksiyonlar&&j.aksiyonlar.length){
+          h+='<div class="is-ai"><div class="is-ai-h"><span class="material-icons-outlined">auto_awesome</span> İstersen tek tıkla yapayım</div>';
+          j.aksiyonlar.forEach(function(a){
+            if(a.tip==='eylem')h+='<button class="is-ai-btn" onclick="paiIsEylem(\''+a.intent+'\',this)">'+paiEsc(a.lbl)+'</button>';
+            else if(a.tip==='post')h+='<button class="is-ai-btn" onclick="paiIsPost(\''+a.url+'\',this)">'+paiEsc(a.lbl)+'</button>';
+          });
+          h+='</div>';
+        }
+        document.getElementById('paiIsBody').innerHTML=h;
+      }catch(e){document.getElementById('paiIsBody').innerHTML='<div style="padding:20px;color:#F5576C">Bağlantı hatası.</div>';}
+    };
+    async function paiIsEylem(intent,btn){
+      btn.disabled=true;var o=btn.textContent;btn.textContent='Yürütülüyor…';
+      try{
+        var r1=await fetch('/api/patron-ai/eylem-oner',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({intent:intent})});
+        var j1=await r1.json();
+        if(!j1.ok||!j1.log_id){paiIsSonuc(false,j1.hata||'Olmadı');btn.disabled=false;btn.textContent=o;return;}
+        var r2=await fetch('/api/ai-eylem/onayla',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({log_id:j1.log_id})});
+        var j2=await r2.json();var s=j2.sonuc||{};
+        paiIsSonuc(!!s.ok,s.mesaj||(s.ok?'İşlem yapıldı.':'Hata oluştu.'));btn.textContent='✓ Yapıldı';
+      }catch(e){paiIsSonuc(false,'Bağlantı hatası');btn.disabled=false;btn.textContent=o;}
+    }
+    async function paiIsPost(url,btn){
+      btn.disabled=true;var o=btn.textContent;btn.textContent='Yürütülüyor…';
+      try{var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:'{}'});var j=await r.json();var s=j.sonuc||j||{};paiIsSonuc(s.ok!==false,s.mesaj||'İşlem yapıldı.');btn.textContent='✓ Yapıldı';}
+      catch(e){paiIsSonuc(false,'Bağlantı hatası');btn.disabled=false;btn.textContent=o;}
+    }
+    async function paiOnayCevap(id,cevap,btn){
+      var row=btn.closest('.is-row');row.style.opacity='.5';
+      try{var r=await fetch('/api/patron/onay-cevap',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({istek_id:id,cevap:cevap})});var j=await r.json();if(j.ok){row.remove();paiIsSonuc(true,(cevap==='onay'?'Onaylandı':'Reddedildi')+(j.mesaj?' · '+j.mesaj:''));}else{row.style.opacity='1';paiIsSonuc(false,j.hata||'Olmadı');}}
+      catch(e){row.style.opacity='1';paiIsSonuc(false,'Bağlantı hatası');}
+    }
+    async function paiSaOnayla(id,btn){
+      btn.disabled=true;btn.textContent='…';
+      try{var r=await fetch('/satinalma-talep/onayla',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({id:id})});var j=await r.json();if(j.ok){btn.closest('.is-row').remove();paiIsSonuc(true,'Talep onaylandı — sipariş oluşturmaya hazır.');}else{btn.disabled=false;btn.textContent='Onayla';paiIsSonuc(false,j.mesaj||'Olmadı');}}
+      catch(e){btn.disabled=false;btn.textContent='Onayla';paiIsSonuc(false,'Bağlantı hatası');}
+    }
+    async function paiFiyatSor(id,btn){
+      btn.disabled=true;btn.textContent='…';
+      try{await fetch('/fiyat-arastir',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':PAI2_CSRF,'Accept':'application/json'},body:JSON.stringify({talep:id,geri:'/patron-ai'})});btn.closest('.is-row').remove();paiIsSonuc(true,'Tedarikçilere fiyat isteği (RFQ) gönderildi.');}
+      catch(e){btn.disabled=false;btn.textContent='Fiyat sor';paiIsSonuc(false,'Bağlantı hatası');}
+    }
   </script>
 
   {{-- AI TÜKETİM --}}

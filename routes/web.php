@@ -11557,15 +11557,15 @@ if (!function_exists('_patronAiBugununIsleri')) {
         if ($patronMu) {
             try { if (Schema::hasTable('onay_istekleri')) {
                 $c = (int) DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->count();
-                if ($c > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'how_to_reg', 'renk' => 'var(--amber)', 'oncelik' => 1,
+                if ($c > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'how_to_reg', 'renk' => 'var(--amber)', 'oncelik' => 1, 'pop' => 'islem_onay',
                     'baslik' => $c . ' işlem onayını bekliyor', 'aciklama' => 'İskonto / ikram / iptal / ödeme geri alma',
-                    'aksiyon' => ['tip' => 'info']];
+                    'aksiyon' => ['tip' => 'pop', 'lbl' => 'İncele']];
             }} catch (\Throwable $e) {}
             try { if (Schema::hasTable('satinalma_talepleri')) {
                 $o = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->count();
-                if ($o > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'fact_check', 'renk' => 'var(--amber)', 'oncelik' => 1,
+                if ($o > 0) $isler[] = ['grup' => 'Onay Bekleyen', 'ikon' => 'fact_check', 'renk' => 'var(--amber)', 'oncelik' => 1, 'pop' => 'satinalma_onay',
                     'baslik' => $o . ' satın alma onayınızı bekliyor', 'aciklama' => 'Satın almacı teklifleri gönderdi — tedarikçi seçip onayla',
-                    'aksiyon' => ['tip' => 'link', 'url' => '/satinalma-talep', 'lbl' => 'Onayla']];
+                    'aksiyon' => ['tip' => 'pop', 'lbl' => 'Onayla']];
             }} catch (\Throwable $e) {}
             try { if (Schema::hasTable('ik_self_talep')) {
                 $c = (int) DB::table('ik_self_talep')->where('sube_id', $sid)->where('tip', 'avans')->where('durum', 'talep')->count();
@@ -11580,32 +11580,32 @@ if (!function_exists('_patronAiBugununIsleri')) {
             $krit = $risk['kritik'] ?? [];
             if (count($krit)) {
                 $adlar = implode(', ', array_slice(array_map(fn ($k) => $k['ad'] ?? '', $krit), 0, 4));
-                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'inventory_2', 'renk' => 'var(--kirmizi)', 'oncelik' => 1,
+                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'inventory_2', 'renk' => 'var(--kirmizi)', 'oncelik' => 1, 'pop' => 'kritik_stok',
                     'baslik' => count($krit) . ' malzeme kritik seviyede', 'aciklama' => $adlar,
-                    'aksiyon' => ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => 'Siparişe çevir']];
+                    'aksiyon' => ['tip' => 'pop', 'lbl' => 'Siparişe çevir']];
             }
             $riskli = $risk['riskli'] ?? [];
             if (count($riskli)) {
                 $r = $riskli[0];
-                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'production_quantity_limits', 'renk' => 'var(--amber)', 'oncelik' => 3,
+                $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'production_quantity_limits', 'renk' => 'var(--amber)', 'oncelik' => 3, 'pop' => 'uretim_riski',
                     'baslik' => ($r['urun'] ?? 'Bir ürün') . ' için ~' . ($r['yapilabilir'] ?? $r['porsiyon'] ?? 0) . ' porsiyon kaldı',
                     'aciklama' => 'Üretim riski' . (!empty($r['darbogaz']) ? ' · ' . $r['darbogaz'] : ''),
-                    'aksiyon' => ['tip' => 'link', 'url' => '/uretim-riski', 'lbl' => 'Gör']];
+                    'aksiyon' => ['tip' => 'pop', 'lbl' => 'Gör']];
             }
         } catch (\Throwable $e) {}
         try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'beklenen_teslim')) {
             $g = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)
                 ->whereNotIn('durum', ['teslim', 'iptal', 'kapandi', 'tamam'])
                 ->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count();
-            if ($g > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'local_shipping', 'renk' => 'var(--amber)', 'oncelik' => 3,
+            if ($g > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'local_shipping', 'renk' => 'var(--amber)', 'oncelik' => 3, 'pop' => 'geciken_siparis',
                 'baslik' => $g . ' sipariş teslim tarihini geçti', 'aciklama' => 'Tedarikçiye hatırlatılabilir',
-                'aksiyon' => ['tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'lbl' => 'Hatırlat']];
+                'aksiyon' => ['tip' => 'pop', 'lbl' => 'Hatırlat']];
         }} catch (\Throwable $e) {}
         try { if (Schema::hasTable('satinalma_talepleri')) {
             $t = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->count();
-            if ($t > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'assignment', 'renk' => 'var(--mavi)', 'oncelik' => 2,
+            if ($t > 0) $isler[] = ['grup' => 'Satın Alma', 'ikon' => 'assignment', 'renk' => 'var(--mavi)', 'oncelik' => 2, 'pop' => 'satinalma_talep',
                 'baslik' => $t . ' bekleyen satın alma talebi', 'aciklama' => 'Mutfak/departmandan gelen talepler',
-                'aksiyon' => ['tip' => 'link', 'url' => '/satinalma-talep', 'lbl' => 'İncele']];
+                'aksiyon' => ['tip' => 'pop', 'lbl' => 'İncele']];
         }} catch (\Throwable $e) {}
 
         try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
@@ -11614,18 +11614,18 @@ if (!function_exists('_patronAiBugununIsleri')) {
             if ($vardiyali->count()) {
                 $girenler = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->pluck('personel_id')->unique();
                 $gelmeyen = $vardiyali->diff($girenler)->count();
-                if ($gelmeyen > 0) $isler[] = ['grup' => 'Personel', 'ikon' => 'person_off', 'renk' => 'var(--amber)', 'oncelik' => 2,
+                if ($gelmeyen > 0) $isler[] = ['grup' => 'Personel', 'ikon' => 'person_off', 'renk' => 'var(--amber)', 'oncelik' => 2, 'pop' => 'gelmeyen',
                     'baslik' => $gelmeyen . ' personel vardiyada ama giriş yapmadı', 'aciklama' => 'Nerede olduklarını sorabilirsin',
-                    'aksiyon' => ['tip' => 'eylem', 'intent' => 'gelmeyene_sor', 'lbl' => 'Sor']];
+                    'aksiyon' => ['tip' => 'pop', 'lbl' => 'Sor']];
             }
         }} catch (\Throwable $e) {}
 
         try { if (Schema::hasTable('adisyonlar')) {
             $a = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')
                 ->whereDate('created_at', '<', today())->count();
-            if ($a > 0) $isler[] = ['grup' => 'Operasyon', 'ikon' => 'receipt_long', 'renk' => 'var(--kirmizi)', 'oncelik' => 1,
+            if ($a > 0) $isler[] = ['grup' => 'Operasyon', 'ikon' => 'receipt_long', 'renk' => 'var(--kirmizi)', 'oncelik' => 1, 'pop' => 'acik_adisyon',
                 'baslik' => $a . ' adisyon dünden açık kaldı', 'aciklama' => 'Kapatılması / incelenmesi gerekebilir',
-                'aksiyon' => ['tip' => 'link', 'url' => '/dashboard', 'lbl' => 'Gör']];
+                'aksiyon' => ['tip' => 'pop', 'lbl' => 'Gör']];
         }} catch (\Throwable $e) {}
 
         try { if (Schema::hasTable('mal_kabuller')) {
@@ -11642,6 +11642,84 @@ if (!function_exists('_patronAiBugununIsleri')) {
         return ['isler' => $isler, 'bitenler' => $bitenler];
     }
 }
+
+// Patron AI — bir "iş" kartının POPUP detayı + popup içinde biten aksiyon(lar). Sayfaya yönlendirme YOK.
+Route::get('/api/patron-ai/is-detay', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0], 401);
+    $sid = _webSubeId();
+    $pop = (string) $r->query('pop');
+    $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
+    $o = ['ok' => 1, 'baslik' => 'Detay', 'aciklama' => '', 'satirlar' => [], 'aksiyonlar' => [], 'satir_aksiyon' => null, 'bos' => 'Kayıt yok.'];
+    try {
+        if ($pop === 'kritik_stok') {
+            $o['baslik'] = 'Kritik Stok'; $k = function_exists('_kritikStokListesi') ? _kritikStokListesi($sid) : [];
+            $o['aciklama'] = count($k) . ' malzeme kritik seviyede — mutfak aksayabilir.';
+            foreach ($k as $x) $o['satirlar'][] = ['ad' => $x['ad'], 'alt' => 'mevcut ' . $x['mevcut'] . ' / kritik ' . $x['kritik'] . ' ' . $x['birim'], 'sag' => 'öneri ' . $x['oneri'] . ' ' . $x['birim'], 'renk' => 'var(--kirmizi)'];
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '🛒 Tedarikçi-bazlı sipariş taslağı hazırla'];
+        } elseif ($pop === 'islem_onay') {
+            $o['baslik'] = 'Bekleyen İşlem Onayları'; $o['satir_aksiyon'] = 'onay';
+            $liste = Schema::hasTable('onay_istekleri') ? DB::table('onay_istekleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('isteyen_id', '!=', (int) $bp->id)->orderByDesc('id')->get() : collect();
+            $o['aciklama'] = $liste->count() . ' işlem onayınızı bekliyor. Onayla ya da reddet — işlem sunucuda yürür.';
+            foreach ($liste as $i) $o['satirlar'][] = ['ad' => $i->baslik, 'alt' => ($i->isteyen_ad ?? '') . ' · ' . \Carbon\Carbon::parse($i->created_at)->format('H:i'), 'sag' => ($i->tutar !== null ? $tl($i->tutar) : ''), 'id' => (int) $i->id];
+        } elseif ($pop === 'satinalma_onay') {
+            $o['baslik'] = 'Onay Bekleyen Satın Alma'; $o['satir_aksiyon'] = 'satinalma_onayla';
+            $t = Schema::hasTable('satinalma_talepleri') ? DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'onayda')->orderByDesc('id')->get(['id', 'departman', 'isteyen_ad']) : collect();
+            $o['aciklama'] = $t->count() . ' talep tedarikçi seçip onayınızı bekliyor. Onaylarsan satın almacının önerileri kesinleşir.';
+            foreach ($t as $x) $o['satirlar'][] = ['ad' => '#' . $x->id . ' · ' . $x->departman, 'alt' => $x->isteyen_ad ?: '', 'sag' => '', 'id' => (int) $x->id];
+        } elseif ($pop === 'satinalma_talep') {
+            $o['baslik'] = 'Bekleyen Satın Alma Talepleri'; $o['satir_aksiyon'] = 'fiyat_arastir';
+            $t = Schema::hasTable('satinalma_talepleri') ? DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'yeni')->orderByDesc('id')->get(['id', 'departman', 'isteyen_ad', 'aciliyet']) : collect();
+            $o['aciklama'] = $t->count() . ' yeni talep var. "Fiyat sor" ile tedarikçilere RFQ gönderilir.';
+            foreach ($t as $x) $o['satirlar'][] = ['ad' => '#' . $x->id . ' · ' . $x->departman, 'alt' => $x->isteyen_ad ?: '', 'sag' => $x->aciliyet === 'acil' ? 'ACİL' : '', 'id' => (int) $x->id];
+        } elseif ($pop === 'acik_adisyon') {
+            $o['baslik'] = 'Dünden Açık Adisyonlar';
+            $masa = Schema::hasTable('masalar') ? DB::table('masalar')->pluck('ad', 'id') : collect();
+            $a = Schema::hasTable('adisyonlar') ? DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->orderBy('created_at')->limit(50)->get(['id', 'masa_id', 'toplam', 'created_at']) : collect();
+            $o['aciklama'] = $a->count() . ' adisyon dünden açık kalmış. Sorumlulara kapatma hatırlatması gönderebilirsin.';
+            foreach ($a as $x) $o['satirlar'][] = ['ad' => ($masa[$x->masa_id] ?? ('Masa ' . $x->masa_id)), 'alt' => \Carbon\Carbon::parse($x->created_at)->diffForHumans(), 'sag' => $tl($x->toplam)];
+            $o['aksiyonlar'][] = ['tip' => 'post', 'url' => '/api/patron-ai/acik-adisyon-hatirlat', 'lbl' => '🔔 Sorumlulara kapatma hatırlatması gönder'];
+        } elseif ($pop === 'geciken_siparis') {
+            $o['baslik'] = 'Geciken Siparişler';
+            $g = (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'beklenen_teslim')) ? DB::table('satinalma_siparisleri as s')->leftJoin('tedarikciler as t', 't.id', '=', 's.tedarikci_id')->where('s.sube_id', $sid)->whereNotIn('s.durum', ['teslim', 'iptal', 'kapandi', 'tamam'])->whereNotNull('s.beklenen_teslim')->whereDate('s.beklenen_teslim', '<', today())->get(['s.id', 's.siparis_no', 's.genel_toplam', 's.beklenen_teslim', 't.ad as ted']) : collect();
+            $o['aciklama'] = $g->count() . ' sipariş teslim tarihini geçti.';
+            foreach ($g as $x) $o['satirlar'][] = ['ad' => ($x->ted ?: 'Tedarikçi') . ' · ' . ($x->siparis_no ?: '#' . $x->id), 'alt' => \Carbon\Carbon::parse($x->beklenen_teslim)->format('d.m.Y') . ' bekleniyordu', 'sag' => $tl($x->genel_toplam), 'renk' => 'var(--amber)'];
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'lbl' => '🚚 Tedarikçilere hatırlatma gönder'];
+        } elseif ($pop === 'uretim_riski') {
+            $o['baslik'] = 'Üretim Riski'; $risk = function_exists('_restoUretimRiski') ? _restoUretimRiski($sid, 8) : ['riskli' => []];
+            $o['aciklama'] = 'Az porsiyon kalan ürünler — darboğaz malzemeler bitmeden sipariş et.';
+            foreach (($risk['riskli'] ?? []) as $x) $o['satirlar'][] = ['ad' => $x['urun'] ?? '-', 'alt' => 'darboğaz: ' . ($x['darbogaz'] ?? '-'), 'sag' => '~' . ($x['yapilabilir'] ?? 0) . ' porsiyon', 'renk' => 'var(--amber)'];
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '🛒 Eksik malzemeyi siparişe ekle'];
+        } elseif ($pop === 'gelmeyen') {
+            $o['baslik'] = 'Vardiyada Giriş Yapmayanlar';
+            $bugun = today()->toDateString(); $satir = [];
+            if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+                $vard = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun)->pluck('personel_id')->unique();
+                $giren = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->pluck('personel_id')->unique();
+                $gelmeyenIds = $vard->diff($giren)->values();
+                $adlar = DB::table('personeller')->whereIn('id', $gelmeyenIds)->pluck('ad', 'id');
+                foreach ($gelmeyenIds as $pid) $satir[] = ['ad' => ($adlar[$pid] ?? ('Personel #' . $pid)), 'alt' => 'vardiyada ama giriş yok', 'sag' => ''];
+            }
+            $o['satirlar'] = $satir; $o['aciklama'] = count($satir) . ' kişi vardiyada ama giriş yapmadı.';
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'gelmeyene_sor', 'lbl' => '⏰ Nerede olduklarını sor'];
+        } elseif ($pop === 'ajanda') {
+            $o['baslik'] = 'Ajanda İşi'; $o['aciklama'] = (string) $r->query('aciklama', ''); $o['satirlar'] = [];
+        } else {
+            $o['ok'] = 0; $o['hata'] = 'Bilinmeyen tür';
+        }
+    } catch (\Throwable $e) { $o['ok'] = 0; $o['hata'] = 'Detay alınamadı.'; }
+    return response()->json($o);
+});
+// Açık adisyon hatırlatma: FCM + (varsa) WA ile mesaidekilere "kapat" bildirimi
+Route::post('/api/patron-ai/acik-adisyon-hatirlat', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz.'], 403);
+    $sid = _webSubeId();
+    $n = 0; try { $n = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); } catch (\Throwable $e) {}
+    if ($n <= 0) return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => 'Açık adisyon kalmamış, hatırlatmaya gerek yok.']]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🧾 Açık adisyon hatırlatması', $n . ' adisyon dünden açık kaldı — lütfen kapatın/kontrol edin.', ['tur' => 'acik_adisyon'], ['sahip', 'mudur', 'kasa', 'garson'], 'genel'); } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => $n . ' açık adisyon için ilgili personele hatırlatma bildirimi gönderildi.']]);
+});
 
 // ----- AJANDA WEB -----
 Route::get('/ajanda', function () {
