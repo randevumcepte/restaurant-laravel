@@ -141,7 +141,8 @@
   .pai-sonuc.hata{border-left:3px solid #F43F5E;color:#9f1239}
 
   /* ====== PATRON AI DASHBOARD (referans tasarım · kompakt · tek ekran) ====== */
-  #pai{max-width:1280px;margin:0 auto;--rose:#F56A8B;--pgreen:#2FBE94;--pamber:#F6A623;--pblue:#5B8DEF;--pred:#F5576C}
+  /* Sol menü açılır-kapanır (ince) → içerik tüm genişliği kullanır */
+  #pai{max-width:none;width:100%;margin:0;--rose:#F56A8B;--pgreen:#2FBE94;--pamber:#F6A623;--pblue:#5B8DEF;--pred:#F5576C}
   #pai *{box-sizing:border-box}
   #pai .t-rose{background:rgba(245,106,139,.13);color:var(--rose)} #pai .t-green{background:rgba(47,190,148,.14);color:var(--pgreen)}
   #pai .t-amber{background:rgba(246,166,35,.15);color:var(--pamber)} #pai .t-blue{background:rgba(91,141,239,.14);color:var(--pblue)}
