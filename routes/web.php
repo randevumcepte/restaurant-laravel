@@ -11670,6 +11670,47 @@ if (!function_exists('_patronDevirVar')) {
         return false;
     }
 }
+// TEŞHİS — "satın almaya yönlendir" etiketi neden çıkmıyor? Canlı veriyi görmek için (sahip aç, sonucu bana ver).
+Route::get('/api/patron-ai/devir-debug', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0, 'not' => 'once panele giris yap sonra bu linki ac'], 401);
+    $sid = _webSubeId();
+    $o = ['ok' => 1, 'sid' => $sid, 'devirSa' => _patronDevirVar($sid, 'satinalma'), 'devirIk' => _patronDevirVar($sid, 'ik')];
+    // personeller
+    try {
+        $pc = Schema::getColumnListing('personeller');
+        $o['personel_kolon'] = ['rol' => in_array('rol', $pc), 'aktif' => in_array('aktif', $pc), 'departman_id' => in_array('departman_id', $pc), 'departman_unvan' => in_array('departman_unvan', $pc), 'sube_id' => in_array('sube_id', $pc)];
+        $sel = array_values(array_intersect(['id', 'ad', 'isim', 'adsoyad', 'rol', 'aktif', 'departman_id', 'departman_unvan', 'sube_id'], $pc));
+        $o['personeller'] = DB::table('personeller')->where('sube_id', $sid)->get($sel);
+    } catch (\Throwable $e) { $o['personel_err'] = $e->getMessage(); }
+    // departmanlar
+    try {
+        if (Schema::hasTable('departmanlar')) {
+            $dc = Schema::getColumnListing('departmanlar');
+            $o['dep_kolon'] = $dc;
+            $sel = array_values(array_intersect(['id', 'ad', 'kod', 'grup', 'sube_id', 'aktif'], $dc));
+            $o['departmanlar'] = DB::table('departmanlar')->when(in_array('sube_id', $dc), fn ($q) => $q->where('sube_id', $sid))->get($sel);
+        } else { $o['departmanlar'] = 'TABLO YOK'; }
+    } catch (\Throwable $e) { $o['dep_err'] = $e->getMessage(); }
+    // 4 tespit yolu ayrı ayrı
+    $o['yol'] = [];
+    try { $o['yol']['1_rol_satinalmaci'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'satinalmaci')->count(); } catch (\Throwable $e) { $o['yol']['1_err'] = $e->getMessage(); }
+    try {
+        if (Schema::hasColumn('personeller', 'departman_id') && Schema::hasTable('departmanlar')) {
+            $dc = Schema::getColumnListing('departmanlar');
+            $depIds = DB::table('departmanlar')->when(in_array('sube_id', $dc), fn ($q) => $q->where('sube_id', $sid))->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('kod', 'like', '%stok%')->orWhere('kod', 'like', '%depo%')->orWhere('kod', 'like', '%mal_kabul%')->orWhere('ad', 'like', '%atın Alma%'); })->pluck('id');
+            $o['yol']['2_dep_ids'] = $depIds->values();
+            $o['yol']['2_atanmis_personel'] = $depIds->count() ? DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereIn('departman_id', $depIds)->count() : 0;
+        } else { $o['yol']['2_atla'] = 'kolon/tablo yok'; }
+    } catch (\Throwable $e) { $o['yol']['2_err'] = $e->getMessage(); }
+    try { $o['yol']['3_unvan'] = Schema::hasColumn('personeller', 'departman_unvan') ? DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('departman_unvan', 'like', '%atın Alma%')->count() : 'kolon yok'; } catch (\Throwable $e) { $o['yol']['3_err'] = $e->getMessage(); }
+    try {
+        $dc = Schema::hasTable('departmanlar') ? Schema::getColumnListing('departmanlar') : [];
+        $o['yol']['4_aktif_satinalma_dep'] = $dc ? DB::table('departmanlar')->when(in_array('sube_id', $dc), fn ($q) => $q->where('sube_id', $sid))->when(in_array('aktif', $dc), fn ($q) => $q->where('aktif', 1))->where(function ($w) { $w->where('kod', 'like', '%satin%')->orWhere('ad', 'like', '%atın Alma%'); })->count() : 'tablo yok';
+    } catch (\Throwable $e) { $o['yol']['4_err'] = $e->getMessage(); }
+    return response()->json($o, 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+});
+
 // Patron AI — bir "iş" kartının POPUP detayı + popup içinde biten aksiyon(lar). Sayfaya yönlendirme YOK.
 Route::get('/api/patron-ai/is-detay', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
