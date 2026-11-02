@@ -408,7 +408,24 @@
       <div class="is-sonuc" id="paiIsSonuc" style="display:none"></div>
     </div>
   </div>
+  {{-- ONAY DİALOGU (Emin misiniz? Evet / Vazgeç) --}}
+  <div class="pai-conf" id="paiConfMod" onclick="if(event.target===this)paiConfKapat()">
+    <div class="pc">
+      <div class="pc-ik"><span class="material-icons-outlined">help_outline</span></div>
+      <div class="pc-msg" id="paiConfMsg">Emin misiniz?</div>
+      <div class="pc-btn"><button type="button" class="pc-vaz" onclick="paiConfKapat()">Vazgeç</button><button type="button" class="pc-evet" onclick="paiConfEvet()">Evet, yap</button></div>
+    </div>
+  </div>
   <style>
+    .pai-conf{position:fixed;inset:0;background:rgba(20,20,45,.6);display:none;align-items:center;justify-content:center;z-index:10000;padding:20px}
+    .pai-conf.acik{display:flex}
+    .pai-conf .pc{background:var(--card);border:1px solid var(--line);border-radius:18px;width:360px;max-width:100%;padding:22px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+    .pai-conf .pc-ik{width:52px;height:52px;border-radius:50%;background:var(--mor-soft,color-mix(in srgb,var(--mor1) 13%,transparent));color:var(--mor1);display:flex;align-items:center;justify-content:center;margin:0 auto 13px}
+    .pai-conf .pc-ik .material-icons-outlined{font-size:28px}
+    .pai-conf .pc-msg{font-size:15px;font-weight:700;color:var(--ink);line-height:1.5;margin-bottom:18px}
+    .pai-conf .pc-btn{display:flex;gap:9px}
+    .pai-conf .pc-vaz{flex:1;background:var(--card2);border:0;color:var(--sub);border-radius:12px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+    .pai-conf .pc-evet{flex:1;background:linear-gradient(135deg,#7B5CFA,#6A49F2);border:0;color:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit}
     #paiIsMod .is-aci{font-size:12.5px;color:var(--sub);background:var(--card2);border-radius:11px;padding:11px 13px;margin-bottom:12px;line-height:1.5}
     #paiIsMod .is-liste{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
     #paiIsMod .is-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:11px}
@@ -433,6 +450,18 @@
     function paiEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function paiIsKapat(){document.getElementById('paiIsMod').classList.remove('acik');}
     function paiIsSonuc(ok,msg){var el=document.getElementById('paiIsSonuc');el.style.display='block';el.className='is-sonuc '+(ok?'ok':'hata');el.textContent=msg;}
+    var _paiConfCb=null;
+    function paiConfirm(mesaj,cb){_paiConfCb=cb;document.getElementById('paiConfMsg').textContent=mesaj;document.getElementById('paiConfMod').classList.add('acik');}
+    function paiConfKapat(){document.getElementById('paiConfMod').classList.remove('acik');_paiConfCb=null;}
+    function paiConfEvet(){document.getElementById('paiConfMod').classList.remove('acik');var c=_paiConfCb;_paiConfCb=null;if(c)c();}
+    function paiAskThen(btn,tip,arg,mesaj){paiConfirm(mesaj,function(){
+      if(tip==='eylem')paiIsEylem(arg,btn);
+      else if(tip==='post')paiIsPost(arg,btn);
+      else if(tip==='onay-onay')paiOnayCevap(arg,'onay',btn);
+      else if(tip==='onay-red')paiOnayCevap(arg,'red',btn);
+      else if(tip==='sa')paiSaOnayla(arg,btn);
+      else if(tip==='fiyat')paiFiyatSor(arg,btn);
+    });}
     window.paiIsAc=async function(pop,baslik){
       document.getElementById('paiIsBaslik').textContent=baslik||'Detay';
       document.getElementById('paiIsSonuc').style.display='none';
@@ -448,9 +477,9 @@
           h+='<div class="is-liste">';
           j.satirlar.forEach(function(s){
             var sag='';
-            if(j.satir_aksiyon==='onay')sag='<button class="is-row-btn red" onclick="paiOnayCevap('+s.id+',\'red\',this)">Reddet</button><button class="is-row-btn" onclick="paiOnayCevap('+s.id+',\'onay\',this)">Onayla</button>';
-            else if(j.satir_aksiyon==='satinalma_onayla')sag='<button class="is-row-btn" onclick="paiSaOnayla('+s.id+',this)">Onayla</button>';
-            else if(j.satir_aksiyon==='fiyat_arastir')sag='<button class="is-row-btn" onclick="paiFiyatSor('+s.id+',this)">Fiyat sor</button>';
+            if(j.satir_aksiyon==='onay')sag='<button class="is-row-btn red" onclick="paiAskThen(this,\'onay-red\','+s.id+',\'Bu işlem reddedilsin mi?\')">Reddet</button><button class="is-row-btn" onclick="paiAskThen(this,\'onay-onay\','+s.id+',\'Bu işlemi onaylayıp yürüteyim mi?\')">Onayla</button>';
+            else if(j.satir_aksiyon==='satinalma_onayla')sag='<button class="is-row-btn" onclick="paiAskThen(this,\'sa\','+s.id+',\'Bu talebi onaylayayım mı?\')">Onayla</button>';
+            else if(j.satir_aksiyon==='fiyat_arastir')sag='<button class="is-row-btn" onclick="paiAskThen(this,\'fiyat\','+s.id+',\'Tedarikçilere fiyat isteği (RFQ) göndereyim mi?\')">Fiyat sor</button>';
             else sag='<span class="is-row-sag"'+(s.renk?' style="color:'+s.renk+'"':'')+'>'+paiEsc(s.sag||'')+'</span>';
             h+='<div class="is-row"><div class="is-row-ic"><div class="is-row-ad">'+paiEsc(s.ad)+'</div>'+(s.alt?'<div class="is-row-alt">'+paiEsc(s.alt)+'</div>':'')+'</div>'+sag+'</div>';
           });
@@ -459,8 +488,8 @@
         if(j.aksiyonlar&&j.aksiyonlar.length){
           h+='<div class="is-ai"><div class="is-ai-h"><span class="material-icons-outlined">auto_awesome</span> İstersen tek tıkla yapayım</div>';
           j.aksiyonlar.forEach(function(a){
-            if(a.tip==='eylem')h+='<button class="is-ai-btn" onclick="paiIsEylem(\''+a.intent+'\',this)">'+paiEsc(a.lbl)+'</button>';
-            else if(a.tip==='post')h+='<button class="is-ai-btn" onclick="paiIsPost(\''+a.url+'\',this)">'+paiEsc(a.lbl)+'</button>';
+            if(a.tip==='eylem')h+='<button class="is-ai-btn" onclick="paiAskThen(this,\'eylem\',\''+a.intent+'\',\'Bu işlemi yapayım mı?\')">'+paiEsc(a.lbl)+'</button>';
+            else if(a.tip==='post')h+='<button class="is-ai-btn" onclick="paiAskThen(this,\'post\',\''+a.url+'\',\'Bu işlemi yapayım mı?\')">'+paiEsc(a.lbl)+'</button>';
           });
           h+='</div>';
         }
