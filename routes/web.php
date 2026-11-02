@@ -11689,7 +11689,7 @@ Route::get('/api/patron-ai/is-detay', function (Request $r) {
             $o['baslik'] = 'Üretim Riski'; $risk = function_exists('_restoUretimRiski') ? _restoUretimRiski($sid, 8) : ['riskli' => []];
             $o['aciklama'] = 'Az porsiyon kalan ürünler — darboğaz malzemeler bitmeden sipariş et.';
             foreach (($risk['riskli'] ?? []) as $x) $o['satirlar'][] = ['ad' => $x['urun'] ?? '-', 'alt' => 'darboğaz: ' . ($x['darbogaz'] ?? '-'), 'sag' => '~' . ($x['yapilabilir'] ?? 0) . ' porsiyon', 'renk' => 'var(--amber)'];
-            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '🛒 Eksik malzemeyi siparişe ekle'];
+            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'kritik_siparis_olustur', 'lbl' => '📩 Satın almaya sipariş talebi gönder'];
         } elseif ($pop === 'gelmeyen') {
             $o['baslik'] = 'Vardiyada Giriş Yapmayanlar';
             $bugun = today()->toDateString(); $satir = [];
