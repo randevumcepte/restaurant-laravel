@@ -11755,7 +11755,8 @@ Route::get('/api/patron-ai/is-detay', function (Request $r) {
             $g = (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'beklenen_teslim')) ? DB::table('satinalma_siparisleri as s')->leftJoin('tedarikciler as t', 't.id', '=', 's.tedarikci_id')->where('s.sube_id', $sid)->whereNotIn('s.durum', ['teslim', 'iptal', 'kapandi', 'tamam'])->whereNotNull('s.beklenen_teslim')->whereDate('s.beklenen_teslim', '<', today())->get(['s.id', 's.siparis_no', 's.genel_toplam', 's.beklenen_teslim', 't.ad as ted']) : collect();
             $o['aciklama'] = $g->count() . ' sipariş teslim tarihini geçti.';
             foreach ($g as $x) $o['satirlar'][] = ['ad' => ($x->ted ?: 'Tedarikçi') . ' · ' . ($x->siparis_no ?: '#' . $x->id), 'alt' => \Carbon\Carbon::parse($x->beklenen_teslim)->format('d.m.Y') . ' bekleniyordu', 'sag' => $tl($x->genel_toplam), 'renk' => 'var(--amber)'];
-            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'lbl' => '🚚 Tedarikçilere hatırlatma gönder'];
+            if ($devirSa) { $o['aciklama'] .= ' Satın alma sorumlusuna iletip takibi ona bırakabilirsin.'; $o['aksiyonlar'][] = ['tip' => 'post', 'url' => '/api/patron-ai/satin-almaya-ilet-geciken', 'lbl' => '📩 Satın almaya ilet: teslimi hızlandırsın']; }
+            else { $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'tedarikci_hatirlat', 'lbl' => '🚚 Tedarikçilere hatırlatma gönder']; }
         } elseif ($pop === 'uretim_riski') {
             $o['baslik'] = 'Üretim Riski'; $risk = function_exists('_restoUretimRiski') ? _restoUretimRiski($sid, 8) : ['riskli' => []];
             $o['aciklama'] = 'Az porsiyon kalan ürünler — darboğaz malzemeler bitmeden sipariş et.';
@@ -11772,7 +11773,8 @@ Route::get('/api/patron-ai/is-detay', function (Request $r) {
                 foreach ($gelmeyenIds as $pid) $satir[] = ['ad' => ($adlar[$pid] ?? ('Personel #' . $pid)), 'alt' => 'vardiyada ama giriş yok', 'sag' => ''];
             }
             $o['satirlar'] = $satir; $o['aciklama'] = count($satir) . ' kişi vardiyada ama giriş yapmadı.';
-            $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'gelmeyene_sor', 'lbl' => '⏰ Nerede olduklarını sor'];
+            if ($devirIk) { $o['aciklama'] .= ' İK sorumlusuna iletip teyidi ona bırakabilirsin.'; $o['aksiyonlar'][] = ['tip' => 'post', 'url' => '/api/patron-ai/ik-ya-ilet-gelmeyen', 'lbl' => '📩 İK\'ya ilet: arayıp teyit etsin']; }
+            else { $o['aksiyonlar'][] = ['tip' => 'eylem', 'intent' => 'gelmeyene_sor', 'lbl' => '⏰ Nerede olduklarını sor']; }
         } elseif ($pop === 'ajanda') {
             $o['baslik'] = 'Ajanda İşi'; $o['aciklama'] = (string) $r->query('aciklama', ''); $o['satirlar'] = [];
         } else {
@@ -11790,6 +11792,51 @@ Route::post('/api/patron-ai/acik-adisyon-hatirlat', function (Request $r) {
     if ($n <= 0) return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => 'Açık adisyon kalmamış, hatırlatmaya gerek yok.']]);
     try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🧾 Açık adisyon hatırlatması', $n . ' adisyon dünden açık kaldı — lütfen kapatın/kontrol edin.', ['tur' => 'acik_adisyon'], ['sahip', 'mudur', 'kasa', 'garson'], 'genel'); } catch (\Throwable $e) {}
     return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => $n . ' açık adisyon için ilgili personele hatırlatma bildirimi gönderildi.']]);
+});
+// Geciken sipariş → Satın Alma sorumlusuna DELEGE et (satınalmacı rolüne FCM; takip ona geçer)
+Route::post('/api/patron-ai/satin-almaya-ilet-geciken', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz.'], 403);
+    $sid = _webSubeId();
+    $n = 0;
+    try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'beklenen_teslim')) {
+        $n = (int) DB::table('satinalma_siparisleri')->where('sube_id', $sid)->whereNotIn('durum', ['teslim', 'iptal', 'kapandi', 'tamam'])->whereNotNull('beklenen_teslim')->whereDate('beklenen_teslim', '<', today())->count();
+    }} catch (\Throwable $e) {}
+    if ($n <= 0) return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => 'Geciken sipariş kalmamış, iletmeye gerek yok.']]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🚚 Geciken sipariş — Satın Alma', $n . ' sipariş teslim tarihini geçti. Lütfen tedarikçileri arayıp teslimi hızlandırın.', ['tur' => 'geciken_siparis'], ['satinalmaci'], 'satinalma'); } catch (\Throwable $e) {}
+    try { if (Schema::hasTable('patron_ai_takip')) DB::table('patron_ai_takip')->insert(['sube_id' => $sid, 'konu' => mb_substr('Geciken sipariş satın almaya iletildi (' . $n . ')', 0, 300), 'durum' => 'devredildi', 'kaynak' => 'patron_ai', 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => $n . ' geciken sipariş Satın Alma sorumlusuna iletildi — takip bildirimi gönderildi.']]);
+});
+// Gelmeyen personel → İK departmanına DELEGE et (İK departman personeline FCM; yoksa yönetime)
+Route::post('/api/patron-ai/ik-ya-ilet-gelmeyen', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array($bp->rol ?? '', ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz.'], 403);
+    $sid = _webSubeId();
+    $n = 0; $bugun = today()->toDateString();
+    try { if (Schema::hasTable('personel_vardiya') && Schema::hasTable('personel_mesai')) {
+        $vard = DB::table('personel_vardiya')->where('sube_id', $sid)->whereDate('tarih', $bugun)->pluck('personel_id')->unique();
+        $giren = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $bugun)->pluck('personel_id')->unique();
+        $n = $vard->diff($giren)->count();
+    }} catch (\Throwable $e) {}
+    if ($n <= 0) return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => 'Giriş yapmayan kalmamış, iletmeye gerek yok.']]);
+    $hedef = 'İK'; $gonderildi = false;
+    try {
+        $ikTokens = [];
+        if (Schema::hasTable('departmanlar') && Schema::hasColumn('personeller', 'departman_id')) {
+            $dc = Schema::getColumnListing('departmanlar');
+            $depIds = DB::table('departmanlar')->when(in_array('sube_id', $dc), fn ($q) => $q->where('sube_id', $sid))
+                ->where(function ($w) { $w->where('kod', 'like', '%ik%')->orWhere('ad', 'like', '%İnsan%')->orWhere('ad', 'like', '%Personel%')->orWhere('grup', 'like', '%İK%'); })->pluck('id');
+            if ($depIds->count()) {
+                $pids = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereIn('departman_id', $depIds)->pluck('id')->all();
+                if ($pids) $ikTokens = DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'personel')->whereIn('personel_id', $pids)->pluck('token')->all();
+            }
+        }
+        $baslik = '👤 Gelmeyen personel — İK'; $govde = $n . ' personel vardiyada ama giriş yapmadı. Lütfen arayıp teyit edin.';
+        if ($ikTokens && function_exists('_fcmGonder')) { _fcmGonder($sid, $ikTokens, $baslik, $govde, ['tur' => 'gelmeyen_ik']); $gonderildi = true; }
+        else { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, $baslik, $govde, ['tur' => 'gelmeyen_ik'], ['sahip', 'mudur']); $hedef = 'yönetim'; }
+    } catch (\Throwable $e) {}
+    try { if (Schema::hasTable('patron_ai_takip')) DB::table('patron_ai_takip')->insert(['sube_id' => $sid, 'konu' => mb_substr('Gelmeyen personel İK\'ya iletildi (' . $n . ')', 0, 300), 'durum' => 'devredildi', 'kaynak' => 'patron_ai', 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'sonuc' => ['ok' => 1, 'mesaj' => $n . ' kişi için ' . $hedef . 'e bildirim gönderildi.']]);
 });
 // Tek talep için tedarikçilere RFQ gönder (JSON — popup'tan gerçek sonuç döner)
 Route::post('/api/patron-ai/talep-fiyat-sor', function (Request $r) {
