@@ -17918,6 +17918,34 @@ if (!function_exists('_departmanBriefDemo')) {
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '112 ürün hazırlandı', 'link' => '/mutfak'], ['ikon' => 'check', 'mtn' => 'Akşam sayımı tamamlandı', 'link' => '/sayim']],
             ]);
         }
+        if ($kod === 'pazarlama') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => '1.240', 'label' => 'Kayıtlı müşteri', 'alt' => 'sadakat'],
+                    ['ikon' => 'person_add', 'tint' => 't-green', 'deger' => 86, 'label' => 'Yeni üye', 'alt' => 'bu ay'],
+                    ['ikon' => 'notifications_active', 'tint' => 't-blue', 'deger' => 740, 'label' => 'Push açık', 'alt' => 'kampanya hedefi'],
+                    ['ikon' => 'bedtime', 'tint' => 't-amber', 'deger' => 180, 'label' => 'Uyuyan müşteri', 'alt' => '30+ gün'],
+                    ['ikon' => 'favorite', 'tint' => 't-rose', 'deger' => 95, 'label' => 'Sadık müşteri', 'alt' => 'çok harcayan'],
+                    ['ikon' => 'campaign', 'tint' => 't-mor', 'deger' => 4, 'label' => 'Bu ay kampanya', 'alt' => 'gönderilen'],
+                    ['ikon' => 'star', 'tint' => 't-green', 'deger' => '4,3', 'label' => 'Memnuniyet', 'alt' => 'son 30 gün'],
+                ],
+                'isler' => [
+                    ['ikon' => 'bedtime', 'renk' => '#F59E0B', 'grup' => 'SADAKAT', 'baslik' => '180 uyuyan müşteriyi geri getir', 'aciklama' => '30+ gündür gelmeyene geri-getirme bildirimi', 'aksiyon' => ['url' => '/pazarlama-sohbet', 'lbl' => 'AI ile gönder']],
+                    ['ikon' => 'campaign', 'renk' => '#7C3AED', 'grup' => 'KAMPANYA', 'baslik' => 'Hafta sonu kampanyası oluştur', 'aciklama' => '740 push açık müşteriye resimli bildirim', 'aksiyon' => ['url' => '/kampanya', 'lbl' => 'Stüdyo']],
+                    ['ikon' => 'sentiment_dissatisfied', 'renk' => '#F43F5E', 'grup' => 'İTİBAR', 'baslik' => '3 düşük puanlı geri bildirim', 'aciklama' => 'Takip/iletişim gerekli', 'aksiyon' => ['url' => '/memnuniyet', 'lbl' => 'Gör']],
+                    ['ikon' => 'calendar_month', 'renk' => '#0EA5E9', 'grup' => 'SOSYAL', 'baslik' => 'Haftalık içerik takvimi hazırla', 'aciklama' => 'Instagram/TikTok post + caption + hashtag', 'aksiyon' => ['url' => '/icerik-takvimi?uret=1', 'lbl' => 'Üret']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'groups', 'renk' => '#7C3AED', 'baslik' => 'Sadakat', 'alt' => 'büyüme', 'durum' => 'iyi', 'yorum' => '1.240 müşteri, bu ay 86 yeni üye (+%7). Push açık 740 müşteriye kampanya gidebilir.'],
+                    ['ikon' => 'bedtime', 'renk' => '#F59E0B', 'baslik' => 'Uyuyan Müşteri', 'alt' => '30+ gün', 'durum' => 'dikkat', 'yorum' => '180 müşteri 30+ gündür gelmedi. Geri-getirme kampanyası ortalama %22 geri dönüş sağlıyor.'],
+                    ['ikon' => 'star', 'renk' => '#10B981', 'baslik' => 'Memnuniyet', 'alt' => 'son 30 gün', 'durum' => 'iyi', 'yorum' => 'Ortalama puan 4,3/5. 3 düşük puan takip bekliyor — özür+kupon öner.'],
+                    ['ikon' => 'campaign', 'renk' => '#F43F5E', 'baslik' => 'Kampanya', 'alt' => 'bu ay', 'durum' => 'notr', 'yorum' => 'Bu ay 4 kampanya, toplam 2.180 kişiye ulaştı. Toplu WhatsApp yerine güvenli resimli push.'],
+                ],
+                'hizli' => [['url' => '/kampanya', 'ikon' => 'campaign', 'lbl' => 'Kampanya Stüdyosu'], ['url' => '/segmentler', 'ikon' => 'groups', 'lbl' => 'Segmentler'], ['url' => '/icerik-takvimi', 'ikon' => 'calendar_month', 'lbl' => 'İçerik Takvimi'], ['url' => '/cark-yonetim', 'ikon' => 'casino', 'lbl' => 'Çarkıfelek'], ['url' => '/odul-raporu', 'ikon' => 'emoji_events', 'lbl' => 'Ödül Raporu'], ['url' => '/app-yonetim', 'ikon' => 'smartphone', 'lbl' => 'App Yönetim']],
+                'aiOzet' => 'Bugünün gündemi: <b>86</b> yeni üye · <b>180</b> uyuyan müşteri · <b>4,3</b> memnuniyet · <b>4</b> kampanya.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '"Hafta sonu %20" kampanyası 740 kişiye gönderildi', 'link' => '/kampanya-rapor'], ['ikon' => 'check', 'mtn' => '12 yeni üye kaydoldu', 'link' => '/segmentler']],
+            ]);
+        }
         // Genel demo (diğer departmanlar)
         return array_merge($base, [
             'kpis' => [
