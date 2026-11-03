@@ -7771,6 +7771,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
+            '/muhasebe-entegrasyon' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
@@ -17395,10 +17396,24 @@ if (!function_exists('_departmanBriefVeri')) {
             $kpis[] = ['ikon' => 'receipt_long', 'tint' => $acikT > 0 ? 't-amber' : 't-green', 'deger' => $tl($acikT), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor'];
             if ($acikAd > 0) { $isler[] = ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'OPERASYON', 'baslik' => "$acikAd adisyon dünden açık", 'aciklama' => 'Tahsilat/kapanış gerekli', 'aksiyon' => ['url' => '/pos', 'lbl' => 'Gör']]; $sinyal[] = "<b>$acikAd</b> açık adisyon"; }
             if ($ayGider > 0) { $isler[] = ['ikon' => 'request_quote', 'renk' => '#F59E0B', 'grup' => 'FİNANS', 'baslik' => 'Gider kontrolü', 'aciklama' => 'Bu ay ' . $tl($ayGider) . ' harcama', 'aksiyon' => ['url' => '/gider', 'lbl' => 'İncele']]; }
-            $hizli = [['url' => '/dashboard', 'ikon' => 'dashboard', 'lbl' => 'Finans Panosu'], ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/z-raporu', 'ikon' => 'summarize', 'lbl' => 'Z Raporu'], ['url' => '/hareketler', 'ikon' => 'history', 'lbl' => 'Hareketler']];
-            $analiz[] = ['ikon' => 'payments', 'renk' => '#2FBE94', 'baslik' => 'Ciro', 'alt' => 'bu ay', 'durum' => $ayCiro > 0 ? 'iyi' : 'dikkat', 'yorum' => $ayCiro > 0 ? ('Bu ay ciro ' . $tl($ayCiro) . '. Bugün ' . $tl($bugunCiro) . '.') : 'Bu ay ciro kaydı görünmüyor — veri kontrolü gerekebilir.'];
-            $analiz[] = ['ikon' => 'request_quote', 'renk' => '#F43F5E', 'baslik' => 'Gider', 'alt' => 'bu ay', 'durum' => ($ayCiro > 0 && $ayGider > $ayCiro * 0.6) ? 'dikkat' : 'notr', 'yorum' => $ayGider > 0 ? ('Bu ay gider ' . $tl($ayGider) . '.') : 'Bu ay gider kaydı yok.'];
-            $analiz[] = ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => $acikT > 0 ? 'dikkat' : 'iyi', 'yorum' => $acikT > 0 ? ($tl($acikT) . ' açık adisyonlarda bekliyor — tahsilatı hızlandır.') : 'Açık tahsilat yok.'];
+            // --- MUHASEBE: KDV + Kâr-Zarar + Vergi takvimi + mahsup (ilk göze gelecek işler) ---
+            $mv = null; try { if (function_exists('_muhasebeDonemVeri')) $mv = _muhasebeDonemVeri($sid, null); } catch (\Throwable $e) {}
+            $vt = []; try { if (function_exists('_vergiTakvimi')) $vt = _vergiTakvimi(); } catch (\Throwable $e) {}
+            $yakin = $vt[0] ?? null;
+            if ($mv) {
+                $kpis[] = ['ikon' => 'account_balance_wallet', 'tint' => ($mv['netKar'] >= 0 ? 't-green' : 't-red'), 'deger' => $tl($mv['netKar']), 'label' => 'Net kâr (P&L)', 'alt' => ($mv['marj'] === null ? 'bu ay' : '%' . $mv['marj'] . ' marj')];
+                $kpis[] = ['ikon' => 'receipt_long', 'tint' => ($mv['odenecekKDV'] > 0 ? 't-red' : 't-green'), 'deger' => $tl(abs($mv['odenecekKDV'])), 'label' => ($mv['odenecekKDV'] >= 0 ? 'Ödenecek KDV' : 'Devreden KDV'), 'alt' => 'bu ay (tahmini)'];
+            }
+            if ($yakin) {
+                $kpis[] = ['ikon' => 'event_available', 'tint' => ($yakin['kalan'] <= 3 ? 't-red' : ($yakin['kalan'] <= 7 ? 't-amber' : 't-green')), 'deger' => max(0, $yakin['kalan']) . ' <small>gün</small>', 'label' => 'En yakın beyanname', 'alt' => $yakin['ad']];
+                if ($yakin['kalan'] <= 10) { $isler[] = ['ikon' => $yakin['ikon'], 'renk' => $yakin['renk'], 'grup' => 'VERGİ', 'baslik' => $yakin['ad'] . ' — ' . max(0, $yakin['kalan']) . ' gün', 'aciklama' => $yakin['aciklama'], 'aksiyon' => ['url' => '/vergi-takvimi', 'lbl' => 'Takvim']]; $sinyal[] = '<b>' . $yakin['ad'] . '</b> ' . max(0, $yakin['kalan']) . ' gün'; }
+            }
+            if ($mv && $mv['odenecekKDV'] > 0) { $isler[] = ['ikon' => 'sync_alt', 'renk' => '#8B5CF6', 'grup' => 'MUHASEBE', 'baslik' => 'Aylık mahsup fişini muhasebeye aktar', 'aciklama' => 'Logo/Netsis/Excel — ödenecek KDV ' . $tl($mv['odenecekKDV']), 'aksiyon' => ['url' => '/muhasebe-entegrasyon', 'lbl' => 'Aktar']]; }
+            $hizli = [['url' => '/muhasebe-entegrasyon', 'ikon' => 'sync_alt', 'lbl' => 'Muhasebe Entegrasyonu'], ['url' => '/vergi-takvimi', 'ikon' => 'event_available', 'lbl' => 'Vergi Takvimi'], ['url' => '/kdv-ozet', 'ikon' => 'receipt_long', 'lbl' => 'KDV Özeti'], ['url' => '/kar-zarar', 'ikon' => 'account_balance', 'lbl' => 'Kâr-Zarar'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/gider', 'ikon' => 'request_quote', 'lbl' => 'Giderler']];
+            if ($mv) $analiz[] = ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Kâr-Zarar', 'alt' => 'bu ay', 'durum' => ($mv['netKar'] < 0 ? 'risk' : ($mv['marj'] !== null && $mv['marj'] < 5 ? 'dikkat' : 'iyi')), 'yorum' => 'Net satış ' . $tl($mv['ciroNet']) . ' · SMM ' . $tl($mv['smm']) . ' · gider ' . $tl($mv['toplamGider']) . ' → net ' . $tl($mv['netKar']) . ($mv['marj'] !== null ? ' (%' . $mv['marj'] . ' marj).' : '.')];
+            if ($mv) $analiz[] = ['ikon' => 'receipt_long', 'renk' => '#8B5CF6', 'baslik' => 'KDV', 'alt' => 'bu ay (tahmini)', 'durum' => ($mv['odenecekKDV'] > 0 ? 'dikkat' : 'iyi'), 'yorum' => 'Hesaplanan ' . $tl($mv['hesKDV']) . ' − indirilecek ' . $tl($mv['indKDV']) . ' = ' . ($mv['odenecekKDV'] >= 0 ? 'ödenecek ' : 'devreden ') . $tl(abs($mv['odenecekKDV'])) . '.'];
+            if ($yakin) $analiz[] = ['ikon' => 'event_available', 'renk' => $yakin['renk'], 'baslik' => 'Vergi Takvimi', 'alt' => 'yaklaşan', 'durum' => ($yakin['kalan'] <= 3 ? 'risk' : ($yakin['kalan'] <= 7 ? 'dikkat' : 'notr')), 'yorum' => $yakin['ad'] . ' için ' . max(0, $yakin['kalan']) . ' gün kaldı. ' . $yakin['aciklama']];
+            $analiz[] = ['ikon' => 'account_balance_wallet', 'renk' => '#2FBE94', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => $acikT > 0 ? 'dikkat' : 'iyi', 'yorum' => $acikT > 0 ? ($tl($acikT) . ' açık adisyonlarda bekliyor — tahsilatı hızlandır.') : 'Açık tahsilat yok.'];
         }
         // ================= MUTFAK =================
         elseif ($kod === 'mutfak') {
@@ -17543,23 +17558,27 @@ if (!function_exists('_departmanBriefDemo')) {
                 'kpis' => [
                     ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl(24800), 'label' => 'Bugün ciro', 'alt' => 'kapanan adisyon'],
                     ['ikon' => 'trending_up', 'tint' => 't-rose', 'deger' => $tl(612000), 'label' => 'Bu ay ciro', 'alt' => 'toplam'],
+                    ['ikon' => 'account_balance_wallet', 'tint' => 't-green', 'deger' => $tl(118000), 'label' => 'Net kâr (P&L)', 'alt' => '%19 marj'],
+                    ['ikon' => 'receipt_long', 'tint' => 't-red', 'deger' => $tl(23400), 'label' => 'Ödenecek KDV', 'alt' => 'bu ay (tahmini)'],
+                    ['ikon' => 'event_available', 'tint' => 't-amber', 'deger' => '4 <small>gün</small>', 'label' => 'En yakın beyanname', 'alt' => 'KDV Beyannamesi'],
                     ['ikon' => 'request_quote', 'tint' => 't-red', 'deger' => $tl(388000), 'label' => 'Bu ay gider', 'alt' => 'toplam'],
-                    ['ikon' => 'account_balance', 'tint' => 't-green', 'deger' => $tl(224000), 'label' => 'Net (ay)', 'alt' => 'ciro − gider'],
                     ['ikon' => 'receipt_long', 'tint' => 't-amber', 'deger' => $tl(12400), 'label' => 'Açık adisyon', 'alt' => 'tahsil bekliyor'],
                 ],
                 'isler' => [
+                    ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'VERGİ', 'baslik' => 'KDV Beyannamesi — 4 gün', 'aciklama' => 'Bir önceki ay KDV, ayın 28’i son gün', 'aksiyon' => ['url' => '/vergi-takvimi', 'lbl' => 'Takvim']],
+                    ['ikon' => 'sync_alt', 'renk' => '#8B5CF6', 'grup' => 'MUHASEBE', 'baslik' => 'Aylık mahsup fişini muhasebeye aktar', 'aciklama' => 'Logo/Netsis/Excel — ödenecek KDV 23.400₺', 'aksiyon' => ['url' => '/muhasebe-entegrasyon', 'lbl' => 'Aktar']],
                     ['ikon' => 'receipt_long', 'renk' => '#F43F5E', 'grup' => 'OPERASYON', 'baslik' => '3 adisyon dünden açık', 'aciklama' => 'Toplam 12.400₺ tahsil edilmedi', 'aksiyon' => ['url' => '/pos', 'lbl' => 'Gör']],
-                    ['ikon' => 'request_quote', 'renk' => '#F59E0B', 'grup' => 'FİNANS', 'baslik' => 'Gider kontrolü', 'aciklama' => 'Bu ay gider ciroya göre yüksek seyrediyor', 'aksiyon' => ['url' => '/gider', 'lbl' => 'İncele']],
                     ['ikon' => 'account_balance_wallet', 'renk' => '#4F46E5', 'grup' => 'CARİ', 'baslik' => '2 tedarikçi ödemesi yaklaşıyor', 'aciklama' => 'Vadesi bu hafta dolan faturalar', 'aksiyon' => ['url' => '/cari', 'lbl' => 'Gör']],
                 ],
                 'analiz' => [
-                    ['ikon' => 'payments', 'renk' => '#2FBE94', 'baslik' => 'Ciro', 'alt' => 'bu ay', 'durum' => 'iyi', 'yorum' => 'Bu ay ciro ' . $tl(612000) . ', geçen aya göre %6 yukarıda. 👍'],
-                    ['ikon' => 'request_quote', 'renk' => '#F43F5E', 'baslik' => 'Gider', 'alt' => 'ciro oranı', 'durum' => 'dikkat', 'yorum' => 'Gider/ciro oranı %63 — sektör ortalamasının biraz üstünde. Maliyet kalemlerini gözden geçir.'],
-                    ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => 'dikkat', 'yorum' => $tl(12400) . ' açık adisyonlarda bekliyor. Tahsilatı hızlandır.'],
+                    ['ikon' => 'account_balance', 'renk' => '#4F46E5', 'baslik' => 'Kâr-Zarar', 'alt' => 'bu ay', 'durum' => 'iyi', 'yorum' => 'Net satış ' . $tl(556000) . ' · SMM ' . $tl(190000) . ' · gider ' . $tl(248000) . ' → net ' . $tl(118000) . ' (%19 marj). 👍'],
+                    ['ikon' => 'receipt_long', 'renk' => '#8B5CF6', 'baslik' => 'KDV', 'alt' => 'bu ay (tahmini)', 'durum' => 'dikkat', 'yorum' => 'Hesaplanan ' . $tl(55600) . ' − indirilecek ' . $tl(32200) . ' = ödenecek ' . $tl(23400) . '. 28’ine kadar beyan.'],
+                    ['ikon' => 'event_available', 'renk' => '#F59E0B', 'baslik' => 'Vergi Takvimi', 'alt' => 'yaklaşan', 'durum' => 'dikkat', 'yorum' => 'KDV Beyannamesi için 4 gün kaldı; Muhtasar 2 gün sonra. Geciktirme cezalı.'],
+                    ['ikon' => 'account_balance_wallet', 'renk' => '#2FBE94', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => 'dikkat', 'yorum' => $tl(12400) . ' açık adisyonlarda bekliyor. Tahsilatı hızlandır.'],
                 ],
-                'hizli' => [['url' => '/dashboard', 'ikon' => 'dashboard', 'lbl' => 'Finans Panosu'], ['url' => '/gider', 'ikon' => 'receipt_long', 'lbl' => 'Giderler'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/z-raporu', 'ikon' => 'summarize', 'lbl' => 'Z Raporu'], ['url' => '/hareketler', 'ikon' => 'history', 'lbl' => 'Hareketler']],
-                'aiOzet' => 'Bugünün gündemi: bu ay ciro <b>' . $tl(612000) . '</b> · net <b>' . $tl(224000) . '</b> · açık tahsilat <b>' . $tl(12400) . '</b>.',
-                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => 'Günlük tahsilat ' . $tl(23600) . ' kasaya girdi', 'link' => '/z-raporu'], ['ikon' => 'check', 'mtn' => '5 gider kaydı işlendi', 'link' => '/gider']],
+                'hizli' => [['url' => '/muhasebe-entegrasyon', 'ikon' => 'sync_alt', 'lbl' => 'Muhasebe Entegrasyonu'], ['url' => '/vergi-takvimi', 'ikon' => 'event_available', 'lbl' => 'Vergi Takvimi'], ['url' => '/kdv-ozet', 'ikon' => 'receipt_long', 'lbl' => 'KDV Özeti'], ['url' => '/kar-zarar', 'ikon' => 'account_balance', 'lbl' => 'Kâr-Zarar'], ['url' => '/cari', 'ikon' => 'account_balance_wallet', 'lbl' => 'Cari'], ['url' => '/gider', 'ikon' => 'request_quote', 'lbl' => 'Giderler']],
+                'aiOzet' => 'Bugünün gündemi: <b>KDV beyannamesi 4 gün</b> · ödenecek KDV <b>' . $tl(23400) . '</b> · net kâr <b>' . $tl(118000) . '</b> · açık tahsilat <b>' . $tl(12400) . '</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => 'Aralık mahsup fişi Logo’ya aktarıldı', 'link' => '/muhasebe-entegrasyon'], ['ikon' => 'check', 'mtn' => 'Günlük tahsilat ' . $tl(23600) . ' kasaya girdi', 'link' => '/z-raporu']],
             ]);
         }
         if ($kod === 'mutfak') {
@@ -26861,6 +26880,97 @@ if (!function_exists('_muhasebeErpGonder')) {
         }
     }
 }
+
+// ===== MUHASEBE MERKEZİ: Vergi Takvimi · KDV Özeti · Kâr-Zarar (hepsi guard'lı, mevcut veriden) =====
+if (!function_exists('_muhasebeGuard')) {
+    function _muhasebeGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_muhasebe') || _panelYetkiVar($bp, 'gor_finans'));
+    }
+}
+if (!function_exists('_vergiTakvimi')) {
+    // Türkiye standart vergi/beyanname son tarihleri (yaklaşık; mali müşavirle teyit). Yaklaşan sıralı liste.
+    function _vergiTakvimi()
+    {
+        $bugun = now()->startOfDay();
+        $items = [];
+        $gunNext = function ($gun) use ($bugun) {
+            $sonGun = min($gun, (int) $bugun->copy()->endOfMonth()->format('d'));
+            $d = $bugun->copy()->day($sonGun);
+            if ($d->lt($bugun)) { $n = $bugun->copy()->addMonthNoOverflow(); $d = $n->day(min($gun, (int) $n->copy()->endOfMonth()->format('d'))); }
+            return $d;
+        };
+        $ekle = function ($ad, $d, $aciklama, $ikon, $renk) use (&$items, $bugun) {
+            $items[] = ['ad' => $ad, 'tarih' => $d, 'kalan' => (int) $bugun->diffInDays($d, false), 'aciklama' => $aciklama, 'ikon' => $ikon, 'renk' => $renk];
+        };
+        $ekle('KDV Beyannamesi & Ödeme', $gunNext(28), 'Bir önceki ay KDV (KDV1). Beyan + ödeme ayın 28’i.', 'receipt_long', '#F43F5E');
+        $ekle('Muhtasar ve Prim Hizmet', $gunNext(26), 'Stopaj + SGK prim hizmet bildirgesi (personeli olan aylık).', 'groups', '#F59E0B');
+        $ekle('Damga Vergisi Beyannamesi', $gunNext(26), 'Sürekli damga vergisi mükellefleri.', 'approval', '#8B5CF6');
+        $ekle('Ba / Bs Formları', $bugun->copy()->endOfMonth(), 'Mal/hizmet alış-satış bildirimi (eşik üstü).', 'compare_arrows', '#0EA5E9');
+        $gecici = null; foreach ([[2, 17], [5, 17], [8, 17], [11, 17]] as $mg) { $d = $bugun->copy()->month($mg[0])->day($mg[1]); if ($d->gte($bugun)) { $gecici = $d; break; } } if (!$gecici) $gecici = $bugun->copy()->addYear()->month(2)->day(17);
+        $ekle('Geçici Vergi (3 aylık)', $gecici, 'Üçer aylık dönem geçici vergi beyanı.', 'event_repeat', '#10B981');
+        $ekle('e-Defter Berat Yükleme', $bugun->copy()->addMonthsNoOverflow(3)->endOfMonth(), '3 ay önceki dönem defter beratı (aylık yükleyenler).', 'menu_book', '#4F46E5');
+        usort($items, fn ($a, $b) => $a['kalan'] <=> $b['kalan']);
+        return $items;
+    }
+}
+if (!function_exists('_muhasebeDonemVeri')) {
+    // Bir dönem (ay) için ciro/KDV/SMM/gider/bordro/kâr — KDV Özeti + Kâr-Zarar + brief ortak kullanır.
+    function _muhasebeDonemVeri($sid, $ay = null)
+    {
+        $sid = (int) $sid;
+        [$ay, $bas, $bit] = _restoAyAralik($ay);
+        $oran = 10; try { $o = DB::table('muhasebe_ayarlari')->where('sube_id', $sid)->value('kdv_orani'); if ($o) $oran = (int) $o; } catch (\Throwable $e) {}
+        $ciroBrut = 0.0; try { $ciroBrut = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'odendi')->whereBetween('kapanis', [$bas, $bit])->sum('toplam'); } catch (\Throwable $e) {}
+        $ciroNet = $oran > 0 ? $ciroBrut / (1 + $oran / 100) : $ciroBrut;
+        $hesKDV = $ciroBrut - $ciroNet;
+        $alisBrut = 0.0; $indKDV = 0.0;
+        try {
+            if (Schema::hasTable('alis_faturalari')) {
+                $alisBrut = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->sum('toplam');
+                if (Schema::hasColumn('alis_faturalari', 'kdv')) $indKDV = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->whereBetween('tarih', [substr($bas, 0, 10), substr($bit, 0, 10)])->sum('kdv');
+                if ($indKDV <= 0 && $oran > 0) $indKDV = $alisBrut - $alisBrut / (1 + $oran / 100);
+            }
+        } catch (\Throwable $e) {}
+        $odenecekKDV = round($hesKDV - $indKDV, 2);
+        $smm = 0.0;
+        try {
+            if (function_exists('_restoUrunMaliyetMap')) {
+                $mm = _restoUrunMaliyetMap();
+                $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                    ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$bas, $bit])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                    ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', DB::raw('SUM(adisyon_kalemleri.adet) adet'), DB::raw('SUM(adisyon_kalemleri.tutar) satis'))
+                    ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')->get();
+                foreach ($rows as $s) { $b = $mm['id'][(int) $s->urun_id] ?? ($mm['ad'][$s->urun_adi] ?? 0); $mal = (float) $s->adet * (float) $b; if ($mal <= 0 && $s->satis > 0) $mal = (float) $s->satis * 0.30; $smm += $mal; }
+                $smm = round($smm, 2);
+            }
+        } catch (\Throwable $e) {}
+        $gider = 0.0; try { if (Schema::hasTable('giderler')) $gider = (float) DB::table('giderler')->where('sube_id', $sid)->whereBetween('created_at', [$bas, $bit])->sum('tutar'); } catch (\Throwable $e) {}
+        $bordro = 0.0; try { if (function_exists('_ikOzetVeri')) { $ikv = _ikOzetVeri($sid, $ay); $bordro = (float) ($ikv['bordro']['hakedis'] ?? 0); } } catch (\Throwable $e) {}
+        $brutKar = $ciroNet - $smm;
+        $toplamGider = $gider + $bordro;
+        $netKar = $brutKar - $toplamGider;
+        $marj = $ciroNet > 0 ? round($netKar / $ciroNet * 100, 1) : null;
+        return compact('ay', 'bas', 'bit', 'oran', 'ciroBrut', 'ciroNet', 'hesKDV', 'alisBrut', 'indKDV', 'odenecekKDV', 'smm', 'gider', 'bordro', 'brutKar', 'toplamGider', 'netKar', 'marj');
+    }
+}
+Route::get('/vergi-takvimi', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    return view('vergi_takvimi', ['liste' => _vergiTakvimi()]);
+});
+Route::get('/kdv-ozet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    return view('kdv_ozet', ['d' => _muhasebeDonemVeri(_webSubeId(), request('ay'))]);
+});
+Route::get('/kar-zarar', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    return view('kar_zarar', ['d' => _muhasebeDonemVeri(_webSubeId(), request('ay'))]);
+});
 
 Route::get('/muhasebe-entegrasyon', function () {
     _muhasebeEntegrasyonKur();

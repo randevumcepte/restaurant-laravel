@@ -238,6 +238,22 @@
     // DEPARTMAN SABAH BRİFİNGLERİ — her departman kendi verisiyle (patron ?dep ile görür; departman personeli üstteki "Sabah Brifingim"den kendisininkine girer)
     $gruplar['Panel'][] = ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Sabah Brifingi', '#F59E0B'];
     if (isset($gruplar['Kasa & Finans'])) $gruplar['Kasa & Finans'][] = ['/departman-brief?dep=finans', 'wb_sunny', 'Finans Sabah Brifingi', '#F59E0B'];
+
+    // ===== MUHASEBE MERKEZİ — başlıklar halinde (yetki haritası süzer; sahip/müdür hepsini görür) =====
+    $gruplar['Muhasebe'] = [
+        ['/departman-brief?dep=finans', 'wb_sunny', 'Finans / Muhasebe Brifingi', '#F59E0B'],
+        ['/muhasebe-entegrasyon', 'sync_alt', 'Muhasebe Entegrasyonu (Logo/Netsis)', '#0EA5E9'],
+        ['/vergi-takvimi', 'event_available', 'Vergi Takvimi', '#F43F5E'],
+        ['/kdv-ozet', 'receipt_long', 'KDV Özeti', '#8B5CF6'],
+        ['/kar-zarar', 'account_balance', 'Kâr-Zarar (P&L)', '#10B981'],
+        ['/cari', 'account_balance_wallet', 'Cari Hesaplar', '#4F46E5'],
+        ['/gider', 'request_quote', 'Giderler', '#F59E0B'],
+        ['/z-raporu', 'summarize', 'Z Raporu', '#0EA5E9'],
+        ['/tedarikci-yaslandirma', 'hourglass_bottom', 'Tedarikçi Yaşlandırma', '#F43F5E'],
+        ['/demirbas', 'chair', 'Demirbaş / Amortisman', '#64748B'],
+        ['/muhasebe', 'menu_book', 'Muhasebe Defteri', '#7C3AED'],
+        ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
+    ];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
