@@ -263,6 +263,21 @@
         ['/muhasebe', 'book', 'Muhasebe Defteri', '#7C3AED'],
         ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
     ];
+
+    // ===== PAZARLAMA MERKEZİ — başlıklar (yetki süzer; sahip/müdür hepsini görür) =====
+    $gruplar['Pazarlama'] = [
+        ['/departman-brief?dep=pazarlama', 'wb_sunny', 'Pazarlama Brifingi', '#F59E0B'],
+        ['/pazarlama-sohbet', 'smart_toy', 'Pazarlama AI (iş yapar)', '#7C3AED'],
+        ['/kampanya', 'campaign', 'Kampanya Stüdyosu', '#F43F5E'],
+        ['/segmentler', 'groups', 'Müşteri Segmentleri', '#8B5CF6'],
+        ['/icerik-takvimi', 'calendar_month', 'Sosyal İçerik Takvimi', '#0EA5E9'],
+        ['/kampanya-rapor', 'leaderboard', 'Kampanya Raporu', '#4F46E5'],
+        ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
+        ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
+        ['/app-yonetim', 'smartphone', 'App / Kampanya Kartları', '#0EA5E9'],
+        ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet', '#10B981'],
+        ['/whatsapp', 'chat', 'WhatsApp', '#22C55E'],
+    ];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],

@@ -1918,6 +1918,289 @@ Route::post('/api/m/cark-cevir', function (Request $r) {
     return ['ok' => 1, 'index' => $idx, 'dilim_id' => (int) $sec->id, 'tip' => $tip, 'deger' => $deger,
         'baslik' => $sec->ad, 'kupon_kodu' => $kupon, 'puan' => $puanYeni, 'mesaj' => $mesaj, 'renk' => $sec->renk];
 });
+// ========================= PAZARLAMA MERKEZİ (segment + güvenli resimli push + kampanya) =========================
+if (!function_exists('_pazarlamaGuard')) {
+    function _pazarlamaGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_app_yonetim') || _panelYetkiVar($bp, 'gor_indirimler') || _panelYetkiVar($bp, 'gor_odul_raporu'));
+    }
+}
+if (!function_exists('_pazarlamaKur')) {
+    function _pazarlamaKur()
+    {
+        if (cache()->get('pazarlama_tablo_ok')) return;
+        try {
+            if (!Schema::hasTable('kampanya_gonderim')) Schema::create('kampanya_gonderim', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('baslik'); $t->text('metin')->nullable(); $t->string('gorsel', 500)->nullable(); $t->string('segment', 24)->default('tumu'); $t->integer('hedef')->default(0); $t->integer('gonderilen')->default(0); $t->string('kanal', 10)->default('push'); $t->unsignedBigInteger('gonderen_id')->nullable(); $t->timestamps(); });
+            cache()->put('pazarlama_tablo_ok', 1, now()->addHours(6));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_musteriSegmentIds')) {
+    // Bir segmentteki müşteri id'leri (musteriler + adisyon verisinden). Guard'lı.
+    function _musteriSegmentIds($sid, $segment)
+    {
+        $sid = (int) $sid;
+        try {
+            if (!Schema::hasTable('musteriler')) return [];
+            $q = DB::table('musteriler')->where('sube_id', $sid);
+            switch ($segment) {
+                case 'yeni': $q->where('created_at', '>=', now()->startOfMonth()); break;
+                case 'sadik': $q->where(function ($w) { $w->where('toplam_harcama', '>=', 1000)->orWhere('siparis_sayisi', '>=', 5); }); break;
+                case 'yuksek_puan': $q->where('puan', '>=', 100); break;
+                case 'uyuyan':
+                    $q->where('siparis_sayisi', '>', 0);
+                    try { $son = DB::table('adisyonlar')->where('sube_id', $sid)->whereNotNull('musteri_id')->where('kapanis', '>=', now()->subDays(30))->distinct()->pluck('musteri_id')->all(); if ($son) $q->whereNotIn('id', $son); } catch (\Throwable $e) {}
+                    break;
+                case 'tumu': default: break;
+            }
+            return $q->pluck('id')->map(fn ($x) => (int) $x)->all();
+        } catch (\Throwable $e) { return []; }
+    }
+}
+if (!function_exists('_pazarlamaSegmentler')) {
+    function _pazarlamaSegmentler($sid)
+    {
+        $d = [
+            ['key' => 'tumu', 'ad' => 'Tüm müşteriler', 'aciklama' => 'Uygulamayı indiren herkes', 'ikon' => 'groups', 'renk' => '#7C3AED'],
+            ['key' => 'yeni', 'ad' => 'Yeni üyeler', 'aciklama' => 'Bu ay kaydolanlar', 'ikon' => 'person_add', 'renk' => '#10B981'],
+            ['key' => 'sadik', 'ad' => 'Sadık müşteriler', 'aciklama' => '5+ sipariş veya 1.000₺+ harcama', 'ikon' => 'favorite', 'renk' => '#F43F5E'],
+            ['key' => 'uyuyan', 'ad' => 'Uyuyan müşteriler', 'aciklama' => '30+ gündür gelmeyenler', 'ikon' => 'bedtime', 'renk' => '#F59E0B'],
+            ['key' => 'yuksek_puan', 'ad' => 'Puanı yüksek', 'aciklama' => '100+ sadakat puanı', 'ikon' => 'stars', 'renk' => '#0EA5E9'],
+        ];
+        foreach ($d as &$s) $s['sayi'] = count(_musteriSegmentIds($sid, $s['key']));
+        return $d;
+    }
+}
+if (!function_exists('_musteriKampanyaPush')) {
+    // GÜVENLİ segment push: SADECE uygulama indiren müşterilere (kullanici_tipi='musteri') resimli bildirim. Toplu WA YOK.
+    function _musteriKampanyaPush($sid, $musteriIds, $baslik, $govde, $gorsel = null, $data = [])
+    {
+        $sid = (int) $sid; $musteriIds = array_values(array_filter(array_map('intval', (array) $musteriIds)));
+        $tokenlar = [];
+        try {
+            $q = DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'musteri');
+            if ($musteriIds) $q->whereIn('personel_id', $musteriIds);
+            $tokenlar = $q->pluck('token')->all();
+        } catch (\Throwable $e) {}
+        $hedef = count($tokenlar);
+        if (!$hedef || !function_exists('_fcmAccessToken') || !function_exists('_fcmServiceAccount')) return ['hedef' => $hedef, 'gonderilen' => 0];
+        $at = _fcmAccessToken(); $sa = _fcmServiceAccount();
+        if (!$at || !$sa) return ['hedef' => $hedef, 'gonderilen' => 0];
+        $proj = $sa['project_id'];
+        $dataStr = ['tur' => 'kampanya', 'sube_id' => (string) $sid]; foreach ((array) $data as $k => $v) $dataStr[(string) $k] = is_scalar($v) ? (string) $v : json_encode($v);
+        if ($gorsel) $dataStr['image'] = (string) $gorsel;
+        $sent = 0;
+        foreach (array_unique($tokenlar) as $tok) {
+            try {
+                $notif = ['title' => (string) $baslik, 'body' => (string) $govde]; if ($gorsel) $notif['image'] = (string) $gorsel;
+                $msg = ['token' => $tok, 'notification' => $notif, 'data' => $dataStr, 'android' => ['priority' => 'HIGH', 'notification' => ['sound' => 'default', 'channel_id' => 'resteos_siparis'] + ($gorsel ? ['image' => (string) $gorsel] : [])]];
+                if ($gorsel) $msg['apns'] = ['payload' => ['aps' => ['mutable-content' => 1, 'sound' => 'default']], 'fcm_options' => ['image' => (string) $gorsel]];
+                $ch = curl_init('https://fcm.googleapis.com/v1/projects/' . $proj . '/messages:send');
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_POST => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $at], CURLOPT_POSTFIELDS => json_encode(['message' => $msg], JSON_UNESCAPED_UNICODE)]);
+                $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+                if ($kod >= 200 && $kod < 300) $sent++;
+            } catch (\Throwable $e) {}
+        }
+        return ['hedef' => $hedef, 'gonderilen' => $sent];
+    }
+}
+Route::get('/segmentler', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $segmentler = _pazarlamaSegmentler($sid);
+    $pushliMusteri = 0; try { $pushliMusteri = (int) DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'musteri')->distinct()->count('personel_id'); } catch (\Throwable $e) {}
+    return view('segmentler', compact('segmentler', 'pushliMusteri'));
+});
+Route::get('/kampanya', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $segmentler = _pazarlamaSegmentler($sid);
+    $gecmis = collect(); try { _pazarlamaKur(); $gecmis = DB::table('kampanya_gonderim')->where('sube_id', $sid)->orderByDesc('id')->limit(10)->get(); } catch (\Throwable $e) {}
+    return view('kampanya_studyo', compact('segmentler', 'gecmis'));
+});
+Route::post('/kampanya/gonder', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    _pazarlamaKur(); $sid = _webSubeId();
+    $baslik = trim((string) $r->baslik); $metin = trim((string) $r->metin);
+    $segment = in_array($r->segment, ['tumu', 'yeni', 'sadik', 'uyuyan', 'yuksek_puan']) ? $r->segment : 'tumu';
+    $gorsel = trim((string) $r->gorsel) ?: null;
+    if ($baslik === '' || $metin === '') return redirect('/kampanya')->with('hata', 'Başlık ve mesaj gerekli.');
+    $ids = _musteriSegmentIds($sid, $segment);
+    $res = _musteriKampanyaPush($sid, $ids, $baslik, $metin, $gorsel, ['kampanya_segment' => $segment]);
+    DB::table('kampanya_gonderim')->insert(['sube_id' => $sid, 'baslik' => $baslik, 'metin' => $metin, 'gorsel' => $gorsel, 'segment' => $segment, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]);
+    if (($res['hedef'] ?? 0) <= 0) return redirect('/kampanya')->with('hata', 'Bu segmentte uygulama indirmiş (push açık) müşteri bulunamadı.');
+    return redirect('/kampanya')->with('ok', ($res['gonderilen'] ?? 0) . ' müşteriye resimli bildirim gönderildi (' . $segment . ').');
+});
+Route::get('/kampanya-rapor', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    _pazarlamaKur(); $sid = _webSubeId();
+    $liste = collect(); try { $liste = DB::table('kampanya_gonderim')->where('sube_id', $sid)->orderByDesc('id')->limit(50)->get(); } catch (\Throwable $e) {}
+    return view('kampanya_rapor', ['liste' => $liste, 'topGonderim' => $liste->count(), 'topKisi' => (int) $liste->sum('gonderilen')]);
+});
+Route::get('/icerik-takvimi', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $plan = null; $kaynak = 'kural';
+    if (request()->boolean('uret') && function_exists('_patronAiCagir')) {
+        $urunler = []; try { $urunler = DB::table('urunler')->where('sube_id', $sid)->orderByDesc('id')->limit(12)->pluck('ad')->all(); } catch (\Throwable $e) {}
+        $sube = ''; try { $sube = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: ''); } catch (\Throwable $e) {}
+        $sys = "Sen bir restoranın sosyal medya içerik planlayıcısısın. 1 haftalık (7 gün) Instagram/TikTok içerik takvimi üret. SADECE JSON dizi: [{\"gun\":\"Pazartesi\",\"fikir\":\"ne çekilecek\",\"caption\":\"paylaşım metni (emoji olabilir)\",\"hashtag\":\"#.. #..\"}]. Restoran: \"$sube\". Menüden örnekler: " . implode(', ', array_slice($urunler, 0, 12)) . ". Türkçe, iştah açıcı, kısa. UYDURMA abartı.";
+        $ai = _patronAiCagir($sys, 'Haftalık içerik takvimi üret, sadece JSON.', 1200, $bp, $sid);
+        if ($ai) { $s = strpos($ai, '['); $e = strrpos($ai, ']'); if ($s !== false && $e !== false) $ai = substr($ai, $s, $e - $s + 1); $j = json_decode($ai, true); if (is_array($j)) { $plan = $j; $kaynak = 'ai'; } }
+    }
+    if (!$plan) $plan = [
+        ['gun' => 'Pazartesi', 'fikir' => 'Günün çorbası/çayı yakın çekim, buharı tütsün', 'caption' => 'Pazartesi sendromuna birebir 🍲 Sıcacık bekliyoruz!', 'hashtag' => '#evyemeği #lezzet'],
+        ['gun' => 'Çarşamba', 'fikir' => 'En çok satan ürünün iştah açıcı çekimi', 'caption' => 'Haftanın ortası mola zamanı 😋', 'hashtag' => '#restoran #yemek'],
+        ['gun' => 'Cuma', 'fikir' => 'Hafta sonu kampanya görseli / dolu masa', 'caption' => 'Hafta sonu planın hazır mı? 🎉 Rezervasyon için linke tıkla.', 'hashtag' => '#haftasonu #rezervasyon'],
+        ['gun' => 'Pazar', 'fikir' => 'Kahvaltı/brunch sofrası tepeden çekim', 'caption' => 'Pazar keyfi sofrada başlar ☕🥐', 'hashtag' => '#kahvaltı #brunch'],
+    ];
+    return view('icerik_takvimi', ['plan' => $plan, 'kaynak' => $kaynak]);
+});
+
+// ===== PAZARLAMA İŞ-YAPAN AI: sohbet + onaylı eylemler (güvenli segment push; toplu WA YOK) =====
+if (!function_exists('_pazarlamaAsistanEylemUygula')) {
+    function _pazarlamaAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid;
+        $gonderLog = function ($seg, $baslik, $metin, $res) use ($sid, $bp) {
+            try { if (function_exists('_pazarlamaKur')) _pazarlamaKur(); if (Schema::hasTable('kampanya_gonderim')) DB::table('kampanya_gonderim')->insert(['sube_id' => $sid, 'baslik' => $baslik, 'metin' => $metin, 'gorsel' => null, 'segment' => $seg, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        };
+        try {
+            switch ($intent) {
+                case 'uyuyan_geri_getir':
+                    $ids = _musteriSegmentIds($sid, 'uyuyan'); if (!$ids) return ['ok' => true, 'mesaj' => 'Uyuyan (30+ gün gelmeyen) müşteri yok.'];
+                    $b = 'Seni özledik! 💜'; $mt = 'Uzun zamandır yoksun. Bu hafta uğra, kahven bizden ☕';
+                    $res = _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'uyuyan']); $gonderLog('uyuyan', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' uyuyan müşteriye geri-getirme bildirimi gönderildi.') : 'Bu segmentte uygulama indiren (push açık) müşteri yok.'];
+                case 'sessiz_saat_doldur':
+                    $ids = _musteriSegmentIds($sid, 'tumu');
+                    $b = '⚡ Mutlu Saatler!'; $mt = 'Bugün 15:00–17:00 arası sana özel sürpriz — hemen uğra!';
+                    $res = _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'sessiz_saat']); $gonderLog('tumu', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' müşteriye mutlu saatler bildirimi gönderildi.') : 'Push açık müşteri bulunamadı.'];
+                case 'arkadas_oner':
+                    $ids = _musteriSegmentIds($sid, 'tumu');
+                    $b = 'Arkadaşını getir 🤝'; $mt = 'Davet et, ikiniz de puan kazanın! Uygulamadan paylaş.';
+                    $res = _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'arkadas']); $gonderLog('tumu', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' müşteriye "arkadaşını getir" bildirimi gönderildi.') : 'Push açık müşteri bulunamadı.'];
+                case 'memnuniyetsize_don':
+                    $n = 0; try { if (Schema::hasTable('memnuniyet')) $n = (int) DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', '<=', 2)->where('durum', '!=', 'cozuldu')->count(); } catch (\Throwable $e) {}
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => 'Çözülmemiş düşük puanlı geri bildirim yok. 👍'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⭐ Memnuniyet takibi', "$n düşük puanlı geri bildirim çözüm/iletişim bekliyor.", ['tur' => 'memnuniyet'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => "$n düşük puanlı geri bildirim için yönetime takip uyarısı gönderildi."];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'İşlem hatası: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen pazarlama eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_pazarlamaAsistanNiyet')) {
+    function _pazarlamaAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/uyuyan|gelmeyen.*(müşteri|musteri)|geri getir|özledik/u' => ['eylem', 'uyuyan_geri_getir'],
+            '/(sessiz|boş|bos).*(saat)|mutlu saat|flash|doluluk art/u' => ['eylem', 'sessiz_saat_doldur'],
+            '/arkadaş(ını)? (getir|öner)|arkadas|davet (et|kampanya)|referans/u' => ['eylem', 'arkadas_oner'],
+            '/memnuniyet|düşük puan|dusuk puan|şikayet|sikayet|kötü yorum|kotu yorum/u' => ['eylem', 'memnuniyetsize_don'],
+            '/kampanya (gönder|olustur|oluştur|yap)|reklam (gönder|oluştur|yap)/u' => ['cevap', 'kampanya_link'],
+            '/içerik|icerik|post|instagram|tiktok|takvim|caption|hashtag/u' => ['cevap', 'icerik_link'],
+            '/segment|hedef kitle|müşteri grup|musteri grup/u' => ['cevap', 'segment_link'],
+            '/rapor|performans|kaç kişi|ulaştı|ulasti/u' => ['cevap', 'rapor_link'],
+            '/sadakat|puan|üye|uye|müşteri sayısı|musteri sayisi/u' => ['cevap', 'sadakat'],
+            '/özet|ozet|durum|ne var|gündem|gundem/u' => ['cevap', 'ozet'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın Pazarlama/Sosyal Medya AI asistanısın. SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA: ozet, sadakat, kampanya_link, icerik_link, segment_link, rapor_link, bilinmiyor. "
+            . "EYLEM (iş yapan, GÜVENLİ segment push — toplu WhatsApp YOK): uyuyan_geri_getir (30+ gün gelmeyenlere geri-getirme bildirimi), sessiz_saat_doldur (boş saate özel indirim bildirimi), arkadas_oner (arkadaşını getir kampanyası), memnuniyetsize_don (düşük puanlı geri bildirim için takip). "
+            . "Kampanya/reklam oluşturma veya içerik takvimi isteniyorsa tip=cevap intent=kampanya_link / icerik_link ver (ayrı ekranda yapılır). tip=eylem ise ozet'e işi net yaz. UYDURMA.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_pazarlamaAsistanOku')) {
+    function _pazarlamaAsistanOku($sid, $bp, $intent, $params)
+    {
+        try {
+            switch ($intent) {
+                case 'kampanya_link': return ['cevap' => 'Kampanya/reklam oluşturmak için Kampanya Stüdyosu’nu aç: başlık+mesaj+görsel seç, segmenti belirle, uygulamalı müşterilere güvenle gönder. (Toplu WhatsApp yok — ban riski.)', 'link' => ['url' => '/kampanya', 'lbl' => 'Kampanya Stüdyosu']];
+                case 'icerik_link': return ['cevap' => 'Haftalık Instagram/TikTok içerik takvimini AI üretsin (gün + fikir + caption + hashtag), sen kopyala-paylaş.', 'link' => ['url' => '/icerik-takvimi?uret=1', 'lbl' => 'İçerik Takvimi üret']];
+                case 'segment_link': $segs = _pazarlamaSegmentler($sid); $t = 'Müşteri segmentleri:'; foreach ($segs as $s) $t .= "\n• " . $s['ad'] . ': ' . $s['sayi']; return ['cevap' => $t, 'link' => ['url' => '/segmentler', 'lbl' => 'Segmentler']];
+                case 'rapor_link': return ['cevap' => 'Gönderdiğin kampanyaların ulaşım raporunu gör.', 'link' => ['url' => '/kampanya-rapor', 'lbl' => 'Kampanya Raporu']];
+                case 'sadakat':
+                    $uye = 0; $yeni = 0; $push = 0;
+                    try { $uye = (int) DB::table('musteriler')->where('sube_id', $sid)->count(); $yeni = (int) DB::table('musteriler')->where('sube_id', $sid)->where('created_at', '>=', now()->startOfMonth())->count(); } catch (\Throwable $e) {}
+                    try { $push = (int) DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'musteri')->distinct()->count('personel_id'); } catch (\Throwable $e) {}
+                    return ['cevap' => "$uye kayıtlı müşteri, bu ay $yeni yeni üye. Uygulama/push açık: $push müşteri (kampanya bunlara gider).", 'link' => ['url' => '/segmentler', 'lbl' => 'Segmentler']];
+                case 'ozet':
+                default:
+                    $uy = count(_musteriSegmentIds($sid, 'uyuyan')); $yeni = count(_musteriSegmentIds($sid, 'yeni'));
+                    $mem = 0; try { if (Schema::hasTable('memnuniyet')) $mem = (int) DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', '<=', 2)->where('durum', '!=', 'cozuldu')->count(); } catch (\Throwable $e) {}
+                    return ['cevap' => "Bu ay $yeni yeni üye · $uy uyuyan müşteri" . ($mem > 0 ? " · $mem düşük puanlı geri bildirim" : "") . ". Uyuyanları geri getirmek ister misin?", 'aksiyon' => $uy > 0 ? ['lbl' => 'Uyuyanları geri getir', 'soru' => 'uyuyan müşterileri geri getir'] : null, 'link' => ['url' => '/departman-brief?dep=pazarlama', 'lbl' => 'Pazarlama Brifingi']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/pazarlama-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'Pazarlama AI', 'selam' => 'Kampanya, segment, içerik, sadakat — sor; güvenle (uygulamalı müşterilere push) işini bitireyim.',
+        'hizli' => [
+            ['Uyuyanları geri getir', 'Uyuyan müşterileri geri getir', 'bedtime', '#F59E0B', '30+ gün gelmeyen'],
+            ['Mutlu saatler gönder', 'Sessiz saate özel indirim gönder', 'bolt', '#F43F5E', 'boş saat doldur'],
+            ['Arkadaşını getir', 'Arkadaşını getir kampanyası başlat', 'group_add', '#10B981', 'referans'],
+            ['Kampanya oluştur', 'Kampanya/reklam oluşturmak istiyorum', 'campaign', '#7C3AED', 'görselli'],
+            ['İçerik takvimi', 'Haftalık sosyal medya içerik takvimi üret', 'calendar_month', '#0EA5E9', 'Instagram/TikTok'],
+            ['Segmentler', 'Müşteri segmentlerini göster', 'groups', '#8B5CF6', 'hedef kitle'],
+        ],
+        'sorUrl' => '/api/pazarlama-asistan/sor', 'uygulaUrl' => '/api/pazarlama-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'Pazarlama AI’a sor… (ör. uyuyanları geri getir, kampanya oluştur)',
+    ]);
+});
+Route::post('/api/pazarlama-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _pazarlamaAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'uyuyan_geri_getir' => '30+ gündür gelmeyen müşterilere (uygulama/push açık olanlara) geri-getirme bildirimi gönderilecek. Toplu WhatsApp YAPILMAYACAK (ban riski).',
+            'sessiz_saat_doldur' => 'Tüm uygulamalı müşterilere "mutlu saatler" (boş saate özel indirim) bildirimi gönderilecek.',
+            'arkadas_oner' => 'Tüm uygulamalı müşterilere "arkadaşını getir" kampanya bildirimi gönderilecek.',
+            'memnuniyetsize_don' => 'Düşük puanlı/çözülmemiş geri bildirimler için yönetime takip uyarısı gönderilecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'pazarlama', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $o = _pazarlamaAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $o['cevap'], 'aksiyon' => $o['aksiyon'] ?? null, 'link' => $o['link'] ?? null]);
+});
+Route::post('/api/pazarlama-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_pazarlamaGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    $sonuc = _aiEylemOnayla($log_id, $bp);
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
+});
+
 // Patron: çark yönetimi (Randevumcepte birebir admin sayfası)
 Route::get('/cark-yonetim', function () {
     if (function_exists('_posKapi')) { $g = _posKapi(); if ($g) return $g; }
@@ -7773,6 +8056,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/muhasebe-entegrasyon' => 'gor_muhasebe', '/muhasebe-sohbet' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
             '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
+            '/pazarlama-sohbet' => 'gor_app_yonetim', '/kampanya' => 'gor_app_yonetim', '/segmentler' => 'gor_app_yonetim', '/kampanya-rapor' => 'gor_app_yonetim', '/icerik-takvimi' => 'gor_app_yonetim',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
@@ -17310,7 +17594,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -17439,6 +17723,33 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Kritik Malzeme', 'alt' => 'stok', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik — bazı yemekler yapılamayabilir." : 'Malzeme seviyeleri yeterli.'];
             $analiz[] = ['ikon' => 'delete_outline', 'renk' => '#EA580C', 'baslik' => 'Fire', 'alt' => 'bugün', 'durum' => $fire > 0 ? 'dikkat' : 'iyi', 'yorum' => $fire > 0 ? ('Bugün fire/zayiat ' . $tl($fire) . '. Kaynağı incele.') : 'Bugün fire kaydı yok.'];
         }
+        // ================= PAZARLAMA / SOSYAL MEDYA =================
+        elseif ($kod === 'pazarlama') {
+            $uye = 0; $yeni = 0; $push = 0;
+            try { $uye = (int) DB::table('musteriler')->where('sube_id', $sid)->count(); $yeni = (int) DB::table('musteriler')->where('sube_id', $sid)->where('created_at', '>=', now()->startOfMonth())->count(); } catch (\Throwable $e) {}
+            try { $push = (int) DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'musteri')->distinct()->count('personel_id'); } catch (\Throwable $e) {}
+            $uyuyan = function_exists('_musteriSegmentIds') ? count(_musteriSegmentIds($sid, 'uyuyan')) : 0;
+            $sadik = function_exists('_musteriSegmentIds') ? count(_musteriSegmentIds($sid, 'sadik')) : 0;
+            $memDusuk = 0; $memOrt = null;
+            try { if (Schema::hasTable('memnuniyet')) { $memDusuk = (int) DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', '<=', 2)->where('durum', '!=', 'cozuldu')->count(); $memOrt = DB::table('memnuniyet')->where('sube_id', $sid)->where('created_at', '>=', now()->subDays(30))->avg('puan'); } } catch (\Throwable $e) {}
+            $kampAy = 0; try { if (Schema::hasTable('kampanya_gonderim')) $kampAy = (int) DB::table('kampanya_gonderim')->where('sube_id', $sid)->where('created_at', '>=', now()->startOfMonth())->count(); } catch (\Throwable $e) {}
+            $kpis[] = ['ikon' => 'groups', 'tint' => 't-mor', 'deger' => $uye, 'label' => 'Kayıtlı müşteri', 'alt' => 'sadakat'];
+            $kpis[] = ['ikon' => 'person_add', 'tint' => 't-green', 'deger' => $yeni, 'label' => 'Yeni üye', 'alt' => 'bu ay'];
+            $kpis[] = ['ikon' => 'notifications_active', 'tint' => 't-blue', 'deger' => $push, 'label' => 'Push açık', 'alt' => 'kampanya hedefi'];
+            $kpis[] = ['ikon' => 'bedtime', 'tint' => $uyuyan > 0 ? 't-amber' : 't-green', 'deger' => $uyuyan, 'label' => 'Uyuyan müşteri', 'alt' => '30+ gün'];
+            $kpis[] = ['ikon' => 'favorite', 'tint' => 't-rose', 'deger' => $sadik, 'label' => 'Sadık müşteri', 'alt' => 'çok harcayan'];
+            $kpis[] = ['ikon' => 'campaign', 'tint' => 't-mor', 'deger' => $kampAy, 'label' => 'Bu ay kampanya', 'alt' => 'gönderilen'];
+            if ($memOrt !== null) $kpis[] = ['ikon' => 'star', 'tint' => $memOrt >= 4 ? 't-green' : ($memOrt >= 3 ? 't-amber' : 't-red'), 'deger' => number_format((float) $memOrt, 1, ',', '.'), 'label' => 'Memnuniyet', 'alt' => 'son 30 gün'];
+            if ($uyuyan > 0) { $isler[] = ['ikon' => 'bedtime', 'renk' => '#F59E0B', 'grup' => 'SADAKAT', 'baslik' => "$uyuyan uyuyan müşteriyi geri getir", 'aciklama' => '30+ gündür gelmeyene geri-getirme bildirimi', 'aksiyon' => ['url' => '/pazarlama-sohbet', 'lbl' => 'AI ile gönder']]; $sinyal[] = "<b>$uyuyan</b> uyuyan müşteri"; }
+            if ($memDusuk > 0) { $isler[] = ['ikon' => 'sentiment_dissatisfied', 'renk' => '#F43F5E', 'grup' => 'İTİBAR', 'baslik' => "$memDusuk düşük puanlı geri bildirim", 'aciklama' => 'Takip/iletişim gerekli', 'aksiyon' => ['url' => '/memnuniyet', 'lbl' => 'Gör']]; $sinyal[] = "<b>$memDusuk</b> düşük puan"; }
+            if ($push > 0) { $isler[] = ['ikon' => 'campaign', 'renk' => '#7C3AED', 'grup' => 'KAMPANYA', 'baslik' => 'Yeni kampanya/reklam oluştur', 'aciklama' => $push . ' müşteriye güvenle resimli push', 'aksiyon' => ['url' => '/kampanya', 'lbl' => 'Stüdyo']]; }
+            $isler[] = ['ikon' => 'calendar_month', 'renk' => '#0EA5E9', 'grup' => 'SOSYAL', 'baslik' => 'Haftalık içerik takvimi hazırla', 'aciklama' => 'Instagram/TikTok post + caption + hashtag', 'aksiyon' => ['url' => '/icerik-takvimi?uret=1', 'lbl' => 'Üret']];
+            $hizli = [['url' => '/kampanya', 'ikon' => 'campaign', 'lbl' => 'Kampanya Stüdyosu'], ['url' => '/segmentler', 'ikon' => 'groups', 'lbl' => 'Segmentler'], ['url' => '/icerik-takvimi', 'ikon' => 'calendar_month', 'lbl' => 'İçerik Takvimi'], ['url' => '/cark-yonetim', 'ikon' => 'casino', 'lbl' => 'Çarkıfelek'], ['url' => '/odul-raporu', 'ikon' => 'emoji_events', 'lbl' => 'Ödül Raporu'], ['url' => '/app-yonetim', 'ikon' => 'smartphone', 'lbl' => 'App Yönetim']];
+            $analiz[] = ['ikon' => 'groups', 'renk' => '#7C3AED', 'baslik' => 'Sadakat', 'alt' => 'büyüme', 'durum' => $yeni > 0 ? 'iyi' : 'notr', 'yorum' => "$uye kayıtlı müşteri, bu ay $yeni yeni üye. Push açık $push müşteriye kampanya gidebilir."];
+            $analiz[] = ['ikon' => 'bedtime', 'renk' => '#F59E0B', 'baslik' => 'Uyuyan Müşteri', 'alt' => '30+ gün', 'durum' => $uyuyan > 10 ? 'risk' : ($uyuyan > 0 ? 'dikkat' : 'iyi'), 'yorum' => $uyuyan > 0 ? "$uyuyan müşteri 30+ gündür gelmedi. Geri-getirme kampanyası öner." : 'Uyuyan müşteri yok. 👍'];
+            $analiz[] = ['ikon' => 'star', 'renk' => '#F43F5E', 'baslik' => 'Memnuniyet', 'alt' => 'son 30 gün', 'durum' => $memDusuk > 3 ? 'risk' : ($memDusuk > 0 ? 'dikkat' : 'iyi'), 'yorum' => $memOrt !== null ? ('Ortalama puan ' . number_format((float) $memOrt, 1, ',', '.') . ($memDusuk > 0 ? ", $memDusuk düşük puan takip bekliyor." : '. 👍')) : 'Henüz memnuniyet verisi yok.'];
+            $analiz[] = ['ikon' => 'campaign', 'renk' => '#10B981', 'baslik' => 'Kampanya', 'alt' => 'bu ay', 'durum' => 'notr', 'yorum' => "Bu ay $kampAy kampanya gönderildi. Toplu WhatsApp yerine güvenli resimli push kullanılıyor."];
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
@@ -17504,7 +17815,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
