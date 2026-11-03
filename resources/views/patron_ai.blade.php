@@ -164,6 +164,13 @@
   .pai-k .ketk{font-size:11.5px;color:var(--ink);font-weight:700;margin-top:5px}
   .pai-k .kalt{font-size:10px;color:var(--sub);margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pai-k .kdelta{position:absolute;top:12px;right:12px;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:20px}
+  /* KPI kartlarını tint'e göre renklendir (üst şerit + hafif zemin + renkli değer) */
+  #pai .pai-kpis .pai-k:has(.t-rose){border-top:3px solid var(--rose);background:linear-gradient(170deg,color-mix(in srgb,var(--rose) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-rose) .kbuyuk{color:var(--rose)}
+  #pai .pai-kpis .pai-k:has(.t-green){border-top:3px solid var(--pgreen);background:linear-gradient(170deg,color-mix(in srgb,var(--pgreen) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-green) .kbuyuk{color:var(--pgreen)}
+  #pai .pai-kpis .pai-k:has(.t-amber){border-top:3px solid var(--pamber);background:linear-gradient(170deg,color-mix(in srgb,var(--pamber) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-amber) .kbuyuk{color:var(--pamber)}
+  #pai .pai-kpis .pai-k:has(.t-blue){border-top:3px solid var(--pblue);background:linear-gradient(170deg,color-mix(in srgb,var(--pblue) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-blue) .kbuyuk{color:var(--pblue)}
+  #pai .pai-kpis .pai-k:has(.t-red){border-top:3px solid var(--pred);background:linear-gradient(170deg,color-mix(in srgb,var(--pred) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-red) .kbuyuk{color:var(--pred)}
+  #pai .pai-kpis .pai-k:has(.t-mor){border-top:3px solid var(--mor1);background:linear-gradient(170deg,color-mix(in srgb,var(--mor1) 9%,var(--card)),var(--card) 72%)} #pai .pai-kpis .pai-k:has(.t-mor) .kbuyuk{color:var(--mor1)}
 
   .pai-mid{display:grid;grid-template-columns:1.72fr 1fr;gap:12px;margin-bottom:4px;align-items:start}
   .pai-card,.pai-aipanel{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:14px 15px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
