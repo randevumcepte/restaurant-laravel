@@ -249,7 +249,7 @@
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
             $_yonetim = ['Yönetim' => [
-                ['/patron-ai', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
+                ['/patron-ai?gm=1', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
                 ['/departman-brief?dep=ik', 'groups', 'İnsan Kaynakları', '#10B981'],
                 ['/departman-brief?dep=finans', 'account_balance', 'Finans / Muhasebe', '#4F46E5'],
                 ['/departman-brief?dep=satinalma', 'inventory_2', 'Satın Alma', '#0EA5E9'],
@@ -310,6 +310,13 @@
     }
 
     $path = '/' . trim(request()->path(), '/');
+    $_reqUri = request()->getRequestUri();
+    $aktifMi = function ($url) use ($path, $_reqUri) {
+        if (strpos($url, '?') !== false) return $_reqUri === $url;                 // sorgulu link: tam eşleşme
+        if ($url === '/') return $path === '/';
+        if ($url === '/patron-ai' && request()->boolean('gm')) return false;        // GM modunda düz patron-ai seçili sayılmaz
+        return \Illuminate\Support\Str::startsWith($path, $url);
+    };
     $aktifSubeAd = 'ResteOS';
     try { if (function_exists('_aktifSubeId')) { $aktifSubeAd = optional(\DB::table('subeler')->where('id', _aktifSubeId())->first())->ad ?: 'ResteOS'; } } catch (\Throwable $e) {}
     if ($aktifSubeAd === 'ResteOS') { try { $aktifSubeAd = optional(\DB::table('subeler')->first())->ad ?: 'ResteOS'; } catch (\Throwable $e) {} }
@@ -352,7 +359,7 @@
                     <div class="rk-pin-pano">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
                             @php
-                                $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url));
+                                $aktif = $aktifMi($url);
                                 $badge = $_menuBadge[$url] ?? 0;
                             @endphp
                             <a href="{{ $url }}" class="rk-pin{{ $aktif ? ' aktif' : '' }}">
@@ -370,7 +377,7 @@
                     <div class="rk-grp-body">
                         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
                             @php
-                                $aktif = ($url === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $url));
+                                $aktif = $aktifMi($url);
                                 $badge = $_menuBadge[$url] ?? 0;
                             @endphp
                             <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}">

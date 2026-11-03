@@ -12135,6 +12135,8 @@ Route::get('/patron-ai', function () {
     $sid = _webSubeId();
     $tip = request('tip') === 'aksam' ? 'aksam' : 'sabah';
     $ad = $bp->ad ?? null;
+    $gm = request()->boolean('gm'); // Genel Müdür modu — aynı ekran, GM kimliğiyle (başlık + selam)
+    if ($gm) $ad = 'Ayşe Korkmaz';
     $demo = request()->boolean('demo');
     $force = request()->boolean('force');
     $gunKarar = ($tip === 'aksam' ? \Carbon\Carbon::today() : \Carbon\Carbon::yesterday());
@@ -12170,7 +12172,7 @@ Route::get('/patron-ai', function () {
         return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => 'sabah', 'demo' => true,
             'brief' => $b, 'tuketim' => $b['tuketim'], 'sureklilik' => $b['sureklilik'], 'whatsapp' => $b['whatsapp'],
             'analiz' => $b['analiz'], 'aiOzet' => $b['ai_ozet'], 'aiVar' => $b['ai_var'], 'aiSoguk' => false, 'isler' => $isler,
-            'acikAdisyon' => 23, 'onayOp' => 2, 'onaySa' => 1]);
+            'acikAdisyon' => 23, 'onayOp' => 2, 'onaySa' => 1, 'gm' => $gm]);
     }
     $brief = null; $tuketim = null; $sureklilik = ['acik' => [], 'kapanan' => []]; $whatsapp = ['giden' => 0, 'gelen' => []];
     $analiz = []; $aiOzet = null; $aiVar = false; $aiSoguk = false; $isler = ['isler' => [], 'bitenler' => []];
@@ -12196,7 +12198,7 @@ Route::get('/patron-ai', function () {
     return view('patron_ai', ['personel' => $bp, 'ad' => $ad, 'tip' => $tip, 'demo' => false,
         'brief' => $brief, 'tuketim' => $tuketim, 'sureklilik' => $sureklilik, 'whatsapp' => $whatsapp,
         'analiz' => $analiz, 'aiOzet' => $aiOzet, 'aiVar' => $aiVar, 'aiSoguk' => $aiSoguk, 'isler' => $isler,
-        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa, 'denetim' => $paiDenetim, 'devirSa' => $paiDevirSa]);
+        'acikAdisyon' => $paiAcik, 'onayOp' => $paiOnayOp, 'onaySa' => $paiOnaySa, 'denetim' => $paiDenetim, 'devirSa' => $paiDevirSa, 'gm' => $gm]);
 });
 
 // ============================ PATRON AI — GÜN İÇİ TETİK + AKŞAM RAPORU + ŞİRKET HAFIZASI (Faz 5) ============================

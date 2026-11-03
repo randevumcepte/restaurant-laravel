@@ -1,7 +1,7 @@
 @extends('layout.app')
 @section('rk_ikon', 'auto_awesome')
-@section('baslik', 'Patron AI')
-@section('title', 'Patron AI')
+@section('baslik', ($gm ?? false) ? 'Genel Müdür' : 'Patron AI')
+@section('title', ($gm ?? false) ? 'Genel Müdür' : 'Patron AI')
 
 @push('head')
 <style>
@@ -356,7 +356,7 @@
     </div>
 
     <div class="pai-aipanel">
-      <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">Patron AI ne öneriyor?</div></div>
+      <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">{{ ($gm ?? false) ? 'Genel Müdür' : 'Patron' }} AI ne öneriyor?</div></div>
       <div class="verdict" id="pai-verdict">{!! $bold($verdict) !!}</div>
       <a href="/patron-ai-sohbet" class="pai-sohbet-cta">
         <span class="material-icons-outlined">forum</span>
