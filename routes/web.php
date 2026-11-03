@@ -7771,7 +7771,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/dashboard' => 'gor_dashboard', '/patron' => 'gor_dashboard', '/pos' => 'gor_pos', '/odul-dogrula' => 'gor_odul_dogrula',
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
-            '/muhasebe-entegrasyon' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
+            '/muhasebe-entegrasyon' => 'gor_muhasebe', '/muhasebe-sohbet' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
             '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
@@ -17310,7 +17310,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -17504,7 +17504,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/departman-asistan?dep=finans', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -27165,6 +27165,182 @@ Route::get('/e-defter', function () {
     if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
     $gecmis = collect(); try { if (Schema::hasTable('muhasebe_aktarimlari')) $gecmis = DB::table('muhasebe_aktarimlari')->where('sube_id', _webSubeId())->orderByDesc('id')->limit(12)->get(); } catch (\Throwable $e) {}
     return view('e_defter', ['gecmis' => $gecmis]);
+});
+
+// ===== MUHASEBE İŞ-YAPAN AI: sohbet + onaylı eylemler (ResteOS eylem motoruna bağlı) =====
+if (!function_exists('_muhasebeAsistanEylemUygula')) {
+    function _muhasebeAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid; $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
+        try {
+            switch ($intent) {
+                case 'mahsup_aktar':
+                    if (!function_exists('_muhasebeFisUret') || !function_exists('_muhasebeVarsayilanHesapPlani')) return ['ok' => false, 'mesaj' => 'Mahsup motoru hazır değil.'];
+                    if (function_exists('_muhasebeEntegrasyonKur')) _muhasebeEntegrasyonKur();
+                    [$ay, $bas, $bit] = _restoAyAralik(null);
+                    $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sid)->first();
+                    $hp = _muhasebeVarsayilanHesapPlani(); if ($ayar && $ayar->hesap_plani) { $k = json_decode($ayar->hesap_plani, true); if (is_array($k)) $hp = array_merge($hp, $k); }
+                    $fis = _muhasebeFisUret($bas, $bit, $hp, (int) ($ayar->kdv_orani ?? 10), true);
+                    $satir = count($fis['rows'] ?? []);
+                    if ($satir <= 0) return ['ok' => true, 'mesaj' => "$ay döneminde aktarılacak hareket bulunamadı."];
+                    return ['ok' => true, 'mesaj' => "$ay dönemi mahsup fişi hazır: $satir satır, borç=alacak=" . $tl($fis['borc'] ?? 0) . ". Muhasebe Entegrasyonu'ndan indir/gönder."];
+                case 'beyanname_hatirlat':
+                    $vt = function_exists('_vergiTakvimi') ? _vergiTakvimi() : []; $y = $vt[0] ?? null;
+                    if (!$y) return ['ok' => true, 'mesaj' => 'Yaklaşan beyanname yok.'];
+                    $msg = $y['ad'] . ' için ' . max(0, $y['kalan']) . ' gün kaldı (' . $y['tarih']->format('d.m.Y') . ').';
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📄 Beyanname hatırlatması', $msg, ['tur' => 'beyanname'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => 'Hatırlatma gönderildi — ' . $msg];
+                case 'tahsilat_hatirlat':
+                    $n = 0; try { $n = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count(); } catch (\Throwable $e) {}
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => 'Gecikmiş açık adisyon yok.'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💰 Tahsilat hatırlatması', "$n adisyon dünden açık — tahsilat/kapanış gerek.", ['tur' => 'tahsilat'], ['sahip', 'mudur', 'kasa']);
+                    return ['ok' => true, 'mesaj' => "$n gecikmiş adisyon için kasa/yönetime hatırlatma gönderildi."];
+                case 'tekrarlayan_isle':
+                    if (!Schema::hasTable('tekrarlayan_giderler')) return ['ok' => false, 'mesaj' => 'Tekrarlayan gider tablosu yok.'];
+                    if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
+                    if (!Schema::hasTable('giderler')) return ['ok' => false, 'mesaj' => 'Gider tablosu yok.'];
+                    $ay = date('Y-m'); $eklenen = 0; $top = 0.0;
+                    foreach (DB::table('tekrarlayan_giderler')->where('sube_id', $sid)->where('aktif', 1)->where('periyot', 'aylik')->get() as $g) {
+                        $var = DB::table('giderler')->where('sube_id', $sid)->where('aciklama', 'like', '[Sabit] ' . $g->ad . '%')->whereBetween('tarih', [$ay . '-01', $ay . '-28'])->exists();
+                        if ($var) continue;
+                        $kat = in_array($g->kategori, ['kira', 'fatura', 'malzeme', 'maas', 'vergi', 'diger']) ? $g->kategori : 'diger';
+                        DB::table('giderler')->insert(['sube_id' => $sid, 'kategori' => $kat, 'aciklama' => '[Sabit] ' . $g->ad, 'tutar' => (float) $g->tutar, 'tarih' => $ay . '-' . str_pad((string) min(28, max(1, (int) $g->gun)), 2, '0', STR_PAD_LEFT), 'created_by' => null]);
+                        $eklenen++; $top += (float) $g->tutar;
+                    }
+                    return ['ok' => true, 'mesaj' => $eklenen > 0 ? ("$eklenen tekrarlayan gider bu ay işlendi (toplam " . $tl($top) . "). Giderler'de görebilirsin.") : 'Bu ay işlenecek yeni tekrarlayan gider yok (hepsi zaten eklenmiş).'];
+                case 'cek_senet_hatirlat':
+                    if (!Schema::hasTable('cek_senetler')) return ['ok' => false, 'mesaj' => 'Çek/senet tablosu yok.'];
+                    $n = (int) DB::table('cek_senetler')->where('sube_id', $sid)->where('durum', 'portfoyde')->whereNotNull('vade')->whereBetween('vade', [today()->toDateString(), today()->addDays(7)->toDateString()])->count();
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => '7 gün içinde vadesi gelen çek/senet yok.'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📝 Çek/Senet vade uyarısı', "$n çek/senet 7 gün içinde vadeli — tahsil/ödeme planla.", ['tur' => 'cek_senet'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => "$n çek/senet için vade uyarısı gönderildi."];
+                case 'mali_ozet_gonder':
+                    if (!function_exists('_muhasebeDonemVeri')) return ['ok' => false, 'mesaj' => 'Dönem verisi yok.'];
+                    $d = _muhasebeDonemVeri($sid, null);
+                    $msg = 'Net kâr ' . $tl($d['netKar']) . ' · ödenecek KDV ' . $tl(abs($d['odenecekKDV'])) . ' · net satış ' . $tl($d['ciroNet']) . '.';
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📊 Aylık mali özet', $msg, ['tur' => 'mali_ozet'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => 'Mali özet yönetime gönderildi — ' . $msg];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'İşlem hatası: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen muhasebe eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_muhasebeAsistanNiyet')) {
+    function _muhasebeAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/mahsup|yevmiye|logo|netsis|fiş aktar|muhasebeye aktar/u' => ['eylem', 'mahsup_aktar'],
+            '/(beyanname|vergi).*(hatırlat|hatirlat|uyar)|beyanname gönder/u' => ['eylem', 'beyanname_hatirlat'],
+            '/tahsilat.*(hatırlat|hatirlat)|açık adisyon.*(hatırlat|hatirlat)|alacak hatırlat/u' => ['eylem', 'tahsilat_hatirlat'],
+            '/tekrarlayan.*(işle|isle)|sabit gider.*(işle|isle|ekle)|kira(yı)? işle/u' => ['eylem', 'tekrarlayan_isle'],
+            '/(çek|cek|senet).*(hatırlat|hatirlat|vade uyar)/u' => ['eylem', 'cek_senet_hatirlat'],
+            '/mali özet.*(gönder|gonder)|özet(i)? yolla|rapor(u)? gönder/u' => ['eylem', 'mali_ozet_gonder'],
+            '/kdv/u' => ['cevap', 'kdv'],
+            '/kâr|kar\b|zarar|p&l|p ve l|kârlılık|karlilik/u' => ['cevap', 'kar_zarar'],
+            '/vergi|beyanname|son tarih|takvim|ne zaman/u' => ['cevap', 'vergi'],
+            '/tahsilat|açık adisyon|acik adisyon|alacak/u' => ['cevap', 'tahsilat'],
+            '/(çek|cek|senet)/u' => ['cevap', 'cek_senet'],
+            '/özet|ozet|durum|nasıl|nasil|gündem|gundem/u' => ['cevap', 'ozet'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın Muhasebe/Finans AI asistanısın. SADECE JSON döndür: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA: ozet, kdv, kar_zarar, vergi, tahsilat, cek_senet, bilinmiyor. "
+            . "EYLEM (iş yapan): mahsup_aktar (dönem mahsup fişi hazırla), beyanname_hatirlat (yaklaşan beyanname uyarısı gönder), tahsilat_hatirlat (gecikmiş adisyon hatırlatması), tekrarlayan_isle (sabit giderleri gider kaydına işle), cek_senet_hatirlat (vade uyarısı), mali_ozet_gonder (aylık mali özeti yönetime gönder). "
+            . "tip=eylem ise ozet'e yapılacak işi net Türkçe yaz. Emin değilsen tip=cevap intent=bilinmiyor. UYDURMA. Önceki mesajları dikkate al, az soru sor.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_muhasebeAsistanOku')) {
+    function _muhasebeAsistanOku($sid, $bp, $intent, $params)
+    {
+        $tl = fn ($n) => number_format((float) round((float) ($n ?? 0)), 0, ',', '.') . '₺';
+        try {
+            $d = function_exists('_muhasebeDonemVeri') ? _muhasebeDonemVeri($sid, null) : null;
+            switch ($intent) {
+                case 'kdv':
+                    if (!$d) return ['cevap' => 'KDV verisi alınamadı.'];
+                    return ['cevap' => "Bu ay (tahmini) KDV: hesaplanan " . $tl($d['hesKDV']) . " − indirilecek " . $tl($d['indKDV']) . " = " . ($d['odenecekKDV'] >= 0 ? 'ödenecek ' : 'devreden ') . $tl(abs($d['odenecekKDV'])) . ".", 'link' => ['url' => '/kdv-ozet', 'lbl' => 'KDV Özeti'], 'aksiyon' => ['lbl' => 'Mahsup fişini hazırla', 'soru' => 'mahsup fişini hazırla']];
+                case 'kar_zarar':
+                    if (!$d) return ['cevap' => 'Kâr-zarar verisi alınamadı.'];
+                    return ['cevap' => "Bu ay: net satış " . $tl($d['ciroNet']) . " − SMM " . $tl($d['smm']) . " − gider " . $tl($d['toplamGider']) . " = net " . $tl($d['netKar']) . ($d['marj'] !== null ? " (%" . $d['marj'] . " marj)." : "."), 'link' => ['url' => '/kar-zarar', 'lbl' => 'Kâr-Zarar']];
+                case 'vergi':
+                    $vt = function_exists('_vergiTakvimi') ? _vergiTakvimi() : []; if (!$vt) return ['cevap' => 'Vergi takvimi alınamadı.'];
+                    $t = 'Yaklaşan beyanname/ödemeler:'; foreach (array_slice($vt, 0, 4) as $v) $t .= "\n• " . $v['ad'] . " — " . max(0, $v['kalan']) . " gün (" . $v['tarih']->format('d.m') . ")";
+                    return ['cevap' => $t, 'aksiyon' => ['lbl' => 'Hatırlatma gönder', 'soru' => 'beyanname hatırlatması gönder']];
+                case 'tahsilat':
+                    $n = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->whereDate('created_at', '<', today())->count();
+                    $t = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->sum('toplam');
+                    return ['cevap' => $n > 0 ? ("$n adisyon dünden açık, toplam " . $tl($t) . " tahsil bekliyor.") : 'Gecikmiş açık adisyon yok. Açık tutar: ' . $tl($t) . '.', 'aksiyon' => $n > 0 ? ['lbl' => 'Tahsilat hatırlat', 'soru' => 'tahsilat hatırlatması gönder'] : null];
+                case 'cek_senet':
+                    if (!Schema::hasTable('cek_senetler')) return ['cevap' => 'Henüz çek/senet kaydı yok.', 'link' => ['url' => '/cek-senet', 'lbl' => 'Çek/Senet']];
+                    $al = (float) DB::table('cek_senetler')->where('sube_id', $sid)->where('yon', 'alinan')->where('durum', 'portfoyde')->sum('tutar');
+                    $ve = (float) DB::table('cek_senetler')->where('sube_id', $sid)->where('yon', 'verilen')->where('durum', 'portfoyde')->sum('tutar');
+                    return ['cevap' => "Portföy: alacak " . $tl($al) . ", borç " . $tl($ve) . ".", 'link' => ['url' => '/cek-senet', 'lbl' => 'Çek/Senet'], 'aksiyon' => ['lbl' => 'Vade uyarısı gönder', 'soru' => 'çek senet vade hatırlat']];
+                case 'ozet':
+                default:
+                    if (!$d) return ['cevap' => 'Özet alınamadı.'];
+                    $vt = function_exists('_vergiTakvimi') ? _vergiTakvimi() : []; $y = $vt[0] ?? null;
+                    return ['cevap' => "Bu ay net kâr " . $tl($d['netKar']) . ", ödenecek KDV " . $tl(abs($d['odenecekKDV'])) . "." . ($y ? (" En yakın beyanname: " . $y['ad'] . " " . max(0, $y['kalan']) . " gün.") : ""), 'link' => ['url' => '/departman-brief?dep=finans', 'lbl' => 'Finans Brifingi']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/muhasebe-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'Finans / Muhasebe AI', 'selam' => 'Mahsup, KDV, beyanname, tahsilat, çek-senet — sor, gerekirse işini bitireyim.',
+        'hizli' => [
+            ['Dönem mahsup fişini hazırla', 'Bu dönemin mahsup fişini hazırla', 'sync_alt', '#0EA5E9', 'Logo/Netsis/Excel'],
+            ['Bu ay KDV', 'Bu ay KDV ne kadar', 'receipt_long', '#8B5CF6', 'tahmini'],
+            ['Kâr-zarar', 'Bu ay kâr-zarar durumu', 'account_balance', '#10B981', 'P&L'],
+            ['Yaklaşan beyannameler', 'Yaklaşan beyannameler neler', 'event_available', '#F43F5E', 'vergi takvimi'],
+            ['Tahsilat hatırlat', 'Gecikmiş adisyonlara tahsilat hatırlatması gönder', 'payments', '#F59E0B', 'açık adisyon'],
+            ['Tekrarlayan giderleri işle', 'Bu ayın sabit giderlerini işle', 'event_repeat', '#7C3AED', 'kira/abonelik'],
+        ],
+        'sorUrl' => '/api/muhasebe-asistan/sor', 'uygulaUrl' => '/api/muhasebe-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'Muhasebe AI’a sor… (ör. mahsup fişini hazırla, KDV ne kadar)',
+    ]);
+});
+Route::post('/api/muhasebe-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _muhasebeAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI şu an kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'mahsup_aktar' => 'Bu dönemin mahsup fişi hazırlanacak (Logo/Netsis/Excel için Muhasebe Entegrasyonu’na konacak).',
+            'beyanname_hatirlat' => 'Yaklaşan beyanname/ödeme için yönetime hatırlatma bildirimi gönderilecek.',
+            'tahsilat_hatirlat' => 'Gecikmiş açık adisyonlar için kasa/yönetime tahsilat hatırlatması gönderilecek.',
+            'tekrarlayan_isle' => 'Bu ayın tekrarlayan (sabit) giderleri gider kaydına otomatik işlenecek.',
+            'cek_senet_hatirlat' => '7 gün içinde vadesi gelen çek/senetler için uyarı gönderilecek.',
+            'mali_ozet_gonder' => 'Bu ayın mali özeti (kâr/KDV/satış) yönetime bildirim olarak gönderilecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'muhasebe', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $o = _muhasebeAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $o['cevap'], 'aksiyon' => $o['aksiyon'] ?? null, 'link' => $o['link'] ?? null]);
+});
+Route::post('/api/muhasebe-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    $sonuc = _aiEylemOnayla($log_id, $bp);
+    return response()->json(['ok' => 1, 'sonuc' => $sonuc]);
 });
 
 Route::get('/muhasebe-entegrasyon', function () {

@@ -242,6 +242,7 @@
     // ===== MUHASEBE MERKEZİ — başlıklar halinde (yetki haritası süzer; sahip/müdür hepsini görür) =====
     $gruplar['Muhasebe'] = [
         ['/departman-brief?dep=finans', 'wb_sunny', 'Finans / Muhasebe Brifingi', '#F59E0B'],
+        ['/muhasebe-sohbet', 'smart_toy', 'Finans / Muhasebe AI (iş yapar)', '#7C3AED'],
         ['/muhasebe-entegrasyon', 'sync_alt', 'Muhasebe Entegrasyonu (Logo/Netsis)', '#0EA5E9'],
         ['/vergi-takvimi', 'event_available', 'Vergi Takvimi', '#F43F5E'],
         ['/kdv-ozet', 'receipt_long', 'KDV Özeti', '#8B5CF6'],
