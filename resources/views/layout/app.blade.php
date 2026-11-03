@@ -249,7 +249,6 @@
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
             $_yonetim = ['Yönetim' => [
-                ['/departman-brief?dep=ust_yonetim', 'admin_panel_settings', 'Üst Yönetim', '#7C3AED'],
                 ['/departman-brief?dep=operasyon', 'manage_accounts', 'Operasyon Müdürlüğü', '#4F46E5'],
                 ['/departman-brief?dep=ik', 'groups', 'İnsan Kaynakları', '#10B981'],
                 ['/departman-brief?dep=finans', 'account_balance', 'Finans / Muhasebe', '#4F46E5'],
