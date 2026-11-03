@@ -145,11 +145,15 @@
 @if (count($kpis))
 <div class="pai-kpis">
   @foreach ($kpis as $k)
-    @php $kl = $k['link'] ?? null; @endphp
-    <{{ $kl ? 'a' : 'div' }} class="pai-k"@if($kl) href="{{ $kl }}"@endif>
+    @php
+      $kl = $k['link'] ?? null;
+      $tint = $k['tint'] ?? 't-mor';
+      $hx = ['t-rose'=>'#F56A8B','t-green'=>'#2FBE94','t-amber'=>'#F6A623','t-blue'=>'#5B8DEF','t-red'=>'#F5576C','t-mor'=>'#7C3AED'][$tint] ?? '#7C3AED';
+    @endphp
+    <{{ $kl ? 'a' : 'div' }} class="pai-k" style="border-top:3px solid {{ $hx }};background:linear-gradient(170deg,color-mix(in srgb,{{ $hx }} 9%,var(--card)),var(--card) 72%)"@if($kl) href="{{ $kl }}"@endif>
       @if($kl)<span class="material-icons-outlined kgit">chevron_right</span>@endif
-      <div class="kic {{ $k['tint'] ?? 't-mor' }}"><span class="material-icons-outlined">{{ $k['ikon'] }}</span></div>
-      <div class="kbuyuk">{!! $k['deger'] !!}</div>
+      <div class="kic {{ $tint }}"><span class="material-icons-outlined">{{ $k['ikon'] }}</span></div>
+      <div class="kbuyuk" style="color:{{ $hx }}">{!! $k['deger'] !!}</div>
       <div class="ketk">{{ $k['label'] }}</div>
       @if (!empty($k['alt']))<div class="kalt">{{ $k['alt'] }}</div>@endif
     </{{ $kl ? 'a' : 'div' }}>
