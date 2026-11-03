@@ -17615,6 +17615,15 @@ Route::get('/departman-brief', function (Request $r) {
     $demo = $r->query('demo') == '1';
     $veri = $demo ? _departmanBriefDemo($kod) : _departmanBriefVeri($sid, $bp, $kod);
     $veri['demo'] = $demo; $veri['kod'] = $kod;
+    // KPI kartlarını tıklanabilir yap — etikete göre ilgili detay sayfası
+    $kpiLink = [
+        'Bugün işe gelen' => '/ik-vardiya', 'Şu an mesaide' => '/ik-vardiya', 'İşçilik / ciro' => '/personel', 'Bu ay bordro' => '/personel', 'Aktif personel' => '/personel', 'Bekleyen izin' => '/ik-izin', 'Bekleyen avans' => '/ik-izin', 'Eksik özlük' => '/personel', 'Bugün mesaide' => '/ik-vardiya',
+        'Kritik stok' => '/stok', 'Geciken sipariş' => '/satinalma-siparis', 'Gelen teklif' => '/gelen-teklifler', 'Yeni talep' => '/satinalma-talep', 'Bu ay harcama' => '/satinalma-butce',
+        'Bugün ciro' => '/dashboard', 'Bu ay ciro' => '/dashboard', 'Bu ay gider' => '/gider', 'Net (ay)' => '/dashboard', 'Açık adisyon' => '/pos',
+        'Bekleyen ürün' => '/mutfak', 'Bugün hazırlanan' => '/mutfak', 'Kritik malzeme' => '/uretim-riski', 'Fire (bugün)' => '/sayim',
+        'Bugün paket' => '/paket', 'Bugün rezervasyon' => '/rezervasyon', 'Açık görev' => '/dashboard', 'Tamamlanan' => '/dashboard',
+    ];
+    if (!empty($veri['kpis'])) { foreach ($veri['kpis'] as &$_k) { if (empty($_k['link']) && isset($kpiLink[$_k['label'] ?? ''])) $_k['link'] = $kpiLink[$_k['label']]; } unset($_k); }
     return view('departman_brief', $veri);
 });
 

@@ -22,8 +22,13 @@
   .pai-roz{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);color:var(--sub);padding:7px 12px;border-radius:12px;font-size:12px;font-weight:700}
   .pai-roz .material-icons-outlined{font-size:15px}
 
-  .pai-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:11px}
-  .pai-k{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-kpis{display:flex;gap:11px;margin-bottom:11px;overflow-x:auto;padding-bottom:3px}
+  .pai-kpis::-webkit-scrollbar{height:6px} .pai-kpis::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+  .pai-k{flex:1 1 0;min-width:140px;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  a.pai-k{text-decoration:none;color:inherit;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}
+  a.pai-k:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(20,20,50,.09);border-color:var(--mor1)}
+  a.pai-k .kgit{position:absolute;top:9px;right:10px;font-size:15px;color:var(--sub2);opacity:.45}
+  a.pai-k:hover .kgit{color:var(--mor1);opacity:1}
   .pai-k .kic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:7px}
   .pai-k .kic .material-icons-outlined{font-size:19px}
   .pai-k .kbuyuk{font-size:19px;font-weight:800;color:var(--ink);line-height:1;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
@@ -94,10 +99,9 @@
   .pai-vd{font-size:10px;font-weight:800;padding:4px 11px;border-radius:20px;color:#fff;letter-spacing:.5px;margin-left:auto}
   .pai-yorum{font-size:13px;line-height:1.55;color:var(--ink);margin:2px 0 0}
 
-  @media(max-width:1100px){ .pai-kpis{grid-template-columns:repeat(3,1fr)} .pai-analiz-grid{grid-template-columns:1fr} }
+  @media(max-width:1100px){ .pai-analiz-grid{grid-template-columns:1fr} }
   @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} .pai-aiact{grid-template-columns:1fr} }
-  @media(max-width:640px){ .pai-kpis{grid-template-columns:1fr 1fr} .pai-hero-sag{margin-left:0;width:100%} .pai-hero-selam{font-size:19px} }
-  @media(max-width:420px){ .pai-kpis{grid-template-columns:1fr} }
+  @media(max-width:640px){ .pai-hero-sag{margin-left:0;width:100%} .pai-hero-selam{font-size:19px} }
 </style>
 @endpush
 
@@ -140,12 +144,14 @@
 @if (count($kpis))
 <div class="pai-kpis">
   @foreach ($kpis as $k)
-    <div class="pai-k">
+    @php $kl = $k['link'] ?? null; @endphp
+    <{{ $kl ? 'a' : 'div' }} class="pai-k"@if($kl) href="{{ $kl }}"@endif>
+      @if($kl)<span class="material-icons-outlined kgit">chevron_right</span>@endif
       <div class="kic {{ $k['tint'] ?? 't-mor' }}"><span class="material-icons-outlined">{{ $k['ikon'] }}</span></div>
       <div class="kbuyuk">{!! $k['deger'] !!}</div>
       <div class="ketk">{{ $k['label'] }}</div>
       @if (!empty($k['alt']))<div class="kalt">{{ $k['alt'] }}</div>@endif
-    </div>
+    </{{ $kl ? 'a' : 'div' }}>
   @endforeach
 </div>
 @endif
