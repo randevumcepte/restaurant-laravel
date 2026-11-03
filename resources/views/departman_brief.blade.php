@@ -89,7 +89,7 @@
   .pai-task .trot{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px}
   .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:14px 2px 10px}
   .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
-  .pai-analiz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:12px}
+  .pai-analiz-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:12px}
   .pai-an{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .pai-an-bas{display:flex;align-items:center;gap:11px;margin-bottom:9px}
   .pai-an-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
@@ -99,7 +99,8 @@
   .pai-vd{font-size:10px;font-weight:800;padding:4px 11px;border-radius:20px;color:#fff;letter-spacing:.5px;margin-left:auto}
   .pai-yorum{font-size:13px;line-height:1.55;color:var(--ink);margin:2px 0 0}
 
-  @media(max-width:1100px){ .pai-analiz-grid{grid-template-columns:1fr} }
+  @media(max-width:1200px){ .pai-analiz-grid{grid-template-columns:repeat(2,1fr)} }
+  @media(max-width:620px){ .pai-analiz-grid{grid-template-columns:1fr} }
   @media(max-width:900px){ .pai-mid{grid-template-columns:1fr} .pai-task-grid{grid-template-columns:1fr} .pai-aiact{grid-template-columns:1fr} }
   @media(max-width:640px){ .pai-hero-sag{margin-left:0;width:100%} .pai-hero-selam{font-size:19px} }
 </style>
