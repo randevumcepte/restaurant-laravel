@@ -244,6 +244,28 @@
         ['/ajanda', 'event_note', 'Ajanda & Hatırlatıcı', '#4F46E5'],
     ]] + $gruplar;
 
+    // ===== YÖNETİM — otel/zincir restoran yönetim departmanları (her biri kendi brifingine gider). Sadece sahip/müdür görür. =====
+    try {
+        $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
+        if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
+            $_yonetim = ['Yönetim' => [
+                ['/departman-brief?dep=ust_yonetim', 'admin_panel_settings', 'Üst Yönetim', '#7C3AED'],
+                ['/departman-brief?dep=operasyon', 'manage_accounts', 'Operasyon Müdürlüğü', '#4F46E5'],
+                ['/departman-brief?dep=ik', 'groups', 'İnsan Kaynakları', '#10B981'],
+                ['/departman-brief?dep=finans', 'account_balance', 'Finans / Muhasebe', '#4F46E5'],
+                ['/departman-brief?dep=satinalma', 'inventory_2', 'Satın Alma', '#0EA5E9'],
+                ['/departman-brief?dep=pazarlama', 'campaign', 'Pazarlama', '#F43F5E'],
+                ['/departman-brief?dep=satis_etkinlik', 'celebration', 'Satış & Etkinlik', '#A855F7'],
+                ['/departman-brief?dep=crm', 'support_agent', 'Müşteri İlişkileri (CRM)', '#14B8A6'],
+                ['/departman-brief?dep=kalite', 'verified_user', 'Kalite / Denetim', '#16A34A'],
+                ['/departman-brief?dep=it', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
+            ]];
+            $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
+            unset($gruplar['Patron AI']);
+            $gruplar = $_patronAi + $_yonetim + $gruplar; // Patron AI en üstte, hemen altında Yönetim
+        }
+    } catch (\Throwable $e) {}
+
     // ===== SATIN ALMACI'ya ÖZEL MENÜ DÜZENİ =====
     // 1) Üstte 3 standalone büyük link: Özet · AI Asistan · Stok & Satın Alma
     // 2) "İŞLEMLER" grubu: diğer satın alma iş akışları (talep, sipariş, OCR, karne vb.)
