@@ -9638,7 +9638,7 @@ if (!function_exists('_departmanDenetim')) {
             $simdi = $gun->isToday() ? now()->format('H:i:s') : null;
             foreach ($deps as $d) {
                 $r = _departmanRaporVeri($sid, $d->kod ?? '', $gun, $simdi, (int) $d->id);
-                $list[] = ['id' => (int) $d->id, 'ad' => $d->ad, 'grup' => $d->grup, 'renk' => $d->renk, 'ikon' => $d->ikon,
+                $list[] = ['id' => (int) $d->id, 'kod' => $d->kod ?? '', 'ad' => $d->ad, 'grup' => $d->grup, 'renk' => $d->renk, 'ikon' => $d->ikon,
                     'durum' => $r['durum'], 'ozet' => $r['ozet'], 'uyari_say' => count($r['uyari']), 'veri_yok' => $r['veri_yok']];
             }
         } catch (\Throwable $e) {}

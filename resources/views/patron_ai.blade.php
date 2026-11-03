@@ -572,7 +572,10 @@
         </div>
         <div class="doz">{{ \Illuminate\Support\Str::limit($dn['ozet'] ?? '', 70) }}</div>
         <div class="dbar"><i style="width:{{ $dpr }}%;background:{{ $drk }}"></i></div>
-        <a href="/departman-rapor?id={{ $dn['id'] }}" class="dlink">Detayı gör →</a>
+        <div style="display:flex;gap:12px;align-items:center">
+          @if(!empty($dn['kod']))<a href="/departman-brief?dep={{ $dn['kod'] }}" class="dlink">Brifing →</a>@endif
+          <a href="/departman-rapor?id={{ $dn['id'] }}" class="dlink" style="color:var(--sub2)">Rapor →</a>
+        </div>
       </div>
     @endforeach
   </div>
