@@ -436,7 +436,7 @@ Route::post('/pos-giris', function (Request $r) {
         }
     }
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
-    return redirect($hedef ?: ($posSuz ? '/satinalma-brief' : '/pos'));
+    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : '/pos'));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
@@ -2718,7 +2718,7 @@ Route::get('/stok', fn () => view('stok_hub'));
 // Reçeteler (web sayfası) — Flutter recete_screen ile birebir. Ürün maliyeti + food-cost + yarı mamül.
 Route::get('/recete', function () {
     if (function_exists('_posKapi')) { $k = _posKapi(); if ($k) return $k; }
-    try { $_p = _posPersonel(); if ($_p && in_array(($_p->rol ?? ''), ['satinalmaci','satinalma'])) return redirect('/satinalma-brief'); } catch (\Throwable $e) {}
+    try { $_p = _posPersonel(); if ($_p && in_array(($_p->rol ?? ''), ['satinalmaci','satinalma'])) return redirect('/departman-brief?dep=satinalma'); } catch (\Throwable $e) {}
     $urunler = collect(); $malzemeler = collect(); $birimler = collect(); $yarimamuller = collect();
     try {
         $mMap = _restoUrunMaliyetMap();
@@ -16301,7 +16301,7 @@ Route::get('/satinalma-islemleri', function () {
 // ===== SATIN ALMA ÖZETİ (satın almacının kendi verileri — ciro/kâr YOK) =====
 Route::get('/satinalma-ozet', function () {
     // Özet sayfası kaldırıldı — tüm içeriği Satınalma Brifingi'ne taşındı. Eski link/yer imleri kırılmasın diye yönlendirilir.
-    return redirect('/satinalma-brief');
+    return redirect('/departman-brief?dep=satinalma');
 });
 Route::get('/satinalma-ozet-arsiv', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -17089,6 +17089,10 @@ if (!function_exists('_satinalmaKuralCevap')) {
 // ============================ SATIN ALMA SABAH BRIFING ============================
 // Patron-AI brief'in satinalmaya ozel versiyonu: dun ozeti + bugunun gundem + fiyat sinyali + tedarikci + oneriler.
 Route::get('/satinalma-brief', function () {
+    // Satınalma brifingi diğer tüm departmanlarla BİRLEŞTİRİLDİ → ortak patron-stili brifinge yönlendir.
+    return redirect('/departman-brief?dep=satinalma');
+});
+Route::get('/satinalma-brief-arsiv', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();

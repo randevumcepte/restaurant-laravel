@@ -8,7 +8,7 @@
   $_rol = $_pp->rol ?? '';
   $_hedef = match (true) {
     in_array($_rol, ['sahip','mudur','supervizor']) => '/dashboard',
-    in_array($_rol, ['satinalmaci','satinalma'])    => '/satinalma-brief',
+    in_array($_rol, ['satinalmaci','satinalma'])    => '/departman-brief?dep=satinalma',
     $_rol === 'mutfak'                              => '/mutfak',
     $_rol === 'kasa'                                => '/kasa',
     default                                         => '/pos',

@@ -172,7 +172,7 @@
             ['/demirbas', 'chair', 'Demirbaş / Ekipman', '#64748B'],
             ['/satinalma-butce', 'savings', 'Satınalma Bütçe', '#10B981'],
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
-            ['/satinalma-brief', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
+            ['/departman-brief?dep=satinalma', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
@@ -257,7 +257,7 @@
         $_ozetI = null; $_aiI = null; $_stokI = null;
         if (isset($gruplar['Stok & Tedarik'])) {
             $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI, &$_stokI) {
-                if ($it[0] === '/satinalma-brief')   { $_ozetI = $it; return false; }
+                if ($it[0] === '/departman-brief?dep=satinalma')   { $_ozetI = $it; return false; }
                 if ($it[0] === '/satinalma-asistan') { $_aiI  = $it; return false; }
                 if ($it[0] === '/stok')              { $_stokI = $it; return false; }
                 return true;
@@ -320,7 +320,7 @@
                     $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
                         if (!$_pp) return true;
                         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
-                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/departman-brief'])) return true; // herkese açık (kişisel: kendi departman brifingi)
+                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true; // departman brifingi herkese açık (route kendi yetkisini uygular)
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));

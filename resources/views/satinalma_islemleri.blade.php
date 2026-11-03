@@ -11,7 +11,7 @@
       'ad' => 'Günlük Süreç',
       'ikon' => 'play_circle',
       'kartlar' => [
-        ['/satinalma-brief',   'wb_sunny',                'Sabah Brifingi',            'Günün özeti: ne acil, ne gecikti, ne risk — tek ekran',  '#F59E0B'],
+        ['/departman-brief?dep=satinalma', 'wb_sunny',    'Sabah Brifingi',            'Günün özeti: ne acil, ne gecikti, ne risk — tek ekran',  '#F59E0B'],
         ['/siparis-onerisi',   'auto_awesome',            'Otomatik Sipariş Önerisi',  'AI, geçmiş tüketime göre ne sipariş et söyler',          '#8B5CF6'],
         ['/satinalma-talep',   'assignment',              'Satın Alma Talebi',          'Mutfak/depo talebi oluştur, onaya gönder',               '#6366F1'],
         ['/satinalma-siparis', 'shopping_cart_checkout',  'Sipariş İşlemleri',          'Tedarikçiye sipariş geç, PO oluştur, siparişleri yönet', '#4F46E5'],
