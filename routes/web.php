@@ -7772,6 +7772,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/kasa' => 'gor_kasa', '/z-raporu' => 'gor_z_raporu', '/finans' => 'gor_finans', '/gider' => 'gor_gider', '/raporlar' => 'gor_raporlar',
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/muhasebe-entegrasyon' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
+            '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
@@ -26970,6 +26971,197 @@ Route::get('/kar-zarar', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
     return view('kar_zarar', ['d' => _muhasebeDonemVeri(_webSubeId(), request('ay'))]);
+});
+
+// ===== MUHASEBE FAZ 2: Tekrarlayan Gider · Banka · Çek/Senet (yeni tablolar, guard'lı CRUD) =====
+if (!function_exists('_muhasebeEkTablolar')) {
+    function _muhasebeEkTablolar()
+    {
+        if (cache()->get('muhasebe_ek_tablo_ok')) return;
+        try {
+            if (!Schema::hasTable('tekrarlayan_giderler')) Schema::create('tekrarlayan_giderler', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('ad'); $t->string('kategori', 40)->default('diger'); $t->decimal('tutar', 14, 2)->default(0); $t->string('periyot', 10)->default('aylik'); $t->unsignedTinyInteger('gun')->default(1); $t->boolean('aktif')->default(1); $t->timestamps(); });
+            if (!Schema::hasTable('banka_hesaplar')) Schema::create('banka_hesaplar', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('banka_adi'); $t->string('hesap_adi')->nullable(); $t->string('iban', 40)->nullable(); $t->decimal('bakiye', 16, 2)->default(0); $t->string('para_birimi', 6)->default('TRY'); $t->boolean('aktif')->default(1); $t->timestamps(); });
+            if (!Schema::hasTable('banka_hareketler')) Schema::create('banka_hareketler', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->unsignedBigInteger('hesap_id')->index(); $t->date('tarih'); $t->string('tip', 8)->default('giris'); $t->decimal('tutar', 16, 2)->default(0); $t->string('aciklama')->nullable(); $t->timestamps(); });
+            if (!Schema::hasTable('cek_senetler')) Schema::create('cek_senetler', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('tip', 8)->default('cek'); $t->string('yon', 10)->default('alinan'); $t->string('kisi')->nullable(); $t->decimal('tutar', 16, 2)->default(0); $t->date('vade')->nullable(); $t->string('durum', 14)->default('portfoyde'); $t->string('banka')->nullable(); $t->string('no', 40)->nullable(); $t->timestamps(); });
+            cache()->put('muhasebe_ek_tablo_ok', 1, now()->addHours(6));
+        } catch (\Throwable $e) {}
+    }
+}
+// ---- TEKRARLAYAN GİDER ----
+Route::get('/tekrarlayan-gider', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    $liste = DB::table('tekrarlayan_giderler')->where('sube_id', $sid)->orderByDesc('aktif')->orderBy('gun')->get();
+    $aylikTop = (float) $liste->where('aktif', 1)->where('periyot', 'aylik')->sum('tutar');
+    $yillikTop = (float) $liste->where('aktif', 1)->where('periyot', 'yillik')->sum('tutar');
+    return view('tekrarlayan_gider', compact('liste', 'aylikTop', 'yillikTop'));
+});
+Route::post('/tekrarlayan-gider/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    if (trim((string) $r->ad) === '' || (float) $r->tutar <= 0) return redirect('/tekrarlayan-gider')->with('hata', 'Ad ve tutar gerekli.');
+    DB::table('tekrarlayan_giderler')->insert(['sube_id' => $sid, 'ad' => trim($r->ad), 'kategori' => $r->kategori ?: 'diger', 'tutar' => (float) $r->tutar, 'periyot' => in_array($r->periyot, ['aylik', 'yillik']) ? $r->periyot : 'aylik', 'gun' => max(1, min(28, (int) $r->gun)), 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    return redirect('/tekrarlayan-gider')->with('ok', 'Eklendi.');
+});
+Route::post('/tekrarlayan-gider/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    DB::table('tekrarlayan_giderler')->where('id', (int) $r->id)->where('sube_id', $sid)->update(['aktif' => $r->aktif ? 1 : 0, 'updated_at' => now()]);
+    return redirect('/tekrarlayan-gider');
+});
+Route::post('/tekrarlayan-gider/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    DB::table('tekrarlayan_giderler')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+    return redirect('/tekrarlayan-gider')->with('ok', 'Silindi.');
+});
+// ---- BANKA HESAPLARI ----
+Route::get('/banka', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    $hesaplar = DB::table('banka_hesaplar')->where('sube_id', $sid)->orderByDesc('aktif')->get();
+    $toplam = (float) $hesaplar->where('aktif', 1)->sum('bakiye');
+    $sec = (int) request('hesap');
+    $hareketler = $sec ? DB::table('banka_hareketler')->where('sube_id', $sid)->where('hesap_id', $sec)->orderByDesc('tarih')->orderByDesc('id')->limit(50)->get() : collect();
+    return view('banka', compact('hesaplar', 'toplam', 'sec', 'hareketler'));
+});
+Route::post('/banka/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    if (trim((string) $r->banka_adi) === '') return redirect('/banka')->with('hata', 'Banka adı gerekli.');
+    DB::table('banka_hesaplar')->insert(['sube_id' => $sid, 'banka_adi' => trim($r->banka_adi), 'hesap_adi' => $r->hesap_adi, 'iban' => strtoupper(preg_replace('/\s+/', '', (string) $r->iban)), 'bakiye' => (float) $r->bakiye, 'para_birimi' => $r->para_birimi ?: 'TRY', 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    return redirect('/banka')->with('ok', 'Hesap eklendi.');
+});
+Route::post('/banka/hareket', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    $hid = (int) $r->hesap_id; $tutar = (float) $r->tutar; $tip = $r->tip === 'cikis' ? 'cikis' : 'giris';
+    $h = DB::table('banka_hesaplar')->where('id', $hid)->where('sube_id', $sid)->first();
+    if (!$h || $tutar <= 0) return redirect('/banka?hesap=' . $hid)->with('hata', 'Geçerli tutar girin.');
+    DB::table('banka_hareketler')->insert(['sube_id' => $sid, 'hesap_id' => $hid, 'tarih' => $r->tarih ?: now()->toDateString(), 'tip' => $tip, 'tutar' => $tutar, 'aciklama' => $r->aciklama, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('banka_hesaplar')->where('id', $hid)->update(['bakiye' => (float) $h->bakiye + ($tip === 'giris' ? $tutar : -$tutar), 'updated_at' => now()]);
+    return redirect('/banka?hesap=' . $hid)->with('ok', 'Hareket işlendi.');
+});
+Route::post('/banka/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    DB::table('banka_hareketler')->where('hesap_id', (int) $r->id)->where('sube_id', $sid)->delete();
+    DB::table('banka_hesaplar')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+    return redirect('/banka')->with('ok', 'Hesap silindi.');
+});
+// ---- ÇEK / SENET ----
+Route::get('/cek-senet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    $liste = DB::table('cek_senetler')->where('sube_id', $sid)->orderByRaw("durum='portfoyde' DESC")->orderBy('vade')->get();
+    $alacak = (float) $liste->where('yon', 'alinan')->where('durum', 'portfoyde')->sum('tutar');
+    $borc = (float) $liste->where('yon', 'verilen')->where('durum', 'portfoyde')->sum('tutar');
+    return view('cek_senet', compact('liste', 'alacak', 'borc'));
+});
+Route::post('/cek-senet/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    _muhasebeEkTablolar(); $sid = _webSubeId();
+    if ((float) $r->tutar <= 0) return redirect('/cek-senet')->with('hata', 'Tutar gerekli.');
+    DB::table('cek_senetler')->insert(['sube_id' => $sid, 'tip' => $r->tip === 'senet' ? 'senet' : 'cek', 'yon' => $r->yon === 'verilen' ? 'verilen' : 'alinan', 'kisi' => $r->kisi, 'tutar' => (float) $r->tutar, 'vade' => $r->vade ?: null, 'durum' => 'portfoyde', 'banka' => $r->banka, 'no' => $r->no, 'created_at' => now(), 'updated_at' => now()]);
+    return redirect('/cek-senet')->with('ok', 'Eklendi.');
+});
+Route::post('/cek-senet/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $d = in_array($r->durum, ['portfoyde', 'tahsil', 'odendi', 'karsiliksiz', 'ciro']) ? $r->durum : 'portfoyde';
+    DB::table('cek_senetler')->where('id', (int) $r->id)->where('sube_id', $sid)->update(['durum' => $d, 'updated_at' => now()]);
+    return redirect('/cek-senet');
+});
+Route::post('/cek-senet/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    DB::table('cek_senetler')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+    return redirect('/cek-senet')->with('ok', 'Silindi.');
+});
+
+// ===== MUHASEBE FAZ 3-4: Amortisman · Online Komisyon · Beyanname · Bilanço · e-Defter (computed/prep) =====
+Route::get('/amortisman', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $oranMap = ['bilgisayar' => 25, 'yazilim' => 33, 'mobilya' => 20, 'demirbas' => 20, 'ekipman' => 20, 'mutfak' => 20, 'arac' => 20, 'tasit' => 20, 'bina' => 2, 'tesisat' => 10, 'diger' => 20];
+    $rows = collect();
+    try { if (Schema::hasTable('demirbaslar')) $rows = DB::table('demirbaslar')->where('sube_id', $sid)->whereNotNull('alis_bedel')->where('alis_bedel', '>', 0)->orderByDesc('alis_tarih')->get(); } catch (\Throwable $e) {}
+    $liste = $rows->map(function ($d) use ($oranMap) {
+        $kat = strtolower((string) ($d->kategori ?? 'diger'));
+        $oran = $oranMap[$kat] ?? 20;
+        $bedel = (float) $d->alis_bedel;
+        $gecenYil = 0; try { if ($d->alis_tarih) $gecenYil = (int) floor(\Carbon\Carbon::parse($d->alis_tarih)->diffInDays(now()) / 365); } catch (\Throwable $e) {}
+        $yillik = round($bedel * $oran / 100, 2);
+        $birikmis = min($bedel, round($yillik * $gecenYil, 2));
+        $net = round($bedel - $birikmis, 2);
+        return (object) ['ad' => $d->ad, 'kategori' => $d->kategori, 'tarih' => $d->alis_tarih, 'bedel' => $bedel, 'oran' => $oran, 'yillik' => $yillik, 'gecen' => $gecenYil, 'birikmis' => $birikmis, 'net' => $net];
+    });
+    return view('amortisman', ['liste' => $liste, 'topBedel' => $liste->sum('bedel'), 'topNet' => $liste->sum('net'), 'topYillik' => $liste->sum('yillik')]);
+});
+Route::get('/online-komisyon', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    [$ay, $bas, $bit] = _restoAyAralik(request('ay'));
+    $oran = ['yemeksepeti' => 18, 'getir' => 18, 'getiryemek' => 18, 'trendyol' => 18, 'trendyolyemek' => 18, 'migros' => 18, 'migrosyemek' => 18, 'fuudy' => 15];
+    $rows = collect();
+    try {
+        if (Schema::hasColumn('adisyonlar', 'platform')) {
+            $rows = DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'odendi')->whereBetween('kapanis', [$bas, $bit])
+                ->whereNotNull('platform')->where('platform', '!=', '')
+                ->select('platform', DB::raw('COUNT(*) adet'), DB::raw('SUM(toplam) ciro'))->groupBy('platform')->get();
+        }
+    } catch (\Throwable $e) {}
+    $liste = $rows->map(function ($r) use ($oran) {
+        $k = preg_replace('/[^a-z]/', '', mb_strtolower((string) $r->platform, 'UTF-8'));
+        $o = $oran[$k] ?? 15;
+        $kom = round((float) $r->ciro * $o / 100, 2);
+        return (object) ['platform' => $r->platform, 'adet' => (int) $r->adet, 'ciro' => (float) $r->ciro, 'oran' => $o, 'komisyon' => $kom, 'net' => (float) $r->ciro - $kom];
+    });
+    return view('online_komisyon', ['liste' => $liste, 'ay' => $ay, 'topCiro' => $liste->sum('ciro'), 'topKom' => $liste->sum('komisyon'), 'topNet' => $liste->sum('net')]);
+});
+Route::get('/beyanname', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $d = _muhasebeDonemVeri(_webSubeId(), request('ay'));
+    $vt = function_exists('_vergiTakvimi') ? _vergiTakvimi() : [];
+    return view('beyanname', ['d' => $d, 'vt' => $vt]);
+});
+Route::get('/bilanco', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $banka = 0.0; try { if (Schema::hasTable('banka_hesaplar')) $banka = (float) DB::table('banka_hesaplar')->where('sube_id', $sid)->where('aktif', 1)->sum('bakiye'); } catch (\Throwable $e) {}
+    $cekAl = 0.0; $cekVer = 0.0; try { if (Schema::hasTable('cek_senetler')) { $cekAl = (float) DB::table('cek_senetler')->where('sube_id', $sid)->where('yon', 'alinan')->where('durum', 'portfoyde')->sum('tutar'); $cekVer = (float) DB::table('cek_senetler')->where('sube_id', $sid)->where('yon', 'verilen')->where('durum', 'portfoyde')->sum('tutar'); } } catch (\Throwable $e) {}
+    $stok = 0.0; try { if (Schema::hasTable('malzemeler') && Schema::hasColumn('malzemeler', 'guncel_maliyet') && Schema::hasColumn('malzemeler', 'mevcut')) $stok = (float) DB::table('malzemeler')->where('sube_id', $sid)->selectRaw('SUM(COALESCE(mevcut,0)*COALESCE(guncel_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {}
+    if ($stok <= 0) { try { if (Schema::hasTable('malzemeler') && Schema::hasColumn('malzemeler', 'guncel_maliyet')) $stok = (float) DB::table('malzemeler')->selectRaw('SUM(COALESCE(mevcut,0)*COALESCE(guncel_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {} }
+    $demirbasNet = 0.0; try { if (Schema::hasTable('demirbaslar')) $demirbasNet = (float) DB::table('demirbaslar')->where('sube_id', $sid)->sum('alis_bedel'); } catch (\Throwable $e) {}
+    $tedBorc = 0.0; try { if (Schema::hasTable('alis_faturalari')) $tedBorc = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->sum('toplam'); } catch (\Throwable $e) {}
+    $kdvD = _muhasebeDonemVeri($sid, null);
+    $vergiBorc = max(0, (float) ($kdvD['odenecekKDV'] ?? 0));
+    $varliklar = ['Banka' => $banka, 'Çek/senet alacak' => $cekAl, 'Stok (maliyet)' => $stok, 'Demirbaş (brüt)' => $demirbasNet];
+    $borclar = ['Tedarikçi (alış fatura)' => $tedBorc, 'Çek/senet borç' => $cekVer, 'Ödenecek KDV (dönem)' => $vergiBorc];
+    $topVar = array_sum($varliklar); $topBorc = array_sum($borclar); $ozkaynak = $topVar - $topBorc;
+    return view('bilanco', compact('varliklar', 'borclar', 'topVar', 'topBorc', 'ozkaynak'));
+});
+Route::get('/e-defter', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_muhasebeGuard($bp)) return redirect('/pos-giris');
+    $gecmis = collect(); try { if (Schema::hasTable('muhasebe_aktarimlari')) $gecmis = DB::table('muhasebe_aktarimlari')->where('sube_id', _webSubeId())->orderByDesc('id')->limit(12)->get(); } catch (\Throwable $e) {}
+    return view('e_defter', ['gecmis' => $gecmis]);
 });
 
 Route::get('/muhasebe-entegrasyon', function () {
