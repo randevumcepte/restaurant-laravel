@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=11">
+    <link rel="stylesheet" href="/panel-kit.css?v=12">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -497,20 +497,27 @@
         return r.json();
     }
     function rkGrpTog(el){
-        // Baslik tiklaninca grubu sadece AC (toggle yok). Fare menuden cikinca sifirlanir.
+        // Baslik tiklaninca grubu sadece AC (toggle yok). Menuden cikinca sifirlanir.
         el.classList.remove('kapali');
     }
-    // Masaustunde: fare menuden cikinca acik gruplari sifirla (sadece aktif sayfanin grubu acik kalir)
+    // Masaustu mini menu (>=641px): fareyle VEYA dokunmayla ac, ACIK KAL; yalniz fare cikinca / disari dokununca kapat.
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
-        side.addEventListener('mouseleave', function(){
-            if(!window.matchMedia('(min-width:641px)').matches) return; // sadece masaustu hover menusu
+        var mq = window.matchMedia('(min-width:641px)');
+        function ac(){ if(mq.matches) side.classList.add('genis'); }
+        function kapa(){
+            side.classList.remove('genis');
+            // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
             var aktifA = side.querySelector('.rk-grp-body a.aktif');
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
-            side.querySelectorAll('.rk-grp').forEach(function(h){
-                if(h !== aktifGrp) h.classList.add('kapali');
-            });
-        });
+            side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
+        }
+        side.addEventListener('mouseenter', ac);
+        side.addEventListener('mouseleave', function(){ if(mq.matches) kapa(); });
+        // dokunmatik: menuye dokununca ac + acik tut (menu icine tiklamak KAPATMAZ)
+        side.addEventListener('pointerdown', ac);
+        // disari tiklayinca/dokununca kapat
+        document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
