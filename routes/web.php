@@ -23875,7 +23875,7 @@ Route::get('/talep-onaylarim', function () {
     if (!$patron && empty($sorumluDep)) return view('talep_onaylarim', ['talepler' => collect(), 'yetkisiz' => true]);
     $q = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'departman_onay');
     if (!$patron) $q->whereIn('departman_id', $sorumluDep);
-    $talepler = $q->orderByDesc('aciliyet')->orderBy('created_at')->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'not', 'created_at']);
+    $talepler = $q->orderByRaw("CASE WHEN aciliyet='acil' THEN 0 ELSE 1 END")->orderBy('created_at')->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'not', 'created_at']);
     $ids = $talepler->pluck('id')->all();
     $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id', 'miktar', 'birim']) : collect();
     $malAd = DB::table('malzemeler')->pluck('ad', 'id');
