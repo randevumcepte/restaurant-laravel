@@ -504,10 +504,6 @@
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
-        // Dokunmatik tespiti: tek sinyale guvenme (bazi cihazlar hover:hover bildirir) -> 3 sinyali birlestir
-        var dokunmatik = window.matchMedia('(pointer: coarse)').matches
-            || window.matchMedia('(hover: none)').matches
-            || (navigator.maxTouchPoints || 0) > 0;
         function flag(v){ try{ v ? sessionStorage.setItem('rk_menu_genis','1') : sessionStorage.removeItem('rk_menu_genis'); }catch(e){} }
         function ac(){ if(mq.matches) side.classList.add('genis'); }
         function kapa(){
@@ -518,15 +514,28 @@
             side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
         }
         side.addEventListener('pointerenter', ac);
-        side.addEventListener('pointerdown', ac); // menuye dokununca/girince ac
-        // YALNIZ gercek fare cikisinda kapat. Dokunustan dogan sahte mouse/pointer leave'i yok say.
+        side.addEventListener('pointerdown', ac);
+        // Fare menuden cikinca kapat (dokunustan dogan sahte leave'i yok say)
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
-        // menu DISINA dokununca/tiklayinca kapat (menu icine tiklamak KAPATMAZ)
+        // Menu DISINA tiklayinca/dokununca kapat (menu icine tiklamak KAPATMAZ)
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Dokunmatik: menu ACIKKEN bir LINK'e tiklanip sayfa degisecek -> acik durumu hatirla (pointer tipine GUVENME, dogrudan click'te)
-        side.addEventListener('click', function(e){ if(mq.matches && dokunmatik && e.target.closest('a') && side.classList.contains('genis')) flag(true); });
-        // Yeni sayfada: dokunmatikse hatirlanan acik durumu geri uygula (menu ikonlara donmesin)
-        try{ if(mq.matches && dokunmatik && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
+        // Menu ACIKKEN bir LINK'e tiklanip sayfa degisecek -> acik durumu HATIRLA (fare + dokunmatik hepsi)
+        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a') && side.classList.contains('genis')) flag(true); });
+        // Yeni sayfada: hatirlanan acik durumu geri uygula. Boylece tiklayinca menu ikonlara DONMEZ.
+        // Fare :hover sayfa yuklenince yeniden tetiklenmez; biz .genis ile acik getiriyoruz, fare menuden CIKINCA kapanir.
+        try{
+            if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1'){
+                side.classList.add('genis');
+                // Fare zaten menu DISINDAysa (ornegin icerige gecmek istiyorsa) ilk harekette kapat; menu uzerindeyse acik kalir.
+                var ilkHareket = function(e){
+                    if(e.pointerType === 'mouse'){
+                        if(!side.contains(e.target)) kapa();
+                        document.removeEventListener('pointermove', ilkHareket);
+                    }
+                };
+                document.addEventListener('pointermove', ilkHareket);
+            }
+        }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
