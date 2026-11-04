@@ -512,11 +512,11 @@
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
             side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
         }
-        side.addEventListener('mouseenter', ac);
-        side.addEventListener('mouseleave', function(){ if(mq.matches) kapa(); });
-        // dokunmatik: menuye dokununca ac + acik tut (menu icine tiklamak KAPATMAZ)
-        side.addEventListener('pointerdown', ac);
-        // disari tiklayinca/dokununca kapat
+        side.addEventListener('pointerenter', ac);
+        side.addEventListener('pointerdown', ac); // dokunmatik: menuye dokununca ac + acik tut
+        // YALNIZ gercek fare cikisinda kapat. Dokunustan dogan sahte mouse/pointer leave'i yok say.
+        side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
+        // dokunmatikte: menu DISINA dokununca/tiklayinca kapat (menu icine tiklamak KAPATMAZ)
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
