@@ -500,8 +500,7 @@
         // Baslik tiklaninca AC/KAPA (normal akordiyon toggle)
         el.classList.toggle('kapali');
     }
-    // Masaustu mini menu (>=641px): menu bir kez ACILINCA ACIK KALIR (sayfa degisse/fare oynasa da).
-    // KAPANMA SADECE: menu DISINA (icerige) tiklayinca. Tiklamak/fare oynatmak menuyu KAPATMAZ.
+    // Masaustu mini menu (>=641px): menuye gelince acilir, ACIK KALIR (sayfa degisince de), FARE MENUDEN CIKINCA oto kapanir.
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
@@ -514,13 +513,26 @@
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
             side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
         }
-        // Menuye gelince / dokununca / icine tiklayinca: ac ve ACIK TUT
         side.addEventListener('pointerenter', ac);
         side.addEventListener('pointerdown', ac);
-        // SADECE menu DISINA tiklayinca kapat (icerige gecis). Menu icine / linke tiklamak KAPATMAZ. Fare cikinca da KAPATMAZ.
+        // FARE menuden cikinca OTO KAPAN (dokunustan dogan sahte leave'i yok say)
+        side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
+        // menu DISINA tiklayinca/dokununca da kapat
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
         // Yeni sayfada: acik durumu geri uygula (linke tiklayip sayfa degisince menu ikonlara DONMEZ)
-        try{ if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
+        try{
+            if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1'){
+                side.classList.add('genis');
+                // Fare zaten menu DISINDAysa ilk harekette oto kapat (icerige gecis); menu uzerindeyse acik kalir, cikinca pointerleave kapatir.
+                var ilkHareket = function(e){
+                    if(e.pointerType === 'mouse'){
+                        if(!side.contains(e.target)) kapa();
+                        document.removeEventListener('pointermove', ilkHareket);
+                    }
+                };
+                document.addEventListener('pointermove', ilkHareket);
+            }
+        }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
