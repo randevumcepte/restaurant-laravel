@@ -326,30 +326,23 @@
         ['/it-destek?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
         ['/app-yonetim', 'qr_code_2', 'App / QR Menü', '#EC4899'],
     ];
-    // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
+    // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
+        ['/patron-ai?gm=1', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
         ['/ajanda', 'event_note', 'Ajanda & Hatırlatıcı', '#4F46E5'],
     ]] + $gruplar;
 
-    // ===== YÖNETİM — otel/zincir restoran yönetim departmanları (her biri kendi brifingine gider). Sadece sahip/müdür görür. =====
+    // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
-            $_yonetim = ['Yönetim' => [
-                ['/patron-ai?gm=1', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
-                ['/departman-brief?dep=ik', 'groups', 'İnsan Kaynakları', '#10B981'],
-                ['/departman-brief?dep=finans', 'account_balance', 'Finans / Muhasebe', '#4F46E5'],
-                ['/departman-brief?dep=satinalma', 'inventory_2', 'Satın Alma', '#0EA5E9'],
-                ['/departman-brief?dep=pazarlama', 'campaign', 'Pazarlama', '#F43F5E'],
-                ['/departman-brief?dep=satis_etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
-                ['/departman-brief?dep=crm', 'support_agent', 'CRM / Müşteri İlişkileri', '#14B8A6'],
-                ['/departman-brief?dep=kalite', 'verified_user', 'Kalite / HACCP', '#16A34A'],
-                ['/departman-brief?dep=it', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
-            ]];
+            $_deptSira = ['İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
-            $gruplar = $_patronAi + $_yonetim + $gruplar; // Patron AI en üstte, hemen altında Yönetim
+            $_dept = [];
+            foreach ($_deptSira as $_d) { if (isset($gruplar[$_d])) { $_dept[$_d] = $gruplar[$_d]; unset($gruplar[$_d]); } }
+            $gruplar = $_patronAi + $_dept + $gruplar; // Patron AI + departman akordiyonları en üstte, altında operasyon grupları
         }
     } catch (\Throwable $e) {}
 
@@ -440,7 +433,7 @@
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));
-                    $grupAktif = collect($gorunur)->contains(fn ($it) => $it[0] === '/' ? $path === '/' : \Illuminate\Support\Str::startsWith($path, $it[0]));
+                    $grupAktif = collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
                 @endphp
                 @if ($grupAd === '__PIN__' && count($gorunur))
                     {{-- SATIN ALMACI: üstte 3 standalone büyük link (grup değil) --}}
