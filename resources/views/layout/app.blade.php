@@ -150,7 +150,7 @@
             ['/fix-menu', 'dinner_dining', 'Fix Menü', '#8B5CF6'],
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
-        'Stok & Tedarik' => [
+        'Satın Alma' => [
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/uretim-plani', 'calculate', 'Üretim Planı → Malzeme', '#10B981'],
@@ -188,7 +188,7 @@
             ['/raporlar', 'bar_chart', 'Raporlar', null],
             ['/z-raporu', 'summarize', 'Z Raporu', null],
         ],
-        'Personel' => [
+        'İnsan Kaynakları' => [
             ['/personel', 'badge', 'Personel & Maaş', null],
             ['/puantaj', 'schedule', 'Puantaj', null],
             ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
@@ -217,18 +217,18 @@
     ];
     // DEPARTMAN + BİLDİRİM (additif, flag ile). gor_personel yetkisi olan departmanı görür; bildirim herkese açık.
     if (config('services.resteos.departman_acik', true)) {
-        $gruplar['Personel'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
+        $gruplar['İnsan Kaynakları'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
         $gruplar['Ayarlar & Entegrasyon'][] = ['/bildirim-ayar', 'notifications_active', 'Bildirim Ayarları', '#0EA5E9'];
     }
     // PROFİLİM — her roldeki personele görünür (kişisel bilgi + PIN + oturum). herkese açık (bildirim-ayar gibi).
     $gruplar['Ayarlar & Entegrasyon'][] = ['/profilim', 'account_circle', 'Profilim', '#7C3AED'];
     // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
     if (config('services.resteos.ik_acik', true)) {
-        array_unshift($gruplar['Personel'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
-        $gruplar['Personel'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
-        $gruplar['Personel'][] = ['/ik-risk', 'crisis_alert', 'Risk Radarı', '#F97316'];
-        $gruplar['Personel'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
-        $gruplar['Personel'][] = ['/ik-aday', 'how_to_reg', 'İşe Alım / Aday Havuzu', '#10B981'];
+        array_unshift($gruplar['İnsan Kaynakları'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
+        $gruplar['İnsan Kaynakları'][] = ['/ik-vardiya', 'calendar_month', 'Vardiya Planlama', '#10B981'];
+        $gruplar['İnsan Kaynakları'][] = ['/ik-risk', 'crisis_alert', 'Risk Radarı', '#F97316'];
+        $gruplar['İnsan Kaynakları'][] = ['/ik-izin', 'event_available', 'İzin Yönetimi', '#10B981'];
+        $gruplar['İnsan Kaynakları'][] = ['/ik-aday', 'how_to_reg', 'İşe Alım / Aday Havuzu', '#10B981'];
     }
     // DEPARTMAN AI ASİSTANLARI (PREMIUM — gor_ai_asistan + departman yetkisi olana). Menüde AI yetkisine göre süzülür.
     if (config('services.resteos.ai_asistan', true)) {
@@ -240,7 +240,7 @@
     if (isset($gruplar['Kasa & Finans'])) $gruplar['Kasa & Finans'][] = ['/departman-brief?dep=finans', 'wb_sunny', 'Finans Sabah Brifingi', '#F59E0B'];
 
     // ===== MUHASEBE MERKEZİ — başlıklar halinde (yetki haritası süzer; sahip/müdür hepsini görür) =====
-    $gruplar['Muhasebe'] = [
+    $gruplar['Finans / Muhasebe'] = [
         ['/departman-brief?dep=finans', 'wb_sunny', 'Finans / Muhasebe Brifingi', '#F59E0B'],
         ['/muhasebe-sohbet', 'smart_toy', 'Finans / Muhasebe AI (iş yapar)', '#7C3AED'],
         ['/muhasebe-entegrasyon', 'sync_alt', 'Muhasebe Entegrasyonu (Logo/Netsis)', '#0EA5E9'],
@@ -343,8 +343,8 @@
                 ['/departman-brief?dep=satinalma', 'inventory_2', 'Satın Alma', '#0EA5E9'],
                 ['/departman-brief?dep=pazarlama', 'campaign', 'Pazarlama', '#F43F5E'],
                 ['/departman-brief?dep=satis_etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
-                ['/departman-brief?dep=crm', 'support_agent', 'Müşteri İlişkileri (CRM)', '#14B8A6'],
-                ['/departman-brief?dep=kalite', 'verified_user', 'Kalite / Denetim', '#16A34A'],
+                ['/departman-brief?dep=crm', 'support_agent', 'CRM / Müşteri İlişkileri', '#14B8A6'],
+                ['/departman-brief?dep=kalite', 'verified_user', 'Kalite / HACCP', '#16A34A'],
                 ['/departman-brief?dep=it', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
             ]];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
@@ -364,8 +364,8 @@
         if (isset($gruplar['Menü & Ürünler'])) unset($gruplar['Menü & Ürünler']);
 
         $_ozetI = null; $_aiI = null; $_stokI = null;
-        if (isset($gruplar['Stok & Tedarik'])) {
-            $gruplar['Stok & Tedarik'] = array_values(array_filter($gruplar['Stok & Tedarik'], function ($it) use (&$_ozetI, &$_aiI, &$_stokI) {
+        if (isset($gruplar['Satın Alma'])) {
+            $gruplar['Satın Alma'] = array_values(array_filter($gruplar['Satın Alma'], function ($it) use (&$_ozetI, &$_aiI, &$_stokI) {
                 if ($it[0] === '/departman-brief?dep=satinalma')   { $_ozetI = $it; return false; }
                 if ($it[0] === '/satinalma-asistan') { $_aiI  = $it; return false; }
                 if ($it[0] === '/stok')              { $_stokI = $it; return false; }
@@ -384,10 +384,10 @@
         if ($_stokI) $_pin[] = $_stokI;
         if ($_pin) $_yeni['__PIN__'] = $_pin;
 
-        if (isset($gruplar['Stok & Tedarik']) && count($gruplar['Stok & Tedarik']) > 0) {
-            $_yeni['İşlemler'] = $gruplar['Stok & Tedarik'];
+        if (isset($gruplar['Satın Alma']) && count($gruplar['Satın Alma']) > 0) {
+            $_yeni['İşlemler'] = $gruplar['Satın Alma'];
         }
-        unset($gruplar['Stok & Tedarik']);
+        unset($gruplar['Satın Alma']);
 
         $_dept = $gruplar['Departman Operasyon'] ?? null;
         unset($gruplar['Departman Operasyon']);
