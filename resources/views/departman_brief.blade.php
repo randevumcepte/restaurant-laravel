@@ -22,9 +22,9 @@
   .pai-roz{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);color:var(--sub);padding:7px 12px;border-radius:12px;font-size:12px;font-weight:700}
   .pai-roz .material-icons-outlined{font-size:15px}
 
-  .pai-kpis{display:flex;gap:11px;margin-bottom:11px;overflow-x:auto;padding-bottom:3px}
-  .pai-kpis::-webkit-scrollbar{height:6px} .pai-kpis::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
-  .pai-k{flex:1 1 0;min-width:140px;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:11px}
+  @media(max-width:560px){ .pai-kpis{grid-template-columns:repeat(2,1fr)} }
+  .pai-k{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   a.pai-k{text-decoration:none;color:inherit;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}
   a.pai-k:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(20,20,50,.09);border-color:var(--mor1)}
   a.pai-k .kgit{position:absolute;top:9px;right:10px;font-size:15px;color:var(--sub2);opacity:.45}
@@ -37,6 +37,7 @@
   .pai-k .kalt{font-size:10px;color:var(--sub);margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   .pai-mid{display:grid;grid-template-columns:1.72fr 1fr;gap:12px;margin-bottom:12px;align-items:start}
+  .pai-mid>*{min-width:0}
   .pai-card,.pai-aipanel{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:14px 15px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .pai-aipanel{background:linear-gradient(170deg,color-mix(in srgb,var(--mor1) 6%,var(--card)),var(--card) 60%);border-color:color-mix(in srgb,var(--mor1) 18%,var(--line))}
   .pai-card-head{display:flex;align-items:center;gap:9px;margin-bottom:11px}
@@ -51,7 +52,7 @@
   .pai-task .tmid{flex:1;min-width:0}
   .pai-task .trot{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px}
   .pai-task .tbas{font-size:12px;font-weight:700;color:var(--ink);line-height:1.25;margin-top:3px}
-  .pai-task .talt{font-size:10px;color:var(--sub);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pai-task .talt{font-size:10px;color:var(--sub);margin-top:1px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
   .pai-task .tbtn{flex:none;border:0;border-radius:9px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7B5CFA,#6A49F2);color:#fff;text-decoration:none;white-space:nowrap}
 
   .pai-aipanel .ust{display:flex;align-items:center;gap:10px;margin-bottom:9px}
