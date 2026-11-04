@@ -138,7 +138,7 @@
             ['/teknik', 'build', 'Teknik Servis / Bakım', '#F97316'],
             ['/it-destek', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
             ['/bulasik', 'wash', 'Bulaşıkhane / Steward', '#06B6D4'],
-            ['/etkinlik', 'celebration', 'Satış / Etkinlik', '#A855F7'],
+            ['/etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
         ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
@@ -280,9 +280,9 @@
     ];
 
     // ===== SATIŞ & ETKİNLİK MERKEZİ — başlıklar =====
-    $gruplar['Satış & Etkinlik'] = [
-        ['/departman-brief?dep=satis_etkinlik', 'wb_sunny', 'Satış/Etkinlik Brifingi', '#F59E0B'],
-        ['/satis-sohbet', 'smart_toy', 'Satış AI (iş yapar)', '#A855F7'],
+    $gruplar['Rezervasyon Satış'] = [
+        ['/departman-brief?dep=satis_etkinlik', 'wb_sunny', 'Rezervasyon Satış Brifingi', '#F59E0B'],
+        ['/satis-sohbet', 'smart_toy', 'Rezervasyon Satış AI (iş yapar)', '#A855F7'],
         ['/rezervasyon', 'event_available', 'Rezervasyonlar', '#A855F7'],
         ['/etkinlik-takvim', 'celebration', 'Etkinlik / Grup Takvimi', '#0EA5E9'],
         ['/depozito', 'payments', 'Depozito / Kapora', '#10B981'],
@@ -317,7 +317,7 @@
                 ['/departman-brief?dep=finans', 'account_balance', 'Finans / Muhasebe', '#4F46E5'],
                 ['/departman-brief?dep=satinalma', 'inventory_2', 'Satın Alma', '#0EA5E9'],
                 ['/departman-brief?dep=pazarlama', 'campaign', 'Pazarlama', '#F43F5E'],
-                ['/departman-brief?dep=satis_etkinlik', 'celebration', 'Satış & Etkinlik', '#A855F7'],
+                ['/departman-brief?dep=satis_etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
                 ['/departman-brief?dep=crm', 'support_agent', 'Müşteri İlişkileri (CRM)', '#14B8A6'],
                 ['/departman-brief?dep=kalite', 'verified_user', 'Kalite / Denetim', '#16A34A'],
                 ['/departman-brief?dep=it', 'dns', 'IT / Bilgi İşlem', '#6366F1'],

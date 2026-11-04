@@ -2273,7 +2273,7 @@ Route::get('/satis-sohbet', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!_satisGuard($bp)) return redirect('/pos-giris');
     return view('departman_asistan', [
-        'baslik' => 'Satış / Rezervasyon AI', 'selam' => 'Rezervasyon, doluluk, no-show, etkinlik — sor; gerekirse hazırlığı bildirip işini bitireyim.',
+        'baslik' => 'Rezervasyon Satış AI', 'selam' => 'Rezervasyon, doluluk, no-show, etkinlik — sor; gerekirse hazırlığı bildirip işini bitireyim.',
         'hizli' => [
             ['Bugünü hazırlığa bildir', 'Bugünkü rezervasyonları hazırla', 'event_available', '#A855F7', 'garson+mutfak'],
             ['No-show takip', 'No-show takibi yap', 'event_busy', '#F43F5E', 'son 30 gün'],
@@ -2283,7 +2283,7 @@ Route::get('/satis-sohbet', function () {
             ['Boş günü doldur', 'Boş günü doldurmak istiyorum', 'bolt', '#F59E0B', 'kampanya'],
         ],
         'sorUrl' => '/api/satis-asistan/sor', 'uygulaUrl' => '/api/satis-asistan/uygula',
-        'ekParam' => (object) [], 'placeholder' => 'Satış AI’a sor… (ör. bugünü hazırlığa bildir, doluluk ne)',
+        'ekParam' => (object) [], 'placeholder' => 'Rezervasyon Satış AI’a sor… (ör. bugünü hazırlığa bildir, doluluk ne)',
     ]);
 });
 Route::post('/api/satis-asistan/sor', function (Request $r) {
@@ -8706,7 +8706,7 @@ if (!function_exists('_departmanSablonlari')) {
             'pazarlama' => ['ad' => 'Pazarlama / Sosyal Medya', 'grup' => 'İdari Ofis', 'ikon' => 'campaign', 'renk' => '#F43F5E', 'ai' => 'kisitli',
                 'unvan' => ['Pazarlama Müdürü', 'Sosyal Medya Uzmanı', 'İçerik Editörü'], 'sorumlu_ek' => ['gor_raporlar'],
                 'sayfa' => ['gor_app_yonetim', 'gor_indirimler', 'gor_odul_raporu', 'gor_whatsapp', 'gor_menu']],
-            'satis_etkinlik' => ['ad' => 'Satış / Rezervasyon & Etkinlik', 'grup' => 'İdari Ofis', 'ikon' => 'celebration', 'renk' => '#A855F7', 'ai' => 'kisitli',
+            'satis_etkinlik' => ['ad' => 'Rezervasyon Satış', 'grup' => 'İdari Ofis', 'ikon' => 'celebration', 'renk' => '#A855F7', 'ai' => 'kisitli',
                 'unvan' => ['Satış Müdürü', 'Etkinlik Koordinatörü', 'Rezervasyon Uzmanı'], 'sorumlu_ek' => ['gor_raporlar'],
                 'sayfa' => ['gor_rezervasyon', 'gor_cari', 'gor_raporlar', 'gor_masa_yonetim']],
             'crm' => ['ad' => 'CRM / Müşteri İlişkileri', 'grup' => 'İdari Ofis', 'ikon' => 'support_agent', 'renk' => '#14B8A6', 'ai' => 'kisitli',
@@ -18038,7 +18038,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -18325,7 +18325,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -26506,7 +26506,7 @@ $depIsSayfalar = [
     'teknik'    => ['kod' => 'teknik', 'baslik' => 'Teknik Servis / Bakım-Onarım', 'ikon' => 'build', 'renk' => '#F97316', 'yetki' => 'gor_bagli_cihaz'],
     'it-destek' => ['kod' => 'it', 'baslik' => 'IT / Bilgi İşlem', 'ikon' => 'dns', 'renk' => '#6366F1', 'yetki' => 'gor_bagli_cihaz'],
     'bulasik'   => ['kod' => 'bulasik', 'baslik' => 'Bulaşıkhane / Steward', 'ikon' => 'wash', 'renk' => '#06B6D4', 'yetki' => 'gor_mutfak'],
-    'etkinlik'  => ['kod' => 'satis_etkinlik', 'baslik' => 'Satış / Etkinlik', 'ikon' => 'celebration', 'renk' => '#A855F7', 'yetki' => 'gor_rezervasyon'],
+    'etkinlik'  => ['kod' => 'satis_etkinlik', 'baslik' => 'Rezervasyon Satış', 'ikon' => 'celebration', 'renk' => '#A855F7', 'yetki' => 'gor_rezervasyon'],
 ];
 foreach ($depIsSayfalar as $url => $cfg) {
     Route::get('/' . $url, function () use ($cfg) { return view('departman_is', $cfg); });
