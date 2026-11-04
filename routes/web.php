@@ -9135,7 +9135,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
             '/kalite' => 'gor_stok', '/kalite-sohbet' => 'gor_stok', '/kalite-kayit' => 'gor_stok', '/alerjen' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/it-sohbet' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
 
-            '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
+            '/mutfak' => 'gor_mutfak', '/mutfak-defteri' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
             '/yazici-ayarlari' => 'gor_yazici', '/bagli-cihazlar' => 'gor_bagli_cihaz', '/isletme-konum' => 'gor_isletme_konum',
             '/sebep-yonetimi' => 'gor_sebep', '/odeme-ayar' => 'gor_odeme_ayar', '/copilot' => 'gor_copilot',
@@ -18821,7 +18821,7 @@ if (!function_exists('_departmanBriefVeri')) {
             if ($sktGecen === 0 && $sktYaklasan > 0) { $isler[] = ['ikon' => 'schedule', 'renk' => '#F59E0B', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktYaklasan parti 7 gün içinde doluyor", 'aciklama' => 'Önce bunları kullan (FEFO)', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; }
             if ($rezKisi > 0) { $isler[] = ['ikon' => 'event_seat', 'renk' => '#0EA5E9', 'grup' => 'HAZIRLIK', 'baslik' => "Bugün $rezKisi kuver bekleniyor", 'aciklama' => 'Rezervasyona göre prep / mise en place planla', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Rezervasyonlar']]; }
 
-            $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi'], ['url' => '/parti-takip', 'ikon' => 'event_busy', 'lbl' => 'SKT / Parti'], ['url' => '/recete', 'ikon' => 'menu_book', 'lbl' => 'Reçeteler'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
+            $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/mutfak-defteri', 'ikon' => 'menu_book', 'lbl' => 'Kontrol Defteri'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi'], ['url' => '/parti-takip', 'ikon' => 'event_busy', 'lbl' => 'SKT / Parti'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
 
             // ---- Detaylı analiz ----
             $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => $bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi'), 'yorum' => ($bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz.') . ($rezKisi > 0 ? " Bugün $rezKisi kuver bekleniyor — prep'i buna göre ayarla." : ($bekle > 0 ? '' : ' 👍'))];
@@ -23944,6 +23944,81 @@ Route::get('/reddedilen-talepler', function () {
     foreach ($kalemRows as $k) { $kalemMap[$k->talep_id][] = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); }
     $talepler = $talepler->map(function ($t) use ($kalemMap) { $arr = $kalemMap[$t->id] ?? []; $t->kalem_ozet = implode(', ', array_slice($arr, 0, 4)) . (count($arr) > 4 ? ' +' . (count($arr) - 4) : ''); return $t; });
     return view('reddedilen_talepler', ['talepler' => $talepler]);
+});
+// ===== MUTFAK KONTROL DEFTERİ — Sıcaklık(HACCP) / Fire / Açılış-Kapanış / Prep-Par (tek tablo, sekmeli) =====
+if (!function_exists('_mutfakDefterEnsure')) {
+    function _mutfakDefterEnsure()
+    {
+        if (cache()->get('resto_mutfak_defter_ok')) return;
+        try {
+            if (!Schema::hasTable('mutfak_kayitlari')) {
+                Schema::create('mutfak_kayitlari', function ($t) {
+                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
+                    $t->string('tip', 20)->index();      // sicaklik|fire|checklist|prep
+                    $t->string('kategori', 40)->nullable();
+                    $t->string('baslik', 200);
+                    $t->string('deger', 60)->nullable();
+                    $t->string('deger2', 60)->nullable();
+                    $t->string('sonuc', 20)->nullable();  // uygun|uygunsuz|yapildi
+                    $t->string('birim', 20)->nullable();
+                    $t->date('tarih')->nullable();
+                    $t->unsignedBigInteger('personel_id')->nullable();
+                    $t->string('personel_ad', 120)->nullable();
+                    $t->text('not')->nullable();
+                    $t->timestamps();
+                    $t->index(['sube_id', 'tip', 'tarih']);
+                });
+            }
+            cache()->put('resto_mutfak_defter_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+Route::get('/mutfak-defteri', function (Request $r) {
+    _mutfakDefterEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $tipler = ['sicaklik' => 'Sıcaklık (HACCP)', 'fire' => 'Fire / İsraf', 'checklist' => 'Açılış / Kapanış', 'prep' => 'Prep / Par'];
+    $tip = in_array($r->query('tip'), array_keys($tipler)) ? $r->query('tip') : 'sicaklik';
+    $liste = DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('tip', $tip)->orderByDesc('id')->limit(200)->get();
+    return view('mutfak_defteri', compact('tip', 'tipler', 'liste'));
+});
+Route::post('/mutfak-defteri/ekle', function (Request $r) {
+    _mutfakDefterEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $tip = in_array($r->input('tip'), ['sicaklik', 'fire', 'checklist', 'prep']) ? $r->input('tip') : 'sicaklik';
+    $baslik = trim((string) $r->input('baslik', ''));
+    if ($baslik === '') return redirect('/mutfak-defteri?tip=' . $tip)->with('hata', 'Başlık zorunlu.');
+    $deger = trim((string) $r->input('deger', '')); $deger2 = trim((string) $r->input('deger2', ''));
+    $sonuc = null;
+    if ($tip === 'sicaklik' && $deger !== '' && $deger2 !== '' && is_numeric($deger) && is_numeric($deger2)) {
+        $sonuc = ((float) $deger <= (float) $deger2) ? 'uygun' : 'uygunsuz'; // ölçülen <= üst limit => uygun
+    } elseif ($tip === 'checklist') { $sonuc = 'yapildi'; }
+    try {
+        DB::table('mutfak_kayitlari')->insert([
+            'sube_id' => $sid, 'tip' => $tip,
+            'kategori' => mb_substr(trim((string) $r->input('kategori', '')), 0, 40) ?: null,
+            'baslik' => mb_substr($baslik, 0, 200),
+            'deger' => mb_substr($deger, 0, 60) ?: null, 'deger2' => mb_substr($deger2, 0, 60) ?: null,
+            'sonuc' => $sonuc, 'birim' => mb_substr(trim((string) $r->input('birim', '')), 0, 20) ?: null,
+            'tarih' => ($r->filled('tarih') && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih'))) ? $r->input('tarih') : now()->toDateString(),
+            'personel_id' => $bp->id ?? null, 'personel_ad' => $bp->ad ?? null,
+            'not' => $r->filled('not') ? mb_substr((string) $r->input('not'), 0, 300) : null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    } catch (\Throwable $e) { return redirect('/mutfak-defteri?tip=' . $tip)->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/mutfak-defteri?tip=' . $tip)->with('ok', 'Kayıt eklendi.');
+});
+Route::post('/mutfak-defteri/sil', function (Request $r) {
+    _mutfakDefterEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $tip = in_array($r->input('tip'), ['sicaklik', 'fire', 'checklist', 'prep']) ? $r->input('tip') : 'sicaklik';
+    try { DB::table('mutfak_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/mutfak-defteri?tip=' . $tip)->with('ok', 'Silindi.');
 });
 Route::get('/api/patron/talep-detay', function (Request $r) {
     _satinalmaTalepEnsure();

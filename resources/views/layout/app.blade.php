@@ -301,6 +301,7 @@
         ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Brifingi', '#F59E0B'],
         ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'],
         ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
+        ['/mutfak-defteri', 'menu_book', 'Kontrol Defteri (HACCP/Fire/Prep)', '#16A34A'],
     ];
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
