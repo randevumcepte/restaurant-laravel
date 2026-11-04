@@ -504,9 +504,11 @@
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
-        function ac(){ if(mq.matches) side.classList.add('genis'); }
+        var touch = window.matchMedia('(hover: none)'); // dokunmatik (gercek hover yok)
+        function flag(v){ try{ v ? sessionStorage.setItem('rk_menu_genis','1') : sessionStorage.removeItem('rk_menu_genis'); }catch(e){} }
+        function ac(){ if(mq.matches){ side.classList.add('genis'); if(touch.matches) flag(true); } }
         function kapa(){
-            side.classList.remove('genis');
+            side.classList.remove('genis'); flag(false);
             // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
             var aktifA = side.querySelector('.rk-grp-body a.aktif');
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
@@ -518,6 +520,8 @@
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
         // dokunmatikte: menu DISINA dokununca/tiklayinca kapat (menu icine tiklamak KAPATMAZ)
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
+        // Dokunmatikte: alt baslik linkine basip sayfa degisince menu ACIK kalsin (yeni sayfada geri ac)
+        try{ if(mq.matches && touch.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
