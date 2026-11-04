@@ -519,20 +519,9 @@
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
         // menu DISINA tiklayinca/dokununca da kapat
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Yeni sayfada: acik durumu geri uygula (linke tiklayip sayfa degisince menu ikonlara DONMEZ)
-        try{
-            if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1'){
-                side.classList.add('genis');
-                // Fare zaten menu DISINDAysa ilk harekette oto kapat (icerige gecis); menu uzerindeyse acik kalir, cikinca pointerleave kapatir.
-                var ilkHareket = function(e){
-                    if(e.pointerType === 'mouse'){
-                        if(!side.contains(e.target)) kapa();
-                        document.removeEventListener('pointermove', ilkHareket);
-                    }
-                };
-                document.addEventListener('pointermove', ilkHareket);
-            }
-        }catch(e){}
+        // Yeni sayfada: acik durumu geri uygula -> link'e tiklayip sayfa degisince menu ACIK GELIR (ikonlara DONMEZ).
+        // Fare menunun uzerindeyse acik kalir; fare menuden CIKINCA pointerleave kapatir. (Zorla kapatan ilkHareket KALDIRILDI.)
+        try{ if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
