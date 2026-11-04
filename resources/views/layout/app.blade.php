@@ -254,6 +254,7 @@
     $gruplar['Rezervasyon Satış'] = [
         ['/departman-brief?dep=satis_etkinlik', 'wb_sunny', 'Rezervasyon Satış Brifingi', '#F59E0B'],
         ['/satis-sohbet', 'smart_toy', 'Rezervasyon Satış AI (iş yapar)', '#A855F7'],
+        ['/rezervasyon', 'event_available', 'Rezervasyonlar', '#A855F7'],
         ['/etkinlik-takvim', 'celebration', 'Etkinlik / Grup Takvimi', '#0EA5E9'],
         ['/depozito', 'payments', 'Depozito / Kapora', '#10B981'],
         ['/masa-yonetim', 'grid_view', 'Masa Yönetimi', '#4F46E5'],
