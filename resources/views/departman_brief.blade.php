@@ -115,7 +115,24 @@
   $saat = (int) now()->format('H');
   $selam = $saat < 11 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
   $adK = $ad ? trim(explode(' ', trim($ad))[0]) : '';
+  // DEPARTMAN SORUMLUSU: onayını bekleyen satın alma talepleri (varsa üstte uyarı)
+  $__onayN = 0;
+  try {
+    $__sid2 = function_exists('_webSubeId') ? _webSubeId() : null;
+    $__bp2 = function_exists('_posPersonel') ? _posPersonel() : null;
+    if ($__bp2 && $__sid2 && function_exists('_sorumluDepartmanIdleri')) {
+      $__sd = _sorumluDepartmanIdleri($__sid2, $__bp2->id ?? 0);
+      if ($__sd) $__onayN = (int) \Illuminate\Support\Facades\DB::table('satinalma_talepleri')->where('sube_id', $__sid2)->where('durum', 'departman_onay')->whereIn('departman_id', $__sd)->count();
+    }
+  } catch (\Throwable $e) {}
 @endphp
+@if($__onayN > 0)
+<a href="/talep-onaylarim" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;text-decoration:none;border-radius:14px;padding:13px 16px;margin-bottom:12px;font-weight:700;box-shadow:0 8px 20px rgba(245,158,11,.28)">
+  <span class="material-icons-outlined">fact_check</span>
+  <span><b>{{ $__onayN }}</b> satın alma talebi senin onayını bekliyor</span>
+  <span class="material-icons-outlined" style="margin-left:auto">chevron_right</span>
+</a>
+@endif
 
 {{-- ============ HERO ============ --}}
 <div class="pai-hero">

@@ -150,6 +150,8 @@
         'Satın Alma' => [
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
+            ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B'],
+            ['/reddedilen-talepler', 'block', 'Reddedilen Talepler', '#F43F5E'],
             ['/uretim-plani', 'calculate', 'Üretim Planı → Malzeme', '#10B981'],
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],

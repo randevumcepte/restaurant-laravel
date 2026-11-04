@@ -9146,7 +9146,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
             // '/wa-hatlar' HARİTASIZ: her personel kendi hattını bağlayabilsin (route içinde login + sahiplik kontrolü; menüde herkese-açık listede)
-            '/satinalma-talep' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + üretim planı = stok; reçeteler + happy hour = menü alanı
+            '/satinalma-talep' => 'gor_stok', '/talep-onaylarim' => 'gor_stok', '/reddedilen-talepler' => 'gor_stok', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + onay/red + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
             '/tedarikci-karne' => 'gor_stok', '/fatura-ocr' => 'gor_stok', '/satinalma-butce' => 'gor_stok', '/satinalma-ozet' => 'gor_stok', '/tedarikci-yaslandirma' => 'gor_stok', '/satinalma-onay-seviye' => 'gor_stok', '/mustahsil' => 'gor_stok', '/fiyat-anlasmalari' => 'gor_stok', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
@@ -23429,6 +23429,72 @@ if (!function_exists('_satinalmaTalepEnsure')) {
         } catch (\Throwable $e) {}
     }
 }
+// ===== DEPARTMAN ONAY AKIŞI (talep → departman sorumlusu onay/red → satın alma) =====
+// Ek kolonlar: departman_id, red_sebep, karar_veren_id/ad, karar_at (additif, guard'lı)
+if (!function_exists('_talepOnayEnsure')) {
+    function _talepOnayEnsure()
+    {
+        if (cache()->get('resto_talep_onay_ensure_ok')) return;
+        try {
+            foreach ([
+                ['departman_id', fn ($t) => $t->unsignedBigInteger('departman_id')->nullable()],
+                ['red_sebep', fn ($t) => $t->text('red_sebep')->nullable()],
+                ['karar_veren_id', fn ($t) => $t->unsignedBigInteger('karar_veren_id')->nullable()],
+                ['karar_veren_ad', fn ($t) => $t->string('karar_veren_ad', 120)->nullable()],
+                ['karar_at', fn ($t) => $t->timestamp('karar_at')->nullable()],
+            ] as [$col, $cb]) {
+                if (Schema::hasTable('satinalma_talepleri') && !Schema::hasColumn('satinalma_talepleri', $col)) Schema::table('satinalma_talepleri', $cb);
+            }
+            cache()->put('resto_talep_onay_ensure_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+// Bir personelin departmanı + o departmanda sorumlu mu? ['id','ad','sorumlu'=>bool]
+if (!function_exists('_talepDepartmanBilgi')) {
+    function _talepDepartmanBilgi($sid, $pid)
+    {
+        try {
+            if ($pid && Schema::hasTable('personel_departman') && Schema::hasTable('departmanlar')) {
+                $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
+                    ->where('pd.personel_id', (int) $pid)->where('pd.sube_id', (int) $sid)
+                    ->select('d.id', 'd.ad', 'pd.sorumlu')->first();
+                if ($pd) return ['id' => (int) $pd->id, 'ad' => (string) $pd->ad, 'sorumlu' => (int) $pd->sorumlu === 1];
+            }
+        } catch (\Throwable $e) {}
+        return ['id' => null, 'ad' => null, 'sorumlu' => false];
+    }
+}
+// Bir departmanın SORUMLU personel id'leri (onaylayabilecekler)
+if (!function_exists('_departmanSorumluIdleri')) {
+    function _departmanSorumluIdleri($sid, $depId)
+    {
+        try {
+            if ($depId && Schema::hasTable('personel_departman'))
+                return DB::table('personel_departman')->where('sube_id', (int) $sid)->where('departman_id', (int) $depId)->where('sorumlu', 1)->pluck('personel_id')->map(fn ($x) => (int) $x)->all();
+        } catch (\Throwable $e) {}
+        return [];
+    }
+}
+// Bu personel şu talebi departman sorumlusu sıfatıyla onaylayabilir mi?
+if (!function_exists('_talepOnayYetki')) {
+    function _talepOnayYetki($p, $talep, $sid)
+    {
+        if (in_array(($p->rol ?? ''), ['sahip', 'mudur'])) return true;
+        $depId = (int) ($talep->departman_id ?? 0);
+        return $depId && in_array((int) ($p->id ?? 0), _departmanSorumluIdleri($sid, $depId), true);
+    }
+}
+// Bu personelin onaylayabileceği (sorumlu olduğu) departman id'leri
+if (!function_exists('_sorumluDepartmanIdleri')) {
+    function _sorumluDepartmanIdleri($sid, $pid)
+    {
+        try {
+            if ($pid && Schema::hasTable('personel_departman'))
+                return DB::table('personel_departman')->where('sube_id', (int) $sid)->where('personel_id', (int) $pid)->where('sorumlu', 1)->pluck('departman_id')->map(fn ($x) => (int) $x)->all();
+        } catch (\Throwable $e) {}
+        return [];
+    }
+}
 // Kritik seviyedeki malzemeler (proaktif izleme) — önerilen sipariş miktarıyla
 if (!function_exists('_kritikStokListesi')) {
     function _kritikStokListesi($sid)
@@ -23662,6 +23728,7 @@ Route::get('/satinalma-talep', function () {
     $kritikler = $satinalmaci ? _kritikStokListesi($sid) : [];
     $q = DB::table('satinalma_talepleri')->where('sube_id', $sid);
     if (!$satinalmaci) $q->where('isteyen_id', $pp->id ?? 0);
+    else $q->whereNotIn('durum', ['departman_onay', 'reddedildi']); // sorumlu onayı bekleyenler + reddedilenler ayrı sayfalarda
     $talepler = $q->orderByDesc('created_at')->limit(200)
         ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at']);
     // Kalem özeti + tahmini tutar (tek sorguda, N+1 yok)
@@ -23710,10 +23777,21 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
     $kalemler = $r->input('kalemler', []);
     if (is_string($kalemler)) $kalemler = json_decode($kalemler, true) ?: []; // mobil app JSON-string yollar
     if (empty($kalemler) || !is_array($kalemler)) return response()->json(['ok' => false, 'mesaj' => 'En az bir kalem gerekli.']);
+    _talepOnayEnsure();
+    // DEPARTMAN ONAYI: ÜYE (sorumlu değil) talep açarsa önce kendi departman sorumlusuna düşer; sorumlu/sahip/müdür/satınalmacı direkt satın almaya gider
+    $rolT = $p->rol ?? '';
+    $depOnay = false; $depId = null;
+    if (!in_array($rolT, ['sahip', 'mudur', 'satinalmaci'])) {
+        $bilgi = _talepDepartmanBilgi($sid, $p->id ?? 0);
+        if ($bilgi['id'] && !$bilgi['sorumlu']) {
+            $sorumlular = array_values(array_filter(_departmanSorumluIdleri($sid, $bilgi['id']), fn ($x) => $x !== (int) ($p->id ?? 0)));
+            if (!empty($sorumlular)) { $depOnay = true; $depId = $bilgi['id']; if ($bilgi['ad']) $dept = $bilgi['ad']; }
+        }
+    }
     $talepId = DB::table('satinalma_talepleri')->insertGetId([
-        'sube_id' => $sid, 'departman' => mb_substr($dept, 0, 80),
+        'sube_id' => $sid, 'departman' => mb_substr($dept, 0, 80), 'departman_id' => $depId,
         'isteyen_id' => $p->id ?? null, 'isteyen_ad' => $p->ad ?? 'Panel',
-        'aciliyet' => $aciliyet, 'durum' => 'yeni', 'not' => $r->filled('not') ? mb_substr((string) $r->input('not'), 0, 500) : null,
+        'aciliyet' => $aciliyet, 'durum' => $depOnay ? 'departman_onay' : 'yeni', 'not' => $r->filled('not') ? mb_substr((string) $r->input('not'), 0, 500) : null,
         'created_at' => now(), 'updated_at' => now(),
     ]);
     foreach ($kalemler as $k) {
@@ -23726,25 +23804,107 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
-    // Satın almaya bildirim (WhatsApp, best-effort — ayar yoksa/sessizce atlanır, akış kırılmaz)
-    try {
-        $tel = resto_ayar_al('satinalma_wa_tel_' . $sid, null);
-        if ($tel && function_exists('_restoWaGonder')) {
-            $ks = DB::table('talep_kalemleri')->where('talep_id', $talepId)->count();
-            $acilMetin = $aciliyet === 'acil' ? '🔴 ACİL ' : '';
-            $msg = $acilMetin . "Yeni satın alma talebi\n🏷️ " . $dept . " departmanı\n👤 " . ($p->ad ?? 'Panel') . "\n📦 " . $ks . " kalem\nPanelden incele: Satın Alma Talepleri";
-            _restoWaGonder($sid, $tel, $msg);
-        }
-    } catch (\Throwable $e) {}
-    // Uygulama-içi push (ikili bildirim): şubedeki cihazlara — satın almacı/patron görür
-    try {
-        if (function_exists('_fcmSubeyeGonder')) {
-            $ks = DB::table('talep_kalemleri')->where('talep_id', $talepId)->count();
-            $baslik = ($aciliyet === 'acil' ? '🔴 ACİL satın alma talebi' : '🛒 Yeni satın alma talebi');
-            _fcmSubeyeGonder($sid, $baslik, $dept . ' · ' . $ks . ' kalem · ' . ($p->ad ?? 'Panel'), ['tur' => 'satinalma_talep', 'id' => (string) $talepId]);
-        }
-    } catch (\Throwable $e) {}
+    $ksSay = DB::table('talep_kalemleri')->where('talep_id', $talepId)->count();
+    if ($depOnay) {
+        // Departman sorumlusuna: onayını bekleyen talep (sorumlu brifinginde + /talep-onaylarim'da görür)
+        try {
+            if (function_exists('_fcmSubeyeGonder')) {
+                $baslik = ($aciliyet === 'acil' ? '🔴 ACİL onay bekleyen talep' : '🔔 Onay bekleyen talep');
+                _fcmSubeyeGonder($sid, $baslik, $dept . ' · ' . $ksSay . ' kalem · ' . ($p->ad ?? 'Panel') . ' (sorumlu onayı gerekiyor)', ['tur' => 'talep_onay', 'id' => (string) $talepId]);
+            }
+        } catch (\Throwable $e) {}
+    } else {
+        // Satın almaya bildirim (WhatsApp, best-effort — ayar yoksa/sessizce atlanır, akış kırılmaz)
+        try {
+            $tel = resto_ayar_al('satinalma_wa_tel_' . $sid, null);
+            if ($tel && function_exists('_restoWaGonder')) {
+                $acilMetin = $aciliyet === 'acil' ? '🔴 ACİL ' : '';
+                $msg = $acilMetin . "Yeni satın alma talebi\n🏷️ " . $dept . " departmanı\n👤 " . ($p->ad ?? 'Panel') . "\n📦 " . $ksSay . " kalem\nPanelden incele: Satın Alma Talepleri";
+                _restoWaGonder($sid, $tel, $msg);
+            }
+        } catch (\Throwable $e) {}
+        // Uygulama-içi push (ikili bildirim): şubedeki cihazlara — satın almacı/patron görür
+        try {
+            if (function_exists('_fcmSubeyeGonder')) {
+                $baslik = ($aciliyet === 'acil' ? '🔴 ACİL satın alma talebi' : '🛒 Yeni satın alma talebi');
+                _fcmSubeyeGonder($sid, $baslik, $dept . ' · ' . $ksSay . ' kalem · ' . ($p->ad ?? 'Panel'), ['tur' => 'satinalma_talep', 'id' => (string) $talepId]);
+            }
+        } catch (\Throwable $e) {}
+    }
     return response()->json(['ok' => true, 'id' => $talepId]);
+});
+// DEPARTMAN SORUMLUSU: talebi ONAYLA (→ satın alma havuzuna düşer)
+Route::post('/satinalma-talep/dept-onayla', function (Request $r) {
+    _satinalmaTalepEnsure(); _talepOnayEnsure();
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => false], 401);
+    $sid = _webSubeId(); $id = (int) $r->input('id');
+    $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$t || $t->durum !== 'departman_onay') return response()->json(['ok' => false, 'mesaj' => 'Talep onay durumunda değil.']);
+    if (!_talepOnayYetki($p, $t, $sid)) return response()->json(['ok' => false, 'mesaj' => 'Bu talebi onaylama yetkiniz yok.'], 403);
+    DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'yeni', 'karar_veren_id' => $p->id ?? null, 'karar_veren_ad' => $p->ad ?? null, 'karar_at' => now(), 'updated_at' => now()]);
+    try {
+        $ksSay = DB::table('talep_kalemleri')->where('talep_id', $id)->count();
+        $tel = resto_ayar_al('satinalma_wa_tel_' . $sid, null);
+        if ($tel && function_exists('_restoWaGonder')) _restoWaGonder($sid, $tel, "Onaylı satın alma talebi\n🏷️ " . ($t->departman ?? '') . "\n📦 " . $ksSay . " kalem\n✅ Onaylayan: " . ($p->ad ?? '') . "\nPanelden incele: Satın Alma Talepleri");
+        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '✅ Talep onaylandı', ($t->departman ?? '') . ' · ' . $ksSay . ' kalem · onaylayan ' . ($p->ad ?? ''), ['tur' => 'satinalma_talep', 'id' => (string) $id]);
+    } catch (\Throwable $e) {}
+    return response()->json(['ok' => true]);
+});
+// DEPARTMAN SORUMLUSU: talebi REDDET (sebep ZORUNLU → reddedilenler kaydında kalır)
+Route::post('/satinalma-talep/dept-reddet', function (Request $r) {
+    _satinalmaTalepEnsure(); _talepOnayEnsure();
+    $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => false], 401);
+    $sid = _webSubeId(); $id = (int) $r->input('id');
+    $sebep = trim((string) $r->input('sebep', ''));
+    if (mb_strlen($sebep) < 3) return response()->json(['ok' => false, 'mesaj' => 'Red sebebi zorunludur (en az 3 karakter).']);
+    $t = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $sid)->first();
+    if (!$t || $t->durum !== 'departman_onay') return response()->json(['ok' => false, 'mesaj' => 'Talep onay durumunda değil.']);
+    if (!_talepOnayYetki($p, $t, $sid)) return response()->json(['ok' => false, 'mesaj' => 'Bu talebi reddetme yetkiniz yok.'], 403);
+    DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'reddedildi', 'red_sebep' => mb_substr($sebep, 0, 500), 'karar_veren_id' => $p->id ?? null, 'karar_veren_ad' => $p->ad ?? null, 'karar_at' => now(), 'updated_at' => now()]);
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🚫 Talebiniz reddedildi', ($t->departman ?? '') . ' talebi — sebep: ' . mb_substr($sebep, 0, 80), ['tur' => 'talep_red', 'id' => (string) $id]); } catch (\Throwable $e) {}
+    return response()->json(['ok' => true]);
+});
+// ONAY BEKLEYENLER — departman sorumlusunun (ve sahip/müdürün) onay kutusu
+Route::get('/talep-onaylarim', function () {
+    _satinalmaTalepEnsure(); _talepOnayEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $patron = in_array(($bp->rol ?? ''), ['sahip', 'mudur']);
+    $sorumluDep = _sorumluDepartmanIdleri($sid, $bp->id ?? 0);
+    if (!$patron && empty($sorumluDep)) return view('talep_onaylarim', ['talepler' => collect(), 'yetkisiz' => true]);
+    $q = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'departman_onay');
+    if (!$patron) $q->whereIn('departman_id', $sorumluDep);
+    $talepler = $q->orderByDesc('aciliyet')->orderBy('created_at')->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'not', 'created_at']);
+    $ids = $talepler->pluck('id')->all();
+    $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id', 'miktar', 'birim']) : collect();
+    $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $kalemMap = [];
+    foreach ($kalemRows as $k) { $ad = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); $kalemMap[$k->talep_id][] = $ad . ' — ' . rtrim(rtrim(number_format((float) $k->miktar, 2, '.', ''), '0'), '.') . ' ' . $k->birim; }
+    $talepler = $talepler->map(function ($t) use ($kalemMap) { $t->kalemler = $kalemMap[$t->id] ?? []; return $t; });
+    return view('talep_onaylarim', ['talepler' => $talepler, 'yetkisiz' => false]);
+});
+// REDDEDİLEN TALEPLER — kayıt (sebep + kim reddetti)
+Route::get('/reddedilen-talepler', function () {
+    _satinalmaTalepEnsure(); _talepOnayEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $patron = in_array(($bp->rol ?? ''), ['sahip', 'mudur', 'satinalmaci']);
+    $sorumluDep = _sorumluDepartmanIdleri($sid, $bp->id ?? 0);
+    $q = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'reddedildi');
+    if (!$patron) $q->where(function ($w) use ($bp, $sorumluDep) {
+        $w->where('isteyen_id', $bp->id ?? 0);
+        if (!empty($sorumluDep)) $w->orWhereIn('departman_id', $sorumluDep);
+    });
+    $talepler = $q->orderByDesc('karar_at')->limit(300)->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'red_sebep', 'karar_veren_ad', 'karar_at', 'created_at']);
+    $ids = $talepler->pluck('id')->all();
+    $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id']) : collect();
+    $malAd = DB::table('malzemeler')->pluck('ad', 'id');
+    $kalemMap = [];
+    foreach ($kalemRows as $k) { $kalemMap[$k->talep_id][] = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); }
+    $talepler = $talepler->map(function ($t) use ($kalemMap) { $arr = $kalemMap[$t->id] ?? []; $t->kalem_ozet = implode(', ', array_slice($arr, 0, 4)) . (count($arr) > 4 ? ' +' . (count($arr) - 4) : ''); return $t; });
+    return view('reddedilen_talepler', ['talepler' => $talepler]);
 });
 Route::get('/api/patron/talep-detay', function (Request $r) {
     _satinalmaTalepEnsure();
