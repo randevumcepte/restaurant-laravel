@@ -500,14 +500,14 @@
         // Baslik tiklaninca AC/KAPA (normal akordiyon toggle)
         el.classList.toggle('kapali');
     }
-    // Masaustu mini menu (>=641px): menuye gelince acilir, ACIK KALIR (sayfa degisince de), FARE MENUDEN CIKINCA oto kapanir.
+    // Masaustu mini menu (>=641px): menuye gelince acilir; FARE MENUDEN CIKINCA kapanir.
+    // Bir LINK'e tiklayinca yeni sayfada menu ACIK gelir (tek-seferlik isaret; fare hareketinden BAGIMSIZ).
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
-        function flag(v){ try{ v ? sessionStorage.setItem('rk_menu_genis','1') : sessionStorage.removeItem('rk_menu_genis'); }catch(e){} }
-        function ac(){ if(mq.matches){ side.classList.add('genis'); flag(true); } }      // ac + sayfalar arasi hatirla
+        function ac(){ if(mq.matches) side.classList.add('genis'); }
         function kapa(){
-            side.classList.remove('genis'); flag(false);
+            side.classList.remove('genis');
             // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
             var aktifA = side.querySelector('.rk-grp-body a.aktif');
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
@@ -515,13 +515,14 @@
         }
         side.addEventListener('pointerenter', ac);
         side.addEventListener('pointerdown', ac);
-        // FARE menuden cikinca OTO KAPAN (dokunustan dogan sahte leave'i yok say)
+        // FARE menuden cikinca kapat (dokunustan dogan sahte leave'i yok say)
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
-        // menu DISINA tiklayinca/dokununca da kapat
+        // menu DISINA tiklayinca/dokununca kapat
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Yeni sayfada: acik durumu geri uygula -> link'e tiklayip sayfa degisince menu ACIK GELIR (ikonlara DONMEZ).
-        // Fare menunun uzerindeyse acik kalir; fare menuden CIKINCA pointerleave kapatir. (Zorla kapatan ilkHareket KALDIRILDI.)
-        try{ if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
+        // Menudeki bir LINK'e tiklayinca: "yeni sayfada acik gel" tek-seferlik isaret (fare hareketi bunu SILMEZ)
+        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a')){ try{ sessionStorage.setItem('rk_menu_nav_acik','1'); }catch(_){} } });
+        // Yeni sayfada: isaret varsa menu ACIK gelsin ve isareti TUKET (tek sefer). Fare ustundeyse acik kalir, cikinca pointerleave kapatir.
+        try{ if(mq.matches && sessionStorage.getItem('rk_menu_nav_acik')==='1'){ sessionStorage.removeItem('rk_menu_nav_acik'); side.classList.add('genis'); } }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
