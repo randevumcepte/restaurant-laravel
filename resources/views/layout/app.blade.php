@@ -497,21 +497,21 @@
         return r.json();
     }
     function rkGrpTog(el){
-        el.classList.toggle('kapali');
-        try{
-            var a = JSON.parse(localStorage.getItem('rk_grp_acik')||'[]');
-            var ad = el.getAttribute('data-grp'); var i = a.indexOf(ad);
-            if(el.classList.contains('kapali')){ if(i>=0) a.splice(i,1); } // kapandi
-            else if(i<0){ a.push(ad); } // acildi
-            localStorage.setItem('rk_grp_acik', JSON.stringify(a));
-        }catch(e){}
+        // Baslik tiklaninca grubu sadece AC (toggle yok). Fare menuden cikinca sifirlanir.
+        el.classList.remove('kapali');
     }
-    (function(){ try{ // varsayilan KAPALI; daha once elle acilan gruplari geri ac (aktif grup zaten acik)
-        var a = JSON.parse(localStorage.getItem('rk_grp_acik')||'[]');
-        document.querySelectorAll('.rk-grp').forEach(function(h){
-            if(a.indexOf(h.getAttribute('data-grp'))>=0){ h.classList.remove('kapali'); }
+    // Masaustunde: fare menuden cikinca acik gruplari sifirla (sadece aktif sayfanin grubu acik kalir)
+    (function(){
+        var side = document.getElementById('rkSide'); if(!side) return;
+        side.addEventListener('mouseleave', function(){
+            if(!window.matchMedia('(min-width:641px)').matches) return; // sadece masaustu hover menusu
+            var aktifA = side.querySelector('.rk-grp-body a.aktif');
+            var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
+            side.querySelectorAll('.rk-grp').forEach(function(h){
+                if(h !== aktifGrp) h.classList.add('kapali');
+            });
         });
-    }catch(e){} })();
+    })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
         var menu = document.querySelector('.rk-menu'); if(!menu) return;
