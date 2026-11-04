@@ -210,8 +210,9 @@
 <style>
   .crz-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:14px 2px 10px}
   .crz-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
-  .crz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-  @media(max-width:900px){.crz-grid{grid-template-columns:1fr}}
+  .crz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;align-items:start}
+  @media(max-width:1100px){.crz-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:720px){.crz-grid{grid-template-columns:1fr}}
   .crz-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .crz-ch{display:flex;align-items:center;gap:9px;margin-bottom:11px}
   .crz-ch .material-icons-outlined{font-size:19px}
@@ -268,9 +269,8 @@
       <div class="crz-bos">Son 3 günde sonuçsuz/kaçan çağrı yok. 👍</div>
     @endforelse
   </div>
-</div>
-{{-- Bugünün rezervasyonları (kanal rozetli) --}}
-<div class="crz-card crz-full">
+  {{-- Bugünün rezervasyonları (kanal rozetli) --}}
+  <div class="crz-card">
   <div class="crz-ch"><span class="material-icons-outlined" style="color:#A855F7">event_available</span><span class="b">Bugünün rezervasyonları</span><span class="cnt" style="background:color-mix(in srgb,#A855F7 13%,transparent);color:#A855F7">{{ count($cz['bugun'] ?? []) }}</span><a href="/rezervasyon" style="margin-left:8px;font-size:11px;font-weight:700;color:var(--mor1);text-decoration:none">Tümü →</a></div>
   @forelse (($cz['bugun'] ?? []) as $b)
     <div class="crz-r">
@@ -282,6 +282,7 @@
   @empty
     <div class="crz-bos">Bugün rezervasyon yok. Boş günü doldurma kampanyası düşünebilirsin.</div>
   @endforelse
+  </div>
 </div>
 @endif
 
