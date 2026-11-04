@@ -89,8 +89,9 @@
   .pai-task .trot{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:20px}
   .pai-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:14px 2px 10px}
   .pai-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
-  .pai-analiz-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:12px}
-  .pai-an{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .pai-analiz-grid{display:flex;gap:11px;margin-bottom:12px;overflow-x:auto;padding-bottom:3px}
+  .pai-analiz-grid::-webkit-scrollbar{height:6px} .pai-analiz-grid::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+  .pai-an{flex:1 1 0;min-width:200px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
   .pai-an-bas{display:flex;align-items:center;gap:11px;margin-bottom:9px}
   .pai-an-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
   .pai-an-ic .material-icons-outlined{font-size:21px}
