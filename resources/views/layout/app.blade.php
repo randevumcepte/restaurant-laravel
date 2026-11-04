@@ -497,15 +497,16 @@
         return r.json();
     }
     function rkGrpTog(el){
-        // Baslik tiklaninca grubu sadece AC (toggle yok). Menuden cikinca sifirlanir.
-        el.classList.remove('kapali');
+        // Baslik tiklaninca AC/KAPA (normal akordiyon toggle)
+        el.classList.toggle('kapali');
     }
-    // Masaustu mini menu (>=641px): fareyle VEYA dokunmayla ac, ACIK KAL; yalniz fare cikinca / disari dokununca kapat.
+    // Masaustu mini menu (>=641px): menu bir kez ACILINCA ACIK KALIR (sayfa degisse/fare oynasa da).
+    // KAPANMA SADECE: menu DISINA (icerige) tiklayinca. Tiklamak/fare oynatmak menuyu KAPATMAZ.
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
         function flag(v){ try{ v ? sessionStorage.setItem('rk_menu_genis','1') : sessionStorage.removeItem('rk_menu_genis'); }catch(e){} }
-        function ac(){ if(mq.matches) side.classList.add('genis'); }
+        function ac(){ if(mq.matches){ side.classList.add('genis'); flag(true); } }      // ac + sayfalar arasi hatirla
         function kapa(){
             side.classList.remove('genis'); flag(false);
             // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
@@ -513,30 +514,13 @@
             var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
             side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
         }
+        // Menuye gelince / dokununca / icine tiklayinca: ac ve ACIK TUT
         side.addEventListener('pointerenter', ac);
         side.addEventListener('pointerdown', ac);
-        // Fare menuden cikinca kapat (dokunustan dogan sahte leave'i yok say)
-        side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
-        // Menu DISINA tiklayinca/dokununca kapat (menu icine tiklamak KAPATMAZ)
+        // SADECE menu DISINA tiklayinca kapat (icerige gecis). Menu icine / linke tiklamak KAPATMAZ. Fare cikinca da KAPATMAZ.
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Menudeki bir LINK'e tiklanip sayfa degisecek -> acik durumu KOSULSUZ hatirla.
-        // (.genis kosulu koymuyoruz: menu bazen sadece :hover ile acik olur, pointerenter tetiklenmeyince .genis eklenmez; o zaman bayrak kurulmaz -> tutarsizlik)
-        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a')) flag(true); });
-        // Yeni sayfada: hatirlanan acik durumu geri uygula. Boylece tiklayinca menu ikonlara DONMEZ.
-        // Fare :hover sayfa yuklenince yeniden tetiklenmez; biz .genis ile acik getiriyoruz, fare menuden CIKINCA kapanir.
-        try{
-            if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1'){
-                side.classList.add('genis');
-                // Fare zaten menu DISINDAysa (ornegin icerige gecmek istiyorsa) ilk harekette kapat; menu uzerindeyse acik kalir.
-                var ilkHareket = function(e){
-                    if(e.pointerType === 'mouse'){
-                        if(!side.contains(e.target)) kapa();
-                        document.removeEventListener('pointermove', ilkHareket);
-                    }
-                };
-                document.addEventListener('pointermove', ilkHareket);
-            }
-        }catch(e){}
+        // Yeni sayfada: acik durumu geri uygula (linke tiklayip sayfa degisince menu ikonlara DONMEZ)
+        try{ if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
