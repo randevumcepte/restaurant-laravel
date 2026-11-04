@@ -519,8 +519,9 @@
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
         // Menu DISINA tiklayinca/dokununca kapat (menu icine tiklamak KAPATMAZ)
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Menu ACIKKEN bir LINK'e tiklanip sayfa degisecek -> acik durumu HATIRLA (fare + dokunmatik hepsi)
-        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a') && side.classList.contains('genis')) flag(true); });
+        // Menudeki bir LINK'e tiklanip sayfa degisecek -> acik durumu KOSULSUZ hatirla.
+        // (.genis kosulu koymuyoruz: menu bazen sadece :hover ile acik olur, pointerenter tetiklenmeyince .genis eklenmez; o zaman bayrak kurulmaz -> tutarsizlik)
+        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a')) flag(true); });
         // Yeni sayfada: hatirlanan acik durumu geri uygula. Boylece tiklayinca menu ikonlara DONMEZ.
         // Fare :hover sayfa yuklenince yeniden tetiklenmez; biz .genis ile acik getiriyoruz, fare menuden CIKINCA kapanir.
         try{
