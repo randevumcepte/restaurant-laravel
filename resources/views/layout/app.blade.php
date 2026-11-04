@@ -179,28 +179,10 @@
             ['/eposta-hesaplari', 'alternate_email', 'E-posta Hesapları (RFQ)', '#7C3AED'],
             ['/gelen-teklifler', 'mark_email_read', 'Gelen Teklifler (AI)', '#10B981'],
         ],
-        'Kasa & Finans' => [
-            ['/kasa', 'account_balance', 'Kasa (Vardiya)', null],
-            ['/finans', 'analytics', 'Finans / Kâr-Zarar', null],
-            ['/gider', 'receipt_long', 'Giderler', null],
-            ['/cari', 'account_balance_wallet', 'Cari / Açık Hesaplar', null],
-            ['/muhasebe', 'account_balance', 'Muhasebe / Cari', null],
-            ['/raporlar', 'bar_chart', 'Raporlar', null],
-            ['/z-raporu', 'summarize', 'Z Raporu', null],
-        ],
         'İnsan Kaynakları' => [
             ['/personel', 'badge', 'Personel & Maaş', null],
             ['/puantaj', 'schedule', 'Puantaj', null],
             ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
-        ],
-        'Sadakat & Müşteri' => [
-            ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
-            ['/kampanya', 'campaign', 'AI Kampanya', '#EC4899'],
-            ['/social-media', 'share', 'AI Sosyal Medya', '#EC4899'],
-            ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
-            ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
-            ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
-            ['/personel-yemek', 'lunch_dining', 'Personel Yemeği', '#F59E0B'],
         ],
         'Ayarlar & Entegrasyon' => [
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
@@ -233,16 +215,17 @@
     // DEPARTMAN AI ASİSTANLARI (PREMIUM — gor_ai_asistan + departman yetkisi olana). Menüde AI yetkisine göre süzülür.
     if (config('services.resteos.ai_asistan', true)) {
         $gruplar['Panel'][] = ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'];
-        $gruplar['Kasa & Finans'][] = ['/departman-asistan?dep=finans', 'account_balance', 'Finans AI Asistanı', '#4F46E5'];
     }
     // DEPARTMAN SABAH BRİFİNGLERİ — her departman kendi verisiyle (patron ?dep ile görür; departman personeli üstteki "Sabah Brifingim"den kendisininkine girer)
     $gruplar['Panel'][] = ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Sabah Brifingi', '#F59E0B'];
-    if (isset($gruplar['Kasa & Finans'])) $gruplar['Kasa & Finans'][] = ['/departman-brief?dep=finans', 'wb_sunny', 'Finans Sabah Brifingi', '#F59E0B'];
 
     // ===== MUHASEBE MERKEZİ — başlıklar halinde (yetki haritası süzer; sahip/müdür hepsini görür) =====
     $gruplar['Finans / Muhasebe'] = [
         ['/departman-brief?dep=finans', 'wb_sunny', 'Finans / Muhasebe Brifingi', '#F59E0B'],
         ['/muhasebe-sohbet', 'smart_toy', 'Finans / Muhasebe AI (iş yapar)', '#7C3AED'],
+        ['/kasa', 'account_balance', 'Kasa (Vardiya)', '#0EA5E9'],
+        ['/finans', 'analytics', 'Finans / Kâr-Zarar (özet)', '#10B981'],
+        ['/raporlar', 'bar_chart', 'Raporlar', '#4F46E5'],
         ['/muhasebe-entegrasyon', 'sync_alt', 'Muhasebe Entegrasyonu (Logo/Netsis)', '#0EA5E9'],
         ['/vergi-takvimi', 'event_available', 'Vergi Takvimi', '#F43F5E'],
         ['/kdv-ozet', 'receipt_long', 'KDV Özeti', '#8B5CF6'],
@@ -300,6 +283,13 @@
         ['/musteri-360?seg=kayip', 'person_off', 'Kayıp Müşteriler', '#F5576C'],
         ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet / Şikayet', '#10B981'],
         ['/sadakat', 'loyalty', 'Sadakat / Puan', '#EC4899'],
+        ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
+        ['/kampanya', 'campaign', 'AI Kampanya', '#EC4899'],
+        ['/social-media', 'share', 'AI Sosyal Medya', '#EC4899'],
+        ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
+        ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
+        ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
+        ['/personel-yemek', 'lunch_dining', 'Personel Yemeği', '#F59E0B'],
     ];
 
     // ===== KALİTE / GIDA GÜVENLİĞİ (HACCP) MERKEZİ — başlıklar =====
