@@ -1918,6 +1918,199 @@ Route::post('/api/m/cark-cevir', function (Request $r) {
     return ['ok' => 1, 'index' => $idx, 'dilim_id' => (int) $sec->id, 'tip' => $tip, 'deger' => $deger,
         'baslik' => $sec->ad, 'kupon_kodu' => $kupon, 'puan' => $puanYeni, 'mesaj' => $mesaj, 'renk' => $sec->renk];
 });
+// ========================= SATIŞ / REZERVASYON & ETKİNLİK =========================
+if (!function_exists('_satisGuard')) {
+    function _satisGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_rezervasyon') || _panelYetkiVar($bp, 'gor_masa_yonetim'));
+    }
+}
+if (!function_exists('_depozitoKur')) {
+    function _depozitoKur()
+    {
+        if (cache()->get('depozito_tablo_ok')) return;
+        try {
+            if (!Schema::hasTable('depozitolar')) Schema::create('depozitolar', function ($t) { $t->id(); $t->unsignedBigInteger('sube_id')->index(); $t->string('ad'); $t->string('telefon', 30)->nullable(); $t->date('etkinlik_tarih')->nullable(); $t->unsignedInteger('kisi')->default(0); $t->decimal('tutar', 14, 2)->default(0); $t->decimal('alinan', 14, 2)->default(0); $t->string('durum', 14)->default('bekliyor'); $t->string('not')->nullable(); $t->timestamps(); });
+            cache()->put('depozito_tablo_ok', 1, now()->addHours(6));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_satisAsistanEylemUygula')) {
+    function _satisAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid; $ds = now()->toDateString();
+        try {
+            switch ($intent) {
+                case 'rezervasyon_hazirla':
+                    $n = 0; $kisi = 0; $ons = 0;
+                    try { if (Schema::hasTable('rezervasyonlar')) {
+                        $n = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count();
+                        $kisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->sum('kisi');
+                        $ids = DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->pluck('id');
+                        if ($ids->count() && Schema::hasTable('rezervasyon_kalemleri')) $ons = (int) DB::table('rezervasyon_kalemleri')->whereIn('rezervasyon_id', $ids)->distinct()->count('rezervasyon_id');
+                    } } catch (\Throwable $e) {}
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => 'Bugün rezervasyon yok.'];
+                    $msg = "Bugün $n rezervasyon ($kisi kişi)" . ($ons > 0 ? ", $ons masada ön sipariş" : "") . ". Masa ve mutfak hazırlığını yapın.";
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📅 Bugünkü rezervasyonlar', $msg, ['tur' => 'rezervasyon'], ['sahip', 'mudur', 'garson', 'mutfak']);
+                    return ['ok' => true, 'mesaj' => $msg . ' — garson + mutfağa bildirildi.'];
+                case 'noshow_takip':
+                    $n = 0; try { if (Schema::hasTable('rezervasyonlar')) $n = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->where('durum', 'gelmedi')->whereDate('tarih', '>=', now()->subDays(30)->toDateString())->count(); } catch (\Throwable $e) {}
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => 'Son 30 günde no-show yok. 👍'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⚠️ No-show takibi', "Son 30 günde $n rezervasyon gelmedi. Kapora/teyit politikası düşünün.", ['tur' => 'noshow'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => "$n no-show için yönetime uyarı gönderildi. Kapora almak için Depozito ekranını kullanabilirsin."];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen satış eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_satisAsistanNiyet')) {
+    function _satisAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/(bugün|bugun).*(hazırla|hazirla|bildir)|rezervasyon(ları)? hazırla|mutfağa bildir|garsona bildir/u' => ['eylem', 'rezervasyon_hazirla'],
+            '/no.?show|gelmey(en|enler)|gelmedi.*(takip|uyar)/u' => ['eylem', 'noshow_takip'],
+            '/boş gün|bos gun|doluluk art|boş masa doldur/u' => ['cevap', 'bosgun_link'],
+            '/etkinlik|grup|düğün|dugun|özel gün|ozel gun|organizasyon/u' => ['cevap', 'etkinlik_link'],
+            '/depozito|kapora|avans/u' => ['cevap', 'depozito_link'],
+            '/doluluk|kapasite|masa durum/u' => ['cevap', 'doluluk'],
+            '/bu hafta|haftalık|haftalik|yaklaşan rezerv/u' => ['cevap', 'hafta'],
+            '/özet|ozet|durum|ne var|gündem|gundem|bugün|bugun/u' => ['cevap', 'ozet'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın Satış/Rezervasyon & Etkinlik AI asistanısın. SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA: ozet, hafta, doluluk, etkinlik_link, depozito_link, bosgun_link, bilinmiyor. "
+            . "EYLEM: rezervasyon_hazirla (bugünkü rezervasyonları+ön siparişleri garson/mutfağa bildir), noshow_takip (no-show için yönetime uyarı). "
+            . "Grup/etkinlik teklifi, boş gün kampanyası vb. isteniyorsa tip=cevap uygun _link intent'i ver. UYDURMA.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_satisAsistanOku')) {
+    function _satisAsistanOku($sid, $bp, $intent, $params)
+    {
+        $ds = now()->toDateString();
+        try {
+            switch ($intent) {
+                case 'etkinlik_link': return ['cevap' => 'Yaklaşan grup/etkinlik rezervasyonlarını takvimde gör; hazırlık ve ön siparişleri planla.', 'link' => ['url' => '/etkinlik-takvim', 'lbl' => 'Etkinlik/Grup Takvimi']];
+                case 'depozito_link': return ['cevap' => 'No-show’u azaltmak için grup/etkinliklerde kapora al, takibini buradan yap.', 'link' => ['url' => '/depozito', 'lbl' => 'Depozito/Kapora']];
+                case 'bosgun_link': return ['cevap' => 'Boş günleri doldurmak için uygulamalı müşterilere güvenli kampanya gönderebilirsin (toplu WhatsApp yok).', 'link' => ['url' => '/kampanya', 'lbl' => 'Kampanya Stüdyosu']];
+                case 'doluluk':
+                    $kisi = 0; $kap = 0;
+                    try { if (Schema::hasTable('rezervasyonlar')) $kisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->sum('kisi'); } catch (\Throwable $e) {}
+                    try { if (Schema::hasTable('masalar')) $kap = (int) DB::table('masalar')->where('sube_id', $sid)->where(function ($w) { $w->whereNull('arsiv')->orWhere('arsiv', 0); })->sum('kapasite'); } catch (\Throwable $e) {}
+                    $d = $kap > 0 ? (int) round($kisi / $kap * 100) : null;
+                    return ['cevap' => $d === null ? 'Masa kapasitesi tanımlı değil.' : "Bugün rezervasyonlu $kisi kişi, kapasite $kap → doluluk %$d." . ($d < 40 ? ' Boş — kampanya öner.' : ''), 'aksiyon' => ($d !== null && $d < 40) ? ['lbl' => 'Boş günü doldur', 'soru' => 'boş günü doldur'] : null];
+                case 'hafta':
+                    $h = 0; try { if (Schema::hasTable('rezervasyonlar')) $h = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereBetween('tarih', [$ds, now()->addDays(7)->toDateString()])->whereNotIn('durum', ['iptal'])->count(); } catch (\Throwable $e) {}
+                    return ['cevap' => "Önümüzdeki 7 günde $h rezervasyon var.", 'link' => ['url' => '/etkinlik-takvim', 'lbl' => 'Takvim']];
+                case 'ozet':
+                default:
+                    $b = 0; $bek = 0;
+                    try { if (Schema::hasTable('rezervasyonlar')) { $b = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count(); $bek = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->where('durum', 'bekliyor')->whereDate('tarih', '>=', $ds)->count(); } } catch (\Throwable $e) {}
+                    return ['cevap' => "Bugün $b rezervasyon" . ($bek > 0 ? ", $bek onay bekliyor" : "") . ". Bugünü hazırlığa bildirmemi ister misin?", 'aksiyon' => $b > 0 ? ['lbl' => 'Bugünü hazırlığa bildir', 'soru' => 'bugünkü rezervasyonları hazırla'] : null, 'link' => ['url' => '/departman-brief?dep=satis_etkinlik', 'lbl' => 'Brifing']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/satis-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'Satış / Rezervasyon AI', 'selam' => 'Rezervasyon, doluluk, no-show, etkinlik — sor; gerekirse hazırlığı bildirip işini bitireyim.',
+        'hizli' => [
+            ['Bugünü hazırlığa bildir', 'Bugünkü rezervasyonları hazırla', 'event_available', '#A855F7', 'garson+mutfak'],
+            ['No-show takip', 'No-show takibi yap', 'event_busy', '#F43F5E', 'son 30 gün'],
+            ['Doluluk', 'Bugün doluluk ne durumda', 'groups', '#10B981', 'kapasite'],
+            ['Bu hafta', 'Bu hafta rezervasyonlar', 'date_range', '#5B8DEF', '7 gün'],
+            ['Etkinlik/Grup', 'Yaklaşan etkinlik ve gruplar', 'celebration', '#0EA5E9', 'takvim'],
+            ['Boş günü doldur', 'Boş günü doldurmak istiyorum', 'bolt', '#F59E0B', 'kampanya'],
+        ],
+        'sorUrl' => '/api/satis-asistan/sor', 'uygulaUrl' => '/api/satis-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'Satış AI’a sor… (ör. bugünü hazırlığa bildir, doluluk ne)',
+    ]);
+});
+Route::post('/api/satis-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _satisAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'rezervasyon_hazirla' => 'Bugünkü rezervasyonlar ve ön siparişler garson + mutfağa bildirilecek (hazırlık).',
+            'noshow_takip' => 'Son 30 gündeki no-show için yönetime uyarı gönderilecek (kapora/teyit önerisi).',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'satis', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $o = _satisAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $o['cevap'], 'aksiyon' => $o['aksiyon'] ?? null, 'link' => $o['link'] ?? null]);
+});
+Route::post('/api/satis-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    return response()->json(['ok' => 1, 'sonuc' => _aiEylemOnayla($log_id, $bp)]);
+});
+Route::get('/etkinlik-takvim', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $gunler = [];
+    try {
+        if (Schema::hasTable('rezervasyonlar')) {
+            $rows = DB::table('rezervasyonlar')->where('sube_id', $sid)->whereBetween('tarih', [now()->toDateString(), now()->addDays(14)->toDateString()])->whereNotIn('durum', ['iptal'])->orderBy('tarih')->orderBy('saat')->get();
+            foreach ($rows as $rz) { $gunler[(string) $rz->tarih][] = $rz; }
+        }
+    } catch (\Throwable $e) {}
+    return view('etkinlik_takvim', ['gunler' => $gunler]);
+});
+Route::get('/depozito', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    _depozitoKur(); $sid = _webSubeId();
+    $liste = DB::table('depozitolar')->where('sube_id', $sid)->orderByRaw("durum='bekliyor' DESC")->orderBy('etkinlik_tarih')->get();
+    $bekleyen = (float) $liste->where('durum', 'bekliyor')->sum(fn ($x) => (float) $x->tutar - (float) $x->alinan);
+    $alinan = (float) $liste->sum('alinan');
+    return view('depozito', compact('liste', 'bekleyen', 'alinan'));
+});
+Route::post('/depozito/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    _depozitoKur(); $sid = _webSubeId();
+    if (trim((string) $r->ad) === '') return redirect('/depozito')->with('hata', 'Ad gerekli.');
+    DB::table('depozitolar')->insert(['sube_id' => $sid, 'ad' => trim($r->ad), 'telefon' => $r->telefon, 'etkinlik_tarih' => $r->etkinlik_tarih ?: null, 'kisi' => (int) $r->kisi, 'tutar' => (float) $r->tutar, 'alinan' => (float) $r->alinan, 'durum' => ((float) $r->alinan >= (float) $r->tutar && (float) $r->tutar > 0) ? 'alindi' : 'bekliyor', 'not' => $r->not, 'created_at' => now(), 'updated_at' => now()]);
+    return redirect('/depozito')->with('ok', 'Kapora kaydı eklendi.');
+});
+Route::post('/depozito/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $d = in_array($r->durum, ['bekliyor', 'alindi', 'iade', 'tamam']) ? $r->durum : 'bekliyor';
+    DB::table('depozitolar')->where('id', (int) $r->id)->where('sube_id', $sid)->update(['durum' => $d, 'updated_at' => now()]);
+    return redirect('/depozito');
+});
+Route::post('/depozito/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_satisGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    DB::table('depozitolar')->where('id', (int) $r->id)->where('sube_id', $sid)->delete();
+    return redirect('/depozito')->with('ok', 'Silindi.');
+});
+
 // ========================= PAZARLAMA MERKEZİ (segment + güvenli resimli push + kampanya) =========================
 if (!function_exists('_pazarlamaGuard')) {
     function _pazarlamaGuard($bp)
@@ -8057,6 +8250,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe-entegrasyon' => 'gor_muhasebe', '/muhasebe-sohbet' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
             '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
             '/pazarlama-sohbet' => 'gor_app_yonetim', '/kampanya' => 'gor_app_yonetim', '/segmentler' => 'gor_app_yonetim', '/kampanya-rapor' => 'gor_app_yonetim', '/icerik-takvimi' => 'gor_app_yonetim',
+            '/satis-sohbet' => 'gor_rezervasyon', '/etkinlik-takvim' => 'gor_rezervasyon', '/depozito' => 'gor_rezervasyon',
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
@@ -17594,7 +17788,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -17750,6 +17944,40 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'star', 'renk' => '#F43F5E', 'baslik' => 'Memnuniyet', 'alt' => 'son 30 gün', 'durum' => $memDusuk > 3 ? 'risk' : ($memDusuk > 0 ? 'dikkat' : 'iyi'), 'yorum' => $memOrt !== null ? ('Ortalama puan ' . number_format((float) $memOrt, 1, ',', '.') . ($memDusuk > 0 ? ", $memDusuk düşük puan takip bekliyor." : '. 👍')) : 'Henüz memnuniyet verisi yok.'];
             $analiz[] = ['ikon' => 'campaign', 'renk' => '#10B981', 'baslik' => 'Kampanya', 'alt' => 'bu ay', 'durum' => 'notr', 'yorum' => "Bu ay $kampAy kampanya gönderildi. Toplu WhatsApp yerine güvenli resimli push kullanılıyor."];
         }
+        // ================= SATIŞ / REZERVASYON & ETKİNLİK =================
+        elseif ($kod === 'satis_etkinlik') {
+            $bugRez = 0; $bugKisi = 0; $hafRez = 0; $bekleyen = 0; $noshow30 = 0; $gelenToplam30 = 0; $onSiparisli = 0;
+            try { if (Schema::hasTable('rezervasyonlar')) {
+                $bugRez = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->count();
+                $bugKisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->sum('kisi');
+                $hafRez = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereBetween('tarih', [$ds, now()->addDays(7)->toDateString()])->whereNotIn('durum', ['iptal'])->count();
+                $bekleyen = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->where('durum', 'bekliyor')->whereDate('tarih', '>=', $ds)->count();
+                $noshow30 = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->where('durum', 'gelmedi')->whereDate('tarih', '>=', now()->subDays(30)->toDateString())->count();
+                $gelenToplam30 = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereIn('durum', ['geldi', 'gelmedi'])->whereDate('tarih', '>=', now()->subDays(30)->toDateString())->count();
+            } } catch (\Throwable $e) {}
+            try { if (Schema::hasTable('rezervasyon_kalemleri') && Schema::hasTable('rezervasyonlar')) {
+                $bugIds = DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->pluck('id');
+                if ($bugIds->count()) $onSiparisli = (int) DB::table('rezervasyon_kalemleri')->whereIn('rezervasyon_id', $bugIds)->distinct()->count('rezervasyon_id');
+            } } catch (\Throwable $e) {}
+            $noshowOran = $gelenToplam30 > 0 ? (int) round($noshow30 / $gelenToplam30 * 100) : 0;
+            $kapasite = 0; try { if (Schema::hasTable('masalar')) $kapasite = (int) DB::table('masalar')->where('sube_id', $sid)->where(function ($w) { $w->whereNull('arsiv')->orWhere('arsiv', 0); })->sum('kapasite'); } catch (\Throwable $e) {}
+            $doluluk = $kapasite > 0 ? min(100, (int) round($bugKisi / $kapasite * 100)) : null;
+            $kpis[] = ['ikon' => 'event_available', 'tint' => 't-mor', 'deger' => $bugRez, 'label' => 'Bugün rezervasyon', 'alt' => $bugKisi . ' kişi'];
+            $kpis[] = ['ikon' => 'date_range', 'tint' => 't-blue', 'deger' => $hafRez, 'label' => 'Bu hafta', 'alt' => '7 günlük'];
+            $kpis[] = ['ikon' => 'groups', 'tint' => ($doluluk !== null && $doluluk > 80) ? 't-red' : 't-green', 'deger' => $doluluk === null ? '—' : ('%' . $doluluk), 'label' => 'Doluluk (bugün)', 'alt' => 'kapasiteye göre'];
+            $kpis[] = ['ikon' => 'pending', 'tint' => $bekleyen > 0 ? 't-amber' : 't-green', 'deger' => $bekleyen, 'label' => 'Onay bekleyen', 'alt' => 'rezervasyon'];
+            $kpis[] = ['ikon' => 'event_busy', 'tint' => $noshowOran > 15 ? 't-red' : ($noshowOran > 0 ? 't-amber' : 't-green'), 'deger' => '%' . $noshowOran, 'label' => 'No-show (30g)', 'alt' => "$noshow30 gelmedi"];
+            $kpis[] = ['ikon' => 'restaurant_menu', 'tint' => 't-rose', 'deger' => $onSiparisli, 'label' => 'Ön siparişli masa', 'alt' => 'bugün'];
+            if ($bugRez > 0) { $isler[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'grup' => 'HAZIRLIK', 'baslik' => "$bugRez rezervasyon bugün ($bugKisi kişi)", 'aciklama' => $onSiparisli > 0 ? "$onSiparisli masada ön sipariş var — mutfağa hazırlat" : 'Masa/karşılama hazırlığı', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Rezervasyonlar']]; $sinyal[] = "<b>$bugRez</b> rezervasyon"; }
+            if ($bekleyen > 0) { $isler[] = ['ikon' => 'pending', 'renk' => '#F59E0B', 'grup' => 'ONAY', 'baslik' => "$bekleyen rezervasyon onay bekliyor", 'aciklama' => 'Onayla / masa ata', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Gör']]; $sinyal[] = "<b>$bekleyen</b> onay bekliyor"; }
+            if ($noshow30 > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'NO-SHOW', 'baslik' => "No-show oranı %$noshowOran", 'aciklama' => "Son 30 günde $noshow30 gelmedi — depozito/teyit düşün", 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI ile takip']]; }
+            $isler[] = ['ikon' => 'celebration', 'renk' => '#0EA5E9', 'grup' => 'ETKİNLİK', 'baslik' => 'Grup/etkinlik takvimini kontrol et', 'aciklama' => 'Yaklaşan özel gün ve grup rezervasyonları', 'aksiyon' => ['url' => '/etkinlik-takvim', 'lbl' => 'Takvim']];
+            $hizli = [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/masa-yonetim', 'ikon' => 'grid_view', 'lbl' => 'Masa Yönetimi'], ['url' => '/salon-sema', 'ikon' => 'map', 'lbl' => 'Salon Şema'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']];
+            $analiz[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'baslik' => 'Doluluk', 'alt' => 'bugün', 'durum' => $doluluk === null ? 'notr' : ($doluluk > 80 ? 'dikkat' : 'iyi'), 'yorum' => $doluluk !== null ? ("Bugün $bugKisi kişilik rezervasyon, kapasitenin %$doluluk'i. " . ($doluluk < 40 ? 'Boş günü doldurma kampanyası öner.' : '👍')) : 'Masa kapasitesi tanımlı değil.'];
+            $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => $noshowOran > 15 ? 'risk' : ($noshowOran > 0 ? 'dikkat' : 'iyi'), 'yorum' => $gelenToplam30 > 0 ? ("No-show oranı %$noshowOran ($noshow30/$gelenToplam30). " . ($noshowOran > 15 ? 'Yüksek — kapora/teyit uygula.' : '')) : 'Henüz tamamlanmış rezervasyon verisi yok.'];
+            $analiz[] = ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => $hafRez > 0 ? 'iyi' : 'notr', 'yorum' => "Önümüzdeki 7 günde $hafRez rezervasyon. Bekleyen $bekleyen onay var."];
+            $analiz[] = ['ikon' => 'restaurant_menu', 'renk' => '#F56A8B', 'baslik' => 'Ön Sipariş', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => $onSiparisli > 0 ? "$onSiparisli masa ön sipariş verdi — mutfak önceden hazırlasın, servis hızlansın." : 'Bugün ön siparişli rezervasyon yok.'];
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
@@ -17815,7 +18043,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -17944,6 +18172,33 @@ if (!function_exists('_departmanBriefDemo')) {
                 'hizli' => [['url' => '/kampanya', 'ikon' => 'campaign', 'lbl' => 'Kampanya Stüdyosu'], ['url' => '/segmentler', 'ikon' => 'groups', 'lbl' => 'Segmentler'], ['url' => '/icerik-takvimi', 'ikon' => 'calendar_month', 'lbl' => 'İçerik Takvimi'], ['url' => '/cark-yonetim', 'ikon' => 'casino', 'lbl' => 'Çarkıfelek'], ['url' => '/odul-raporu', 'ikon' => 'emoji_events', 'lbl' => 'Ödül Raporu'], ['url' => '/app-yonetim', 'ikon' => 'smartphone', 'lbl' => 'App Yönetim']],
                 'aiOzet' => 'Bugünün gündemi: <b>86</b> yeni üye · <b>180</b> uyuyan müşteri · <b>4,3</b> memnuniyet · <b>4</b> kampanya.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '"Hafta sonu %20" kampanyası 740 kişiye gönderildi', 'link' => '/kampanya-rapor'], ['ikon' => 'check', 'mtn' => '12 yeni üye kaydoldu', 'link' => '/segmentler']],
+            ]);
+        }
+        if ($kod === 'satis_etkinlik') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'event_available', 'tint' => 't-mor', 'deger' => 9, 'label' => 'Bugün rezervasyon', 'alt' => '42 kişi'],
+                    ['ikon' => 'date_range', 'tint' => 't-blue', 'deger' => 34, 'label' => 'Bu hafta', 'alt' => '7 günlük'],
+                    ['ikon' => 'groups', 'tint' => 't-amber', 'deger' => '%78', 'label' => 'Doluluk (bugün)', 'alt' => 'kapasiteye göre'],
+                    ['ikon' => 'pending', 'tint' => 't-amber', 'deger' => 3, 'label' => 'Onay bekleyen', 'alt' => 'rezervasyon'],
+                    ['ikon' => 'event_busy', 'tint' => 't-amber', 'deger' => '%9', 'label' => 'No-show (30g)', 'alt' => '6 gelmedi'],
+                    ['ikon' => 'restaurant_menu', 'tint' => 't-rose', 'deger' => 4, 'label' => 'Ön siparişli masa', 'alt' => 'bugün'],
+                ],
+                'isler' => [
+                    ['ikon' => 'event_available', 'renk' => '#A855F7', 'grup' => 'HAZIRLIK', 'baslik' => '9 rezervasyon bugün (42 kişi)', 'aciklama' => '4 masada ön sipariş var — mutfağa hazırlat', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI ile bildir']],
+                    ['ikon' => 'pending', 'renk' => '#F59E0B', 'grup' => 'ONAY', 'baslik' => '3 rezervasyon onay bekliyor', 'aciklama' => 'Onayla / masa ata', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Gör']],
+                    ['ikon' => 'celebration', 'renk' => '#0EA5E9', 'grup' => 'ETKİNLİK', 'baslik' => 'Cumartesi 20 kişilik nişan', 'aciklama' => 'Fix menü + ön sipariş hazırlığı', 'aksiyon' => ['url' => '/etkinlik-takvim', 'lbl' => 'Takvim']],
+                    ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'NO-SHOW', 'baslik' => 'No-show oranı %9', 'aciklama' => 'Gruplarda kapora almayı düşün', 'aksiyon' => ['url' => '/depozito', 'lbl' => 'Kapora']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'event_available', 'renk' => '#A855F7', 'baslik' => 'Doluluk', 'alt' => 'bugün', 'durum' => 'dikkat', 'yorum' => 'Bugün 42 kişilik rezervasyon, kapasitenin %78\'i. Akşam 20:00 slotu dolu. 👍'],
+                    ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'No-show oranı %9 (6/66). Gruplarda kapora alınsa %3-4\'e iner.'],
+                    ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => 'iyi', 'yorum' => 'Önümüzdeki 7 günde 34 rezervasyon. Cuma-Cumartesi yoğun.'],
+                    ['ikon' => 'restaurant_menu', 'renk' => '#F56A8B', 'baslik' => 'Ön Sipariş', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => '4 masa ön sipariş verdi — mutfak önceden hazırlasın, servis hızlansın.'],
+                ],
+                'hizli' => [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/masa-yonetim', 'ikon' => 'grid_view', 'lbl' => 'Masa Yönetimi'], ['url' => '/salon-sema', 'ikon' => 'map', 'lbl' => 'Salon Şema'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']],
+                'aiOzet' => 'Bugünün gündemi: <b>9</b> rezervasyon (42 kişi) · doluluk <b>%78</b> · <b>3</b> onay bekliyor · no-show <b>%9</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '7 rezervasyon tamamlandı, 1 no-show', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Nişan grubundan 500₺ kapora alındı', 'link' => '/depozito']],
             ]);
         }
         // Genel demo (diğer departmanlar)
