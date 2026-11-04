@@ -18772,25 +18772,64 @@ if (!function_exists('_departmanBriefVeri')) {
             if ($yakin) $analiz[] = ['ikon' => 'event_available', 'renk' => $yakin['renk'], 'baslik' => 'Vergi Takvimi', 'alt' => 'yaklaşan', 'durum' => ($yakin['kalan'] <= 3 ? 'risk' : ($yakin['kalan'] <= 7 ? 'dikkat' : 'notr')), 'yorum' => $yakin['ad'] . ' için ' . max(0, $yakin['kalan']) . ' gün kaldı. ' . $yakin['aciklama']];
             $analiz[] = ['ikon' => 'account_balance_wallet', 'renk' => '#2FBE94', 'baslik' => 'Nakit Akışı', 'alt' => 'açık tutar', 'durum' => $acikT > 0 ? 'dikkat' : 'iyi', 'yorum' => $acikT > 0 ? ($tl($acikT) . ' açık adisyonlarda bekliyor — tahsilatı hızlandır.') : 'Açık tahsilat yok.'];
         }
-        // ================= MUTFAK =================
+        // ================= MUTFAK (zengin: operasyon + stok + maliyet + gıda güvenliği) =================
         elseif ($kod === 'mutfak') {
-            $bekle = 0; $hazir = 0; $krit = 0; $fire = 0;
+            $bekle = 0; $hazir = 0; $krit = 0; $fire = 0; $fireHafta = 0; $iptalKalem = 0; $rezKisi = 0;
+            $acikTalep = 0; $onayBekleyen = 0; $sktYaklasan = 0; $sktGecen = 0;
             try { if (Schema::hasTable('adisyon_kalemleri')) {
                 $hazir = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
                 $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                $iptalKalem = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->where('adisyon_kalemleri.durum', 'iptal')->count();
             } } catch (\Throwable $e) {}
             $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
             try { $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereDate('created_at', $ds)->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {}
-            $kpis[] = ['ikon' => 'pending_actions', 'tint' => $bekle > 5 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => $bekle > 10 ? 'kuyruk yoğun' : 'kuyruk normal'];
+            try { $fireHafta = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->where('created_at', '>=', now()->subDays(7))->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {}
+            try { if (Schema::hasTable('rezervasyonlar')) $rezKisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->sum('kisi'); } catch (\Throwable $e) {}
+            try { if (Schema::hasTable('satinalma_talepleri')) {
+                $acikTalep = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->whereIn('durum', ['departman_onay', 'yeni', 'teklif', 'onayda', 'fiyat_onay'])->count();
+                $onayBekleyen = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('durum', 'departman_onay')->count();
+            } } catch (\Throwable $e) {}
+            try { if (Schema::hasTable('stok_partileri')) {
+                $sktYaklasan = (int) DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0)->whereNotNull('skt')->whereBetween('skt', [$ds, now()->addDays(7)->toDateString()])->count();
+                $sktGecen = (int) DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0)->whereNotNull('skt')->whereDate('skt', '<', $ds)->count();
+            } } catch (\Throwable $e) {}
+            // Food cost % (ay) = SMM / net ciro
+            $foodCost = null; try { if (function_exists('_muhasebeDonemVeri')) { $mvM = _muhasebeDonemVeri($sid, null); if ($mvM && ($mvM['ciroNet'] ?? 0) > 0) $foodCost = (int) round(($mvM['smm'] ?? 0) / $mvM['ciroNet'] * 100); } } catch (\Throwable $e) {}
+            // En çok satan (bugün, ilk 3)
+            $enCok = null; $enCokList = [];
+            try { if (Schema::hasTable('adisyon_kalemleri')) {
+                $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->where('adisyon_kalemleri.durum', '!=', 'iptal')->whereNotNull('adisyon_kalemleri.urun_id')->selectRaw('adisyon_kalemleri.urun_id urun_id, SUM(adisyon_kalemleri.adet) adet')->groupBy('adisyon_kalemleri.urun_id')->orderByDesc('adet')->limit(3)->get();
+                if ($rows->count()) { $uAd = DB::table('urunler')->whereIn('id', $rows->pluck('urun_id'))->pluck('ad', 'id'); foreach ($rows as $rr) { $enCokList[] = ($uAd[$rr->urun_id] ?? '—') . ' (' . (int) $rr->adet . ')'; } $enCok = $enCokList[0] ?? null; }
+            } } catch (\Throwable $e) {}
+
+            // ---- KPI kartları ----
+            $kpis[] = ['ikon' => 'pending_actions', 'tint' => $bekle > 5 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => $bekle > 10 ? 'kuyruk yoğun' : 'kuyruk normal', 'link' => '/mutfak'];
             $kpis[] = ['ikon' => 'restaurant', 'tint' => 't-blue', 'deger' => $hazir, 'label' => 'Bugün hazırlanan', 'alt' => 'adet'];
-            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => $krit > 0 ? 'tükeniyor' : 'yeterli 👍'];
-            $kpis[] = ['ikon' => 'delete_outline', 'tint' => $fire > 0 ? 't-amber' : 't-green', 'deger' => $tl($fire), 'label' => 'Fire (bugün)', 'alt' => $fire > 0 ? 'zayiat' : 'fire yok'];
+            $kpis[] = ['ikon' => 'event_seat', 'tint' => 't-mor', 'deger' => $rezKisi, 'label' => 'Beklenen kuver', 'alt' => $rezKisi > 0 ? 'bugün (rezervasyon)' : 'rezervasyon yok', 'link' => '/rezervasyon'];
+            if ($foodCost !== null) $kpis[] = ['ikon' => 'percent', 'tint' => $foodCost > 40 ? 't-red' : ($foodCost > 33 ? 't-amber' : 't-green'), 'deger' => '%' . $foodCost, 'label' => 'Food cost (ay)', 'alt' => 'ideal %28-35', 'link' => '/kar-zarar'];
+            $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => $krit > 0 ? 'üretim riski' : 'yeterli 👍', 'link' => '/uretim-riski'];
+            $kpis[] = ['ikon' => 'shopping_cart_checkout', 'tint' => $onayBekleyen > 0 ? 't-amber' : ($acikTalep > 0 ? 't-blue' : 't-green'), 'deger' => $acikTalep, 'label' => 'Satın alma talebi', 'alt' => $onayBekleyen > 0 ? ($onayBekleyen . ' onay bekliyor') : ($acikTalep > 0 ? 'işlemde' : 'açık talep yok'), 'link' => $onayBekleyen > 0 ? '/talep-onaylarim' : '/satinalma-talep'];
+            $kpis[] = ['ikon' => 'event_busy', 'tint' => ($sktGecen > 0 ? 't-red' : ($sktYaklasan > 0 ? 't-amber' : 't-green')), 'deger' => ($sktYaklasan + $sktGecen), 'label' => 'SKT yaklaşan parti', 'alt' => $sktGecen > 0 ? ($sktGecen . ' süresi geçti!') : ($sktYaklasan > 0 ? '7 gün içinde' : 'sorun yok 👍'), 'link' => '/parti-takip'];
+            $kpis[] = ['ikon' => 'delete_outline', 'tint' => $fire > 0 ? 't-amber' : 't-green', 'deger' => $tl($fire), 'label' => 'Fire (bugün)', 'alt' => $fireHafta > 0 ? ('hafta ' . $tl($fireHafta)) : 'fire yok', 'link' => '/sayim'];
+            $kpis[] = ['ikon' => 'remove_shopping_cart', 'tint' => $iptalKalem > 0 ? 't-amber' : 't-green', 'deger' => $iptalKalem, 'label' => 'İptal/iade kalem', 'alt' => $iptalKalem > 0 ? 'bugün geri döndü' : 'yok 👍'];
+
+            // ---- Öncelikler ----
+            if ($onayBekleyen > 0) { $isler[] = ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$onayBekleyen talep onayını bekliyor", 'aciklama' => 'İstasyon talebi — onayla/reddet', 'aksiyon' => ['url' => '/talep-onaylarim', 'lbl' => 'Onay Kutusu']]; $sinyal[] = "<b>$onayBekleyen</b> onay bekleyen"; }
+            if ($sktGecen > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktGecen partinin SKT'si geçmiş", 'aciklama' => 'Derhal ayıkla — kullanma', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; $sinyal[] = "<b>$sktGecen</b> SKT geçti"; }
             if ($bekle > 8) { $isler[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'grup' => 'MUTFAK', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'aciklama' => 'Kuyruk yoğun — hız gerekebilir', 'aksiyon' => ['url' => '/mutfak', 'lbl' => 'Mutfak Ekranı']]; $sinyal[] = "<b>$bekle</b> bekleyen ürün"; }
-            if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Üretim aksayabilir', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
-            $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
-            $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => $bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi'), 'yorum' => $bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz, bekleyen ürün yok. 👍'];
-            $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Kritik Malzeme', 'alt' => 'stok', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik — bazı yemekler yapılamayabilir." : 'Malzeme seviyeleri yeterli.'];
-            $analiz[] = ['ikon' => 'delete_outline', 'renk' => '#EA580C', 'baslik' => 'Fire', 'alt' => 'bugün', 'durum' => $fire > 0 ? 'dikkat' : 'iyi', 'yorum' => $fire > 0 ? ('Bugün fire/zayiat ' . $tl($fire) . '. Kaynağı incele.') : 'Bugün fire kaydı yok.'];
+            if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Üretim aksayabilir — talep aç', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
+            if ($sktGecen === 0 && $sktYaklasan > 0) { $isler[] = ['ikon' => 'schedule', 'renk' => '#F59E0B', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktYaklasan parti 7 gün içinde doluyor", 'aciklama' => 'Önce bunları kullan (FEFO)', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; }
+            if ($rezKisi > 0) { $isler[] = ['ikon' => 'event_seat', 'renk' => '#0EA5E9', 'grup' => 'HAZIRLIK', 'baslik' => "Bugün $rezKisi kuver bekleniyor", 'aciklama' => 'Rezervasyona göre prep / mise en place planla', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Rezervasyonlar']]; }
+
+            $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/uretim-riski', 'ikon' => 'warning_amber', 'lbl' => 'Üretim Riski'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi'], ['url' => '/parti-takip', 'ikon' => 'event_busy', 'lbl' => 'SKT / Parti'], ['url' => '/recete', 'ikon' => 'menu_book', 'lbl' => 'Reçeteler'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
+
+            // ---- Detaylı analiz ----
+            $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => $bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi'), 'yorum' => ($bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz.') . ($rezKisi > 0 ? " Bugün $rezKisi kuver bekleniyor — prep'i buna göre ayarla." : ($bekle > 0 ? '' : ' 👍'))];
+            if ($foodCost !== null) $analiz[] = ['ikon' => 'percent', 'renk' => '#10B981', 'baslik' => 'Food Cost', 'alt' => 'bu ay', 'durum' => $foodCost > 40 ? 'risk' : ($foodCost > 33 ? 'dikkat' : 'iyi'), 'yorum' => "Bu ay maliyet oranı %$foodCost (SMM / net ciro). İdeal bant %28-35." . ($foodCost > 35 ? ' Yüksek — porsiyon, fire ve alış fiyatlarını gözden geçir.' : ' Sağlıklı. 👍')];
+            if ($enCok) $analiz[] = ['ikon' => 'local_fire_department', 'renk' => '#EC4899', 'baslik' => 'En Çok Satan', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => 'Öne çıkanlar: ' . implode(' · ', $enCokList) . '. Stok ve hazırlıkta bunları önceliklendir.'];
+            $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Kritik Malzeme', 'alt' => 'stok', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik — bazı yemekler yapılamayabilir. Satın alma talebi aç." : 'Malzeme seviyeleri yeterli.'];
+            $analiz[] = ['ikon' => 'event_busy', 'renk' => '#EA580C', 'baslik' => 'SKT / Tazelik', 'alt' => 'parti (FEFO)', 'durum' => $sktGecen > 0 ? 'risk' : ($sktYaklasan > 0 ? 'dikkat' : 'iyi'), 'yorum' => $sktGecen > 0 ? "$sktGecen partinin SKT'si geçmiş — derhal ayıkla!" : ($sktYaklasan > 0 ? "$sktYaklasan parti 7 gün içinde doluyor — FEFO ile önce bunları kullan." : 'SKT riski yok.')];
+            $analiz[] = ['ikon' => 'delete_outline', 'renk' => '#EA580C', 'baslik' => 'Fire', 'alt' => 'bugün / hafta', 'durum' => ($fireHafta > 0 || $fire > 0) ? 'dikkat' : 'iyi', 'yorum' => $fire > 0 ? ('Bugün fire ' . $tl($fire) . ($fireHafta > 0 ? ', son 7 gün ' . $tl($fireHafta) : '') . '. Kaynağını incele.') : ('Bugün fire kaydı yok.' . ($fireHafta > 0 ? ' Son 7 gün toplam ' . $tl($fireHafta) . '.' : ''))];
         }
         // ================= PAZARLAMA / SOSYAL MEDYA =================
         elseif ($kod === 'pazarlama') {
