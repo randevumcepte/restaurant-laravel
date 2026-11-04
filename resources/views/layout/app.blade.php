@@ -136,7 +136,6 @@
             ['/guvenlik', 'security', 'Güvenlik', '#475569'],
             ['/teknik', 'build', 'Teknik Servis / Bakım', '#F97316'],
             ['/bulasik', 'wash', 'Bulaşıkhane / Steward', '#06B6D4'],
-            ['/etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
         ],
         'Menü & Ürünler' => [
             ['/menu', 'restaurant_menu', 'Menü Yönetimi', null],
