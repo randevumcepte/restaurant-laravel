@@ -161,49 +161,6 @@
 </div>
 @endif
 
-{{-- ============ ORTA: Bugün yapılacaklar (sol) + AI öneri (sağ) ============ --}}
-<div class="pai-mid">
-  <div class="pai-card">
-    <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($isler))<span class="cnt">{{ count($isler) }}</span>@endif</div>
-    @if (count($isler))
-    <div class="pai-task-grid">
-      @foreach ($isler as $is)
-        @php $rk = $is['renk'] ?? 'var(--mor1)'; $ak = $is['aksiyon'] ?? null; @endphp
-        <div class="pai-task">
-          <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
-          <div class="tmid">
-            @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
-            <div class="tbas">{{ $is['baslik'] }}</div>
-            @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
-          </div>
-          @if ($ak && !empty($ak['url']))<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }}</a>@endif
-        </div>
-      @endforeach
-    </div>
-    @else<div class="pai-task-bos">✅ Bekleyen iş yok — her şey yolunda 👍</div>@endif
-  </div>
-
-  <div class="pai-aipanel">
-    <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">{{ $deptAd }} AI ne diyor?</div></div>
-    <div class="verdict">{!! $aiOzet !!}</div>
-    @if (!empty($aiLink))
-      <a href="{{ $aiLink['url'] }}" class="pai-sohbet-cta">
-        <span class="material-icons-outlined">forum</span>
-        <div style="flex:1;min-width:0"><b>{{ $aiLink['lbl'] }}</b><span class="sub">Departmanınla ilgili sor — yardımcı olayım</span></div>
-        <span class="material-icons-outlined ok">arrow_forward</span>
-      </a>
-    @endif
-    @if (count($hizli))
-    <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">bolt</span> Hızlı erişim</div>
-    <div class="pai-aiact">
-      @foreach ($hizli as $h)
-        <a href="{{ $h['url'] }}"><span class="aic"><span class="material-icons-outlined">{{ $h['ikon'] }}</span></span>{{ $h['lbl'] }}</a>
-      @endforeach
-    </div>
-    @endif
-  </div>
-</div>
-
 {{-- ============ SANTRAL & REZERVASYON AKIŞI (sadece Rezervasyon Satış) ============ --}}
 @if (!empty($crmRez))
 @php $cz = $crmRez; @endphp
@@ -285,6 +242,49 @@
   </div>
 </div>
 @endif
+
+{{-- ============ ORTA: Bugün yapılacaklar (sol) + AI öneri (sağ) ============ --}}
+<div class="pai-mid">
+  <div class="pai-card">
+    <div class="pai-card-head"><span class="material-icons-outlined">track_changes</span><span class="b">Bugün önceliklerin</span>@if (count($isler))<span class="cnt">{{ count($isler) }}</span>@endif</div>
+    @if (count($isler))
+    <div class="pai-task-grid">
+      @foreach ($isler as $is)
+        @php $rk = $is['renk'] ?? 'var(--mor1)'; $ak = $is['aksiyon'] ?? null; @endphp
+        <div class="pai-task">
+          <div class="tic" style="background:color-mix(in srgb,{{ $rk }} 13%,transparent);color:{{ $rk }}"><span class="material-icons-outlined">{{ $is['ikon'] ?? 'task_alt' }}</span></div>
+          <div class="tmid">
+            @if (!empty($is['grup']))<span class="trot" style="background:color-mix(in srgb,{{ $rk }} 14%,transparent);color:{{ $rk }}">{{ $is['grup'] }}</span>@endif
+            <div class="tbas">{{ $is['baslik'] }}</div>
+            @if (!empty($is['aciklama']))<div class="talt">{{ $is['aciklama'] }}</div>@endif
+          </div>
+          @if ($ak && !empty($ak['url']))<a class="tbtn" href="{{ $ak['url'] }}">{{ $ak['lbl'] ?? 'Aç' }}</a>@endif
+        </div>
+      @endforeach
+    </div>
+    @else<div class="pai-task-bos">✅ Bekleyen iş yok — her şey yolunda 👍</div>@endif
+  </div>
+
+  <div class="pai-aipanel">
+    <div class="ust"><div class="rob"><span class="material-icons-outlined">smart_toy</span></div><div class="bas">{{ $deptAd }} AI ne diyor?</div></div>
+    <div class="verdict">{!! $aiOzet !!}</div>
+    @if (!empty($aiLink))
+      <a href="{{ $aiLink['url'] }}" class="pai-sohbet-cta">
+        <span class="material-icons-outlined">forum</span>
+        <div style="flex:1;min-width:0"><b>{{ $aiLink['lbl'] }}</b><span class="sub">Departmanınla ilgili sor — yardımcı olayım</span></div>
+        <span class="material-icons-outlined ok">arrow_forward</span>
+      </a>
+    @endif
+    @if (count($hizli))
+    <div class="yapar-bas"><span class="material-icons-outlined" style="font-size:15px;color:var(--mor1)">bolt</span> Hızlı erişim</div>
+    <div class="pai-aiact">
+      @foreach ($hizli as $h)
+        <a href="{{ $h['url'] }}"><span class="aic"><span class="material-icons-outlined">{{ $h['ikon'] }}</span></span>{{ $h['lbl'] }}</a>
+      @endforeach
+    </div>
+    @endif
+  </div>
+</div>
 
 {{-- ============ DETAYLI AI ANALİZİ ============ --}}
 @if (count($analiz))
