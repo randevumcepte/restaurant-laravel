@@ -204,6 +204,87 @@
   </div>
 </div>
 
+{{-- ============ SANTRAL & REZERVASYON AKIŞI (sadece Rezervasyon Satış) ============ --}}
+@if (!empty($crmRez))
+@php $cz = $crmRez; @endphp
+<style>
+  .crz-sec-bas{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--ink);margin:14px 2px 10px}
+  .crz-sec-bas .material-icons-outlined{font-size:20px;color:var(--mor1)}
+  .crz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  @media(max-width:900px){.crz-grid{grid-template-columns:1fr}}
+  .crz-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;box-shadow:0 1px 3px rgba(20,20,50,.03)}
+  .crz-ch{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+  .crz-ch .material-icons-outlined{font-size:19px}
+  .crz-ch .b{font-size:14px;font-weight:800;color:var(--ink)}
+  .crz-ch .cnt{margin-left:auto;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:800}
+  .crz-r{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px dashed var(--line)}
+  .crz-r:first-of-type{border-top:0}
+  .crz-r .ri{flex:1;min-width:0}
+  .crz-r .rt{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crz-r .rd{font-size:11px;color:var(--sub);margin-top:1px}
+  .crz-btn{flex:none;border:0;border-radius:9px;padding:6px 11px;font-size:11px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+  .crz-btn .material-icons-outlined{font-size:14px}
+  .crz-onay{background:linear-gradient(135deg,#2FBE94,#1FA37C);color:#fff}
+  .crz-dinle{background:var(--card2);border:1px solid var(--line);color:var(--mor1)}
+  .crz-ara{background:linear-gradient(135deg,#5B8DEF,#3F6FD6);color:#fff}
+  .crz-badge{flex:none;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;color:#fff;text-transform:uppercase;letter-spacing:.3px}
+  .crz-bos{color:var(--sub);font-size:12.5px;padding:14px 4px;text-align:center}
+  .crz-full{margin-bottom:12px}
+  .crz-tag{flex:none;display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;color:#fff}
+</style>
+@php
+  $durR = ['bekliyor'=>'#F59E0B','onaylandi'=>'#2FBE94','geldi'=>'#5B8DEF','gelmedi'=>'#F43F5E','iptal'=>'#94A3B8'];
+  $durA = ['bekliyor'=>'Bekliyor','onaylandi'=>'Onaylı','geldi'=>'Geldi','gelmedi'=>'Gelmedi','iptal'=>'İptal'];
+  $kanR = ['Santral'=>'#7C3AED','Panel'=>'#64748B','Telefon'=>'#0EA5E9','Uygulama'=>'#10B981','WhatsApp'=>'#22C55E'];
+@endphp
+<div class="crz-sec-bas"><span class="material-icons-outlined">call</span> Santral & Rezervasyon Akışı</div>
+<div class="crz-grid">
+  {{-- Santraldan gelen (onay bekleyen) --}}
+  <div class="crz-card">
+    <div class="crz-ch"><span class="material-icons-outlined" style="color:#7C3AED">call</span><span class="b">Santraldan gelen</span><span class="cnt" style="background:color-mix(in srgb,#7C3AED 14%,transparent);color:#7C3AED">{{ count($cz['santral'] ?? []) }} onay bekliyor</span></div>
+    @forelse (($cz['santral'] ?? []) as $s)
+      <div class="crz-r">
+        <span class="crz-tag" style="background:#7C3AED">📞 SANTRAL</span>
+        <div class="ri"><div class="rt">{{ $s['ad'] }} · {{ $s['kisi'] }} kişi</div><div class="rd">{{ !empty($s['bugun']) ? 'Bugün' : \Carbon\Carbon::parse($s['tarih'])->format('d.m') }} · {{ $s['saat'] }}{{ !empty($s['telefon']) ? ' · '.$s['telefon'] : '' }}</div></div>
+        @if (!empty($s['ses']))<a class="crz-btn crz-dinle" href="{{ $s['ses'] }}" target="_blank"><span class="material-icons-outlined">play_circle</span>Dinle</a>@endif
+        @if (!empty($s['id']))
+        <form method="POST" action="/rezervasyon/durum" style="display:inline">@csrf<input type="hidden" name="id" value="{{ $s['id'] }}"><input type="hidden" name="durum" value="onaylandi"><input type="hidden" name="tarih" value="{{ $s['tarih'] }}"><button class="crz-btn crz-onay" type="submit"><span class="material-icons-outlined">check</span>Onayla</button></form>
+        @else<span class="crz-btn crz-onay"><span class="material-icons-outlined">check</span>Onayla</span>@endif
+      </div>
+    @empty
+      <div class="crz-bos">Santraldan onay bekleyen rezervasyon yok. 👍</div>
+    @endforelse
+  </div>
+  {{-- Kaçan çağrı — geri ara --}}
+  <div class="crz-card">
+    <div class="crz-ch"><span class="material-icons-outlined" style="color:#F43F5E">phone_missed</span><span class="b">Kaçan çağrı — geri ara</span><span class="cnt" style="background:color-mix(in srgb,#F43F5E 13%,transparent);color:#F43F5E">{{ count($cz['kacan'] ?? []) }}</span></div>
+    @forelse (($cz['kacan'] ?? []) as $k)
+      <div class="crz-r">
+        <span class="crz-badge" style="background:{{ ($k['sonuc'] ?? '')==='bilgi' ? '#F59E0B' : '#F43F5E' }}">{{ ($k['sonuc'] ?? '')==='bilgi' ? 'bilgi aldı' : 'kaçan' }}</span>
+        <div class="ri"><div class="rt">{{ $k['telefon'] }}</div><div class="rd">{{ $k['zaman'] }} · rezervasyona dönmedi</div></div>
+        <a class="crz-btn crz-ara" href="tel:{{ $k['telefon'] }}"><span class="material-icons-outlined">call</span>Ara</a>
+      </div>
+    @empty
+      <div class="crz-bos">Son 3 günde sonuçsuz/kaçan çağrı yok. 👍</div>
+    @endforelse
+  </div>
+</div>
+{{-- Bugünün rezervasyonları (kanal rozetli) --}}
+<div class="crz-card crz-full">
+  <div class="crz-ch"><span class="material-icons-outlined" style="color:#A855F7">event_available</span><span class="b">Bugünün rezervasyonları</span><span class="cnt" style="background:color-mix(in srgb,#A855F7 13%,transparent);color:#A855F7">{{ count($cz['bugun'] ?? []) }}</span><a href="/rezervasyon" style="margin-left:8px;font-size:11px;font-weight:700;color:var(--mor1);text-decoration:none">Tümü →</a></div>
+  @forelse (($cz['bugun'] ?? []) as $b)
+    <div class="crz-r">
+      <div class="rt" style="flex:none;width:46px;font-variant-numeric:tabular-nums">{{ $b['saat'] }}</div>
+      <div class="ri"><div class="rt">{{ $b['ad'] }} · {{ $b['kisi'] }} kişi</div></div>
+      <span class="crz-badge" style="background:{{ $kanR[$b['kanal']] ?? '#64748B' }}">{{ !empty($b['santral']) ? '📞 '.$b['kanal'] : $b['kanal'] }}</span>
+      <span class="crz-badge" style="background:{{ $durR[$b['durum']] ?? '#64748B' }}">{{ $durA[$b['durum']] ?? $b['durum'] }}</span>
+    </div>
+  @empty
+    <div class="crz-bos">Bugün rezervasyon yok. Boş günü doldurma kampanyası düşünebilirsin.</div>
+  @endforelse
+</div>
+@endif
+
 {{-- ============ DETAYLI AI ANALİZİ ============ --}}
 @if (count($analiz))
 <div class="pai-sec-bas"><span class="material-icons-outlined">analytics</span> Detaylı AI analizi</div>

@@ -2209,6 +2209,22 @@ if (!function_exists('_satisAsistanEylemUygula')) {
                     if ($n <= 0) return ['ok' => true, 'mesaj' => 'Son 30 günde no-show yok. 👍'];
                     if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⚠️ No-show takibi', "Son 30 günde $n rezervasyon gelmedi. Kapora/teyit politikası düşünün.", ['tur' => 'noshow'], ['sahip', 'mudur']);
                     return ['ok' => true, 'mesaj' => "$n no-show için yönetime uyarı gönderildi. Kapora almak için Depozito ekranını kullanabilirsin."];
+                case 'rezervasyon_hatirlat':
+                    $yarin = now()->addDay()->toDateString(); $gonder = 0; $toplam = 0; $apansiz = 0;
+                    try {
+                        if (Schema::hasTable('rezervasyonlar')) {
+                            $sube = DB::table('subeler')->find($sid); $subeAd = $sube->ad ?? 'Restoran';
+                            $rows = DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $yarin)->whereIn('durum', ['bekliyor', 'onaylandi'])->get(['id', 'ad', 'telefon', 'saat', 'kisi']);
+                            $toplam = $rows->count();
+                            foreach ($rows as $rz) {
+                                if (empty($rz->telefon)) { $apansiz++; continue; }
+                                $msg = "⏰ *Rezervasyon hatırlatması*\n\n🏠 " . $subeAd . "\n📅 Yarın · 🕐 " . substr((string) $rz->saat, 0, 5) . " · 👥 " . (int) $rz->kisi . " kişi\n\nSizi ağırlamayı bekliyoruz! 🙏 Değişiklik olursa bu numaradan yazabilirsiniz.";
+                                try { if (function_exists('_restoWaGonder')) { _restoWaGonder($sid, $rz->telefon, $msg); $gonder++; } } catch (\Throwable $e) {}
+                            }
+                        }
+                    } catch (\Throwable $e) {}
+                    if ($toplam <= 0) return ['ok' => true, 'mesaj' => 'Yarın için rezervasyon yok.'];
+                    return ['ok' => true, 'mesaj' => "Yarınki $toplam rezervasyondan $gonder tanesine WhatsApp hatırlatma/teyit gönderildi" . ($apansiz > 0 ? " ($apansiz tanesinde telefon yok)." : ".") . " No-show'u azaltır."];
             }
         } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
         return ['ok' => false, 'mesaj' => 'Bilinmeyen satış eylemi: ' . $intent];
@@ -2222,6 +2238,7 @@ if (!function_exists('_satisAsistanNiyet')) {
         $kurallar = !empty($gecmis) ? [] : [
             '/(bugün|bugun).*(hazırla|hazirla|bildir)|rezervasyon(ları)? hazırla|mutfağa bildir|garsona bildir/u' => ['eylem', 'rezervasyon_hazirla'],
             '/no.?show|gelmey(en|enler)|gelmedi.*(takip|uyar)/u' => ['eylem', 'noshow_takip'],
+            '/hatırlat|hatirlat|teyit|yarın.*(hatırlat|ara|teyit)|yarin.*(hatirlat|ara|teyit)/u' => ['eylem', 'rezervasyon_hatirlat'],
             '/boş gün|bos gun|doluluk art|boş masa doldur/u' => ['cevap', 'bosgun_link'],
             '/etkinlik|grup|düğün|dugun|özel gün|ozel gun|organizasyon/u' => ['cevap', 'etkinlik_link'],
             '/depozito|kapora|avans/u' => ['cevap', 'depozito_link'],
@@ -2232,7 +2249,7 @@ if (!function_exists('_satisAsistanNiyet')) {
         foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
         $sys = "Sen bir restoranın Satış/Rezervasyon & Etkinlik AI asistanısın. SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
             . "OKUMA: ozet, hafta, doluluk, etkinlik_link, depozito_link, bosgun_link, bilinmiyor. "
-            . "EYLEM: rezervasyon_hazirla (bugünkü rezervasyonları+ön siparişleri garson/mutfağa bildir), noshow_takip (no-show için yönetime uyarı). "
+            . "EYLEM: rezervasyon_hazirla (bugünkü rezervasyonları+ön siparişleri garson/mutfağa bildir), noshow_takip (no-show için yönetime uyarı), rezervasyon_hatirlat (yarınki rezervasyon müşterilerine WhatsApp ile tekil hatırlatma/teyit — no-show azaltır). "
             . "Grup/etkinlik teklifi, boş gün kampanyası vb. isteniyorsa tip=cevap uygun _link intent'i ver. UYDURMA.";
         $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
         if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
@@ -2276,6 +2293,7 @@ Route::get('/satis-sohbet', function () {
         'baslik' => 'Rezervasyon Satış AI', 'selam' => 'Rezervasyon, doluluk, no-show, etkinlik — sor; gerekirse hazırlığı bildirip işini bitireyim.',
         'hizli' => [
             ['Bugünü hazırlığa bildir', 'Bugünkü rezervasyonları hazırla', 'event_available', '#A855F7', 'garson+mutfak'],
+            ['Yarını hatırlat', 'Yarınki rezervasyonları hatırlat', 'notifications_active', '#0EA5E9', 'teyit/WA'],
             ['No-show takip', 'No-show takibi yap', 'event_busy', '#F43F5E', 'son 30 gün'],
             ['Doluluk', 'Bugün doluluk ne durumda', 'groups', '#10B981', 'kapasite'],
             ['Bu hafta', 'Bu hafta rezervasyonlar', 'date_range', '#5B8DEF', '7 gün'],
@@ -2297,6 +2315,7 @@ Route::post('/api/satis-asistan/sor', function (Request $r) {
         $ozetMap = [
             'rezervasyon_hazirla' => 'Bugünkü rezervasyonlar ve ön siparişler garson + mutfağa bildirilecek (hazırlık).',
             'noshow_takip' => 'Son 30 gündeki no-show için yönetime uyarı gönderilecek (kapora/teyit önerisi).',
+            'rezervasyon_hatirlat' => 'Yarınki rezervasyon müşterilerine WhatsApp ile tekil hatırlatma/teyit gönderilecek (toplu değil — her rezervasyona ayrı). No-show azaltır.',
         ];
         $ozet = $ozetMap[$n['intent']] ?? null;
         if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
@@ -18227,6 +18246,70 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => $noshowOran > 15 ? 'risk' : ($noshowOran > 0 ? 'dikkat' : 'iyi'), 'yorum' => $gelenToplam30 > 0 ? ("No-show oranı %$noshowOran ($noshow30/$gelenToplam30). " . ($noshowOran > 15 ? 'Yüksek — kapora/teyit uygula.' : '')) : 'Henüz tamamlanmış rezervasyon verisi yok.'];
             $analiz[] = ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => $hafRez > 0 ? 'iyi' : 'notr', 'yorum' => "Önümüzdeki 7 günde $hafRez rezervasyon. Bekleyen $bekleyen onay var."];
             $analiz[] = ['ikon' => 'restaurant_menu', 'renk' => '#F56A8B', 'baslik' => 'Ön Sipariş', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => $onSiparisli > 0 ? "$onSiparisli masa ön sipariş verdi — mutfak önceden hazırlasın, servis hızlansın." : 'Bugün ön siparişli rezervasyon yok.'];
+
+            // ---- SANTRALDAN GELEN (onay bekleyen) + çağrı kaydı linki ----
+            $santralListe = []; $santralBek = 0;
+            try { if (Schema::hasTable('rezervasyonlar')) {
+                $srows = DB::table('rezervasyonlar')->where('sube_id', $sid)->where('durum', 'bekliyor')
+                    ->whereDate('tarih', '>=', $ds)->where('not', 'like', 'AI Santral%')
+                    ->orderBy('tarih')->orderBy('saat')->limit(20)->get(['id', 'ad', 'telefon', 'tarih', 'saat', 'kisi']);
+                $rezIds = $srows->pluck('id')->all(); $sesMap = [];
+                if ($rezIds && Schema::hasTable('santral_oturumlari') && Schema::hasTable('santral_ses_kayit')) {
+                    $otMap = []; foreach (DB::table('santral_oturumlari')->whereIn('rezervasyon_id', $rezIds)->get(['id', 'rezervasyon_id']) as $ot) $otMap[(int) $ot->id] = (int) $ot->rezervasyon_id;
+                    if ($otMap) foreach (DB::table('santral_ses_kayit')->whereIn('oturum_id', array_keys($otMap))->orderByDesc('id')->get(['id', 'oturum_id']) as $sk) { $rid = $otMap[(int) $sk->oturum_id] ?? null; if ($rid && empty($sesMap[$rid])) $sesMap[$rid] = '/santral-ses-dinle/' . $sk->id; }
+                }
+                foreach ($srows as $rw) $santralListe[] = ['id' => (int) $rw->id, 'ad' => $rw->ad ?: 'Telefon müşterisi', 'telefon' => $rw->telefon, 'tarih' => $rw->tarih, 'saat' => substr((string) $rw->saat, 0, 5), 'kisi' => (int) $rw->kisi, 'ses' => $sesMap[(int) $rw->id] ?? null, 'bugun' => ((string) $rw->tarih === $ds)];
+                $santralBek = count($santralListe);
+            } } catch (\Throwable $e) {}
+
+            // ---- KAÇAN / SONUÇSUZ ÇAĞRILAR (geri ara = potansiyel kayıp rezervasyon) ----
+            $kacanListe = []; $kacanSay = 0;
+            try { if (Schema::hasTable('santral_oturumlari')) {
+                $krows = DB::table('santral_oturumlari')->where('sube_id', $sid)->whereNull('rezervasyon_id')->whereNull('adisyon_id')
+                    ->where('created_at', '>=', now()->subDays(3))->where('durum', 'kapandi')
+                    ->where(function ($w) { $w->whereIn('sonuc', ['kacan', 'bilgi'])->orWhereNull('sonuc'); })
+                    ->orderByDesc('id')->limit(15)->get(['id', 'telefon', 'sonuc', 'created_at']);
+                foreach ($krows as $rw) { if (empty($rw->telefon)) continue; $kacanListe[] = ['id' => (int) $rw->id, 'telefon' => $rw->telefon, 'sonuc' => $rw->sonuc ?: 'kacan', 'zaman' => \Carbon\Carbon::parse($rw->created_at)->diffForHumans()]; }
+                $kacanSay = count($kacanListe);
+            } } catch (\Throwable $e) {}
+
+            // ---- KANAL DAĞILIMI (son 30 gün) ----
+            $son30 = now()->subDays(30)->toDateString(); $kanSantral = 0; $kanSantralKisi = 0; $kanTum = 0;
+            try { if (Schema::hasTable('rezervasyonlar')) {
+                $kanTum = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', '>=', $son30)->whereNotIn('durum', ['iptal'])->count();
+                $kanSantral = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', '>=', $son30)->whereNotIn('durum', ['iptal'])->where('not', 'like', 'AI Santral%')->count();
+                $kanSantralKisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', '>=', $son30)->whereNotIn('durum', ['iptal'])->where('not', 'like', 'AI Santral%')->sum('kisi');
+            } } catch (\Throwable $e) {}
+            $kanDiger = max(0, $kanTum - $kanSantral); $kanSantralYuzde = $kanTum > 0 ? (int) round($kanSantral / $kanTum * 100) : 0;
+
+            // ---- BUGÜNÜN REZERVASYON LİSTESİ (kanal rozetli) ----
+            $bugunListe = [];
+            try { if (Schema::hasTable('rezervasyonlar')) {
+                foreach (DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->orderBy('saat')->limit(30)->get(['id', 'ad', 'saat', 'kisi', 'durum', 'kaynak', 'not']) as $rw) {
+                    $santralMi = str_starts_with((string) $rw->not, 'AI Santral');
+                    $kanalAd = $santralMi ? 'Santral' : (($rw->kaynak === 'admin') ? 'Panel' : (($rw->kaynak === 'telefon') ? 'Telefon' : (($rw->kaynak === 'uygulama' || $rw->kaynak === 'app') ? 'Uygulama' : (($rw->kaynak === 'whatsapp' || $rw->kaynak === 'wa') ? 'WhatsApp' : 'Panel'))));
+                    $bugunListe[] = ['id' => (int) $rw->id, 'ad' => $rw->ad ?: 'İsimsiz', 'saat' => substr((string) $rw->saat, 0, 5), 'kisi' => (int) $rw->kisi, 'durum' => (string) $rw->durum, 'kanal' => $kanalAd, 'santral' => $santralMi];
+                }
+            } } catch (\Throwable $e) {}
+
+            // ---- YARIN hatırlatma adayları ----
+            $yarin = now()->addDay()->toDateString(); $yarinRez = 0;
+            try { if (Schema::hasTable('rezervasyonlar')) $yarinRez = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $yarin)->whereIn('durum', ['bekliyor', 'onaylandi'])->whereNotNull('telefon')->count(); } catch (\Throwable $e) {}
+
+            // KPI ekle (santraldan bekleyen + kaçan çağrı)
+            $kpis[] = ['ikon' => 'call', 'tint' => $santralBek > 0 ? 't-mor' : 't-green', 'deger' => $santralBek, 'label' => 'Santraldan (bekliyor)', 'alt' => $santralBek > 0 ? 'onay/teyit' : 'yok'];
+            $kpis[] = ['ikon' => 'phone_missed', 'tint' => $kacanSay > 0 ? 't-red' : 't-green', 'deger' => $kacanSay, 'label' => 'Kaçan çağrı (3g)', 'alt' => $kacanSay > 0 ? 'geri ara' : 'yok 👍'];
+
+            // Öncelik işleri
+            if ($santralBek > 0) { array_unshift($isler, ['ikon' => 'call', 'renk' => '#7C3AED', 'grup' => 'SANTRAL', 'baslik' => "$santralBek rezervasyon santraldan geldi, onay bekliyor", 'aciklama' => 'Aşağıda onayla + çağrı kaydını dinle', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Rezervasyonlar']]); $sinyal[] = "<b>$santralBek</b> santral rezervasyonu"; }
+            if ($kacanSay > 0) { array_unshift($isler, ['ikon' => 'phone_missed', 'renk' => '#F43F5E', 'grup' => 'KAYIP', 'baslik' => "$kacanSay kaçan çağrı — geri ara", 'aciklama' => 'Rezervasyona dönmemiş aramalar (aşağıda geri-ara listesi)', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI']]); $sinyal[] = "<b>$kacanSay</b> kaçan çağrı"; }
+            if ($yarinRez > 0) { $isler[] = ['ikon' => 'notifications_active', 'renk' => '#0EA5E9', 'grup' => 'HATIRLATMA', 'baslik' => "Yarın $yarinRez rezervasyon — hatırlatma gönder", 'aciklama' => 'WhatsApp ile tekil teyit (no-show azaltır)', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI’a yaptır']]; }
+
+            // Kanal analizi
+            $analiz[] = ['ikon' => 'hub', 'renk' => '#7C3AED', 'baslik' => 'Kanal Dağılımı', 'alt' => 'son 30 gün', 'durum' => $kanSantral > 0 ? 'iyi' : 'notr', 'yorum' => $kanTum > 0 ? ("$kanTum rezervasyonun $kanSantral'i (%$kanSantralYuzde) AI Santraldan geldi — $kanSantralKisi kişi. Kalan $kanDiger panel/diğer. Santral, kaçırdığın telefon rezervasyonlarını kurtarıyor.") : 'Son 30 günde rezervasyon kaydı yok.'];
+
+            $crmRez = ['santral' => $santralListe, 'kacan' => $kacanListe, 'bugun' => $bugunListe, 'yarin' => $yarinRez,
+                'kanal' => ['santral' => $kanSantral, 'diger' => $kanDiger, 'tum' => $kanTum, 'yuzde' => $kanSantralYuzde]];
         }
         // ================= CRM / MÜŞTERİ İLİŞKİLERİ (RFM sağlık) =================
         elseif ($kod === 'crm') {
@@ -18315,6 +18398,7 @@ if (!function_exists('_departmanBriefVeri')) {
         return [
             'ad' => $bp->ad ?? '', 'deptAd' => $tmpl['ad'] ?? 'Departman', 'deptRenk' => $tmpl['renk'] ?? '#7C3AED', 'deptIkon' => $tmpl['ikon'] ?? 'groups',
             'kpis' => $kpis, 'isler' => $isler, 'analiz' => $analiz, 'dunYapilanlar' => $dunY, 'hizli' => $hizli, 'aiLink' => $aiLink, 'aiOzet' => $aiOzet, 'rozetler' => $rozetler,
+            'crmRez' => $crmRez ?? null,
         ];
     }
 }
@@ -18495,22 +18579,43 @@ if (!function_exists('_departmanBriefDemo')) {
                     ['ikon' => 'pending', 'tint' => 't-amber', 'deger' => 3, 'label' => 'Onay bekleyen', 'alt' => 'rezervasyon'],
                     ['ikon' => 'event_busy', 'tint' => 't-amber', 'deger' => '%9', 'label' => 'No-show (30g)', 'alt' => '6 gelmedi'],
                     ['ikon' => 'restaurant_menu', 'tint' => 't-rose', 'deger' => 4, 'label' => 'Ön siparişli masa', 'alt' => 'bugün'],
+                    ['ikon' => 'call', 'tint' => 't-mor', 'deger' => 2, 'label' => 'Santraldan (bekliyor)', 'alt' => 'onay/teyit'],
+                    ['ikon' => 'phone_missed', 'tint' => 't-red', 'deger' => 3, 'label' => 'Kaçan çağrı (3g)', 'alt' => 'geri ara'],
                 ],
                 'isler' => [
+                    ['ikon' => 'call', 'renk' => '#7C3AED', 'grup' => 'SANTRAL', 'baslik' => '2 rezervasyon santraldan geldi, onay bekliyor', 'aciklama' => 'Aşağıda onayla + çağrı kaydını dinle', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Rezervasyonlar']],
+                    ['ikon' => 'phone_missed', 'renk' => '#F43F5E', 'grup' => 'KAYIP', 'baslik' => '3 kaçan çağrı — geri ara', 'aciklama' => 'Rezervasyona dönmemiş aramalar (aşağıda geri-ara listesi)', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI']],
                     ['ikon' => 'event_available', 'renk' => '#A855F7', 'grup' => 'HAZIRLIK', 'baslik' => '9 rezervasyon bugün (42 kişi)', 'aciklama' => '4 masada ön sipariş var — mutfağa hazırlat', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI ile bildir']],
-                    ['ikon' => 'pending', 'renk' => '#F59E0B', 'grup' => 'ONAY', 'baslik' => '3 rezervasyon onay bekliyor', 'aciklama' => 'Onayla / masa ata', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Gör']],
+                    ['ikon' => 'notifications_active', 'renk' => '#0EA5E9', 'grup' => 'HATIRLATMA', 'baslik' => 'Yarın 11 rezervasyon — hatırlatma gönder', 'aciklama' => 'WhatsApp ile tekil teyit (no-show azaltır)', 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI’a yaptır']],
                     ['ikon' => 'celebration', 'renk' => '#0EA5E9', 'grup' => 'ETKİNLİK', 'baslik' => 'Cumartesi 20 kişilik nişan', 'aciklama' => 'Fix menü + ön sipariş hazırlığı', 'aksiyon' => ['url' => '/etkinlik-takvim', 'lbl' => 'Takvim']],
-                    ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'NO-SHOW', 'baslik' => 'No-show oranı %9', 'aciklama' => 'Gruplarda kapora almayı düşün', 'aksiyon' => ['url' => '/depozito', 'lbl' => 'Kapora']],
                 ],
                 'analiz' => [
+                    ['ikon' => 'hub', 'renk' => '#7C3AED', 'baslik' => 'Kanal Dağılımı', 'alt' => 'son 30 gün', 'durum' => 'iyi', 'yorum' => '128 rezervasyonun 41\'i (%32) AI Santraldan geldi — 96 kişi. Santral, kaçırdığın telefon rezervasyonlarını kurtarıyor.'],
                     ['ikon' => 'event_available', 'renk' => '#A855F7', 'baslik' => 'Doluluk', 'alt' => 'bugün', 'durum' => 'dikkat', 'yorum' => 'Bugün 42 kişilik rezervasyon, kapasitenin %78\'i. Akşam 20:00 slotu dolu. 👍'],
                     ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'No-show oranı %9 (6/66). Gruplarda kapora alınsa %3-4\'e iner.'],
                     ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => 'iyi', 'yorum' => 'Önümüzdeki 7 günde 34 rezervasyon. Cuma-Cumartesi yoğun.'],
-                    ['ikon' => 'restaurant_menu', 'renk' => '#F56A8B', 'baslik' => 'Ön Sipariş', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => '4 masa ön sipariş verdi — mutfak önceden hazırlasın, servis hızlansın.'],
                 ],
                 'hizli' => [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/masa-yonetim', 'ikon' => 'grid_view', 'lbl' => 'Masa Yönetimi'], ['url' => '/salon-sema', 'ikon' => 'map', 'lbl' => 'Salon Şema'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']],
-                'aiOzet' => 'Bugünün gündemi: <b>9</b> rezervasyon (42 kişi) · doluluk <b>%78</b> · <b>3</b> onay bekliyor · no-show <b>%9</b>.',
-                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '7 rezervasyon tamamlandı, 1 no-show', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Nişan grubundan 500₺ kapora alındı', 'link' => '/depozito']],
+                'aiOzet' => 'Bugünün gündemi: <b>2</b> santral rezervasyonu · <b>3</b> kaçan çağrı · <b>9</b> rezervasyon (42 kişi) · no-show <b>%9</b>.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '7 rezervasyon tamamlandı, 1 no-show', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Santraldan 4 rezervasyon alındı', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Nişan grubundan 500₺ kapora alındı', 'link' => '/depozito']],
+                'crmRez' => [
+                    'santral' => [
+                        ['id' => 0, 'ad' => 'Mehmet Yılmaz', 'telefon' => '0532 111 22 33', 'tarih' => now()->toDateString(), 'saat' => '20:00', 'kisi' => 4, 'ses' => '#', 'bugun' => true],
+                        ['id' => 0, 'ad' => 'Ayşe Demir', 'telefon' => '0533 444 55 66', 'tarih' => now()->addDay()->toDateString(), 'saat' => '19:30', 'kisi' => 2, 'ses' => '#', 'bugun' => false],
+                    ],
+                    'kacan' => [
+                        ['id' => 0, 'telefon' => '0535 777 88 99', 'sonuc' => 'kacan', 'zaman' => '2 saat önce'],
+                        ['id' => 0, 'telefon' => '0536 123 45 67', 'sonuc' => 'bilgi', 'zaman' => '5 saat önce'],
+                        ['id' => 0, 'telefon' => '0537 987 65 43', 'sonuc' => 'kacan', 'zaman' => 'dün'],
+                    ],
+                    'bugun' => [
+                        ['id' => 0, 'ad' => 'Mehmet Yılmaz', 'saat' => '20:00', 'kisi' => 4, 'durum' => 'bekliyor', 'kanal' => 'Santral', 'santral' => true],
+                        ['id' => 0, 'ad' => 'Kaya Ailesi', 'saat' => '20:30', 'kisi' => 6, 'durum' => 'onaylandi', 'kanal' => 'Panel', 'santral' => false],
+                        ['id' => 0, 'ad' => 'Zeynep Ak', 'saat' => '21:00', 'kisi' => 2, 'durum' => 'onaylandi', 'kanal' => 'Uygulama', 'santral' => false],
+                    ],
+                    'yarin' => 11,
+                    'kanal' => ['santral' => 41, 'diger' => 87, 'tum' => 128, 'yuzde' => 32],
+                ],
             ]);
         }
         // Genel demo (diğer departmanlar)
