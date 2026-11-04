@@ -1918,6 +1918,255 @@ Route::post('/api/m/cark-cevir', function (Request $r) {
     return ['ok' => 1, 'index' => $idx, 'dilim_id' => (int) $sec->id, 'tip' => $tip, 'deger' => $deger,
         'baslik' => $sec->ad, 'kupon_kodu' => $kupon, 'puan' => $puanYeni, 'mesaj' => $mesaj, 'renk' => $sec->renk];
 });
+// ========================= CRM / MÜŞTERİ İLİŞKİLERİ (RFM sağlık + 360 + iş-yapan AI) =========================
+if (!function_exists('_crmGuard')) {
+    function _crmGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_odul_raporu') || _panelYetkiVar($bp, 'gor_odul_dogrula') || _panelYetkiVar($bp, 'gor_rezervasyon'));
+    }
+}
+if (!function_exists('_crmDogumKolon')) {
+    function _crmDogumKolon()
+    {
+        if (cache()->get('crm_dogum_kolon_ok')) return Schema::hasColumn('musteriler', 'dogum_tarihi');
+        try { if (Schema::hasTable('musteriler') && !Schema::hasColumn('musteriler', 'dogum_tarihi')) Schema::table('musteriler', function ($t) { $t->date('dogum_tarihi')->nullable(); }); cache()->put('crm_dogum_kolon_ok', 1, now()->addHours(12)); } catch (\Throwable $e) {}
+        return Schema::hasColumn('musteriler', 'dogum_tarihi');
+    }
+}
+if (!function_exists('_crmRecencyIds')) {
+    // Son ziyareti [minGun, maxGun] gün önce aralığında olan müşteri id'leri (adisyon kapanış'tan).
+    function _crmRecencyIds($sid, $minGun, $maxGun)
+    {
+        try {
+            if (!Schema::hasTable('adisyonlar')) return [];
+            $bit = now()->subDays($minGun)->toDateTimeString();
+            $q = DB::table('adisyonlar')->where('sube_id', (int) $sid)->whereNotNull('musteri_id')->where('durum', '!=', 'iptal')->groupBy('musteri_id');
+            if ($maxGun >= 9000) $q->havingRaw('MAX(kapanis) <= ?', [$bit]);
+            else { $bas = now()->subDays($maxGun)->toDateTimeString(); $q->havingRaw('MAX(kapanis) BETWEEN ? AND ?', [$bas, $bit]); }
+            return $q->pluck('musteri_id')->map(fn ($x) => (int) $x)->all();
+        } catch (\Throwable $e) { return []; }
+    }
+}
+if (!function_exists('_crmSegmentIds')) {
+    function _crmSegmentIds($sid, $seg)
+    {
+        $sid = (int) $sid;
+        try {
+            switch ($seg) {
+                case 'vip': return DB::table('musteriler')->where('sube_id', $sid)->where('toplam_harcama', '>=', 5000)->pluck('id')->map(fn ($x) => (int) $x)->all();
+                case 'yeni': return DB::table('musteriler')->where('sube_id', $sid)->where('created_at', '>=', now()->startOfMonth())->pluck('id')->map(fn ($x) => (int) $x)->all();
+                case 'aktif': return _crmRecencyIds($sid, 0, 30);
+                case 'risk': return _crmRecencyIds($sid, 30, 60);
+                case 'kayip': return _crmRecencyIds($sid, 60, 120);
+                case 'uyuyan': return _crmRecencyIds($sid, 120, 9999);
+                case 'dogum':
+                    if (!_crmDogumKolon()) return [];
+                    $md = now()->format('m-d'); $md2 = now()->addDays(7)->format('m-d');
+                    return DB::table('musteriler')->where('sube_id', $sid)->whereNotNull('dogum_tarihi')->whereRaw("DATE_FORMAT(dogum_tarihi,'%m-%d') BETWEEN ? AND ?", [$md, $md2])->pluck('id')->map(fn ($x) => (int) $x)->all();
+            }
+        } catch (\Throwable $e) {}
+        return [];
+    }
+}
+if (!function_exists('_crmOzet')) {
+    function _crmOzet($sid)
+    {
+        $sid = (int) $sid;
+        $o = ['toplam' => 0, 'yeni' => 0, 'vip' => 0, 'vipCiro' => 0, 'vipPay' => 0, 'aktif' => 0, 'risk' => 0, 'kayip' => 0, 'ortFis' => 0, 'memOrt' => null, 'memAcik' => 0];
+        try {
+            $o['toplam'] = (int) DB::table('musteriler')->where('sube_id', $sid)->count();
+            $o['yeni'] = (int) DB::table('musteriler')->where('sube_id', $sid)->where('created_at', '>=', now()->startOfMonth())->count();
+            $o['vip'] = (int) DB::table('musteriler')->where('sube_id', $sid)->where('toplam_harcama', '>=', 5000)->count();
+            $o['vipCiro'] = (float) DB::table('musteriler')->where('sube_id', $sid)->where('toplam_harcama', '>=', 5000)->sum('toplam_harcama');
+            $topCiro = (float) DB::table('musteriler')->where('sube_id', $sid)->sum('toplam_harcama');
+            $o['vipPay'] = $topCiro > 0 ? (int) round($o['vipCiro'] / $topCiro * 100) : 0;
+            $sip = (int) DB::table('musteriler')->where('sube_id', $sid)->sum('siparis_sayisi');
+            $o['ortFis'] = $sip > 0 ? (int) round($topCiro / $sip) : 0;
+        } catch (\Throwable $e) {}
+        $o['aktif'] = count(_crmRecencyIds($sid, 0, 30));
+        $o['risk'] = count(_crmRecencyIds($sid, 30, 60));
+        $o['kayip'] = count(_crmRecencyIds($sid, 60, 120));
+        try { if (Schema::hasTable('memnuniyet')) { $o['memOrt'] = DB::table('memnuniyet')->where('sube_id', $sid)->where('created_at', '>=', now()->subDays(30))->avg('puan'); $o['memAcik'] = (int) DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', '<=', 2)->where('durum', '!=', 'cozuldu')->count(); } } catch (\Throwable $e) {}
+        return $o;
+    }
+}
+if (!function_exists('_crmDurum')) {
+    function _crmDurum($m, $gun)
+    {
+        if ((float) ($m->toplam_harcama ?? 0) >= 5000) return 'vip';
+        try { if (!empty($m->created_at) && \Carbon\Carbon::parse($m->created_at)->gte(now()->startOfMonth()) && (int) ($m->siparis_sayisi ?? 0) <= 1) return 'yeni'; } catch (\Throwable $e) {}
+        if ($gun === null) return 'yeni';
+        if ($gun <= 30) return 'aktif';
+        if ($gun <= 60) return 'risk';
+        if ($gun <= 120) return 'kayip';
+        return 'uyuyan';
+    }
+}
+if (!function_exists('_crmMusteri360')) {
+    function _crmMusteri360($sid, $m)
+    {
+        $sid = (int) $sid; $out = ['son_gun' => null, 'durum' => 'yeni', 'ort_fis' => 0, 'siparisler' => collect(), 'favori' => []];
+        try {
+            $son = DB::table('adisyonlar')->where('sube_id', $sid)->where('musteri_id', $m->id)->where('durum', '!=', 'iptal')->max('kapanis');
+            $out['son_gun'] = $son ? (int) \Carbon\Carbon::parse($son)->diffInDays(now()) : null;
+            $out['ort_fis'] = (int) ($m->siparis_sayisi ?? 0) > 0 ? (int) round((float) ($m->toplam_harcama ?? 0) / (int) $m->siparis_sayisi) : 0;
+            $out['durum'] = _crmDurum($m, $out['son_gun']);
+            $out['siparisler'] = DB::table('adisyonlar')->where('sube_id', $sid)->where('musteri_id', $m->id)->whereNotNull('kapanis')->orderByDesc('kapanis')->limit(10)->get(['id', 'toplam', 'kapanis', 'kisi_sayisi']);
+            if (Schema::hasTable('adisyon_kalemleri')) $out['favori'] = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.musteri_id', $m->id)->whereNotNull('adisyon_kalemleri.urun_adi')->selectRaw('adisyon_kalemleri.urun_adi ad, SUM(adisyon_kalemleri.adet) a')->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('a')->limit(5)->pluck('ad')->all();
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+}
+if (!function_exists('_crmAsistanEylemUygula')) {
+    function _crmAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid;
+        $log = function ($seg, $b, $mt, $res) use ($sid, $bp) { try { if (function_exists('_pazarlamaKur')) _pazarlamaKur(); if (Schema::hasTable('kampanya_gonderim')) DB::table('kampanya_gonderim')->insert(['sube_id' => $sid, 'baslik' => $b, 'metin' => $mt, 'gorsel' => null, 'segment' => 'crm_' . $seg, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {} };
+        try {
+            switch ($intent) {
+                case 'kayip_gerikazanim':
+                    $ids = _crmSegmentIds($sid, 'kayip'); if (!$ids) return ['ok' => true, 'mesaj' => 'Kayıp (60-120 gün) müşteri yok.'];
+                    $b = 'Seni özledik! 💜'; $mt = 'Uzun zamandır görüşemedik. Bu hafta gel, sana özel bir sürprizimiz var ☕';
+                    $res = function_exists('_musteriKampanyaPush') ? _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'crm_kayip']) : ['hedef' => 0, 'gonderilen' => 0]; $log('kayip', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' kayıp müşteriye geri-kazanım bildirimi gönderildi.') : 'Bu segmentte push açık müşteri yok.'];
+                case 'vip_ilgi':
+                    $ids = _crmSegmentIds($sid, 'vip'); if (!$ids) return ['ok' => true, 'mesaj' => 'VIP müşteri yok.'];
+                    $b = 'Değerli müşterimiz ⭐'; $mt = 'Bizi tercih ettiğin için teşekkürler! Bir sonraki ziyaretinde sana özel bir ikram var.';
+                    $res = function_exists('_musteriKampanyaPush') ? _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'crm_vip']) : ['hedef' => 0, 'gonderilen' => 0]; $log('vip', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' VIP müşteriye teşekkür/ilgi bildirimi gönderildi.') : 'VIP segmentinde push açık müşteri yok.'];
+                case 'yeni_hosgeldin':
+                    $ids = _crmSegmentIds($sid, 'yeni'); if (!$ids) return ['ok' => true, 'mesaj' => 'Bu ay yeni üye yok.'];
+                    $b = 'Aramıza hoş geldin! 👋'; $mt = 'İlk siparişinde sana özel bir karşılama hediyesi hazır. Keyifli yemekler!';
+                    $res = function_exists('_musteriKampanyaPush') ? _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'crm_yeni']) : ['hedef' => 0, 'gonderilen' => 0]; $log('yeni', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' yeni müşteriye hoş geldin bildirimi gönderildi.') : 'Yeni üyelerde push açık müşteri yok.'];
+                case 'dogum_gunu_kutla':
+                    if (!_crmDogumKolon()) return ['ok' => false, 'mesaj' => 'Doğum tarihi verisi yok (müşteri profiline doğum tarihi girilmeli).'];
+                    $ids = _crmSegmentIds($sid, 'dogum'); if (!$ids) return ['ok' => true, 'mesaj' => 'Bu hafta doğum günü olan müşteri yok.'];
+                    $b = 'Doğum günün kutlu olsun! 🎂'; $mt = 'Bu özel günde ikramımız seni bekliyor. Nice mutlu yıllara!';
+                    $res = function_exists('_musteriKampanyaPush') ? _musteriKampanyaPush($sid, $ids, $b, $mt, null, ['kampanya_segment' => 'crm_dogum']) : ['hedef' => 0, 'gonderilen' => 0]; $log('dogum', $b, $mt, $res);
+                    return ['ok' => true, 'mesaj' => ($res['gonderilen'] ?? 0) > 0 ? (($res['gonderilen']) . ' müşteriye doğum günü kutlaması gönderildi.') : 'Push açık doğum günü müşterisi yok.'];
+                case 'memnuniyetsize_don':
+                    $n = 0; try { if (Schema::hasTable('memnuniyet')) $n = (int) DB::table('memnuniyet')->where('sube_id', $sid)->where('puan', '<=', 2)->where('durum', '!=', 'cozuldu')->count(); } catch (\Throwable $e) {}
+                    if ($n <= 0) return ['ok' => true, 'mesaj' => 'Çözülmemiş düşük puanlı geri bildirim yok. 👍'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⭐ Memnuniyet takibi', "$n düşük puanlı geri bildirim çözüm bekliyor — müşteriye ulaşın.", ['tur' => 'memnuniyet'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => "$n düşük puanlı geri bildirim için takip uyarısı gönderildi."];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen CRM eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_crmAsistanNiyet')) {
+    function _crmAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/kayıp|kayip|geri kazan|geri getir|uzun zaman/u' => ['eylem', 'kayip_gerikazanim'],
+            '/vip|sadık müşteri|sadik musteri|değerli müşteri|degerli musteri/u' => ['eylem', 'vip_ilgi'],
+            '/yeni (üye|uye|müşteri|musteri)|hoş geldin|hos geldin|karşılama/u' => ['eylem', 'yeni_hosgeldin'],
+            '/doğum günü|dogum gunu/u' => ['eylem', 'dogum_gunu_kutla'],
+            '/memnuniyet|şikayet|sikayet|düşük puan|dusuk puan|kötü yorum/u' => ['eylem', 'memnuniyetsize_don'],
+            '/müşteri (ara|bul|sorgu)|musteri (ara|bul)|kimdi|profil|360/u' => ['cevap', 'musteri_link'],
+            '/sağlık|saglik|aktif|risk|durum dağıl|dagil/u' => ['cevap', 'saglik'],
+            '/özet|ozet|durum|ne var|gündem|gundem/u' => ['cevap', 'ozet'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın CRM / Müşteri İlişkileri AI asistanısın. SADECE JSON don: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA niyetleri: ozet, saglik, musteri_link, bilinmiyor. "
+            . "EYLEM niyetleri (güvenli push, toplu WhatsApp YOK): kayip_gerikazanim (60-120 gün gelmeyene geri-kazanım), vip_ilgi (VIP'lere teşekkür), yeni_hosgeldin (yeni üyeye karşılama), dogum_gunu_kutla (bu hafta doğanlara), memnuniyetsize_don (düşük puana takip). UYDURMA.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_crmAsistanOku')) {
+    function _crmAsistanOku($sid, $bp, $intent, $params)
+    {
+        try {
+            $o = _crmOzet($sid);
+            switch ($intent) {
+                case 'musteri_link': return ['cevap' => 'Müşteri 360 ekranından telefon/isimle ara; profil, geçmiş, harcama, favori ve durumunu tek ekranda gör.', 'link' => ['url' => '/musteri-360', 'lbl' => 'Müşteri 360']];
+                case 'saglik': return ['cevap' => "Müşteri sağlığı: {$o['aktif']} aktif (son 30g) · {$o['risk']} riskli (30-60g) · {$o['kayip']} kayıp (60-120g). Kayıpları geri getireyim mi?", 'aksiyon' => $o['kayip'] > 0 ? ['lbl' => 'Kayıpları geri getir', 'soru' => 'kayıp müşterileri geri kazan'] : null, 'link' => ['url' => '/musteri-360?seg=kayip', 'lbl' => 'Kayıp listesi']];
+                case 'ozet':
+                default:
+                    return ['cevap' => "{$o['toplam']} müşteri · {$o['vip']} VIP (ciro payı %{$o['vipPay']}) · {$o['kayip']} kayıp" . ($o['memAcik'] > 0 ? " · {$o['memAcik']} açık şikayet" : "") . ". Kayıpları geri getirmemi ister misin?", 'aksiyon' => $o['kayip'] > 0 ? ['lbl' => 'Kayıpları geri getir', 'soru' => 'kayıp müşterileri geri kazan'] : null, 'link' => ['url' => '/departman-brief?dep=crm', 'lbl' => 'CRM Brifingi']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/crm-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_crmGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'CRM / Müşteri İlişkileri AI', 'selam' => 'Müşteri profili, VIP, kayıp, şikayet — sor; gerekirse güvenle (push) işini bitireyim.',
+        'hizli' => [
+            ['Kayıpları geri getir', 'Kayıp müşterileri geri kazan', 'person_off', '#F59E0B', '60-120 gün'],
+            ['VIP\'lere teşekkür', 'VIP müşterilere ilgi göster', 'workspace_premium', '#F6CE63', 'değerli'],
+            ['Yeni müşteriye hoş geldin', 'Yeni üyelere hoş geldin gönder', 'person_add', '#10B981', 'bu ay'],
+            ['Doğum günü kutla', 'Bu hafta doğum günü olanları kutla', 'cake', '#EC4899', 'tetik'],
+            ['Müşteri sağlığı', 'Müşteri sağlığı dağılımı', 'monitor_heart', '#F43F5E', 'aktif/risk/kayıp'],
+            ['Müşteri ara', 'Müşteri profili ara', 'person_search', '#7C3AED', '360 kart'],
+        ],
+        'sorUrl' => '/api/crm-asistan/sor', 'uygulaUrl' => '/api/crm-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'CRM AI\'a sor… (ör. kayıpları geri getir, VIP\'lere teşekkür)',
+    ]);
+});
+Route::post('/api/crm-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_crmGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _crmAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'kayip_gerikazanim' => '60-120 gündür gelmeyen (push açık) müşterilere kişisel geri-kazanım bildirimi gönderilecek. Toplu WhatsApp YAPILMAYACAK.',
+            'vip_ilgi' => 'VIP müşterilere (push açık) özel teşekkür/ilgi bildirimi gönderilecek.',
+            'yeni_hosgeldin' => 'Bu ay kaydolan yeni müşterilere hoş geldin bildirimi gönderilecek.',
+            'dogum_gunu_kutla' => 'Bu hafta doğum günü olan müşterilere kutlama+ikram bildirimi gönderilecek.',
+            'memnuniyetsize_don' => 'Düşük puanlı/çözülmemiş geri bildirimler için yönetime takip uyarısı gönderilecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'crm', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $oo = _crmAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $oo['cevap'], 'aksiyon' => $oo['aksiyon'] ?? null, 'link' => $oo['link'] ?? null]);
+});
+Route::post('/api/crm-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_crmGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    return response()->json(['ok' => 1, 'sonuc' => _aiEylemOnayla($log_id, $bp)]);
+});
+Route::get('/musteri-360', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_crmGuard($bp)) return redirect('/pos-giris');
+    $sid = _webSubeId(); $id = (int) $r->query('id');
+    if ($id) {
+        $m = DB::table('musteriler')->where('id', $id)->where('sube_id', $sid)->first();
+        if (!$m) return redirect('/musteri-360');
+        return view('musteri_360', ['m' => $m, 'detay' => _crmMusteri360($sid, $m)]);
+    }
+    $q = trim((string) $r->query('q', '')); $seg = (string) $r->query('seg', '');
+    $base = DB::table('musteriler')->where('sube_id', $sid);
+    if ($q !== '') $base->where(function ($w) use ($q) { $w->where('ad', 'like', "%$q%")->orWhere('telefon', 'like', "%$q%"); });
+    $liste = $base->orderByDesc('toplam_harcama')->limit(100)->get();
+    $lv = []; $ids = $liste->pluck('id')->all();
+    try { if ($ids && Schema::hasTable('adisyonlar')) foreach (DB::table('adisyonlar')->where('sube_id', $sid)->whereIn('musteri_id', $ids)->where('durum', '!=', 'iptal')->groupBy('musteri_id')->selectRaw('musteri_id, MAX(kapanis) son')->get() as $row) $lv[(int) $row->musteri_id] = $row->son; } catch (\Throwable $e) {}
+    $liste = $liste->map(function ($m) use ($lv) { $son = $lv[(int) $m->id] ?? null; $m->son_gun = $son ? (int) \Carbon\Carbon::parse($son)->diffInDays(now()) : null; $m->durum = _crmDurum($m, $m->son_gun); return $m; });
+    if ($seg !== '') $liste = $liste->filter(fn ($m) => $m->durum === $seg)->values();
+    return view('musteri_360', ['liste' => $liste, 'ozet' => _crmOzet($sid), 'q' => $q, 'seg' => $seg]);
+});
+
 // ========================= SATIŞ / REZERVASYON & ETKİNLİK =========================
 if (!function_exists('_satisGuard')) {
     function _satisGuard($bp)
@@ -8251,6 +8500,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
             '/pazarlama-sohbet' => 'gor_app_yonetim', '/kampanya' => 'gor_app_yonetim', '/segmentler' => 'gor_app_yonetim', '/kampanya-rapor' => 'gor_app_yonetim', '/icerik-takvimi' => 'gor_app_yonetim',
             '/satis-sohbet' => 'gor_rezervasyon', '/etkinlik-takvim' => 'gor_rezervasyon', '/depozito' => 'gor_rezervasyon',
+            '/crm-sohbet' => 'gor_odul_dogrula', '/musteri-360' => 'gor_odul_dogrula', // CRM / Müşteri İlişkileri
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
@@ -17788,7 +18038,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -17978,6 +18228,38 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => $hafRez > 0 ? 'iyi' : 'notr', 'yorum' => "Önümüzdeki 7 günde $hafRez rezervasyon. Bekleyen $bekleyen onay var."];
             $analiz[] = ['ikon' => 'restaurant_menu', 'renk' => '#F56A8B', 'baslik' => 'Ön Sipariş', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => $onSiparisli > 0 ? "$onSiparisli masa ön sipariş verdi — mutfak önceden hazırlasın, servis hızlansın." : 'Bugün ön siparişli rezervasyon yok.'];
         }
+        // ================= CRM / MÜŞTERİ İLİŞKİLERİ (RFM sağlık) =================
+        elseif ($kod === 'crm') {
+            $o = function_exists('_crmOzet') ? _crmOzet($sid) : [];
+            $toplam = (int) ($o['toplam'] ?? 0); $vip = (int) ($o['vip'] ?? 0); $vipPay = (int) ($o['vipPay'] ?? 0);
+            $aktif = (int) ($o['aktif'] ?? 0); $risk = (int) ($o['risk'] ?? 0); $kayip = (int) ($o['kayip'] ?? 0);
+            $ortFis = (int) ($o['ortFis'] ?? 0); $yeni = (int) ($o['yeni'] ?? 0);
+            $memOrt = $o['memOrt'] ?? null; $memAcik = (int) ($o['memAcik'] ?? 0);
+            $dogumVar = function_exists('_crmSegmentIds') ? count(_crmSegmentIds($sid, 'dogum')) : 0;
+            $memStr = $memOrt !== null ? number_format((float) $memOrt, 1, ',', '.') : '—';
+            $kpis[] = ['ikon' => 'groups', 'tint' => 't-blue', 'deger' => $toplam, 'label' => 'Toplam müşteri', 'alt' => $yeni > 0 ? ("$yeni yeni (bu ay)") : 'kayıtlı', 'link' => '/musteri-360'];
+            $kpis[] = ['ikon' => 'workspace_premium', 'tint' => 't-amber', 'deger' => $vip, 'label' => 'VIP müşteri', 'alt' => "ciro payı %$vipPay", 'link' => '/musteri-360?seg=vip'];
+            $kpis[] = ['ikon' => 'how_to_reg', 'tint' => 't-green', 'deger' => $aktif, 'label' => 'Aktif (30g)', 'alt' => 'son ziyaret', 'link' => '/musteri-360?seg=aktif'];
+            $kpis[] = ['ikon' => 'warning_amber', 'tint' => $risk > 0 ? 't-amber' : 't-green', 'deger' => $risk, 'label' => 'Riskli (30-60g)', 'alt' => $risk > 0 ? 'kaçmak üzere' : 'yok 👍', 'link' => '/musteri-360?seg=risk'];
+            $kpis[] = ['ikon' => 'person_off', 'tint' => $kayip > 0 ? 't-red' : 't-green', 'deger' => $kayip, 'label' => 'Kayıp (60-120g)', 'alt' => $kayip > 0 ? 'geri kazan' : 'yok 👍', 'link' => '/musteri-360?seg=kayip'];
+            $kpis[] = ['ikon' => 'receipt_long', 'tint' => 't-mor', 'deger' => $tl($ortFis), 'label' => 'Ortalama fiş', 'alt' => 'müşteri başı', 'link' => '/musteri-360'];
+            $kpis[] = ['ikon' => 'sentiment_satisfied', 'tint' => ($memOrt !== null && $memOrt < 3.5) ? 't-red' : 't-green', 'deger' => $memStr, 'label' => 'Memnuniyet (30g)', 'alt' => '5 üzerinden', 'link' => '/memnuniyet'];
+            if ($memAcik > 0) $kpis[] = ['ikon' => 'report_problem', 'tint' => 't-red', 'deger' => $memAcik, 'label' => 'Açık şikayet', 'alt' => 'çözüm bekliyor', 'link' => '/memnuniyet'];
+            // Bugünün öncelikleri
+            if ($kayip > 0) { $isler[] = ['ikon' => 'person_off', 'renk' => '#F59E0B', 'grup' => 'GERİ KAZAN', 'baslik' => "$kayip müşteri kaybolmak üzere", 'aciklama' => '60-120 gündür gelmeyene kişisel geri-kazanım bildirimi gönder', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']]; $sinyal[] = "<b>$kayip</b> kayıp müşteri"; }
+            if ($memAcik > 0) { $isler[] = ['ikon' => 'report_problem', 'renk' => '#F43F5E', 'grup' => 'ŞİKAYET', 'baslik' => "$memAcik açık şikayet çözüm bekliyor", 'aciklama' => 'Düşük puanlı müşteriye dön, kaybetme', 'aksiyon' => ['url' => '/memnuniyet', 'lbl' => 'Gör']]; $sinyal[] = "<b>$memAcik</b> açık şikayet"; }
+            if ($vip > 0) { $isler[] = ['ikon' => 'workspace_premium', 'renk' => '#F6A623', 'grup' => 'VIP', 'baslik' => "$vip VIP müşteriye ilgi göster", 'aciklama' => 'Teşekkür + özel ikram bildirimi (sadakati güçlendir)', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']]; }
+            if ($yeni > 0) { $isler[] = ['ikon' => 'person_add', 'renk' => '#10B981', 'grup' => 'KARŞILAMA', 'baslik' => "$yeni yeni müşteri bu ay", 'aciklama' => 'Hoş geldin + ilk sipariş hediyesi gönder', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']]; }
+            if ($dogumVar > 0) { $isler[] = ['ikon' => 'cake', 'renk' => '#EC4899', 'grup' => 'DOĞUM GÜNÜ', 'baslik' => "$dogumVar müşterinin bu hafta doğum günü", 'aciklama' => 'Kutlama + ikram bildirimi', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']]; }
+            $isler[] = ['ikon' => 'person_search', 'renk' => '#14B8A6', 'grup' => 'MÜŞTERİ', 'baslik' => 'Müşteri 360 profilini incele', 'aciklama' => 'Telefon/isimle ara; geçmiş, harcama, favori, durum tek ekranda', 'aksiyon' => ['url' => '/musteri-360', 'lbl' => 'Müşteri 360']];
+            // Analiz
+            $toplamAktif = $aktif + $risk + $kayip;
+            $analiz[] = ['ikon' => 'monitor_heart', 'renk' => '#14B8A6', 'baslik' => 'Müşteri Sağlığı', 'alt' => 'ziyaret sıklığı', 'durum' => $kayip > $aktif ? 'risk' : ($risk > 0 ? 'dikkat' : 'iyi'), 'yorum' => "$aktif aktif · $risk riskli · $kayip kayıp. " . ($kayip > 0 ? 'Kayıpları geri kazanım kampanyasıyla aktive et.' : 'Sağlıklı müşteri tabanı. 👍')];
+            $analiz[] = ['ikon' => 'workspace_premium', 'renk' => '#F6A623', 'baslik' => 'VIP & Değer', 'alt' => 'ciro payı', 'durum' => $vipPay > 40 ? 'dikkat' : 'iyi', 'yorum' => "$vip VIP müşteri toplam cironun %$vipPay'ini getiriyor. " . ($vipPay > 40 ? 'Ciro VIP’e bağımlı — onları elde tut, tabanı genişlet.' : 'Dengeli dağılım.')];
+            $analiz[] = ['ikon' => 'sentiment_satisfied', 'renk' => '#F56A8B', 'baslik' => 'Memnuniyet', 'alt' => 'son 30 gün', 'durum' => $memAcik > 0 ? 'dikkat' : ($memOrt !== null && $memOrt < 3.5 ? 'risk' : 'iyi'), 'yorum' => $memOrt !== null ? ("Ortalama $memStr/5." . ($memAcik > 0 ? " $memAcik açık şikayet var — hızlı dönüş kaybı önler." : ' 👍')) : 'Henüz memnuniyet verisi yok.'];
+            $analiz[] = ['ikon' => 'receipt_long', 'renk' => '#7C3AED', 'baslik' => 'Ortalama Fiş & Tekrar', 'alt' => 'müşteri başı', 'durum' => 'notr', 'yorum' => "Müşteri başına ortalama " . $tl($ortFis) . ". Tekrar ziyareti artırmak için sadakat/puan ve kayıp geri-kazanımı en etkili kaldıraç."];
+            $hizli = [['url' => '/musteri-360', 'ikon' => 'person_search', 'lbl' => 'Müşteri 360'], ['url' => '/musteri-360?seg=vip', 'ikon' => 'workspace_premium', 'lbl' => 'VIP Müşteriler'], ['url' => '/musteri-360?seg=kayip', 'ikon' => 'person_off', 'lbl' => 'Kayıp Müşteriler'], ['url' => '/crm-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'CRM AI'], ['url' => '/memnuniyet', 'ikon' => 'sentiment_satisfied', 'lbl' => 'Memnuniyet'], ['url' => '/sadakat', 'ikon' => 'loyalty', 'lbl' => 'Sadakat/Puan']];
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
@@ -18043,7 +18325,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -18172,6 +18454,36 @@ if (!function_exists('_departmanBriefDemo')) {
                 'hizli' => [['url' => '/kampanya', 'ikon' => 'campaign', 'lbl' => 'Kampanya Stüdyosu'], ['url' => '/segmentler', 'ikon' => 'groups', 'lbl' => 'Segmentler'], ['url' => '/icerik-takvimi', 'ikon' => 'calendar_month', 'lbl' => 'İçerik Takvimi'], ['url' => '/cark-yonetim', 'ikon' => 'casino', 'lbl' => 'Çarkıfelek'], ['url' => '/odul-raporu', 'ikon' => 'emoji_events', 'lbl' => 'Ödül Raporu'], ['url' => '/app-yonetim', 'ikon' => 'smartphone', 'lbl' => 'App Yönetim']],
                 'aiOzet' => 'Bugünün gündemi: <b>86</b> yeni üye · <b>180</b> uyuyan müşteri · <b>4,3</b> memnuniyet · <b>4</b> kampanya.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '"Hafta sonu %20" kampanyası 740 kişiye gönderildi', 'link' => '/kampanya-rapor'], ['ikon' => 'check', 'mtn' => '12 yeni üye kaydoldu', 'link' => '/segmentler']],
+            ]);
+        }
+        if ($kod === 'crm') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'groups', 'tint' => 't-blue', 'deger' => '1.240', 'label' => 'Toplam müşteri', 'alt' => '86 yeni (bu ay)', 'link' => '/musteri-360'],
+                    ['ikon' => 'workspace_premium', 'tint' => 't-amber', 'deger' => 95, 'label' => 'VIP müşteri', 'alt' => 'ciro payı %38', 'link' => '/musteri-360?seg=vip'],
+                    ['ikon' => 'how_to_reg', 'tint' => 't-green', 'deger' => 410, 'label' => 'Aktif (30g)', 'alt' => 'son ziyaret', 'link' => '/musteri-360?seg=aktif'],
+                    ['ikon' => 'warning_amber', 'tint' => 't-amber', 'deger' => 120, 'label' => 'Riskli (30-60g)', 'alt' => 'kaçmak üzere', 'link' => '/musteri-360?seg=risk'],
+                    ['ikon' => 'person_off', 'tint' => 't-red', 'deger' => 180, 'label' => 'Kayıp (60-120g)', 'alt' => 'geri kazan', 'link' => '/musteri-360?seg=kayip'],
+                    ['ikon' => 'receipt_long', 'tint' => 't-mor', 'deger' => $tl(285), 'label' => 'Ortalama fiş', 'alt' => 'müşteri başı', 'link' => '/musteri-360'],
+                    ['ikon' => 'sentiment_satisfied', 'tint' => 't-green', 'deger' => '4,3', 'label' => 'Memnuniyet (30g)', 'alt' => '5 üzerinden', 'link' => '/memnuniyet'],
+                    ['ikon' => 'report_problem', 'tint' => 't-red', 'deger' => 3, 'label' => 'Açık şikayet', 'alt' => 'çözüm bekliyor', 'link' => '/memnuniyet'],
+                ],
+                'isler' => [
+                    ['ikon' => 'person_off', 'renk' => '#F59E0B', 'grup' => 'GERİ KAZAN', 'baslik' => '180 müşteri kaybolmak üzere', 'aciklama' => '60-120 gündür gelmeyene kişisel geri-kazanım bildirimi gönder', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']],
+                    ['ikon' => 'report_problem', 'renk' => '#F43F5E', 'grup' => 'ŞİKAYET', 'baslik' => '3 açık şikayet çözüm bekliyor', 'aciklama' => 'Düşük puanlı müşteriye dön, kaybetme', 'aksiyon' => ['url' => '/memnuniyet', 'lbl' => 'Gör']],
+                    ['ikon' => 'workspace_premium', 'renk' => '#F6A623', 'grup' => 'VIP', 'baslik' => '95 VIP müşteriye ilgi göster', 'aciklama' => 'Teşekkür + özel ikram bildirimi (sadakati güçlendir)', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']],
+                    ['ikon' => 'cake', 'renk' => '#EC4899', 'grup' => 'DOĞUM GÜNÜ', 'baslik' => '7 müşterinin bu hafta doğum günü', 'aciklama' => 'Kutlama + ikram bildirimi', 'aksiyon' => ['url' => '/crm-sohbet', 'lbl' => 'AI’a yaptır']],
+                    ['ikon' => 'person_search', 'renk' => '#14B8A6', 'grup' => 'MÜŞTERİ', 'baslik' => 'Müşteri 360 profilini incele', 'aciklama' => 'Telefon/isimle ara; geçmiş, harcama, favori, durum tek ekranda', 'aksiyon' => ['url' => '/musteri-360', 'lbl' => 'Müşteri 360']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'monitor_heart', 'renk' => '#14B8A6', 'baslik' => 'Müşteri Sağlığı', 'alt' => 'ziyaret sıklığı', 'durum' => 'dikkat', 'yorum' => '410 aktif · 120 riskli · 180 kayıp. Kayıp+riskli toplam 300 müşteri — geri-kazanım kampanyası en acil kaldıraç.'],
+                    ['ikon' => 'workspace_premium', 'renk' => '#F6A623', 'baslik' => 'VIP & Değer', 'alt' => 'ciro payı', 'durum' => 'iyi', 'yorum' => '95 VIP müşteri toplam cironun %38\'ini getiriyor. Onları elde tutmak tek tek yeni müşteriden daha değerli.'],
+                    ['ikon' => 'sentiment_satisfied', 'renk' => '#F56A8B', 'baslik' => 'Memnuniyet', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'Ortalama 4,3/5. 3 açık şikayet var — 24 saat içinde dönülürse çoğu müşteri kalır.'],
+                    ['ikon' => 'receipt_long', 'renk' => '#7C3AED', 'baslik' => 'Ortalama Fiş & Tekrar', 'alt' => 'müşteri başı', 'durum' => 'notr', 'yorum' => 'Müşteri başına ortalama ' . $tl(285) . '. Sadakat/puan + kayıp geri-kazanımı tekrar ziyareti en çok artıran iki araç.'],
+                ],
+                'hizli' => [['url' => '/musteri-360', 'ikon' => 'person_search', 'lbl' => 'Müşteri 360'], ['url' => '/musteri-360?seg=vip', 'ikon' => 'workspace_premium', 'lbl' => 'VIP Müşteriler'], ['url' => '/musteri-360?seg=kayip', 'ikon' => 'person_off', 'lbl' => 'Kayıp Müşteriler'], ['url' => '/crm-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'CRM AI'], ['url' => '/memnuniyet', 'ikon' => 'sentiment_satisfied', 'lbl' => 'Memnuniyet'], ['url' => '/sadakat', 'ikon' => 'loyalty', 'lbl' => 'Sadakat/Puan']],
+                'aiOzet' => 'Bugünün gündemi: <b>180</b> kayıp müşteri · <b>120</b> riskli · <b>3</b> açık şikayet · <b>7</b> doğum günü.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '42 uyuyan müşteriye geri-kazanım gönderildi', 'link' => '/crm-sohbet'], ['ikon' => 'check', 'mtn' => '2 şikayet çözüldü', 'link' => '/memnuniyet']],
             ]);
         }
         if ($kod === 'satis_etkinlik') {

@@ -290,6 +290,17 @@
         ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
         ['/fix-menu', 'dinner_dining', 'Fix Menü / Etkinlik Menüsü', '#8B5CF6'],
     ];
+
+    // ===== CRM / MÜŞTERİ İLİŞKİLERİ MERKEZİ — başlıklar =====
+    $gruplar['CRM / Müşteri İlişkileri'] = [
+        ['/departman-brief?dep=crm', 'wb_sunny', 'CRM Brifingi', '#F59E0B'],
+        ['/crm-sohbet', 'smart_toy', 'CRM AI (iş yapar)', '#14B8A6'],
+        ['/musteri-360', 'person_search', 'Müşteri 360', '#7C3AED'],
+        ['/musteri-360?seg=vip', 'workspace_premium', 'VIP Müşteriler', '#F6A623'],
+        ['/musteri-360?seg=kayip', 'person_off', 'Kayıp Müşteriler', '#F5576C'],
+        ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet / Şikayet', '#10B981'],
+        ['/sadakat', 'loyalty', 'Sadakat / Puan', '#EC4899'],
+    ];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
