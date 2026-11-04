@@ -1918,6 +1918,309 @@ Route::post('/api/m/cark-cevir', function (Request $r) {
     return ['ok' => 1, 'index' => $idx, 'dilim_id' => (int) $sec->id, 'tip' => $tip, 'deger' => $deger,
         'baslik' => $sec->ad, 'kupon_kodu' => $kupon, 'puan' => $puanYeni, 'mesaj' => $mesaj, 'renk' => $sec->renk];
 });
+// ========================= KALİTE / GIDA GÜVENLİĞİ (HACCP) =========================
+if (!function_exists('_kaliteGuard')) {
+    function _kaliteGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_stok') || _panelYetkiVar($bp, 'gor_raporlar') || _panelYetkiVar($bp, 'gor_sebep'));
+    }
+}
+if (!function_exists('_kaliteKayitEnsure')) {
+    function _kaliteKayitEnsure()
+    {
+        if (Schema::hasTable('kalite_kayitlari')) return;
+        try {
+            Schema::create('kalite_kayitlari', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('tip', 30)->index();          // numune | ilaclama | kalibrasyon | tedarikci_belge | denetim
+                $t->string('baslik', 200);
+                $t->string('deger', 80)->nullable();      // ölçüm / firma / sonuç
+                $t->date('tarih')->nullable();            // yapıldığı tarih
+                $t->date('son_tarih')->nullable();        // geçerlilik/sonraki (SKT/periyot)
+                $t->string('durum', 20)->default('aktif');
+                $t->unsignedBigInteger('personel_id')->nullable();
+                $t->string('personel_ad', 120)->nullable();
+                $t->text('not')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_kaliteAlerjenKolon')) {
+    function _kaliteAlerjenKolon()
+    {
+        if (cache()->get('kalite_alerjen_kolon_ok')) return Schema::hasColumn('urunler', 'alerjenler');
+        try { if (Schema::hasTable('urunler') && !Schema::hasColumn('urunler', 'alerjenler')) Schema::table('urunler', function ($t) { $t->string('alerjenler', 255)->nullable(); }); cache()->put('kalite_alerjen_kolon_ok', 1, now()->addHours(12)); } catch (\Throwable $e) {}
+        return Schema::hasColumn('urunler', 'alerjenler');
+    }
+}
+if (!function_exists('_kaliteAlerjenListe')) {
+    function _kaliteAlerjenListe()
+    {
+        // Codex Alimentarius / AB 14 majör alerjen (TR gıda etiketleme)
+        return ['Gluten', 'Kabuklu deniz ürünleri', 'Yumurta', 'Balık', 'Yer fıstığı', 'Soya', 'Süt (laktoz)', 'Sert kabuklu yemiş', 'Kereviz', 'Hardal', 'Susam', 'Sülfit', 'Acı bakla (lupin)', 'Yumuşakça'];
+    }
+}
+if (!function_exists('_kaliteSicaklikLimit')) {
+    // Başlığa göre HACCP sıcaklık limiti [min, max] °C (null = sıcaklık kontrolü değil)
+    function _kaliteSicaklikLimit($baslik)
+    {
+        $b = mb_strtolower((string) $baslik, 'UTF-8');
+        if (mb_strpos($b, 'dondur') !== false) return [-99.0, -18.0];      // derin dondurucu ≤ -18°C
+        if (mb_strpos($b, 'sıcak') !== false || mb_strpos($b, 'sicak') !== false || mb_strpos($b, 'bain') !== false) return [63.0, 95.0]; // sıcak tutma ≥ 63°C
+        if (mb_strpos($b, 'buzdolab') !== false || mb_strpos($b, 'soğut') !== false || mb_strpos($b, 'sogut') !== false || mb_strpos($b, 'dolap') !== false) return [0.0, 4.0]; // soğuk muhafaza 0–4°C
+        if (mb_strpos($b, 'cakl') !== false) return [0.0, 4.0]; // genel "sıcaklık" → soğuk muhafaza varsay
+        return null;
+    }
+}
+if (!function_exists('_kaliteSicaklikUygunMu')) {
+    function _kaliteSicaklikUygunMu($baslik, $deger)
+    {
+        $lim = _kaliteSicaklikLimit($baslik); if (!$lim) return null;
+        if (!is_numeric(str_replace([',', '°', 'c', 'C', ' '], ['.', '', '', '', ''], (string) $deger))) {
+            $v = filter_var(str_replace(',', '.', (string) $deger), FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION | FILTER_FLAG_ALLOW_SCIENTIFIC);
+            if ($v === '' || $v === null) return null; $f = (float) $v;
+        } else { $f = (float) str_replace([',', '°', 'c', 'C', ' '], ['.', '', '', '', ''], (string) $deger); }
+        return ($f >= $lim[0] && $f <= $lim[1]);
+    }
+}
+if (!function_exists('_kaliteOzet')) {
+    function _kaliteOzet($sid)
+    {
+        $sid = (int) $sid; $ds = now()->toDateString();
+        $o = ['sicBekleyen' => 0, 'sicYapilan' => 0, 'sicToplam' => 0, 'sicLimitDisi' => 0, 'sicLimitListe' => [],
+            'hijBekleyen' => 0, 'hijYapilan' => 0, 'acikUygun' => 0,
+            'sktGecen' => 0, 'sktYaklasan' => 0, 'fireBugun' => 0.0, 'belgeSkt' => 0,
+            'numuneBugun' => false, 'ilaclamaYak' => 0, 'kalibYak' => 0, 'tedBelgeSkt' => 0,
+            'alerjenEksik' => 0, 'alerjenTop' => 0, 'kritik' => 0, 'denetimSonrakiGun' => null];
+        try { if (Schema::hasTable('departman_isler')) {
+            $sic = DB::table('departman_isler')->where('sube_id', $sid)->where('departman_kod', 'kalite')->where('baslik', 'like', '%cakl%');
+            $o['sicBekleyen'] = (int) (clone $sic)->whereIn('durum', ['acik', 'yapiliyor'])->count();
+            $tamam = (clone $sic)->where('durum', 'tamam')->whereDate('tamamlanan_at', $ds)->get(['baslik', 'deger']);
+            $o['sicYapilan'] = $tamam->count(); $o['sicToplam'] = $o['sicBekleyen'] + $o['sicYapilan'];
+            foreach ($tamam as $tt) { $u = _kaliteSicaklikUygunMu($tt->baslik, $tt->deger); if ($u === false) { $o['sicLimitDisi']++; $o['sicLimitListe'][] = ['baslik' => $tt->baslik, 'deger' => $tt->deger]; } }
+            $hij = DB::table('departman_isler')->where('sube_id', $sid)->where('departman_kod', 'kalite')->where('tip', 'kontrol')->where('baslik', 'not like', '%cakl%');
+            $o['hijBekleyen'] = (int) (clone $hij)->whereIn('durum', ['acik', 'yapiliyor'])->count();
+            $o['hijYapilan'] = (int) (clone $hij)->where('durum', 'tamam')->whereDate('tamamlanan_at', $ds)->count();
+            $o['acikUygun'] = (int) DB::table('departman_isler')->where('sube_id', $sid)->where('departman_kod', 'kalite')->where('tip', 'olay')->whereIn('durum', ['acik', 'yapiliyor'])->count();
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('stok_partileri')) {
+            $o['sktGecen'] = (int) DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0)->whereNotNull('skt')->whereDate('skt', '<', $ds)->count();
+            $o['sktYaklasan'] = (int) DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0)->whereNotNull('skt')->whereBetween('skt', [$ds, now()->addDays(7)->toDateString()])->count();
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('stok_hareketleri')) $o['fireBugun'] = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereDate('created_at', $ds)->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t'); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('personel_belge')) $o['belgeSkt'] = (int) DB::table('personel_belge')->where('sube_id', $sid)->whereIn('tip', ['saglik', 'hijyen'])->whereNotNull('son_gecerlilik')->whereDate('son_gecerlilik', '<=', now()->addDays(30)->toDateString())->count(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('kalite_kayitlari')) {
+            $o['numuneBugun'] = DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', 'numune')->whereDate('tarih', $ds)->exists();
+            $o['ilaclamaYak'] = (int) DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', 'ilaclama')->whereNotNull('son_tarih')->whereDate('son_tarih', '<=', now()->addDays(15)->toDateString())->count();
+            $o['kalibYak'] = (int) DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', 'kalibrasyon')->whereNotNull('son_tarih')->whereDate('son_tarih', '<=', now()->addDays(30)->toDateString())->count();
+            $o['tedBelgeSkt'] = (int) DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', 'tedarikci_belge')->whereNotNull('son_tarih')->whereDate('son_tarih', '<=', now()->addDays(30)->toDateString())->count();
+            $o['denetimSonrakiGun'] = DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', 'denetim')->whereNotNull('son_tarih')->whereDate('son_tarih', '>=', $ds)->orderBy('son_tarih')->value('son_tarih');
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasColumn('urunler', 'alerjenler')) {
+            $uq = DB::table('urunler')->where('sube_id', $sid); if (Schema::hasColumn('urunler', 'aktif')) $uq->where('aktif', 1);
+            $o['alerjenTop'] = (int) (clone $uq)->count();
+            $o['alerjenEksik'] = (int) (clone $uq)->where(function ($w) { $w->whereNull('alerjenler')->orWhere('alerjenler', ''); })->count();
+        } } catch (\Throwable $e) {}
+        try { $o['kritik'] = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0; } catch (\Throwable $e) {}
+        return $o;
+    }
+}
+if (!function_exists('_kaliteAsistanEylemUygula')) {
+    function _kaliteAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid;
+        try {
+            $o = _kaliteOzet($sid);
+            switch ($intent) {
+                case 'sicaklik_hatirlat':
+                    if ($o['sicBekleyen'] <= 0 && $o['sicLimitDisi'] <= 0) return ['ok' => true, 'mesaj' => 'Sıcaklık ölçümleri tamam, limit dışı yok. 👍'];
+                    $m = ($o['sicBekleyen'] > 0 ? ($o['sicBekleyen'] . ' sıcaklık ölçümü bekliyor. ') : '') . ($o['sicLimitDisi'] > 0 ? ($o['sicLimitDisi'] . ' ölçüm LİMİT DIŞI — acil müdahale!') : '');
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🌡️ Soğuk zincir kontrolü', $m, ['tur' => 'kalite_sicaklik'], ['sahip', 'mudur', 'mutfak']);
+                    return ['ok' => true, 'mesaj' => trim($m) . ' — mutfak + yönetime bildirildi.'];
+                case 'skt_uyar':
+                    if ($o['sktGecen'] <= 0 && $o['sktYaklasan'] <= 0) return ['ok' => true, 'mesaj' => 'SKT geçen/yaklaşan parti yok. 👍'];
+                    $m = ($o['sktGecen'] > 0 ? ($o['sktGecen'] . ' parti SKT GEÇMİŞ (fireye ayır/imha et). ') : '') . ($o['sktYaklasan'] > 0 ? ($o['sktYaklasan'] . ' parti 7 gün içinde doluyor (FEFO: önce bunları kullan).') : '');
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📅 SKT uyarısı', $m, ['tur' => 'kalite_skt'], ['sahip', 'mudur', 'mutfak']);
+                    return ['ok' => true, 'mesaj' => trim($m) . ' — bildirildi. Parti takibinden ayır.'];
+                case 'hijyen_belge_hatirlat':
+                    if ($o['belgeSkt'] <= 0) return ['ok' => true, 'mesaj' => 'Süresi dolan personel sağlık/hijyen belgesi yok. 👍'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📄 Hijyen/sağlık raporu', $o['belgeSkt'] . ' personelin sağlık/hijyen belgesi 30 gün içinde doluyor — yenileyin.', ['tur' => 'kalite_belge'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => $o['belgeSkt'] . ' personelin belge yenileme uyarısı yönetime gönderildi.'];
+                case 'denetim_hazirlik':
+                    $eksik = [];
+                    if ($o['acikUygun'] > 0) $eksik[] = $o['acikUygun'] . ' açık uygunsuzluk (DÖF)';
+                    if ($o['sicBekleyen'] > 0) $eksik[] = $o['sicBekleyen'] . ' sıcaklık ölçümü eksik';
+                    if ($o['sicLimitDisi'] > 0) $eksik[] = $o['sicLimitDisi'] . ' limit dışı sıcaklık';
+                    if ($o['sktGecen'] > 0) $eksik[] = $o['sktGecen'] . ' SKT geçmiş ürün';
+                    if ($o['belgeSkt'] > 0) $eksik[] = $o['belgeSkt'] . ' süresi dolan sağlık belgesi';
+                    if ($o['alerjenEksik'] > 0) $eksik[] = $o['alerjenEksik'] . ' üründe alerjen tanımsız';
+                    if (!$o['numuneBugun']) $eksik[] = 'bugün şahit numune alınmamış';
+                    if (!$eksik) return ['ok' => true, 'mesaj' => 'Denetime hazırsın — açık bulgu yok. ✅'];
+                    $m = 'Denetim öncesi kapatılacaklar: ' . implode(' · ', $eksik) . '.';
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🏛️ Denetim hazırlık', $m, ['tur' => 'kalite_denetim'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => $m];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen kalite eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_kaliteAsistanNiyet')) {
+    function _kaliteAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/sıcaklık|sicaklik|soğuk zincir|soguk zincir|buzdolab|dondurucu|derece/u' => ['eylem', 'sicaklik_hatirlat'],
+            '/skt|son kullan|tarih geç|tarih gec|fefo|bozul|miad/u' => ['eylem', 'skt_uyar'],
+            '/hijyen belge|sağlık rapor|saglik rapor|portör|portor/u' => ['eylem', 'hijyen_belge_hatirlat'],
+            '/denetim|teftiş|teftis|bakanlık|bakanlik|hazır mıyız|hazir miyiz/u' => ['eylem', 'denetim_hazirlik'],
+            '/alerjen/u' => ['cevap', 'alerjen_link'],
+            '/numune|şahit|sahit/u' => ['cevap', 'numune_link'],
+            '/özet|ozet|durum|ne var|gündem|gundem|bugün|bugun/u' => ['cevap', 'ozet'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın Kalite / Gıda Güvenliği (HACCP) AI asistanısın. SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA: ozet, alerjen_link, numune_link, bilinmiyor. "
+            . "EYLEM: sicaklik_hatirlat (soğuk zincir/bekleyen ölçüm+limit dışı), skt_uyar (SKT geçen/yaklaşan parti), hijyen_belge_hatirlat (personel sağlık/hijyen belgesi), denetim_hazirlik (denetim öncesi açık bulgu özeti). UYDURMA.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_kaliteAsistanOku')) {
+    function _kaliteAsistanOku($sid, $bp, $intent, $params)
+    {
+        try {
+            $o = _kaliteOzet($sid);
+            switch ($intent) {
+                case 'alerjen_link': return ['cevap' => ($o['alerjenEksik'] > 0 ? ($o['alerjenEksik'] . ' üründe alerjen tanımlı değil. ') : 'Alerjen matrisi tanımlı. ') . 'Menü alerjen bilgisini buradan yönet.', 'link' => ['url' => '/alerjen', 'lbl' => 'Alerjen Matrisi']];
+                case 'numune_link': return ['cevap' => ($o['numuneBugun'] ? 'Bugün şahit numune alınmış. 👍' : 'Bugün şahit numune kaydı yok — 72 saat saklama zorunlu.'), 'link' => ['url' => '/kalite-kayit?tip=numune', 'lbl' => 'Şahit Numune']];
+                case 'ozet':
+                default:
+                    $p = [];
+                    if ($o['sicLimitDisi'] > 0) $p[] = $o['sicLimitDisi'] . ' limit dışı sıcaklık';
+                    if ($o['sicBekleyen'] > 0) $p[] = $o['sicBekleyen'] . ' ölçüm bekliyor';
+                    if ($o['sktGecen'] > 0) $p[] = $o['sktGecen'] . ' SKT geçmiş';
+                    if ($o['acikUygun'] > 0) $p[] = $o['acikUygun'] . ' açık uygunsuzluk';
+                    $cev = $p ? ('Kalite gündemi: ' . implode(' · ', $p) . '.') : 'Kalite/gıda güvenliği bugün yolunda — açık bulgu yok. 👍';
+                    return ['cevap' => $cev, 'aksiyon' => ($o['sicBekleyen'] > 0 || $o['sicLimitDisi'] > 0) ? ['lbl' => 'Soğuk zinciri kontrol et', 'soru' => 'sıcaklık kontrolü'] : null, 'link' => ['url' => '/departman-brief?dep=kalite', 'lbl' => 'Kalite Brifingi']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/kalite-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'Kalite / Gıda Güvenliği AI', 'selam' => 'Soğuk zincir, SKT, hijyen, denetim — sor; gerekirse uyarıp işini bitireyim.',
+        'hizli' => [
+            ['Soğuk zincir', 'Sıcaklık kontrolü', 'ac_unit', '#0EA5E9', 'ölçüm/limit'],
+            ['SKT uyarısı', 'SKT geçen ve yaklaşan ürünler', 'event_busy', '#F59E0B', 'FEFO'],
+            ['Hijyen belgesi', 'Personel sağlık/hijyen belgesi hatırlat', 'badge', '#10B981', 'portör'],
+            ['Denetime hazır mıyım?', 'Denetim hazırlık', 'verified_user', '#16A34A', 'bulgu özeti'],
+            ['Alerjen', 'Alerjen matrisi', 'warning', '#EF4444', 'menü'],
+            ['Şahit numune', 'Şahit numune durumu', 'science', '#7C3AED', '72 saat'],
+        ],
+        'sorUrl' => '/api/kalite-asistan/sor', 'uygulaUrl' => '/api/kalite-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'Kalite AI’a sor… (ör. sıcaklık kontrolü, SKT geçenler, denetime hazır mıyım)',
+    ]);
+});
+Route::post('/api/kalite-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _kaliteAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'sicaklik_hatirlat' => 'Bekleyen/limit dışı sıcaklık ölçümleri için mutfak + yönetime uyarı gönderilecek.',
+            'skt_uyar' => 'SKT geçen/yaklaşan partiler için uyarı gönderilecek (FEFO + fireye ayır).',
+            'hijyen_belge_hatirlat' => 'Süresi dolan personel sağlık/hijyen belgeleri için yönetime uyarı gönderilecek.',
+            'denetim_hazirlik' => 'Denetim öncesi tüm açık bulgular (uygunsuzluk, sıcaklık, SKT, belge, alerjen, numune) taranıp özetlenecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'kalite', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $oo = _kaliteAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $oo['cevap'], 'aksiyon' => $oo['aksiyon'] ?? null, 'link' => $oo['link'] ?? null]);
+});
+Route::post('/api/kalite-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    return response()->json(['ok' => 1, 'sonuc' => _aiEylemOnayla($log_id, $bp)]);
+});
+// Kalite kayıt defteri: şahit numune / ilaçlama / kalibrasyon / tedarikçi belge / denetim
+Route::get('/kalite-kayit', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    _kaliteKayitEnsure(); $sid = _webSubeId();
+    $tipler = ['numune' => 'Şahit Numune', 'ilaclama' => 'Haşere / İlaçlama', 'kalibrasyon' => 'Kalibrasyon', 'tedarikci_belge' => 'Tedarikçi Belgesi', 'denetim' => 'Denetim / Teftiş'];
+    $tip = $r->query('tip', 'numune'); if (!isset($tipler[$tip])) $tip = 'numune';
+    $liste = [];
+    try { $liste = DB::table('kalite_kayitlari')->where('sube_id', $sid)->where('tip', $tip)->orderByDesc('id')->limit(100)->get(); } catch (\Throwable $e) {}
+    return view('kalite_kayit', ['tipler' => $tipler, 'tip' => $tip, 'liste' => $liste]);
+});
+Route::post('/kalite-kayit/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    _kaliteKayitEnsure(); $sid = _webSubeId();
+    $tip = (string) $r->input('tip'); $tipler = ['numune', 'ilaclama', 'kalibrasyon', 'tedarikci_belge', 'denetim'];
+    if (!in_array($tip, $tipler)) return redirect('/kalite-kayit')->with('hata', 'Geçersiz tip.');
+    if (trim((string) $r->input('baslik')) === '') return redirect('/kalite-kayit?tip=' . $tip)->with('hata', 'Başlık gerekli.');
+    try {
+        DB::table('kalite_kayitlari')->insert([
+            'sube_id' => $sid, 'tip' => $tip, 'baslik' => mb_substr(trim((string) $r->input('baslik')), 0, 200),
+            'deger' => $r->filled('deger') ? mb_substr((string) $r->input('deger'), 0, 80) : null,
+            'tarih' => $r->filled('tarih') ? $r->input('tarih') : now()->toDateString(),
+            'son_tarih' => $r->filled('son_tarih') ? $r->input('son_tarih') : null,
+            'durum' => 'aktif', 'personel_id' => $bp->id ?? null, 'personel_ad' => $bp->ad ?? null,
+            'not' => $r->filled('not') ? mb_substr((string) $r->input('not'), 0, 500) : null, 'created_at' => now(),
+        ]);
+    } catch (\Throwable $e) { return redirect('/kalite-kayit?tip=' . $tip)->with('hata', 'Kayıt eklenemedi.'); }
+    return redirect('/kalite-kayit?tip=' . $tip)->with('ok', 'Kayıt eklendi.');
+});
+Route::post('/kalite-kayit/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    _kaliteKayitEnsure(); $sid = _webSubeId(); $tip = (string) $r->input('tip');
+    try { DB::table('kalite_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/kalite-kayit?tip=' . $tip)->with('ok', 'Silindi.');
+});
+// Alerjen matrisi: menü ürünlerinde alerjen işaretleme
+Route::get('/alerjen', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    _kaliteAlerjenKolon(); $sid = _webSubeId();
+    $urunler = collect();
+    try { $q = DB::table('urunler')->where('sube_id', $sid); if (Schema::hasColumn('urunler', 'aktif')) $q->where('aktif', 1); $urunler = $q->orderBy('ad')->get(['id', 'ad', 'alerjenler']); } catch (\Throwable $e) {}
+    return view('alerjen', ['urunler' => $urunler, 'alerjenler' => _kaliteAlerjenListe()]);
+});
+Route::post('/alerjen/kaydet', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_kaliteGuard($bp)) return redirect('/pos-giris');
+    _kaliteAlerjenKolon(); $sid = _webSubeId();
+    try {
+        $urunId = (int) $r->input('urun_id');
+        $sec = $r->input('alerjenler'); $sec = is_array($sec) ? array_slice($sec, 0, 14) : [];
+        $gecerli = _kaliteAlerjenListe(); $sec = array_values(array_intersect($sec, $gecerli));
+        DB::table('urunler')->where('id', $urunId)->where('sube_id', $sid)->update(['alerjenler' => implode(',', $sec)]);
+    } catch (\Throwable $e) { return redirect('/alerjen')->with('hata', 'Kaydedilemedi.'); }
+    return redirect('/alerjen')->with('ok', 'Alerjen bilgisi kaydedildi.');
+});
+
 // ========================= CRM / MÜŞTERİ İLİŞKİLERİ (RFM sağlık + 360 + iş-yapan AI) =========================
 if (!function_exists('_crmGuard')) {
     function _crmGuard($bp)
@@ -8527,7 +8830,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
-            '/kalite' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
+            '/kalite' => 'gor_stok', '/kalite-sohbet' => 'gor_stok', '/kalite-kayit' => 'gor_stok', '/alerjen' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
 
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -18057,7 +18360,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -18343,6 +18646,44 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'receipt_long', 'renk' => '#7C3AED', 'baslik' => 'Ortalama Fiş & Tekrar', 'alt' => 'müşteri başı', 'durum' => 'notr', 'yorum' => "Müşteri başına ortalama " . $tl($ortFis) . ". Tekrar ziyareti artırmak için sadakat/puan ve kayıp geri-kazanımı en etkili kaldıraç."];
             $hizli = [['url' => '/musteri-360', 'ikon' => 'person_search', 'lbl' => 'Müşteri 360'], ['url' => '/musteri-360?seg=vip', 'ikon' => 'workspace_premium', 'lbl' => 'VIP Müşteriler'], ['url' => '/musteri-360?seg=kayip', 'ikon' => 'person_off', 'lbl' => 'Kayıp Müşteriler'], ['url' => '/crm-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'CRM AI'], ['url' => '/memnuniyet', 'ikon' => 'sentiment_satisfied', 'lbl' => 'Memnuniyet'], ['url' => '/sadakat', 'ikon' => 'loyalty', 'lbl' => 'Sadakat/Puan']];
         }
+        // ================= KALİTE / GIDA GÜVENLİĞİ (HACCP) =================
+        elseif ($kod === 'kalite') {
+            if (function_exists('_kaliteKayitEnsure')) _kaliteKayitEnsure();
+            if (function_exists('_kaliteAlerjenKolon')) _kaliteAlerjenKolon();
+            $o = function_exists('_kaliteOzet') ? _kaliteOzet($sid) : [];
+            $sicBek = (int) ($o['sicBekleyen'] ?? 0); $sicYap = (int) ($o['sicYapilan'] ?? 0); $sicLD = (int) ($o['sicLimitDisi'] ?? 0);
+            $hijBek = (int) ($o['hijBekleyen'] ?? 0); $hijYap = (int) ($o['hijYapilan'] ?? 0); $acikU = (int) ($o['acikUygun'] ?? 0);
+            $sktG = (int) ($o['sktGecen'] ?? 0); $sktY = (int) ($o['sktYaklasan'] ?? 0); $fireB = (float) ($o['fireBugun'] ?? 0);
+            $belgeSkt = (int) ($o['belgeSkt'] ?? 0); $numuneBg = !empty($o['numuneBugun']); $ilacY = (int) ($o['ilaclamaYak'] ?? 0);
+            $kalibY = (int) ($o['kalibYak'] ?? 0); $tedBelge = (int) ($o['tedBelgeSkt'] ?? 0); $alerjEksik = (int) ($o['alerjenEksik'] ?? 0);
+            $alerjTop = (int) ($o['alerjenTop'] ?? 0); $kritik = (int) ($o['kritik'] ?? 0);
+            // KPI'lar
+            $kpis[] = ['ikon' => 'ac_unit', 'tint' => $sicLD > 0 ? 't-red' : ($sicBek > 0 ? 't-amber' : 't-green'), 'deger' => $sicYap . '<small>/' . max(1, $sicBek + $sicYap) . '</small>', 'label' => 'Soğuk zincir ölçümü', 'alt' => $sicLD > 0 ? ($sicLD . ' LİMİT DIŞI 🚨') : ($sicBek > 0 ? ($sicBek . ' bekliyor') : 'tam 👍'), 'link' => '/kalite'];
+            $kpis[] = ['ikon' => 'clean_hands', 'tint' => $hijBek > 0 ? 't-amber' : 't-green', 'deger' => $hijYap . '<small>/' . max(1, $hijBek + $hijYap) . '</small>', 'label' => 'Hijyen/temizlik', 'alt' => $hijBek > 0 ? ($hijBek . ' bekliyor') : 'tam 👍', 'link' => '/kalite'];
+            $kpis[] = ['ikon' => 'event_busy', 'tint' => $sktG > 0 ? 't-red' : ($sktY > 0 ? 't-amber' : 't-green'), 'deger' => $sktG, 'label' => 'SKT geçmiş', 'alt' => $sktG > 0 ? 'fireye ayır' : ($sktY > 0 ? ($sktY . ' yaklaşan') : 'yok 👍'), 'link' => '/parti-takip'];
+            $kpis[] = ['ikon' => 'report_problem', 'tint' => $acikU > 0 ? 't-red' : 't-green', 'deger' => $acikU, 'label' => 'Açık uygunsuzluk', 'alt' => $acikU > 0 ? 'DÖF bekliyor' : 'yok 👍', 'link' => '/kalite'];
+            $kpis[] = ['ikon' => 'delete_sweep', 'tint' => $fireB > 0 ? 't-amber' : 't-green', 'deger' => $tl($fireB), 'label' => 'Bozulma/fire (bugün)', 'alt' => $fireB > 0 ? 'israf' : 'yok 👍', 'link' => '/sayim'];
+            $kpis[] = ['ikon' => 'science', 'tint' => $numuneBg ? 't-green' : 't-amber', 'deger' => $numuneBg ? 'Alındı' : 'Yok', 'label' => 'Şahit numune (bugün)', 'alt' => $numuneBg ? '👍' : '72 saat zorunlu', 'link' => '/kalite-kayit?tip=numune'];
+            $kpis[] = ['ikon' => 'badge', 'tint' => $belgeSkt > 0 ? 't-amber' : 't-green', 'deger' => $belgeSkt, 'label' => 'Sağlık belgesi', 'alt' => $belgeSkt > 0 ? '30g içinde doluyor' : 'tam 👍', 'link' => '/personel'];
+            $kpis[] = ['ikon' => 'warning', 'tint' => $alerjEksik > 0 ? 't-amber' : 't-green', 'deger' => $alerjEksik, 'label' => 'Alerjen eksik ürün', 'alt' => $alerjTop > 0 ? ('/ ' . $alerjTop . ' ürün') : 'tanımla', 'link' => '/alerjen'];
+            // Öncelikler
+            if ($sicLD > 0) { $lst = collect($o['sicLimitListe'] ?? [])->map(fn ($x) => $x['baslik'] . '=' . $x['deger'] . '°C')->implode(', '); array_unshift($isler, ['ikon' => 'ac_unit', 'renk' => '#F43F5E', 'grup' => 'SOĞUK ZİNCİR', 'baslik' => "$sicLD sıcaklık LİMİT DIŞI — acil!", 'aciklama' => $lst ?: 'Ürünleri taşı, ekipmanı kontrol et, DÖF kaydet', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Gör']]); $sinyal[] = "<b>$sicLD</b> limit dışı sıcaklık"; }
+            if ($sicBek > 0) { $isler[] = ['ikon' => 'thermostat', 'renk' => '#0EA5E9', 'grup' => 'ÖLÇÜM', 'baslik' => "$sicBek sıcaklık ölçümü bekliyor", 'aciklama' => 'Buzdolabı/dondurucu/sıcak tutma °C gir', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Ölç']]; $sinyal[] = "<b>$sicBek</b> ölçüm bekliyor"; }
+            if ($sktG > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'SKT', 'baslik' => "$sktG parti SKT geçmiş", 'aciklama' => 'Fireye ayır/imha et, tüketime kapat', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; $sinyal[] = "<b>$sktG</b> SKT geçmiş"; }
+            if ($acikU > 0) { $isler[] = ['ikon' => 'report_problem', 'renk' => '#DC2626', 'grup' => 'UYGUNSUZLUK', 'baslik' => "$acikU açık uygunsuzluk (DÖF)", 'aciklama' => 'Düzeltici/önleyici aksiyonu tamamla ve kapat', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Gör']]; }
+            if ($hijBek > 0) { $isler[] = ['ikon' => 'clean_hands', 'renk' => '#F59E0B', 'grup' => 'HİJYEN', 'baslik' => "$hijBek hijyen/temizlik kontrolü bekliyor", 'aciklama' => 'El yıkama, yüzey & ekipman temizlik kontrolü', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Yap']]; }
+            if (!$numuneBg) { $isler[] = ['ikon' => 'science', 'renk' => '#7C3AED', 'grup' => 'NUMUNE', 'baslik' => 'Bugün şahit numune alınmamış', 'aciklama' => '72 saat saklama — yasal zorunluluk', 'aksiyon' => ['url' => '/kalite-kayit?tip=numune', 'lbl' => 'Kaydet']]; }
+            if ($belgeSkt > 0) { $isler[] = ['ikon' => 'badge', 'renk' => '#10B981', 'grup' => 'BELGE', 'baslik' => "$belgeSkt personelin sağlık/hijyen belgesi doluyor", 'aciklama' => '30 gün içinde — yenileme için İK ile', 'aksiyon' => ['url' => '/kalite-sohbet', 'lbl' => 'AI hatırlatsın']]; }
+            if ($alerjEksik > 0) { $isler[] = ['ikon' => 'warning', 'renk' => '#EF4444', 'grup' => 'ALERJEN', 'baslik' => "$alerjEksik üründe alerjen tanımlı değil", 'aciklama' => 'Menü alerjen matrisini tamamla', 'aksiyon' => ['url' => '/alerjen', 'lbl' => 'Tanımla']]; }
+            if ($ilacY > 0 || $kalibY > 0 || $tedBelge > 0) { $p = []; if ($ilacY) $p[] = "$ilacY ilaçlama"; if ($kalibY) $p[] = "$kalibY kalibrasyon"; if ($tedBelge) $p[] = "$tedBelge tedarikçi belgesi"; $isler[] = ['ikon' => 'pest_control', 'renk' => '#EA580C', 'grup' => 'PERİYODİK', 'baslik' => 'Yaklaşan: ' . implode(' · ', $p), 'aciklama' => 'Periyodik kayıt/geçerlilik yenile', 'aksiyon' => ['url' => '/kalite-kayit?tip=ilaclama', 'lbl' => 'Gör']]; }
+            if ($kritik > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F59E0B', 'grup' => 'STOK', 'baslik' => "$kritik malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Gör']]; }
+            // Analiz
+            $analiz[] = ['ikon' => 'ac_unit', 'renk' => '#0EA5E9', 'baslik' => 'Soğuk Zincir', 'alt' => 'bugün', 'durum' => $sicLD > 0 ? 'risk' : ($sicBek > 0 ? 'dikkat' : 'iyi'), 'yorum' => $sicLD > 0 ? "$sicLD ölçüm limit dışı — gıda güvenliği riski, acil müdahale ve DÖF şart." : ($sicBek > 0 ? "$sicBek ölçüm henüz yapılmadı. HACCP için her vardiya kaydı zorunlu." : 'Sıcaklık ölçümleri tam ve limit içinde. 👍')];
+            $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F59E0B', 'baslik' => 'SKT / FEFO', 'alt' => 'parti takibi', 'durum' => $sktG > 0 ? 'risk' : ($sktY > 0 ? 'dikkat' : 'iyi'), 'yorum' => ($sktG > 0 ? "$sktG parti SKT geçmiş — derhal fireye ayır. " : '') . ($sktY > 0 ? "$sktY parti 7 gün içinde doluyor; FEFO ile önce bunları kullan." : ($sktG > 0 ? '' : 'SKT geçen/yaklaşan parti yok. 👍'))];
+            $analiz[] = ['ikon' => 'report_problem', 'renk' => '#DC2626', 'baslik' => 'Uygunsuzluk / DÖF', 'alt' => 'açık', 'durum' => $acikU > 0 ? 'dikkat' : 'iyi', 'yorum' => $acikU > 0 ? "$acikU açık uygunsuzluk var — düzeltici/önleyici aksiyonla kapat (denetimde bulgu olmasın)." : 'Açık uygunsuzluk yok. 👍'];
+            $analiz[] = ['ikon' => 'verified_user', 'renk' => '#16A34A', 'baslik' => 'Denetime Hazırlık', 'alt' => 'HACCP', 'durum' => ($sicLD + $sktG + $acikU + $belgeSkt + $alerjEksik) > 0 || !$numuneBg ? 'dikkat' : 'iyi', 'yorum' => (($sicLD + $sktG + $acikU + $belgeSkt + $alerjEksik) > 0 || !$numuneBg) ? 'Kapatılacak bulgular var — "Denetime hazır mıyım?" ile Kalite AI tam liste çıkarsın.' : 'Açık bulgu görünmüyor — denetime hazırsın. ✅'];
+            $hizli = [['url' => '/kalite', 'ikon' => 'checklist', 'lbl' => 'Kontrol Listesi'], ['url' => '/kalite-kayit?tip=numune', 'ikon' => 'science', 'lbl' => 'Şahit Numune'], ['url' => '/kalite-kayit?tip=ilaclama', 'ikon' => 'pest_control', 'lbl' => 'İlaçlama/Kalibrasyon'], ['url' => '/alerjen', 'ikon' => 'warning', 'lbl' => 'Alerjen Matrisi'], ['url' => '/parti-takip', 'ikon' => 'inventory_2', 'lbl' => 'SKT / Parti Takibi'], ['url' => '/kalite-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'Kalite AI']];
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
@@ -18409,7 +18750,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -18568,6 +18909,37 @@ if (!function_exists('_departmanBriefDemo')) {
                 'hizli' => [['url' => '/musteri-360', 'ikon' => 'person_search', 'lbl' => 'Müşteri 360'], ['url' => '/musteri-360?seg=vip', 'ikon' => 'workspace_premium', 'lbl' => 'VIP Müşteriler'], ['url' => '/musteri-360?seg=kayip', 'ikon' => 'person_off', 'lbl' => 'Kayıp Müşteriler'], ['url' => '/crm-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'CRM AI'], ['url' => '/memnuniyet', 'ikon' => 'sentiment_satisfied', 'lbl' => 'Memnuniyet'], ['url' => '/sadakat', 'ikon' => 'loyalty', 'lbl' => 'Sadakat/Puan']],
                 'aiOzet' => 'Bugünün gündemi: <b>180</b> kayıp müşteri · <b>120</b> riskli · <b>3</b> açık şikayet · <b>7</b> doğum günü.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '42 uyuyan müşteriye geri-kazanım gönderildi', 'link' => '/crm-sohbet'], ['ikon' => 'check', 'mtn' => '2 şikayet çözüldü', 'link' => '/memnuniyet']],
+            ]);
+        }
+        if ($kod === 'kalite') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'ac_unit', 'tint' => 't-red', 'deger' => '5<small>/6</small>', 'label' => 'Soğuk zincir ölçümü', 'alt' => '1 LİMİT DIŞI 🚨', 'link' => '/kalite'],
+                    ['ikon' => 'clean_hands', 'tint' => 't-green', 'deger' => '2<small>/2</small>', 'label' => 'Hijyen/temizlik', 'alt' => 'tam 👍', 'link' => '/kalite'],
+                    ['ikon' => 'event_busy', 'tint' => 't-red', 'deger' => 3, 'label' => 'SKT geçmiş', 'alt' => 'fireye ayır', 'link' => '/parti-takip'],
+                    ['ikon' => 'report_problem', 'tint' => 't-red', 'deger' => 2, 'label' => 'Açık uygunsuzluk', 'alt' => 'DÖF bekliyor', 'link' => '/kalite'],
+                    ['ikon' => 'delete_sweep', 'tint' => 't-amber', 'deger' => $tl(340), 'label' => 'Bozulma/fire (bugün)', 'alt' => 'israf', 'link' => '/sayim'],
+                    ['ikon' => 'science', 'tint' => 't-amber', 'deger' => 'Yok', 'label' => 'Şahit numune (bugün)', 'alt' => '72 saat zorunlu', 'link' => '/kalite-kayit?tip=numune'],
+                    ['ikon' => 'badge', 'tint' => 't-amber', 'deger' => 2, 'label' => 'Sağlık belgesi', 'alt' => '30g içinde doluyor', 'link' => '/personel'],
+                    ['ikon' => 'warning', 'tint' => 't-amber', 'deger' => 12, 'label' => 'Alerjen eksik ürün', 'alt' => '/ 48 ürün', 'link' => '/alerjen'],
+                ],
+                'isler' => [
+                    ['ikon' => 'ac_unit', 'renk' => '#F43F5E', 'grup' => 'SOĞUK ZİNCİR', 'baslik' => '1 sıcaklık LİMİT DIŞI — acil!', 'aciklama' => 'Buzdolabı 2 = 9°C (limit 0–4°C) — ürünleri taşı, ekipmanı kontrol et', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Gör']],
+                    ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'SKT', 'baslik' => '3 parti SKT geçmiş', 'aciklama' => 'Fireye ayır/imha et, tüketime kapat', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']],
+                    ['ikon' => 'report_problem', 'renk' => '#DC2626', 'grup' => 'UYGUNSUZLUK', 'baslik' => '2 açık uygunsuzluk (DÖF)', 'aciklama' => 'Düzeltici/önleyici aksiyonu tamamla ve kapat', 'aksiyon' => ['url' => '/kalite', 'lbl' => 'Gör']],
+                    ['ikon' => 'science', 'renk' => '#7C3AED', 'grup' => 'NUMUNE', 'baslik' => 'Bugün şahit numune alınmamış', 'aciklama' => '72 saat saklama — yasal zorunluluk', 'aksiyon' => ['url' => '/kalite-kayit?tip=numune', 'lbl' => 'Kaydet']],
+                    ['ikon' => 'warning', 'renk' => '#EF4444', 'grup' => 'ALERJEN', 'baslik' => '12 üründe alerjen tanımlı değil', 'aciklama' => 'Menü alerjen matrisini tamamla', 'aksiyon' => ['url' => '/alerjen', 'lbl' => 'Tanımla']],
+                    ['ikon' => 'pest_control', 'renk' => '#EA580C', 'grup' => 'PERİYODİK', 'baslik' => 'Yaklaşan: 1 ilaçlama · 2 kalibrasyon', 'aciklama' => 'Periyodik kayıt/geçerlilik yenile', 'aksiyon' => ['url' => '/kalite-kayit?tip=ilaclama', 'lbl' => 'Gör']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'ac_unit', 'renk' => '#0EA5E9', 'baslik' => 'Soğuk Zincir', 'alt' => 'bugün', 'durum' => 'risk', 'yorum' => '1 ölçüm limit dışı (buzdolabı 9°C) — gıda güvenliği riski, acil müdahale ve DÖF şart.'],
+                    ['ikon' => 'event_busy', 'renk' => '#F59E0B', 'baslik' => 'SKT / FEFO', 'alt' => 'parti takibi', 'durum' => 'risk', 'yorum' => '3 parti SKT geçmiş — derhal fireye ayır. 5 parti 7 gün içinde doluyor; FEFO ile önce bunları kullan.'],
+                    ['ikon' => 'report_problem', 'renk' => '#DC2626', 'baslik' => 'Uygunsuzluk / DÖF', 'alt' => 'açık', 'durum' => 'dikkat', 'yorum' => '2 açık uygunsuzluk var — düzeltici/önleyici aksiyonla kapat (denetimde bulgu olmasın).'],
+                    ['ikon' => 'verified_user', 'renk' => '#16A34A', 'baslik' => 'Denetime Hazırlık', 'alt' => 'HACCP', 'durum' => 'dikkat', 'yorum' => 'Kapatılacak bulgular var — "Denetime hazır mıyım?" ile Kalite AI tam liste çıkarsın.'],
+                ],
+                'hizli' => [['url' => '/kalite', 'ikon' => 'checklist', 'lbl' => 'Kontrol Listesi'], ['url' => '/kalite-kayit?tip=numune', 'ikon' => 'science', 'lbl' => 'Şahit Numune'], ['url' => '/kalite-kayit?tip=ilaclama', 'ikon' => 'pest_control', 'lbl' => 'İlaçlama/Kalibrasyon'], ['url' => '/alerjen', 'ikon' => 'warning', 'lbl' => 'Alerjen Matrisi'], ['url' => '/parti-takip', 'ikon' => 'inventory_2', 'lbl' => 'SKT / Parti Takibi'], ['url' => '/kalite-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'Kalite AI']],
+                'aiOzet' => 'Bugünün gündemi: <b>1</b> limit dışı sıcaklık 🚨 · <b>3</b> SKT geçmiş · <b>2</b> açık uygunsuzluk · şahit numune alınmamış.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '6 sıcaklık ölçümü kaydedildi', 'link' => '/kalite'], ['ikon' => 'check', 'mtn' => 'Şahit numune alındı ve saklandı', 'link' => '/kalite-kayit?tip=numune'], ['ikon' => 'check', 'mtn' => '1 uygunsuzluk kapatıldı (DÖF)', 'link' => '/kalite']],
             ]);
         }
         if ($kod === 'satis_etkinlik') {
@@ -26536,6 +26908,23 @@ Route::post('/api/departman-is/durum', function (Request $r) {
     if ($durum === 'tamam') $upd['tamamlanan_at'] = now();
     if ($r->filled('deger')) $upd['deger'] = mb_substr((string) $r->input('deger'), 0, 60);
     DB::table('departman_isler')->where('id', $id)->update($upd);
+    // HACCP: sıcaklık ölçümü limit dışıysa otomatik uygunsuzluk + uyarı
+    if ($durum === 'tamam' && $row->departman_kod === 'kalite' && $r->filled('deger') && function_exists('_kaliteSicaklikUygunMu')) {
+        try {
+            $uygun = _kaliteSicaklikUygunMu($row->baslik, (string) $r->input('deger'));
+            if ($uygun === false) {
+                $lim = _kaliteSicaklikLimit($row->baslik);
+                $limS = $lim ? ($lim[0] <= -99 ? ('≤ ' . $lim[1] . '°C') : ($lim[1] >= 95 ? ('≥ ' . $lim[0] . '°C') : ($lim[0] . '–' . $lim[1] . '°C'))) : '';
+                DB::table('departman_isler')->insert([
+                    'sube_id' => $row->sube_id, 'departman_kod' => 'kalite', 'tip' => 'olay',
+                    'baslik' => 'Sıcaklık limit dışı: ' . $row->baslik . ' = ' . $r->input('deger') . '°C',
+                    'aciklama' => 'Limit ' . $limS . '. Acil müdahale: ürünleri taşı/kontrol et, ekipmanı kontrol ettir, düzeltici aksiyonu kaydet.',
+                    'durum' => 'acik', 'oncelik' => 'yuksek', 'olusturan_ad' => 'HACCP otomatik', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($row->sube_id, '🚨 Sıcaklık limit dışı', $row->baslik . ' = ' . $r->input('deger') . '°C (limit ' . $limS . '). Acil müdahale!', ['tur' => 'kalite_sicaklik'], ['sahip', 'mudur', 'mutfak']);
+            }
+        } catch (\Throwable $e) {}
+    }
     if ($durum === 'tamam' && $row->tekrar) {
         $sonraki = null;
         try { $b = today(); $sonraki = ($row->tekrar === 'gunluk' ? $b->copy()->addDay() : ($row->tekrar === 'haftalik' ? $b->copy()->addWeek() : $b->copy()->addMonth()))->toDateString(); } catch (\Throwable $e) {}

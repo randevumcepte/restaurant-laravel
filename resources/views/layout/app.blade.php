@@ -301,6 +301,18 @@
         ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet / Şikayet', '#10B981'],
         ['/sadakat', 'loyalty', 'Sadakat / Puan', '#EC4899'],
     ];
+
+    // ===== KALİTE / GIDA GÜVENLİĞİ (HACCP) MERKEZİ — başlıklar =====
+    $gruplar['Kalite / HACCP'] = [
+        ['/departman-brief?dep=kalite', 'wb_sunny', 'Kalite Brifingi', '#F59E0B'],
+        ['/kalite-sohbet', 'smart_toy', 'Kalite AI (iş yapar)', '#16A34A'],
+        ['/kalite', 'checklist', 'Kontrol Listesi (sıcaklık/hijyen)', '#0EA5E9'],
+        ['/kalite-kayit?tip=numune', 'science', 'Şahit Numune', '#7C3AED'],
+        ['/kalite-kayit?tip=ilaclama', 'pest_control', 'İlaçlama / Kalibrasyon', '#EA580C'],
+        ['/kalite-kayit?tip=denetim', 'verified_user', 'Denetim / Teftiş', '#16A34A'],
+        ['/alerjen', 'warning', 'Alerjen Matrisi', '#EF4444'],
+        ['/parti-takip', 'inventory_2', 'SKT / Parti Takibi', '#64748B'],
+    ];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
