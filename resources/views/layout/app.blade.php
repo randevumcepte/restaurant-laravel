@@ -207,11 +207,7 @@
         $gruplar['İnsan Kaynakları'][] = ['/ik-aday', 'how_to_reg', 'İşe Alım / Aday Havuzu', '#10B981'];
     }
     // DEPARTMAN AI ASİSTANLARI (PREMIUM — gor_ai_asistan + departman yetkisi olana). Menüde AI yetkisine göre süzülür.
-    if (config('services.resteos.ai_asistan', true)) {
-        $gruplar['Panel'][] = ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'];
-    }
-    // DEPARTMAN SABAH BRİFİNGLERİ — her departman kendi verisiyle (patron ?dep ile görür; departman personeli üstteki "Sabah Brifingim"den kendisininkine girer)
-    $gruplar['Panel'][] = ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Sabah Brifingi', '#F59E0B'];
+    // (Mutfak AI Asistanı + Mutfak Brifingi artık "Mutfak / BOH" grubunda — Panel'den taşındı, mükerrer olmasın)
 
     // ===== MUHASEBE MERKEZİ — başlıklar halinde (yetki haritası süzer; sahip/müdür hepsini görür) =====
     $gruplar['Finans / Muhasebe'] = [
@@ -300,6 +296,12 @@
         ['/it-destek?tip=lisans', 'verified', 'Lisans / SSL / Yedek', '#4F46E5'],
         ['/it-destek?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
     ];
+    // ===== MUTFAK / BOH (Back of House) MERKEZİ — başlıklar =====
+    $gruplar['Mutfak / BOH'] = [
+        ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Brifingi', '#F59E0B'],
+        ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'],
+        ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
+    ];
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
@@ -311,7 +313,7 @@
     try {
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
-            $_deptSira = ['İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
+            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
