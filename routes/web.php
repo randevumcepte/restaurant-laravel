@@ -2221,6 +2221,309 @@ Route::post('/alerjen/kaydet', function (Request $r) {
     return redirect('/alerjen')->with('ok', 'Alerjen bilgisi kaydedildi.');
 });
 
+// ========================= IT / BİLGİ İŞLEM (sistem sağlığı + iş-yapan AI + arıza/lisans defteri) =========================
+if (!function_exists('_itGuard')) {
+    function _itGuard($bp)
+    {
+        if (!$bp) return false;
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'])) return true;
+        return function_exists('_panelYetkiVar') && (_panelYetkiVar($bp, 'gor_bagli_cihaz') || _panelYetkiVar($bp, 'gor_yazici') || _panelYetkiVar($bp, 'gor_app_yonetim'));
+    }
+}
+if (!function_exists('_itKayitEnsure')) {
+    function _itKayitEnsure()
+    {
+        if (Schema::hasTable('it_kayitlari')) return;
+        try {
+            Schema::create('it_kayitlari', function ($t) {
+                $t->id();
+                $t->unsignedBigInteger('sube_id')->index();
+                $t->string('tip', 20)->index();            // ariza | lisans | yedek | kvkk | bakim
+                $t->string('baslik', 200);
+                $t->string('deger', 80)->nullable();        // cihaz / sağlayıcı / sonuç
+                $t->date('tarih')->nullable();              // yapıldığı/açıldığı tarih
+                $t->date('son_tarih')->nullable();          // bitiş / sonraki
+                $t->string('durum', 20)->default('aktif');  // ariza: acik|kapandi ; diğer: aktif
+                $t->string('oncelik', 12)->default('orta'); // dusuk | orta | yuksek
+                $t->unsignedBigInteger('personel_id')->nullable();
+                $t->string('personel_ad', 120)->nullable();
+                $t->text('not')->nullable();
+                $t->timestamp('created_at')->useCurrent();
+            });
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_itSurumKarsilastir')) {
+    // İki sürüm metnini kıyasla: a<b => -1, a==b => 0, a>b => 1. Harf/ek içerse de güvenli.
+    function _itSurumKarsilastir($a, $b)
+    {
+        $norm = fn ($s) => preg_replace('/[^0-9.]/', '', (string) $s);
+        $na = trim($norm($a), '.'); $nb = trim($norm($b), '.');
+        if ($na === '' || $nb === '') return strcmp((string) $a, (string) $b) <=> 0;
+        return version_compare($na, $nb);
+    }
+}
+if (!function_exists('_itOzet')) {
+    function _itOzet($sid)
+    {
+        $sid = (int) $sid; $ds = now()->toDateString(); $esikSn = 120; $now = now();
+        $o = ['cihazTop' => 0, 'cihazOnline' => 0, 'cihazOffline' => 0, 'offlineListe' => [], 'cihazOp' => 0,
+            'yaziciTop' => 0, 'yaziciOnline' => 0,
+            'surumEski' => 0, 'surumEskiListe' => [], 'surumSon' => null,
+            'waHat' => 0, 'santralAcik' => 0, 'santralKacanBugun' => 0, 'santralVar' => false,
+            'okcAktif' => false, 'okcDurum' => 'kapali', 'malifisHata' => 0,
+            'pasifHesap' => 0, 'aktifHesap' => 0,
+            'arizaAcik' => 0, 'lisansYak' => 0, 'lisansGecen' => 0, 'yedekSonGun' => null, 'yedekUyar' => 0, 'kvkkEksik' => true,
+            'muhasebeVar' => false];
+        try { if (function_exists('_restoCihazEnsure')) _restoCihazEnsure(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('cihazlar')) {
+            $cihazlar = DB::table('cihazlar')->where('sube_id', $sid)->get();
+            $o['cihazTop'] = $cihazlar->count();
+            $yaziciTipler = ['yazici', 'printer', 'okc', 'yazarkasa', 'cekmece'];
+            $surumler = [];
+            foreach ($cihazlar as $c) {
+                $sg = $c->son_gorulme ? \Carbon\Carbon::parse($c->son_gorulme) : null;
+                $sn = $sg ? (int) $sg->diffInSeconds($now) : null;
+                $online = $sn !== null && $sn <= $esikSn;
+                $isYazici = in_array(mb_strtolower((string) ($c->tip ?? '')), $yaziciTipler);
+                if ($isYazici) { $o['yaziciTop']++; if ($online) $o['yaziciOnline']++; }
+                else {
+                    $o['cihazOp']++;
+                    if ($online) $o['cihazOnline']++;
+                    else { $o['cihazOffline']++; if (count($o['offlineListe']) < 6) $o['offlineListe'][] = ['ad' => $c->ad, 'tip' => $c->tip, 'gecen' => $sg ? $sg->diffForHumans() : 'hiç']; }
+                    if (!empty($c->surum)) $surumler[] = ['ad' => $c->ad, 'platform' => $c->platform ?? '', 'surum' => $c->surum];
+                }
+            }
+            // Sürüm sürüklenmesi: platform bazında en yüksek sürüme göre geride kalan cihazlar
+            $enSon = [];
+            foreach ($surumler as $s) { $p = $s['platform'] ?: '-'; if (!isset($enSon[$p]) || _itSurumKarsilastir($enSon[$p], $s['surum']) < 0) $enSon[$p] = $s['surum']; }
+            foreach ($surumler as $s) { $p = $s['platform'] ?: '-'; if (isset($enSon[$p]) && _itSurumKarsilastir($s['surum'], $enSon[$p]) < 0) { $o['surumEski']++; if (count($o['surumEskiListe']) < 6) $o['surumEskiListe'][] = $s['ad'] . ' (' . $s['surum'] . '→' . $enSon[$p] . ')'; } }
+            if ($enSon) { $parts = []; foreach ($enSon as $p => $v) $parts[] = ($p !== '-' ? $p . ' ' : '') . $v; $o['surumSon'] = implode(' · ', $parts); }
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('wa_hatlar')) $o['waHat'] = (int) DB::table('wa_hatlar')->where('sube_id', $sid)->count(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('santral_oturumlari')) {
+            $o['santralVar'] = true;
+            $o['santralAcik'] = (int) DB::table('santral_oturumlari')->where('sube_id', $sid)->where('durum', 'acik')->count();
+            $o['santralKacanBugun'] = (int) DB::table('santral_oturumlari')->where('sube_id', $sid)->where('sonuc', 'kacan')->whereDate('created_at', $ds)->count();
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('edonusum_ayarlari')) {
+            $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $sid)->first();
+            if ($ayar) {
+                $o['okcAktif'] = (($ayar->fis_modu ?? '') === 'okc') && !empty($ayar->okc_aktif);
+                if ($o['okcAktif']) {
+                    $o['okcDurum'] = 'aktif';
+                    if (Schema::hasTable('e_faturalar')) { $sonFis = DB::table('e_faturalar')->where('sube_id', $sid)->where('tip', 'okc_fis')->orderByDesc('id')->first(); if ($sonFis && ($sonFis->durum ?? '') === 'hata') $o['okcDurum'] = 'hata'; }
+                }
+                if (Schema::hasTable('e_faturalar')) $o['malifisHata'] = (int) DB::table('e_faturalar')->where('sube_id', $sid)->where('durum', 'hata')->whereDate('created_at', '>=', now()->subDays(7)->toDateString())->count();
+            }
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('personeller')) {
+            $o['aktifHesap'] = (int) DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->count();
+            $o['pasifHesap'] = (int) DB::table('personeller')->where('sube_id', $sid)->where('aktif', 0)->count();
+        } } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('it_kayitlari')) {
+            $o['arizaAcik'] = (int) DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'ariza')->where('durum', 'acik')->count();
+            $o['lisansGecen'] = (int) DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'lisans')->whereNotNull('son_tarih')->whereDate('son_tarih', '<', $ds)->count();
+            $o['lisansYak'] = (int) DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'lisans')->whereNotNull('son_tarih')->whereBetween('son_tarih', [$ds, now()->addDays(30)->toDateString()])->count();
+            $o['yedekSonGun'] = DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'yedek')->whereNotNull('tarih')->orderByDesc('tarih')->value('tarih');
+            $o['kvkkEksik'] = !DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'kvkk')->exists();
+        } } catch (\Throwable $e) {}
+        try { $o['muhasebeVar'] = Schema::hasTable('muhasebe_fisleri') || Schema::hasTable('edonusum_ayarlari'); } catch (\Throwable $e) {}
+        if ($o['yedekSonGun']) { try { $o['yedekUyar'] = \Carbon\Carbon::parse($o['yedekSonGun'])->lt(now()->subDays(7)) ? 1 : 0; } catch (\Throwable $e) {} } else { $o['yedekUyar'] = 1; }
+        return $o;
+    }
+}
+if (!function_exists('_itAsistanEylemUygula')) {
+    function _itAsistanEylemUygula($sid, $bp, $intent, $params)
+    {
+        $sid = (int) $sid;
+        try {
+            $o = _itOzet($sid);
+            switch ($intent) {
+                case 'cihaz_offline_bildir':
+                    if ($o['cihazOffline'] <= 0) return ['ok' => true, 'mesaj' => 'Tüm cihazlar çevrimiçi. 👍'];
+                    $lst = collect($o['offlineListe'])->map(fn ($x) => $x['ad'] . ' (' . $x['gecen'] . ')')->implode(', ');
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🖥️ Çevrimdışı cihaz', $o['cihazOffline'] . ' cihaz çevrimdışı: ' . $lst, ['tur' => 'it_cihaz'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => $o['cihazOffline'] . ' cihaz çevrimdışı (' . $lst . ') — yönetime bildirildi. İnternet/güç/uygulamayı kontrol et.'];
+                case 'wa_yeniden_baglan':
+                    $r = function_exists('_waBridge') ? _waBridge('POST', '/session/' . $sid . '/start') : null;
+                    $durum = is_array($r) ? (string) ($r['status'] ?? ($r['state'] ?? '')) : '';
+                    return ['ok' => true, 'mesaj' => 'WhatsApp oturumu yeniden başlatıldı' . ($durum ? (' (durum: ' . $durum . ')') : '') . '. QR isterse WhatsApp Yönetimi ekranından tarat.'];
+                case 'mali_fis_hata_ozet':
+                    if (!$o['okcAktif']) return ['ok' => true, 'mesaj' => 'ÖKC/yazarkasa modu kapalı (e-Arşiv kullanılıyor). Mali fiş hatası izlenmiyor.'];
+                    if ($o['malifisHata'] <= 0 && $o['okcDurum'] !== 'hata') return ['ok' => true, 'mesaj' => 'Son 7 günde mali fiş hatası yok, ÖKC sağlıklı. 👍'];
+                    $m = ($o['malifisHata'] > 0 ? ($o['malifisHata'] . ' mali fişte hata var (7 gün). ') : 'Son mali fişte HATA. ') . 'ÖKC bağlantısı / kağıt / sertifikayı kontrol et.';
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '🧾 Mali fiş hatası', $m, ['tur' => 'it_okc'], ['sahip', 'mudur']);
+                    return ['ok' => true, 'mesaj' => $m . ' — yönetime bildirildi.'];
+                case 'surum_guncelle_hatirlat':
+                    if ($o['surumEski'] <= 0) return ['ok' => true, 'mesaj' => 'Tüm cihazlar güncel sürümde. 👍'];
+                    if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '⬆️ Uygulama güncelle', $o['surumEski'] . ' cihaz eski sürümde: ' . implode(', ', $o['surumEskiListe']) . '. Lütfen uygulamayı güncelleyin.', ['tur' => 'it_surum'], ['sahip', 'mudur', 'garson', 'mutfak']);
+                    return ['ok' => true, 'mesaj' => $o['surumEski'] . ' cihaza (' . implode(', ', $o['surumEskiListe']) . ') güncelleme hatırlatması gönderildi.'];
+            }
+        } catch (\Throwable $e) { return ['ok' => false, 'mesaj' => 'Hata: ' . $e->getMessage()]; }
+        return ['ok' => false, 'mesaj' => 'Bilinmeyen IT eylemi: ' . $intent];
+    }
+}
+if (!function_exists('_itAsistanNiyet')) {
+    function _itAsistanNiyet($sid, $bp, $metin, $gecmis = [])
+    {
+        $m = mb_strtolower(trim($metin), 'UTF-8');
+        if ($m === '') return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'cevap' => 'Nasıl yardımcı olayım?', 'params' => []];
+        $kurallar = !empty($gecmis) ? [] : [
+            '/çevrimdış|cevrimdis|offline|internet|bağlantı yok|baglanti yok|kopuk|cihaz.*kapal/u' => ['eylem', 'cihaz_offline_bildir'],
+            '/whatsapp|wa yeniden|yeniden bağla|yeniden bagla|qr|wa kopuk|wa bağlan/u' => ['eylem', 'wa_yeniden_baglan'],
+            '/mali fiş|mali fis|okc|ö\.?k\.?c|yazarkasa|fiş hata|fis hata/u' => ['eylem', 'mali_fis_hata_ozet'],
+            '/sürüm|surum|güncelle|guncelle|versiyon|version|update/u' => ['eylem', 'surum_guncelle_hatirlat'],
+            '/güvenlik|guvenlik|erişim|erisim|hesap|şifre|sifre|kvkk/u' => ['cevap', 'guvenlik_denetim'],
+            '/yazıcı|yazici|printer/u' => ['cevap', 'yazici_link'],
+            '/cihaz|bağlı cihaz|bagli cihaz|tablet|ekran/u' => ['cevap', 'cihaz_link'],
+            '/arıza|ariza|bozuk|çalışmıyor|calismiyor|destek|ticket|bilet/u' => ['cevap', 'ariza_link'],
+            '/sağlık|saglik|rapor|durum|özet|ozet|sistem|ne var|gündem|gundem|bugün|bugun/u' => ['cevap', 'sistem_saglik'],
+        ];
+        foreach ($kurallar as $re => $hit) if (preg_match($re, $m)) return ['tip' => $hit[0], 'intent' => $hit[1], 'params' => [], 'ozet' => '', 'cevap' => ''];
+        $sys = "Sen bir restoranın IT / Bilgi İşlem AI asistanısın. SADECE JSON: {\"tip\":\"cevap|eylem\",\"intent\":\"...\",\"params\":{},\"ozet\":\"...\",\"cevap\":\"\"}. "
+            . "OKUMA: sistem_saglik (genel durum), guvenlik_denetim (hesap/sürüm/kvkk/yedek bulguları), cihaz_link, yazici_link, ariza_link, bilinmiyor. "
+            . "EYLEM: cihaz_offline_bildir (çevrimdışı cihazları bul+bildir), wa_yeniden_baglan (WhatsApp oturumunu yeniden başlat), mali_fis_hata_ozet (ÖKC/mali fiş hataları), surum_guncelle_hatirlat (eski sürümlü cihazlara güncelleme bildirimi). UYDURMA.";
+        $ai = function_exists('_patronAiCagir') ? _patronAiCagir($sys, $metin, 400, $bp, $sid, $gecmis) : null;
+        if (!$ai) return ['tip' => 'cevap', 'intent' => 'ai_kapali', 'params' => [], 'cevap' => ''];
+        $s = strpos($ai, '{'); $e = strrpos($ai, '}'); if ($s !== false && $e !== false && $e > $s) $ai = substr($ai, $s, $e - $s + 1);
+        $j = json_decode($ai, true);
+        if (!is_array($j) || empty($j['intent'])) return ['tip' => 'cevap', 'intent' => 'bilinmiyor', 'params' => [], 'cevap' => 'Tam anlamadım, biraz daha açık yazar mısın?'];
+        return ['tip' => ($j['tip'] ?? 'cevap'), 'intent' => (string) $j['intent'], 'params' => (array) ($j['params'] ?? []), 'ozet' => (string) ($j['ozet'] ?? ''), 'cevap' => (string) ($j['cevap'] ?? '')];
+    }
+}
+if (!function_exists('_itAsistanOku')) {
+    function _itAsistanOku($sid, $bp, $intent, $params)
+    {
+        try {
+            $o = _itOzet($sid);
+            switch ($intent) {
+                case 'cihaz_link':
+                    $c = $o['cihazOffline'] > 0 ? ($o['cihazOffline'] . ' cihaz çevrimdışı. ') : ($o['cihazOnline'] . ' cihaz çevrimiçi. 👍 ');
+                    return ['cevap' => $c . 'Bağlı cihazları buradan yönet.', 'aksiyon' => $o['cihazOffline'] > 0 ? ['lbl' => 'Çevrimdışıları bildir', 'soru' => 'çevrimdışı cihazlar'] : null, 'link' => ['url' => '/bagli-cihazlar', 'lbl' => 'Bağlı Cihazlar']];
+                case 'yazici_link':
+                    return ['cevap' => ($o['yaziciTop'] > 0 ? ($o['yaziciOnline'] . '/' . $o['yaziciTop'] . ' yazıcı çevrimiçi. ') : 'Tanımlı yazıcı yok. ') . 'Yazıcı ayarlarını buradan yönet.', 'link' => ['url' => '/yazici-ayarlari', 'lbl' => 'Yazıcı Ayarları']];
+                case 'ariza_link':
+                    return ['cevap' => ($o['arizaAcik'] > 0 ? ($o['arizaAcik'] . ' açık arıza/destek kaydı var.') : 'Açık arıza kaydı yok. 👍'), 'link' => ['url' => '/it-destek?tip=ariza', 'lbl' => 'Arıza/Destek Defteri']];
+                case 'guvenlik_denetim':
+                    $b = [];
+                    if ($o['pasifHesap'] > 0) $b[] = $o['pasifHesap'] . ' pasif/ayrılmış hesap (arşivle)';
+                    if ($o['surumEski'] > 0) $b[] = $o['surumEski'] . ' cihaz eski sürüm';
+                    if ($o['kvkkEksik']) $b[] = 'KVKK kaydı yok';
+                    if ($o['yedekUyar']) $b[] = 'güncel yedek yok (7 günden eski)';
+                    $cev = $b ? ('Güvenlik/erişim bulguları: ' . implode(' · ', $b) . '. (' . $o['aktifHesap'] . ' aktif hesap)') : ('Güvenlik denetimi temiz. ✅ ' . $o['aktifHesap'] . ' aktif hesap, güncel sürüm, yedek var.');
+                    return ['cevap' => $cev, 'link' => ['url' => '/it-destek?tip=kvkk', 'lbl' => 'KVKK/Yedek Defteri']];
+                case 'sistem_saglik':
+                default:
+                    $p = [];
+                    $p[] = $o['cihazOnline'] . '/' . max(1, $o['cihazOp']) . ' cihaz online';
+                    if ($o['cihazOffline'] > 0) $p[] = $o['cihazOffline'] . ' çevrimdışı';
+                    if ($o['yaziciTop'] > 0) $p[] = $o['yaziciOnline'] . '/' . $o['yaziciTop'] . ' yazıcı';
+                    if ($o['okcAktif']) $p[] = 'ÖKC ' . ($o['okcDurum'] === 'hata' ? 'HATA 🚨' : 'aktif');
+                    if ($o['surumEski'] > 0) $p[] = $o['surumEski'] . ' eski sürüm';
+                    if ($o['arizaAcik'] > 0) $p[] = $o['arizaAcik'] . ' açık arıza';
+                    if ($o['lisansGecen'] > 0) $p[] = $o['lisansGecen'] . ' lisans süresi geçmiş';
+                    $kritikVar = $o['cihazOffline'] > 0 || $o['okcDurum'] === 'hata' || $o['malifisHata'] > 0;
+                    $cev = 'Sistem sağlık: ' . implode(' · ', $p) . '.';
+                    return ['cevap' => $cev, 'aksiyon' => $kritikVar ? ['lbl' => 'Çevrimdışıları bildir', 'soru' => 'çevrimdışı cihazlar'] : null, 'link' => ['url' => '/departman-brief?dep=it', 'lbl' => 'IT Brifingi']];
+            }
+        } catch (\Throwable $e) { return ['cevap' => 'Bu veriyi şu an getiremedim.']; }
+    }
+}
+Route::get('/it-sohbet', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return redirect('/pos-giris');
+    return view('departman_asistan', [
+        'baslik' => 'IT / Bilgi İşlem AI', 'selam' => 'Cihaz, yazıcı, WhatsApp, mali fiş, sürüm — sor; gerekirse kontrol edip işini bitireyim.',
+        'hizli' => [
+            ['Sistem sağlığı', 'Sistem sağlık raporu', 'monitor_heart', '#6366F1', 'durum'],
+            ['Çevrimdışı cihaz', 'Çevrimdışı cihazları bul', 'desktop_access_disabled', '#F43F5E', 'bildir'],
+            ['WhatsApp bağla', 'WhatsApp oturumunu yeniden başlat', 'chat', '#22C55E', 'bridge'],
+            ['Mali fiş', 'Mali fiş / ÖKC hataları', 'receipt_long', '#D97706', 'ÖKC'],
+            ['Sürüm güncelle', 'Eski sürümlü cihazlara güncelleme hatırlat', 'system_update', '#0EA5E9', 'drift'],
+            ['Güvenlik denetimi', 'Güvenlik ve erişim denetimi', 'security', '#475569', 'hesap/KVKK'],
+        ],
+        'sorUrl' => '/api/it-asistan/sor', 'uygulaUrl' => '/api/it-asistan/uygula',
+        'ekParam' => (object) [], 'placeholder' => 'IT AI’a sor… (ör. sistem sağlığı, çevrimdışı cihazlar, WhatsApp bağla, mali fiş hataları)',
+    ]);
+});
+Route::post('/api/it-asistan/sor', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $sid = _webSubeId(); $metin = trim((string) $r->input('metin'));
+    $gecmis = is_array($r->input('gecmis')) ? array_slice($r->input('gecmis'), -8) : [];
+    $n = _itAsistanNiyet($sid, $bp, $metin, $gecmis);
+    if ($n['intent'] === 'ai_kapali') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Derin AI kapalı; yukarıdaki hızlı sorulardan birini dene.']);
+    if ($n['tip'] === 'eylem') {
+        $ozetMap = [
+            'cihaz_offline_bildir' => 'Çevrimdışı cihazlar taranıp listelenecek ve yönetime bildirilecek.',
+            'wa_yeniden_baglan' => 'WhatsApp bridge oturumu yeniden başlatılacak (gerekirse QR taraması istenir).',
+            'mali_fis_hata_ozet' => 'Son 7 gündeki mali fiş/ÖKC hataları özetlenip yönetime bildirilecek.',
+            'surum_guncelle_hatirlat' => 'Eski sürümlü cihazlara uygulama güncelleme bildirimi gönderilecek.',
+        ];
+        $ozet = $ozetMap[$n['intent']] ?? null;
+        if (!$ozet) return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => 'Bu eylemi tanımadım.']);
+        $log_id = function_exists('_aiEylemLogYaz') ? _aiEylemLogYaz($sid, $bp, 'it', $n['intent'], [], $ozet, $metin) : 0;
+        return response()->json(['ok' => 1, 'tip' => 'eylem', 'ozet' => $ozet, 'eylem' => $n['intent'], 'params' => [], 'log_id' => $log_id]);
+    }
+    if (!empty($n['cevap']) && $n['intent'] === 'bilinmiyor') return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $n['cevap']]);
+    $oo = _itAsistanOku($sid, $bp, $n['intent'], $n['params']);
+    return response()->json(['ok' => 1, 'tip' => 'cevap', 'cevap' => $oo['cevap'], 'aksiyon' => $oo['aksiyon'] ?? null, 'link' => $oo['link'] ?? null]);
+});
+Route::post('/api/it-asistan/uygula', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    $log_id = (int) $r->input('log_id');
+    if (!$log_id) return response()->json(['ok' => 1, 'sonuc' => ['ok' => false, 'mesaj' => 'Eylem kaydı bulunamadı.']]);
+    return response()->json(['ok' => 1, 'sonuc' => _aiEylemOnayla($log_id, $bp)]);
+});
+// IT kayıt/arıza defteri: arıza/destek · lisans-domain-SSL · yedek · KVKK · bakım
+Route::get('/it-destek', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return redirect('/pos-giris');
+    _itKayitEnsure(); $sid = _webSubeId();
+    $tipler = ['ariza' => 'Arıza / Destek', 'lisans' => 'Lisans / Domain / SSL', 'yedek' => 'Yedekleme', 'kvkk' => 'KVKK / Veri Güvenliği', 'bakim' => 'Periyodik Bakım'];
+    $tip = $r->query('tip', 'ariza'); if (!isset($tipler[$tip])) $tip = 'ariza';
+    $liste = [];
+    try { $liste = DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', $tip)->orderByRaw("CASE WHEN durum='acik' THEN 0 ELSE 1 END")->orderByDesc('id')->limit(100)->get(); } catch (\Throwable $e) {}
+    return view('it_kayit', ['tipler' => $tipler, 'tip' => $tip, 'liste' => $liste]);
+});
+Route::post('/it-destek/ekle', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return redirect('/pos-giris');
+    _itKayitEnsure(); $sid = _webSubeId();
+    $tip = (string) $r->input('tip'); $tipler = ['ariza', 'lisans', 'yedek', 'kvkk', 'bakim'];
+    if (!in_array($tip, $tipler)) return redirect('/it-destek')->with('hata', 'Geçersiz tip.');
+    if (trim((string) $r->input('baslik')) === '') return redirect('/it-destek?tip=' . $tip)->with('hata', 'Başlık gerekli.');
+    $onc = (string) $r->input('oncelik'); if (!in_array($onc, ['dusuk', 'orta', 'yuksek'])) $onc = 'orta';
+    try {
+        DB::table('it_kayitlari')->insert([
+            'sube_id' => $sid, 'tip' => $tip, 'baslik' => mb_substr(trim((string) $r->input('baslik')), 0, 200),
+            'deger' => $r->filled('deger') ? mb_substr((string) $r->input('deger'), 0, 80) : null,
+            'tarih' => $r->filled('tarih') ? $r->input('tarih') : now()->toDateString(),
+            'son_tarih' => $r->filled('son_tarih') ? $r->input('son_tarih') : null,
+            'durum' => $tip === 'ariza' ? 'acik' : 'aktif', 'oncelik' => $onc,
+            'personel_id' => $bp->id ?? null, 'personel_ad' => $bp->ad ?? null,
+            'not' => $r->filled('not') ? mb_substr((string) $r->input('not'), 0, 500) : null, 'created_at' => now(),
+        ]);
+    } catch (\Throwable $e) { return redirect('/it-destek?tip=' . $tip)->with('hata', 'Kayıt eklenemedi.'); }
+    return redirect('/it-destek?tip=' . $tip)->with('ok', 'Kayıt eklendi.');
+});
+Route::post('/it-destek/durum', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return redirect('/pos-giris');
+    _itKayitEnsure(); $sid = _webSubeId(); $tip = (string) $r->input('tip');
+    try { DB::table('it_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->update(['durum' => 'kapandi']); } catch (\Throwable $e) {}
+    return redirect('/it-destek?tip=' . ($tip ?: 'ariza'))->with('ok', 'Kayıt kapatıldı.');
+});
+Route::post('/it-destek/sil', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!_itGuard($bp)) return redirect('/pos-giris');
+    _itKayitEnsure(); $sid = _webSubeId(); $tip = (string) $r->input('tip');
+    try { DB::table('it_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
+    return redirect('/it-destek?tip=' . ($tip ?: 'ariza'))->with('ok', 'Silindi.');
+});
+
 // ========================= CRM / MÜŞTERİ İLİŞKİLERİ (RFM sağlık + 360 + iş-yapan AI) =========================
 if (!function_exists('_crmGuard')) {
     function _crmGuard($bp)
@@ -8830,7 +9133,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
             '/karsilama' => 'gor_rezervasyon', // Karşılama/Host iş ekranı (bekleme listesi + rezervasyon + masa durumu)
-            '/kalite' => 'gor_stok', '/kalite-sohbet' => 'gor_stok', '/kalite-kayit' => 'gor_stok', '/alerjen' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
+            '/kalite' => 'gor_stok', '/kalite-sohbet' => 'gor_stok', '/kalite-kayit' => 'gor_stok', '/alerjen' => 'gor_stok', '/temizlik' => 'gor_garson_cagri', '/guvenlik' => 'gor_bagli_cihaz', '/teknik' => 'gor_bagli_cihaz', '/it-destek' => 'gor_bagli_cihaz', '/it-sohbet' => 'gor_bagli_cihaz', '/bulasik' => 'gor_mutfak', '/etkinlik' => 'gor_rezervasyon', // Grup B departman iş ekranları
 
             '/mutfak' => 'gor_mutfak', '/paket' => 'gor_paket', '/kurye' => 'gor_kurye', '/indirimler' => 'gor_indirimler',
             '/odul-raporu' => 'gor_odul_raporu', '/app-yonetim' => 'gor_app_yonetim', '/whatsapp' => 'gor_whatsapp',
@@ -18360,7 +18663,7 @@ if (!function_exists('_departmanBriefVeri')) {
         try { [$ay, $ayBas, $ayBit] = _restoAyAralik(null); } catch (\Throwable $e) { $ayBas = $ds . ' 00:00:00'; $ayBit = $ds . ' 23:59:59'; }
 
         $kpis = []; $isler = []; $analiz = []; $dunY = []; $hizli = []; $sinyal = [];
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş'], 'it' => ['/it-sohbet', 'IT AI ile konuş']];
         $aiLink = isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null;
 
         // ================= İK (özet verisinin TAMAMI — _ikOzetVeri'den) =================
@@ -18684,6 +18987,46 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'verified_user', 'renk' => '#16A34A', 'baslik' => 'Denetime Hazırlık', 'alt' => 'HACCP', 'durum' => ($sicLD + $sktG + $acikU + $belgeSkt + $alerjEksik) > 0 || !$numuneBg ? 'dikkat' : 'iyi', 'yorum' => (($sicLD + $sktG + $acikU + $belgeSkt + $alerjEksik) > 0 || !$numuneBg) ? 'Kapatılacak bulgular var — "Denetime hazır mıyım?" ile Kalite AI tam liste çıkarsın.' : 'Açık bulgu görünmüyor — denetime hazırsın. ✅'];
             $hizli = [['url' => '/kalite', 'ikon' => 'checklist', 'lbl' => 'Kontrol Listesi'], ['url' => '/kalite-kayit?tip=numune', 'ikon' => 'science', 'lbl' => 'Şahit Numune'], ['url' => '/kalite-kayit?tip=ilaclama', 'ikon' => 'pest_control', 'lbl' => 'İlaçlama/Kalibrasyon'], ['url' => '/alerjen', 'ikon' => 'warning', 'lbl' => 'Alerjen Matrisi'], ['url' => '/parti-takip', 'ikon' => 'inventory_2', 'lbl' => 'SKT / Parti Takibi'], ['url' => '/kalite-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'Kalite AI']];
         }
+        // ================= IT / BİLGİ İŞLEM (sistem sağlığı + sürüm + entegrasyon + lisans/yedek) =================
+        elseif ($kod === 'it') {
+            if (function_exists('_itKayitEnsure')) _itKayitEnsure();
+            $o = function_exists('_itOzet') ? _itOzet($sid) : [];
+            $cOn = (int) ($o['cihazOnline'] ?? 0); $cOff = (int) ($o['cihazOffline'] ?? 0); $cOp = (int) ($o['cihazOp'] ?? 0);
+            $yTop = (int) ($o['yaziciTop'] ?? 0); $yOn = (int) ($o['yaziciOnline'] ?? 0);
+            $surumEski = (int) ($o['surumEski'] ?? 0); $waHat = (int) ($o['waHat'] ?? 0);
+            $santKacan = (int) ($o['santralKacanBugun'] ?? 0); $santAcik = (int) ($o['santralAcik'] ?? 0); $santVar = !empty($o['santralVar']);
+            $okcAktif = !empty($o['okcAktif']); $okcDurum = (string) ($o['okcDurum'] ?? 'kapali'); $malifisHata = (int) ($o['malifisHata'] ?? 0);
+            $pasifHesap = (int) ($o['pasifHesap'] ?? 0); $aktifHesap = (int) ($o['aktifHesap'] ?? 0);
+            $arizaAcik = (int) ($o['arizaAcik'] ?? 0); $lisansYak = (int) ($o['lisansYak'] ?? 0); $lisansGecen = (int) ($o['lisansGecen'] ?? 0);
+            $yedekUyar = (int) ($o['yedekUyar'] ?? 0); $kvkkEksik = !empty($o['kvkkEksik']);
+            // KPI'lar
+            $kpis[] = ['ikon' => 'devices', 'tint' => $cOff > 0 ? 't-red' : 't-green', 'deger' => $cOn . '<small>/' . max(1, $cOp) . '</small>', 'label' => 'Cihaz çevrimiçi', 'alt' => $cOff > 0 ? ($cOff . ' çevrimdışı') : 'hepsi online 👍', 'link' => '/bagli-cihazlar'];
+            $kpis[] = ['ikon' => 'print', 'tint' => ($yTop > 0 && $yOn < $yTop) ? 't-amber' : 't-green', 'deger' => $yOn . '<small>/' . max(1, $yTop) . '</small>', 'label' => 'Yazıcı çevrimiçi', 'alt' => $yTop === 0 ? 'tanımlı yok' : (($yTop - $yOn) > 0 ? (($yTop - $yOn) . ' kapalı') : 'tam 👍'), 'link' => '/yazici-ayarlari'];
+            $kpis[] = ['ikon' => 'system_update', 'tint' => $surumEski > 0 ? 't-amber' : 't-green', 'deger' => $surumEski, 'label' => 'Eski sürüm cihaz', 'alt' => $surumEski > 0 ? 'güncelle' : 'hepsi güncel 👍', 'link' => '/bagli-cihazlar'];
+            $kpis[] = ['ikon' => 'chat', 'tint' => $waHat > 0 ? 't-green' : 't-amber', 'deger' => $waHat, 'label' => 'WhatsApp hattı', 'alt' => $waHat > 0 ? 'tanımlı' : 'bağla', 'link' => '/whatsapp'];
+            if ($santVar) $kpis[] = ['ikon' => 'call', 'tint' => $santKacan > 0 ? 't-amber' : 't-green', 'deger' => $santKacan, 'label' => 'Kaçan çağrı (bugün)', 'alt' => $santAcik > 0 ? ($santAcik . ' açık oturum') : 'santral', 'link' => '/santral-kayitlar'];
+            if ($okcAktif) $kpis[] = ['ikon' => 'receipt_long', 'tint' => $okcDurum === 'hata' ? 't-red' : 't-green', 'deger' => $okcDurum === 'hata' ? 'HATA' : 'OK', 'label' => 'Mali fiş / ÖKC', 'alt' => $okcDurum === 'hata' ? 'incele 🚨' : 'sağlıklı 👍', 'link' => '/bagli-cihazlar'];
+            $kpis[] = ['ikon' => 'manage_accounts', 'tint' => $pasifHesap > 0 ? 't-amber' : 't-green', 'deger' => $aktifHesap, 'label' => 'Aktif hesap', 'alt' => $pasifHesap > 0 ? ($pasifHesap . ' pasif/arşiv') : 'temiz 👍', 'link' => '/personel'];
+            $kpis[] = ['ikon' => 'verified', 'tint' => ($lisansGecen > 0) ? 't-red' : ($lisansYak > 0 ? 't-amber' : 't-green'), 'deger' => $lisansGecen + $lisansYak, 'label' => 'Lisans/SSL', 'alt' => $lisansGecen > 0 ? ($lisansGecen . ' süresi geçmiş') : ($lisansYak > 0 ? '30g içinde' : 'güncel 👍'), 'link' => '/it-destek?tip=lisans'];
+            $kpis[] = ['ikon' => 'backup', 'tint' => $yedekUyar ? 't-amber' : 't-green', 'deger' => $yedekUyar ? 'Eski' : 'Güncel', 'label' => 'Yedek', 'alt' => ($o['yedekSonGun'] ?? null) ? ('son: ' . \Carbon\Carbon::parse($o['yedekSonGun'])->format('d.m')) : 'kayıt yok', 'link' => '/it-destek?tip=yedek'];
+            // Öncelikler
+            if ($cOff > 0) { $lst = collect($o['offlineListe'] ?? [])->map(fn ($x) => $x['ad'] . ' (' . $x['gecen'] . ')')->implode(', '); array_unshift($isler, ['ikon' => 'desktop_access_disabled', 'renk' => '#F43F5E', 'grup' => 'CİHAZ', 'baslik' => "$cOff cihaz çevrimdışı", 'aciklama' => $lst ?: 'İnternet/güç/uygulama kontrol et', 'aksiyon' => ['url' => '/it-sohbet', 'lbl' => 'AI bildirsin']]); $sinyal[] = "<b>$cOff</b> çevrimdışı cihaz"; }
+            if ($okcAktif && $okcDurum === 'hata') { array_unshift($isler, ['ikon' => 'receipt_long', 'renk' => '#DC2626', 'grup' => 'MALİ FİŞ', 'baslik' => 'Son mali fişte HATA', 'aciklama' => 'ÖKC bağlantısı/kağıt/sertifika — satış durabilir', 'aksiyon' => ['url' => '/bagli-cihazlar', 'lbl' => 'Gör']]); $sinyal[] = "mali fiş <b>hatası</b>"; }
+            elseif ($malifisHata > 0) { $isler[] = ['ikon' => 'receipt_long', 'renk' => '#F59E0B', 'grup' => 'MALİ FİŞ', 'baslik' => "$malifisHata mali fiş hatası (7 gün)", 'aciklama' => 'ÖKC/entegratör loglarını incele', 'aksiyon' => ['url' => '/it-sohbet', 'lbl' => 'AI özetle']]; }
+            if ($surumEski > 0) { $isler[] = ['ikon' => 'system_update', 'renk' => '#0EA5E9', 'grup' => 'SÜRÜM', 'baslik' => "$surumEski cihaz eski sürümde", 'aciklama' => implode(', ', $o['surumEskiListe'] ?? []) ?: 'Uygulamayı güncelle', 'aksiyon' => ['url' => '/it-sohbet', 'lbl' => 'AI hatırlatsın']]; $sinyal[] = "<b>$surumEski</b> eski sürüm"; }
+            if ($arizaAcik > 0) { $isler[] = ['ikon' => 'build', 'renk' => '#F97316', 'grup' => 'ARIZA', 'baslik' => "$arizaAcik açık arıza/destek kaydı", 'aciklama' => 'Çözüp kapat, tekrarlıyorsa kök neden', 'aksiyon' => ['url' => '/it-destek?tip=ariza', 'lbl' => 'Gör']]; $sinyal[] = "<b>$arizaAcik</b> açık arıza"; }
+            if ($lisansGecen > 0 || $lisansYak > 0) { $isler[] = ['ikon' => 'verified', 'renk' => $lisansGecen > 0 ? '#F43F5E' : '#F59E0B', 'grup' => 'LİSANS', 'baslik' => ($lisansGecen > 0 ? "$lisansGecen lisans/SSL süresi geçmiş" : "$lisansYak lisans/SSL 30 gün içinde doluyor"), 'aciklama' => 'Domain/SSL/yazılım lisansını yenile', 'aksiyon' => ['url' => '/it-destek?tip=lisans', 'lbl' => 'Gör']]; }
+            if ($yedekUyar) { $isler[] = ['ikon' => 'backup', 'renk' => '#A855F7', 'grup' => 'YEDEK', 'baslik' => (($o['yedekSonGun'] ?? null) ? 'Güncel yedek yok (7 günden eski)' : 'Yedek kaydı hiç yok'), 'aciklama' => 'Düzenli yedek al ve kaydet — veri kaybına karşı', 'aksiyon' => ['url' => '/it-destek?tip=yedek', 'lbl' => 'Kaydet']]; }
+            if ($pasifHesap > 0) { $isler[] = ['ikon' => 'manage_accounts', 'renk' => '#64748B', 'grup' => 'GÜVENLİK', 'baslik' => "$pasifHesap pasif/ayrılmış hesap", 'aciklama' => 'Erişim hijyeni için arşivle/sil', 'aksiyon' => ['url' => '/personel', 'lbl' => 'Gör']]; }
+            if ($kvkkEksik) { $isler[] = ['ikon' => 'policy', 'renk' => '#14B8A6', 'grup' => 'KVKK', 'baslik' => 'KVKK kaydı yok', 'aciklama' => 'Aydınlatma metni / veri işleme envanteri kaydet', 'aksiyon' => ['url' => '/it-destek?tip=kvkk', 'lbl' => 'Kaydet']]; }
+            // Analiz
+            $analiz[] = ['ikon' => 'lan', 'renk' => '#6366F1', 'baslik' => 'Cihaz & Ağ', 'alt' => 'anlık', 'durum' => $cOff > 0 ? 'risk' : 'iyi', 'yorum' => $cOff > 0 ? "$cOff cihaz çevrimdışı — POS/mutfak/yazıcı aksayabilir. İnternet ve güç hattını kontrol et." : ($cOn . ' cihaz çevrimiçi, ağ sağlıklı. 👍')];
+            $entP = []; $entP[] = $waHat > 0 ? ($waHat . ' WhatsApp hattı') : 'WhatsApp bağlı değil'; if ($santVar) $entP[] = 'AI Santral aktif'; if ($okcAktif) $entP[] = 'ÖKC ' . ($okcDurum === 'hata' ? 'HATA' : 'aktif'); if (!empty($o['muhasebeVar'])) $entP[] = 'muhasebe entegrasyonu';
+            $analiz[] = ['ikon' => 'hub', 'renk' => '#0EA5E9', 'baslik' => 'Entegrasyonlar', 'alt' => 'WhatsApp · Santral · ÖKC · muhasebe', 'durum' => ($okcDurum === 'hata' || $waHat === 0) ? 'dikkat' : 'iyi', 'yorum' => implode(' · ', $entP) . '.' . ($okcDurum === 'hata' ? ' ÖKC hatası öncelikli.' : '')];
+            $analiz[] = ['ikon' => 'system_update', 'renk' => '#22C55E', 'baslik' => 'Sürüm / Güncelleme', 'alt' => 'cihaz uygulamaları', 'durum' => $surumEski > 0 ? 'dikkat' : 'iyi', 'yorum' => $surumEski > 0 ? "$surumEski cihaz güncel sürümün gerisinde — özellik/güvenlik farkı oluşur, güncelle." : ('Tüm cihazlar güncel' . (($o['surumSon'] ?? null) ? (' (' . $o['surumSon'] . ')') : '') . '. 👍')];
+            $analiz[] = ['ikon' => 'security', 'renk' => '#475569', 'baslik' => 'Güvenlik & Yedek', 'alt' => 'erişim · KVKK · yedek', 'durum' => ($pasifHesap > 0 || $kvkkEksik || $yedekUyar) ? 'dikkat' : 'iyi', 'yorum' => trim(($pasifHesap > 0 ? "$pasifHesap pasif hesap. " : '') . ($kvkkEksik ? 'KVKK kaydı yok. ' : '') . ($yedekUyar ? 'Güncel yedek yok. ' : '')) ?: 'Erişim temiz, KVKK ve yedek kayıtlı. ✅'];
+            $hizli = [['url' => '/bagli-cihazlar', 'ikon' => 'devices', 'lbl' => 'Bağlı Cihazlar'], ['url' => '/yazici-ayarlari', 'ikon' => 'print', 'lbl' => 'Yazıcı Ayarları'], ['url' => '/whatsapp', 'ikon' => 'chat', 'lbl' => 'WhatsApp Yönetimi'], ['url' => '/it-destek?tip=ariza', 'ikon' => 'build', 'lbl' => 'Arıza/Destek Defteri'], ['url' => '/app-yonetim', 'ikon' => 'qr_code_2', 'lbl' => 'App / QR Menü'], ['url' => '/it-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'IT AI']];
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
@@ -18750,7 +19093,7 @@ if (!function_exists('_departmanBriefDemo')) {
         $tmplAll = function_exists('_departmanSablonlari') ? _departmanSablonlari() : [];
         $tmpl = $tmplAll[$kod] ?? ['ad' => 'Departman', 'renk' => '#7C3AED', 'ikon' => 'groups'];
         $tl = fn ($n) => number_format((float) round((float) $n), 0, ',', '.') . '₺';
-        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş']];
+        $aiMap = ['ik' => ['/ik-asistan', 'İK AI ile konuş'], 'mutfak' => ['/departman-asistan?dep=mutfak', 'Mutfak AI ile konuş'], 'finans' => ['/muhasebe-sohbet', 'Finans AI ile konuş'], 'satinalma' => ['/satinalma-asistan', 'Satınalma AI ile konuş'], 'pazarlama' => ['/pazarlama-sohbet', 'Pazarlama AI ile konuş'], 'satis_etkinlik' => ['/satis-sohbet', 'Rezervasyon Satış AI ile konuş'], 'crm' => ['/crm-sohbet', 'CRM AI ile konuş'], 'kalite' => ['/kalite-sohbet', 'Kalite AI ile konuş'], 'it' => ['/it-sohbet', 'IT AI ile konuş']];
         $base = ['ad' => 'Özcan', 'deptAd' => $tmpl['ad'], 'deptRenk' => $tmpl['renk'], 'deptIkon' => $tmpl['ikon'], 'dunYapilanlar' => [], 'aiLink' => isset($aiMap[$kod]) ? ['url' => $aiMap[$kod][0], 'lbl' => $aiMap[$kod][1]] : null, 'rozetler' => [['ikon' => 'pending_actions', 'metin' => '4 iş var']]];
 
         if ($kod === 'ik') {
@@ -18988,6 +19331,36 @@ if (!function_exists('_departmanBriefDemo')) {
                     'yarin' => 11,
                     'kanal' => ['santral' => 41, 'diger' => 87, 'tum' => 128, 'yuzde' => 32],
                 ],
+            ]);
+        }
+        if ($kod === 'it') {
+            return array_merge($base, [
+                'kpis' => [
+                    ['ikon' => 'devices', 'tint' => 't-red', 'deger' => '6<small>/7</small>', 'label' => 'Cihaz çevrimiçi', 'alt' => '1 çevrimdışı', 'link' => '/bagli-cihazlar'],
+                    ['ikon' => 'print', 'tint' => 't-amber', 'deger' => '2<small>/3</small>', 'label' => 'Yazıcı çevrimiçi', 'alt' => '1 kapalı', 'link' => '/yazici-ayarlari'],
+                    ['ikon' => 'system_update', 'tint' => 't-amber', 'deger' => 2, 'label' => 'Eski sürüm cihaz', 'alt' => 'güncelle', 'link' => '/bagli-cihazlar'],
+                    ['ikon' => 'chat', 'tint' => 't-green', 'deger' => 3, 'label' => 'WhatsApp hattı', 'alt' => 'tanımlı', 'link' => '/whatsapp'],
+                    ['ikon' => 'call', 'tint' => 't-amber', 'deger' => 2, 'label' => 'Kaçan çağrı (bugün)', 'alt' => '1 açık oturum', 'link' => '/santral-kayitlar'],
+                    ['ikon' => 'receipt_long', 'tint' => 't-green', 'deger' => 'OK', 'label' => 'Mali fiş / ÖKC', 'alt' => 'sağlıklı 👍', 'link' => '/bagli-cihazlar'],
+                    ['ikon' => 'manage_accounts', 'tint' => 't-amber', 'deger' => 11, 'label' => 'Aktif hesap', 'alt' => '2 pasif/arşiv', 'link' => '/personel'],
+                    ['ikon' => 'verified', 'tint' => 't-amber', 'deger' => 1, 'label' => 'Lisans/SSL', 'alt' => '30g içinde', 'link' => '/it-destek?tip=lisans'],
+                ],
+                'isler' => [
+                    ['ikon' => 'desktop_access_disabled', 'renk' => '#F43F5E', 'grup' => 'CİHAZ', 'baslik' => '1 cihaz çevrimdışı', 'aciklama' => 'Mutfak Ekranı 2 (3 sa önce) — internet/güç kontrol et', 'aksiyon' => ['url' => '/it-sohbet', 'lbl' => 'AI bildirsin']],
+                    ['ikon' => 'system_update', 'renk' => '#0EA5E9', 'grup' => 'SÜRÜM', 'baslik' => '2 cihaz eski sürümde', 'aciklama' => 'Kasa Tablet (2.1.0→2.3.0) · Garson 3 (2.2.0→2.3.0)', 'aksiyon' => ['url' => '/it-sohbet', 'lbl' => 'AI hatırlatsın']],
+                    ['ikon' => 'print', 'renk' => '#F59E0B', 'grup' => 'YAZICI', 'baslik' => 'Mutfak yazıcısı kapalı', 'aciklama' => 'Ağ yazıcısı yanıt vermiyor — kablo/IP kontrol et', 'aksiyon' => ['url' => '/yazici-ayarlari', 'lbl' => 'Gör']],
+                    ['ikon' => 'verified', 'renk' => '#F59E0B', 'grup' => 'LİSANS', 'baslik' => 'SSL sertifikası 30 gün içinde doluyor', 'aciklama' => 'Domain/SSL yenile', 'aksiyon' => ['url' => '/it-destek?tip=lisans', 'lbl' => 'Gör']],
+                    ['ikon' => 'backup', 'renk' => '#A855F7', 'grup' => 'YEDEK', 'baslik' => 'Güncel yedek yok (9 gün önce)', 'aciklama' => 'Düzenli yedek al ve kaydet', 'aksiyon' => ['url' => '/it-destek?tip=yedek', 'lbl' => 'Kaydet']],
+                ],
+                'analiz' => [
+                    ['ikon' => 'lan', 'renk' => '#6366F1', 'baslik' => 'Cihaz & Ağ', 'alt' => 'anlık', 'durum' => 'risk', 'yorum' => '1 cihaz çevrimdışı (Mutfak Ekranı 2). Mutfak siparişleri aksayabilir — internet ve güç hattını kontrol et.'],
+                    ['ikon' => 'hub', 'renk' => '#0EA5E9', 'baslik' => 'Entegrasyonlar', 'alt' => 'WhatsApp · Santral · ÖKC · muhasebe', 'durum' => 'iyi', 'yorum' => '3 WhatsApp hattı · AI Santral aktif · ÖKC aktif · muhasebe entegrasyonu. 👍'],
+                    ['ikon' => 'system_update', 'renk' => '#22C55E', 'baslik' => 'Sürüm / Güncelleme', 'alt' => 'cihaz uygulamaları', 'durum' => 'dikkat', 'yorum' => '2 cihaz güncel sürümün (2.3.0) gerisinde — özellik/güvenlik farkı oluşur, güncelle.'],
+                    ['ikon' => 'security', 'renk' => '#475569', 'baslik' => 'Güvenlik & Yedek', 'alt' => 'erişim · KVKK · yedek', 'durum' => 'dikkat', 'yorum' => '2 pasif hesap arşivlenmeli. Güncel yedek yok (9 gün). KVKK kaydı mevcut.'],
+                ],
+                'hizli' => [['url' => '/bagli-cihazlar', 'ikon' => 'devices', 'lbl' => 'Bağlı Cihazlar'], ['url' => '/yazici-ayarlari', 'ikon' => 'print', 'lbl' => 'Yazıcı Ayarları'], ['url' => '/whatsapp', 'ikon' => 'chat', 'lbl' => 'WhatsApp Yönetimi'], ['url' => '/it-destek?tip=ariza', 'ikon' => 'build', 'lbl' => 'Arıza/Destek Defteri'], ['url' => '/app-yonetim', 'ikon' => 'qr_code_2', 'lbl' => 'App / QR Menü'], ['url' => '/it-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'IT AI']],
+                'aiOzet' => 'Bugünün gündemi: <b>1</b> çevrimdışı cihaz · <b>2</b> eski sürüm · yazıcı kapalı · SSL <b>30g</b> içinde doluyor.',
+                'dunYapilanlar' => [['ikon' => 'check', 'mtn' => 'Günlük yedek alındı', 'link' => '/it-destek?tip=yedek'], ['ikon' => 'check', 'mtn' => '1 arıza kaydı kapatıldı (kasa yazıcısı)', 'link' => '/it-destek?tip=ariza'], ['ikon' => 'check', 'mtn' => 'WhatsApp 2. hat yeniden bağlandı', 'link' => '/whatsapp']],
             ]);
         }
         // Genel demo (diğer departmanlar)

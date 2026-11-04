@@ -313,6 +313,19 @@
         ['/alerjen', 'warning', 'Alerjen Matrisi', '#EF4444'],
         ['/parti-takip', 'inventory_2', 'SKT / Parti Takibi', '#64748B'],
     ];
+
+    // ===== IT / BİLGİ İŞLEM MERKEZİ — başlıklar =====
+    $gruplar['IT / Bilgi İşlem'] = [
+        ['/departman-brief?dep=it', 'wb_sunny', 'IT Brifingi', '#F59E0B'],
+        ['/it-sohbet', 'smart_toy', 'IT AI (iş yapar)', '#6366F1'],
+        ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'],
+        ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'],
+        ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
+        ['/it-destek?tip=ariza', 'build', 'Arıza / Destek Defteri', '#F97316'],
+        ['/it-destek?tip=lisans', 'verified', 'Lisans / SSL / Yedek', '#4F46E5'],
+        ['/it-destek?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
+        ['/app-yonetim', 'qr_code_2', 'App / QR Menü', '#EC4899'],
+    ];
     // PATRON AI — sabah brifingi + entegrasyonlar (en üste, Panel grubunun başına). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
