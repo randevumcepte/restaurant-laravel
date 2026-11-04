@@ -135,7 +135,6 @@
             ['/temizlik', 'cleaning_services', 'Temizlik / Hijyen', '#0EA5E9'],
             ['/guvenlik', 'security', 'Güvenlik', '#475569'],
             ['/teknik', 'build', 'Teknik Servis / Bakım', '#F97316'],
-            ['/it-destek', 'dns', 'IT / Bilgi İşlem', '#6366F1'],
             ['/bulasik', 'wash', 'Bulaşıkhane / Steward', '#06B6D4'],
             ['/etkinlik', 'celebration', 'Rezervasyon Satış', '#A855F7'],
         ],
