@@ -504,9 +504,8 @@
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var mq = window.matchMedia('(min-width:641px)');
-        var touch = window.matchMedia('(hover: none)'); // dokunmatik (gercek hover yok)
         function flag(v){ try{ v ? sessionStorage.setItem('rk_menu_genis','1') : sessionStorage.removeItem('rk_menu_genis'); }catch(e){} }
-        function ac(){ if(mq.matches){ side.classList.add('genis'); if(touch.matches) flag(true); } }
+        function ac(){ if(mq.matches) side.classList.add('genis'); }
         function kapa(){
             side.classList.remove('genis'); flag(false);
             // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
@@ -515,13 +514,14 @@
             side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
         }
         side.addEventListener('pointerenter', ac);
-        side.addEventListener('pointerdown', ac); // dokunmatik: menuye dokununca ac + acik tut
+        // Dokunma/kalem ile menuye dokununca: ac + sayfalar arasi ACIK kalmasini hatirla (pointerType guvenilir, media query'ye guvenme)
+        side.addEventListener('pointerdown', function(e){ ac(); if(e.pointerType !== 'mouse') flag(true); });
         // YALNIZ gercek fare cikisinda kapat. Dokunustan dogan sahte mouse/pointer leave'i yok say.
         side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
-        // dokunmatikte: menu DISINA dokununca/tiklayinca kapat (menu icine tiklamak KAPATMAZ)
+        // menu DISINA dokununca/tiklayinca kapat (menu icine tiklamak KAPATMAZ)
         document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Dokunmatikte: alt baslik linkine basip sayfa degisince menu ACIK kalsin (yeni sayfada geri ac)
-        try{ if(mq.matches && touch.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
+        // Alt baslik linkine dokunup sayfa degisince menu ACIK kalsin (bayrak dokunusla set edildi => sadece dokunmatikte uygulanir)
+        try{ if(mq.matches && sessionStorage.getItem('rk_menu_genis')==='1') side.classList.add('genis'); }catch(e){}
     })();
     // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
     (function(){
