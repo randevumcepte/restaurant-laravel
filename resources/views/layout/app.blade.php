@@ -132,7 +132,6 @@
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
         ],
         'Departman Operasyon' => [
-            ['/kalite', 'verified_user', 'Kalite / Gıda Güvenliği (HACCP)', '#16A34A'],
             ['/temizlik', 'cleaning_services', 'Temizlik / Hijyen', '#0EA5E9'],
             ['/guvenlik', 'security', 'Güvenlik', '#475569'],
             ['/teknik', 'build', 'Teknik Servis / Bakım', '#F97316'],
@@ -160,16 +159,13 @@
             ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
             ['/fatura-eslestir', 'fact_check', 'Fatura Eşleştir (3-way)', '#F59E0B'],
             ['/fatura-ocr', 'document_scanner', 'Fatura OCR (AI)', '#7C3AED'],
-            ['/parti-takip', 'event_busy', 'Parti / SKT Takip', '#F43F5E'],
             ['/fiyat-radari', 'radar', 'Fiyat Radarı · Gizli Zam', '#EC4899'],
             ['/hal-fiyatlari', 'storefront', 'Hal Fiyatları (sen vs hal)', '#059669'],
             ['/satinalma-analiz', 'leaderboard', 'Satınalma Analizi · Karne', '#4F46E5'],
             ['/tedarikci-karne', 'grading', 'Tedarikçi Karnesi', '#0EA5E9'],
-            ['/tedarikci-yaslandirma', 'account_balance_wallet', 'Satıcı Yaşlandırma', '#F43F5E'],
             ['/mustahsil', 'receipt_long', 'Müstahsil Makbuzu', '#0EA5E9'],
             ['/fiyat-anlasmalari', 'handshake', 'Fiyat Anlaşmaları', '#10B981'],
             ['/satinalma-onay-seviye', 'approval', 'Onay Seviyeleri', '#8B5CF6'],
-            ['/demirbas', 'chair', 'Demirbaş / Ekipman', '#64748B'],
             ['/satinalma-butce', 'savings', 'Satınalma Bütçe', '#10B981'],
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
             ['/departman-brief?dep=satinalma', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
@@ -188,8 +184,6 @@
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
             ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],
-            ['/bagli-cihazlar', 'devices_other', 'Bağlı Cihazlar', '#0EA5E9'],
-            ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#14B8A6'],
             ['/isletme-konum', 'my_location', 'İşletme Konum', null],
             ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
             ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
@@ -244,7 +238,6 @@
         ['/demirbas', 'chair', 'Demirbaş / Ekipman', '#64748B'],
         ['/e-defter', 'menu_book', 'e-Defter (hazırlık)', '#7C3AED'],
         ['/muhasebe', 'book', 'Muhasebe Defteri', '#7C3AED'],
-        ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],
     ];
 
     // ===== PAZARLAMA MERKEZİ — başlıklar (yetki süzer; sahip/müdür hepsini görür) =====
@@ -255,23 +248,16 @@
         ['/segmentler', 'groups', 'Müşteri Segmentleri', '#8B5CF6'],
         ['/icerik-takvimi', 'calendar_month', 'Sosyal İçerik Takvimi', '#0EA5E9'],
         ['/kampanya-rapor', 'leaderboard', 'Kampanya Raporu', '#4F46E5'],
-        ['/cark-yonetim', 'casino', 'Çarkıfelek', '#7C3AED'],
-        ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
-        ['/app-yonetim', 'smartphone', 'App / Kampanya Kartları', '#0EA5E9'],
-        ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet', '#10B981'],
-        ['/whatsapp', 'chat', 'WhatsApp', '#22C55E'],
     ];
 
     // ===== SATIŞ & ETKİNLİK MERKEZİ — başlıklar =====
     $gruplar['Rezervasyon Satış'] = [
         ['/departman-brief?dep=satis_etkinlik', 'wb_sunny', 'Rezervasyon Satış Brifingi', '#F59E0B'],
         ['/satis-sohbet', 'smart_toy', 'Rezervasyon Satış AI (iş yapar)', '#A855F7'],
-        ['/rezervasyon', 'event_available', 'Rezervasyonlar', '#A855F7'],
         ['/etkinlik-takvim', 'celebration', 'Etkinlik / Grup Takvimi', '#0EA5E9'],
         ['/depozito', 'payments', 'Depozito / Kapora', '#10B981'],
         ['/masa-yonetim', 'grid_view', 'Masa Yönetimi', '#4F46E5'],
         ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
-        ['/fix-menu', 'dinner_dining', 'Fix Menü / Etkinlik Menüsü', '#8B5CF6'],
     ];
 
     // ===== CRM / MÜŞTERİ İLİŞKİLERİ MERKEZİ — başlıklar =====
@@ -284,7 +270,6 @@
         ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet / Şikayet', '#10B981'],
         ['/sadakat', 'loyalty', 'Sadakat / Puan', '#EC4899'],
         ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
-        ['/kampanya', 'campaign', 'AI Kampanya', '#EC4899'],
         ['/social-media', 'share', 'AI Sosyal Medya', '#EC4899'],
         ['/odul-dogrula', 'qr_code_scanner', 'Ödül Doğrula', '#22C55E'],
         ['/odul-raporu', 'emoji_events', 'Ödül Raporu', '#F6CE63'],
@@ -310,11 +295,9 @@
         ['/it-sohbet', 'smart_toy', 'IT AI (iş yapar)', '#6366F1'],
         ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'],
         ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'],
-        ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
         ['/it-destek?tip=ariza', 'build', 'Arıza / Destek Defteri', '#F97316'],
         ['/it-destek?tip=lisans', 'verified', 'Lisans / SSL / Yedek', '#4F46E5'],
         ['/it-destek?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
-        ['/app-yonetim', 'qr_code_2', 'App / QR Menü', '#EC4899'],
     ];
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
