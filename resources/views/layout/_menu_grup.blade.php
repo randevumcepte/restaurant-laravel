@@ -1,0 +1,34 @@
+@php
+    $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
+        if (!$_pp) return true;
+        if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
+        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true; // departman brifingi herkese açık
+        if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/mutfak-defteri', '/recete', '/rezervasyon'])) return true; // mutfak operasyon ekranları
+        if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
+        return false;                                                          // haritasız = kısıtlı role gizle
+    }));
+    $grupAktif = collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
+@endphp
+@if ($grupAd === '__PIN__' && count($gorunur))
+    <div class="rk-pin-pano">
+        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
+            @php $aktif = $aktifMi($url); $badge = $_menuBadge[$url] ?? 0; @endphp
+            <a href="{{ $url }}" class="rk-pin{{ $aktif ? ' aktif' : '' }}">
+                <span class="pi"><span class="material-icons-outlined">{{ $ikon }}</span>@if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif</span>
+                <span class="pt">{{ $ad }}</span>
+                <span class="material-icons-outlined pok">chevron_right</span>
+            </a>
+        @endforeach
+    </div>
+@elseif (count($gorunur))
+    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+    <div class="rk-grp-body">
+        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
+            @php $aktif = $aktifMi($url); $badge = $_menuBadge[$url] ?? 0; @endphp
+            <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}">
+                <span class="rk-ikon-wrap"><span class="material-icons-outlined">{{ $ikon }}</span>@if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif</span>
+                {{ $ad }}
+            </a>
+        @endforeach
+    </div>
+@endif

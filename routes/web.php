@@ -23766,8 +23766,14 @@ Route::get('/satinalma-talep', function () {
     $satinalmaci = in_array($rol, ['sahip', 'mudur', 'satinalmaci']);
     $kritikler = $satinalmaci ? _kritikStokListesi($sid) : [];
     $q = DB::table('satinalma_talepleri')->where('sube_id', $sid);
-    if (!$satinalmaci) $q->where('isteyen_id', $pp->id ?? 0);
-    else $q->whereNotIn('durum', ['departman_onay', 'reddedildi']); // sorumlu onayı bekleyenler + reddedilenler ayrı sayfalarda
+    if (!$satinalmaci) {
+        // DEPARTMAN PERSONELİ: sadece kendi departmanının talepleri (departmanı yoksa yalnız kendi talepleri). Diğer departmanları GÖRMEZ.
+        $_depId = function_exists('_talepDepartmanBilgi') ? (_talepDepartmanBilgi($sid, $pp->id ?? 0)['id'] ?? null) : null;
+        if ($_depId) $q->where(function ($w) use ($_depId, $pp) { $w->where('departman_id', $_depId)->orWhere('isteyen_id', $pp->id ?? 0); });
+        else $q->where('isteyen_id', $pp->id ?? 0);
+    } else {
+        $q->whereNotIn('durum', ['departman_onay', 'reddedildi']); // satın alma havuzu: onay bekleyenler + reddedilenler ayrı sayfalarda
+    }
     $talepler = $q->orderByDesc('created_at')->limit(200)
         ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at']);
     // Kalem özeti + tahmini tutar (tek sorguda, N+1 yok)
@@ -23822,9 +23828,12 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
     $depOnay = false; $depId = null;
     if (!in_array($rolT, ['sahip', 'mudur', 'satinalmaci'])) {
         $bilgi = _talepDepartmanBilgi($sid, $p->id ?? 0);
-        if ($bilgi['id'] && !$bilgi['sorumlu']) {
-            $sorumlular = array_values(array_filter(_departmanSorumluIdleri($sid, $bilgi['id']), fn ($x) => $x !== (int) ($p->id ?? 0)));
-            if (!empty($sorumlular)) { $depOnay = true; $depId = $bilgi['id']; if ($bilgi['ad']) $dept = $bilgi['ad']; }
+        if ($bilgi['id']) {
+            $depId = $bilgi['id']; if ($bilgi['ad']) $dept = $bilgi['ad']; // departmanı HER ZAMAN etiketle (görünürlük kısıtı + onay akışı için)
+            if (!$bilgi['sorumlu']) {
+                $sorumlular = array_values(array_filter(_departmanSorumluIdleri($sid, $bilgi['id']), fn ($x) => $x !== (int) ($p->id ?? 0)));
+                if (!empty($sorumlular)) { $depOnay = true; }
+            }
         }
     }
     $talepId = DB::table('satinalma_talepleri')->insertGetId([
