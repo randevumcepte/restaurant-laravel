@@ -17,7 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Aktivite log: her degistiren API cagrisini terminate'de (yanit sonrasi) loglar -> istegi bozmaz
         $middleware->append(\App\Http\Middleware\AktiviteLog::class);
         // Web panel sayfa kapisi: menudeki sayfalar yetkiyle korunur (session'dan sonra calisir)
-        $middleware->web(append: [\App\Http\Middleware\PanelYetki::class]);
+        // Santral uclarinin tek kapisi (panel + kasa uygulamasi + Sistem Yonetimi; kopru uclari haric)
+        $middleware->web(append: [\App\Http\Middleware\PanelYetki::class, \App\Http\Middleware\SantralKapi::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
