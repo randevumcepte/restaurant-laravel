@@ -5,9 +5,9 @@
   @csrf<input type="hidden" name="id" value="{{ $k->id }}">
   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
     @foreach (_kasaSayfaSecenekleri() as $_ksUrl => $_ksSec)
-      <label style="display:inline-flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:12.5px">
+      <label @if ($_ksUrl === '/pos') title="Kasiyer girişte bu sayfaya düşer, kapatılamaz" @endif style="display:inline-flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:{{ $_ksUrl === '/pos' ? 'not-allowed' : 'pointer' }};font-size:12.5px">
         <input type="checkbox" name="sayfa[]" value="{{ $_ksUrl }}" {{ in_array($_ksUrl, $_ksAcik, true) ? 'checked' : '' }} {{ $_ksUrl === '/pos' ? 'disabled' : '' }}>
-        {{ $_ksSec[0] }}
+        {{ $_ksSec[0] }}@if ($_ksUrl === '/pos') <span class="material-icons-outlined" style="font-size:14px;color:var(--sub2)">lock</span> <span style="color:var(--sub2)">hep açık</span>@endif
       </label>
     @endforeach
   </div>
