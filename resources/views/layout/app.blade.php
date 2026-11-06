@@ -68,6 +68,13 @@
       .rk-side:not(:hover) .rk-pin.aktif{background:linear-gradient(135deg,#7C3AED,#4F46E5) !important;box-shadow:0 4px 12px rgba(124,58,237,.3) !important}
       .rk-side:not(:hover) .rk-pin.aktif .pi .material-icons-outlined{color:#fff !important}
     }
+    /* Sağ üst profil avatarı */
+    .rk-profil{flex:none;width:40px;height:40px;border-radius:50%;padding:2px;background:linear-gradient(135deg,var(--mor1),var(--mavi));text-decoration:none;transition:transform .12s,box-shadow .15s}
+    .rk-profil:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(124,58,237,.35)}
+    .rk-profil.aktif{box-shadow:0 0 0 3px color-mix(in srgb,var(--mor1) 25%,transparent)}
+    .rk-profil-ic{width:100%;height:100%;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,var(--card));color:var(--mor1)}
+    .rk-profil-ic img{width:100%;height:100%;object-fit:cover}
+    .rk-profil-ic .material-icons-outlined{font-size:23px}
     /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
     .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
     .rk-modal-arka.acik{display:flex}
@@ -206,8 +213,6 @@
         $gruplar['İnsan Kaynakları'][] = ['/departman-yonetim', 'groups', 'Departman & Yetki', '#4F46E5'];
         $gruplar['Ayarlar & Entegrasyon'][] = ['/bildirim-ayar', 'notifications_active', 'Bildirim Ayarları', '#0EA5E9'];
     }
-    // PROFİLİM — her roldeki personele görünür (kişisel bilgi + PIN + oturum). herkese açık (bildirim-ayar gibi).
-    $gruplar['Ayarlar & Entegrasyon'][] = ['/profilim', 'account_circle', 'Profilim', '#7C3AED'];
     // İNSAN KAYNAKLARI — özet (grubun başına) + izin yönetimi. gor_personel yetkisi olana görünür.
     if (config('services.resteos.ik_acik', true)) {
         array_unshift($gruplar['İnsan Kaynakları'], ['/departman-brief?dep=ik', 'wb_sunny', 'İK Sabah Brifingi', '#F59E0B'], ['/ik-asistan', 'smart_toy', 'İK AI Asistanı', '#7C3AED']);
@@ -482,6 +487,17 @@
             <div class="sp"></div>
             @yield('rk_araclar')
             <button class="rk-tema" onclick="rkTema()" title="Gece / Gündüz"><span class="material-icons-outlined" id="rkTemaIk">dark_mode</span></button>
+            @if ($_pp)
+                <a href="/profilim" class="rk-profil{{ $path === '/profilim' ? ' aktif' : '' }}" title="{{ $kulAd }} · Profilim" aria-label="Profilim">
+                    <span class="rk-profil-ic">
+                        @if (!empty($_pp->foto) && str_starts_with((string) $_pp->foto, 'data:image'))
+                            <img src="/profilim-avatar?v={{ crc32($_pp->foto) }}" alt="">
+                        @else
+                            <span class="material-icons-outlined">person</span>
+                        @endif
+                    </span>
+                </a>
+            @endif
         </div>
         <div class="rk-body">
             @yield('content')

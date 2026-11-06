@@ -30,6 +30,7 @@ class AktiviteLog
             // Gürültü (heartbeat/polling) + finansal (domain loglarında) -> merkezi loga YAZMA
             $atla = [
                 'api/cihaz/ping', 'api/mesai/ping', 'api/adim-kaydet', 'api/qr/stt', 'api/tts',
+                'api/login', // route icinde _personelLog ile yazilir
                 // finansal — domain loglarindan gelir
                 'api/patron/adisyon-islem', 'api/patron/kasa-ac', 'api/patron/kasa-kapat', 'api/patron/kasa-hareket',
                 'api/patron/stok-hareket', 'api/patron/cari-tahsilat', 'api/patron/cari-ekle',

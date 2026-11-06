@@ -405,6 +405,20 @@ if (!function_exists('_posPersonel')) {
         return redirect('/pos-giris');
     }
 }
+if (!function_exists('_personelLog')) {
+    // Giriş + hesap güvenliği olayları: Profilim (Son Girişler / Son Güvenlik İşlemleri) ve Hareketler buradan okur.
+    function _personelLog($p, $kategori, $aksiyon)
+    {
+        try {
+            \App\Http\Middleware\AktiviteLog::ensure();
+            DB::table('aktivite_loglari')->insert([
+                'sube_id' => $p->sube_id ?? null, 'personel_id' => $p->id, 'personel_ad' => $p->ad ?? null, 'rol' => $p->rol ?? null,
+                'kategori' => $kategori, 'aksiyon' => $aksiyon, 'yol' => ltrim(request()->path(), '/'),
+                'metod' => request()->method(), 'ip' => request()->ip(), 'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+}
 Route::get('/pos-giris', function () {
     if (_posPersonel()) return redirect('/pos');
     $hata = session('pos_hata');
@@ -422,6 +436,7 @@ Route::post('/pos-giris', function (Request $r) {
     if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
     session(['pos_personel_id' => $p->id]);
     session()->forget('pos_kasa_id');
+    _personelLog($p, 'giris', 'Giriş yapıldı (Web)');
     // Satın almacı POS/kasa kullanmaz → kasa seçimini atla, kendi sayfasına düşür
     $posSuz = in_array(($p->rol ?? ''), ['satinalmaci']);
     if (!$posSuz) {
@@ -15135,6 +15150,7 @@ Route::post('/api/login', function (Request $r) {
         return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
     }
     \Illuminate\Support\Facades\RateLimiter::clear($rlKey); // basarili -> sayaci temizle
+    _personelLog($p, 'giris', 'Giriş yapıldı (Uygulama)');
     // Mevcut token'i KORU (yeni login eskisini gecersiz kilmasin -> es zamanli oturumlar/testler bozulmaz)
     $token = $p->api_token ?: \Illuminate\Support\Str::random(48);
     if (!$p->api_token) DB::table('personeller')->where('id', $p->id)->update(['api_token' => $token]);
@@ -31588,15 +31604,80 @@ Route::get('/profilim', function () {
     } catch (\Throwable $e) {}
 
     // ---- YETKİ / LİMİT ----
-    $yetki = ['iskonto_limit' => (float) ($p->iskonto_limit ?? 0), 'ikram_limit' => (float) ($p->ikram_limit ?? 0)];
+    $yetki = ['iskonto_limit' => (float) ($p->iskonto_limit ?? 0), 'ikram_limit' => (float) ($p->ikram_limit ?? _restoYetkiVarsayilan($p->rol)['ikram_limit'])];
     $iban = (string) ($p->iban ?? '');
     $ibanMask = $iban !== '' ? ('••••' . substr(preg_replace('/\s+/', '', $iban), -4)) : '';
+
+    // ---- BELGE + EĞİTİM LİSTESİ ----
+    $belgeler = []; $egitimler = [];
+    try {
+        if (Schema::hasTable('personel_belge')) $belgeler = DB::table('personel_belge')->where('personel_id', $pid)->orderByDesc('id')->limit(30)->get(['tip', 'baslik', 'son_gecerlilik'])->all();
+        if (Schema::hasTable('personel_egitim')) $egitimler = DB::table('personel_egitim')->where('personel_id', $pid)->orderByDesc('id')->limit(30)->get(['konu', 'egitim_tarihi', 'son_gecerlilik', 'veren'])->all();
+    } catch (\Throwable $e) {}
+
+    // ---- GİRİŞ + GÜVENLİK + HAREKET AKIŞI (kişinin kendi kayıtları) ----
+    $girisler = []; $guvenlikLog = []; $akis = [];
+    $paraMetin = fn($v) => '₺' . number_format((float) $v, 0, ',', '.');
+    try {
+        if (Schema::hasTable('aktivite_loglari')) {
+            $logSatir = fn($l) => ['zaman' => $l->created_at, 'metin' => $l->aksiyon ?: 'İşlem', 'ip' => $l->ip ?? ''];
+            $girisler = DB::table('aktivite_loglari')->where('personel_id', $pid)->where('kategori', 'giris')
+                ->orderByDesc('id')->limit(15)->get()->map($logSatir)->all();
+            $guvenlikLog = DB::table('aktivite_loglari')->where('personel_id', $pid)
+                ->where(function ($q) { $q->where('kategori', 'guvenlik')->orWhere('yol', 'like', 'api/profil/%'); })
+                ->orderByDesc('id')->limit(15)->get()->map($logSatir)->all();
+            foreach (DB::table('aktivite_loglari')->where('personel_id', $pid)->orderByDesc('id')->limit(20)->get() as $l) {
+                $akis[] = ['zaman' => $l->created_at, 'metin' => $l->aksiyon ?: 'İşlem', 'giris' => $l->kategori === 'giris'];
+            }
+        }
+    } catch (\Throwable $e) {}
+    try {
+        if (Schema::hasColumn('adisyonlar', 'acan_personel_id')) {
+            foreach (DB::table('adisyonlar as a')->leftJoin('masalar as m', 'm.id', '=', 'a.masa_id')
+                ->where('a.sube_id', $sid)->where('a.acan_personel_id', $pid)->whereNotNull('a.acilis')
+                ->orderByDesc('a.acilis')->limit(20)->get(['a.id', 'a.acilis', 'm.ad as masa']) as $a) {
+                $akis[] = ['zaman' => $a->acilis, 'metin' => $a->masa ? "Masa {$a->masa} açıldı" : "Adisyon #{$a->id} açıldı", 'giris' => false];
+            }
+        }
+        foreach (DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->where('adisyonlar.sube_id', $sid)->where('odemeler.personel_id', $pid)
+            ->orderByDesc('odemeler.id')->limit(20)->get(['odemeler.tutar', 'odemeler.created_at']) as $o) {
+            $akis[] = ['zaman' => $o->created_at, 'metin' => 'Ödeme alındı · ' . $paraMetin($o->tutar), 'giris' => false];
+        }
+    } catch (\Throwable $e) {}
+    try {
+        if (Schema::hasTable('personel_mesai')) {
+            foreach (DB::table('personel_mesai')->where('sube_id', $sid)->where('personel_id', $pid)->orderByDesc('id')->limit(10)->get() as $m) {
+                if (!empty($m->giris_at)) $akis[] = ['zaman' => $m->giris_at, 'metin' => 'Mesai başladı', 'giris' => false];
+                if (!empty($m->cikis_at)) $akis[] = ['zaman' => $m->cikis_at, 'metin' => 'Mesai bitti', 'giris' => false];
+            }
+        }
+    } catch (\Throwable $e) {}
+    $hTur = ['avans' => 'Avans', 'odeme' => 'Ödeme', 'prim' => 'Prim', 'kesinti' => 'Kesinti', 'ek_odeme' => 'Ek ödeme'];
+    foreach ($hareketler as $h) {
+        $akis[] = ['zaman' => $h['created_at'] ?? $h['tarih'], 'metin' => ($hTur[$h['tur'] ?? ''] ?? ($h['tur'] ?? '')) . ' · ' . $paraMetin($h['tutar'] ?? 0), 'giris' => false];
+    }
+    usort($akis, fn($a, $b) => strcmp((string) $b['zaman'], (string) $a['zaman']));
+    $akis = array_slice($akis, 0, 30);
+    $sonGiris = $girisler[0]['zaman'] ?? null;
+    $sonIslem = null;
+    foreach ($akis as $a) { if (!$a['giris']) { $sonIslem = $a['zaman']; break; } }
 
     return view('profilim', compact(
         'p', 'subeRow', 'dep', 'dahili', 'hak', 'kullanilan', 'hesap', 'ay',
         'hareketler', 'vardiya', 'sonraki', 'sicil', 'mesai', 'bugun',
-        'atamaOzet', 'rozetler', 'cihazlar', 'yetki', 'ibanMask'
+        'atamaOzet', 'rozetler', 'cihazlar', 'yetki', 'ibanMask',
+        'belgeler', 'egitimler', 'girisler', 'guvenlikLog', 'akis', 'sonGiris', 'sonIslem'
     ));
+});
+
+// Sağ üst avatar + profil sayfası: fotoğrafı her sayfanın HTML'ine gömmeden, önbellekli servis eder (?v= foto değişince yenilenir)
+Route::get('/profilim-avatar', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    $foto = (string) ($bp->foto ?? '');
+    $vir = strpos($foto, ',');
+    if ($vir === false || !preg_match('#^data:(image/(?:png|jpe?g|webp));base64$#i', substr($foto, 0, $vir), $m)) abort(404);
+    return response(base64_decode(substr($foto, $vir + 1)))->header('Content-Type', $m[1])->header('Cache-Control', 'private, max-age=31536000');
 });
 
 // Profil fotoğrafı yükle (web form — file upload)
@@ -31649,7 +31730,7 @@ Route::post('/profilim-kaydet', function (Request $r) {
     ];
     $d = trim((string) $r->dogum_tarihi);
     $v['dogum_tarihi'] = preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : null;
-    try { DB::table('personeller')->where('id', $bp->id)->update($v); return redirect('/profilim')->with('ok', 'Kişisel bilgiler güncellendi.'); }
+    try { DB::table('personeller')->where('id', $bp->id)->update($v); _personelLog($bp, 'guvenlik', 'Kişisel bilgiler güncellendi'); return redirect('/profilim')->with('ok', 'Kişisel bilgiler güncellendi.'); }
     catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Kaydedilemedi.'); }
 });
 
@@ -31666,7 +31747,7 @@ Route::post('/profilim-pin-degistir', function (Request $r) {
     if ($yeni === $eski) return redirect('/profilim')->with('hata', 'Yeni PIN eskisiyle aynı olamaz.');
     $cakisma = DB::table('personeller')->where('sube_id', $per->sube_id)->where('pin', $yeni)->where('id', '!=', $per->id)->exists();
     if ($cakisma) return redirect('/profilim')->with('hata', 'Bu PIN başka personel tarafından kullanılıyor.');
-    try { DB::table('personeller')->where('id', $per->id)->update(['pin' => $yeni]); return redirect('/profilim')->with('ok', 'PIN değiştirildi.'); }
+    try { DB::table('personeller')->where('id', $per->id)->update(['pin' => $yeni]); _personelLog($per, 'guvenlik', 'PIN değiştirildi'); return redirect('/profilim')->with('ok', 'PIN değiştirildi.'); }
     catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Kaydedilemedi.'); }
 });
 
@@ -31675,7 +31756,7 @@ Route::post('/profilim-cihaz-sil', function (Request $r) {
     $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/profilim')->with('hata', 'Oturum bulunamadı.');
     $id = (int) $r->id;
-    try { DB::table('cihaz_tokenlari')->where('personel_id', $bp->id)->where('id', $id)->delete(); return redirect('/profilim')->with('ok', 'Cihaz oturumu kaldırıldı.'); }
+    try { DB::table('cihaz_tokenlari')->where('personel_id', $bp->id)->where('id', $id)->delete(); _personelLog($bp, 'guvenlik', 'Cihaz oturumu kaldırıldı'); return redirect('/profilim')->with('ok', 'Cihaz oturumu kaldırıldı.'); }
     catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Kaldırılamadı.'); }
 });
 
