@@ -208,15 +208,31 @@ class GarsonPanel
         return (int) round($dolu * 100 / $toplam);
     }
 
-    /** masa_id => [personel_id => kalem sayısı] */
+    /** masa_id => [personel_id => işlem sayısı]. İşlem: sipariş kalemi, servis ve hesap alma. */
     protected function masaYogunluk($bas)
     {
         $out = [];
-        $satirlar = DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
-            ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->where('k.durum', '!=', 'iptal')->where('k.created_at', '>=', $bas)
+        $ekle = function ($satirlar) use (&$out) {
+            foreach ($satirlar as $s) $out[(int) $s->m][(int) $s->g] = ($out[(int) $s->m][(int) $s->g] ?? 0) + (int) $s->n;
+        };
+        $kalem = fn () => DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
+            ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->where('k.durum', '!=', 'iptal');
+
+        $ekle($kalem()->where('k.created_at', '>=', $bas)
             ->selectRaw('a.masa_id as m, COALESCE(k.personel_id, a.acan_personel_id, 0) as g, COUNT(*) as n')
-            ->groupBy('a.masa_id', DB::raw('COALESCE(k.personel_id, a.acan_personel_id, 0)'))->get();
-        foreach ($satirlar as $s) $out[(int) $s->m][(int) $s->g] = (int) $s->n;
+            ->groupBy('a.masa_id', DB::raw('COALESCE(k.personel_id, a.acan_personel_id, 0)'))->get());
+
+        if (Schema::hasColumn('adisyon_kalemleri', 'servis_personel_id')) {
+            $ekle($kalem()->whereNotNull('k.servis_personel_id')->where('k.servis_zamani', '>=', $bas)
+                ->selectRaw('a.masa_id as m, k.servis_personel_id as g, COUNT(*) as n')
+                ->groupBy('a.masa_id', 'k.servis_personel_id')->get());
+        }
+
+        $ekle(DB::table('odemeler as o')->join('adisyonlar as a', 'o.adisyon_id', '=', 'a.id')
+            ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->whereNotNull('o.personel_id')->where('o.created_at', '>=', $bas)
+            ->selectRaw('a.masa_id as m, o.personel_id as g, COUNT(*) as n')
+            ->groupBy('a.masa_id', 'o.personel_id')->get());
+
         return (object) $out;
     }
 
