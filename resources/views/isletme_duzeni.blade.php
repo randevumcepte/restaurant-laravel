@@ -119,6 +119,7 @@
       </div>
       <button type="button" class="idz-btn" onclick="idzModal('idzMasaEkle')"><span class="material-icons-outlined">add</span>Masa Ekle</button>
       <button type="button" class="idz-btn" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">add_home_work</span>Alan Ekle</button>
+      <a class="idz-btn" href="/masa-yonetim" title="Masa QR kodlarını görüntüle, indir ve yazdır"><span class="material-icons-outlined">qr_code_2</span>QR Kodlar</a>
       <button type="button" class="idz-btn dolu" id="idzKaydet" onclick="idzPlanKaydet()"><span class="material-icons-outlined">save_as</span>Kaydet</button>
     </div>
 
@@ -348,7 +349,7 @@
     <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">settings</span><h3>Genel Ayarlar</h3></div>
     <div class="idz-ayar-grid">
       @foreach ([
-        ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'Toplu QR yazdır, arşivlenen masaları geri al'],
+        ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al'],
         ['/salon-sema', 'grid_on', 'Salon Şeması', 'Görsel kroki ve ısı haritası'],
         ['/isletme-konum', 'my_location', 'İşletme Konum', 'Harita konumu ve teslimat'],
         ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', 'Menünün sadeliğini belirler'],

@@ -5,6 +5,10 @@
 @section('rk_alt', 'Her masa için KALICI QR kodu — asla değişmez. Silme = arşivle, geri getir aynı kod.')
 
 @section('rk_araclar')
+  <button type="button" class="rk-btn" id="qrZipBtn" style="background:#10B981"
+          onclick="masaIndirHepsi()" @if(empty($aktif)) disabled @endif>
+    <span class="material-icons-outlined" style="font-size:18px">download</span> <span id="qrZipYazi">Tüm QR kodları indir</span>
+  </button>
   <button type="button" class="rk-btn" style="background:var(--mor1)"
           onclick="masaYazdirHepsi()" @if(empty($aktif)) disabled @endif>
     <span class="material-icons-outlined" style="font-size:18px">print</span> Tüm QR afişlerini yazdır
@@ -188,6 +192,10 @@ body.koyu .rk-flash.err{color:#fda4af}
                 <button type="button" class="my-icon-btn" title="QR Afişi" style="color:var(--mor1)" onclick="masaAfis(@js($m))">
                   <span class="material-icons-outlined">visibility</span>
                 </button>
+                {{-- QR indir --}}
+                <button type="button" class="my-icon-btn" title="QR kodunu indir (PNG)" style="color:var(--yesil)" onclick="masaIndir(@js($m), this)">
+                  <span class="material-icons-outlined">download</span>
+                </button>
                 {{-- Düzenle --}}
                 <button type="button" class="my-icon-btn" title="Düzenle" style="color:var(--mavi)" onclick="masaDuzenleAc(@js($m))">
                   <span class="material-icons-outlined">edit</span>
@@ -248,6 +256,9 @@ body.koyu .rk-flash.err{color:#fda4af}
     <div style="font-size:11px;color:var(--sub)">Menü · Sipariş · Garson Çağır · Öde</div>
     <div style="display:flex;gap:10px;margin-top:18px">
       <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="afisKapat()">Kapat</button>
+      <button type="button" class="rk-btn" style="flex:1;justify-content:center;background:var(--yesil)" onclick="masaIndirTek(this)">
+        <span class="material-icons-outlined" style="font-size:18px">download</span> İndir
+      </button>
       <button type="button" class="rk-btn" style="flex:1;justify-content:center;background:var(--mor1)" onclick="masaYazdirTek()">
         <span class="material-icons-outlined" style="font-size:18px">print</span> Yazdır
       </button>
@@ -294,6 +305,7 @@ body.koyu .rk-flash.err{color:#fda4af}
 <script>
 (function(){
   var SUBE = @js($aktifSubeAd ?? 'Restoran');
+  var TUM_MASALAR = @js(array_values($aktif));
   var aktifMasa = null;
 
   // ---- Sekme geçişi (Flutter TabBar) ----
@@ -306,8 +318,8 @@ body.koyu .rk-flash.err{color:#fda4af}
   };
 
   // ---- QR URL oluştur ----
-  function qrImg(url, size){
-    return 'https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&margin=0&data='+encodeURIComponent(url);
+  function qrImg(url, size, kenar){
+    return 'https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&margin='+(kenar||0)+'&data='+encodeURIComponent(url);
   }
 
   // ---- QR afiş önizleme ----
@@ -399,7 +411,79 @@ body.koyu .rk-flash.err{color:#fda4af}
     setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
   }
   window.masaYazdirTek  = function(){ if(aktifMasa) yazdir([aktifMasa]); };
-  window.masaYazdirHepsi = function(){ yazdir(@js(array_values($aktif))); };
+  window.masaYazdirHepsi = function(){ yazdir(TUM_MASALAR); };
+
+  // ---- QR indir (baskıya uygun 1000px PNG; toplu indirme bölge klasörlü ZIP) ----
+  function dosyaAdi(s){ return String(s||'Masa').replace(/[\\\/:*?"<>|]+/g,'-').trim() || 'Masa'; }
+  function qrBlob(m){
+    return fetch(qrImg(m.qr_url,1000,40)).then(function(r){
+      if(!r.ok) throw new Error('qr');
+      return r.blob();
+    });
+  }
+  function blobKaydet(blob, ad){
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = ad;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }
+  window.masaIndir = function(m, btn){
+    if(!m || !m.qr_url){ alert('Bu masanın QR kodu henüz oluşmamış.'); return; }
+    if(btn) btn.disabled = true;
+    qrBlob(m).then(function(b){ blobKaydet(b, 'QR-'+dosyaAdi(m.ad)+'.png'); })
+      .catch(function(){ alert('QR kodu indirilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.'); })
+      .then(function(){ if(btn) btn.disabled = false; });
+  };
+  window.masaIndirTek = function(btn){ if(aktifMasa) window.masaIndir(aktifMasa, btn); };
+
+  function jszipYukle(){
+    if(window.JSZip) return Promise.resolve(window.JSZip);
+    return new Promise(function(ok, red){
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = function(){ ok(window.JSZip); };
+      s.onerror = red;
+      document.head.appendChild(s);
+    });
+  }
+  window.masaIndirHepsi = function(){
+    var liste = TUM_MASALAR.filter(function(m){ return m && m.qr_url; });
+    if(!liste.length){ alert('İndirilecek QR kodu bulunamadı.'); return; }
+    var btn = document.getElementById('qrZipBtn'), yazi = document.getElementById('qrZipYazi'), ilkYazi = yazi.textContent;
+    var biten = 0, hatali = 0, sira = 0, kullanilan = {};
+    btn.disabled = true;
+    yazi.textContent = 'Hazırlanıyor...';
+    jszipYukle().then(function(JSZip){
+      var zip = new JSZip();
+      function isci(){
+        if(sira >= liste.length) return Promise.resolve();
+        var m = liste[sira++];
+        return qrBlob(m).then(function(b){
+          // Aynı bölgede aynı adlı masa varsa dosya ezilmesin
+          var yol = dosyaAdi(m.bolge||'Bölgesiz')+'/QR-'+dosyaAdi(m.ad);
+          if(kullanilan[yol]) yol += '-'+m.id;
+          kullanilan[yol] = 1;
+          zip.file(yol+'.png', b);
+        }).catch(function(){ hatali++; }).then(function(){
+          biten++;
+          yazi.textContent = 'İndiriliyor '+biten+'/'+liste.length;
+          return isci();
+        });
+      }
+      return Promise.all([isci(),isci(),isci(),isci()]).then(function(){
+        if(hatali === liste.length) throw new Error('qr');
+        return zip.generateAsync({type:'blob'});
+      }).then(function(z){
+        blobKaydet(z, 'QR-Kodlari-'+dosyaAdi(SUBE)+'.zip');
+        if(hatali) alert(hatali+' masanın QR kodu indirilemedi, ZIP dosyasında yok. Tekrar deneyebilirsiniz.');
+      });
+    }).catch(function(){
+      alert('QR kodları indirilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
+    }).then(function(){
+      btn.disabled = false;
+      yazi.textContent = ilkYazi;
+    });
+  };
 
   // ---- ESC kapat ----
   document.addEventListener('keydown',function(e){
