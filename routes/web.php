@@ -1001,7 +1001,9 @@ Route::match(['get', 'post'], '/api/callerid/gelen', function (Request $r) {
     $tel = $r->input('telefon') ?: $r->query('telefon');
     if (!$tel) return response()->json(['ok' => 0, 'hata' => 'telefon gerekli'], 422);
     $subeId = (int) ($r->input('sube') ?: $r->query('sube') ?: DB::table('subeler')->value('id'));
-    return _calleridGelen($subeId, $tel, $r->input('hat') ?: $r->query('hat'));
+    $sonuc = _calleridGelen($subeId, $tel, $r->input('hat') ?: $r->query('hat'));
+    unset($sonuc['musteri']); // anahtarsız webhook: telefon numarasıyla müşteri kartı sorgulanamasın (ekran kartı /api/callerid-aktif'ten gelir)
+    return $sonuc;
 });
 
 // TEST — VoIP olmadan gelen cagri simule et
@@ -13309,6 +13311,18 @@ if (!function_exists('_aiAjandaSorgu')) {
         return $q;
     }
 }
+if (!function_exists('_aiAjandaDuzenleSorgu')) {
+    // DÜZENLEME/SİLME kapsamı (listelemeden DAR): personel yalnız KENDİ kaydına dokunabilir.
+    // İşletme-geneli (personel_id NULL) kayıtları sadece sahip/müdür siler/günceller; personel görür ama elleyemez.
+    function _aiAjandaDuzenleSorgu($sid, $bp)
+    {
+        $pid = is_object($bp) ? (int) ($bp->id ?? 0) : 0;
+        $rol = is_object($bp) ? ($bp->rol ?? '') : '';
+        $q = DB::table('ai_ajanda')->where('sube_id', (int) $sid);
+        if (!in_array($rol, ['sahip', 'mudur'])) $q->where('personel_id', $pid); // orWhereNull YOK → genel kayıt korunur
+        return $q;
+    }
+}
 
 // ============================ PATRON AI — "BUGÜNÜN İŞLERİ" OPERASYON RADARI (Faz 1) ============================
 if (!function_exists('_patronAiBugununIsleri')) {
@@ -13678,7 +13692,7 @@ Route::post('/ajanda/durum', function (Request $r) {
     _aiAjandaEnsure();
     $sid = _webSubeId();
     $durum = in_array($r->durum, ['tamam', 'iptal', 'acik']) ? $r->durum : 'tamam';
-    $n = _aiAjandaSorgu($sid, $bp)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
+    $n = _aiAjandaDuzenleSorgu($sid, $bp)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
     if ($r->expectsJson() || $r->ajax()) return response()->json(['ok' => $n ? 1 : 0]);
     return back()->with('ok', 'Güncellendi.');
 });
@@ -13687,7 +13701,7 @@ Route::post('/ajanda/sil', function (Request $r) {
     if (!$bp) return redirect('/pos-giris');
     _aiAjandaEnsure();
     $sid = _webSubeId();
-    _aiAjandaSorgu($sid, $bp)->where('id', (int) $r->id)->delete();
+    _aiAjandaDuzenleSorgu($sid, $bp)->where('id', (int) $r->id)->delete();
     return back()->with('ok', 'Silindi.');
 });
 
@@ -13718,7 +13732,7 @@ Route::post('/api/ajanda/durum', function (Request $r) {
     $p = _apiPersonel($r); if (!$p) return response()->json(['ok' => 0], 401);
     _aiAjandaEnsure();
     $durum = in_array($r->durum, ['tamam', 'iptal', 'acik']) ? $r->durum : 'tamam';
-    $n = _aiAjandaSorgu($p->sube_id, $p)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
+    $n = _aiAjandaDuzenleSorgu($p->sube_id, $p)->where('id', (int) $r->id)->update(['durum' => $durum, 'updated_at' => now()]);
     return ['ok' => $n ? 1 : 0];
 });
 // CRON: zamanı gelen hatırlatmaları push ile gönder. curl "/api/ajanda/hatirlat-tara?key=SANTRAL_SECRET"
@@ -30861,6 +30875,7 @@ if (!function_exists('_santralHedefListesi')) {
 
 // Kopru bunu cagirir: "insana aktar" aninda hedefleri + stratejiyi panelden okur
 Route::match(['get', 'post'], '/api/santral/aktarma-hedef', function (Request $r) {
+    if ($rr = _santralAuthGuard($r)) return $rr;
     _santralAyarEnsure();
     $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
     $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
@@ -30995,7 +31010,8 @@ Route::post('/api/santral/ayar-kaydet', function (Request $r) {
 
 // Subeler listesi (native ekranlarda sube secici icin)
 Route::match(['get', 'post'], '/api/santral/subeler', function () {
-    $rows = DB::table('subeler')->orderBy('id')->get(['id', 'ad']);
+    $subeFiltre = _santralOturumSube();
+    $rows = DB::table('subeler')->when($subeFiltre, fn ($q) => $q->where('id', $subeFiltre))->orderBy('id')->get(['id', 'ad']);
     return response()->json(['ok' => 1, 'liste' => $rows], 200, [], JSON_UNESCAPED_UNICODE);
 });
 
@@ -31223,12 +31239,17 @@ Route::match(['get', 'post'], '/api/santral/sube-teshis', function () {
 
 // ============================ AI SANTRAL — CAGRI KAYITLARI ============================
 if (!function_exists('_santralOturumSube')) {
-    // Panel oturumu varsa yalnız kendi şubesinin kayıtları (Sistem Yönetimi'nden girişte o restoran); oturumsuz çağrı (kasa uygulaması) şimdilik eski davranışta.
+    // Yalnız kendi şubesinin kayıtları. SantralKapi şubeyi belirlediyse o (uygulama Bearer'ı dahil, Sistem Yönetimi=null=hepsi); yoksa panel oturumu.
     function _santralOturumSube()
     {
+        if (request()->attributes->has('santral_sube')) return request()->attributes->get('santral_sube');
         $p = _posPersonel();
         if (!$p) return null;
         return (int) (session('ry_imp_sube') ?: $p->sube_id);
+    }
+    function _santralSesImza($id, $son)
+    {
+        return hash_hmac('sha256', (int) $id . '|' . (int) $son, (string) config('app.key'));
     }
 }
 Route::get('/santral-kayitlar', function () {
@@ -31264,7 +31285,10 @@ Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) 
     $sp = $o->siparis_veri ? json_decode($o->siparis_veri, true) : null;
     $sesler = DB::table('santral_ses_kayit')->where('oturum_id', $o->id)->orderBy('id')
         ->get(['id', 'tur', 'boyut', 'created_at'])
-        ->map(fn ($s) => ['id' => $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut, 'url' => '/santral-ses-dinle/' . $s->id])->all();
+        ->map(function ($s) {
+            $son = time() + 7200;
+            return ['id' => $s->id, 'tur' => $s->tur, 'boyut' => (int) $s->boyut, 'url' => '/santral-ses-dinle/' . $s->id . '?son=' . $son . '&imza=' . _santralSesImza($s->id, $son)];
+        })->all();
     return response()->json(['ok' => 1, 'kayit' => [
         'id' => $o->id, 'telefon' => $o->telefon, 'sube_id' => $o->sube_id, 'sonuc' => $o->sonuc, 'durum' => $o->durum,
         'adisyon_id' => $o->adisyon_id, 'rezervasyon_id' => $o->rezervasyon_id, 'siparis_veri' => $sp,
