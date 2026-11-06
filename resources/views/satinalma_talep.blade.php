@@ -504,7 +504,8 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
         <button class="sta-chip akt" data-d="" style="--cr:#7C3AED" onclick="staFiltreDurum(this)">Tümü <b>{{ $talepler->count() }}</b></button>
         @foreach(['departman_onay','yeni','teklif','onayda','onaylandi','siparis','tamamlandi','reddedildi'] as $d)
             @php $c = $talepler->where('durum',$d)->count(); @endphp
-            @if($c > 0)
+            {{-- Onay Bekliyor + Reddedildi çipleri HER ZAMAN görünür (giriş noktası), diğerleri sadece sayı > 0 iken --}}
+            @if($c > 0 || in_array($d, ['departman_onay','reddedildi']))
             <button class="sta-chip" data-d="{{ $d }}" style="--cr:{{ $durumRenk[$d] }}" onclick="staFiltreDurum(this)">{{ $durumMetin[$d] }} <b>{{ $c }}</b></button>
             @endif
         @endforeach
