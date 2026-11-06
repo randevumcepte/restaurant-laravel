@@ -9455,6 +9455,7 @@ if (!function_exists('_olcekMenuListesi')) {
         $ayar = ['/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
+            'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
             'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/recete', '/sayim'],
             'Satış & Servis' => ['/isletme-duzeni', '/garson-cagrilari'],

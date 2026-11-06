@@ -340,6 +340,8 @@
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
         ['/patron-ai?gm=1', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
+    ], 'Ajanda' => [
+        // Herkese açık kişisel ajanda — her personel kendi randevu/hatırlatıcısını girer (veri personel_id bazlı)
         ['/ajanda', 'event_note', 'Ajanda & Hatırlatıcı', '#4F46E5'],
     ]] + $gruplar;
     // İŞLETME BÜYÜKLÜĞÜ: küçük/orta işletmede menü sadeleşir; kurulu olmayan alt departman hiçbir ölçekte görünmez.
@@ -464,7 +466,7 @@
                 $_itemGorunur = function ($it) use ($_pp, $_harita, $_mutfakEkran) {
                     if (!$_pp) return true;
                     if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
-                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true;
+                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true;
                     if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], $_mutfakEkran)) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
