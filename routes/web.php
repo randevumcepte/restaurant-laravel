@@ -4013,7 +4013,7 @@ Route::post('/mutfak/hazir', function (Request $r) {
 });
 // Hazır olan kalemi servis edildi işaretle (mutfak/expo ekranından) → ekrandan düşer
 Route::post('/mutfak/servis', function (Request $r) {
-    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    _kalemServisIsaretle($r->kalem_id, _posPersonel());
     return ['ok' => 1];
 });
 
@@ -9148,7 +9148,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/crm-sohbet' => 'gor_odul_dogrula', '/musteri-360' => 'gor_odul_dogrula', // CRM / Müşteri İlişkileri
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
             '/stok' => 'gor_stok', '/sayim' => 'gor_stok', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_stok', '/tedarikci-detay' => 'gor_stok', '/satinalma' => 'gor_stok', '/satinalma-siparis' => 'gor_stok', '/satinalma-siparis-detay' => 'gor_stok', '/mal-kabul' => 'gor_stok', '/mal-kabul-detay' => 'gor_stok', '/fatura-eslestir' => 'gor_stok', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_stok', '/fiyat-radari' => 'gor_stok', '/hal-fiyatlari' => 'gor_stok', '/satinalma-analiz' => 'gor_stok', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_stok', '/satinalma-islemleri' => 'gor_stok',
-            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
+            '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/garson-yonetimi' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_ai_asistan', '/ik-risk' => 'gor_personel', // İK ekranları gor_personel; İK AI asistanı PREMIUM = gor_ai_asistan
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
             '/servis' => 'gor_garson_cagri', // Servis/Garson iş ekranı (İş Akışım + Ekip) — servis departmanı yetkisi
@@ -9546,7 +9546,7 @@ if (!function_exists('_olcekMenuListesi')) {
     function _olcekMenuListesi($olcek)
     {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
-        $ayar = ['/isletme-duzeni', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $ayar = ['/isletme-duzeni', '/garson-yonetimi', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
@@ -15589,7 +15589,7 @@ Route::post('/api/servis/teslim', function (Request $r) {
     if (!$k) return ['ok' => 0, 'hata' => 'Kalem bulunamadı.'];
     $a = DB::table('adisyonlar')->where('id', $k->adisyon_id)->first();
     if (!$a || (int) $a->sube_id !== (int) $p->sube_id) return ['ok' => 0, 'hata' => 'Yetki yok.'];
-    DB::table('adisyon_kalemleri')->where('id', $id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    _kalemServisIsaretle($id, $p);
     return ['ok' => 1];
 });
 // B — Servis Şefi ekip görünümü (sorumlu/patron)
@@ -16012,9 +16012,9 @@ Route::post('/personel/kaydet', function (Request $r) {
         $ad = trim((string) $r->ad); $pid = (int) $r->id;
         if ($pid > 0 && $ad === '' && $r->has('aktif') && !$r->filled('rol')) {
             DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->update(['aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()]);
-            return redirect('/personel')->with('ok', 'Durum güncellendi.');
+            return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('ok', 'Durum güncellendi.');
         }
-        if ($ad === '') return redirect('/personel')->with('hata', 'İsim boş olamaz.');
+        if ($ad === '') return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'İsim boş olamaz.');
         $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak', 'satinalmaci']) ? $r->rol : 'garson';
         $pin = preg_replace('/\D/', '', (string) $r->pin);
         $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'rol' => $rol, 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
@@ -16027,22 +16027,22 @@ Route::post('/personel/kaydet', function (Request $r) {
         if ($r->has('acil_kisi') && Schema::hasColumn('personeller', 'acil_kisi')) $veri['acil_kisi'] = trim((string) $r->acil_kisi) ?: null;
         if ($r->has('acil_tel') && Schema::hasColumn('personeller', 'acil_tel')) $veri['acil_tel'] = trim((string) $r->acil_tel) ?: null;
         if ($pin !== '') {
-            if (strlen($pin) < 4) return redirect('/personel')->with('hata', 'PIN en az 4 haneli olmalı.');
+            if (strlen($pin) < 4) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'PIN en az 4 haneli olmalı.');
             $cak = DB::table('personeller')->where('sube_id', $sid)->where('pin', $pin)->where('id', '!=', $pid)->exists();
-            if ($cak) return redirect('/personel')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
+            if ($cak) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
             $veri['pin'] = $pin;
         }
         if ($pid > 0) {
             $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->first();
-            if (!$hedef) return redirect('/personel')->with('hata', 'Personel bulunamadı.');
+            if (!$hedef) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Personel bulunamadı.');
             DB::table('personeller')->where('id', $pid)->update($veri);
-            return redirect('/personel')->with('ok', 'Personel güncellendi.');
+            return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('ok', 'Personel güncellendi.');
         }
-        if ($pin === '') return redirect('/personel')->with('hata', 'Yeni personel için PIN zorunlu.');
+        if ($pin === '') return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Yeni personel için PIN zorunlu.');
         $veri['sube_id'] = $sid; $veri['created_at'] = now();
         DB::table('personeller')->insert($veri);
-        return redirect('/personel')->with('ok', 'Personel eklendi.');
-    } catch (\Throwable $e) { return redirect('/personel')->with('hata', 'Kaydedilemedi.'); }
+        return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('ok', 'Personel eklendi.');
+    } catch (\Throwable $e) { return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Kaydedilemedi.'); }
 });
 Route::post('/personel/sil', function (Request $r) {
     $sid = _webSubeId();
@@ -16231,6 +16231,64 @@ Route::post('/kasalar/atama', function (Request $r) {
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Atama yapılamadı.'); }
 });
 
+if (!function_exists('_kalemServisIsaretle')) {
+    // Hazır kalemi servis edildi yapar; hizmet süresi ve aktivite için anı ve kişiyi saklar
+    function _kalemServisIsaretle($kalemId, $p = null)
+    {
+        $upd = ['durum' => 'servis', 'updated_at' => now()];
+        try {
+            if (!Schema::hasColumn('adisyon_kalemleri', 'servis_zamani')) Schema::table('adisyon_kalemleri', fn ($t) => $t->timestamp('servis_zamani')->nullable());
+            if (!Schema::hasColumn('adisyon_kalemleri', 'servis_personel_id')) Schema::table('adisyon_kalemleri', fn ($t) => $t->unsignedBigInteger('servis_personel_id')->nullable());
+            $upd['servis_zamani'] = now();
+            if ($p) $upd['servis_personel_id'] = $p->id;
+        } catch (\Throwable $e) {}
+        DB::table('adisyon_kalemleri')->where('id', $kalemId)->where('durum', 'hazir')->update($upd);
+    }
+}
+// ============================================================================
+// GARSON YÖNETİMİ — canlı durum, ısı haritası, aktivite, performans, atama, mola
+// ============================================================================
+Route::get('/garson-yonetimi', function () {
+    $sid = _webSubeId();
+    $d = ['bolgeler' => collect(), 'masalar' => collect(), 'garsonlar' => collect(), 'plan' => [], 'fotolar' => [], 'cagriSay' => 0, 'panel' => ['ok' => 0]];
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        if (function_exists('_atamaTablo')) _atamaTablo();
+        _isletmePlanEnsure();
+        $d['bolgeler'] = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
+        $d['masalar'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id']);
+        $atama = DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']);
+        $bMap = []; $mMap = [];
+        foreach ($atama as $a) { if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id; else $mMap[$a->personel_id][] = (int) $a->hedef_id; }
+        $d['garsonlar'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->orderBy('ad')->get(['id', 'ad', 'rol'])
+            ->map(function ($g) use ($bMap, $mMap) { $g->bolge_idler = $bMap[$g->id] ?? []; $g->masa_idler = $mMap[$g->id] ?? []; return $g; });
+        $pl = DB::table('isletme_plan')->where('sube_id', $sid)->value('veri');
+        $d['plan'] = $pl ? (json_decode($pl, true) ?: []) : [];
+        if (Schema::hasColumn('personeller', 'foto')) $d['fotolar'] = DB::table('personeller')->where('sube_id', $sid)->where('rol', 'garson')->whereNotNull('foto')->pluck('foto', 'id')->all();
+        $d['panel'] = (new \App\Services\GarsonPanel($sid))->veri();
+        $d['cagriSay'] = $d['panel']['cagri'];
+    } catch (\Throwable $e) {
+        report($e);
+        return redirect('/isletme-duzeni')->with('hata', 'Garson Yönetimi şu an açılamadı.');
+    }
+    return view('garson_yonetimi', $d);
+});
+Route::get('/garson-yonetimi/veri', function (Request $r) {
+    $izinli = ['gunluk', 'haftalik', 'aylik'];
+    $stat = in_array($r->query('stat'), $izinli, true) ? $r->query('stat') : 'gunluk';
+    $perf = in_array($r->query('perf'), $izinli, true) ? $r->query('perf') : 'haftalik';
+    try { return (new \App\Services\GarsonPanel(_webSubeId()))->veri($stat, $perf); }
+    catch (\Throwable $e) { report($e); return response()->json(['ok' => 0, 'hata' => 'Veri alınamadı.']); }
+});
+Route::post('/garson-yonetimi/mola', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $g = DB::table('personeller')->where('id', (int) $r->input('personel_id'))->where('sube_id', $sid)->first();
+        if (!$g) return response()->json(['ok' => 0, 'hata' => 'Garson bulunamadı.']);
+        $molada = (new \App\Services\GarsonPanel($sid))->molaDegistir($g->id);
+        return ['ok' => 1, 'molada' => $molada];
+    } catch (\Throwable $e) { report($e); return response()->json(['ok' => 0, 'hata' => 'İşlem yapılamadı.']); }
+});
 // ============================================================================
 // İŞLETME DÜZENİ — tek sayfada: Bölge → Masa → Garson Ataması → Kasa (personel+masa)
 // Mevcut tabloları (bolgeler/masalar/personel_atama/kasalar) kullanır; dağınık

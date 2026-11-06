@@ -198,6 +198,7 @@
         ],
         'Ayarlar & Entegrasyon' => [
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
+            ['/garson-yonetimi', 'support_agent', 'Garson Yönetimi', '#7C3AED'],
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
             ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],

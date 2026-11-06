@@ -13,7 +13,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
     const req = e.request;
-    if (req.method !== 'GET' || req.url.includes('/webhook/')) return;
+    if (req.method !== 'GET' || req.url.includes('/webhook/') || req.url.includes('/garson-yonetimi/veri')) return; // canlı veri önbelleğe alınmaz
 
     const accept = req.headers.get('accept') || '';
     const isHTML = req.mode === 'navigate' || accept.includes('text/html');
