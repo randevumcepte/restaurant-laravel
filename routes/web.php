@@ -9702,6 +9702,18 @@ Route::post('/departman-sablon-kur', function (Request $r) {
         return redirect('/departman-yonetim')->with('ok', "$n hazır departman oluşturuldu.");
     } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Oluşturulamadı.'); }
 });
+// Mutfak alt departmanlarını (Soğuk Mutfak / Pastane / Kasap / Bulaşıkhane) tek tıkla kur — menüde görünür olsun.
+// Kurulu olmayan alt departman menüde gizlenir (_menuOlcekSuz); bu route o 4'ünü şubede aktif eder (idempotent).
+Route::get('/mutfak-altdep-kur', function () {
+    $sid = _webSubeId();
+    $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür kurabilir.');
+    try {
+        $n = _departmanSablonKur($sid, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik']);
+        $msg = $n > 0 ? ($n . ' mutfak alt departmanı kuruldu') : 'Mutfak alt departmanları zaten kurulu';
+        return redirect('/departman-yonetim')->with('ok', $msg . ' — artık menüde Mutfak / BOH altında görünür. Her birine Personel ekranından sorumlu/personel atayabilirsin.');
+    } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Kurulamadı: ' . $e->getMessage()); }
+});
 // İŞLETME BÜYÜKLÜĞÜ: seçim ekranı (sadece sahip/müdür)
 Route::get('/isletme-olcegi', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
