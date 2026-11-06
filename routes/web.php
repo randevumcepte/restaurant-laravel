@@ -9546,7 +9546,7 @@ if (!function_exists('_olcekMenuListesi')) {
     function _olcekMenuListesi($olcek)
     {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
-        $ayar = ['/isletme-duzeni', '/garson-yonetimi', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $ayar = ['/isletme-duzeni', '/garson-yonetimi', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
@@ -19325,7 +19325,7 @@ if (!function_exists('_departmanBriefVeri')) {
             if ($bekleyen > 0) { $isler[] = ['ikon' => 'pending', 'renk' => '#F59E0B', 'grup' => 'ONAY', 'baslik' => "$bekleyen rezervasyon onay bekliyor", 'aciklama' => 'Onayla / masa ata', 'aksiyon' => ['url' => '/rezervasyon', 'lbl' => 'Gör']]; $sinyal[] = "<b>$bekleyen</b> onay bekliyor"; }
             if ($noshow30 > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'NO-SHOW', 'baslik' => "No-show oranı %$noshowOran", 'aciklama' => "Son 30 günde $noshow30 gelmedi — depozito/teyit düşün", 'aksiyon' => ['url' => '/satis-sohbet', 'lbl' => 'AI ile takip']]; }
             $isler[] = ['ikon' => 'celebration', 'renk' => '#0EA5E9', 'grup' => 'ETKİNLİK', 'baslik' => 'Grup/etkinlik takvimini kontrol et', 'aciklama' => 'Yaklaşan özel gün ve grup rezervasyonları', 'aksiyon' => ['url' => '/etkinlik-takvim', 'lbl' => 'Takvim']];
-            $hizli = [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/salon-sema', 'ikon' => 'map', 'lbl' => 'Salon Şema'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']];
+            $hizli = [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']];
             $analiz[] = ['ikon' => 'event_available', 'renk' => '#A855F7', 'baslik' => 'Doluluk', 'alt' => 'bugün', 'durum' => $doluluk === null ? 'notr' : ($doluluk > 80 ? 'dikkat' : 'iyi'), 'yorum' => $doluluk !== null ? ("Bugün $bugKisi kişilik rezervasyon, kapasitenin %$doluluk'i. " . ($doluluk < 40 ? 'Boş günü doldurma kampanyası öner.' : '👍')) : 'Masa kapasitesi tanımlı değil.'];
             $analiz[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => $noshowOran > 15 ? 'risk' : ($noshowOran > 0 ? 'dikkat' : 'iyi'), 'yorum' => $gelenToplam30 > 0 ? ("No-show oranı %$noshowOran ($noshow30/$gelenToplam30). " . ($noshowOran > 15 ? 'Yüksek — kapora/teyit uygula.' : '')) : 'Henüz tamamlanmış rezervasyon verisi yok.'];
             $analiz[] = ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => $hafRez > 0 ? 'iyi' : 'notr', 'yorum' => "Önümüzdeki 7 günde $hafRez rezervasyon. Bekleyen $bekleyen onay var."];
@@ -19870,7 +19870,7 @@ if (!function_exists('_departmanBriefDemo')) {
                     ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'baslik' => 'No-show', 'alt' => 'son 30 gün', 'durum' => 'dikkat', 'yorum' => 'No-show oranı %9 (6/66). Gruplarda kapora alınsa %3-4\'e iner.'],
                     ['ikon' => 'date_range', 'renk' => '#5B8DEF', 'baslik' => 'Rezervasyon Hacmi', 'alt' => 'bu hafta', 'durum' => 'iyi', 'yorum' => 'Önümüzdeki 7 günde 34 rezervasyon. Cuma-Cumartesi yoğun.'],
                 ],
-                'hizli' => [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/salon-sema', 'ikon' => 'map', 'lbl' => 'Salon Şema'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']],
+                'hizli' => [['url' => '/rezervasyon', 'ikon' => 'event_available', 'lbl' => 'Rezervasyonlar'], ['url' => '/etkinlik-takvim', 'ikon' => 'celebration', 'lbl' => 'Etkinlik/Grup Takvimi'], ['url' => '/depozito', 'ikon' => 'payments', 'lbl' => 'Depozito/Kapora'], ['url' => '/fix-menu', 'ikon' => 'dinner_dining', 'lbl' => 'Fix Menü']],
                 'aiOzet' => 'Bugünün gündemi: <b>2</b> santral rezervasyonu · <b>3</b> kaçan çağrı · <b>9</b> rezervasyon (42 kişi) · no-show <b>%9</b>.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '7 rezervasyon tamamlandı, 1 no-show', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Santraldan 4 rezervasyon alındı', 'link' => '/rezervasyon'], ['ikon' => 'check', 'mtn' => 'Nişan grubundan 500₺ kapora alındı', 'link' => '/depozito']],
                 'crmRez' => [

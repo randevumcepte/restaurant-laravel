@@ -199,6 +199,7 @@
         'Ayarlar & Entegrasyon' => [
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
             ['/garson-yonetimi', 'support_agent', 'Garson Yönetimi', '#7C3AED'],
+            ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
             ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],
@@ -269,7 +270,6 @@
         ['/rezervasyon', 'event_available', 'Rezervasyonlar', '#A855F7'],
         ['/etkinlik-takvim', 'celebration', 'Etkinlik / Grup Takvimi', '#0EA5E9'],
         ['/depozito', 'payments', 'Depozito / Kapora', '#10B981'],
-        ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
     ];
 
     // ===== CRM / MÜŞTERİ İLİŞKİLERİ MERKEZİ — başlıklar =====
