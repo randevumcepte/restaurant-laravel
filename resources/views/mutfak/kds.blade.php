@@ -67,7 +67,7 @@ body.koyu #kds{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub
         <div class="kds-tab akt" data-t="0" onclick="kdsTab(0)"><span class="ikw"><span class="material-icons-outlined">receipt_long</span><span class="rz" data-rz="0" style="background:var(--mor);display:none"></span></span>Sipariş</div>
         <div class="kds-tab" data-t="1" onclick="kdsTab(1)"><span class="ikw"><span class="material-icons-outlined">room_service</span><span class="rz" data-rz="1" style="background:var(--mavi);display:none"></span></span>Servis</div>
         <div class="kds-tab" data-t="2" onclick="kdsTab(2)"><span class="ikw"><span class="material-icons-outlined">block</span><span class="rz" data-rz="2" style="background:var(--kirmizi);display:none"></span></span>86</div>
-        <div class="kds-tab" data-t="3" onclick="kdsTab(3)"><span class="ikw"><span class="material-icons-outlined">insights</span></span>Analiz</div>
+        <div class="kds-tab" data-t="3" onclick="kdsTab(3)"@if (_mutfakIstasyonUrunleri(_posPersonel()) !== null) style="display:none"@endif><span class="ikw"><span class="material-icons-outlined">insights</span></span>Analiz</div>
     </div>
     <div data-pane="0"></div>
     <div data-pane="1" style="display:none"></div>
@@ -166,7 +166,7 @@ function kRenderSip(){
     govde='<div>'+govde+'</div>';
   } else {
     const sip = kSiraUygula(d.siparisler||[]);
-    govde = sip.length? '<div class="board" style="column-width:'+KBOY[KDS.boyut]+'px">'+sip.map(kfis).join('')+'</div>' : '<div class="bos">Bekleyen sipariş yok. 👨‍🍳</div>';
+    govde = sip.length? '<div class="board" style="column-width:'+KBOY[KDS.boyut]+'px">'+sip.map(kfis).join('')+'</div>' : '<div class="bos">'+(d.uyari?kesc(d.uyari):'Bekleyen sipariş yok. 👨‍🍳')+'</div>';
     document.querySelector('[data-rz="0"]').textContent=sip.length; document.querySelector('[data-rz="0"]').style.display=sip.length?'flex':'none';
   }
   pane.innerHTML=ust+govde;

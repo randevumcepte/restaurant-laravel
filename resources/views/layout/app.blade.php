@@ -358,6 +358,12 @@
     // Kasiyer yalnız Panel'i görür; kasa noktası ayarı hangi sayfaların açık olduğunu belirler
     $_kasiyerMenu = false;
     try { $_kp = _posPersonel(); if ($_kp && _kasiyerMi($_kp)) { $gruplar = _kasiyerMenu($gruplar, $_kp); $_kasiyerMenu = true; } } catch (\Throwable $e) {}
+    // Panel başlığı yalnız kasalarda; diğer herkeste Mutfak ve Rezervasyon kendi gruplarında, kalanı Satış & Servis'e geçer
+    if (!$_kasiyerMenu && isset($gruplar['Panel'])) {
+        $_panelTasi = array_values(array_filter($gruplar['Panel'], fn ($it) => in_array($it[0], ['/departman-brief', '/dashboard', '/pos', '/paket'], true)));
+        $gruplar['Satış & Servis'] = array_merge($_panelTasi, $gruplar['Satış & Servis'] ?? []);
+        unset($gruplar['Panel']);
+    }
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {

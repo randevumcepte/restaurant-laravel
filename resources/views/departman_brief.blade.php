@@ -162,6 +162,9 @@
   // Sadece işletmede kurulu olanlar (+ ana mutfak ve o an açık olan). Tek sekme kalırsa şerit gösterilmez.
   $__bohAktif = function_exists('_aktifDepartmanKodlari') ? _aktifDepartmanKodlari(_webSubeId()) : [];
   $__boh = array_filter(function_exists('_departmanSablonlari') ? _departmanSablonlari() : [], fn ($t, $k) => ($t['grup'] ?? '') === 'Mutfak (BOH)' && ($k === 'mutfak' || $k === ($kod ?? '') || in_array($k, $__bohAktif, true)), ARRAY_FILTER_USE_BOTH);
+  // İstasyon çalışanı yalnız kendi sekmesini görür; şef ve yönetici hepsini
+  $__bohKisi = _posPersonel();
+  $__boh = array_filter($__boh, fn ($k) => $k === ($kod ?? '') || _departmanBriefIzinli($__bohKisi, _webSubeId(), $k), ARRAY_FILTER_USE_KEY);
 @endphp
 @if (isset($__boh[$kod ?? '']) && count($__boh) > 1)
 <div class="pai-alt-dep">

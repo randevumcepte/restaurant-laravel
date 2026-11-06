@@ -4008,12 +4008,12 @@ Route::get('/bar', function () {
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
-    DB::table('adisyon_kalemleri')->where('id', $r->kalem_id)->update(['durum' => 'hazir', 'hazir_zamani' => now()]);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('id', $r->kalem_id)->update(['durum' => 'hazir', 'hazir_zamani' => now()]);
     return ['ok' => 1];
 });
 // Hazır olan kalemi servis edildi işaretle (mutfak/expo ekranından) → ekrandan düşer
 Route::post('/mutfak/servis', function (Request $r) {
-    _kalemServisIsaretle($r->kalem_id, _posPersonel());
+    if (_mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('id', $r->kalem_id)->exists()) _kalemServisIsaretle($r->kalem_id, _posPersonel());
     return ['ok' => 1];
 });
 
@@ -19078,14 +19078,14 @@ if (!function_exists('_departmanBriefKod')) {
     }
 }
 if (!function_exists('_departmanBriefIzinli')) {
-    // Sahip/müdür/süpervizör her brifingi görür; diğer personel yalnız kendi departmanını (mutfak ekibi BOH alt departmanlarını da).
+    // Sahip/müdür/süpervizör her brifingi görür; diğer personel yalnız kendi departmanını. Mutfak şefi (mutfak sorumlusu) BOH alt departmanlarını da görür.
     // Sayfa yetkisi tek başına yetmez: gor_pos gibi ortak anahtarlar Finans şablonunda da var, ciro/net kâr açılırdı.
     function _departmanBriefIzinli($bp, $sid, $dep)
     {
         if (!$bp || (string) $dep === '') return false;
         $kademe = $bp->kademe ?? _rolKademe($bp->rol ?? '');
         if (in_array($bp->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true)) return true;
-        static $kodlar = [];
+        static $kodlar = [], $sef = [];
         $id = (int) ($bp->id ?? 0);
         if (!isset($kodlar[$id])) {
             $k = [_departmanBriefKod($bp, $sid)];
@@ -19093,12 +19093,54 @@ if (!function_exists('_departmanBriefIzinli')) {
             $bilgi = _personelDepartmanBilgi($sid, $id); // personel_departman eski kayıtları
             if (!empty($bilgi['kod'])) $k[] = $bilgi['kod'];
             $kodlar[$id] = $k;
+            $sef[$id] = ($bilgi['kod'] ?? '') === 'mutfak' && !empty($bilgi['sorumlu']);
         }
         if (in_array($dep, $kodlar[$id], true)) return true;
-        $sablon = _departmanSablonlari();
-        if (($sablon[$dep]['grup'] ?? '') !== 'Mutfak (BOH)') return false;
-        foreach ($kodlar[$id] as $k) if (($sablon[$k]['grup'] ?? '') === 'Mutfak (BOH)') return true;
-        return false;
+        return $sef[$id] && (_departmanSablonlari()[$dep]['grup'] ?? '') === 'Mutfak (BOH)';
+    }
+}
+if (!function_exists('_mutfakIstasyonUrunleri')) {
+    // İstasyon çalışanı (soğuk/pastane/kasap/bulaşıkhane) yalnız kendi ürünlerini görür ve işaretler. null = kısıt yok (şef, sıcak mutfak, garson, yönetici).
+    function _mutfakIstasyonUrunleri($p)
+    {
+        if (!$p) return null;
+        $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
+        if (in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true)) return null;
+        static $kayit = [];
+        $id = (int) ($p->id ?? 0);
+        if (array_key_exists($id, $kayit)) return $kayit[$id];
+        $sid = (int) ($p->sube_id ?? 0);
+        $kod = _departmanBriefKod($p, $sid);
+        if (!in_array($kod, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) return $kayit[$id] = null;
+        $ids = [];
+        try {
+            $depId = (int) DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->value('id');
+            $katIds = ($depId && Schema::hasColumn('menu_kategorileri', 'departman_id')) ? DB::table('menu_kategorileri')->where('departman_id', $depId)->pluck('id')->all() : [];
+            $ist = ['soguk_mutfak' => 'soguk', 'pastane' => 'tatli'][$kod] ?? null;
+            if ($katIds) $ids = DB::table('urunler')->where('sube_id', $sid)->whereIn('kategori_id', $katIds)->pluck('id')->all();
+            elseif ($ist) $ids = DB::table('urunler')->where('sube_id', $sid)->where('istasyon', $ist)->pluck('id')->all();
+        } catch (\Throwable $e) {}
+        return $kayit[$id] = array_map('intval', $ids);
+    }
+}
+if (!function_exists('_mutfakKapsamla')) {
+    // adisyon_kalemleri sorgusunu kişinin istasyonuna daraltır
+    function _mutfakKapsamla($q, $p)
+    {
+        $ids = _mutfakIstasyonUrunleri($p);
+        if ($ids !== null) $q->whereIn('adisyon_kalemleri.urun_id', $ids);
+        return $q;
+    }
+}
+if (!function_exists('_talepAnaMutfakDepId')) {
+    // Alt istasyon talepleri ana Mutfak departmanına düşer: şef ya da müdür onaylar. Mutfak departmanı kurulu değilse null (normal akış).
+    function _talepAnaMutfakDepId($sid, $depId)
+    {
+        try {
+            $kod = DB::table('departmanlar')->where('id', (int) $depId)->where('sube_id', (int) $sid)->value('kod');
+            if (!in_array($kod, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) return null;
+            return (int) DB::table('departmanlar')->where('sube_id', (int) $sid)->where('kod', 'mutfak')->value('id') ?: null;
+        } catch (\Throwable $e) { return null; }
     }
 }
 if (!function_exists('_departmanBriefLinkAcik')) {
@@ -19541,8 +19583,11 @@ if (!function_exists('_departmanBriefVeri')) {
             // Satın alma talepleri: yalnız bu departmanın açtıkları
             $talepAcik = 0; $talepOnay = 0;
             try { if ($depId && Schema::hasTable('satinalma_talepleri')) {
-                $talepAcik = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('departman_id', $depId)->whereIn('durum', ['departman_onay', 'yeni', 'teklif', 'onayda', 'fiyat_onay'])->count();
-                $talepOnay = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('departman_id', $depId)->where('durum', 'departman_onay')->count();
+                // Yeni talepler ana mutfak onayına gider (departman_id=mutfak); istasyon adı "departman" etiketinde kalır
+                $depAd = DB::table('departmanlar')->where('id', $depId)->value('ad');
+                $tq = fn () => DB::table('satinalma_talepleri')->where('sube_id', $sid)->where(function ($w) use ($depId, $depAd) { $w->where('departman_id', $depId)->orWhere('departman', $depAd); });
+                $talepAcik = (int) $tq()->whereIn('durum', ['departman_onay', 'yeni', 'teklif', 'onayda', 'fiyat_onay'])->count();
+                $talepOnay = (int) $tq()->where('durum', 'departman_onay')->count();
             } } catch (\Throwable $e) {}
 
             if ($kod === 'bulasik') {
@@ -19606,7 +19651,7 @@ if (!function_exists('_departmanBriefVeri')) {
             // Ortak: kadro + kendi talepleri + kurulum uyarısı
             if ($kadro > 0) { $gelmeyen = max(0, $kadro - $giren); $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $kadro . '</small>', 'label' => 'Bugün gelen', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' giriş yapmadı') : 'tam kadro 👍']; }
             $kpis[] = ['ikon' => 'shopping_cart_checkout', 'tint' => $talepOnay > 0 ? 't-amber' : ($talepAcik > 0 ? 't-blue' : 't-green'), 'deger' => $talepAcik, 'label' => 'Satın alma talebi', 'alt' => $talepOnay > 0 ? ($talepOnay . ' onay bekliyor') : ($talepAcik > 0 ? 'işlemde' : 'açık talep yok'), 'link' => $talepOnay > 0 ? '/talep-onaylarim' : '/satinalma-talep'];
-            if ($talepOnay > 0) { array_unshift($isler, ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$talepOnay talep onay bekliyor", 'aciklama' => 'Departman sorumlusu onaylar/reddeder', 'aksiyon' => ['url' => '/talep-onaylarim', 'lbl' => 'Onay Kutusu']]); $sinyal[] = "<b>$talepOnay</b> onay bekleyen"; }
+            if ($talepOnay > 0) { array_unshift($isler, ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$talepOnay talep onay bekliyor", 'aciklama' => 'Mutfak şefi ya da müdür onaylar/reddeder', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'Taleplerim']]); $sinyal[] = "<b>$talepOnay</b> onay bekleyen"; }
             if (!$depId) { $isler[] = ['ikon' => 'group_add', 'renk' => '#7C3AED', 'grup' => 'KURULUM', 'baslik' => ($tmpl['ad'] ?? 'Departman') . ' henüz oluşturulmamış', 'aciklama' => 'Departman Yönetimi\'nden oluştur, personelini ata', 'aksiyon' => ['url' => '/departman-yonetim', 'lbl' => 'Oluştur']]; }
         }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
@@ -24397,7 +24442,10 @@ Route::post('/satinalma-talep/olustur', function (Request $r) {
         $bilgi = _talepDepartmanBilgi($sid, $p->id ?? 0);
         if ($bilgi['id']) {
             $depId = $bilgi['id']; if ($bilgi['ad']) $dept = $bilgi['ad']; // departmanı HER ZAMAN etiketle (görünürlük kısıtı + onay akışı için)
-            if (!$bilgi['sorumlu']) {
+            $anaMutfak = _talepAnaMutfakDepId($sid, $bilgi['id']);
+            if ($anaMutfak) { // istasyon (sorumlusu dahil) talebi mutfak şefine ya da müdüre gider; etikette istasyon adı kalır
+                $depId = $anaMutfak; $depOnay = true;
+            } elseif (!$bilgi['sorumlu']) {
                 $sorumlular = array_values(array_filter(_departmanSorumluIdleri($sid, $bilgi['id']), fn ($x) => $x !== (int) ($p->id ?? 0)));
                 if (!empty($sorumlular)) { $depOnay = true; }
             }
@@ -27022,7 +27070,7 @@ if (!function_exists('_kdsKolonEnsure')) {
     }
 }
 if (!function_exists('_mutfakVeri')) {
-function _mutfakVeri($subeId, $filtre = null) {
+function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
     $p = (object) ['sube_id' => $subeId]; // helper: asagidaki $p->sube_id aynen calissin
     _kdsKolonEnsure();
     $simdi = now();
@@ -27034,6 +27082,7 @@ function _mutfakVeri($subeId, $filtre = null) {
         ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
         ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')
         ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor']);   // Yeni + Hazirlaniyor
+    if ($urunIds !== null) $q->whereIn('adisyon_kalemleri.urun_id', $urunIds); // istasyon çalışanı yalnız kendi ürünleri
     $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
         'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.durum', 'adisyon_kalemleri.basla_zamani',
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
@@ -27123,19 +27172,20 @@ function _mutfakVeri($subeId, $filtre = null) {
     // adisyon_id tiebreaker -> PHP 7.4 kararsiz usort'ta sira her yenilemede OYNAMASIN (sabit).
     usort($siparisler, fn ($a, $b) => ($b['dk'] <=> $a['dk']) ?: ($a['adisyon_id'] <=> $b['adisyon_id']));
     return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
-        'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay))];
+        'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay)),
+        'uyari' => $urunIds === [] ? 'İstasyonuna bağlı menü ürünü yok. Sipariş görmen gerekiyorsa mutfak şefine ya da müdüre bildir.' : null];
 }
 }
 Route::get('/api/mutfak', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    return _mutfakVeri($p->sube_id, $r->query('istasyon'));
+    return _mutfakVeri($p->sube_id, $r->query('istasyon'), _mutfakIstasyonUrunleri($p));
 });
 // ===== WEB KDS (panel oturumu) — Flutter mutfak_screen ile AYNI veri/aksiyonlar =====
-Route::get('/mutfak/veri', fn (Request $r) => _mutfakVeri(_aktifSubeId(), $r->query('istasyon')));
+Route::get('/mutfak/veri', fn (Request $r) => _mutfakVeri(_aktifSubeId(), $r->query('istasyon'), _mutfakIstasyonUrunleri(_posPersonel())));
 Route::get('/mutfak/servise-veri', function () {
     $sid = _aktifSubeId();
-    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+    $rows = _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
         ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
@@ -27155,17 +27205,17 @@ Route::post('/mutfak/basla', function (Request $r) {
     _kdsKolonEnsure();
     $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
-    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-hazir', function (Request $r) {
     $upd = ['durum' => 'hazir', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
-    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-servis', function (Request $r) {
-    DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     return ['ok' => 1];
 });
 
@@ -27177,9 +27227,9 @@ Route::post('/api/mutfak/basla', function (Request $r) {
     $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
     if ($r->adisyon_id) {
-        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
     } else {
-        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
     }
     return ['ok' => 1];
 });
@@ -27190,9 +27240,9 @@ Route::post('/api/mutfak/hazir', function (Request $r) {
     $upd = ['durum' => 'hazir', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
     if ($r->adisyon_id) {
-        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     } else {
-        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     }
     // SERVİSE HAZIR -> garsona bildirim (masa_cagrilari). Pull-only değil artık; çağrı listesinde görünür.
     try {
@@ -27236,7 +27286,7 @@ Route::get('/api/mutfak/servise-hazir', function (Request $r) {
     $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $bekVar ? 'adisyon_kalemleri.hazir_zamani' : DB::raw('NULL as hazir_zamani');
-    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+    $rows = _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
         // Ikincil 'id' sirasi -> kalemler her yenilemede AYNI sirada kalir (yer degistirmez)
@@ -27259,9 +27309,9 @@ Route::post('/api/mutfak/servis', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     if ($r->adisyon_id) {
-        DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     } else {
-        DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
     }
     return ['ok' => 1];
 });
@@ -27273,8 +27323,10 @@ Route::get('/api/mutfak/urunler', function (Request $r) {
     $istVar = Schema::hasColumn('urunler', 'istasyon');
     $sel = ['urunler.id', 'urunler.ad', 'urunler.tukendi', 'menu_kategorileri.ad as kategori'];
     $sel[] = $istVar ? 'urunler.istasyon' : DB::raw("'mutfak' as istasyon");
+    $kapsam = _mutfakIstasyonUrunleri($p);
     $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
         ->where('urunler.sube_id', $p->sube_id)->where('urunler.aktif', 1)
+        ->when($kapsam !== null, fn ($q) => $q->whereIn('urunler.id', $kapsam))
         ->orderByDesc('urunler.tukendi')->orderBy('urunler.ad')->select($sel)->get()
         ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'tukendi' => (bool) $u->tukendi,
             'istasyon' => $u->istasyon ?: 'mutfak', 'kategori' => $u->kategori ?: '—']);
@@ -27286,7 +27338,8 @@ Route::post('/api/mutfak/86', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', $p->sube_id)->first();
-    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $kapsam = _mutfakIstasyonUrunleri($p);
+    if (!$u || ($kapsam !== null && !in_array((int) $u->id, $kapsam, true))) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $yeni = $u->tukendi ? 0 : 1;
     DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
     return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
@@ -27395,16 +27448,18 @@ function _mutfakAnalizVeri($subeId) {
 Route::get('/api/mutfak/analiz', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    return _mutfakAnalizVeri($p->sube_id);
+    return _mutfakIstasyonUrunleri($p) === null ? _mutfakAnalizVeri($p->sube_id) : ['ok' => 1, 'ozet' => [], 'en_yavas' => [], 'istasyon_yuku' => [], 'saatlik' => [], 'oneriler' => []]; // mutfak geneli analiz istasyon çalışanına kapalı
 });
-Route::get('/mutfak/analiz-veri', fn () => _mutfakAnalizVeri(_aktifSubeId()));
+Route::get('/mutfak/analiz-veri', fn () => _mutfakIstasyonUrunleri(_posPersonel()) === null ? _mutfakAnalizVeri(_aktifSubeId()) : ['ok' => 1, 'ozet' => [], 'en_yavas' => [], 'istasyon_yuku' => [], 'saatlik' => [], 'oneriler' => []]);
 Route::get('/mutfak/urunler-veri', function () {
     $sid = _aktifSubeId();
     $istVar = Schema::hasColumn('urunler', 'istasyon');
     $sel = ['urunler.id', 'urunler.ad', 'urunler.tukendi', 'menu_kategorileri.ad as kategori'];
     $sel[] = $istVar ? 'urunler.istasyon' : DB::raw("'mutfak' as istasyon");
+    $kapsam = _mutfakIstasyonUrunleri(_posPersonel());
     $rows = DB::table('urunler')->leftJoin('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
         ->where('urunler.sube_id', $sid)->where('urunler.aktif', 1)
+        ->when($kapsam !== null, fn ($q) => $q->whereIn('urunler.id', $kapsam))
         ->orderByDesc('urunler.tukendi')->orderBy('urunler.ad')->select($sel)->get()
         ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'tukendi' => (bool) $u->tukendi, 'istasyon' => $u->istasyon ?: 'mutfak', 'kategori' => $u->kategori ?: '—']);
     return ['ok' => 1, 'urunler' => $rows, 'tukenen' => $rows->where('tukendi', true)->count()];
@@ -27412,7 +27467,8 @@ Route::get('/mutfak/urunler-veri', function () {
 Route::post('/mutfak/86-toggle', function (Request $r) {
     $sid = _aktifSubeId();
     $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', $sid)->first();
-    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $kapsam = _mutfakIstasyonUrunleri(_posPersonel());
+    if (!$u || ($kapsam !== null && !in_array((int) $u->id, $kapsam, true))) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $yeni = $u->tukendi ? 0 : 1;
     DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
     return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
