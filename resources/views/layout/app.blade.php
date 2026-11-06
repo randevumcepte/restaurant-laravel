@@ -469,7 +469,8 @@
                 $_itemGorunur = function ($it) use ($_pp, $_harita, $_mutfakEkran) {
                     if (!$_pp) return true;
                     if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
-                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true;
+                    if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
+                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda'])) return true;
                     if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], $_mutfakEkran)) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;

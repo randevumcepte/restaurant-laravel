@@ -19073,8 +19073,40 @@ if (!function_exists('_departmanBriefKod')) {
                 if ($k) return (string) $k;
             }
         } catch (\Throwable $e) {}
-        $map = ['satinalmaci' => 'satinalma', 'mutfak' => 'mutfak', 'kasa' => 'kasa', 'garson' => 'servis', 'sahip' => 'ust_yonetim', 'mudur' => 'operasyon'];
+        $map = ['satinalmaci' => 'satinalma', 'satinalma' => 'satinalma', 'mutfak' => 'mutfak', 'kasa' => 'kasa', 'garson' => 'servis', 'sahip' => 'ust_yonetim', 'mudur' => 'operasyon'];
         return $map[$bp->rol ?? ''] ?? 'operasyon';
+    }
+}
+if (!function_exists('_departmanBriefIzinli')) {
+    // Sahip/müdür/süpervizör her brifingi görür; diğer personel yalnız kendi departmanını (mutfak ekibi BOH alt departmanlarını da).
+    // Sayfa yetkisi tek başına yetmez: gor_pos gibi ortak anahtarlar Finans şablonunda da var, ciro/net kâr açılırdı.
+    function _departmanBriefIzinli($bp, $sid, $dep)
+    {
+        if (!$bp || (string) $dep === '') return false;
+        $kademe = $bp->kademe ?? _rolKademe($bp->rol ?? '');
+        if (in_array($bp->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true)) return true;
+        static $kodlar = [];
+        $id = (int) ($bp->id ?? 0);
+        if (!isset($kodlar[$id])) {
+            $k = [_departmanBriefKod($bp, $sid)];
+            if ($kademe === 'satinalma') $k[] = 'satinalma';
+            $bilgi = _personelDepartmanBilgi($sid, $id); // personel_departman eski kayıtları
+            if (!empty($bilgi['kod'])) $k[] = $bilgi['kod'];
+            $kodlar[$id] = $k;
+        }
+        if (in_array($dep, $kodlar[$id], true)) return true;
+        $sablon = _departmanSablonlari();
+        if (($sablon[$dep]['grup'] ?? '') !== 'Mutfak (BOH)') return false;
+        foreach ($kodlar[$id] as $k) if (($sablon[$k]['grup'] ?? '') === 'Mutfak (BOH)') return true;
+        return false;
+    }
+}
+if (!function_exists('_departmanBriefLinkAcik')) {
+    // Menüdeki brifing bağlantısı: "Sabah Brifingim" herkese, ?dep= olan yalnız o brifingi görebilene
+    function _departmanBriefLinkAcik($bp, $url)
+    {
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
+        return empty($q['dep']) || _departmanBriefIzinli($bp, (int) ($bp->sube_id ?? 0), $q['dep']);
     }
 }
 if (!function_exists('_departmanBriefVeri')) {
@@ -19939,15 +19971,9 @@ Route::get('/departman-brief', function (Request $r) {
     if (!$bp) return redirect('/pos-giris');
     if (!_kasiyerSayfaIzinli($bp, '/departman-brief')) return response(view('yetkisiz', ['sayfa' => '/departman-brief']), 403);
     $sid = _webSubeId();
-    $patron = in_array($bp->rol ?? '', ['sahip', 'mudur']);
     $istenen = _kasiyerMi($bp) ? '' : (string) $r->query('dep', ''); // kasiyer yalnız kendi brifingini görür
     $kendi = _departmanBriefKod($bp, $sid);
-    // Patron her departmanı görür; diğer personel ya kendi departmanı ya da o departmanın bir sayfa yetkisine sahipse
-    $yetkiliMi = false;
-    if ($istenen && !$patron) {
-        try { $sayfa = (function_exists('_departmanSablonlari') ? (_departmanSablonlari()[$istenen]['sayfa'] ?? []) : []); foreach ($sayfa as $y) { if (function_exists('_panelYetkiVar') && _panelYetkiVar($bp, $y)) { $yetkiliMi = true; break; } } } catch (\Throwable $e) {}
-    }
-    $kod = ($istenen && ($patron || $yetkiliMi)) ? $istenen : $kendi;
+    $kod = ($istenen && _departmanBriefIzinli($bp, $sid, $istenen)) ? $istenen : $kendi;
     $demo = $r->query('demo') == '1';
     $veri = $demo ? _departmanBriefDemo($kod) : _departmanBriefVeri($sid, $bp, $kod);
     $veri['demo'] = $demo; $veri['kod'] = $kod;
