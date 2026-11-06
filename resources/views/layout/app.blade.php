@@ -322,8 +322,6 @@
         ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
         ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
         ['/satinalma-talep', 'assignment', 'Satın Alma Talebi', '#7C3AED'],
-        ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B'],
-        ['/reddedilen-talepler', 'block', 'Reddedilen Talepler', '#F43F5E'],
         ['/parti-takip', 'event_busy', 'SKT / Parti Takibi', '#64748B'],
         ['/recete', 'menu_book', 'Reçeteler / Yarı Mamül', '#7C3AED'],
         ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],

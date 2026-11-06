@@ -12,20 +12,24 @@
     $waTel      = $waTel      ?? '';
 
     $durumRenk = [
+        'departman_onay' => '#8B5CF6',
         'yeni'       => '#4F46E5',
         'teklif'     => '#F59E0B',
         'onayda'     => '#F59E0B',
         'onaylandi'  => '#10B981',
         'siparis'    => '#0EA5E9',
         'tamamlandi' => '#10B981',
+        'reddedildi' => '#F43F5E',
     ];
     $durumMetin = [
+        'departman_onay' => 'Onay Bekliyor',
         'yeni'       => 'Yeni',
         'teklif'     => 'Teklif Bekleniyor',
         'onayda'     => 'Onayda',
         'onaylandi'  => 'Onaylandı',
         'siparis'    => 'Siparişte',
         'tamamlandi' => 'Tamamlandı',
+        'reddedildi' => 'Reddedildi',
     ];
 @endphp
 
@@ -498,7 +502,7 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 <div class="sta-filtre">
     <div class="sta-chips" id="staChips">
         <button class="sta-chip akt" data-d="" style="--cr:#7C3AED" onclick="staFiltreDurum(this)">Tümü <b>{{ $talepler->count() }}</b></button>
-        @foreach(['yeni','teklif','onayda','onaylandi','siparis','tamamlandi'] as $d)
+        @foreach(['departman_onay','yeni','teklif','onayda','onaylandi','siparis','tamamlandi','reddedildi'] as $d)
             @php $c = $talepler->where('durum',$d)->count(); @endphp
             @if($c > 0)
             <button class="sta-chip" data-d="{{ $d }}" style="--cr:{{ $durumRenk[$d] }}" onclick="staFiltreDurum(this)">{{ $durumMetin[$d] }} <b>{{ $c }}</b></button>
@@ -544,6 +548,8 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
       $renk = $durumRenk[$talep->durum] ?? '#64748b';
       $metin = $durumMetin[$talep->durum] ?? $talep->durum;
       $islem = in_array($talep->durum, ['teklif', 'onayda']);
+      $dedo = $talep->durum === 'departman_onay';
+      $redd = $talep->durum === 'reddedildi';
       $acil = $talep->aciliyet === 'acil';
       $ad = $talep->isteyen_ad ?: '—';
       $parts = preg_split('/\s+/', trim($ad));
@@ -551,7 +557,7 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
       $avaPal = ['#7C3AED','#0EA5E9','#10B981','#F59E0B','#EC4899','#6366F1','#14B8A6'];
       $avaRenk = $avaPal[abs(crc32($ad)) % count($avaPal)];
     @endphp
-    <div class="st-row {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.$ad.' '.$talep->kalem_ozet) }}" onclick="staDetayAc({{ $talep->id }})">
+    <div class="st-row {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.$ad.' '.$talep->kalem_ozet) }}" @if(!$dedo)onclick="staDetayAc({{ $talep->id }})"@else style="cursor:default"@endif>
       <div>
         <span class="st-mobiletiket">Talep No</span>
         <div>
@@ -564,6 +570,7 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
         <div style="min-width:0">
           <div class="ubas">{{ $talep->departman }}</div>
           <div class="ualt">{{ $talep->kalem_ozet ?: ($talep->kalem_sayisi.' kalem') }}</div>
+          @if($redd && !empty($talep->red_sebep))<div class="ualt" style="color:#F43F5E;font-weight:600;white-space:normal">⛔ {{ $talep->red_sebep }}@if($talep->karar_veren_ad) · {{ $talep->karar_veren_ad }}@endif</div>@endif
         </div>
       </div>
       <div>
@@ -583,7 +590,14 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
         </div>
       </div>
       <div class="st-islem">
-        <button class="st-detay" onclick="event.stopPropagation();staDetayAc({{ $talep->id }})">Detay</button>
+        @if($dedo && ($talep->onaylayabilir ?? false))
+          <button class="st-detay" style="background:#10B981;color:#fff;border:0" onclick="event.stopPropagation();staDeptOnay({{ $talep->id }})">Onayla</button>
+          <button class="st-detay" style="background:#F43F5E;color:#fff;border:0" onclick="event.stopPropagation();staDeptRed({{ $talep->id }})">Reddet</button>
+        @elseif($dedo)
+          <span style="font-size:12px;color:var(--sub2,#94a3b8);font-weight:700">şef onayında</span>
+        @else
+          <button class="st-detay" onclick="event.stopPropagation();staDetayAc({{ $talep->id }})">Detay</button>
+        @endif
       </div>
     </div>
   @empty
@@ -1264,6 +1278,26 @@ window.staFiltreUygula = function() {
         const g = okD && okA; k.style.display = g ? '' : 'none'; if (g) gorunen++;
     });
     const bos = document.getElementById('staFiltreBos'); if (bos) bos.style.display = gorunen ? 'none' : 'block';
+};
+
+/* ─── Onay bekleyen talep: satır-içi Onayla / Reddet (yetkili şef) ─── */
+window.staDeptOnay = async function(id){
+    if(!confirm('Talep onaylanıp satın almaya iletilecek. Onaylıyor musun?')) return;
+    try{
+        const res = await api('/satinalma-talep/dept-onayla', { id });
+        if(res.ok){ toast('✓ Onaylandı — satın almaya iletildi', '#10B981'); setTimeout(()=>location.reload(), 650); }
+        else alert(res.mesaj || 'İşlem başarısız.');
+    }catch(e){ alert('Bağlantı hatası.'); }
+};
+window.staDeptRed = async function(id){
+    var s = prompt('Red sebebi (zorunlu — talebi açan kişi bu sebebi görecek):');
+    if(s === null) return; s = s.trim();
+    if(s.length < 3){ alert('Red sebebi en az 3 karakter olmalı.'); return; }
+    try{
+        const res = await api('/satinalma-talep/dept-reddet', { id, sebep: s });
+        if(res.ok){ toast('Talep reddedildi', '#F43F5E'); setTimeout(()=>location.reload(), 650); }
+        else alert(res.mesaj || 'İşlem başarısız.');
+    }catch(e){ alert('Bağlantı hatası.'); }
 };
 
 })();

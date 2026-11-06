@@ -9452,7 +9452,7 @@ if (!function_exists('_olcekMenuListesi')) {
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
-            'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/recete', '/sayim'],
+            'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/recete', '/sayim'],
             'Satış & Servis' => ['/isletme-duzeni', '/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
             'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci'],
@@ -24018,6 +24018,7 @@ Route::post('/uretim-plani/talep', function (Request $r) {
 });
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
+    if (function_exists('_talepOnayEnsure')) _talepOnayEnsure(); // red_sebep / karar_veren kolonları garanti
     $sid = _webSubeId();
     $pp = function_exists('_posPersonel') ? _posPersonel() : null;
     $rol = $pp->rol ?? '';
@@ -24031,11 +24032,13 @@ Route::get('/satinalma-talep', function () {
         $_depId = function_exists('_talepDepartmanBilgi') ? (_talepDepartmanBilgi($sid, $pp->id ?? 0)['id'] ?? null) : null;
         if ($_depId) $q->where(function ($w) use ($_depId, $pp) { $w->where('departman_id', $_depId)->orWhere('isteyen_id', $pp->id ?? 0); });
         else $q->where('isteyen_id', $pp->id ?? 0);
-    } else {
-        $q->whereNotIn('durum', ['departman_onay', 'reddedildi']); // satın alma havuzu: onay bekleyenler + reddedilenler ayrı sayfalarda
     }
+    // NOT: onay bekleyen (departman_onay) + reddedilen de listelenir; bu sayfada çip olarak süzülür,
+    // yetkili şef onay-bekleyen satırını satır-içi Onayla/Reddet ile çözer (ayrı sayfaya gerek yok).
     $talepler = $q->orderByDesc('created_at')->limit(200)
-        ->get(['id', 'departman', 'isteyen_ad', 'aciliyet', 'durum', 'created_at']);
+        ->get(['id', 'departman', 'departman_id', 'isteyen_ad', 'aciliyet', 'durum', 'red_sebep', 'karar_veren_ad', 'created_at']);
+    // Hangi departmanların sorumlusuyum? (onay-bekleyen satırlarda satır-içi onay butonu için)
+    $_sorumluDeps = $patronMu ? [] : (function_exists('_sorumluDepartmanIdleri') ? _sorumluDepartmanIdleri($sid, $pp->id ?? 0) : []);
     // Kalem özeti + tahmini tutar (tek sorguda, N+1 yok)
     $ids = $talepler->pluck('id')->all();
     $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['id', 'talep_id', 'ad', 'miktar']) : collect();
@@ -24046,11 +24049,13 @@ Route::get('/satinalma-talep', function () {
         if (isset($minFiyat[$k->id])) $tutarMap[$k->talep_id] = ($tutarMap[$k->talep_id] ?? 0) + (float) $minFiyat[$k->id] * (float) $k->miktar;
         $ozetMap[$k->talep_id][] = $k->ad;
     }
-    $talepler = $talepler->map(function ($t) use ($tutarMap, $ozetMap) {
+    $talepler = $talepler->map(function ($t) use ($tutarMap, $ozetMap, $patronMu, $_sorumluDeps) {
         $adlar = $ozetMap[$t->id] ?? [];
         $t->kalem_sayisi = count($adlar);
         $t->kalem_ozet = implode(', ', array_slice($adlar, 0, 3)) . (count($adlar) > 3 ? ' +' . (count($adlar) - 3) : '');
         $t->tutar = $tutarMap[$t->id] ?? null;
+        // Onay-bekleyen satırını bu kullanıcı onaylayabilir mi? (sahip/müdür VEYA o departmanın sorumlusu)
+        $t->onaylayabilir = $t->durum === 'departman_onay' && ($patronMu || in_array((int) $t->departman_id, $_sorumluDeps, true));
         return $t;
     });
     $ozet = (object) [
