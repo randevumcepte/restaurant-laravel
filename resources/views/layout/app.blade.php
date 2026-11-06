@@ -301,7 +301,12 @@
         ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Brifingi', '#F59E0B'],
         ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'],
         ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
-        ['/mutfak-defteri', 'menu_book', 'Kontrol Defteri (HACCP/Fire/Prep)', '#16A34A'],
+        ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
+        ['/satinalma-talep', 'assignment', 'Satın Alma Talebi', '#7C3AED'],
+        ['/parti-takip', 'event_busy', 'SKT / Parti Takibi', '#64748B'],
+        ['/recete', 'menu_book', 'Reçeteler / Yarı Mamül', '#7C3AED'],
+        ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
+        ['/mutfak-defteri', 'checklist', 'Kontrol Defteri (HACCP/Fire/Prep)', '#16A34A'],
     ];
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
@@ -407,6 +412,7 @@
                         if (!$_pp) return true;
                         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
                         if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true; // departman brifingi herkese açık (route kendi yetkisini uygular)
+                        if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/mutfak-defteri', '/recete'])) return true; // mutfak operasyon ekranları: gor_mutfak olana da açık (brief kartlarının sayfaları)
                         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
                         return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
                     }));
