@@ -22,6 +22,11 @@
   .pai-roz{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);color:var(--sub);padding:7px 12px;border-radius:12px;font-size:12px;font-weight:700}
   .pai-roz .material-icons-outlined{font-size:15px}
 
+  .pai-alt-dep{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
+  .pai-alt-dep a{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);color:var(--sub);padding:6px 12px;border-radius:12px;font-size:12px;font-weight:700;text-decoration:none;transition:.15s}
+  .pai-alt-dep a .material-icons-outlined{font-size:16px}
+  .pai-alt-dep a:hover{color:var(--ink)}
+  .pai-alt-dep a.aktif{color:#fff;border-color:transparent}
   .pai-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:11px}
   @media(max-width:560px){ .pai-kpis{grid-template-columns:repeat(2,1fr)} }
   .pai-k{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:10px 12px;position:relative;box-shadow:0 1px 3px rgba(20,20,50,.03)}
@@ -151,6 +156,16 @@
     @endforeach
   </div>
 </div>
+
+{{-- Mutfak (BOH) alt departman sekmeleri --}}
+@php $__boh = array_filter(function_exists('_departmanSablonlari') ? _departmanSablonlari() : [], fn ($t) => ($t['grup'] ?? '') === 'Mutfak (BOH)'); @endphp
+@if (isset($__boh[$kod ?? '']))
+<div class="pai-alt-dep">
+  @foreach ($__boh as $__k => $__t)
+    <a href="/departman-brief?dep={{ $__k }}" class="{{ $__k === $kod ? 'aktif' : '' }}" @if($__k === $kod)style="background:{{ $__t['renk'] }}"@endif><span class="material-icons-outlined" @if($__k !== $kod)style="color:{{ $__t['renk'] }}"@endif>{{ $__t['ikon'] }}</span>{{ $__k === 'mutfak' ? 'Genel / Sıcak' : trim(explode('/', $__t['ad'])[0]) }}</a>
+  @endforeach
+</div>
+@endif
 
 @if (!empty($demo))
 <div style="display:flex;align-items:center;gap:8px;background:color-mix(in srgb,var(--amber) 12%,var(--card));border:1px solid color-mix(in srgb,var(--amber) 40%,var(--line));border-radius:14px;padding:11px 15px;margin-bottom:12px;font-size:12.5px">

@@ -315,6 +315,10 @@
     $gruplar['Mutfak / BOH'] = [
         ['/departman-brief?dep=mutfak', 'wb_sunny', 'Mutfak Brifingi', '#F59E0B'],
         ['/departman-asistan?dep=mutfak', 'soup_kitchen', 'Mutfak AI Asistanı', '#F59E0B'],
+        ['/departman-brief?dep=soguk_mutfak', 'kitchen', 'Soğuk Mutfak', '#10B981'],
+        ['/departman-brief?dep=pastane', 'cake', 'Pastane / Tatlı', '#EC4899'],
+        ['/departman-brief?dep=kasap', 'kebab_dining', 'Kasap / Et Hazırlık', '#DC2626'],
+        ['/departman-brief?dep=bulasik', 'wash', 'Bulaşıkhane', '#06B6D4'],
         ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
         ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
         ['/satinalma-talep', 'assignment', 'Satın Alma Talebi', '#7C3AED'],

@@ -19082,6 +19082,87 @@ if (!function_exists('_departmanBriefVeri')) {
             $analiz[] = ['ikon' => 'security', 'renk' => '#475569', 'baslik' => 'Güvenlik & Yedek', 'alt' => 'erişim · KVKK · yedek', 'durum' => ($pasifHesap > 0 || $kvkkEksik || $yedekUyar) ? 'dikkat' : 'iyi', 'yorum' => trim(($pasifHesap > 0 ? "$pasifHesap pasif hesap. " : '') . ($kvkkEksik ? 'KVKK kaydı yok. ' : '') . ($yedekUyar ? 'Güncel yedek yok. ' : '')) ?: 'Erişim temiz, KVKK ve yedek kayıtlı. ✅'];
             $hizli = [['url' => '/bagli-cihazlar', 'ikon' => 'devices', 'lbl' => 'Bağlı Cihazlar'], ['url' => '/yazici-ayarlari', 'ikon' => 'print', 'lbl' => 'Yazıcı Ayarları'], ['url' => '/whatsapp', 'ikon' => 'chat', 'lbl' => 'WhatsApp Yönetimi'], ['url' => '/it-destek?tip=ariza', 'ikon' => 'build', 'lbl' => 'Arıza/Destek Defteri'], ['url' => '/app-yonetim', 'ikon' => 'qr_code_2', 'lbl' => 'App / QR Menü'], ['url' => '/it-sohbet', 'ikon' => 'smart_toy', 'lbl' => 'IT AI']];
         }
+        // ================= MUTFAK ALT DEPARTMANLARI (kendi verisi: Soğuk Mutfak / Pastane / Kasap / Bulaşıkhane) =================
+        elseif (in_array($kod, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) {
+            $depId = 0; try { if (Schema::hasTable('departmanlar')) $depId = (int) DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->value('id'); } catch (\Throwable $e) {}
+            // Kadro: personel_departman + personeller.departman_id (aktif olanlar)
+            $kadroIds = []; $giren = 0;
+            if ($depId) {
+                try { if (Schema::hasTable('personel_departman')) $kadroIds = DB::table('personel_departman')->where('sube_id', $sid)->where('departman_id', $depId)->pluck('personel_id')->all(); } catch (\Throwable $e) {}
+                try { $tekli = DB::table('personeller')->where('sube_id', $sid)->where('departman_id', $depId)->pluck('id')->all(); $kadroIds = DB::table('personeller')->whereIn('id', array_merge($kadroIds, $tekli))->where('aktif', 1)->pluck('id')->all(); } catch (\Throwable $e) {}
+                try { if ($kadroIds && Schema::hasTable('personel_mesai')) $giren = DB::table('personel_mesai')->where('sube_id', $sid)->whereDate('giris_at', $ds)->whereIn('personel_id', $kadroIds)->distinct()->count('personel_id'); } catch (\Throwable $e) {}
+            }
+            $kadro = count($kadroIds);
+            // Satın alma talepleri: yalnız bu departmanın açtıkları
+            $talepAcik = 0; $talepOnay = 0;
+            try { if ($depId && Schema::hasTable('satinalma_talepleri')) {
+                $talepAcik = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('departman_id', $depId)->whereIn('durum', ['departman_onay', 'yeni', 'teklif', 'onayda', 'fiyat_onay'])->count();
+                $talepOnay = (int) DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('departman_id', $depId)->where('durum', 'departman_onay')->count();
+            } } catch (\Throwable $e) {}
+
+            if ($kod === 'bulasik') {
+                // Bulaşıkhane menü ürünü hazırlamaz: görevleri /bulasik defterinden (departman_isler) gelir
+                $acikGorev = 0; $yuksekGorev = 0; $gecikenGorev = 0; $bitenGorev = 0;
+                try {
+                    if (function_exists('_departmanIsEnsure')) _departmanIsEnsure();
+                    $gq = fn () => DB::table('departman_isler')->where('sube_id', $sid)->where('departman_kod', 'bulasik');
+                    $acikGorev = (int) $gq()->whereIn('durum', ['acik', 'yapiliyor'])->count();
+                    $yuksekGorev = (int) $gq()->whereIn('durum', ['acik', 'yapiliyor'])->where('oncelik', 'yuksek')->count();
+                    $gecikenGorev = (int) $gq()->whereIn('durum', ['acik', 'yapiliyor'])->whereNotNull('son_tarih')->whereDate('son_tarih', '<', $ds)->count();
+                    $bitenGorev = (int) $gq()->where('durum', 'tamam')->whereDate('tamamlanan_at', $ds)->count();
+                } catch (\Throwable $e) {}
+                $kpis[] = ['ikon' => 'assignment', 'tint' => $acikGorev > 0 ? 't-amber' : 't-green', 'deger' => $acikGorev, 'label' => 'Açık görev', 'alt' => $yuksekGorev > 0 ? ($yuksekGorev . ' yüksek öncelik') : ($acikGorev > 0 ? 'takipte' : 'yok 👍'), 'link' => '/bulasik'];
+                $kpis[] = ['ikon' => 'schedule', 'tint' => $gecikenGorev > 0 ? 't-red' : 't-green', 'deger' => $gecikenGorev, 'label' => 'Geciken görev', 'alt' => $gecikenGorev > 0 ? 'son tarihi geçti' : 'gecikme yok', 'link' => '/bulasik'];
+                $kpis[] = ['ikon' => 'task_alt', 'tint' => 't-blue', 'deger' => $bitenGorev, 'label' => 'Bugün tamamlanan', 'alt' => 'görev', 'link' => '/bulasik'];
+                if ($gecikenGorev > 0) { $isler[] = ['ikon' => 'schedule', 'renk' => '#F43F5E', 'grup' => 'GÖREV', 'baslik' => "$gecikenGorev görevin son tarihi geçti", 'aciklama' => 'Önce bunları tamamla', 'aksiyon' => ['url' => '/bulasik', 'lbl' => 'Gör']]; $sinyal[] = "<b>$gecikenGorev</b> geciken görev"; }
+                if ($acikGorev > 0) { $isler[] = ['ikon' => 'assignment', 'renk' => '#06B6D4', 'grup' => 'GÖREV', 'baslik' => "$acikGorev açık görev var", 'aciklama' => 'Makine temizliği, tabak/çatal stoku, atık', 'aksiyon' => ['url' => '/bulasik', 'lbl' => 'Görevler']]; $sinyal[] = "<b>$acikGorev</b> açık görev"; }
+                $analiz[] = ['ikon' => 'wash', 'renk' => '#06B6D4', 'baslik' => 'Görev Durumu', 'alt' => 'bugün', 'durum' => $gecikenGorev > 0 ? 'risk' : ($acikGorev > 0 ? 'dikkat' : 'iyi'), 'yorum' => $acikGorev > 0 ? ("$acikGorev açık görev" . ($gecikenGorev > 0 ? ", $gecikenGorev tanesi gecikmiş" : '') . ", bugün $bitenGorev tamamlandı.") : ($bitenGorev > 0 ? "Bugün $bitenGorev görev tamamlandı, açık görev yok. 👍" : 'Açık görev yok. 👍')];
+                $hizli = [['url' => '/bulasik', 'ikon' => 'wash', 'lbl' => 'Bulaşıkhane Görevleri'], ['url' => '/mutfak-defteri', 'ikon' => 'menu_book', 'lbl' => 'Kontrol Defteri'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi']];
+            } else {
+                // İstasyon ürünleri: Departman Yönetimi'nde bağlanan menü kategorileri; yoksa ürünün istasyon alanı (Kasap'ın karşılığı yok, kategori bağlanmalı)
+                $katIds = []; $ist = ['soguk_mutfak' => 'soguk', 'pastane' => 'tatli'][$kod] ?? null;
+                try { if ($depId && Schema::hasColumn('menu_kategorileri', 'departman_id')) $katIds = DB::table('menu_kategorileri')->where('departman_id', $depId)->pluck('id')->all(); } catch (\Throwable $e) {}
+                $tanimli = (bool) $katIds;
+                if (!$tanimli && $ist) { try { $tanimli = DB::table('urunler')->where('istasyon', $ist)->exists(); } catch (\Throwable $e) {} }
+                $kq = function () use ($sid, $katIds, $ist) {
+                    $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->join('urunler', 'urunler.id', '=', 'adisyon_kalemleri.urun_id')->where('adisyonlar.sube_id', $sid);
+                    return $katIds ? $q->whereIn('urunler.kategori_id', $katIds) : $q->where('urunler.istasyon', $ist);
+                };
+                $bekle = 0; $hazir = 0; $iptalKalem = 0; $enCokList = [];
+                if ($tanimli) {
+                    try {
+                        $bekle = (int) $kq()->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor'])->count();
+                        $hazir = (int) $kq()->whereDate('adisyonlar.created_at', $ds)->whereNotIn('adisyon_kalemleri.durum', ['yeni', 'gonderildi', 'hazirlaniyor', 'iptal'])->sum('adisyon_kalemleri.adet');
+                        $iptalKalem = (int) $kq()->whereDate('adisyonlar.created_at', $ds)->where('adisyon_kalemleri.durum', 'iptal')->count();
+                        foreach ($kq()->whereDate('adisyonlar.created_at', $ds)->where('adisyon_kalemleri.durum', '!=', 'iptal')->selectRaw('urunler.ad ad, SUM(adisyon_kalemleri.adet) adet')->groupBy('urunler.ad')->orderByDesc('adet')->limit(3)->get() as $rr) { $enCokList[] = $rr->ad . ' (' . (int) $rr->adet . ')'; }
+                    } catch (\Throwable $e) {}
+                }
+                $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
+                $sktGecen = 0; try { if (Schema::hasTable('stok_partileri')) $sktGecen = (int) DB::table('stok_partileri')->where('sube_id', $sid)->where('kalan_miktar', '>', 0)->whereNotNull('skt')->whereDate('skt', '<', $ds)->count(); } catch (\Throwable $e) {}
+
+                $kpis[] = ['ikon' => 'pending_actions', 'tint' => !$tanimli ? 't-mor' : ($bekle > 5 ? 't-amber' : 't-green'), 'deger' => $tanimli ? $bekle : '—', 'label' => 'Bekleyen ürün', 'alt' => $tanimli ? ($bekle > 10 ? 'kuyruk yoğun' : 'kuyruk normal') : 'kategori bağla', 'link' => $tanimli ? '/mutfak' : '/departman-yonetim'];
+                $kpis[] = ['ikon' => 'restaurant', 'tint' => 't-blue', 'deger' => $tanimli ? $hazir : '—', 'label' => 'Bugün hazırlanan', 'alt' => 'adet'];
+                $kpis[] = ['ikon' => 'remove_shopping_cart', 'tint' => $iptalKalem > 0 ? 't-amber' : 't-green', 'deger' => $tanimli ? $iptalKalem : '—', 'label' => 'İptal/iade kalem', 'alt' => !$tanimli ? 'kategori bağla' : ($iptalKalem > 0 ? 'bugün geri döndü' : 'yok 👍')];
+                $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => 'mutfak geneli', 'link' => '/uretim-riski'];
+                $kpis[] = ['ikon' => 'event_busy', 'tint' => $sktGecen > 0 ? 't-red' : 't-green', 'deger' => $sktGecen, 'label' => 'SKT geçen parti', 'alt' => 'mutfak geneli', 'link' => '/parti-takip'];
+
+                if ($tanimli && $bekle > 8) { $isler[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'grup' => 'İSTASYON', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'aciklama' => 'Kuyruk yoğun — hız gerekebilir', 'aksiyon' => ['url' => '/mutfak', 'lbl' => 'Mutfak Ekranı']]; $sinyal[] = "<b>$bekle</b> bekleyen ürün"; }
+                if ($sktGecen > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktGecen partinin SKT'si geçmiş", 'aciklama' => 'Mutfak geneli — kendi rafını kontrol et', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; $sinyal[] = "<b>$sktGecen</b> SKT geçti"; }
+                if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Mutfak geneli — sana lazımsa talep aç', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
+                if (!$tanimli) { $isler[] = ['ikon' => 'link', 'renk' => '#7C3AED', 'grup' => 'KURULUM', 'baslik' => 'Bu istasyona menü kategorisi bağlanmamış', 'aciklama' => 'Departman Yönetimi\'nden kategorileri seç, ürün verisi gelsin', 'aksiyon' => ['url' => '/departman-yonetim', 'lbl' => 'Bağla']]; }
+
+                $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => !$tanimli ? 'notr' : ($bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi')), 'yorum' => !$tanimli ? 'Menü kategorisi bağlanınca bu istasyonun kuyruğu burada görünür.' : ($bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz. 👍')];
+                if ($enCokList) $analiz[] = ['ikon' => 'local_fire_department', 'renk' => '#EC4899', 'baslik' => 'En Çok Satan', 'alt' => 'bugün', 'durum' => 'notr', 'yorum' => 'Öne çıkanlar: ' . implode(' · ', $enCokList) . '. Hazırlıkta bunları önceliklendir.'];
+                $hizli = [['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'], ['url' => '/mutfak-defteri', 'ikon' => 'menu_book', 'lbl' => 'Kontrol Defteri'], ['url' => '/recete', 'ikon' => 'menu_book', 'lbl' => 'Reçeteler'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi'], ['url' => '/parti-takip', 'ikon' => 'event_busy', 'lbl' => 'SKT / Parti'], ['url' => '/sayim', 'ikon' => 'fact_check', 'lbl' => 'Sayım']];
+                $aiLink = ['url' => '/departman-asistan?dep=mutfak', 'lbl' => 'Mutfak AI ile konuş'];
+            }
+
+            // Ortak: kadro + kendi talepleri + kurulum uyarısı
+            if ($kadro > 0) { $gelmeyen = max(0, $kadro - $giren); $kpis[] = ['ikon' => 'badge', 'tint' => $gelmeyen > 0 ? 't-amber' : 't-green', 'deger' => $giren . '<small>/' . $kadro . '</small>', 'label' => 'Bugün gelen', 'alt' => $gelmeyen > 0 ? ($gelmeyen . ' giriş yapmadı') : 'tam kadro 👍']; }
+            $kpis[] = ['ikon' => 'shopping_cart_checkout', 'tint' => $talepOnay > 0 ? 't-amber' : ($talepAcik > 0 ? 't-blue' : 't-green'), 'deger' => $talepAcik, 'label' => 'Satın alma talebi', 'alt' => $talepOnay > 0 ? ($talepOnay . ' onay bekliyor') : ($talepAcik > 0 ? 'işlemde' : 'açık talep yok'), 'link' => $talepOnay > 0 ? '/talep-onaylarim' : '/satinalma-talep'];
+            if ($talepOnay > 0) { array_unshift($isler, ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$talepOnay talep onay bekliyor", 'aciklama' => 'Departman sorumlusu onaylar/reddeder', 'aksiyon' => ['url' => '/talep-onaylarim', 'lbl' => 'Onay Kutusu']]); $sinyal[] = "<b>$talepOnay</b> onay bekleyen"; }
+            if (!$depId) { $isler[] = ['ikon' => 'group_add', 'renk' => '#7C3AED', 'grup' => 'KURULUM', 'baslik' => ($tmpl['ad'] ?? 'Departman') . ' henüz oluşturulmamış', 'aciklama' => 'Departman Yönetimi\'nden oluştur, personelini ata', 'aksiyon' => ['url' => '/departman-yonetim', 'lbl' => 'Oluştur']]; }
+        }
         // ================= GENEL (diğer tüm departmanlar — yetki tabanlı) =================
         else {
             if ($hasP('gor_stok')) {
