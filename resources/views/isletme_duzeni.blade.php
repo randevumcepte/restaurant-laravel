@@ -565,7 +565,15 @@ function masaDuzenleKaydet(){
     headers:{'Content-Type':'application/json','X-CSRF-TOKEN':(window.csrf||(document.querySelector('meta[name=csrf-token]')||{}).content||'')},
     body: JSON.stringify({ id:id, ad:ad, kapasite:kap, bolge_id: bolge })
   }).then(function(r){ return r.json(); }).then(function(d){
-    if(d.ok==1){ location.reload(); }
+    if(d.ok==1){
+      if(!idzDuzen){ location.reload(); return; }
+      var m = IDZ.masalar.find(function(x){ return x.id === id; });
+      if(m){ m.ad = ad; m.kapasite = kap; if(bolge) m.b = +bolge; }
+      if(btn){ btn.disabled = false; btn.style.opacity = 1; }
+      masaDuzenleKapat(); idzAlanSayilari();
+      if(m && m.b !== idzAktif) idzSecili = null;
+      idzOzellikCiz(); idzCiz(); rkBilgi('Masa güncellendi.', 'ok');
+    }
     else { if(btn){ btn.disabled=false; btn.style.opacity=1; } alert(d.hata || 'Güncellenemedi.'); }
   }).catch(function(){ if(btn){ btn.disabled=false; btn.style.opacity=1; } alert('Sunucuya ulaşılamadı.'); });
 }
@@ -829,7 +837,44 @@ function idzPlanKaydet(){
     idzDuzenKapat(); rkBilgi('Masa planı kaydedildi, Salon Şeması da güncellendi.', 'ok');
   }).catch(function(){ d.disabled = false; rkBilgi('Sunucuya ulaşılamadı.', 'er'); });
 }
-window.addEventListener('beforeunload', function(e){ if(idzDuzen && Object.keys(idzKirli).length){ e.preventDefault(); e.returnValue = ''; } });
+// ---- Kaydedilmemiş düzenleme: sayfadan çıkılsa da kaybolmaz ----
+var IDZ_TASLAK = 'idz_taslak_' + IDZ.sube;
+function idzTaslakSil(){ try{ localStorage.removeItem(IDZ_TASLAK); }catch(e){} }
+window.addEventListener('pagehide', function(){
+  try{
+    if(idzDuzen && Object.keys(idzKirli).length) localStorage.setItem(IDZ_TASLAK, JSON.stringify({plan: IDZ.plan, kirli: idzKirli, alan: idzAktif, t: Date.now()}));
+    else idzTaslakSil();
+  }catch(e){}
+});
+function idzTaslakAc(t){
+  if(IDZ.alanlar.some(function(a){ return a.id === t.alan; })) idzAktif = t.alan;
+  idzDuzenAc();
+  IDZ.plan = t.plan; idzKirli = t.kirli || {};
+  idzOzellikCiz(); idzCiz();
+}
+// Form sonrası dönüşte (masa/alan ekleme, taşıma) sessizce devam eder, aksi halde sorar
+function idzTaslakKontrol(formDonusu){
+  var t = null;
+  try{ t = JSON.parse(localStorage.getItem(IDZ_TASLAK) || 'null'); }catch(e){}
+  if(!t || !t.plan) return;
+  if(Date.now() - (t.t || 0) > 7 * 864e5){ idzTaslakSil(); return; }
+  if(formDonusu){ idzTaslakAc(t); return; }
+  rkOnay('Kaydedilmemiş bir masa planı düzenlemeniz var. Kaldığınız yerden devam edilsin mi?', function(){ idzTaslakAc(t); }, 'var(--mor1)', 'Devam Et', function(){ idzTaslakSil(); });
+}
+// Düzenlerken menüden başka sayfaya geçiş sistem popup'ı ile sorulur
+document.addEventListener('click', function(e){
+  if(!idzDuzen || !Object.keys(idzKirli).length) return;
+  var a = e.target.closest('a[href]'); if(!a || a.target === '_blank' || a.getAttribute('href').charAt(0) === '#') return;
+  e.preventDefault(); e.stopPropagation();
+  var git = a.href;
+  rkOnay('Masa planındaki değişiklikler kaydedilmedi. Kaydetmeden çıkılsın mı?', function(){ idzKirli = {}; idzTaslakSil(); location.href = git; }, 'var(--kirmizi)', 'Kaydetmeden Çık');
+}, true);
+function idzAlanSayilari(){
+  document.querySelectorAll('#idzAlanlar .idz-alan[data-alan]').forEach(function(a){
+    var b = a.querySelector('b'), bid = +a.getAttribute('data-alan');
+    if(b) b.textContent = IDZ.masalar.filter(function(m){ return m.b === bid; }).length;
+  });
+}
 // ---- Masa kartı ----
 function idzPopKapat(){ var p = document.getElementById('idzPop'); p.classList.remove('acik'); idzVurgu = null; }
 function idzPopAc(id, t){
@@ -868,12 +913,14 @@ idzAramaKur(function(esle){
 });
 // ---- Saat + ilk çizim ----
 (function(){
+  var formDonusu = false;
   try{
     var a = sessionStorage.getItem('idz_alan');
     if(a !== null && IDZ.alanlar.some(function(x){ return x.id === +a; })) idzAktif = +a;
-    if(sessionStorage.getItem('idz_don')){ sessionStorage.removeItem('idz_don'); var s = sessionStorage.getItem('idz_sekme'); if(s) idzSekme(s); }
+    if(sessionStorage.getItem('idz_don')){ formDonusu = true; sessionStorage.removeItem('idz_don'); var s = sessionStorage.getItem('idz_sekme'); if(s) idzSekme(s); }
   }catch(e){}
   idzCiz();
+  window.addEventListener('load', function(){ idzTaslakKontrol(formDonusu); });
   var zaman = null;
   window.addEventListener('resize', function(){ clearTimeout(zaman); zaman = setTimeout(idzCiz, 80); });
   if(window.ResizeObserver) new ResizeObserver(function(){ clearTimeout(zaman); zaman = setTimeout(idzCiz, 80); }).observe(document.querySelector('.idz'));
