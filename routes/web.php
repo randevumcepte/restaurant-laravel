@@ -30326,7 +30326,7 @@ if (!function_exists('_santralAuthGuard')) {
     {
         $beklenen = (string) env('SANTRAL_SECRET', '');
         if ($beklenen === '') return null;
-        $gelen = (string) ($r->header('X-Santral-Secret') ?: $r->input('santral_secret') ?: '');
+        $gelen = (string) ($r->header('X-Santral-Secret') ?: $r->input('santral_secret') ?: $r->input('key') ?: ''); // key: cron görevleri
         if (!hash_equals($beklenen, $gelen)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz santral isteği'], 401);
         return null;
     }
