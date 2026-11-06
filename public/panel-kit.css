@@ -136,15 +136,21 @@ a{text-decoration:none}
   .rk-main{margin-left:68px !important;transition:margin-left .25s cubic-bezier(.4,0,.2,1)}
   .rk-side:hover ~ .rk-main, .rk-side.genis ~ .rk-main{margin-left:258px !important}
   /* Head (ResteOS branding) collapsed'de daralsin, hover'da genislesin */
-  .rk-side-head{padding:14px 10px;transition:padding .25s ease;overflow:hidden;min-height:70px}
+  .rk-side-head{padding:18px 10px 16px;transition:padding .25s ease;overflow:hidden}
   .rk-side:hover .rk-side-head, .rk-side.genis .rk-side-head{padding:18px 18px 16px}
-  /* Head metinleri (ad, sube, kul) collapsed'de tamamen gizli (hem opacity hem height) */
-  .rk-side-head .ad,.rk-side-head .sube,.rk-side-head .kul{opacity:0;transition:opacity .18s ease;white-space:nowrap;overflow:hidden;max-height:0}
-  .rk-side:hover .rk-side-head .ad, .rk-side.genis .rk-side-head .ad{opacity:1;max-height:30px}
-  .rk-side:hover .rk-side-head .sube, .rk-side.genis .rk-side-head .sube{opacity:1;max-height:20px}
-  .rk-side:hover .rk-side-head .kul, .rk-side.genis .rk-side-head .kul{opacity:1;max-height:18px}
+  /* Head metinleri collapsed'de yalniz saydam: yukseklik sabit kalsin ki menu acilirken asagi kaymasin */
+  .rk-side-head .ad,.rk-side-head .sube,.rk-side-head .kul{opacity:0;transition:opacity .18s ease;white-space:nowrap;overflow:hidden}
+  .rk-side:hover .rk-side-head .ad, .rk-side.genis .rk-side-head .ad{opacity:1}
+  .rk-side:hover .rk-side-head .sube, .rk-side.genis .rk-side-head .sube{opacity:1}
+  .rk-side:hover .rk-side-head .kul, .rk-side.genis .rk-side-head .kul{opacity:1}
+  /* Menu kaymasin: tarayici konumu kendi oynatmasin, kaydirma cubugu yer degistirmesin */
+  .rk-menu{overflow-anchor:none;scrollbar-gutter:stable}
+  .rk-side-head,.rk-side-foot{flex:none}
+  .rk-side-foot a{height:47px;box-sizing:border-box}
+  /* Genislerken satirlar son genislikte dizilir; animasyon sirasinda basliklar alt satira gecip zipla(ma)sin */
+  .rk-side:hover .rk-menu, .rk-side.genis .rk-menu{width:257px}
   /* Menu / footer linklerindeki metin kismi gizlemek icin font-size:0 (text node'u yakalamanin en guvenli yolu) */
-  .rk-menu a,.rk-side-foot a{font-size:0;transition:font-size .18s ease;white-space:nowrap;overflow:hidden}
+  .rk-menu a,.rk-side-foot a{font-size:0;transition:background .12s,color .12s;white-space:nowrap;overflow:hidden}
   .rk-side:hover .rk-menu a, .rk-side.genis .rk-menu a{font-size:14.5px}
   .rk-side:hover .rk-side-foot a, .rk-side.genis .rk-side-foot a{font-size:14.5px}
   /* Ikon font-size collapsed'de de korunsun */
@@ -155,7 +161,7 @@ a{text-decoration:none}
   .rk-side:not(:hover):not(.genis) .rk-cat{height:0;padding:0;margin:0;border:0;opacity:0;overflow:hidden;pointer-events:none;font-size:0}
   .rk-side:not(:hover):not(.genis) .rk-cat.kapali + .rk-cat-body{display:block}
   .rk-side:not(:hover):not(.genis) .rk-cat-body .rk-grp{padding-left:0}
-  .rk-grp{transition:opacity .18s ease,padding .18s ease,height .25s ease}
+  .rk-grp{transition:opacity .18s ease}
   /* Collapsed'de kapali gruplar bile acik gorunsun (yoksa dar menu bos kalir) */
   .rk-side:not(:hover):not(.genis) .rk-grp.kapali + .rk-grp-body{display:block}
   /* Masaustunde hamburger kesinlikle gizli (hover ile aciyoruz) */

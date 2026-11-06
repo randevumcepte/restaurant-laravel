@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=13">
+    <link rel="stylesheet" href="/panel-kit.css?v=14">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -57,16 +57,16 @@
     .rk-pin.aktif .pok{color:#fff;opacity:.9}
     /* Collapsed sidebar (>=641px, hover degil): pin'ler sade ikon olsun */
     @media (min-width:641px){
-      .rk-side:not(:hover) .rk-pin-pano{padding:8px 0 10px;margin-bottom:4px;gap:2px;border-bottom:1px solid rgba(120,120,140,.14)}
-      .rk-side:not(:hover) .rk-pin{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;justify-content:center;height:44px;margin:1px 10px;border-radius:11px;transform:none !important}
-      .rk-side:not(:hover) .rk-pin::before{display:none}
-      .rk-side:not(:hover) .rk-pin:hover{background:color-mix(in srgb,#7C3AED 12%,transparent) !important}
-      .rk-side:not(:hover) .rk-pin .pi{background:transparent !important;width:auto !important;height:auto !important}
-      .rk-side:not(:hover) .rk-pin .pi .material-icons-outlined{color:#7C3AED !important;font-size:22px !important}
-      .rk-side:not(:hover) .rk-pin .pt,
-      .rk-side:not(:hover) .rk-pin .pok{display:none}
-      .rk-side:not(:hover) .rk-pin.aktif{background:linear-gradient(135deg,#7C3AED,#4F46E5) !important;box-shadow:0 4px 12px rgba(124,58,237,.3) !important}
-      .rk-side:not(:hover) .rk-pin.aktif .pi .material-icons-outlined{color:#fff !important}
+      .rk-side:not(:hover):not(.genis).rk-pin-pano{padding:8px 0 10px;margin-bottom:4px;gap:2px;border-bottom:1px solid rgba(120,120,140,.14)}
+      .rk-side:not(:hover):not(.genis).rk-pin{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;justify-content:center;height:44px;margin:1px 10px;border-radius:11px;transform:none !important}
+      .rk-side:not(:hover):not(.genis).rk-pin::before{display:none}
+      .rk-side:not(:hover):not(.genis).rk-pin:hover{background:color-mix(in srgb,#7C3AED 12%,transparent) !important}
+      .rk-side:not(:hover):not(.genis).rk-pin .pi{background:transparent !important;width:auto !important;height:auto !important}
+      .rk-side:not(:hover):not(.genis).rk-pin .pi .material-icons-outlined{color:#7C3AED !important;font-size:22px !important}
+      .rk-side:not(:hover):not(.genis).rk-pin .pt,
+      .rk-side:not(:hover):not(.genis).rk-pin .pok{display:none}
+      .rk-side:not(:hover):not(.genis).rk-pin.aktif{background:linear-gradient(135deg,#7C3AED,#4F46E5) !important;box-shadow:0 4px 12px rgba(124,58,237,.3) !important}
+      .rk-side:not(:hover):not(.genis).rk-pin.aktif .pi .material-icons-outlined{color:#fff !important}
     }
     /* Sağ üst profil avatarı */
     .rk-profil{flex:none;width:40px;height:40px;border-radius:50%;padding:2px;background:linear-gradient(135deg,var(--mor1),var(--mavi));text-decoration:none;transition:transform .12s,box-shadow .15s}
@@ -491,6 +491,88 @@
             <a href="/pos-cikis"><span class="material-icons-outlined">logout</span> Çıkış</a>
         </div>
     </aside>
+    {{-- Menu durumu icerik cizilmeden uygulanir: sayfa gecisinde menu kipirdamasin --}}
+    <script>
+    function rkGrpTog(el){
+        // Grup basligi tiklaninca AC/KAPA (akordiyon toggle)
+        el.classList.toggle('kapali');
+        rkMenuDurumKaydet();
+    }
+    function rkCatTog(el){
+        // Ust baslik (kategori) tiklaninca AC/KAPA
+        el.classList.toggle('kapali');
+        rkMenuDurumKaydet();
+    }
+    // Acik/kapali basliklar: kullanici kapatana kadar oldugu gibi kalir (fare cikisi ve sayfa degisimi bozmaz)
+    function rkMenuDurumKaydet(){
+        var d = {};
+        document.querySelectorAll('#rkSide .rk-cat, #rkSide .rk-grp').forEach(function(h){
+            d[h.dataset.cat ? 'c:'+h.dataset.cat : 'g:'+h.dataset.grp] = !h.classList.contains('kapali');
+        });
+        try{ localStorage.setItem('rk_menu_durum', JSON.stringify(d)); }catch(e){}
+    }
+    (function(){
+        var side = document.getElementById('rkSide'); if(!side) return;
+        var menu = side.querySelector('.rk-menu');
+        var mq = window.matchMedia('(min-width:641px)');
+        var d = {};
+        try{ d = JSON.parse(localStorage.getItem('rk_menu_durum')) || {}; }catch(e){}
+        side.querySelectorAll('.rk-cat, .rk-grp').forEach(function(h){
+            var k = h.dataset.cat ? 'c:'+h.dataset.cat : 'g:'+h.dataset.grp;
+            if(k in d) h.classList.toggle('kapali', !d[k]);
+        });
+        // Bulunulan sayfanin basliklari her zaman acik
+        var aktifA = menu.querySelector('a.aktif');
+        if(aktifA){
+            var aktifGovde = aktifA.closest('.rk-grp-body'), aktifKat = aktifA.closest('.rk-cat-body');
+            if(aktifGovde) aktifGovde.previousElementSibling.classList.remove('kapali');
+            if(aktifKat) aktifKat.previousElementSibling.classList.remove('kapali');
+        }
+        rkMenuDurumKaydet();
+
+        // Kaydirma konumu yalniz GENIS menu icin tutulur; dar menu (hepsi acik ikon listesi) bambaska yukseklikte
+        var genisKonum = 0, t;
+        try{ genisKonum = parseInt(sessionStorage.getItem('rk_menu_scroll'),10)||0; }catch(e){}
+        function konumKaydet(){ try{ sessionStorage.setItem('rk_menu_scroll', genisKonum); }catch(e){} }
+        function genisMi(){ return !mq.matches || side.classList.contains('genis'); }
+        // Dar menude bulunulan sayfanin ikonu gorunur olsun
+        function darKonum(){
+            if(!aktifA) { menu.scrollTop = 0; return; }
+            var m = menu.getBoundingClientRect(), a = aktifA.getBoundingClientRect();
+            menu.scrollTop += a.top - m.top - menu.clientHeight/2;
+        }
+        // Masaustu mini menu (>=641px): menuye gelince acilir; FARE MENUDEN CIKINCA daralir.
+        function ac(){
+            if(!mq.matches || side.classList.contains('genis')) return;
+            side.classList.add('genis');
+            menu.scrollTop = genisKonum;
+        }
+        function kapa(){
+            if(!side.classList.contains('genis')) return;
+            side.classList.remove('genis');
+            darKonum();
+        }
+        side.addEventListener('pointerenter', ac);
+        side.addEventListener('pointerdown', ac);
+        // FARE menuden cikinca kapat (dokunustan dogan sahte leave'i yok say)
+        side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
+        // menu DISINA tiklayinca/dokununca kapat
+        document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
+        // Menudeki bir LINK'e tiklayinca: "yeni sayfada acik gel" tek-seferlik isaret (fare hareketi bunu SILMEZ)
+        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a')){ try{ sessionStorage.setItem('rk_menu_nav_acik','1'); }catch(_){} } });
+        menu.addEventListener('scroll', function(){
+            if(!genisMi()) return;
+            genisKonum = menu.scrollTop;
+            clearTimeout(t); t = setTimeout(konumKaydet, 80);
+        }, {passive:true});
+        menu.addEventListener('click', konumKaydet); // link tiklaninca reload oncesi kaydet
+        // Yeni sayfada: isaret varsa menu ACIK gelsin ve isareti TUKET (tek sefer). Fare ustundeyse acik kalir, cikinca pointerleave kapatir.
+        var navAcik = false;
+        try{ navAcik = mq.matches && sessionStorage.getItem('rk_menu_nav_acik')==='1'; if(navAcik) sessionStorage.removeItem('rk_menu_nav_acik'); }catch(e){}
+        if(navAcik) side.classList.add('genis');
+        if(genisMi()) menu.scrollTop = genisKonum; else darKonum();
+    })();
+    </script>
     <main class="rk-main">
         <div class="rk-header">
             <button class="rk-hamburger" onclick="rkSideTog()" aria-label="Menü"><span class="material-icons-outlined">menu</span></button>
@@ -559,46 +641,6 @@
         const r = await fetch(url, opt);
         return r.json();
     }
-    function rkGrpTog(el){
-        // Grup basligi tiklaninca AC/KAPA (akordiyon toggle)
-        el.classList.toggle('kapali');
-    }
-    function rkCatTog(el){
-        // Ust baslik (kategori) tiklaninca AC/KAPA
-        el.classList.toggle('kapali');
-    }
-    // Masaustu mini menu (>=641px): menuye gelince acilir; FARE MENUDEN CIKINCA kapanir.
-    // Bir LINK'e tiklayinca yeni sayfada menu ACIK gelir (tek-seferlik isaret; fare hareketinden BAGIMSIZ).
-    (function(){
-        var side = document.getElementById('rkSide'); if(!side) return;
-        var mq = window.matchMedia('(min-width:641px)');
-        function ac(){ if(mq.matches) side.classList.add('genis'); }
-        function kapa(){
-            side.classList.remove('genis');
-            // akordiyonlari sifirla: yalniz aktif sayfanin grubu acik kalsin
-            var aktifA = side.querySelector('.rk-grp-body a.aktif');
-            var aktifGrp = aktifA ? aktifA.closest('.rk-grp-body').previousElementSibling : null;
-            side.querySelectorAll('.rk-grp').forEach(function(h){ if(h !== aktifGrp) h.classList.add('kapali'); });
-        }
-        side.addEventListener('pointerenter', ac);
-        side.addEventListener('pointerdown', ac);
-        // FARE menuden cikinca kapat (dokunustan dogan sahte leave'i yok say)
-        side.addEventListener('pointerleave', function(e){ if(mq.matches && e.pointerType === 'mouse') kapa(); });
-        // menu DISINA tiklayinca/dokununca kapat
-        document.addEventListener('pointerdown', function(e){ if(mq.matches && !side.contains(e.target)) kapa(); });
-        // Menudeki bir LINK'e tiklayinca: "yeni sayfada acik gel" tek-seferlik isaret (fare hareketi bunu SILMEZ)
-        side.addEventListener('click', function(e){ if(mq.matches && e.target.closest('a')){ try{ sessionStorage.setItem('rk_menu_nav_acik','1'); }catch(_){} } });
-        // Yeni sayfada: isaret varsa menu ACIK gelsin ve isareti TUKET (tek sefer). Fare ustundeyse acik kalir, cikinca pointerleave kapatir.
-        try{ if(mq.matches && sessionStorage.getItem('rk_menu_nav_acik')==='1'){ sessionStorage.removeItem('rk_menu_nav_acik'); side.classList.add('genis'); } }catch(e){}
-    })();
-    // Sol menu kaydirma konumunu koru (sayfa degisince en uste / dashboard'a ziplamasin)
-    (function(){
-        var menu = document.querySelector('.rk-menu'); if(!menu) return;
-        try{ var s = sessionStorage.getItem('rk_menu_scroll'); if(s!==null) menu.scrollTop = parseInt(s,10)||0; }catch(e){}
-        var t; function kaydet(){ try{ sessionStorage.setItem('rk_menu_scroll', menu.scrollTop); }catch(e){} }
-        menu.addEventListener('scroll', function(){ clearTimeout(t); t=setTimeout(kaydet, 80); }, {passive:true});
-        menu.addEventListener('click', kaydet); // link tiklaninca reload oncesi kaydet
-    })();
     function para(v) { return new Intl.NumberFormat('tr-TR').format(Math.round(v)) + ' ₺'; }
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {})); }
 </script>
