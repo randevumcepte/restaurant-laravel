@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#7C3AED">
     <title>@yield('title', 'ResteOS') — ResteOS</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-    <link rel="stylesheet" href="/panel-kit.css?v=12">
+    <link rel="stylesheet" href="/panel-kit.css?v=13">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>try{if(localStorage.getItem('app_koyu')==='1')document.documentElement.classList.add('_koyu');}catch(e){}</script>
@@ -28,6 +28,16 @@
     .rk-grp .rk-grp-ok{font-size:19px;transition:transform .2s ease;opacity:.6}
     .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
     .rk-grp.kapali + .rk-grp-body{display:none}
+    /* ÜST BAŞLIK (kategori) — açılır bölüm başlığı */
+    .rk-cat{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;padding:12px 16px;margin-top:8px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--mor1,#7C3AED);background:color-mix(in srgb,var(--mor1,#7C3AED) 9%,transparent);border-top:1px solid var(--line)}
+    .rk-cat:first-of-type{margin-top:2px}
+    .rk-cat .rk-cat-ik{font-size:17px}
+    .rk-cat .rk-cat-ad{flex:1}
+    .rk-cat .rk-cat-ok{font-size:18px;transition:transform .2s ease;opacity:.6}
+    .rk-cat.kapali .rk-cat-ok{transform:rotate(-90deg)}
+    .rk-cat.kapali + .rk-cat-body{display:none}
+    body.koyu .rk-cat{color:#a78bfa}
+    .rk-cat-body .rk-grp{padding-left:22px}
     /* PINNED LINKS (satın almacı — Özet · AI Asistan · Stok & Satın Alma) */
     .rk-pin-pano{display:flex;flex-direction:column;gap:6px;padding:12px 10px 10px;margin-bottom:8px;border-bottom:1px solid rgba(120,120,140,.14)}
     .rk-pin{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;text-decoration:none;color:#1e293b;background:#fff;border:1.5px solid #e2e8f0;font-size:14.5px;font-weight:800;transition:all .14s;position:relative;overflow:hidden}
@@ -409,51 +419,46 @@
             <div class="kul">{{ $kulAd }} · {{ $kulRol }}</div>
         </a>
         <nav class="rk-menu">
+            @php
+                // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
+                $_kategoriler = [
+                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
+                    'OPERASYON' => ['Panel', 'Satış & Servis', 'Departman Operasyon', 'Menü & Ürünler'],
+                    'AYARLAR' => ['Ayarlar & Entegrasyon'],
+                ];
+                $_katIkon = ['YÖNETİM' => 'workspace_premium', 'OPERASYON' => 'tune', 'AYARLAR' => 'settings'];
+                $_grupKat = [];
+                foreach ($_kategoriler as $_kk => $_gs) foreach ($_gs as $_g) $_grupKat[$_g] = $_kk;
+                $_mutfakEkran = ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/mutfak-defteri', '/recete', '/rezervasyon'];
+                $_itemGorunur = function ($it) use ($_pp, $_harita, $_mutfakEkran) {
+                    if (!$_pp) return true;
+                    if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
+                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true;
+                    if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], $_mutfakEkran)) return true;
+                    if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
+                    return false;
+                };
+                $_grupGorunur = function ($items) use ($_itemGorunur) { foreach ($items as $it) if ($_itemGorunur($it)) return true; return false; };
+            @endphp
+            {{-- Kategorisiz (standalone) üst gruplar: Patron AI, __PIN__ — sırayı koru --}}
             @foreach ($gruplar as $grupAd => $items)
+                @if (!isset($_grupKat[$grupAd]))
+                    @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
+                @endif
+            @endforeach
+            {{-- ÜST BAŞLIKLAR (açılır) → departman grupları --}}
+            @foreach ($_kategoriler as $katAd => $_katGrupAdlari)
                 @php
-                    $gorunur = array_values(array_filter($items, function ($it) use ($_pp, $_harita) {
-                        if (!$_pp) return true;
-                        if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
-                        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar']) || \Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return true; // departman brifingi herkese açık (route kendi yetkisini uygular)
-                        if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/mutfak-defteri', '/recete', '/rezervasyon'])) return true; // mutfak operasyon ekranları: gor_mutfak olana da açık (brief kartlarının sayfaları)
-                        if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
-                        return false;                                                          // haritasız = kısıtlı role gizle (sızma önleme)
-                    }));
-                    $grupAktif = collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
+                    $_catGruplar = [];
+                    foreach ($_katGrupAdlari as $_g) if (isset($gruplar[$_g]) && $_grupGorunur($gruplar[$_g])) $_catGruplar[$_g] = $gruplar[$_g];
+                    $_catAktif = false;
+                    foreach ($_catGruplar as $_g => $_gi) { foreach ($_gi as $_it) { if ($aktifMi($_it[0])) { $_catAktif = true; break 2; } } }
                 @endphp
-                @if ($grupAd === '__PIN__' && count($gorunur))
-                    {{-- SATIN ALMACI: üstte 3 standalone büyük link (grup değil) --}}
-                    <div class="rk-pin-pano">
-                        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
-                            @php
-                                $aktif = $aktifMi($url);
-                                $badge = $_menuBadge[$url] ?? 0;
-                            @endphp
-                            <a href="{{ $url }}" class="rk-pin{{ $aktif ? ' aktif' : '' }}">
-                                <span class="pi">
-                                    <span class="material-icons-outlined">{{ $ikon }}</span>
-                                    @if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif
-                                </span>
-                                <span class="pt">{{ $ad }}</span>
-                                <span class="material-icons-outlined pok">chevron_right</span>
-                            </a>
-                        @endforeach
-                    </div>
-                @elseif (count($gorunur))
-                    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
-                    <div class="rk-grp-body">
-                        @foreach ($gorunur as [$url, $ikon, $ad, $renk])
-                            @php
-                                $aktif = $aktifMi($url);
-                                $badge = $_menuBadge[$url] ?? 0;
-                            @endphp
-                            <a href="{{ $url }}" class="{{ $aktif ? 'aktif' : '' }}">
-                                <span class="rk-ikon-wrap">
-                                    <span class="material-icons-outlined">{{ $ikon }}</span>
-                                    @if ($badge > 0)<span class="rk-badge{{ $badge > 99 ? ' cok' : '' }}">{{ $_badgeMetin($badge) }}</span>@endif
-                                </span>
-                                {{ $ad }}
-                            </a>
+                @if (count($_catGruplar))
+                    <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM') ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
+                    <div class="rk-cat-body">
+                        @foreach ($_catGruplar as $grupAd => $items)
+                            @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
                         @endforeach
                     </div>
                 @endif
@@ -510,7 +515,11 @@
         return r.json();
     }
     function rkGrpTog(el){
-        // Baslik tiklaninca AC/KAPA (normal akordiyon toggle)
+        // Grup basligi tiklaninca AC/KAPA (akordiyon toggle)
+        el.classList.toggle('kapali');
+    }
+    function rkCatTog(el){
+        // Ust baslik (kategori) tiklaninca AC/KAPA
         el.classList.toggle('kapali');
     }
     // Masaustu mini menu (>=641px): menuye gelince acilir; FARE MENUDEN CIKINCA kapanir.
