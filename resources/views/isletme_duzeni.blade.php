@@ -243,6 +243,7 @@
         <button class="rk-btn bos" style="padding:7px 10px;color:var(--kirmizi);border-color:color-mix(in srgb,var(--kirmizi) 30%,transparent)"><span class="material-icons-outlined" style="font-size:15px">delete_outline</span></button>
       </form>
     </div>
+    @include('layout._kasa_sayfa_form', ['k' => $k])
     {{-- Kasa -> personel --}}
     <div class="rk-sub2" style="font-size:11.5px;font-weight:700;margin-bottom:6px;color:var(--sub2)">PERSONEL (bu kasaya atanınca girişte otomatik burada çalışır)</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">

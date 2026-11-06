@@ -47,6 +47,7 @@ class PanelYetki
         // Yetki kontrolü
         $izin = true;
         try { $izin = function_exists('_panelYetkiVar') ? _panelYetkiVar($p, $key) : true; } catch (\Throwable $e) { $izin = true; }
+        if ($izin && function_exists('_kasiyerSayfaIzinli')) $izin = _kasiyerSayfaIzinli($p, $eslesen);
         if (!$izin) {
             return response(view('yetkisiz', ['sayfa' => $eslesen]), 403);
         }

@@ -83,6 +83,7 @@
             <span class="material-icons-outlined" style="font-size:16px">save</span>
           </button>
         </form>
+        @include('layout._kasa_sayfa_form', ['k' => $k])
         <div style="display:flex;gap:8px">
           <form method="POST" action="/kasalar/duzenle" style="flex:1">
             @csrf

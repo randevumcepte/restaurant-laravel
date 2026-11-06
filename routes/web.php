@@ -9206,12 +9206,103 @@ if (!function_exists('_rolKademe')) {
         return ['sahip' => 'sahip', 'mudur' => 'supervizor', 'satinalmaci' => 'satinalma', 'kasa' => 'kasa', 'mutfak' => 'mutfak', 'garson' => 'personel'][$rol ?? ''] ?? 'personel';
     }
 }
+// ===== KASİYER: yalnız Panel sayfaları + kasa noktasına göre kısıt =====
+if (!function_exists('_kasaSayfaSecenekleri')) {
+    // Kasa noktasında açılabilecek sayfalar => [etiket, yetki anahtarı (null=herkese), birlikte açılan alt adresler]
+    function _kasaSayfaSecenekleri()
+    {
+        return [
+            '/pos' => ['Masalar', 'gor_pos', []],
+            '/departman-brief' => ['Sabah Brifingim', null, []],
+            '/dashboard' => ['Özet', 'gor_dashboard', ['/patron']],
+            '/mutfak' => ['Mutfak', 'gor_mutfak', []],
+            '/rezervasyon' => ['Rezervasyon', 'gor_rezervasyon', []],
+            '/paket' => ['Paket', 'gor_paket', []],
+            '/kasa' => ['Kasa (Vardiya)', 'gor_kasa', []], // nakit yalnız açık vardiyaya yazılır (_kasaYaz); vardiya buradan açılır
+            '/z-raporu' => ['Z Raporu', 'gor_z_raporu', []],
+        ];
+    }
+}
+if (!function_exists('_kasiyerMi')) {
+    // Yöneticiye yükseltilmiş (kademe süpervizör vb.) kasa rolü kısıtlanmaz.
+    function _kasiyerMi($personel)
+    {
+        if (!$personel) return false;
+        $rol = $personel->rol ?? '';
+        if (in_array($rol, ['sahip', 'mudur'], true)) return false;
+        $kademe = $personel->kademe ?? _rolKademe($rol);
+        return $kademe === 'kasa' || ($rol === 'kasa' && !in_array($kademe, ['supervizor', 'sahip', 'satinalma'], true));
+    }
+}
+if (!function_exists('_kasaSayfaEnsure')) {
+    function _kasaSayfaEnsure()
+    {
+        if (cache()->get('kasa_sayfalar_ok')) return;
+        try {
+            if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+            if (Schema::hasTable('kasalar') && !Schema::hasColumn('kasalar', 'sayfalar')) Schema::table('kasalar', fn ($t) => $t->text('sayfalar')->nullable()); // JSON adres listesi; NULL = hepsi açık (ana kasa)
+            cache()->put('kasa_sayfalar_ok', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_kasaKayitSayfalari')) {
+    // Kasa noktası kaydının açık sayfaları. Masalar hep açık: giriş oraya düşer.
+    function _kasaKayitSayfalari($kasa)
+    {
+        $tum = array_keys(_kasaSayfaSecenekleri());
+        $j = ($kasa && !empty($kasa->sayfalar)) ? json_decode($kasa->sayfalar, true) : null;
+        if (!is_array($j)) return $tum;
+        return array_values(array_intersect($tum, array_merge(['/pos'], $j)));
+    }
+}
+if (!function_exists('_kasaNoktaSayfalari')) {
+    // Webde girişte seçilen kasa; uygulamada (oturum yok) personelin atanmış kasası. Kasa yoksa tüm Panel.
+    function _kasaNoktaSayfalari($personel)
+    {
+        static $onbellek = [];
+        $kasaId = null;
+        try { $kasaId = session('pos_kasa_id'); } catch (\Throwable $e) {}
+        $kasaId = (int) ($kasaId ?: ($personel->varsayilan_kasa_id ?? 0));
+        if (isset($onbellek[$kasaId])) return $onbellek[$kasaId];
+        $kasa = null;
+        if ($kasaId) { try { _kasaSayfaEnsure(); $kasa = DB::table('kasalar')->where('id', $kasaId)->where('sube_id', $personel->sube_id ?? 0)->first(); } catch (\Throwable $e) {} }
+        return $onbellek[$kasaId] = _kasaKayitSayfalari($kasa);
+    }
+}
+if (!function_exists('_kasaNoktaYetkileri')) {
+    function _kasaNoktaYetkileri($personel)
+    {
+        $sec = _kasaSayfaSecenekleri();
+        $k = [];
+        foreach (_kasaNoktaSayfalari($personel) as $u) if (!empty($sec[$u][1])) $k[] = $sec[$u][1];
+        return $k;
+    }
+}
+if (!function_exists('_kasiyerSayfaIzinli')) {
+    // Yetki anahtarları geniş (gor_rezervasyon /satis-sohbet'i de açar); kasiyer için adres bazlı kapı.
+    function _kasiyerSayfaIzinli($personel, $adres)
+    {
+        if (!_kasiyerMi($personel)) return true;
+        $sec = _kasaSayfaSecenekleri();
+        foreach (_kasaNoktaSayfalari($personel) as $u) if ($u === $adres || in_array($adres, $sec[$u][2] ?? [], true)) return true;
+        return false;
+    }
+}
+if (!function_exists('_kasiyerMenu')) {
+    function _kasiyerMenu(array $gruplar, $personel)
+    {
+        $izin = _kasaNoktaSayfalari($personel);
+        $panel = array_merge($gruplar['Panel'] ?? [], [['/kasa', 'account_balance', 'Kasa (Vardiya)', '#0EA5E9'], ['/z-raporu', 'summarize', 'Z Raporu', '#0EA5E9']]);
+        return ['Panel' => array_values(array_filter($panel, fn ($it) => in_array($it[0], $izin, true)))];
+    }
+}
 // Etkin sayfa erişimi: sahip=hep; sayfa_yetki override varsa o; yoksa kademe varsayılanı
 if (!function_exists('_panelYetkiVar')) {
     function _panelYetkiVar($personel, $sayfaKey)
     {
         if (!$personel) return false;
         if (($personel->rol ?? '') === 'sahip') return true;
+        if (_kasiyerMi($personel) && !in_array($sayfaKey, _kasaNoktaYetkileri($personel), true)) return false;
         $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
         if (is_array($sy) && array_key_exists($sayfaKey, $sy)) return !empty($sy[$sayfaKey]);
         $kademe = $personel->kademe ?? _rolKademe($personel->rol ?? '');
@@ -9531,6 +9622,7 @@ if (!function_exists('_panelYetkiListesi')) {
             if (is_array($sy) && array_key_exists($k, $sy)) { if (!empty($sy[$k])) $acik[] = $k; }
             elseif (in_array($k, _kademeSayfalar($kademe))) $acik[] = $k;
         }
+        if (_kasiyerMi($personel)) $acik = array_values(array_intersect($acik, _kasaNoktaYetkileri($personel)));
         return $acik;
     }
 }
@@ -9619,7 +9711,8 @@ Route::get('/api/yetkilerim', function (Request $r) {
     return ['ok' => 1, 'rol' => $p->rol ?? '', 'kademe' => $p->kademe ?? _rolKademe($p->rol ?? ''),
         'yetkiler' => _panelYetkiListesi($p), 'ai_erisim' => _aiErisim($p), 'departman' => $dep,
         'departman_acik' => (bool) config('services.resteos.departman_acik', true),
-        'olcek' => _isletmeOlcek($p->sube_id ?? 0)['olcek'], 'aktif_departmanlar' => _aktifDepartmanKodlari($p->sube_id ?? 0)];
+        'olcek' => _isletmeOlcek($p->sube_id ?? 0)['olcek'], 'aktif_departmanlar' => _aktifDepartmanKodlari($p->sube_id ?? 0),
+        'kasa_sayfalari' => _kasiyerMi($p) ? _kasaNoktaSayfalari($p) : null];
 });
 
 // ---- API: şubenin departman listesi (editör + yönetim) ----
@@ -16040,6 +16133,7 @@ Route::get('/kasalar', function () {
     $data = ['kasalar' => collect(), 'personeller' => collect()];
     try {
         if (function_exists('_restoKasaEnsure')) _restoKasaEnsure();
+        _kasaSayfaEnsure();
         $kasalar = _kasalarAktif($sube);
         // açık vardiya durumu her kasa için
         $acik = Schema::hasTable('kasa_oturumlari')
@@ -16091,6 +16185,19 @@ Route::post('/kasalar/sil', function (Request $r) {
         return redirect()->back()->with('ok', $k->ad . ' kapatıldı (pasif).');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Kapatılamadı.'); }
 });
+// Kasa noktasında kasiyere açık sayfalar (ana kasa: hepsi; sipariş kasası: yalnız Masalar)
+Route::post('/kasalar/sayfalar', function (Request $r) {
+    $sube = _webSubeId();
+    try {
+        _kasaSayfaEnsure();
+        $k = DB::table('kasalar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
+        if (!$k) return redirect()->back()->with('hata', 'Kasa bulunamadı.');
+        $tum = array_keys(_kasaSayfaSecenekleri());
+        $sec = array_values(array_intersect($tum, array_merge(['/pos'], (array) $r->input('sayfa', []))));
+        DB::table('kasalar')->where('id', $k->id)->update(['sayfalar' => count($sec) === count($tum) ? null : json_encode($sec), 'updated_at' => now()]);
+        return redirect()->back()->with('ok', $k->ad . ' sayfaları kaydedildi.');
+    } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Kaydedilemedi.'); }
+});
 Route::post('/kasalar/atama', function (Request $r) {
     $sube = _webSubeId();
     try {
@@ -16136,7 +16243,8 @@ Route::get('/isletme-duzeni', function () {
 
         // kasalar + atanmış personel + atanmış masa
         $d['coklu'] = Schema::hasTable('kasalar');
-        $kasalar = Schema::hasTable('kasalar') ? DB::table('kasalar')->where('sube_id', $sid)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get(['id', 'ad']) : collect();
+        _kasaSayfaEnsure();
+        $kasalar = Schema::hasTable('kasalar') ? DB::table('kasalar')->where('sube_id', $sid)->where('aktif', 1)->orderBy('sira')->orderBy('id')->get() : collect();
         $d['kasalar'] = $kasalar->map(function ($k) use ($sid, $kasaIdVar) {
             $k->masa_idler = $kasaIdVar ? DB::table('masalar')->where('sube_id', $sid)->where('kasa_id', $k->id)->pluck('id')->map(fn ($x) => (int) $x)->all() : [];
             return $k;
@@ -19686,9 +19794,10 @@ if (!function_exists('_departmanBriefDemo')) {
 Route::get('/departman-brief', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
+    if (!_kasiyerSayfaIzinli($bp, '/departman-brief')) return response(view('yetkisiz', ['sayfa' => '/departman-brief']), 403);
     $sid = _webSubeId();
     $patron = in_array($bp->rol ?? '', ['sahip', 'mudur']);
-    $istenen = (string) $r->query('dep', '');
+    $istenen = _kasiyerMi($bp) ? '' : (string) $r->query('dep', ''); // kasiyer yalnız kendi brifingini görür
     $kendi = _departmanBriefKod($bp, $sid);
     // Patron her departmanı görür; diğer personel ya kendi departmanı ya da o departmanın bir sayfa yetkisine sahipse
     $yetkiliMi = false;

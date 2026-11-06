@@ -282,7 +282,7 @@ body.koyu #kasaMod .mk-inp{background:#1b2235;border-color:#2c3650;color:#e2e8f0
     </div>
     <div class="c-btns">
       <a href="/pos-kasa-sec" class="c-link"><span class="material-icons-outlined">swap_horiz</span> Kasa Değiştir</a>
-      <a href="/kasalar" class="c-link"><span class="material-icons-outlined">settings</span> Kasaları Yönet</a>
+      @if (!_kasiyerMi(_posPersonel()))<a href="/kasalar" class="c-link"><span class="material-icons-outlined">settings</span> Kasaları Yönet</a>@endif
     </div>
   </div>
 @endif

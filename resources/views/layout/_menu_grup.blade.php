@@ -7,7 +7,7 @@
         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
         return false;                                                          // haritasız = kısıtlı role gizle
     }));
-    $grupAktif = collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
+    $grupAktif = !empty($_kasiyerMenu) || collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
 @endphp
 @if ($grupAd === '__PIN__' && count($gorunur))
     <div class="rk-pin-pano">

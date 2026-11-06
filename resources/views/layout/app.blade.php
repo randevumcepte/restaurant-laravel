@@ -355,6 +355,9 @@
             $_olcekSor = $_od['olcek'] && !$_od['secildi'] && in_array($_orol, ['sahip', 'mudur']);
         }
     } catch (\Throwable $e) {}
+    // Kasiyer yalnız Panel'i görür; kasa noktası ayarı hangi sayfaların açık olduğunu belirler
+    $_kasiyerMenu = false;
+    try { $_kp = _posPersonel(); if ($_kp && _kasiyerMi($_kp)) { $gruplar = _kasiyerMenu($gruplar, $_kp); $_kasiyerMenu = true; } } catch (\Throwable $e) {}
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
@@ -488,7 +491,7 @@
                     foreach ($_catGruplar as $_g => $_gi) { foreach ($_gi as $_it) { if ($aktifMi($_it[0])) { $_catAktif = true; break 2; } } }
                 @endphp
                 @if (count($_catGruplar))
-                    <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM') ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
+                    <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM' || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
                     <div class="rk-cat-body">
                         @foreach ($_catGruplar as $grupAd => $items)
                             @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
