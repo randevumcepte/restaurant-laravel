@@ -392,6 +392,11 @@
 
     $path = '/' . trim(request()->path(), '/');
     $_reqUri = request()->getRequestUri();
+    // Profilimden açılan sayfada "Geri" profile döner; sayfa içi kayıt/filtre yenilemelerinde de ok kalır
+    $_refYol = rtrim((string) parse_url((string) request()->headers->get('referer'), PHP_URL_PATH), '/');
+    if ($_refYol === '/profilim' && $path !== '/profilim') session(['profil_geri_yol' => $path]);
+    elseif ($_refYol !== $path) session()->forget('profil_geri_yol');
+    $_profilGeri = session('profil_geri_yol') === $path;
     $aktifMi = function ($url) use ($path, $_reqUri) {
         if (strpos($url, '?') !== false) return $_reqUri === $url;                 // sorgulu link: tam eşleşme
         if ($url === '/') return $path === '/';
@@ -476,8 +481,12 @@
     <main class="rk-main">
         <div class="rk-header">
             <button class="rk-hamburger" onclick="rkSideTog()" aria-label="Menü"><span class="material-icons-outlined">menu</span></button>
-            @hasSection('rk_geri')
-                <a href="@yield('rk_geri')" class="rk-geri" title="Geri"><span class="material-icons-outlined">arrow_back</span><span class="rk-geri-metin">Geri</span></a>
+            @if ($_profilGeri)
+                <a href="/profilim" class="rk-geri" title="Profilime dön"><span class="material-icons-outlined">arrow_back</span><span class="rk-geri-metin">Geri</span></a>
+            @else
+                @hasSection('rk_geri')
+                    <a href="@yield('rk_geri')" class="rk-geri" title="Geri"><span class="material-icons-outlined">arrow_back</span><span class="rk-geri-metin">Geri</span></a>
+                @endif
             @endif
             <div class="ikon"><span class="material-icons-outlined">@yield('rk_ikon', 'dashboard')</span></div>
             <div>

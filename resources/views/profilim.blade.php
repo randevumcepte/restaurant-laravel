@@ -20,13 +20,32 @@
     };
     $tarihBicim = fn($t) => $t ? \Carbon\Carbon::parse($t)->format('d.m.Y') : '—';
     $rol = $p->rol ?? '';
-    $isGarson = in_array($rol, ['garson','sahip','mudur']);
-    $isPatron = in_array($rol, ['sahip','mudur']);
     $bugunToplam = ($bugun['ciro'] ?? 0) + ($bugun['masa'] ?? 0) + ($bugun['cagri'] ?? 0) + ($bugun['bahsis'] ?? 0);
     $fotoVar = !empty($p->foto) && str_starts_with((string)$p->foto, 'data:image');
     $fotoUrl = $fotoVar ? '/profilim-avatar?v=' . crc32($p->foto) : null;
     $alanMetin = $atamaOzet ? ($atamaOzet['bolge'] . ' Bölge - ' . $atamaOzet['masa'] . ' Masa') : 'Atama yok';
-    $yetkiVar = fn($k) => $isPatron || _panelYetkiVar($p, $k);
+    // Sayfa kapısı (PanelYetki) ile aynı kural: gösterilen her bağlantı gerçekten açılır
+    $yetkiVar = fn($k) => _panelYetkiVar($p, $k);
+    $_harita = _sayfaYetkiHaritasi();
+    $sayfaAcik = fn($url) => !isset($_harita[$url]) || _panelYetkiVar($p, $_harita[$url]);
+    $kisayollar = array_filter([
+        ['/bildirim-ayar', 'notifications_active', '#0EA5E9', 'Bildirim ayarları'],
+        ['/puantaj', 'history', '#4F46E5', 'Puantajım'],
+        ['/ik-izin', 'beach_access', '#14B8A6', 'İzin / Avans'],
+        ['/garson-performans', 'emoji_events', '#10B981', 'Performansım'],
+        ['/servis', 'room_service', '#4F46E5', 'İş Akışım'],
+        ['/garson-cagrilari', 'notifications_active', '#F43F5E', 'Çağrılar'],
+        ['/patron-ai', 'auto_awesome', '#7C3AED', 'Sabah Brifingi'],
+        ['/ik-ozet', 'groups', '#10B981', 'İK Özet'],
+        ['/ik-risk', 'crisis_alert', '#F97316', 'Risk Radarı'],
+        ['/personel', 'badge', '#4F46E5', 'Personel yönetimi'],
+        ['/bagli-cihazlar', 'devices_other', '#0EA5E9', 'Bağlı cihazlar'],
+        ['/kasa', 'account_balance', '#F59E0B', 'Kasa (Vardiya)'],
+    ], fn($k) => $sayfaAcik($k[0]));
+    if (in_array($rol, ['satinalmaci','satinalma'])) {
+        $kisayollar[] = ['/departman-brief?dep=satinalma', 'wb_sunny', '#7C3AED', 'Satınalma Brifingi'];
+        if ($sayfaAcik('/satinalma-asistan')) $kisayollar[] = ['/satinalma-asistan', 'smart_toy', '#7C3AED', 'AI Asistan'];
+    }
     $yetkiSol = [
         ['shopping_cart', 'Sipariş Yönetimi', $yetkiVar('gor_pos')],
         ['storefront', 'Masa Yönetimi', $yetkiVar('gor_masa_yonetim')],
@@ -451,8 +470,12 @@
                 <div class="pm-bos">Önümüzdeki 2 haftada vardiya programlanmamış.</div>
             @endif
             <div style="margin:10px 0 8px; display:flex; gap:8px; flex-wrap:wrap">
-                <a href="/ik-izin" class="rk-btn" style="background:#14B8A6"><span class="material-icons-outlined" style="font-size:16px">beach_access</span> İzin iste</a>
-                <a href="/puantaj" class="rk-btn" style="background:#4F46E5"><span class="material-icons-outlined" style="font-size:16px">history</span> Puantajım</a>
+                @if ($sayfaAcik('/ik-izin'))
+                    <a href="/ik-izin" class="rk-btn" style="background:#14B8A6"><span class="material-icons-outlined" style="font-size:16px">beach_access</span> İzin iste</a>
+                @endif
+                @if ($sayfaAcik('/puantaj'))
+                    <a href="/puantaj" class="rk-btn" style="background:#4F46E5"><span class="material-icons-outlined" style="font-size:16px">history</span> Puantajım</a>
+                @endif
             </div>
         </div>
 
@@ -477,28 +500,9 @@
             <div class="pm-kart pm-k" style="padding-bottom:18px">
                 <div class="pm-k-bas"><span class="material-icons-outlined" style="color:#F59E0B">bolt</span><h3>Kısayollar</h3></div>
                 <div class="pm-kisayol">
-                    <a href="/bildirim-ayar"><span class="material-icons-outlined" style="color:#0EA5E9">notifications_active</span> Bildirim ayarları</a>
-                    <a href="/puantaj"><span class="material-icons-outlined" style="color:#4F46E5">history</span> Puantajım</a>
-                    <a href="/ik-izin"><span class="material-icons-outlined" style="color:#14B8A6">beach_access</span> İzin / Avans</a>
-                    @if ($isGarson)
-                        <a href="/garson-performans"><span class="material-icons-outlined" style="color:#10B981">emoji_events</span> Performansım</a>
-                        <a href="/servis"><span class="material-icons-outlined" style="color:#4F46E5">room_service</span> İş Akışım</a>
-                        <a href="/garson-cagrilari"><span class="material-icons-outlined" style="color:#F43F5E">notifications_active</span> Çağrılar</a>
-                    @endif
-                    @if ($isPatron)
-                        <a href="/patron-ai"><span class="material-icons-outlined" style="color:#7C3AED">auto_awesome</span> Sabah Brifingi</a>
-                        <a href="/ik-ozet"><span class="material-icons-outlined" style="color:#10B981">groups</span> İK Özet</a>
-                        <a href="/ik-risk"><span class="material-icons-outlined" style="color:#F97316">crisis_alert</span> Risk Radarı</a>
-                        <a href="/personel"><span class="material-icons-outlined" style="color:#4F46E5">badge</span> Personel yönetimi</a>
-                        <a href="/bagli-cihazlar"><span class="material-icons-outlined" style="color:#0EA5E9">devices_other</span> Bağlı cihazlar</a>
-                    @endif
-                    @if (in_array($rol, ['satinalmaci','satinalma']))
-                        <a href="/departman-brief?dep=satinalma"><span class="material-icons-outlined" style="color:#7C3AED">wb_sunny</span> Satınalma Brifingi</a>
-                        <a href="/satinalma-asistan"><span class="material-icons-outlined" style="color:#7C3AED">smart_toy</span> AI Asistan</a>
-                    @endif
-                    @if ($rol === 'kasa')
-                        <a href="/kasa"><span class="material-icons-outlined" style="color:#F59E0B">account_balance</span> Kasa (Vardiya)</a>
-                    @endif
+                    @foreach ($kisayollar as [$kUrl, $kIkon, $kRenk, $kAd])
+                        <a href="{{ $kUrl }}"><span class="material-icons-outlined" style="color:{{ $kRenk }}">{{ $kIkon }}</span> {{ $kAd }}</a>
+                    @endforeach
                 </div>
             </div>
         </div>
