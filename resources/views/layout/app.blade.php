@@ -364,6 +364,10 @@
         $gruplar['Satış & Servis'] = array_merge($_panelTasi, $gruplar['Satış & Servis'] ?? []);
         unset($gruplar['Panel']);
     }
+    // Alt istasyon çalışanı mutfak geneli ekranları görmez (şef ve yönetici görür)
+    if ($_kp && _mutfakAltIstasyonMu($_kp)) {
+        foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => !in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim'], true)));
+    }
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {

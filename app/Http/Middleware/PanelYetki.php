@@ -20,6 +20,8 @@ class PanelYetki
         $path = '/' . trim($request->path(), '/');
 
         if (!function_exists('_sayfaYetkiHaritasi')) return $next($request);
+        if (function_exists('_masaYetkiTemizle')) _masaYetkiTemizle();
+        if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
         $harita = _sayfaYetkiHaritasi();
 
         // En uzun eşleşen öneki bul (ör. /pos/masa/5 -> /pos)
@@ -48,10 +50,36 @@ class PanelYetki
         $izin = true;
         try { $izin = function_exists('_panelYetkiVar') ? _panelYetkiVar($p, $key) : true; } catch (\Throwable $e) { $izin = true; }
         if ($izin && function_exists('_kasiyerSayfaIzinli')) $izin = _kasiyerSayfaIzinli($p, $eslesen);
+        if ($izin && in_array($eslesen, ['/uretim-riski', '/parti-takip', '/sayim'], true) && function_exists('_mutfakAltIstasyonMu') && _mutfakAltIstasyonMu($p)) $izin = false; // mutfak geneli ekranlar: şef ve yönetici
         if (!$izin) {
             return response(view('yetkisiz', ['sayfa' => $eslesen]), 403);
         }
 
         return $next($request);
+    }
+
+    // _ekYetkiHaritasi: menü dışı yönetim sayfaları + /api uçları. Şube parametresi kişinin şubesine sabitlenir. null = geçti.
+    private function ekKapi(Request $request, string $path)
+    {
+        if (!function_exists('_ekYetkiAnahtari')) return null;
+        $anahtar = _ekYetkiAnahtari($path);
+        if ($anahtar === null) return null;
+        if (session('ry_admin_id')) return null; // Sistem Yönetimi tüm şubelerde çalışır
+
+        $api = str_starts_with($path, '/api/');
+        $p = null;
+        try { $p = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$p && $request->bearerToken()) { try { $p = _apiPersonel($request); } catch (\Throwable $e) {} }
+        if (!$p) {
+            if ($api) return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli'], 401);
+            try { $request->session()->put('panel_hedef', $request->fullUrl()); } catch (\Throwable $e) {}
+            return redirect('/pos-giris');
+        }
+        if (!_ekYetkiVar($p, $anahtar)) {
+            if ($api) return response()->json(['ok' => 0, 'hata' => 'Bu işlem için yetkiniz yok'], 403);
+            return response(view('yetkisiz', ['sayfa' => $path]), 403);
+        }
+        if ($request->has('sube')) { $request->query->set('sube', $p->sube_id); $request->request->set('sube', $p->sube_id); }
+        return null;
     }
 }

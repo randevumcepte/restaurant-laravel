@@ -696,7 +696,7 @@ Route::post('/musteriler/guncelle', function (Request $r) {
 });
 Route::get('/musteriler/ara', function (Request $r) {
     $q = trim((string) $r->q);
-    return DB::table('musteriler')
+    return DB::table('musteriler')->where('sube_id', _aktifSubeId())
         ->when($q !== '', function ($x) use ($q) {
             $x->where(function ($w) use ($q) { $w->where('ad', 'like', '%' . $q . '%')->orWhere('telefon', 'like', '%' . $q . '%'); });
         })
@@ -1416,6 +1416,7 @@ Route::get('/api/m/siparislerim', function (Request $r) {
 });
 // DEMO: giriş yapmış müşteriye fake veri doldur (ödül merdiveni + puan + cüzdan hareketi + geçmiş sipariş). Tekrar çağrı katlamaz.
 Route::post('/api/m/demo-doldur', function (Request $r) {
+    if (!app()->environment('local')) return response()->json(['ok' => 0], 404); // canlı veriye örnek kayıt yazmasın
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
     _appEnsure2();
     $sid = $m->sube_id;
@@ -3856,17 +3857,9 @@ Route::get('/api/m/cuzdan', function (Request $r) {
 });
 // Para yükle — ŞİMDİLİK TEST ödeme (gerçek iyzico/PayTR sonra). Yükleme bonusu (Starbucks mantığı).
 Route::post('/api/m/cuzdan-yukle', function (Request $r) {
+    // Ödemesiz bakiye eklemez: yükleme yalnız /api/m/cuzdan-yukle-baslat ile ödeme ekranından yapılır
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
-    _appEnsure2();
-    $tutar = round((float) $r->input('tutar'), 2);
-    $min = _cuzdanMin($m->sube_id); if ($tutar < $min) return ['ok' => 0, 'hata' => "En az {$min}₺ yükleyebilirsin"];
-    $bonus = _cuzdanBonus($m->sube_id, $tutar);
-    $yeni = round((float) (DB::table('musteriler')->where('id', $m->id)->value('cuzdan_bakiye') ?? 0) + $tutar + $bonus, 2);
-    DB::table('musteriler')->where('id', $m->id)->update(['cuzdan_bakiye' => $yeni]);
-    DB::table('cuzdan_hareketleri')->insert(['musteri_id' => $m->id, 'tip' => 'yukleme', 'tutar' => $tutar + $bonus, 'bakiye_sonra' => $yeni,
-        'aciklama' => $bonus > 0 ? "Yükleme {$tutar}₺ (+{$bonus}₺ bonus)" : "Yükleme {$tutar}₺", 'created_at' => now(), 'updated_at' => now()]);
-    return ['ok' => 1, 'bakiye' => $yeni, 'bonus' => $bonus,
-        'mesaj' => $bonus > 0 ? "{$tutar}₺ yüklendi, {$bonus}₺ bonus kazandın! 🎁" : "{$tutar}₺ yüklendi"];
+    return response()->json(['ok' => 0, 'hata' => 'Bakiye yükleme ödeme ekranından yapılır.'], 410);
 });
 // Self servis sipariş — ÖDEME PEŞİN: önce cüzdan, yetmezse kalan KART (test). Ödeme olmadan sipariş YOK.
 Route::post('/api/m/self-siparis', function (Request $r) {
@@ -9209,6 +9202,68 @@ if (!function_exists('_rolKademe')) {
         return ['sahip' => 'sahip', 'mudur' => 'supervizor', 'satinalmaci' => 'satinalma', 'kasa' => 'kasa', 'mutfak' => 'mutfak', 'garson' => 'personel'][$rol ?? ''] ?? 'personel';
     }
 }
+// ===== EK KAPI: menü haritasına girmeyen yönetim sayfaları ve /api uçları (PanelYetki uygular) =====
+// Menüyü etkilemez. Değer: yetki anahtarı | 'yonetici' (sahip/müdür/süpervizör) | 'giris' (oturum yeterli)
+if (!function_exists('_ekYetkiHaritasi')) {
+    function _ekYetkiHaritasi()
+    {
+        $wa = ['durum', 'baglan', 'qr', 'cikis', 'pair', 'duyuru-gonder', 'paket-durum', 'kontor-talep', 'ozet-data', 'loglar-data', 'aliciler-data', 'baglantilar-kaydet'];
+        return [
+            // Alt adresleri de kapsar
+            'onek' => [
+                '/musteriler' => 'gor_odul_dogrula', '/sadakat' => 'yonetici', '/edonusum' => 'yonetici', '/yasal-bilgiler' => 'yonetici', '/entegrasyon' => 'yonetici',
+                '/cuzdan-ayar' => 'yonetici', '/asistan-egitim' => 'yonetici', '/tema' => 'yonetici', '/one-cikanlar' => 'yonetici', '/one-cikanlar-kaydet' => 'yonetici', '/qr-menu-rengi' => 'yonetici',
+                '/urun-fotolar' => 'yonetici', '/urun-foto-yukle' => 'yonetici', '/oauth-uygulama-kaydet' => 'yonetici', '/cark-yonetim' => 'yonetici', '/cark-kazananlar' => 'yonetici', '/cark-hatirlatma' => 'yonetici', '/wa-yonetim' => 'yonetici',
+                '/cagri-ekran' => 'gor_santral', '/kurye-canli' => 'gor_kurye', '/garson-ekran' => 'gor_garson_cagri', '/masa-afisler' => 'gor_masa_yonetim', '/ses-test' => 'giris',
+            ],
+            // Yalnız bu adres
+            'tam' => array_merge(array_fill_keys(array_map(fn ($u) => '/api/wa/' . $u, $wa), 'gor_whatsapp'), [
+                '/musteriler/ara' => 'gor_pos', '/api/kurye-canli-veri' => 'gor_kurye', '/api/garson-cagrilari' => 'gor_garson_cagri', '/api/garson-cagri-kapat' => 'gor_garson_cagri', '/api/departmanlar' => 'giris',
+                '/api/patron/ozet' => 'gor_dashboard', '/api/raporlar' => 'gor_raporlar', '/api/patron/z-raporu' => 'gor_z_raporu', '/api/patron/kasa-hareket' => 'gor_kasa', '/api/patron/ai-analiz' => 'yonetici',
+                '/api/mutfak' => 'gor_mutfak', '/api/mutfak/hazir' => 'gor_mutfak', '/api/mutfak/basla' => 'gor_mutfak', '/api/mutfak/analiz' => 'gor_mutfak', '/api/paket' => 'gor_paket', '/api/yetkili-pinler' => 'gor_pos',
+            ]),
+        ];
+    }
+}
+if (!function_exists('_ekYetkiAnahtari')) {
+    function _ekYetkiAnahtari($yol)
+    {
+        $h = _ekYetkiHaritasi();
+        if (isset($h['tam'][$yol])) return $h['tam'][$yol];
+        foreach ($h['onek'] as $o => $k) if ($yol === $o || str_starts_with($yol, $o . '/')) return $k;
+        return null;
+    }
+}
+if (!function_exists('_ekYetkiVar')) {
+    function _ekYetkiVar($p, $anahtar)
+    {
+        if ($anahtar === 'giris') return true;
+        if ($anahtar !== 'yonetici') return _panelYetkiVar($p, $anahtar);
+        $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
+        return in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true);
+    }
+}
+// Masa QR sayfası Karşılama + Rezervasyon Satış'tan kalktı: kayıtlı şablon ve üyelerin izni bir kez temizlenir
+if (!function_exists('_masaYetkiTemizle')) {
+    function _masaYetkiTemizle()
+    {
+        if (cache()->get('masa_yetki_temiz_v1')) return;
+        try {
+            if (resto_ayar_al('masa_yetki_temiz_v1') != '1' && Schema::hasTable('departmanlar')) {
+                foreach (DB::table('departmanlar')->whereIn('kod', ['karsilama', 'satis_etkinlik'])->get(['id', 'sayfa_yetki']) as $d) {
+                    $sy = json_decode((string) $d->sayfa_yetki, true);
+                    if (is_array($sy) && array_key_exists('gor_masa_yonetim', $sy)) { unset($sy['gor_masa_yonetim']); DB::table('departmanlar')->where('id', $d->id)->update(['sayfa_yetki' => json_encode($sy)]); }
+                    foreach (DB::table('personeller')->where('departman_id', $d->id)->whereNotIn('rol', ['sahip', 'mudur'])->get(['id', 'sayfa_yetki']) as $k) {
+                        $py = json_decode((string) $k->sayfa_yetki, true);
+                        if (is_array($py) && !empty($py['gor_masa_yonetim'])) { $py['gor_masa_yonetim'] = 0; DB::table('personeller')->where('id', $k->id)->update(['sayfa_yetki' => json_encode($py)]); }
+                    }
+                }
+                resto_ayar_yaz('masa_yetki_temiz_v1', '1');
+            }
+            cache()->put('masa_yetki_temiz_v1', 1, now()->addDays(30));
+        } catch (\Throwable $e) {}
+    }
+}
 // ===== KASİYER: yalnız Panel sayfaları + kasa noktasına göre kısıt =====
 if (!function_exists('_kasaSayfaSecenekleri')) {
     // Kasa noktasında açılabilecek sayfalar => [etiket, yetki anahtarı (null=herkese), birlikte açılan alt adresler]
@@ -9401,7 +9456,7 @@ if (!function_exists('_departmanSablonlari')) {
                 'sayfa' => ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_mutfak']],
             'karsilama' => ['ad' => 'Karşılama / Host', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'co_present', 'renk' => '#0EA5E9', 'ai' => 'kapali',
                 'unvan' => ['Host Şefi', 'Host / Hostess'], 'sorumlu_ek' => $yon,
-                'sayfa' => ['gor_rezervasyon', 'gor_masa_yonetim', 'gor_salon_sema', 'gor_garson_cagri']],
+                'sayfa' => ['gor_rezervasyon', 'gor_salon_sema', 'gor_garson_cagri']],
             'bar' => ['ad' => 'Bar / Barmen', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'local_bar', 'renk' => '#8B5CF6', 'ai' => 'kisitli',
                 'unvan' => ['Bar Şefi', 'Barmen', 'Barback'], 'sorumlu_ek' => $yon,
                 'sayfa' => ['gor_pos', 'gor_mutfak', 'gor_stok', 'gor_garson_cagri']],
@@ -9446,7 +9501,7 @@ if (!function_exists('_departmanSablonlari')) {
                 'sayfa' => ['gor_app_yonetim', 'gor_indirimler', 'gor_odul_raporu', 'gor_whatsapp', 'gor_menu']],
             'satis_etkinlik' => ['ad' => 'Rezervasyon Satış', 'grup' => 'İdari Ofis', 'ikon' => 'celebration', 'renk' => '#A855F7', 'ai' => 'kisitli',
                 'unvan' => ['Satış Müdürü', 'Etkinlik Koordinatörü', 'Rezervasyon Uzmanı'], 'sorumlu_ek' => ['gor_raporlar'],
-                'sayfa' => ['gor_rezervasyon', 'gor_cari', 'gor_raporlar', 'gor_masa_yonetim']],
+                'sayfa' => ['gor_rezervasyon', 'gor_cari', 'gor_raporlar']],
             'crm' => ['ad' => 'CRM / Müşteri İlişkileri', 'grup' => 'İdari Ofis', 'ikon' => 'support_agent', 'renk' => '#14B8A6', 'ai' => 'kisitli',
                 'unvan' => ['CRM Müdürü', 'Müşteri İlişkileri Uzmanı'], 'sorumlu_ek' => ['gor_raporlar'],
                 'sayfa' => ['gor_odul_dogrula', 'gor_odul_raporu', 'gor_rezervasyon', 'gor_whatsapp']],
@@ -19100,7 +19155,8 @@ if (!function_exists('_departmanBriefIzinli')) {
     }
 }
 if (!function_exists('_mutfakIstasyonUrunleri')) {
-    // İstasyon çalışanı (soğuk/pastane/kasap/bulaşıkhane) yalnız kendi ürünlerini görür ve işaretler. null = kısıt yok (şef, sıcak mutfak, garson, yönetici).
+    // İstasyon çalışanı yalnız kendi ürünlerini görür ve işaretler; sıcak mutfak üyesi alt istasyonlara ait olmayanları.
+    // null = kısıt yok (şef, departmansız mutfak, alt istasyonu kurulu olmayan mutfak, garson, yönetici).
     function _mutfakIstasyonUrunleri($p)
     {
         if (!$p) return null;
@@ -19111,16 +19167,37 @@ if (!function_exists('_mutfakIstasyonUrunleri')) {
         if (array_key_exists($id, $kayit)) return $kayit[$id];
         $sid = (int) ($p->sube_id ?? 0);
         $kod = _departmanBriefKod($p, $sid);
-        if (!in_array($kod, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) return $kayit[$id] = null;
+        $sicakUye = $kod === 'mutfak' && !empty($p->departman_id) && empty($p->departman_sorumlu);
+        if (!$sicakUye && !in_array($kod, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) return $kayit[$id] = null;
+        $istasyonUrun = function ($k) use ($sid) { // kategori eşlemesi, yoksa ürünün istasyon alanı
+            $depId = (int) DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $k)->value('id');
+            if (!$depId) return null;
+            $katIds = Schema::hasColumn('menu_kategorileri', 'departman_id') ? DB::table('menu_kategorileri')->where('departman_id', $depId)->pluck('id')->all() : [];
+            $ist = ['soguk_mutfak' => 'soguk', 'pastane' => 'tatli'][$k] ?? null;
+            if ($katIds) return DB::table('urunler')->where('sube_id', $sid)->whereIn('kategori_id', $katIds)->pluck('id')->all();
+            return $ist ? DB::table('urunler')->where('sube_id', $sid)->where('istasyon', $ist)->pluck('id')->all() : [];
+        };
         $ids = [];
         try {
-            $depId = (int) DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->value('id');
-            $katIds = ($depId && Schema::hasColumn('menu_kategorileri', 'departman_id')) ? DB::table('menu_kategorileri')->where('departman_id', $depId)->pluck('id')->all() : [];
-            $ist = ['soguk_mutfak' => 'soguk', 'pastane' => 'tatli'][$kod] ?? null;
-            if ($katIds) $ids = DB::table('urunler')->where('sube_id', $sid)->whereIn('kategori_id', $katIds)->pluck('id')->all();
-            elseif ($ist) $ids = DB::table('urunler')->where('sube_id', $sid)->where('istasyon', $ist)->pluck('id')->all();
+            if ($sicakUye) {
+                $altlar = array_filter(array_map($istasyonUrun, ['soguk_mutfak', 'pastane', 'kasap']), fn ($x) => $x !== null);
+                if (!$altlar) return $kayit[$id] = null; // alt istasyon kurulu değil: tek mutfak
+                $ids = DB::table('urunler')->where('sube_id', $sid)->whereNotIn('id', array_merge([], ...array_values($altlar)))->pluck('id')->all();
+            } else {
+                $ids = $istasyonUrun($kod) ?? [];
+            }
         } catch (\Throwable $e) {}
         return $kayit[$id] = array_map('intval', $ids);
+    }
+}
+if (!function_exists('_mutfakAltIstasyonMu')) {
+    // Soğuk/pastane/kasap/bulaşıkhane çalışanı mı (yönetici değil)? Mutfak geneli ekranlar buna kapalı.
+    function _mutfakAltIstasyonMu($p)
+    {
+        if (!$p) return false;
+        $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
+        if (in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true)) return false;
+        return in_array(_departmanBriefKod($p, (int) ($p->sube_id ?? 0)), ['soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true);
     }
 }
 if (!function_exists('_mutfakKapsamla')) {
@@ -19634,12 +19711,12 @@ if (!function_exists('_departmanBriefVeri')) {
                 $kpis[] = ['ikon' => 'pending_actions', 'tint' => !$tanimli ? 't-mor' : ($bekle > 5 ? 't-amber' : 't-green'), 'deger' => $tanimli ? $bekle : '—', 'label' => 'Bekleyen ürün', 'alt' => $tanimli ? ($bekle > 10 ? 'kuyruk yoğun' : 'kuyruk normal') : 'kategori bağla', 'link' => $tanimli ? '/mutfak' : '/departman-yonetim'];
                 $kpis[] = ['ikon' => 'restaurant', 'tint' => 't-blue', 'deger' => $tanimli ? $hazir : '—', 'label' => 'Bugün hazırlanan', 'alt' => 'adet'];
                 $kpis[] = ['ikon' => 'remove_shopping_cart', 'tint' => $iptalKalem > 0 ? 't-amber' : 't-green', 'deger' => $tanimli ? $iptalKalem : '—', 'label' => 'İptal/iade kalem', 'alt' => !$tanimli ? 'kategori bağla' : ($iptalKalem > 0 ? 'bugün geri döndü' : 'yok 👍')];
-                $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => 'mutfak geneli', 'link' => '/uretim-riski'];
-                $kpis[] = ['ikon' => 'event_busy', 'tint' => $sktGecen > 0 ? 't-red' : 't-green', 'deger' => $sktGecen, 'label' => 'SKT geçen parti', 'alt' => 'mutfak geneli', 'link' => '/parti-takip'];
+                if (!_mutfakAltIstasyonMu($bp)) $kpis[] = ['ikon' => 'inventory_2', 'tint' => $krit > 0 ? 't-red' : 't-green', 'deger' => $krit . ' <small>ürün</small>', 'label' => 'Kritik malzeme', 'alt' => 'mutfak geneli', 'link' => '/uretim-riski'];
+                if (!_mutfakAltIstasyonMu($bp)) $kpis[] = ['ikon' => 'event_busy', 'tint' => $sktGecen > 0 ? 't-red' : 't-green', 'deger' => $sktGecen, 'label' => 'SKT geçen parti', 'alt' => 'mutfak geneli', 'link' => '/parti-takip'];
 
                 if ($tanimli && $bekle > 8) { $isler[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'grup' => 'İSTASYON', 'baslik' => "$bekle ürün hazırlanmayı bekliyor", 'aciklama' => 'Kuyruk yoğun — hız gerekebilir', 'aksiyon' => ['url' => '/mutfak', 'lbl' => 'Mutfak Ekranı']]; $sinyal[] = "<b>$bekle</b> bekleyen ürün"; }
-                if ($sktGecen > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktGecen partinin SKT'si geçmiş", 'aciklama' => 'Mutfak geneli — kendi rafını kontrol et', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; $sinyal[] = "<b>$sktGecen</b> SKT geçti"; }
-                if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Mutfak geneli — sana lazımsa talep aç', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
+                if (!_mutfakAltIstasyonMu($bp)) if ($sktGecen > 0) { $isler[] = ['ikon' => 'event_busy', 'renk' => '#F43F5E', 'grup' => 'GIDA GÜVENLİĞİ', 'baslik' => "$sktGecen partinin SKT'si geçmiş", 'aciklama' => 'Mutfak geneli — kendi rafını kontrol et', 'aksiyon' => ['url' => '/parti-takip', 'lbl' => 'Gör']]; $sinyal[] = "<b>$sktGecen</b> SKT geçti"; }
+                if (!_mutfakAltIstasyonMu($bp)) if ($krit > 0) { $isler[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'grup' => 'STOK', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Mutfak geneli — sana lazımsa talep aç', 'aksiyon' => ['url' => '/uretim-riski', 'lbl' => 'Gör']]; $sinyal[] = "<b>$krit</b> kritik malzeme"; }
                 if (!$tanimli) { $isler[] = ['ikon' => 'link', 'renk' => '#7C3AED', 'grup' => 'KURULUM', 'baslik' => 'Bu istasyona menü kategorisi bağlanmamış', 'aciklama' => 'Departman Yönetimi\'nden kategorileri seç, ürün verisi gelsin', 'aksiyon' => ['url' => '/departman-yonetim', 'lbl' => 'Bağla']]; }
 
                 $analiz[] = ['ikon' => 'pending_actions', 'renk' => '#F59E0B', 'baslik' => 'Hazırlık Yükü', 'alt' => 'şu an', 'durum' => !$tanimli ? 'notr' : ($bekle > 12 ? 'risk' : ($bekle > 5 ? 'dikkat' : 'iyi')), 'yorum' => !$tanimli ? 'Menü kategorisi bağlanınca bu istasyonun kuyruğu burada görünür.' : ($bekle > 0 ? "Şu an $bekle ürün hazırlanmayı bekliyor." : 'Kuyruk temiz. 👍')];
@@ -29217,10 +29294,11 @@ Route::get('/kiosk', function () {
 // ============================ SADAKAT / KAMPANYA ============================
 Route::get('/sadakat', function () {
     $kampanyalar = DB::table('kampanyalar')->orderByDesc('aktif')->orderBy('id')->get();
-    $topMusteri = DB::table('musteriler')->orderByDesc('puan')->limit(10)->get();
-    $toplamPuan = (int) DB::table('musteriler')->sum('puan');
+    $sube = _aktifSubeId();
+    $topMusteri = DB::table('musteriler')->where('sube_id', $sube)->orderByDesc('puan')->limit(10)->get();
+    $toplamPuan = (int) DB::table('musteriler')->where('sube_id', $sube)->sum('puan');
     $aktifKampanya = DB::table('kampanyalar')->where('aktif', 1)->count();
-    $musteriSayisi = DB::table('musteriler')->count();
+    $musteriSayisi = DB::table('musteriler')->where('sube_id', $sube)->count();
     return view('sadakat', compact('kampanyalar', 'topMusteri', 'toplamPuan', 'aktifKampanya', 'musteriSayisi'));
 });
 Route::post('/sadakat/toggle', function (Request $r) {
