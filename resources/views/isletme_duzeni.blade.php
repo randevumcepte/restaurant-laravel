@@ -120,7 +120,25 @@
       <button type="button" class="idz-btn" onclick="idzModal('idzMasaEkle')"><span class="material-icons-outlined">add</span>Masa Ekle</button>
       <button type="button" class="idz-btn" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">add_home_work</span>Alan Ekle</button>
       <a class="idz-btn" href="/masa-yonetim" title="Masa QR kodlarını görüntüle, indir ve yazdır"><span class="material-icons-outlined">qr_code_2</span>QR Kodlar</a>
-      <button type="button" class="idz-btn dolu" id="idzKaydet" onclick="idzPlanKaydet()"><span class="material-icons-outlined">save_as</span>Kaydet</button>
+      <button type="button" class="idz-btn dolu idz-normal" onclick="idzDuzenAc()"><span class="material-icons-outlined">edit_location_alt</span>Düzenle</button>
+      <button type="button" class="idz-btn idz-duzende" onclick="idzVazgec()"><span class="material-icons-outlined">close</span>Vazgeç</button>
+      <button type="button" class="idz-btn dolu idz-duzende" id="idzKaydet" onclick="idzPlanKaydet()"><span class="material-icons-outlined">save_as</span>Kaydet</button>
+    </div>
+
+    <div class="idz-duzen-bar idz-duzende">
+      <span class="ipucu"><span class="material-icons-outlined">touch_app</span>Sürükleyerek taşıyın, tıklayarak şekil ve boyut seçin.</span>
+      <span class="idz-esnek"></span>
+      <label class="idz-sec-kutu"><span class="material-icons-outlined">auto_awesome_mosaic</span><select id="idzSablon" aria-label="Şablon uygula" onchange="idzSablonUygula(this.value)">
+        <option value="">Şablon uygula</option><option value="otomatik">Otomatik dizilim</option><option value="izgara">Sıralı ızgara</option><option value="kenar">Kenarlara dizili</option><option value="ada">Kenar + orta ada</option><option value="banket">Uzun masalar (banket)</option>
+      </select></label>
+      <label class="idz-sec-kutu"><span class="material-icons-outlined">add_box</span><select id="idzObjeSec" aria-label="Salona ekle" onchange="idzObjeEkle(this.value)">
+        <option value="">Salona ekle</option><option value="kasa">Resepsiyon / Kasa</option><option value="bar">Bar</option><option value="giris">Giriş / Kapı</option><option value="mutfak">Mutfak</option><option value="wc">WC</option><option value="depo">Depo</option><option value="otopark">Otopark</option><option value="diger">Etiket</option><option value="duvar">Duvar</option><option value="bitki">Bitki</option><option value="isik">Işık</option>
+      </select></label>
+      <label class="idz-sec-kutu"><span class="material-icons-outlined">aspect_ratio</span><select id="idzOran" aria-label="Salon oranı" onchange="idzOran(this.value)">
+        <option value="2.35">Geniş salon</option><option value="1.8">Standart salon</option><option value="1.35">Kareye yakın</option>
+      </select></label>
+      <label class="idz-kutucuk"><input type="checkbox" checked onchange="idzHizala=this.checked">Hizaya otur</label>
+      <button type="button" class="idz-btn ikon" id="idzGeri" onclick="idzGeriAl()" title="Geri al (Ctrl+Z)" aria-label="Geri al" disabled><span class="material-icons-outlined">undo</span></button>
     </div>
 
     <div class="idz-plan-govde">
@@ -134,6 +152,8 @@
         <button type="button" class="idz-alan yeni" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">add</span>Yeni Alan Ekle</button>
       </div>
 
+      <div class="idz-cerceve-kap">
+      <div class="idz-ozellik" id="idzOzellik"></div>
       <div class="idz-cerceve" id="idzCerceve">
         <div class="idz-dunya" id="idzDunya"></div>
         <div class="idz-zoom">
@@ -141,6 +161,7 @@
           <button type="button" onclick="idzZoom(-.2)" title="Uzaklaştır" aria-label="Uzaklaştır"><span class="material-icons-outlined">remove</span></button>
           <button type="button" onclick="idzZoom(0)" title="Ortala" aria-label="Ortala"><span class="material-icons-outlined">my_location</span></button>
         </div>
+      </div>
       </div>
 
       <div class="idz-sag">
@@ -350,7 +371,7 @@
     <div class="idz-ayar-grid">
       @foreach ([
         ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al'],
-        ['/salon-sema', 'grid_on', 'Salon Şeması', 'Görsel kroki ve ısı haritası'],
+        ['/salon-sema', 'grid_on', 'Salon Şeması', 'Kat ve parsel krokisi, Masa Planı ile eşitlenir'],
         ['/isletme-konum', 'my_location', 'İşletme Konum', 'Harita konumu ve teslimat'],
         ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', 'Menünün sadeliğini belirler'],
         ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', 'Mutfak ve kasa yazıcıları'],
@@ -575,33 +596,37 @@ document.querySelectorAll('.idz-sekme').forEach(function(b){ b.addEventListener(
 
 // ===== MASA PLANI =====
 var idzAktif = IDZ.alanlar.length ? IDZ.alanlar[0].id : 0;
-var idzOlcek = 1, idzDegisen = {}, idzKonum = {}, idzVurgu = null;
+var idzOlcek = 1, idzVurgu = null, idzDuzen = false, idzSecili = null, idzHizala = true, idzGecmis = [], idzIlk = null, idzKirli = {};
 var idzDurumlar = {bos:['Boş','#10B981'], dolu:['Dolu','#7C3AED'], rezerve:['Rezerve','#F59E0B'], kirli:['Kirli','#64748B'], birlesik:['Birleşik','#7C3AED']};
 function idzAlanMasalari(){ return IDZ.masalar.filter(function(m){ return m.b === idzAktif; }); }
+function idzIlkAlan(){ return IDZ.alanlar.length ? IDZ.alanlar[0].id : 0; }
+function idzPlanSatir(m){ var p = IDZ.plan[m.id]; return p && +p.b === m.b ? p : null; }
 function idzCiz(){
   var cer = document.getElementById('idzCerceve'), dun = document.getElementById('idzDunya');
   if(!cer || !cer.clientWidth) return;
-  var list = idzAlanMasalari(), yer = idzYerlesim(list);
-  idzDunyaOlcu(cer, dun, yer, idzOlcek);
+  var list = idzAlanMasalari(), yer = idzYerlesim(list), alan = (IDZ.plan._alan && IDZ.plan._alan[idzAktif]) || {};
+  idzDunyaOlcu(cer, dun, yer, idzOlcek, alan.oran);
   var q = (document.getElementById('idzMasaAra').value || '').trim().toLocaleLowerCase('tr');
-  var h = idzDekor;
-  if(!IDZ.alanlar.length) h += '<div class="idz-plan-bos"><b>Henüz alan yok</b><span>Başlamak için bir alan ekleyin.</span><button type="button" class="idz-btn dolu" onclick="idzModal(\'idzBolgeEkle\')">Alan Ekle</button></div>';
-  else if(!list.length) h += '<div class="idz-plan-bos"><b>Bu alanda masa yok</b><span>İlk masayı ekleyerek planı oluşturun.</span><button type="button" class="idz-btn dolu" onclick="idzModal(\'idzMasaEkle\')">Masa Ekle</button></div>';
+  var h = idzObjelerHtml(idzDekorListe(IDZ.plan, idzAktif, idzIlkAlan()), idzSecili && idzSecili.tur === 'obje' ? idzSecili.id : -1);
+  if(!idzDuzen && !IDZ.alanlar.length) h += '<div class="idz-plan-bos"><b>Henüz alan yok</b><span>Başlamak için bir alan ekleyin.</span><button type="button" class="idz-btn dolu" onclick="idzModal(\'idzBolgeEkle\')">Alan Ekle</button></div>';
+  else if(!idzDuzen && !list.length) h += '<div class="idz-plan-bos"><b>Bu alanda masa yok</b><span>İlk masayı ekleyerek planı oluşturun.</span><button type="button" class="idz-btn dolu" onclick="idzModal(\'idzMasaEkle\')">Masa Ekle</button></div>';
   list.forEach(function(m){
-    var kay = idzKonum[m.id] || (IDZ.plan[m.id] && +IDZ.plan[m.id].b === m.b ? IDZ.plan[m.id] : null) || yer.poz[m.id];
-    var g = idzMasaSvg(m), du = idzDurumlar[m.durum] || idzDurumlar.bos;
+    var p = idzPlanSatir(m), kay = p || yer.poz[m.id], boy = (p && p.boy) || 1;
+    var g = idzMasaSvg(m, idzSekil(m, p), (p && p.rot) || 0), du = idzDurumlar[m.durum] || idzDurumlar.bos;
     var uyar = q && m.ad.toLocaleLowerCase('tr').indexOf(q) < 0;
     var kisa = String(m.ad).replace(/^masa\s+/i, '');
-    h += '<button type="button" class="idz-masa'+(g.yuvarlak ? ' yuv' : '')+(uyar ? ' sonuk' : '')+(idzVurgu === m.id ? ' vurgu' : '')+'" data-id="'+m.id+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+g.oran+')" title="'+mduzEsc(m.ad)+' · '+m.kapasite+' kişi">'+g.svg+
+    var sec = idzSecili && idzSecili.tur === 'masa' && idzSecili.id === m.id;
+    h += '<button type="button" class="idz-masa'+(g.yuvarlak ? ' yuv' : '')+(uyar ? ' sonuk' : '')+(idzVurgu === m.id ? ' vurgu' : '')+(sec ? ' sec' : '')+'" data-id="'+m.id+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+(g.oran * boy)+');--mb:'+boy+'" title="'+mduzEsc(m.ad)+' · '+m.kapasite+' kişi">'+g.svg+
       '<span class="et"><b>'+mduzEsc(kisa)+'</b><em><i style="background:'+du[1]+'"></i>'+du[0]+'</em></span></button>';
   });
   dun.innerHTML = h;
+  dun.classList.toggle('duzen', idzDuzen);
   document.querySelectorAll('#idzAlanlar .idz-alan[data-alan]').forEach(function(a){ a.classList.toggle('aktif', +a.getAttribute('data-alan') === idzAktif); });
-  var sec = document.getElementById('idzAlanSec'); if(sec) sec.value = idzAktif;
-  document.getElementById('idzKaydet').classList.toggle('bekliyor', Object.keys(idzDegisen).length > 0);
+  var sec2 = document.getElementById('idzAlanSec'); if(sec2) sec2.value = idzAktif;
+  document.getElementById('idzOran').value = String(alan.oran || 2.35);
 }
 function idzAlanSec(id, kaydir){
-  idzAktif = id; idzOlcek = 1; idzPopKapat();
+  idzAktif = id; idzOlcek = 1; idzSecili = null; idzPopKapat(); idzOzellikCiz();
   try{ sessionStorage.setItem('idz_alan', id); }catch(e){}
   idzCiz();
   if(kaydir) document.getElementById('idzCerceve').scrollIntoView({behavior:'smooth', block:'center'});
@@ -614,53 +639,197 @@ function idzZoom(d){
 document.getElementById('idzAlanSec').addEventListener('change', function(){ idzAlanSec(+this.value); });
 document.getElementById('idzMasaAra').addEventListener('input', idzCiz);
 document.querySelectorAll('#idzAlanlar .idz-alan[data-alan]').forEach(function(a){ a.addEventListener('click', function(){ idzAlanSec(+a.getAttribute('data-alan')); }); });
-// Sürükle = konum değiştir, tıkla = masa kartı
+
+// ---- Düzenleme modu ----
+function idzYedek(){ idzGecmis.push(JSON.stringify(IDZ.plan)); if(idzGecmis.length > 60) idzGecmis.shift(); idzGeriDurum(); }
+function idzGeriDurum(){ var b = document.getElementById('idzGeri'); if(b) b.disabled = !idzGecmis.length; }
+function idzGeriAl(){ if(!idzGecmis.length) return; IDZ.plan = JSON.parse(idzGecmis.pop()); idzSecili = null; idzGeriDurum(); idzOzellikCiz(); idzCiz(); }
+function idzDegisti(){ idzKirli[idzAktif] = 1; }
+function idzDuzenAc(){
+  if(!IDZ.alanlar.length){ idzModal('idzBolgeEkle'); return; }
+  idzDuzen = true; idzIlk = JSON.stringify(IDZ.plan); idzGecmis = []; idzKirli = {}; idzSecili = null; idzVurgu = null;
+  idzPopKapat(); idzOlcek = 1; idzGeriDurum();
+  document.querySelector('.idz-plan-kart').classList.add('duzen-acik');
+  idzOzellikCiz(); idzCiz();
+}
+function idzDuzenKapat(){
+  idzDuzen = false; idzSecili = null; idzKirli = {};
+  document.querySelector('.idz-plan-kart').classList.remove('duzen-acik');
+  idzOzellikCiz(); idzCiz();
+}
+function idzVazgec(){
+  function kapat(){ IDZ.plan = JSON.parse(idzIlk); idzDuzenKapat(); }
+  if(Object.keys(idzKirli).length) rkOnay('Kaydedilmemiş değişiklikler silinsin mi?', kapat, 'var(--kirmizi)', 'Vazgeç'); else kapat();
+}
+// Varsayılan dekor düzenlenince alana yazılır, sonra alanın kendi objeleri olur
+function idzObjeler(){
+  IDZ.plan._alan = IDZ.plan._alan || {};
+  var a = IDZ.plan._alan[idzAktif] || {oran: 2.35};
+  if(!a.kayitli){ a.dekor = idzDekorListe(IDZ.plan, idzAktif, idzIlkAlan()); a.kayitli = true; IDZ.plan._alan[idzAktif] = a; }
+  return a.dekor;
+}
+// Masanın tam satırı (otomatik konumdaysa sabitlenir)
+function idzMasaSatir(m){
+  var p = idzPlanSatir(m);
+  if(!p){ var o = idzYerlesim(idzAlanMasalari()).poz[m.id]; p = {b: m.b, x: Math.round(o.x), y: Math.round(o.y)}; IDZ.plan[m.id] = p; }
+  return p;
+}
+function idzObjeEkle(t){
+  if(!t) return;
+  idzYedek();
+  var l = idzObjeler(), d = IDZ_OBJE[t];
+  var yer = idzYerlesim(idzAlanMasalari()), dolu = idzAlanMasalari().map(function(m){ return idzPlanSatir(m) || yer.poz[m.id]; }).concat(l), bos = {x: 500, y: 500}, enIyi = -1;
+  [[500,500],[300,500],[700,500],[150,300],[850,300],[150,700],[850,700],[500,200],[500,800],[300,200],[700,200]].forEach(function(a){
+    var en = 99999; dolu.forEach(function(k){ en = Math.min(en, Math.abs(k.x - a[0]) * 2.35 + Math.abs(k.y - a[1])); });
+    if(en > enIyi){ enIyi = en; bos = {x: a[0], y: a[1]}; }
+  });
+  l.push({t: t, ad: d[3] ? d[2] : '', x: bos.x, y: bos.y, boy: 1, rot: 0});
+  idzSecili = {tur: 'obje', id: l.length - 1};
+  idzDegisti(); idzOzellikCiz(); idzCiz();
+  document.getElementById('idzObjeSec').value = '';
+}
+function idzOran(v){ idzYedek(); idzObjeler(); IDZ.plan._alan[idzAktif].oran = +v; idzDegisti(); idzCiz(); }
+function idzSablonUygula(tip){
+  if(!tip) return;
+  var list = idzAlanMasalari();
+  document.getElementById('idzSablon').value = '';
+  if(!list.length){ rkBilgi('Bu alanda masa yok.', 'wn'); return; }
+  idzYedek();
+  var poz = idzSablon(tip, list, (IDZ.plan._alan[idzAktif] || {}).oran);
+  list.forEach(function(m){
+    var p = idzMasaSatir(m); p.x = Math.round(poz[m.id].x); p.y = Math.round(poz[m.id].y); p.rot = 0;
+    if(tip === 'banket') p.sekil = 'uzun';
+    else if(tip === 'otomatik') delete p.sekil;
+  });
+  idzDegisti(); idzOzellikCiz(); idzCiz();
+  rkBilgi('Şablon uygulandı. Masaları elle düzeltip Kaydet\'e basın.', 'ok');
+}
+function idzSeciliSil(){
+  if(!idzSecili || idzSecili.tur !== 'obje') return;
+  idzYedek(); idzObjeler().splice(idzSecili.id, 1); idzSecili = null; idzDegisti(); idzOzellikCiz(); idzCiz();
+}
+function idzSeciliAyar(alan, v){
+  if(!idzSecili) return;
+  var hedef = idzSecili.tur === 'masa' ? idzMasaSatir(IDZ.masalar.find(function(m){ return m.id === idzSecili.id; })) : idzObjeler()[idzSecili.id];
+  hedef[alan] = v; idzDegisti(); idzCiz();
+}
+function idzOzellikCiz(){
+  var k = document.getElementById('idzOzellik');
+  if(!idzDuzen || !idzSecili){ k.classList.remove('acik'); k.innerHTML = ''; return; }
+  var h = '', boy = 1, rot = 0, baslik = '';
+  function kaydirma(ad, et, min, max, adim, deg, birim){ return '<label>'+et+' <output>'+deg+birim+'</output><input type="range" min="'+min+'" max="'+max+'" step="'+adim+'" value="'+deg+'" onpointerdown="idzYedek()" oninput="this.previousElementSibling.textContent=this.value+\''+birim+'\';idzSeciliAyar(\''+ad+'\',+this.value)"></label>'; }
+  if(idzSecili.tur === 'masa'){
+    var m = IDZ.masalar.find(function(x){ return x.id === idzSecili.id; }); if(!m) return;
+    var p = idzPlanSatir(m), sk = idzSekil(m, p); boy = (p && p.boy) || 1; rot = (p && p.rot) || 0;
+    baslik = mduzEsc(m.ad) + ' <small>' + m.kapasite + ' kişi</small>';
+    h += '<div class="sekil">' + [['kare','crop_square','Kare'],['yuvarlak','circle','Yuvarlak'],['uzun','crop_16_9','Uzun']].map(function(s){ return '<button type="button" class="'+(sk === s[0] ? 'aktif' : '')+'" onclick="idzYedek();idzSeciliAyar(\'sekil\',\''+s[0]+'\');idzOzellikCiz()"><span class="material-icons-outlined">'+s[1]+'</span>'+s[2]+'</button>'; }).join('') + '</div>';
+    h += kaydirma('boy', 'Boyut', .6, 1.6, .1, boy, 'x') + kaydirma('rot', 'Döndür', 0, 345, 15, rot, '°');
+    h += '<div class="alt"><button type="button" class="idz-btn kucuk" onclick="masaDuzenleAc(IDZ.masalar.find(function(x){return x.id===idzSecili.id}))"><span class="material-icons-outlined">edit</span>Ad / Kapasite</button><button type="button" class="idz-btn kucuk" onclick="idzTasiAc(idzSecili.id)"><span class="material-icons-outlined">swap_horiz</span>Alana Taşı</button></div>';
+  } else {
+    var o = idzObjeler()[idzSecili.id], d = IDZ_OBJE[o.t] || IDZ_OBJE.diger; if(!o) return;
+    boy = o.boy || 1; rot = o.rot || 0; baslik = d[2];
+    if(d[3]) h += '<label>Etiket<input type="text" class="rk-inp" maxlength="40" value="'+mduzEsc(o.ad || '')+'" onfocus="idzYedek()" oninput="idzSeciliAyar(\'ad\',this.value)"></label>';
+    h += kaydirma('boy', o.t === 'duvar' ? 'Uzunluk' : 'Boyut', .4, 3, .1, boy, 'x') + kaydirma('rot', 'Döndür', 0, 345, 15, rot, '°');
+    h += '<div class="alt"><button type="button" class="idz-btn kucuk tehlike" onclick="idzSeciliSil()"><span class="material-icons-outlined">delete_outline</span>Sil</button></div>';
+  }
+  k.innerHTML = '<div class="b"><b>'+baslik+'</b><button type="button" class="mduz-ibtn" aria-label="Kapat" onclick="idzSecili=null;idzOzellikCiz();idzCiz()"><span class="material-icons-outlined">close</span></button></div>' + h;
+  k.classList.add('acik');
+}
+// Normal modda tıkla = masa kartı. Düzenleme modunda tıkla = seç, sürükle = taşı.
 (function(){
-  var dun = document.getElementById('idzDunya'), el = null, bas = null, oynadi = false;
+  var dun = document.getElementById('idzDunya'), el = null, bas = null, oynadi = false, sur = null, kilavuz = [];
+  function kilavuzTemizle(){ kilavuz.forEach(function(k){ k.remove(); }); kilavuz = []; }
+  function kilavuzCiz(yon, deger){ var k = document.createElement('i'); k.className = 'idz-kilavuz ' + yon; k.style[yon === 'dikey' ? 'left' : 'top'] = (deger / 10) + '%'; dun.appendChild(k); kilavuz.push(k); }
+  // Diğer masalarla aynı hizaya gelince oturur, yoksa ızgaraya
+  function hizala(x, y, kendi){
+    if(!idzHizala) return {x: x, y: y};
+    var yer = idzYerlesim(idzAlanMasalari()), yx = null, yy = null, enX = 14, enY = 14;
+    idzAlanMasalari().forEach(function(m){
+      if(m.id === kendi) return;
+      var k = idzPlanSatir(m) || yer.poz[m.id];
+      if(Math.abs(k.x - x) < enX){ enX = Math.abs(k.x - x); yx = k.x; }
+      if(Math.abs(k.y - y) < enY){ enY = Math.abs(k.y - y); yy = k.y; }
+    });
+    kilavuzTemizle();
+    if(yx !== null) kilavuzCiz('dikey', yx);
+    if(yy !== null) kilavuzCiz('yatay', yy);
+    return {x: yx !== null ? yx : Math.round(x / 25) * 25, y: yy !== null ? yy : Math.round(y / 25) * 25};
+  }
   dun.addEventListener('pointerdown', function(e){
-    var t = e.target.closest('.idz-masa'); if(!t) return;
-    el = t; bas = {x: e.clientX, y: e.clientY}; oynadi = false;
-    t.setPointerCapture(e.pointerId);
+    var t = e.target.closest('.idz-masa, .idz-obje'); if(!t) { if(idzDuzen && idzSecili){ idzSecili = null; idzOzellikCiz(); idzCiz(); } return; }
+    el = t; bas = {x: e.clientX, y: e.clientY}; oynadi = false; sur = null;
+    if(idzDuzen) t.setPointerCapture(e.pointerId);
   });
   dun.addEventListener('pointermove', function(e){
-    if(!el) return;
+    if(!el || !idzDuzen) return;
     if(!oynadi && Math.abs(e.clientX - bas.x) + Math.abs(e.clientY - bas.y) < 6) return;
-    if(!oynadi){ oynadi = true; el.classList.add('tutuldu'); idzPopKapat(); }
+    var masa = el.classList.contains('idz-masa'), id = +el.getAttribute(masa ? 'data-id' : 'data-obje');
+    if(!oynadi){
+      oynadi = true; el.classList.add('tutuldu'); idzYedek();
+      sur = masa ? idzMasaSatir(IDZ.masalar.find(function(m){ return m.id === id; })) : idzObjeler()[id];
+    }
     var r = dun.getBoundingClientRect();
-    var x = Math.max(30, Math.min(970, Math.round((e.clientX - r.left) / r.width * 1000)));
-    var y = Math.max(30, Math.min(970, Math.round((e.clientY - r.top) / r.height * 1000)));
-    el.style.left = (x / 10) + '%'; el.style.top = (y / 10) + '%';
-    var id = el.getAttribute('data-id');
-    idzKonum[id] = {x: x, y: y}; idzDegisen[id] = {x: x, y: y};
-    document.getElementById('idzKaydet').classList.add('bekliyor');
+    var x = Math.max(15, Math.min(985, Math.round((e.clientX - r.left) / r.width * 1000)));
+    var y = Math.max(15, Math.min(985, Math.round((e.clientY - r.top) / r.height * 1000)));
+    var h = masa ? hizala(x, y, id) : (idzHizala ? {x: Math.round(x / 25) * 25, y: Math.round(y / 25) * 25} : {x: x, y: y});
+    sur.x = h.x; sur.y = h.y;
+    el.style.left = (h.x / 10) + '%'; el.style.top = (h.y / 10) + '%';
+    idzDegisti();
   });
   function birak(e){
     if(!el) return;
-    var t = el; el.classList.remove('tutuldu'); el = null;
-    if(!oynadi && e.type === 'pointerup') idzPopAc(+t.getAttribute('data-id'), t);
+    var t = el, masa = t.classList.contains('idz-masa'); el = null; t.classList.remove('tutuldu'); kilavuzTemizle();
+    if(e.type !== 'pointerup') return;
+    if(!idzDuzen){ if(masa) idzPopAc(+t.getAttribute('data-id'), t); return; }
+    if(oynadi){ idzCiz(); return; }
+    idzSecili = masa ? {tur: 'masa', id: +t.getAttribute('data-id')} : {tur: 'obje', id: +t.getAttribute('data-obje')};
+    idzOzellikCiz(); idzCiz();
   }
   dun.addEventListener('pointerup', birak);
   dun.addEventListener('pointercancel', birak);
   dun.addEventListener('click', function(e){ if(e.target.closest('.idz-masa')) e.preventDefault(); });
-  // Klavyeyle de açılabilsin
-  dun.addEventListener('keydown', function(e){ var t = e.target.closest('.idz-masa'); if(t && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); idzPopAc(+t.getAttribute('data-id'), t); } });
+  // Klavye: Enter/Boşluk aç veya seç, düzenleme modunda ok tuşları taşır
+  dun.addEventListener('keydown', function(e){
+    var t = e.target.closest('.idz-masa'); if(!t || !(e.key === 'Enter' || e.key === ' ')) return;
+    e.preventDefault();
+    if(idzDuzen){ idzSecili = {tur: 'masa', id: +t.getAttribute('data-id')}; idzOzellikCiz(); idzCiz(); }
+    else idzPopAc(+t.getAttribute('data-id'), t);
+  });
+  document.addEventListener('keydown', function(e){
+    if(!idzDuzen || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); idzGeriAl(); return; }
+    if(!idzSecili) return;
+    if(e.key === 'Delete' || e.key === 'Backspace'){ if(idzSecili.tur === 'obje'){ e.preventDefault(); idzSeciliSil(); } return; }
+    var d = {ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1]}[e.key]; if(!d) return;
+    e.preventDefault(); idzYedek();
+    var s = idzSecili.tur === 'masa' ? idzMasaSatir(IDZ.masalar.find(function(m){ return m.id === idzSecili.id; })) : idzObjeler()[idzSecili.id], ad = e.shiftKey ? 25 : 5;
+    s.x = Math.max(15, Math.min(985, s.x + d[0] * ad)); s.y = Math.max(15, Math.min(985, s.y + d[1] * ad));
+    idzDegisti(); idzCiz();
+  });
 })();
 function idzPlanKaydet(){
-  var ids = Object.keys(idzDegisen);
-  if(!ids.length){ rkBilgi('Değişiklik yok. Masayı sürükleyip konumunu değiştirebilirsiniz.', 'info'); return; }
-  var b = document.getElementById('idzKaydet'); b.disabled = true;
+  var ids = Object.keys(idzKirli);
+  if(!ids.length){ idzDuzenKapat(); rkBilgi('Değişiklik yok.', 'info'); return; }
+  var alanlar = {};
+  ids.forEach(function(bid){
+    var b = +bid, list = IDZ.masalar.filter(function(m){ return m.b === b; }), yer = idzYerlesim(list), kon = {};
+    list.forEach(function(m){ var p = idzPlanSatir(m), k = p || yer.poz[m.id]; kon[m.id] = {x: Math.round(k.x), y: Math.round(k.y)}; if(p){ if(p.sekil) kon[m.id].sekil = p.sekil; if(p.boy) kon[m.id].boy = p.boy; if(p.rot !== undefined) kon[m.id].rot = p.rot; } });
+    var a = IDZ.plan._alan[b] || {};
+    alanlar[b] = {oran: a.oran || 2.35, konumlar: kon, objeler: a.kayitli ? a.dekor : idzDekorListe(IDZ.plan, b, idzIlkAlan())};
+  });
+  var d = document.getElementById('idzKaydet'); d.disabled = true;
   fetch('/isletme-duzeni/plan-kaydet', {
     method:'POST',
     headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':window.csrf||''},
-    body: JSON.stringify({konumlar: idzDegisen})
-  }).then(function(r){ return r.json(); }).then(function(d){
-    b.disabled = false;
-    if(d.ok != 1){ rkBilgi(d.hata || 'Plan kaydedilemedi.', 'er'); return; }
-    IDZ.masalar.forEach(function(m){ if(idzDegisen[m.id]) IDZ.plan[m.id] = {b: m.b, x: idzDegisen[m.id].x, y: idzDegisen[m.id].y}; });
-    idzDegisen = {}; idzCiz(); rkBilgi('Masa planı kaydedildi.', 'ok');
-  }).catch(function(){ b.disabled = false; rkBilgi('Sunucuya ulaşılamadı.', 'er'); });
+    body: JSON.stringify({alanlar: alanlar})
+  }).then(function(r){ return r.json(); }).then(function(c){
+    d.disabled = false;
+    if(c.ok != 1){ rkBilgi(c.hata || 'Plan kaydedilemedi.', 'er'); return; }
+    IDZ.masalar.forEach(function(m){ var k = alanlar[m.b] && alanlar[m.b].konumlar[m.id]; if(k) IDZ.plan[m.id] = Object.assign({b: m.b}, k); });
+    idzDuzenKapat(); rkBilgi('Masa planı kaydedildi, Salon Şeması da güncellendi.', 'ok');
+  }).catch(function(){ d.disabled = false; rkBilgi('Sunucuya ulaşılamadı.', 'er'); });
 }
-window.addEventListener('beforeunload', function(e){ if(Object.keys(idzDegisen).length){ e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', function(e){ if(idzDuzen && Object.keys(idzKirli).length){ e.preventDefault(); e.returnValue = ''; } });
 // ---- Masa kartı ----
 function idzPopKapat(){ var p = document.getElementById('idzPop'); p.classList.remove('acik'); idzVurgu = null; }
 function idzPopAc(id, t){

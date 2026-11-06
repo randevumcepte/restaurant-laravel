@@ -2,6 +2,7 @@
 @section('title', 'Salon Şeması')
 @section('rk_ikon', 'grid_on')
 @section('baslik', 'Salon Şeması')
+@section('rk_alt', 'İşletme Düzeni > Masa Planı ile otomatik eşitlenir')
 
 @section('rk_araclar')
   <span id="sema-durum" style="font-size:12.5px;color:var(--sub);margin-right:4px"></span>

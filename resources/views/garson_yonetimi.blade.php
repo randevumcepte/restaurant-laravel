@@ -335,13 +335,13 @@ function gyIsiCiz(cerId, dunId, gid){
   var cer = document.getElementById(cerId), dun = document.getElementById(dunId);
   if(!cer || !cer.clientWidth) return;
   var list = GY.masalar.filter(function(m){ return m.b === gyAlan; }), yer = idzYerlesim(list), y = gyYuzdeler(gid);
-  idzDunyaOlcu(cer, dun, yer, 1);
-  var h = idzDekor;
+  idzDunyaOlcu(cer, dun, yer, 1, (GY.plan._alan && GY.plan._alan[gyAlan] || {}).oran);
+  var h = idzObjelerHtml(idzDekorListe(GY.plan, gyAlan, GY.alanlar.length ? GY.alanlar[0].id : 0), -1);
   if(!GY.alanlar.length || !list.length) h += '<div class="idz-plan-bos"><b>Bu alanda masa yok</b><span>Masaları İşletme Düzeni\'nden ekleyebilirsiniz.</span><a class="idz-btn dolu" href="/isletme-duzeni">İşletme Düzeni</a></div>';
   list.forEach(function(m){
-    var kay = (GY.plan[m.id] && +GY.plan[m.id].b === m.b) ? GY.plan[m.id] : yer.poz[m.id], d = y[m.id];
-    var g = idzMasaSvg({kapasite: m.kapasite, sekil: m.sekil, durum: d.p >= 90 ? 'dolu' : 'bos'});
-    h += '<button type="button" class="idz-masa gy-m'+(g.yuvarlak ? ' yuv' : '')+'" data-ad="'+gyE(gyMasaAd(m))+'" data-n="'+d.n+'" data-p="'+d.p+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+g.oran+')" title="'+gyE(gyMasaAd(m))+' · '+d.n+' sipariş · %'+d.p+'">'+g.svg+
+    var pl = (GY.plan[m.id] && +GY.plan[m.id].b === m.b) ? GY.plan[m.id] : null, kay = pl || yer.poz[m.id], d = y[m.id], mboy = (pl && pl.boy) || 1;
+    var g = idzMasaSvg({kapasite: m.kapasite, durum: d.p >= 90 ? 'dolu' : 'bos'}, idzSekil(m, pl), (pl && pl.rot) || 0);
+    h += '<button type="button" class="idz-masa gy-m'+(g.yuvarlak ? ' yuv' : '')+'" data-ad="'+gyE(gyMasaAd(m))+'" data-n="'+d.n+'" data-p="'+d.p+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+(g.oran * mboy)+');--mb:'+mboy+'" title="'+gyE(gyMasaAd(m))+' · '+d.n+' sipariş · %'+d.p+'">'+g.svg+
       '<i class="gy-parlama" style="--r:'+gyIsiRenk(d.p)+'"></i><span class="et"><b>'+gyE(gyMasaEt(m))+'</b><small>%'+d.p+'</small></span></button>';
   });
   dun.innerHTML = h;

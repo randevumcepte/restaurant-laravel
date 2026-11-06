@@ -16254,7 +16254,6 @@ Route::get('/garson-yonetimi', function () {
     try {
         if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
         if (function_exists('_atamaTablo')) _atamaTablo();
-        _isletmePlanEnsure();
         $d['bolgeler'] = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
         $d['masalar'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id']);
         $atama = DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']);
@@ -16262,8 +16261,7 @@ Route::get('/garson-yonetimi', function () {
         foreach ($atama as $a) { if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id; else $mMap[$a->personel_id][] = (int) $a->hedef_id; }
         $d['garsonlar'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->orderBy('ad')->get(['id', 'ad', 'rol'])
             ->map(function ($g) use ($bMap, $mMap) { $g->bolge_idler = $bMap[$g->id] ?? []; $g->masa_idler = $mMap[$g->id] ?? []; return $g; });
-        $pl = DB::table('isletme_plan')->where('sube_id', $sid)->value('veri');
-        $d['plan'] = $pl ? (json_decode($pl, true) ?: []) : [];
+        $d['plan'] = (new \App\Services\SalonPlan($sid))->oku();
         if (Schema::hasColumn('personeller', 'foto')) $d['fotolar'] = DB::table('personeller')->where('sube_id', $sid)->where('rol', 'garson')->whereNotNull('foto')->pluck('foto', 'id')->all();
         $d['panel'] = (new \App\Services\GarsonPanel($sid))->veri();
         $d['cagriSay'] = $d['panel']['cagri'];
@@ -16311,7 +16309,7 @@ if (!function_exists('_duzenLog')) {
     }
 }
 if (!function_exists('_isletmePlanEnsure')) {
-    // Masa Planı konumları. Salon Şeması (masalar.x/y) koordinatlarından AYRI: birbirini bozmasın.
+    // Masa Planı konumları ve alan objeleri. Salon Şeması ile eşitlemesi App\Services\SalonPlan'da.
     function _isletmePlanEnsure()
     {
         if (Schema::hasTable('isletme_plan')) return;
@@ -16364,9 +16362,7 @@ Route::get('/isletme-duzeni', function () {
     } catch (\Throwable $e) {}
     $d['plan'] = []; $d['hareketler'] = collect(); $d['fotolar'] = collect(); $d['cagriSay'] = 0; $d['yeniMasa'] = 0;
     try {
-        _isletmePlanEnsure();
-        $pl = DB::table('isletme_plan')->where('sube_id', $sid)->value('veri');
-        $d['plan'] = $pl ? (json_decode($pl, true) ?: []) : [];
+        $d['plan'] = (new \App\Services\SalonPlan($sid))->oku();
     } catch (\Throwable $e) {}
     try {
         \App\Http\Middleware\AktiviteLog::ensure();
@@ -16384,21 +16380,14 @@ Route::get('/isletme-duzeni', function () {
     try { if (Schema::hasColumn('masalar', 'created_at')) $d['yeniMasa'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->where('created_at', '>=', now()->subDays(7))->count(); } catch (\Throwable $e) {}
     return view('isletme_duzeni', $d);
 });
-// --- Masa Planı: sürüklenen masaların konumu (0-1000) ---
+// --- Masa Planı kaydet: konum/şekil/boyut + salon objeleri (Salon Şeması ile eşitlenir) ---
 Route::post('/isletme-duzeni/plan-kaydet', function (Request $r) {
     $sid = _webSubeId();
     try {
-        _isletmePlanEnsure();
-        $bolgeler = DB::table('masalar')->where('sube_id', $sid)->pluck('bolge_id', 'id');
-        $veri = json_decode((string) DB::table('isletme_plan')->where('sube_id', $sid)->value('veri'), true) ?: [];
-        foreach ((array) $r->input('konumlar', []) as $mid => $k) {
-            if (!isset($bolgeler[$mid]) || !is_array($k)) continue;
-            $veri[(int) $mid] = ['b' => (int) $bolgeler[$mid], 'x' => max(0, min(1000, (int) ($k['x'] ?? 0))), 'y' => max(0, min(1000, (int) ($k['y'] ?? 0)))];
-        }
-        DB::table('isletme_plan')->updateOrInsert(['sube_id' => $sid], ['veri' => json_encode($veri), 'updated_at' => now()]);
+        (new \App\Services\SalonPlan($sid))->kaydet((array) $r->input('alanlar', []));
         _duzenLog($sid, 'Masa planı kaydedildi');
         return ['ok' => 1];
-    } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Plan kaydedilemedi.']); }
+    } catch (\Throwable $e) { report($e); return response()->json(['ok' => 0, 'hata' => 'Plan kaydedilemedi.']); }
 });
 // --- Bölge CRUD ---
 Route::post('/isletme-duzeni/bolge-ekle', function (Request $r) {
@@ -16424,6 +16413,7 @@ Route::post('/isletme-duzeni/bolge-duzenle', function (Request $r) {
         $upd = ['ad' => mb_substr($ad, 0, 60)];
         if (Schema::hasColumn('bolgeler', 'updated_at')) $upd['updated_at'] = now();
         DB::table('bolgeler')->where('id', $b->id)->update($upd);
+        try { (new \App\Services\SalonPlan($sid))->alanAdiDegisti($b->id, $b->ad, mb_substr($ad, 0, 60)); } catch (\Throwable $e) { report($e); }
         _duzenLog($sid, 'Bölge düzenlendi: ' . $ad);
         return redirect()->back()->with('ok', 'Bölge güncellendi.');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Güncellenemedi.'); }
@@ -21674,10 +21664,12 @@ Route::post('/salon-sema/kaydet', function (Request $r) {
         $veri = json_decode($veriRaw, true);
         if (!is_array($veri)) return response()->json(['ok' => 0, 'hata' => 'Geçersiz veri']);
         $var = DB::table('salon_sema')->where('sube_id', $sid)->first();
+        $eskiSema = $var ? json_decode((string) $var->veri, true) : null;
         if ($var) DB::table('salon_sema')->where('id', $var->id)->update(['veri' => $veriRaw, 'updated_at' => now()]);
         else DB::table('salon_sema')->insert(['sube_id' => $sid, 'veri' => $veriRaw, 'updated_at' => now()]);
         $mts = $veri['masalar'] ?? [];
         if (is_array($mts)) foreach ($mts as $mid => $m) { if (!is_array($m)) continue; DB::table('masalar')->where('id', (int) $mid)->where('sube_id', $sid)->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]); }
+        try { (new \App\Services\SalonPlan($sid))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
         return response()->json(['ok' => 1]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Kaydedilemedi']); }
 });
@@ -21825,6 +21817,7 @@ Route::post('/api/patron/salon-sema-kaydet', function (Request $r) {
     if (!is_array($veri)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
     try {
         $var = DB::table('salon_sema')->where('sube_id', $p->sube_id)->first();
+        $eskiSema = $var ? json_decode((string) $var->veri, true) : null;
         if ($var) DB::table('salon_sema')->where('id', $var->id)->update(['veri' => $veriRaw, 'updated_at' => now()]);
         else DB::table('salon_sema')->insert(['sube_id' => $p->sube_id, 'veri' => $veriRaw, 'updated_at' => now()]);
         // Masa konumlarini POS masalar tablosuna da yaz (POS haritasi ayni gorunsun)
@@ -21835,6 +21828,7 @@ Route::post('/api/patron/salon-sema-kaydet', function (Request $r) {
                     ->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]);
             }
         }
+        try { (new \App\Services\SalonPlan($p->sube_id))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
     } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Kaydedilemedi']; }
     return ['ok' => 1];
 });
