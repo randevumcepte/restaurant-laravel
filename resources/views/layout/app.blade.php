@@ -269,7 +269,6 @@
         ['/rezervasyon', 'event_available', 'Rezervasyonlar', '#A855F7'],
         ['/etkinlik-takvim', 'celebration', 'Etkinlik / Grup Takvimi', '#0EA5E9'],
         ['/depozito', 'payments', 'Depozito / Kapora', '#10B981'],
-        ['/masa-yonetim', 'grid_view', 'Masa Yönetimi', '#4F46E5'],
         ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
     ];
 
