@@ -459,7 +459,7 @@
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
                     'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
-                    'OPERASYON' => ['Panel', 'Satış & Servis', 'Departman Operasyon', 'Menü & Ürünler'],
+                    'OPERASYON' => ['Satış & Servis', 'Departman Operasyon', 'Menü & Ürünler'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
                 ];
                 $_katIkon = ['YÖNETİM' => 'workspace_premium', 'OPERASYON' => 'tune', 'AYARLAR' => 'settings'];
@@ -530,6 +530,8 @@
         var mq = window.matchMedia('(min-width:641px)');
         var d = {};
         try{ d = JSON.parse(localStorage.getItem('rk_menu_durum')) || {}; }catch(e){}
+        // Panel üste taşındı: eski "kapalı" kaydı bir kez yok sayılır, sonra kullanıcının seçimi geçerli
+        try{ if(!localStorage.getItem('rk_panel_ust')){ delete d['g:Panel']; localStorage.setItem('rk_panel_ust','1'); } }catch(e){}
         side.querySelectorAll('.rk-cat, .rk-grp').forEach(function(h){
             var k = h.dataset.cat ? 'c:'+h.dataset.cat : 'g:'+h.dataset.grp;
             if(k in d) h.classList.toggle('kapali', !d[k]);
