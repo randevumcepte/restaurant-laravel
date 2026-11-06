@@ -400,7 +400,7 @@
       <label class="rk-lbl" style="margin-top:0">Masa adı</label>
       <input type="text" name="ad" maxlength="40" placeholder='Örn. "Masa 1", "B4"' class="rk-inp">
       <label class="rk-lbl">Kapasite</label>
-      <input type="number" name="kapasite" min="1" max="50" value="4" class="rk-inp">
+      <div class="idz-adet"><button type="button" class="azalt" onclick="idzAdet(this,-1)" aria-label="Azalt"><span class="material-icons-outlined">remove</span></button><input type="number" name="kapasite" min="1" max="50" value="4" class="rk-inp" aria-label="Kapasite"><button type="button" class="artir" onclick="idzAdet(this,1)" aria-label="Artır"><span class="material-icons-outlined">add</span></button></div>
       <label class="rk-lbl">Bölge</label>
       <select name="bolge_id" id="idzYeniMasaBolge" class="rk-inp">
         @foreach ($bolgeler as $b)<option value="{{ $b->id }}">{{ $b->ad }}</option>@endforeach
@@ -496,7 +496,7 @@
     <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa adı</label>
     <input type="text" id="mduzEditAd" class="rk-inp" maxlength="40" placeholder='Örn. "Masa 1", "B4"'>
     <label class="rk-lbl" style="font-size:12px;margin-top:12px">Kapasite (kişi)</label>
-    <input type="number" id="mduzEditKap" class="rk-inp" min="1" max="50">
+    <div class="idz-adet"><button type="button" class="azalt" onclick="idzAdet(this,-1)" aria-label="Azalt"><span class="material-icons-outlined">remove</span></button><input type="number" id="mduzEditKap" class="rk-inp" min="1" max="50" aria-label="Kapasite"><button type="button" class="artir" onclick="idzAdet(this,1)" aria-label="Artır"><span class="material-icons-outlined">add</span></button></div>
     <label class="rk-lbl" style="font-size:12px;margin-top:12px">Bölge</label>
     <select id="mduzEditBolge" class="rk-inp">
       @foreach ($bolgeler as $b)<option value="{{ $b->id }}">{{ $b->ad }}</option>@endforeach
@@ -550,6 +550,10 @@ function masaDuzenleAc(m){
   document.getElementById('mduzEditBolge').value = m.b || '';
   document.getElementById('mduzEditModal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('mduzEditAd').focus(); }, 50);
+}
+function idzAdet(btn, d){
+  var i = btn.parentNode.querySelector('input');
+  i.value = Math.max(+i.min || 1, Math.min(+i.max || 50, (parseInt(i.value, 10) || 0) + d));
 }
 function masaDuzenleKapat(){ document.getElementById('mduzEditModal').style.display='none'; }
 (function(){ var m=document.getElementById('mduzEditModal'); if(m) m.addEventListener('click',function(e){ if(e.target===m) masaDuzenleKapat(); }); })();

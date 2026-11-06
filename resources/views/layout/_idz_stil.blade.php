@@ -228,6 +228,13 @@ body.koyu .idz-dunya{filter:brightness(.86)}
 .idz-pop .a .material-icons-outlined{font-size:19px;color:var(--mor1)}
 .idz-pop .a .k,.idz-pop .a .k .material-icons-outlined{color:var(--kirmizi)}
 /* Modallar */
+.idz-adet{display:flex;align-items:stretch;gap:8px}
+.idz-adet .rk-inp{flex:1;min-width:0;text-align:center;font-size:17px;font-weight:800;-moz-appearance:textfield;appearance:textfield}
+.idz-adet .rk-inp::-webkit-outer-spin-button,.idz-adet .rk-inp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.idz-adet button{flex:none;display:flex;align-items:center;justify-content:center;width:48px;min-height:46px;border-radius:12px;border:1.5px solid color-mix(in srgb,var(--mor1) 35%,var(--line));background:color-mix(in srgb,var(--mor1) 10%,var(--card));color:var(--mor1);cursor:pointer;transition:background .12s,transform .08s}
+.idz-adet button:hover{background:color-mix(in srgb,var(--mor1) 20%,var(--card))}
+.idz-adet button:active{transform:scale(.94)}
+.idz-adet .material-icons-outlined{font-size:26px}
 .idz-modal{display:none;position:fixed;inset:0;z-index:110;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.6);backdrop-filter:blur(3px)}
 .idz-modal.acik{display:flex}
 .idz-modal-kutu{width:100%;max-width:420px;padding:20px}
