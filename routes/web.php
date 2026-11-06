@@ -9543,13 +9543,13 @@ if (!function_exists('_olcekMenuListesi')) {
     function _olcekMenuListesi($olcek)
     {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
-        $ayar = ['/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $ayar = ['/isletme-duzeni', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
             'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/recete', '/sayim'],
-            'Satış & Servis' => ['/isletme-duzeni', '/garson-cagrilari'],
+            'Satış & Servis' => ['/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
             'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci'],
             'İnsan Kaynakları' => ['/personel', '/puantaj', '/departman-yonetim'],
@@ -9561,7 +9561,7 @@ if (!function_exists('_olcekMenuListesi')) {
         return array_merge($kucuk, [
             'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/ajanda'],
             'Mutfak / BOH' => array_merge($kucuk['Mutfak / BOH'], ['/departman-asistan?dep=mutfak', '/uretim-riski', '/parti-takip', '/mutfak-defteri', '/rezervasyon']),
-            'Satış & Servis' => ['/isletme-duzeni', '/servis', '/karsilama', '/garson-cagrilari'],
+            'Satış & Servis' => ['/servis', '/karsilama', '/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/qr-menu-rengi', '/indirimler', '/happy-hour', '/fix-menu', '/barkod'],
             'İnsan Kaynakları' => array_merge($kucuk['İnsan Kaynakları'], ['/garson-performans', '/ik-vardiya', '/ik-izin']),
             'Finans / Muhasebe' => array_merge($kucuk['Finans / Muhasebe'], ['/finans', '/kar-zarar', '/banka', '/tekrarlayan-gider', '/online-komisyon']),

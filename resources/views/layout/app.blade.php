@@ -143,7 +143,6 @@
             ['/paket', 'delivery_dining', 'Paket', null],
         ],
         'Satış & Servis' => [
-            ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
             ['/servis', 'room_service', 'Servis Ekranı (İş Akışım)', '#4F46E5'],
             ['/karsilama', 'co_present', 'Karşılama / Host (Bekleme + Oturt)', '#0EA5E9'],
             ['/garson-cagrilari', 'notifications_active', 'Garson Çağrıları', '#F43F5E'],
@@ -198,6 +197,7 @@
             ['/garson-performans', 'emoji_events', 'Garson Performansı', '#10B981'],
         ],
         'Ayarlar & Entegrasyon' => [
+            ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
             ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],
