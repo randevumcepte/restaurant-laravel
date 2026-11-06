@@ -67,6 +67,7 @@
     </div>
   </div>
 
+  <a class="test" style="right:auto;left:14px;top:14px;bottom:auto" href="/santral-kayitlar">← Panele dön</a>
   <a class="test" href="/callerid-test" target="_blank">🧪 Test çağrısı üret</a>
 
 <script>

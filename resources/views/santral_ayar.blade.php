@@ -1,51 +1,42 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>AI Santral — Aktarma Ayarları</title>
+@extends('layout.app')
+@section('title', 'AI Santral — Aktarma Ayarları')
+@section('baslik', 'AI Santral — Aktarma & Teslimat')
+@section('rk_ikon', 'phone_forwarded')
+@section('rk_alt', 'AI "sizi yetkiliye bağlıyorum" dediğinde çağrı kime gitsin? Asterisk\'e dokunmanıza gerek yok.')
+@push('head')
 <style>
-  :root{--bg:#f1f5f9;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--sub:#64748b;--indigo:#4f46e5;--indigo2:#6366f1;--ok:#16a34a;--red:#ef4444}
-  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  body{background:var(--bg);color:var(--ink);min-height:100vh;padding:24px}
-  .wrap{max-width:680px;margin:0 auto}
-  .bas{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-  .bas .ic{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--indigo),var(--indigo2));display:flex;align-items:center;justify-content:center;font-size:22px}
-  .bas h1{font-size:20px}.bas p{color:var(--sub);font-size:13px;margin-top:2px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:16px}
-  .card h2{font-size:14px;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px}
-  label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
-  input[type=text],input[type=number],select{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;outline:none;background:#f8fafc}
-  input:focus,select:focus{border-color:var(--indigo);background:#fff}
-  .hint{font-size:12px;color:var(--sub);margin-top:5px;line-height:1.5}
-  .switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:15px}
-  .switch input{width:44px;height:26px;appearance:none;background:#cbd5e1;border-radius:20px;position:relative;cursor:pointer;transition:.2s;flex:none}
-  .switch input:checked{background:var(--ok)}
-  .switch input::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s}
-  .switch input:checked::after{left:21px}
-  .strat{display:flex;gap:10px;flex-wrap:wrap}
-  .strat label{flex:1;min-width:220px;margin:0;border:2px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:600}
-  .strat label.sec{border-color:var(--indigo);background:#eef2ff}
-  .strat input{margin-top:3px}
-  .strat small{display:block;color:var(--sub);font-weight:400;font-size:12px;margin-top:3px}
-  .hrow{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}
-  .hrow .f{flex:1}.hrow .f.k{max-width:120px}.hrow label{margin:0 0 5px}
-  .hrow .sil{border:none;background:#fee2e2;color:var(--red);width:40px;height:44px;border-radius:10px;font-size:20px;cursor:pointer;flex:none}
-  .ekle{border:1px dashed var(--indigo);background:#eef2ff;color:var(--indigo);border-radius:10px;padding:11px;width:100%;font-weight:700;cursor:pointer;font-size:14px}
-  .onizle{background:#eef2ff;border:1px dashed #c7d2fe;border-radius:10px;padding:12px;font-family:monospace;font-size:14px;color:var(--indigo);margin-top:6px;word-break:break-all;white-space:pre-wrap}
-  .kaydet{width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--indigo),var(--indigo2));cursor:pointer;margin-top:8px}
-  .basari{background:#dcfce7;border:1px solid #86efac;color:#166534;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}
-  .gizli{display:none}
+  .st-kok{--indigo:#4f46e5;--indigo2:#6366f1;--ok:#16a34a;--red:#ef4444;--acik:color-mix(in srgb,#6366f1 12%,transparent);color:var(--ink);max-width:680px;margin:0 auto}
+  .st-kok *{box-sizing:border-box}
+  .st-kok .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:16px}
+  .st-kok .card h2{font-size:14px;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;margin:0 0 14px}
+  .st-kok label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+  .st-kok input[type=text],.st-kok input[type=number],.st-kok select,.st-kok textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;outline:none;background:var(--card2);color:var(--ink);font-family:inherit}
+  .st-kok textarea{font-size:14px;resize:vertical}
+  .st-kok input:focus,.st-kok select:focus,.st-kok textarea:focus{border-color:var(--indigo);background:var(--card)}
+  .st-kok .hint{font-size:12px;color:var(--sub);margin-top:5px;line-height:1.5}
+  .st-kok .switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:15px;margin:0}
+  .st-kok .switch input{width:44px;height:26px;appearance:none;background:#cbd5e1;border-radius:20px;position:relative;cursor:pointer;transition:.2s;flex:none}
+  .st-kok .switch input:checked{background:var(--ok)}
+  .st-kok .switch input::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s}
+  .st-kok .switch input:checked::after{left:21px}
+  .st-kok .strat{display:flex;gap:10px;flex-wrap:wrap}
+  .st-kok .strat label{flex:1;min-width:220px;margin:0;border:2px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:600}
+  .st-kok .strat label.sec{border-color:var(--indigo);background:var(--acik)}
+  .st-kok .strat input{margin-top:3px}
+  .st-kok .strat small{display:block;color:var(--sub);font-weight:400;font-size:12px;margin-top:3px}
+  .st-kok .hrow{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card2)}
+  .st-kok .hrow .f{flex:1;min-width:0}.st-kok .hrow .f.k{max-width:120px}.st-kok .hrow label{margin:0 0 5px}
+  .st-kok .hrow input,.st-kok .hrow select{background:var(--card)}
+  .st-kok .hrow .sil{border:none;background:color-mix(in srgb,#ef4444 15%,transparent);color:var(--red);width:40px;height:44px;border-radius:10px;font-size:20px;cursor:pointer;flex:none}
+  .st-kok .ekle{border:1px dashed var(--indigo);background:var(--acik);color:var(--ink);border-radius:10px;padding:11px;width:100%;font-weight:700;cursor:pointer;font-size:14px}
+  .st-kok .onizle{background:var(--acik);border:1px dashed var(--line);border-radius:10px;padding:12px;font-family:monospace;font-size:14px;color:var(--ink);margin-top:6px;word-break:break-all;white-space:pre-wrap}
+  .st-kok .kaydet{width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--indigo),var(--indigo2));cursor:pointer;margin:0 0 16px}
+  .st-kok .basari{background:color-mix(in srgb,#22c55e 15%,transparent);border:1px solid #86efac;color:var(--ink);padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}
+  .st-kok .gizli{display:none}
 </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="bas">
-    <div class="ic">📞</div>
-    <div><h1>AI Santral — Aktarma Ayarları</h1><p>AI "sizi yetkiliye bağlıyorum" dediğinde çağrı nereye/kime gitsin? Buradan yönetin; Asterisk'e dokunmanıza gerek yok.</p></div>
-  </div>
-
+@endpush
+@section('content')
+<div class="st-kok">
   @if(request('kaydedildi'))<div class="basari">✅ Ayarlar kaydedildi. Yeni çağrılarda geçerli.</div>@endif
 
   <form method="post" action="/santral-ayar-kaydet" id="frm">
@@ -92,7 +83,7 @@
     <div class="card">
       <h2>🛵 Teslimat Bölgesi</h2>
       <label>Nereye teslimat yapıyorsunuz? (AI bunu uygular)</label>
-      <textarea name="teslimat_bolge" rows="3" placeholder="Örn: Sadece Bayraklı, Karşıyaka ve Çiğli'ye teslimat yapıyoruz. Bu ilçeler dışına gönderim yok. Minimum sepet 150 TL." style="width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;background:#f8fafc;font-family:inherit;resize:vertical">{{ $ay->teslimat_bolge ?? '' }}</textarea>
+      <textarea name="teslimat_bolge" rows="3" placeholder="Örn: Sadece Bayraklı, Karşıyaka ve Çiğli'ye teslimat yapıyoruz. Bu ilçeler dışına gönderim yok. Minimum sepet 150 TL." >{{ $ay->teslimat_bolge ?? '' }}</textarea>
       <div class="hint">Burayı kendi dilinizle doldurun (ilçeler/mahalleler/mesafe kuralı). AI, sipariş adresini buna göre değerlendirir; bölge dışına (ör. başka il, çok uzak) <b>nazikçe reddeder</b> ve gel-al önerir. Boş bırakırsanız her adrese sipariş alır.</div>
     </div>
 
@@ -106,13 +97,14 @@
       okuyup çağrıyı kendisi arar (seçtiğiniz stratejiye göre) ve açan hattı arayanla birleştirir.
       Hedefleri değiştirmek için sadece bu sayfayı kullanın.<br><br>
       Tek gereken (restoran başına bir kez), gelen çağrının AI'ya ulaşması için:
-      <div class="onizle" style="color:#334155">exten =&gt; s,1,Answer()<br> same =&gt; n,Stasis(restaurant-santral-ai)<br> same =&gt; n,Hangup()</div>
+      <div class="onizle">exten =&gt; s,1,Answer()<br> same =&gt; n,Stasis(restaurant-santral-ai)<br> same =&gt; n,Hangup()</div>
     </div>
   </div>
 </div>
-
+@endsection
+@push('scripts')
 <script>
-  const BASLANGIC = @json($hedefler ?: []);
+  const BASLANGIC = {!! json_encode($hedefler ?: [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
   const satirlarEl = document.getElementById('satirlar');
 
   function satirEkle(h){
@@ -189,5 +181,4 @@
   if(BASLANGIC.length) BASLANGIC.forEach(satirEkle); else satirEkle();
   ciz();
 </script>
-</body>
-</html>
+@endpush

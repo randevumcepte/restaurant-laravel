@@ -4196,11 +4196,13 @@ Route::get('/musteriler', function () {
 
 // ============================ CAGRI MERKEZI (CallerID) ============================
 Route::get('/cagrilar', function () {
+    $sid = _santralOturumSube() ?: _webSubeId();
     $cagrilar = DB::table('cagri_loglari')->leftJoin('musteriler', 'cagri_loglari.musteri_id', '=', 'musteriler.id')
+        ->where('cagri_loglari.sube_id', $sid)
         ->select('cagri_loglari.*', 'musteriler.ad as musteri', 'musteriler.siparis_sayisi', 'musteriler.toplam_harcama', 'musteriler.adres')
         ->orderByDesc('cagri_loglari.created_at')->limit(40)->get();
-    $bugun = DB::table('cagri_loglari')->whereDate('created_at', today())->count();
-    $kacan = DB::table('cagri_loglari')->where('sonuc', 'kacan')->whereDate('created_at', today())->count();
+    $bugun = DB::table('cagri_loglari')->where('sube_id', $sid)->whereDate('created_at', today())->count();
+    $kacan = DB::table('cagri_loglari')->where('sube_id', $sid)->where('sonuc', 'kacan')->whereDate('created_at', today())->count();
     return view('cagrilar.index', compact('cagrilar', 'bugun', 'kacan'));
 });
 
@@ -9112,7 +9114,7 @@ if (!function_exists('_panelSayfaKategori')) {
             ],
             '⚙️ Ayarlar & Yönetim' => [
                 'gor_dashboard' => 'Dashboard / Özet', 'gor_yazici' => 'Yazıcı Ayarları', 'gor_bagli_cihaz' => 'Bağlı Cihazlar',
-                'gor_isletme_konum' => 'İşletme Konum', 'gor_sebep' => 'İptal / İkram Sebepleri', 'gor_odeme_ayar' => 'Ödeme / Kaçak Önleme (hassas)', 'gor_copilot' => 'Patron Asistan',
+                'gor_isletme_konum' => 'İşletme Konum', 'gor_sebep' => 'İptal / İkram Sebepleri', 'gor_odeme_ayar' => 'Ödeme / Kaçak Önleme (hassas)', 'gor_copilot' => 'Patron Asistan', 'gor_santral' => 'AI Santral (çağrı kayıtları, aktarma, eğitim)',
             ],
             '🤖 Yapay Zekâ (premium)' => [
                 'gor_ai_asistan' => 'AI Asistanı Kullanımı — departman asistanları (İK / Satınalma / Mutfak / Finans …)',
@@ -9158,6 +9160,8 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/departman-asistan' => 'gor_ai_asistan', '/departman-asistan?dep=mutfak' => 'gor_ai_asistan', '/departman-asistan?dep=finans' => 'gor_ai_asistan', // departman AI asistanları (PREMIUM; departman yetkisi guard'da süzülür)
             '/patron-ai' => 'gor_copilot',          // Patron AI sabah brifingi: copilot yetkisi olana (sahip/müdür)
             '/entegrasyonlar' => 'gor_copilot',     // Gmail/Takvim/M365 bağlantıları
+            '/santral-kayitlar' => 'gor_santral', '/santral-ayar' => 'gor_santral', '/santral-ayar-kaydet' => 'gor_santral', '/santral-egitim' => 'gor_santral', '/santral-ses' => 'gor_santral', '/santral-test' => 'gor_santral', '/cagrilar' => 'gor_santral', // AI Santral paneli (uygulama bu sayfaları değil /api uçlarını kullanır; /cagri-ekran'ın verisi zaten oturum/Bearer ister)
+            '/freepbx-ayar' => 'gor_odeme_ayar', '/freepbx-ayar-kaydet' => 'gor_odeme_ayar', '/dahili-yonetim' => 'gor_odeme_ayar', '/hat-yonetim' => 'gor_odeme_ayar', // santral sunucu şifreleri: menüde yok, süpervizöre de kapalı (asıl yönetim /resteos-yonetim/santral)
             '/eposta-hesaplari' => 'gor_stok',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_stok',       // AI'nın okuduğu fiyat teklifleri
             // '/wa-hatlar' HARİTASIZ: her personel kendi hattını bağlayabilsin (route içinde login + sahiplik kontrolü; menüde herkese-açık listede)
@@ -9470,6 +9474,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'İnsan Kaynakları' => array_merge($kucuk['İnsan Kaynakları'], ['/garson-performans', '/ik-vardiya', '/ik-izin']),
             'Finans / Muhasebe' => array_merge($kucuk['Finans / Muhasebe'], ['/finans', '/kar-zarar', '/banka', '/tekrarlayan-gider', '/online-komisyon']),
             'CRM / Müşteri İlişkileri' => ['/musteri-360', '/memnuniyet', '/sadakat', '/odul-dogrula'],
+            'AI Santral' => ['/santral-kayitlar', '/cagrilar', '/cagri-ekran', '/santral-ayar', '/santral-egitim'],
         ]);
     }
 }
@@ -30763,7 +30768,7 @@ Route::match(['get', 'post'], '/api/santral/aktarma-hedef', function (Request $r
 // Panel: aktarma ayar sayfasi
 Route::get('/santral-ayar', function () {
     _santralAyarEnsure();
-    $subeId = (int) (request('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $subeId = _santralOturumSube() ?: _webSubeId();
     $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
     // Panele hedef satirlarini ver (coklu; yoksa legacy tek hedeften uret)
     $hedefler = [];
@@ -31107,6 +31112,15 @@ Route::match(['get', 'post'], '/api/santral/sube-teshis', function () {
 });
 
 // ============================ AI SANTRAL — CAGRI KAYITLARI ============================
+if (!function_exists('_santralOturumSube')) {
+    // Panel oturumu varsa yalnız kendi şubesinin kayıtları (Sistem Yönetimi'nden girişte o restoran); oturumsuz çağrı (kasa uygulaması) şimdilik eski davranışta.
+    function _santralOturumSube()
+    {
+        $p = _posPersonel();
+        if (!$p) return null;
+        return (int) (session('ry_imp_sube') ?: $p->sube_id);
+    }
+}
 Route::get('/santral-kayitlar', function () {
     \App\Services\SantralAsistan::class; // autoload
     if (function_exists('_santralEnsure')) _santralEnsure();
@@ -31114,7 +31128,9 @@ Route::get('/santral-kayitlar', function () {
 });
 Route::match(['get', 'post'], '/api/santral-kayit/liste', function (Request $r) {
     if (function_exists('_santralEnsure')) _santralEnsure();
-    $rows = DB::table('santral_oturumlari')->orderByDesc('id')->limit(80)->get(['id', 'telefon', 'sonuc', 'durum', 'adisyon_id', 'rezervasyon_id', 'created_at', 'gecmis']);
+    $subeFiltre = _santralOturumSube();
+    $rows = DB::table('santral_oturumlari')->when($subeFiltre, fn ($q) => $q->where('sube_id', $subeFiltre))
+        ->orderByDesc('id')->limit(80)->get(['id', 'telefon', 'sonuc', 'durum', 'adisyon_id', 'rezervasyon_id', 'created_at', 'gecmis']);
     $out = [];
     foreach ($rows as $o) {
         $g = json_decode($o->gecmis ?: '[]', true) ?: [];
@@ -31131,7 +31147,8 @@ Route::match(['get', 'post'], '/api/santral-kayit/liste', function (Request $r) 
 Route::match(['get', 'post'], '/api/santral-kayit/detay', function (Request $r) {
     if (function_exists('_santralEnsure')) _santralEnsure();
     _santralSesEnsure();
-    $o = DB::table('santral_oturumlari')->where('id', (int) $r->input('id'))->first();
+    $subeFiltre = _santralOturumSube();
+    $o = DB::table('santral_oturumlari')->where('id', (int) $r->input('id'))->when($subeFiltre, fn ($q) => $q->where('sube_id', $subeFiltre))->first();
     if (!$o) return response()->json(['ok' => 0, 'hata' => 'Kayıt yok'], 200, [], JSON_UNESCAPED_UNICODE);
     $g = json_decode($o->gecmis ?: '[]', true) ?: [];
     $sp = $o->siparis_veri ? json_decode($o->siparis_veri, true) : null;
@@ -31186,6 +31203,8 @@ Route::get('/santral-ses-dinle/{id}', function ($id) {
     _santralSesEnsure();
     $k = DB::table('santral_ses_kayit')->where('id', (int) $id)->first();
     if (!$k) abort(404);
+    $subeFiltre = _santralOturumSube();
+    if ($subeFiltre && (int) $k->sube_id !== $subeFiltre) abort(404);
     $path = storage_path('app/santral_ses/' . $k->dosya);
     if (!is_file($path)) abort(404);
     return response()->file($path, ['Content-Type' => 'audio/wav']);
@@ -31240,7 +31259,7 @@ Route::get('/santral-egitim', function () {
     \App\Services\SantralAsistan::kalipTablo();
     \App\Services\SantralAsistan::ogrenTablo();
     \App\Services\SantralAsistan::cozulemeyenTablo();
-    return response()->view('santral_egitim', ['subeId' => _santralEgitimSube()]);
+    return response()->view('santral_egitim', ['subeId' => _santralOturumSube() ?: _webSubeId()]);
 });
 
 // --- KALIP / SSS ---

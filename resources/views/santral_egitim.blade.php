@@ -1,49 +1,39 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Santral — Eğitim</title>
+@extends('layout.app')
+@section('title', 'AI Santral — Eğitim')
+@section('baslik', 'AI Santral — Eğitim')
+@section('rk_ikon', 'school')
+@section('rk_alt', 'Hazır cevaplar (SSS), öğrendikleri, cevaplanamayanlar ve PDF\'ten kalıp çıkarma')
+@push('head')
 <style>
-  :root{--bg:#f1f5f9;--card:#fff;--line:#e2e8f0;--ink:#0f172a;--sub:#64748b;--indigo:#4f46e5;--indigo2:#6366f1;--ok:#16a34a;--red:#ef4444}
-  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  body{background:var(--bg);color:var(--ink);min-height:100vh;padding:24px}
-  .wrap{max-width:820px;margin:0 auto}
-  .bas{display:flex;align-items:center;gap:12px;margin-bottom:16px}
-  .bas .ic{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--indigo),var(--indigo2));display:flex;align-items:center;justify-content:center;font-size:22px}
-  .bas h1{font-size:20px}.bas p{color:var(--sub);font-size:13px;margin-top:2px}
-  .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
-  .tabs button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;color:var(--sub);font-size:14px}
-  .tabs button.sec{background:var(--indigo);color:#fff;border-color:var(--indigo)}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
-  .card h2{font-size:14px;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
-  label{display:block;font-size:12px;font-weight:600;margin:10px 0 5px;color:var(--sub)}
-  input[type=text],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:14px;outline:none;background:#f8fafc;font-family:inherit}
-  textarea{min-height:60px;resize:vertical}
-  input:focus,textarea:focus{border-color:var(--indigo);background:#fff}
-  .btn{border:none;border-radius:10px;padding:10px 15px;font-weight:700;cursor:pointer;font-size:14px}
-  .btn.pri{color:#fff;background:linear-gradient(135deg,var(--indigo),var(--indigo2))}
-  .btn.sec{background:#eef2ff;color:var(--indigo);border:1px solid #c7d2fe}
-  .btn.dgr{background:#fee2e2;color:var(--red)}
-  .btn.sm{padding:6px 10px;font-size:12px}
-  table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
-  th{color:var(--sub);font-size:11px;text-transform:uppercase}
-  .aksi{display:flex;gap:6px;justify-content:flex-end}
-  .pane{display:none}.pane.acik{display:block}
-  .bos{color:var(--sub);text-align:center;padding:18px}
-  .rozet{display:inline-block;font-size:11px;background:#eef2ff;color:var(--indigo);border-radius:20px;padding:2px 8px;font-weight:700}
-  .oneri{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:#f8fafc}
-  .oneri b{font-size:13px}.oneri p{font-size:13px;color:#334155;margin-top:3px}
+  .st-kok{--indigo:#4f46e5;--indigo2:#6366f1;--red:#ef4444;--acik:color-mix(in srgb,#6366f1 12%,transparent);color:var(--ink);max-width:820px;margin:0 auto}
+  .st-kok *{box-sizing:border-box}
+  .st-kok .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+  .st-kok .tabs button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;color:var(--sub);font-size:14px}
+  .st-kok .tabs button.sec{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+  .st-kok .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+  .st-kok .card h2{font-size:14px;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;margin:0 0 12px}
+  .st-kok label{display:block;font-size:12px;font-weight:600;margin:10px 0 5px;color:var(--sub)}
+  .st-kok input[type=text],.st-kok textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:14px;outline:none;background:var(--card2);color:var(--ink);font-family:inherit}
+  .st-kok textarea{min-height:60px;resize:vertical}
+  .st-kok input:focus,.st-kok textarea:focus{border-color:var(--indigo);background:var(--card)}
+  .st-kok .btn{border:none;border-radius:10px;padding:10px 15px;font-weight:700;cursor:pointer;font-size:14px}
+  .st-kok .btn.pri{color:#fff;background:linear-gradient(135deg,var(--indigo),var(--indigo2))}
+  .st-kok .btn.sec{background:var(--acik);color:var(--ink);border:1px solid var(--line)}
+  .st-kok .btn.dgr{background:color-mix(in srgb,#ef4444 15%,transparent);color:var(--red)}
+  .st-kok .btn.sm{padding:6px 10px;font-size:12px}
+  .st-kok table{width:100%;border-collapse:collapse}
+  .st-kok th,.st-kok td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+  .st-kok th{color:var(--sub);font-size:11px;text-transform:uppercase}
+  .st-kok .aksi{display:flex;gap:6px;justify-content:flex-end}
+  .st-kok .pane{display:none}.st-kok .pane.acik{display:block}
+  .st-kok .bos{color:var(--sub);text-align:center;padding:18px}
+  .st-kok .rozet{display:inline-block;font-size:11px;background:var(--acik);color:var(--ink);border-radius:20px;padding:2px 8px;font-weight:700}
+  .st-kok .oneri{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--card2)}
+  .st-kok .oneri b{font-size:13px}.st-kok .oneri p{font-size:13px;color:var(--sub2);margin:3px 0 0}
 </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="bas">
-    <div class="ic">🎓</div>
-    <div><h1>AI Santral — Eğitim</h1><p>Telefon asistanını eğitin: hazır cevaplar (SSS), öğrendiklerini düzeltin, cevaplanamayanları görün, PDF'ten kalıp çıkarın.</p></div>
-  </div>
-
+@endpush
+@section('content')
+<div class="st-kok">
   <div class="tabs">
     <button class="sec" onclick="tab('kalip',this)">SSS / Kalıplar</button>
     <button onclick="tab('ogr',this)">Öğrendikleri</button>
@@ -102,12 +92,13 @@
     </div>
   </div>
 </div>
-
+@endsection
+@push('scripts')
 <script>
   const SUBE = {{ $subeId }};
   function form(o){ return Object.entries(o).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&'); }
   async function post(u,o){ const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form({sube_id:SUBE,...o})}); return r.json(); }
-  async function get(u){ const r=await fetch(u+'?sube_id='+SUBE); return r.json(); }
+  async function get(u){ const r=await fetch(u+'?sube_id='+SUBE+'&_t='+Date.now(),{cache:'no-store'}); return r.json(); }
   function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
   function tab(ad,btn){
@@ -212,5 +203,4 @@
 
   kalipYukle();
 </script>
-</body>
-</html>
+@endpush

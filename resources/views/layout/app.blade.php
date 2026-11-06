@@ -328,6 +328,14 @@
         ['/mutfak-defteri', 'checklist', 'Kontrol Defteri (HACCP/Fire/Prep)', '#16A34A'],
         ['/rezervasyon', 'event_seat', 'Beklenen Kuver (Rezervasyon)', '#A855F7'],
     ];
+    // ===== AI SANTRAL — telefonu açan asistan: kayıtlar, arayan tanıma, aktarma, eğitim (gor_santral) =====
+    $gruplar['AI Santral'] = [
+        ['/santral-kayitlar', 'call', 'Çağrı Kayıtları', '#4F46E5'],
+        ['/cagrilar', 'contact_phone', 'Çağrı Merkezi (Arayan Tanıma)', '#0EA5E9'],
+        ['/cagri-ekran', 'phone_in_talk', 'Gelen Çağrı Ekranı', '#10B981'],
+        ['/santral-ayar', 'phone_forwarded', 'Aktarma & Teslimat Ayarları', '#F59E0B'],
+        ['/santral-egitim', 'school', 'AI Santral Eğitimi', '#7C3AED'],
+    ];
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
@@ -350,7 +358,7 @@
     try {
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
-            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
+            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
@@ -445,7 +453,7 @@
             @php
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
-                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
+                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
                     'OPERASYON' => ['Panel', 'Satış & Servis', 'Departman Operasyon', 'Menü & Ürünler'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
                 ];
