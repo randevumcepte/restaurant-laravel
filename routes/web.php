@@ -9375,6 +9375,131 @@ if (!function_exists('_departmanSablonlari')) {
         ];
     }
 }
+if (!function_exists('_departmanSablonKur')) {
+    // Verilen şablon kodlarını şubede kurar; varsa dokunmaz, pasifse tekrar açar. Kurulan yeni departman sayısını döner.
+    function _departmanSablonKur($sid, array $kodlar)
+    {
+        $sid = (int) $sid; $n = 0;
+        _departmanEnsure();
+        $tumKeys = _panelSayfaKeys();
+        foreach (_departmanSablonlari() as $kod => $s) {
+            if (!in_array($kod, $kodlar, true)) continue;
+            $mevcut = DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->first(['id', 'aktif']);
+            if ($mevcut) { if (!(int) $mevcut->aktif) DB::table('departmanlar')->where('id', $mevcut->id)->update(['aktif' => 1, 'updated_at' => now()]); continue; }
+            $sayfa = array_fill_keys($tumKeys, false);
+            foreach ($s['sayfa'] as $k) if (array_key_exists($k, $sayfa)) $sayfa[$k] = true;
+            $sorumluEk = array_values(array_filter($s['sorumlu_ek'] ?? [], fn ($k) => in_array($k, $tumKeys)));
+            DB::table('departmanlar')->insert(['sube_id' => $sid, 'ad' => $s['ad'], 'kod' => $kod,
+                'grup' => $s['grup'] ?? null, 'renk' => $s['renk'], 'ikon' => $s['ikon'],
+                'sayfa_yetki' => json_encode($sayfa), 'sorumlu_ek' => json_encode($sorumluEk),
+                'unvanlar' => json_encode($s['unvan'] ?? []), 'ai_erisim' => $s['ai'], 'ai_gunluk_limit' => 30,
+                'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $n++;
+        }
+        return $n;
+    }
+}
+if (!function_exists('_aktifDepartmanKodlari')) {
+    // Şubede kurulu + aktif departman kodları (menü/sekme görünürlüğü için; istek içinde cache'li).
+    function _aktifDepartmanKodlari($sid)
+    {
+        static $bellek = [];
+        $sid = (int) $sid;
+        if (isset($bellek[$sid])) return $bellek[$sid];
+        $l = [];
+        try { if (Schema::hasTable('departmanlar')) $l = DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('kod')->pluck('kod')->map(fn ($x) => (string) $x)->all(); } catch (\Throwable $e) {}
+        return $bellek[$sid] = $l;
+    }
+}
+// ===== İŞLETME BÜYÜKLÜĞÜ: küçük/orta/büyük. NULL = eski müşteri, menüsü değişmez. Sayfaları kapatmaz, sadece menüyü sadeleştirir. =====
+if (!function_exists('_isletmeOlcekEnsure')) {
+    function _isletmeOlcekEnsure()
+    {
+        if (cache()->get('isletme_olcek_ok')) return;
+        try { if (!Schema::hasColumn('subeler', 'olcek')) Schema::table('subeler', fn ($t) => $t->string('olcek', 10)->nullable()); } catch (\Throwable $e) {}
+        try { if (!Schema::hasColumn('subeler', 'olcek_secildi')) Schema::table('subeler', fn ($t) => $t->tinyInteger('olcek_secildi')->default(0)); } catch (\Throwable $e) {}
+        cache()->put('isletme_olcek_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_isletmeOlcek')) {
+    // ['olcek' => null|kucuk|orta|buyuk, 'secildi' => bool] — istek içinde cache'li.
+    function _isletmeOlcek($sid)
+    {
+        static $bellek = [];
+        $sid = (int) $sid;
+        if (isset($bellek[$sid])) return $bellek[$sid];
+        _isletmeOlcekEnsure();
+        $o = null; try { $o = DB::table('subeler')->where('id', $sid)->first(['olcek', 'olcek_secildi']); } catch (\Throwable $e) {}
+        return $bellek[$sid] = ['olcek' => in_array($o->olcek ?? null, ['kucuk', 'orta', 'buyuk'], true) ? $o->olcek : null, 'secildi' => (int) ($o->olcek_secildi ?? 0) === 1];
+    }
+}
+if (!function_exists('_olcekDepartmanlari')) {
+    // Büyüklüğe göre kurulacak hazır departmanlar (büyük = tüm şablonlar).
+    function _olcekDepartmanlari($olcek)
+    {
+        $kucuk = ['mutfak', 'servis', 'kasa'];
+        if ($olcek === 'kucuk') return $kucuk;
+        if ($olcek === 'orta') return array_merge($kucuk, ['bar', 'satinalma', 'satis_etkinlik']);
+        return array_keys(_departmanSablonlari());
+    }
+}
+if (!function_exists('_olcekMenuListesi')) {
+    // Sade menüde kalan sayfalar: grup => url listesi. Büyük/eski müşteri için null (süzme yok).
+    function _olcekMenuListesi($olcek)
+    {
+        if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
+        $ayar = ['/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $kucuk = [
+            'Patron AI' => ['/patron-ai', '/ajanda'],
+            'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
+            'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/recete', '/sayim'],
+            'Satış & Servis' => ['/isletme-duzeni', '/garson-cagrilari'],
+            'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
+            'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci'],
+            'İnsan Kaynakları' => ['/personel', '/puantaj', '/departman-yonetim'],
+            'Finans / Muhasebe' => ['/kasa', '/raporlar', '/gider', '/cari', '/z-raporu'],
+            'Ayarlar & Entegrasyon' => $ayar,
+        ];
+        if ($olcek === 'kucuk') return $kucuk;
+        // Orta: Satın Alma + Rezervasyon Satış departmanları kurulu olduğu için o grupların tamamı zaten görünür
+        return array_merge($kucuk, [
+            'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/ajanda'],
+            'Mutfak / BOH' => array_merge($kucuk['Mutfak / BOH'], ['/departman-asistan?dep=mutfak', '/uretim-riski', '/parti-takip', '/mutfak-defteri', '/rezervasyon']),
+            'Satış & Servis' => ['/isletme-duzeni', '/servis', '/karsilama', '/garson-cagrilari'],
+            'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/qr-menu-rengi', '/indirimler', '/happy-hour', '/fix-menu', '/barkod'],
+            'İnsan Kaynakları' => array_merge($kucuk['İnsan Kaynakları'], ['/garson-performans', '/ik-vardiya', '/ik-izin']),
+            'Finans / Muhasebe' => array_merge($kucuk['Finans / Muhasebe'], ['/finans', '/kar-zarar', '/banka', '/tekrarlayan-gider', '/online-komisyon']),
+            'CRM / Müşteri İlişkileri' => ['/musteri-360', '/memnuniyet', '/sadakat', '/odul-dogrula'],
+        ]);
+    }
+}
+if (!function_exists('_menuOlcekSuz')) {
+    // Menüyü işletmeye göre süzer. Kural: kurulu departmanın menüsü HER ZAMAN görünür; kurulu olmayan alt departman hiçbir ölçekte görünmez.
+    function _menuOlcekSuz(array $gruplar, $sid, $rol = '')
+    {
+        $aktif = _aktifDepartmanKodlari($sid);
+        if ($rol === 'satinalmaci') $aktif[] = 'satinalma'; // departmanı atanmamış eski satın almacının menüsü kaybolmasın
+        $izin = _olcekMenuListesi(_isletmeOlcek($sid)['olcek']);
+        $grupDep = ['Satın Alma' => 'satinalma', 'Finans / Muhasebe' => 'finans', 'İnsan Kaynakları' => 'ik', 'Pazarlama' => 'pazarlama', 'Rezervasyon Satış' => 'satis_etkinlik', 'CRM / Müşteri İlişkileri' => 'crm', 'Kalite / HACCP' => 'kalite', 'IT / Bilgi İşlem' => 'it'];
+        $sayfaDep = ['/temizlik' => 'temizlik', '/guvenlik' => 'guvenlik', '/teknik' => 'teknik', '/bulasik' => 'bulasik'];
+        foreach ($gruplar as $g => $items) {
+            $tamGrup = isset($grupDep[$g]) && in_array($grupDep[$g], $aktif, true);
+            $gruplar[$g] = array_values(array_filter($items, function ($it) use ($g, $izin, $aktif, $tamGrup, $sayfaDep) {
+                if (preg_match('#^/departman-brief\?dep=(soguk_mutfak|pastane|kasap|bulasik)$#', $it[0], $m)) return in_array($m[1], $aktif, true);
+                if ($izin === null || $tamGrup) return true;
+                if (isset($sayfaDep[$it[0]])) return in_array($sayfaDep[$it[0]], $aktif, true);
+                return in_array($it[0], $izin[$g] ?? [], true);
+            }));
+            if (!$gruplar[$g]) unset($gruplar[$g]);
+        }
+        // IT grubu gizliyse yazıcı/cihaz ayarları Ayarlar'a geçer (kurulum için şart)
+        if ($izin !== null && !isset($gruplar['IT / Bilgi İşlem']) && isset($gruplar['Ayarlar & Entegrasyon'])) {
+            $gruplar['Ayarlar & Entegrasyon'][] = ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'];
+            $gruplar['Ayarlar & Entegrasyon'][] = ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'];
+        }
+        return $gruplar;
+    }
+}
 if (!function_exists('_departmanSayfaAcik')) {
     // Departmanın açık sayfa anahtarları (preset) — JSON {key:bool} içinden sadece açık olanlar.
     function _departmanSayfaAcik($departman)
@@ -9487,7 +9612,8 @@ Route::get('/api/yetkilerim', function (Request $r) {
         'unvan' => $p->departman_unvan ?? null, 'sorumlu' => (int) ($p->departman_sorumlu ?? 0)]; }
     return ['ok' => 1, 'rol' => $p->rol ?? '', 'kademe' => $p->kademe ?? _rolKademe($p->rol ?? ''),
         'yetkiler' => _panelYetkiListesi($p), 'ai_erisim' => _aiErisim($p), 'departman' => $dep,
-        'departman_acik' => (bool) config('services.resteos.departman_acik', true)];
+        'departman_acik' => (bool) config('services.resteos.departman_acik', true),
+        'olcek' => _isletmeOlcek($p->sube_id ?? 0)['olcek'], 'aktif_departmanlar' => _aktifDepartmanKodlari($p->sube_id ?? 0)];
 });
 
 // ---- API: şubenin departman listesi (editör + yönetim) ----
@@ -9572,24 +9698,42 @@ Route::post('/departman-sablon-kur', function (Request $r) {
     try {
         $bp = function_exists('_posPersonel') ? _posPersonel() : null;
         if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür.');
-        _departmanEnsure();
-        $n = 0;
-        $tumKeys = _panelSayfaKeys();
-        foreach (_departmanSablonlari() as $kod => $s) {
-            $var = DB::table('departmanlar')->where('sube_id', $sid)->where('kod', $kod)->exists();
-            if ($var) continue;
-            $sayfa = array_fill_keys($tumKeys, false);
-            foreach ($s['sayfa'] as $k) if (array_key_exists($k, $sayfa)) $sayfa[$k] = true;
-            $sorumluEk = array_values(array_filter($s['sorumlu_ek'] ?? [], fn ($k) => in_array($k, $tumKeys)));
-            DB::table('departmanlar')->insert(['sube_id' => $sid, 'ad' => $s['ad'], 'kod' => $kod,
-                'grup' => $s['grup'] ?? null, 'renk' => $s['renk'], 'ikon' => $s['ikon'],
-                'sayfa_yetki' => json_encode($sayfa), 'sorumlu_ek' => json_encode($sorumluEk),
-                'unvanlar' => json_encode($s['unvan'] ?? []), 'ai_erisim' => $s['ai'], 'ai_gunluk_limit' => 30,
-                'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
-            $n++;
-        }
+        $n = _departmanSablonKur($sid, array_keys(_departmanSablonlari()));
         return redirect('/departman-yonetim')->with('ok', "$n hazır departman oluşturuldu.");
     } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Oluşturulamadı.'); }
+});
+// İŞLETME BÜYÜKLÜĞÜ: seçim ekranı (sadece sahip/müdür)
+Route::get('/isletme-olcegi', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    if (!in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/dashboard')->with('hata', 'Yalnızca sahip/müdür.');
+    $sablon = _departmanSablonlari();
+    $adlar = fn ($kodlar) => array_map(fn ($k) => $sablon[$k]['ad'] ?? $k, $kodlar);
+    return view('isletme_olcegi', ['durum' => _isletmeOlcek(_webSubeId()), 'departmanAd' => [
+        'kucuk' => $adlar(_olcekDepartmanlari('kucuk')), 'orta' => $adlar(_olcekDepartmanlari('orta')), 'buyuk' => count($sablon),
+    ]]);
+});
+Route::post('/isletme-olcegi', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/isletme-olcegi')->with('hata', 'Yalnızca sahip/müdür.');
+    $olcek = (string) $r->input('olcek');
+    if (!in_array($olcek, ['kucuk', 'orta', 'buyuk'], true)) return redirect('/isletme-olcegi')->with('hata', 'Bir büyüklük seçin.');
+    $sid = _webSubeId();
+    try {
+        _isletmeOlcekEnsure();
+        $kodlar = _olcekDepartmanlari($olcek);
+        $yeni = _departmanSablonKur($sid, $kodlar);
+        // Küçülürken: listede olmayan hazır departmanlardan personeli OLMAYANLAR pasife alınır (silinmez); personeli olan dokunulmaz, menüsü açık kalır.
+        $kalan = [];
+        foreach (DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)->whereIn('kod', array_diff(array_keys(_departmanSablonlari()), $kodlar))->get(['id', 'ad']) as $d) {
+            if (DB::table('personeller')->where('sube_id', $sid)->where('departman_id', $d->id)->where('aktif', 1)->exists()) { $kalan[] = $d->ad; continue; }
+            DB::table('departmanlar')->where('id', $d->id)->update(['aktif' => 0, 'updated_at' => now()]);
+        }
+        DB::table('subeler')->where('id', $sid)->update(['olcek' => $olcek, 'olcek_secildi' => 1]);
+        $mesaj = 'İşletme büyüklüğü kaydedildi' . ($yeni ? ", $yeni departman kuruldu" : '') . '.';
+        if ($kalan) $mesaj .= ' Personeli olduğu için açık kalanlar: ' . implode(', ', $kalan) . '.';
+        return redirect('/isletme-olcegi')->with('ok', $mesaj);
+    } catch (\Throwable $e) { return redirect('/isletme-olcegi')->with('hata', 'Kaydedilemedi.'); }
 });
 
 // ---- WEB: Bildirim Ayarları (kişiye özel) ----
@@ -19117,7 +19261,8 @@ if (!function_exists('_departmanBriefVeri')) {
                 if ($gecikenGorev > 0) { $isler[] = ['ikon' => 'schedule', 'renk' => '#F43F5E', 'grup' => 'GÖREV', 'baslik' => "$gecikenGorev görevin son tarihi geçti", 'aciklama' => 'Önce bunları tamamla', 'aksiyon' => ['url' => '/bulasik', 'lbl' => 'Gör']]; $sinyal[] = "<b>$gecikenGorev</b> geciken görev"; }
                 if ($acikGorev > 0) { $isler[] = ['ikon' => 'assignment', 'renk' => '#06B6D4', 'grup' => 'GÖREV', 'baslik' => "$acikGorev açık görev var", 'aciklama' => 'Makine temizliği, tabak/çatal stoku, atık', 'aksiyon' => ['url' => '/bulasik', 'lbl' => 'Görevler']]; $sinyal[] = "<b>$acikGorev</b> açık görev"; }
                 $analiz[] = ['ikon' => 'wash', 'renk' => '#06B6D4', 'baslik' => 'Görev Durumu', 'alt' => 'bugün', 'durum' => $gecikenGorev > 0 ? 'risk' : ($acikGorev > 0 ? 'dikkat' : 'iyi'), 'yorum' => $acikGorev > 0 ? ("$acikGorev açık görev" . ($gecikenGorev > 0 ? ", $gecikenGorev tanesi gecikmiş" : '') . ", bugün $bitenGorev tamamlandı.") : ($bitenGorev > 0 ? "Bugün $bitenGorev görev tamamlandı, açık görev yok. 👍" : 'Açık görev yok. 👍')];
-                $hizli = [['url' => '/bulasik', 'ikon' => 'wash', 'lbl' => 'Bulaşıkhane Görevleri'], ['url' => '/mutfak-defteri', 'ikon' => 'menu_book', 'lbl' => 'Kontrol Defteri'], ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi']];
+                $hizli = [['url' => '/bulasik', 'ikon' => 'wash', 'lbl' => 'Bulaşıkhane Görevleri'], ['url' => '/mutfak-defteri', 'ikon' => 'menu_book', 'lbl' => 'Kontrol Defteri']];
+                if (_panelYetkiVar($bp, 'gor_stok')) $hizli[] = ['url' => '/satinalma-talep', 'ikon' => 'assignment', 'lbl' => 'Satın Alma Talebi']; // bulaşıkhane üyesinde stok yetkisi yok, 403'e düşmesin
             } else {
                 // İstasyon ürünleri: Departman Yönetimi'nde bağlanan menü kategorileri; yoksa ürünün istasyon alanı (Kasap'ın karşılığı yok, kategori bağlanmalı)
                 $katIds = []; $ist = ['soguk_mutfak' => 'soguk', 'pastane' => 'tatli'][$kod] ?? null;
@@ -23586,29 +23731,47 @@ if (!function_exists('_talepOnayEnsure')) {
     }
 }
 // Bir personelin departmanı + o departmanda sorumlu mu? ['id','ad','sorumlu'=>bool]
+if (!function_exists('_personelDepartmanBilgi')) {
+    // Personelin departmanı: asıl kaynak /personel formu (personeller.departman_id + departman_sorumlu); personel_departman eski kayıtlar için yedek.
+    function _personelDepartmanBilgi($sid, $pid)
+    {
+        $sid = (int) $sid; $pid = (int) $pid;
+        if (!$pid) return null;
+        $kolon = ['d.id', 'd.ad', 'd.kod', 'd.renk', 'd.ikon'];
+        $paket = fn ($d, $sorumlu) => ['id' => (int) $d->id, 'ad' => (string) $d->ad, 'kod' => $d->kod, 'renk' => $d->renk, 'ikon' => $d->ikon, 'sorumlu' => (int) $sorumlu === 1];
+        try {
+            $d = DB::table('personeller as p')->join('departmanlar as d', 'd.id', '=', 'p.departman_id')
+                ->where('p.id', $pid)->where('p.sube_id', $sid)->where('d.sube_id', $sid)
+                ->select(array_merge($kolon, ['p.departman_sorumlu as sorumlu']))->first();
+            if ($d) return $paket($d, $d->sorumlu);
+        } catch (\Throwable $e) {}
+        try {
+            if (Schema::hasTable('personel_departman')) {
+                $d = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
+                    ->where('pd.personel_id', $pid)->where('pd.sube_id', $sid)
+                    ->select(array_merge($kolon, ['pd.sorumlu as sorumlu']))->first();
+                if ($d) return $paket($d, $d->sorumlu);
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+}
 if (!function_exists('_talepDepartmanBilgi')) {
     function _talepDepartmanBilgi($sid, $pid)
     {
-        try {
-            if ($pid && Schema::hasTable('personel_departman') && Schema::hasTable('departmanlar')) {
-                $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
-                    ->where('pd.personel_id', (int) $pid)->where('pd.sube_id', (int) $sid)
-                    ->select('d.id', 'd.ad', 'pd.sorumlu')->first();
-                if ($pd) return ['id' => (int) $pd->id, 'ad' => (string) $pd->ad, 'sorumlu' => (int) $pd->sorumlu === 1];
-            }
-        } catch (\Throwable $e) {}
-        return ['id' => null, 'ad' => null, 'sorumlu' => false];
+        $d = _personelDepartmanBilgi($sid, $pid);
+        return $d ? ['id' => $d['id'], 'ad' => $d['ad'], 'sorumlu' => $d['sorumlu']] : ['id' => null, 'ad' => null, 'sorumlu' => false];
     }
 }
 // Bir departmanın SORUMLU personel id'leri (onaylayabilecekler)
 if (!function_exists('_departmanSorumluIdleri')) {
     function _departmanSorumluIdleri($sid, $depId)
     {
-        try {
-            if ($depId && Schema::hasTable('personel_departman'))
-                return DB::table('personel_departman')->where('sube_id', (int) $sid)->where('departman_id', (int) $depId)->where('sorumlu', 1)->pluck('personel_id')->map(fn ($x) => (int) $x)->all();
-        } catch (\Throwable $e) {}
-        return [];
+        $ids = [];
+        if (!$depId) return $ids;
+        try { $ids = DB::table('personeller')->where('sube_id', (int) $sid)->where('departman_id', (int) $depId)->where('departman_sorumlu', 1)->where('aktif', 1)->pluck('id')->all(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('personel_departman')) $ids = array_merge($ids, DB::table('personel_departman')->where('sube_id', (int) $sid)->where('departman_id', (int) $depId)->where('sorumlu', 1)->pluck('personel_id')->all()); } catch (\Throwable $e) {}
+        return array_values(array_unique(array_map('intval', $ids)));
     }
 }
 // Bu personel şu talebi departman sorumlusu sıfatıyla onaylayabilir mi?
@@ -23624,11 +23787,11 @@ if (!function_exists('_talepOnayYetki')) {
 if (!function_exists('_sorumluDepartmanIdleri')) {
     function _sorumluDepartmanIdleri($sid, $pid)
     {
-        try {
-            if ($pid && Schema::hasTable('personel_departman'))
-                return DB::table('personel_departman')->where('sube_id', (int) $sid)->where('personel_id', (int) $pid)->where('sorumlu', 1)->pluck('departman_id')->map(fn ($x) => (int) $x)->all();
-        } catch (\Throwable $e) {}
-        return [];
+        $ids = [];
+        if (!$pid) return $ids;
+        try { $ids = DB::table('personeller')->where('id', (int) $pid)->where('sube_id', (int) $sid)->where('departman_sorumlu', 1)->whereNotNull('departman_id')->pluck('departman_id')->all(); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('personel_departman')) $ids = array_merge($ids, DB::table('personel_departman')->where('sube_id', (int) $sid)->where('personel_id', (int) $pid)->where('sorumlu', 1)->pluck('departman_id')->all()); } catch (\Throwable $e) {}
+        return array_values(array_unique(array_map('intval', $ids)));
     }
 }
 // Kritik seviyedeki malzemeler (proaktif izleme) — önerilen sipariş miktarıyla
@@ -31207,15 +31370,8 @@ Route::get('/api/profil', function (Request $r) {
     // ---- KİMLİK ----
     $iban = (string) ($p->iban ?? '');
     $ibanMask = $iban !== '' ? ('••••' . substr(preg_replace('/\s+/', '', $iban), -4)) : '';
-    $dep = null;
-    try {
-        if (Schema::hasTable('personel_departman')) {
-            $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
-                ->where('pd.personel_id', $pid)->where('pd.sube_id', $sid)
-                ->select('d.ad', 'd.kod', 'd.renk', 'd.ikon', 'pd.sorumlu')->first();
-            if ($pd) $dep = ['ad' => $pd->ad, 'kod' => $pd->kod, 'renk' => $pd->renk, 'ikon' => $pd->ikon, 'sorumlu' => (int) $pd->sorumlu === 1];
-        }
-    } catch (\Throwable $e) {}
+    $dep = _personelDepartmanBilgi($sid, $pid);
+    if ($dep) unset($dep['id']);
     // Dahili SIP (varsa)
     $dahili = null;
     try {
@@ -31515,15 +31671,8 @@ Route::get('/profilim', function () {
     $bugunTarih = today();
 
     // ---- DEPARTMAN ----
-    $dep = null;
-    try {
-        if (Schema::hasTable('personel_departman')) {
-            $pd = DB::table('personel_departman as pd')->join('departmanlar as d', 'd.id', '=', 'pd.departman_id')
-                ->where('pd.personel_id', $pid)->where('pd.sube_id', $sid)
-                ->select('d.id', 'd.ad', 'd.kod', 'd.renk', 'd.ikon', 'pd.sorumlu')->first();
-            if ($pd) $dep = ['id' => (int) $pd->id, 'ad' => $pd->ad, 'kod' => $pd->kod, 'renk' => $pd->renk ?: '#7C3AED', 'ikon' => $pd->ikon, 'sorumlu' => (int) $pd->sorumlu === 1];
-        }
-    } catch (\Throwable $e) {}
+    $dep = _personelDepartmanBilgi($sid, $pid);
+    if ($dep) $dep['renk'] = $dep['renk'] ?: '#7C3AED';
 
     // ---- DAHILI (SIP) ----
     $dahili = null;

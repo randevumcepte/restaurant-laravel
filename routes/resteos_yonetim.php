@@ -623,6 +623,8 @@ Route::post('/resteos-yonetim/restoran-ekle', function (Request $r) {
         'webhook_token' => \Illuminate\Support\Str::random(40),
         'created_at' => now(), 'updated_at' => now(),
     ]);
+    // Yeni işletme sade menüyle başlar; sahip ilk girişte büyüklüğünü seçer (eski işletmeler NULL kalır, menüleri değişmez).
+    try { _isletmeOlcekEnsure(); DB::table('subeler')->where('id', $id)->update(['olcek' => 'kucuk', 'olcek_secildi' => 0]); } catch (\Throwable $e) {}
     // Yeni şube HEMEN kullanılabilsin: sahip personel + benzersiz PIN (uygulamaya/POS'a giriş için).
     $pin = '';
     for ($i = 0; $i < 25; $i++) {

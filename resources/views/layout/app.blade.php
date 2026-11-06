@@ -336,6 +336,17 @@
         ['/patron-ai?gm=1', 'manage_accounts', 'Genel Müdür', '#4F46E5'],
         ['/ajanda', 'event_note', 'Ajanda & Hatırlatıcı', '#4F46E5'],
     ]] + $gruplar;
+    // İŞLETME BÜYÜKLÜĞÜ: küçük/orta işletmede menü sadeleşir; kurulu olmayan alt departman hiçbir ölçekte görünmez.
+    $gruplar['Ayarlar & Entegrasyon'][] = ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', '#7C3AED'];
+    $_olcekSor = false;
+    try {
+        if (function_exists('_menuOlcekSuz')) {
+            $_osid = _webSubeId(); $_orol = optional(_posPersonel())->rol ?? '';
+            $gruplar = _menuOlcekSuz($gruplar, $_osid, $_orol);
+            $_od = _isletmeOlcek($_osid);
+            $_olcekSor = $_od['olcek'] && !$_od['secildi'] && in_array($_orol, ['sahip', 'mudur']);
+        }
+    } catch (\Throwable $e) {}
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
@@ -513,6 +524,13 @@
             @endif
         </div>
         <div class="rk-body">
+            @if ($_olcekSor && $path !== '/isletme-olcegi')
+                <a href="/isletme-olcegi" style="display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--mor1) 10%,var(--card));border:1px solid color-mix(in srgb,var(--mor1) 30%,var(--line));color:var(--ink);text-decoration:none;border-radius:14px;padding:12px 15px;margin-bottom:12px;font-size:13px;font-weight:700">
+                    <span class="material-icons-outlined" style="color:var(--mor1)">tune</span>
+                    <span style="flex:1">İşletmeniz ne büyüklükte? Seçin, menünüz size göre düzenlensin.</span>
+                    <span class="material-icons-outlined" style="color:var(--mor1)">chevron_right</span>
+                </a>
+            @endif
             @yield('content')
         </div>
     </main>

@@ -158,8 +158,12 @@
 </div>
 
 {{-- Mutfak (BOH) alt departman sekmeleri --}}
-@php $__boh = array_filter(function_exists('_departmanSablonlari') ? _departmanSablonlari() : [], fn ($t) => ($t['grup'] ?? '') === 'Mutfak (BOH)'); @endphp
-@if (isset($__boh[$kod ?? '']))
+@php
+  // Sadece işletmede kurulu olanlar (+ ana mutfak ve o an açık olan). Tek sekme kalırsa şerit gösterilmez.
+  $__bohAktif = function_exists('_aktifDepartmanKodlari') ? _aktifDepartmanKodlari(_webSubeId()) : [];
+  $__boh = array_filter(function_exists('_departmanSablonlari') ? _departmanSablonlari() : [], fn ($t, $k) => ($t['grup'] ?? '') === 'Mutfak (BOH)' && ($k === 'mutfak' || $k === ($kod ?? '') || in_array($k, $__bohAktif, true)), ARRAY_FILTER_USE_BOTH);
+@endphp
+@if (isset($__boh[$kod ?? '']) && count($__boh) > 1)
 <div class="pai-alt-dep">
   @foreach ($__boh as $__k => $__t)
     <a href="/departman-brief?dep={{ $__k }}" class="{{ $__k === $kod ? 'aktif' : '' }}" @if($__k === $kod)style="background:{{ $__t['renk'] }}"@endif><span class="material-icons-outlined" @if($__k !== $kod)style="color:{{ $__t['renk'] }}"@endif>{{ $__t['ikon'] }}</span>{{ $__k === 'mutfak' ? 'Genel / Sıcak' : trim(explode('/', $__t['ad'])[0]) }}</a>

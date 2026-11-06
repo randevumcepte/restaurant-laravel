@@ -36,6 +36,8 @@ class PanelYetki
         // Oturumdaki personel
         $p = null;
         try { if (function_exists('_posPersonel')) $p = _posPersonel(); } catch (\Throwable $e) {}
+        // Uygulama (Flutter) oturum değil Bearer token kullanır: aynı yetki kontrolünden geçer, girişe yönlenmez.
+        if (!$p && $request->bearerToken() && function_exists('_apiPersonel')) { try { $p = _apiPersonel($request); } catch (\Throwable $e) {} }
 
         if (!$p) {
             try { $request->session()->put('panel_hedef', $request->fullUrl()); } catch (\Throwable $e) {}
