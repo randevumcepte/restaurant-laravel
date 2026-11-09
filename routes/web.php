@@ -30,11 +30,21 @@ if (!function_exists('_adminKeyGecerli')) {
 // ÇOK-ŞUBELİ (multi-tenant) yardımcılar
 // ---------------------------------------------------------------------------
 if (!function_exists('_aktifSubeId')) {
-    // Web panelinin gösterdiği aktif şube: impersonation (süper-admin "restoran paneline gir") > ilk şube.
+    // Web panelinin gösterdiği aktif şube: impersonation (süper-admin "restoran paneline gir") > giriş yapan personelin şubesi > ilk şube.
+    // Personel adımı olmadan ikinci restoranın çalışanı ilk restoranın verisini görüyordu (uygulama zaten personelin şubesini kullanır).
     function _aktifSubeId()
     {
         $imp = session('ry_imp_sube');
         if ($imp && DB::table('subeler')->where('id', (int) $imp)->exists()) return (int) $imp;
+        $pid = (int) session('pos_personel_id');
+        if ($pid) {
+            static $personelSube = [];
+            if (!array_key_exists($pid, $personelSube)) {
+                $ps = (int) DB::table('personeller')->where('id', $pid)->where('aktif', 1)->value('sube_id');
+                $personelSube[$pid] = ($ps && DB::table('subeler')->where('id', $ps)->exists()) ? $ps : 0;
+            }
+            if ($personelSube[$pid]) return $personelSube[$pid];
+        }
         return (int) (DB::table('subeler')->min('id') ?: 0);
     }
     // Şube lisans/askı kilidi. GÜVENLİ: TEK restoran varsa ASLA kilitlemez (canlı sistem riski yok);
