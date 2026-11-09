@@ -9225,13 +9225,49 @@ if (!function_exists('_ekYetkiHaritasi')) {
         ];
     }
 }
+if (!function_exists('_ekYetkiIkinciTur')) {
+    // Denetim 2. tur: satın alma ve yönetim uçları; 'yerel' = yalnız geliştirme ortamında (canlıda 404)
+    function _ekYetkiIkinciTur()
+    {
+        $stok = ['fiyat-radari', 'satinalma-analiz', 'parti-takip', 'hal-fiyatlari', 'satinalma-asistan', 'satinalma-siparisleri', 'satinalma-meta', 'satinalma-siparis-ekle', 'satinalma-siparis-detay',
+            'siparis-onerisi', 'siparis-onerisi-olustur', 'fatura-bekleyen', 'fatura-eslestir-kaydet', 'tedarikci-detay', 'tedarikci-odeme', 'tedarikci-katalog',
+            'mal-kabul-liste', 'mal-kabul-detay', 'mal-kabul-barkod', 'mal-kabul-barkod-bagla', 'mal-kabul-olustur', 'mal-kabul-foto-oku'];
+        return [
+            'onek' => ['/masa-sifirla' => 'yerel', '/masa-afis' => 'gor_masa_yonetim'],
+            'tam' => array_merge(array_fill_keys(array_map(fn ($u) => '/api/patron/' . $u, $stok), 'gor_stok'), [
+                '/api/patron/demo-garson-doldur' => 'yerel', '/api/patron/demo-garson-temizle' => 'yerel', '/api/masalar/demo-tazele' => 'yerel',
+                '/api/patron/rezervasyon-demo-doldur' => 'yerel', '/api/mutfak/demo-not' => 'yerel', '/api/patron-ai/devir-debug' => 'yerel',
+                '/api/patron/cark' => 'yonetici', '/api/patron/cark-kaydet' => 'yonetici', '/api/patron/cagrilar' => 'gor_santral',
+                '/api/patron/kasa' => 'gor_kasa', '/api/patron/kasa-gecmis' => 'gor_kasa', '/api/patron/asistan-sor' => 'gor_copilot', '/api/mesai/konum-ayarla' => 'yonetici',
+            ]),
+        ];
+    }
+}
 if (!function_exists('_ekYetkiAnahtari')) {
     function _ekYetkiAnahtari($yol)
     {
-        $h = _ekYetkiHaritasi();
-        if (isset($h['tam'][$yol])) return $h['tam'][$yol];
-        foreach ($h['onek'] as $o => $k) if ($yol === $o || str_starts_with($yol, $o . '/')) return $k;
+        foreach ([_ekYetkiHaritasi(), _ekYetkiIkinciTur()] as $h) {
+            if (isset($h['tam'][$yol])) return $h['tam'][$yol];
+            foreach ($h['onek'] as $o => $k) if ($yol === $o || str_starts_with($yol, $o . '/')) return $k;
+        }
         return null;
+    }
+}
+if (!function_exists('_subeKaydiTablosu')) {
+    // İstekteki numaralı alan => kaydın tablosu. Personel başka şubenin kaydına dokunamasın (PanelYetki::subeKapi).
+    function _subeKaydiTablosu($yol)
+    {
+        $alan = ['adisyon_id' => 'adisyonlar', 'kaynak_adisyon_id' => 'adisyonlar', 'masa_id' => 'masalar', 'hedef_masa_id' => 'masalar', 'kaynak_masa_id' => 'masalar', 'yeni_masa_id' => 'masalar',
+            'urun_id' => 'urunler', 'kategori_id' => 'menu_kategorileri', 'musteri_id' => 'musteriler', 'personel_id' => 'personeller', 'garson_id' => 'personeller', 'kurye_id' => 'kuryeler',
+            'bolge_id' => 'bolgeler', 'siparis_id' => 'satinalma_siparisleri', 'mal_kabul_id' => 'mal_kabuller', 'rezervasyon_id' => 'rezervasyonlar', 'oturum_id' => 'kasa_oturumlari',
+            'kalem_id' => 'adisyon_kalemleri', 'odeme_id' => 'odemeler'];
+        // Düz "id": adresin konusuna göre (ilk eşleşen)
+        foreach (['#mal-kabul#' => 'mal_kabuller', '#satinalma-siparis#' => 'satinalma_siparisleri', '#talep#' => 'satinalma_talepleri', '#rezervasyon#' => 'rezervasyonlar',
+            '#kategori#' => 'menu_kategorileri', '#urun#' => 'urunler', '#bolge#' => 'bolgeler', '#^/kasalar/#' => 'kasalar', '#personel#' => 'personeller',
+            '#masa#' => 'masalar', '#kurye#' => 'kuryeler', '#departman-is#' => 'departman_isler'] as $desen => $tablo) {
+            if (preg_match($desen, $yol)) { $alan['id'] = $tablo; break; }
+        }
+        return $alan;
     }
 }
 if (!function_exists('_ekYetkiVar')) {

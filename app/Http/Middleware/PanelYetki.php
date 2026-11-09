@@ -21,7 +21,9 @@ class PanelYetki
 
         if (!function_exists('_sayfaYetkiHaritasi')) return $next($request);
         if (function_exists('_masaYetkiTemizle')) _masaYetkiTemizle();
+        if ($sinir = $this->ucretliSinir($request, $path)) return $sinir;
         if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
+        if ($subeRed = $this->subeKapi($request, $path)) return $subeRed;
         $harita = _sayfaYetkiHaritasi();
 
         // En uzun eşleşen öneki bul (ör. /pos/masa/5 -> /pos)
@@ -64,6 +66,7 @@ class PanelYetki
         if (!function_exists('_ekYetkiAnahtari')) return null;
         $anahtar = _ekYetkiAnahtari($path);
         if ($anahtar === null) return null;
+        if ($anahtar === 'yerel') return app()->environment('local') ? null : response()->json(['ok' => 0], 404); // demo/hata ayıklama uçları canlıda yok
         if (session('ry_admin_id')) return null; // Sistem Yönetimi tüm şubelerde çalışır
 
         $api = str_starts_with($path, '/api/');
@@ -80,6 +83,51 @@ class PanelYetki
             return response(view('yetkisiz', ['sayfa' => $path]), 403);
         }
         if ($request->has('sube')) { $request->query->set('sube', $p->sube_id); $request->request->set('sube', $p->sube_id); }
+        return null;
+    }
+
+    // Personelin istekte verdiği adisyon/masa/ürün... numarası başka şubenin kaydıysa reddet. Tek restoranda etkisiz.
+    private function subeKapi(Request $request, string $path)
+    {
+        if (!function_exists('_subeKaydiTablosu') || session('ry_admin_id')) return null;
+        $p = null;
+        try { $p = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$p && $request->bearerToken()) { try { $p = _apiPersonel($request); } catch (\Throwable $e) {} }
+        if (!$p) return null;
+        foreach (_subeKaydiTablosu($path) as $alan => $tablo) {
+            $deger = $request->input($alan);
+            if (!is_scalar($deger) || (int) $deger <= 0) continue;
+            $sube = $this->kayitSubesi($tablo, (int) $deger);
+            if ($sube !== null && $sube !== (int) $p->sube_id) {
+                return str_starts_with($path, '/api/') ? response()->json(['ok' => 0, 'hata' => 'Kayıt bu işletmeye ait değil'], 403) : response(view('yetkisiz', ['sayfa' => $path]), 403);
+            }
+        }
+        return null;
+    }
+
+    // Kaydın şubesi; tablo/kolon yoksa ya da kayıt bulunamazsa null (karar route'a kalır)
+    private function kayitSubesi(string $tablo, int $id): ?int
+    {
+        try {
+            $db = \Illuminate\Support\Facades\DB::table($tablo === 'adisyon_kalemleri' || $tablo === 'odemeler' ? $tablo . ' as k' : $tablo);
+            if ($tablo === 'adisyon_kalemleri' || $tablo === 'odemeler') {
+                $v = $db->join('adisyonlar', 'adisyonlar.id', '=', 'k.adisyon_id')->where('k.id', $id)->value('adisyonlar.sube_id');
+            } else {
+                $kolon = cache()->remember('sube_kolon_' . $tablo, 3600, fn () => \Illuminate\Support\Facades\Schema::hasTable($tablo) && \Illuminate\Support\Facades\Schema::hasColumn($tablo, 'sube_id'));
+                if (!$kolon) return null;
+                $v = $db->where('id', $id)->value('sube_id');
+            }
+            return $v === null ? null : (int) $v;
+        } catch (\Throwable $e) { return null; }
+    }
+
+    // Ücretli dış servis çağıran açık uçlar (ses, çeviri, QR asistan): IP başına dakikada sınır
+    private function ucretliSinir(Request $request, string $path)
+    {
+        if (!in_array($path, ['/api/tts', '/api/m/ses', '/api/qr/stt', '/api/qr/cevir', '/api/qr/asistan'], true)) return null;
+        $anahtar = 'ucretli:' . $path . ':' . $request->ip();
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($anahtar, 120)) return response()->json(['ok' => 0, 'hata' => 'Çok fazla istek, biraz sonra tekrar deneyin.'], 429);
+        \Illuminate\Support\Facades\RateLimiter::hit($anahtar, 60);
         return null;
     }
 }
