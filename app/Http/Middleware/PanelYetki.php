@@ -66,7 +66,8 @@ class PanelYetki
         if (!function_exists('_ekYetkiAnahtari')) return null;
         $anahtar = _ekYetkiAnahtari($path);
         if ($anahtar === null) return null;
-        if ($anahtar === 'yerel') return app()->environment('local') ? null : response()->json(['ok' => 0], 404); // demo/hata ayıklama uçları canlıda yok
+        // Demo/hata ayıklama uçları yalnız .env RESTEOS_DEMO_UCLARI=1 ile açılır (canlı sunucu APP_ENV=local olabildiği için ortama bakılmaz)
+        if ($anahtar === 'yerel') return filter_var(env('RESTEOS_DEMO_UCLARI', false), FILTER_VALIDATE_BOOLEAN) ? null : response()->json(['ok' => 0], 404);
         if (session('ry_admin_id')) return null; // Sistem Yönetimi tüm şubelerde çalışır
 
         $api = str_starts_with($path, '/api/');

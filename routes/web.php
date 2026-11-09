@@ -1426,7 +1426,7 @@ Route::get('/api/m/siparislerim', function (Request $r) {
 });
 // DEMO: giriş yapmış müşteriye fake veri doldur (ödül merdiveni + puan + cüzdan hareketi + geçmiş sipariş). Tekrar çağrı katlamaz.
 Route::post('/api/m/demo-doldur', function (Request $r) {
-    if (!app()->environment('local')) return response()->json(['ok' => 0], 404); // canlı veriye örnek kayıt yazmasın
+    if (!filter_var(env('RESTEOS_DEMO_UCLARI', false), FILTER_VALIDATE_BOOLEAN)) return response()->json(['ok' => 0], 404); // canlı veriye örnek kayıt yazmasın (canlı APP_ENV=local olabilir)
     $m = _musteriAuth($r); if (!$m) return response()->json(['ok' => 0], 401);
     _appEnsure2();
     $sid = $m->sube_id;
