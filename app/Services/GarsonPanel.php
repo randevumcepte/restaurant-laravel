@@ -97,11 +97,7 @@ class GarsonPanel
         $statOzet = $statPeriod === 'gunluk' ? $ozet : $this->ozet($statBas, $simdi);
         $skorlar = $this->skorlar($statRapor);
 
-        $isi = [
-            'saat' => $this->masaYogunluk($simdi->copy()->subHour()),
-            'bugun' => $this->masaYogunluk($bugun),
-            'hafta' => $this->masaYogunluk($simdi->copy()->subDays(7)),
-        ];
+        $isi = $this->isiVeri();
 
         return [
             'ok' => 1,
@@ -206,6 +202,17 @@ class GarsonPanel
         $dolu = DB::table('adisyonlar as a')->join('masalar as m', 'a.masa_id', '=', 'm.id')
             ->where('m.sube_id', $this->subeId)->where('m.arsiv', 0)->where('a.durum', 'acik')->distinct()->count('a.masa_id');
         return (int) round($dolu * 100 / $toplam);
+    }
+
+    /** Isı haritası: zaman aralığı => masa_id => [personel_id => işlem sayısı]. Web panel ve uygulama ortak. */
+    public function isiVeri()
+    {
+        $simdi = now();
+        return [
+            'saat' => $this->masaYogunluk($simdi->copy()->subHour()),
+            'bugun' => $this->masaYogunluk($simdi->copy()->startOfDay()),
+            'hafta' => $this->masaYogunluk($simdi->copy()->subDays(7)),
+        ];
     }
 
     /** masa_id => [personel_id => işlem sayısı]. İşlem: sipariş kalemi, servis ve hesap alma. */
