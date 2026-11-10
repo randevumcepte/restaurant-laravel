@@ -21907,6 +21907,33 @@ Route::get('/api/patron/garson-performans', function (Request $r) {
     return (new \App\Services\GarsonPerformans($p->sube_id))->rapor($period, $garsonId);
 });
 
+// Isı haritası + alan uyumu (uygulama): web Garson Yönetimi > Isı Haritası ile aynı veri
+Route::get('/api/patron/isi-haritasi', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
+    $sid = (int) $p->sube_id;
+    try {
+        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
+        if (function_exists('_atamaTablo')) _atamaTablo();
+        $alanlar = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad'])
+            ->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad])->values();
+        $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id'])
+            ->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'kapasite' => (int) ($m->kapasite ?? 4), 'sekil' => $m->sekil ?? 'kare', 'b' => (int) ($m->bolge_id ?? 0)])->values();
+        if ($masalar->contains(fn ($m) => $m['b'] === 0)) $alanlar->push(['id' => 0, 'ad' => 'Bölgesiz']);
+        $atama = [];
+        foreach (DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']) as $a) {
+            $atama[$a->personel_id][$a->tip === 'bolge' ? 'b' : 'm'][] = (int) $a->hedef_id;
+        }
+        $garsonlar = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->orderBy('ad')->get(['id', 'ad'])
+            ->map(fn ($g) => ['id' => (int) $g->id, 'ad' => $g->ad, 'b' => $atama[$g->id]['b'] ?? [], 'm' => $atama[$g->id]['m'] ?? []])->values();
+        return ['ok' => 1, 'alanlar' => $alanlar, 'masalar' => $masalar, 'plan' => (new \App\Services\SalonPlan($sid))->oku(),
+            'garsonlar' => $garsonlar, 'isi' => (new \App\Services\GarsonPanel($sid))->isiVeri()];
+    } catch (\Throwable $e) {
+        report($e);
+        return response()->json(['ok' => 0, 'hata' => 'Isı haritası alınamadı.']);
+    }
+});
 // Giren personel (garson) telefonundan gunluk adim toplamini gonderir
 Route::post('/api/adim-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
@@ -21953,33 +21980,6 @@ Route::get('/api/patron/demo-garson-doldur', function (Request $r) {
         if (empty($evMasa)) $evMasa = $tumMasa;
         $gi++;
         $adisyonSay = random_int(6, 10);
-// Isı haritası + alan uyumu (uygulama): web Garson Yönetimi > Isı Haritası ile aynı veri
-Route::get('/api/patron/isi-haritasi', function (Request $r) {
-    $p = _apiPersonel($r);
-    if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if (!in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0], 403);
-    $sid = (int) $p->sube_id;
-    try {
-        if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
-        if (function_exists('_atamaTablo')) _atamaTablo();
-        $alanlar = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad'])
-            ->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad])->values();
-        $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id'])
-            ->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'kapasite' => (int) ($m->kapasite ?? 4), 'sekil' => $m->sekil ?? 'kare', 'b' => (int) ($m->bolge_id ?? 0)])->values();
-        if ($masalar->contains(fn ($m) => $m['b'] === 0)) $alanlar->push(['id' => 0, 'ad' => 'Bölgesiz']);
-        $atama = [];
-        foreach (DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']) as $a) {
-            $atama[$a->personel_id][$a->tip === 'bolge' ? 'b' : 'm'][] = (int) $a->hedef_id;
-        }
-        $garsonlar = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->orderBy('ad')->get(['id', 'ad'])
-            ->map(fn ($g) => ['id' => (int) $g->id, 'ad' => $g->ad, 'b' => $atama[$g->id]['b'] ?? [], 'm' => $atama[$g->id]['m'] ?? []])->values();
-        return ['ok' => 1, 'alanlar' => $alanlar, 'masalar' => $masalar, 'plan' => (new \App\Services\SalonPlan($sid))->oku(),
-            'garsonlar' => $garsonlar, 'isi' => (new \App\Services\GarsonPanel($sid))->isiVeri()];
-    } catch (\Throwable $e) {
-        report($e);
-        return response()->json(['ok' => 0, 'hata' => 'Isı haritası alınamadı.']);
-    }
-});
         for ($i = 0; $i < $adisyonSay; $i++) {
             // %75 ev bolgesi, %25 baska masa
             $masaId = (random_int(1, 100) <= 75) ? $evMasa[array_rand($evMasa)] : $tumMasa[array_rand($tumMasa)];
