@@ -9201,7 +9201,7 @@ if (!function_exists('_kademeSayfalar')) {
             case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar', 'gor_ai_asistan'])); // ödeme/kaçak + AI asistan (premium, patron elle verir) hariç her şey
             case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
             case 'satinalma': return ['gor_stok', 'gor_cari', 'gor_talep']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
-            case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri', 'gor_talep'];
+            case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
             default: return ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon']; // personel / garson
         }
     }
@@ -9410,8 +9410,8 @@ if (!function_exists('_panelYetkiVar')) {
         if (_kasiyerMi($personel) && !in_array($sayfaKey, _kasaNoktaYetkileri($personel), true)) return false;
         $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
         if (is_array($sy) && array_key_exists($sayfaKey, $sy)) return !empty($sy[$sayfaKey]);
-        // Departmanı olan herkes ihtiyacını talep edebilir; sorumlusu onaylar (stok yetkisi gerekmez)
-        if ($sayfaKey === 'gor_talep' && !empty($personel->departman_id)) return true;
+        // Talep yetkisi yalnız elle verilir (ör. bölüm şefi). Ayrı anahtar gelmeden önce stok yetkisiyle talep açanlar etkilenmesin.
+        if ($sayfaKey === 'gor_talep' && is_array($sy) && array_key_exists('gor_stok', $sy)) return !empty($sy['gor_stok']);
         $kademe = $personel->kademe ?? _rolKademe($personel->rol ?? '');
         return in_array($sayfaKey, _kademeSayfalar($kademe));
     }
