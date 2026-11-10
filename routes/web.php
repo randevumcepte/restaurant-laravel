@@ -9647,7 +9647,7 @@ if (!function_exists('_olcekMenuListesi')) {
     function _olcekMenuListesi($olcek)
     {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
-        $ayar = ['/isletme-duzeni', '/garson-yonetimi', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $ayar = ['/isletme-duzeni', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
@@ -16349,28 +16349,37 @@ if (!function_exists('_kalemServisIsaretle')) {
 // ============================================================================
 // GARSON YÖNETİMİ — canlı durum, ısı haritası, aktivite, performans, atama, mola
 // ============================================================================
-Route::get('/garson-yonetimi', function () {
-    $sid = _webSubeId();
-    $d = ['bolgeler' => collect(), 'masalar' => collect(), 'garsonlar' => collect(), 'plan' => [], 'fotolar' => [], 'cagriSay' => 0, 'panel' => ['ok' => 0]];
-    try {
+if (!function_exists('_garsonYonetimiVeri')) {
+    // İşletme Düzeni > Garson Yönetimi sekmesinin ilk verisi (JSON). Sonrası /garson-yonetimi/veri ile tazelenir.
+    function _garsonYonetimiVeri($sid)
+    {
         if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
         if (function_exists('_atamaTablo')) _atamaTablo();
-        $d['bolgeler'] = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
-        $d['masalar'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id']);
-        $atama = DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']);
+        $bolgeler = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad']);
+        $masalar = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->orderBy('bolge_id')->orderBy('id')->get(['id', 'ad', 'kapasite', 'sekil', 'bolge_id']);
         $bMap = []; $mMap = [];
-        foreach ($atama as $a) { if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id; else $mMap[$a->personel_id][] = (int) $a->hedef_id; }
-        $d['garsonlar'] = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->orderBy('ad')->get(['id', 'ad', 'rol'])
-            ->map(function ($g) use ($bMap, $mMap) { $g->bolge_idler = $bMap[$g->id] ?? []; $g->masa_idler = $mMap[$g->id] ?? []; return $g; });
-        $d['plan'] = (new \App\Services\SalonPlan($sid))->oku();
-        if (Schema::hasColumn('personeller', 'foto')) $d['fotolar'] = DB::table('personeller')->where('sube_id', $sid)->where('rol', 'garson')->whereNotNull('foto')->pluck('foto', 'id')->all();
-        $d['panel'] = (new \App\Services\GarsonPanel($sid))->veri();
-        $d['cagriSay'] = $d['panel']['cagri'];
-    } catch (\Throwable $e) {
-        report($e);
-        return redirect('/isletme-duzeni')->with('hata', 'Garson Yönetimi şu an açılamadı.');
+        foreach (DB::table('personel_atama')->where('sube_id', $sid)->get(['personel_id', 'tip', 'hedef_id']) as $a) {
+            if ($a->tip === 'bolge') $bMap[$a->personel_id][] = (int) $a->hedef_id; else $mMap[$a->personel_id][] = (int) $a->hedef_id;
+        }
+        $garsonIdler = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->where('rol', 'garson')->pluck('id');
+        $fotolar = Schema::hasColumn('personeller', 'foto') ? DB::table('personeller')->where('sube_id', $sid)->where('rol', 'garson')->whereNotNull('foto')->pluck('foto', 'id')->all() : [];
+        $alanlar = $bolgeler->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad])->values();
+        if ($masalar->contains(fn ($m) => !(int) ($m->bolge_id ?? 0))) $alanlar->push(['id' => 0, 'ad' => 'Bölgesiz']);
+        $veri = [
+            'alanlar' => $alanlar->all(),
+            'masalar' => $masalar->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'kapasite' => (int) ($m->kapasite ?? 4), 'sekil' => $m->sekil ?? 'kare', 'b' => (int) ($m->bolge_id ?? 0)])->values()->all(),
+            'plan' => (object) ((new \App\Services\SalonPlan($sid))->oku() ?? []),
+            'fotolar' => (object) collect($fotolar)->filter(fn ($f) => $f && str_starts_with((string) $f, 'data:image'))->all(),
+            'atama' => (object) $garsonIdler->mapWithKeys(fn ($id) => [$id => ['b' => $bMap[$id] ?? [], 'm' => $mMap[$id] ?? []]])->all(),
+            'panel' => (new \App\Services\GarsonPanel($sid))->veri(),
+        ];
+        return json_encode($veri, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
     }
-    return view('garson_yonetimi', $d);
+}
+// Garson Yönetimi artık İşletme Düzeni'nin sekmesi. Eski bağlantıdaki #isi gibi işaret tarayıcıda korunur.
+Route::get('/garson-yonetimi', function () {
+    session()->reflash(); // personel formundan dönen mesaj İşletme Düzeni'nde görünsün
+    return redirect('/isletme-duzeni?gy=1');
 });
 Route::get('/garson-yonetimi/veri', function (Request $r) {
     $izinli = ['gunluk', 'haftalik', 'aylik'];
@@ -16479,6 +16488,8 @@ Route::get('/isletme-duzeni', function () {
     } catch (\Throwable $e) {}
     try { if (Schema::hasTable('masa_cagrilari')) $d['cagriSay'] = DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->count(); } catch (\Throwable $e) {}
     try { if (Schema::hasColumn('masalar', 'created_at')) $d['yeniMasa'] = DB::table('masalar')->where('sube_id', $sid)->where('arsiv', 0)->where('created_at', '>=', now()->subDays(7))->count(); } catch (\Throwable $e) {}
+    $d['gyJson'] = null;
+    try { $d['gyJson'] = _garsonYonetimiVeri($sid); } catch (\Throwable $e) { report($e); }
     return view('isletme_duzeni', $d);
 });
 // --- Masa Planı kaydet: konum/şekil/boyut + salon objeleri (Salon Şeması ile eşitlenir) ---

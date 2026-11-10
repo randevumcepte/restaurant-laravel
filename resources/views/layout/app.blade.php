@@ -198,7 +198,6 @@
         ],
         'Ayarlar & Entegrasyon' => [
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
-            ['/garson-yonetimi', 'support_agent', 'Garson Yönetimi', '#7C3AED'],
             ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],

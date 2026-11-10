@@ -67,7 +67,7 @@
 {{-- Sekmeler --}}
 <div class="idz-sekmeler" role="tablist">
   <button type="button" class="idz-sekme aktif" data-sekme="plan" role="tab"><span class="material-icons-outlined">table_restaurant</span>Masa Planı</button>
-  <a class="idz-sekme" href="/garson-yonetimi"><span class="material-icons-outlined">groups</span>Garson Yönetimi</a>
+  <button type="button" class="idz-sekme" data-sekme="garson" role="tab"><span class="material-icons-outlined">groups</span>Garson Yönetimi</button>
   <button type="button" class="idz-sekme" data-sekme="kasa" role="tab"><span class="material-icons-outlined">point_of_sale</span>Kasa Yönetimi</button>
   <button type="button" class="idz-sekme" data-sekme="bolge" role="tab"><span class="material-icons-outlined">person_pin_circle</span>Bölge Ayarları</button>
   <button type="button" class="idz-sekme" data-sekme="yetki" role="tab"><span class="material-icons-outlined">verified_user</span>Yetki &amp; Roller</button>
@@ -168,7 +168,7 @@
         <div class="idz-kart">
           <div class="idz-kart-bas">
             <span class="material-icons-outlined idz-mor">groups</span><h3>Garson Atamaları</h3>
-            <a class="idz-link" href="/garson-yonetimi#garsonlar">Tüm Garsonlar<span class="material-icons-outlined">arrow_forward</span></a>
+            <button type="button" class="idz-link" onclick="gySekme('garsonlar')">Tüm Garsonlar<span class="material-icons-outlined">arrow_forward</span></button>
           </div>
           @forelse ($garsonOne as $g)
             @php $f = $fotolar[$g->id] ?? null; @endphp
@@ -190,7 +190,7 @@
           <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">bolt</span><h3>Hızlı İşlemler</h3></div>
           <div class="idz-hizli">
             <button type="button" onclick="idzModal('idzMasaEkle')"><span class="material-icons-outlined">table_restaurant</span>Masa Ekle</button>
-            <button type="button" onclick="location.href='/garson-yonetimi#garsonlar'"><span class="material-icons-outlined">groups</span>Garson Ata</button>
+            <button type="button" onclick="gySekme('garsonlar')"><span class="material-icons-outlined">groups</span>Garson Ata</button>
             <button type="button" onclick="idzSekme('kasa');idzOdak('idzKasaAd')"><span class="material-icons-outlined">point_of_sale</span>Kasa Ekle</button>
             <button type="button" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">location_on</span>Bölge Oluştur</button>
             <button type="button" onclick="idzTasiAc()"><span class="material-icons-outlined">swap_horiz</span>Masa Taşı</button>
@@ -381,6 +381,11 @@
       @endforeach
     </div>
   </div>
+</section>
+
+{{-- ============ GARSON YÖNETİMİ (eski /garson-yonetimi sayfası) ============ --}}
+<section class="idz-panel" data-panel="garson">
+  @include('layout._garson_yonetimi_icerik')
 </section>
 </div>
 
@@ -603,6 +608,7 @@ function idzSekme(ad){
   document.querySelectorAll('.idz-panel').forEach(function(p){ p.classList.toggle('aktif', p.getAttribute('data-panel') === ad); });
   try{ sessionStorage.setItem('idz_sekme', ad); }catch(e){}
   if(ad === 'plan') idzCiz();
+  if(ad === 'garson' && typeof gyIsiCizHepsi === 'function') gyIsiCizHepsi(); // gizliyken çizilemeyen ısı haritası
 }
 document.querySelectorAll('.idz-sekme').forEach(function(b){ b.addEventListener('click', function(){ idzSekme(b.getAttribute('data-sekme')); }); });
 
@@ -940,7 +946,9 @@ idzAramaKur(function(esle){
   document.addEventListener('submit', function(){ try{ sessionStorage.setItem(KEY, getY()); sessionStorage.setItem('idz_don', '1'); }catch(e){} }, true);
 })();
 </script>
+@include('layout._garson_yonetimi_js')
 @endsection
 @push('head')
 @include('layout._idz_stil')
+@include('layout._garson_yonetimi_stil')
 @endpush
