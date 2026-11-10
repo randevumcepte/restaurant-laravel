@@ -239,7 +239,7 @@ function gyIsiCiz(cer, dun, gid, alan, mini){
     var pl = (GY.plan[m.id] && +GY.plan[m.id].b === m.b) ? GY.plan[m.id] : null, kay = pl || yer.poz[m.id], d = y[m.id], mboy = (pl && pl.boy) || 1;
     var g = idzMasaSvg({kapasite: m.kapasite, durum: d.p >= 90 ? 'dolu' : 'bos'}, idzSekil(m, pl), (pl && pl.rot) || 0);
     var alanDisi = kendi && !kendi[m.id], isaret = alanDisi ? (d.n ? ' gy-dis' : ' gy-soluk') : '';
-    h += '<button type="button" class="idz-masa gy-m'+(g.yuvarlak ? ' yuv' : '')+isaret+'" data-ad="'+gyE(gyMasaAd(m))+'" data-n="'+d.n+'" data-p="'+d.p+'" data-dis="'+(alanDisi ? 1 : 0)+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+(g.oran * mboy)+');--mb:'+mboy+'" title="'+gyE(gyMasaAd(m))+' · '+d.n+' işlem · %'+d.p+(alanDisi ? ' · alan dışı' : '')+'">'+g.svg+
+    h += '<button type="button" class="idz-masa gy-m'+(g.yuvarlak ? ' yuv' : '')+isaret+'" data-id="'+m.id+'" data-ad="'+gyE(gyMasaAd(m))+'" data-n="'+d.n+'" data-p="'+d.p+'" data-dis="'+(alanDisi ? 1 : 0)+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+(g.oran * mboy)+');--mb:'+mboy+'" title="'+gyE(gyMasaAd(m))+' · '+d.n+' işlem · %'+d.p+(alanDisi ? ' · alan dışı' : '')+'">'+g.svg+
       '<span class="et"><b>'+gyE(gyMasaEt(m))+'</b><small>%'+d.p+'</small></span>'+(alanDisi && d.n ? '<span class="gy-dis-rozet">'+d.n+'</span>' : '')+'</button>';
   });
   dun.innerHTML = h;
@@ -366,9 +366,71 @@ function gyYukle(){
       if(z) z.textContent = d.cagri, z.style.display = d.cagri > 0 ? '' : 'none';
     }).catch(function(){});
 }
+// ---- Masa bilgi penceresi (ısı haritasında masaya tıklayınca) ----
+var GY_PENCERE_AD = {saat: 'Son 1 saat', bugun: 'Bugün', hafta: 'Son 7 gün'};
+var GY_DURUM = {odendi: ['Ödendi', '#10B981'], acik: ['Açık', '#F59E0B'], iptal: ['İptal', '#94A3B8']};
+function gySure2(dk){ if(dk == null) return '—'; return dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk'; }
+function gyMasaKapat(){ var k = document.getElementById('gyMd'); if(k) k.classList.remove('acik'); document.removeEventListener('keydown', gyMasaEsc); }
+function gyMasaEsc(e){ if(e.key === 'Escape') gyMasaKapat(); }
+function gyMasaAc(id, gid){
+  var m = GY.masalar.find(function(x){ return x.id === id; }); if(!m) return;
+  var k = document.getElementById('gyMd');
+  if(!k){
+    k = document.createElement('div'); k.id = 'gyMd'; k.className = 'gy-md'; k.setAttribute('role', 'dialog'); k.setAttribute('aria-modal', 'true');
+    k.addEventListener('click', function(e){ if(e.target === k || e.target.closest('[data-md-kapat]')) gyMasaKapat(); });
+    document.body.appendChild(k);
+  }
+  var y = gyYuzdeler(gid)[m.id] || {n: 0, p: 0}, garson = gid ? (gyD.garsonlar.find(function(x){ return x.id === gid; }) || {}).ad : '';
+  // Bu masada çalışanlar: ısı verisinden (aynı aralık)
+  var s = gyD.isi[gyPencere][m.id] || {}, ad = {}, calisan = [];
+  gyD.garsonlar.forEach(function(g){ ad[g.id] = g.ad; });
+  Object.keys(s).forEach(function(p){ if(+s[p] > 0) calisan.push({id: +p, ad: ad[p] || (+p ? 'Yönetici / kasa' : 'Müşteri (QR)'), n: +s[p]}); });
+  calisan.sort(function(a, b){ return b.n - a.n; });
+  var cmx = calisan.length ? calisan[0].n : 1;
+  k.innerHTML = '<div class="gy-md-kutu">'+
+    '<div class="gy-md-bas" style="--r:'+gyIsiRenk(y.p)+'">'+
+      '<span class="gy-md-ikon"><span class="material-icons-outlined">table_restaurant</span></span>'+
+      '<div class="gy-md-ad"><b>'+gyE(gyMasaAd(m))+'</b><span>'+gyE(gyAlanAd(m.b))+' · '+m.kapasite+' kişilik</span></div>'+
+      '<button type="button" class="gy-md-x" data-md-kapat aria-label="Kapat"><span class="material-icons-outlined">close</span></button>'+
+      '<div class="gy-md-cipler"><span><span class="material-icons-outlined">schedule</span>'+GY_PENCERE_AD[gyPencere]+'</span>'+
+        (garson ? '<span><span class="material-icons-outlined">person</span>'+gyE(garson)+'</span>' : '')+
+        '<span class="isi"><i></i>'+y.n+' işlem · %'+y.p+' yoğunluk</span></div>'+
+    '</div>'+
+    '<div class="gy-md-govde" id="gyMdGovde"><div class="gy-md-yuk"><i></i><i></i><i></i></div></div>'+
+  '</div>';
+  k.classList.add('acik');
+  document.addEventListener('keydown', gyMasaEsc);
+  var calisanHtml = calisan.length ? '<div class="gy-md-bolum"><h4>Bu masada çalışanlar</h4>'+calisan.map(function(c){
+      return '<div class="gy-md-calisan'+(gid && c.id === gid ? ' secili' : '')+'"><span class="av">'+gyE(String(c.ad).charAt(0).toLocaleUpperCase('tr'))+'</span><b>'+gyE(c.ad)+'</b>'+
+        '<span class="c"><i style="width:'+Math.round(c.n * 100 / cmx)+'%"></i></span><em>'+c.n+' işlem</em></div>';
+    }).join('')+'</div>' : '';
+  fetch('/garson-yonetimi/masa-detay?masa_id='+m.id+'&pencere='+gyPencere+'&garson_id='+(gid || 0), {headers: {'Accept': 'application/json'}, cache: 'no-store'})
+    .then(function(r){ return r.json(); }).then(function(d){
+      var g = document.getElementById('gyMdGovde'); if(!g) return;
+      if(d.ok != 1){ g.innerHTML = '<div class="gy-md-bos"><span class="material-icons-outlined">error_outline</span>'+gyE(d.hata || 'Bilgi alınamadı.')+'</div>'; return; }
+      var o = d.ozet;
+      var kart = function(ikon, renk, et, deger, alt){ return '<div class="gy-md-stat" style="--r:'+renk+'"><span class="material-icons-outlined">'+ikon+'</span><small>'+et+'</small><b>'+deger+'</b>'+(alt ? '<em>'+alt+'</em>' : '')+'</div>'; };
+      var html = '<div class="gy-md-statlar">'+
+        kart('restart_alt', '#7C3AED', 'Kaç kez açıldı', o.acilis, o.misafir ? o.misafir + ' misafir' : '')+
+        kart('payments', '#10B981', 'Toplam tutar', gyPara(o.ciro), o.acik_tutar > 0 ? '+ ' + gyPara(o.acik_tutar) + ' açık' : 'ödenen hesaplar')+
+        kart('receipt_long', '#2563EB', 'Ortalama hesap', o.ort ? gyPara(o.ort) : '—', '')+
+        kart('hourglass_bottom', '#F59E0B', 'Ortalama oturma', gySure2(o.ort_sure), '')+
+      '</div>' + calisanHtml;
+      html += '<div class="gy-md-bolum"><h4>Hesaplar <span>'+d.hesaplar.length+'</span></h4>';
+      html += d.hesaplar.length ? d.hesaplar.map(function(h){
+        var du = GY_DURUM[h.durum] || [h.durum, '#94A3B8'];
+        return '<div class="gy-md-hesap" style="--r:'+du[1]+'">'+
+          '<div class="zaman"><b>'+h.acilis+(h.kapanis ? ' – ' + h.kapanis : '')+'</b><small>'+h.tarih+' · '+(h.durum === 'acik' ? gySure2(h.sure_dk) + ', sürüyor' : gySure2(h.sure_dk))+'</small></div>'+
+          '<div class="kim"><span class="av">'+gyE(String(h.garson).charAt(0).toLocaleUpperCase('tr'))+'</span><span><b>'+gyE(h.garson)+'</b><small>'+(h.misafir ? h.misafir + ' kişi · ' : '')+h.kalem+' ürün</small></span></div>'+
+          '<div class="tutar"><b>'+gyPara(h.tutar)+'</b><span class="rozet">'+du[0]+(h.odeme ? ' · ' + gyE(h.odeme) : '')+'</span></div>'+
+        '</div>';
+      }).join('') : '<div class="gy-md-bos"><span class="material-icons-outlined">event_busy</span>'+(gid ? 'Bu garson bu aralıkta bu masada hesap açmamış.' : 'Bu aralıkta bu masada hesap açılmamış.')+'</div>';
+      g.innerHTML = html + '</div>';
+    }).catch(function(){ var g = document.getElementById('gyMdGovde'); if(g) g.innerHTML = '<div class="gy-md-bos"><span class="material-icons-outlined">wifi_off</span>Sunucuya ulaşılamadı.</div>'; });
+}
 document.addEventListener('click', function(e){
   var m = e.target.closest('.gy-m');
-  if(m){ rkBilgi(m.getAttribute('data-ad') + ': ' + m.getAttribute('data-n') + ' işlem, %' + m.getAttribute('data-p') + ' yoğunluk' + (m.getAttribute('data-dis') === '1' ? ' · alan dışı' : ''), 'info'); return; }
+  if(m){ gyMasaAc(+m.getAttribute('data-id'), m.closest('#gyCerceve1') ? 0 : gyIsiGarson); return; }
   var ac = e.target.closest('.gy [data-alan-ac]'), kart = e.target.closest('.gy-mini');
   if(ac || kart){ gyIsiAlan = ac ? +ac.getAttribute('data-alan-ac') : +kart.closest('.gy-bolge').getAttribute('data-alan'); gyIsiCizHepsi(); return; }
   var g = e.target.closest('.gy [data-garson]');

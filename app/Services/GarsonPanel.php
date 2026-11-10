@@ -204,6 +204,59 @@ class GarsonPanel
         return (int) round($dolu * 100 / $toplam);
     }
 
+    /** Isı haritasında masaya tıklanınca: aralıktaki hesaplar (açılış, süre, garson, tutar, ödeme). Garson verilirse yalnız onun dokunduğu hesaplar. */
+    public function masaDetay($masaId, $pencere = 'bugun', $garsonId = 0)
+    {
+        $simdi = now();
+        $bas = ['saat' => $simdi->copy()->subHour(), 'hafta' => $simdi->copy()->subDays(7)][$pencere] ?? $simdi->copy()->startOfDay();
+        $masa = DB::table('masalar as m')->leftJoin('bolgeler as b', 'm.bolge_id', '=', 'b.id')
+            ->where('m.sube_id', $this->subeId)->where('m.id', (int) $masaId)->first(['m.id', 'm.ad', 'm.kapasite', 'b.ad as bolge']);
+        if (!$masa) return ['ok' => 0, 'hata' => 'Masa bulunamadı.'];
+
+        $q = DB::table('adisyonlar')->where('sube_id', $this->subeId)->where('masa_id', $masa->id)
+            ->where(fn ($w) => $w->where('acilis', '>=', $bas)->orWhere('kapanis', '>=', $bas)->orWhere('durum', 'acik'));
+        $g = (int) $garsonId;
+        if ($g) {
+            $servis = Schema::hasColumn('adisyon_kalemleri', 'servis_personel_id');
+            $q->where(function ($w) use ($g, $servis) {
+                $w->where('acan_personel_id', $g)
+                    ->orWhereExists(fn ($e) => $e->select(DB::raw(1))->from('adisyon_kalemleri as k')->whereColumn('k.adisyon_id', 'adisyonlar.id')
+                        ->where(fn ($x) => $servis ? $x->where('k.personel_id', $g)->orWhere('k.servis_personel_id', $g) : $x->where('k.personel_id', $g)))
+                    ->orWhereExists(fn ($e) => $e->select(DB::raw(1))->from('odemeler as o')->whereColumn('o.adisyon_id', 'adisyonlar.id')->where('o.personel_id', $g));
+            });
+        }
+        $adisyonlar = $q->orderByDesc('acilis')->limit(100)->get(['id', 'acan_personel_id', 'misafir_sayisi', 'durum', 'toplam', 'acilis', 'kapanis']);
+        $ids = $adisyonlar->pluck('id')->all();
+        $kalem = $ids ? DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $ids)->where('durum', '!=', 'iptal')
+            ->selectRaw('adisyon_id, COUNT(*) as n')->groupBy('adisyon_id')->pluck('n', 'adisyon_id') : collect();
+        $odeme = $ids ? DB::table('odemeler')->whereIn('adisyon_id', $ids)->get(['adisyon_id', 'tip'])->groupBy('adisyon_id') : collect();
+        $ad = DB::table('personeller')->where('sube_id', $this->subeId)->pluck('ad', 'id');
+        $tipAd = ['nakit' => 'Nakit', 'kredi' => 'Kart', 'yemek_karti' => 'Yemek Kartı', 'acik_hesap' => 'Açık Hesap'];
+
+        $satir = []; $ciro = 0; $odenen = 0; $acikTutar = 0; $sureTop = 0; $sureAdet = 0; $misafir = 0;
+        foreach ($adisyonlar as $a) {
+            $acilis = Carbon::parse($a->acilis);
+            $bitis = $a->kapanis ? Carbon::parse($a->kapanis) : null;
+            $sure = (int) $acilis->diffInMinutes($bitis ?: $simdi);
+            $tutar = (float) $a->toplam;
+            if ($a->durum === 'odendi') { $ciro += $tutar; $odenen++; $sureTop += $sure; $sureAdet++; }
+            elseif ($a->durum === 'acik') $acikTutar += $tutar;
+            $misafir += (int) ($a->misafir_sayisi ?? 0);
+            $yerel = $acilis->copy()->setTimezone('Europe/Istanbul');
+            $satir[] = [
+                'id' => (int) $a->id, 'durum' => $a->durum, 'tutar' => round($tutar, 2), 'sure_dk' => $sure,
+                'tarih' => $yerel->isToday() ? 'Bugün' : $yerel->format('d.m'), 'acilis' => $yerel->format('H:i'),
+                'kapanis' => $bitis ? $bitis->copy()->setTimezone('Europe/Istanbul')->format('H:i') : null,
+                'garson' => $ad[$a->acan_personel_id] ?? 'Personel', 'misafir' => (int) ($a->misafir_sayisi ?? 0), 'kalem' => (int) ($kalem[$a->id] ?? 0),
+                'odeme' => collect($odeme[$a->id] ?? [])->pluck('tip')->unique()->map(fn ($t) => $tipAd[$t] ?? ucfirst((string) $t))->values()->implode(' + '),
+            ];
+        }
+        return ['ok' => 1, 'masa' => ['id' => (int) $masa->id, 'ad' => $masa->ad, 'bolge' => $masa->bolge, 'kapasite' => (int) ($masa->kapasite ?? 0)],
+            'ozet' => ['acilis' => count($satir), 'ciro' => round($ciro, 2), 'acik_tutar' => round($acikTutar, 2), 'ort' => $odenen ? round($ciro / $odenen, 2) : 0,
+                'ort_sure' => $sureAdet ? (int) round($sureTop / $sureAdet) : null, 'misafir' => $misafir],
+            'hesaplar' => $satir];
+    }
+
     /** Isı haritası: zaman aralığı => masa_id => [personel_id => işlem sayısı]. Web panel ve uygulama ortak. */
     public function isiVeri()
     {

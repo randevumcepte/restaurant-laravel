@@ -16395,6 +16395,12 @@ Route::get('/garson-yonetimi/veri', function (Request $r) {
     try { return (new \App\Services\GarsonPanel(_webSubeId()))->veri($stat, $perf); }
     catch (\Throwable $e) { report($e); return response()->json(['ok' => 0, 'hata' => 'Veri alınamadı.']); }
 });
+// Isı haritasında masaya tıklanınca açılan bilgi penceresi
+Route::get('/garson-yonetimi/masa-detay', function (Request $r) {
+    $pencere = in_array($r->query('pencere'), ['saat', 'bugun', 'hafta'], true) ? $r->query('pencere') : 'bugun';
+    try { return (new \App\Services\GarsonPanel(_webSubeId()))->masaDetay((int) $r->query('masa_id'), $pencere, (int) $r->query('garson_id')); }
+    catch (\Throwable $e) { report($e); return response()->json(['ok' => 0, 'hata' => 'Masa bilgisi alınamadı.']); }
+});
 Route::post('/garson-yonetimi/mola', function (Request $r) {
     $sid = _webSubeId();
     try {
