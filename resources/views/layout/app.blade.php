@@ -75,6 +75,25 @@
     .rk-profil-ic{width:100%;height:100%;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mor1) 12%,var(--card));color:var(--mor1)}
     .rk-profil-ic img{width:100%;height:100%;object-fit:cover}
     .rk-profil-ic .material-icons-outlined{font-size:23px}
+    @media(min-width:641px){.rk-profil{display:none}} /* masaüstünde profil menünün altında; telefonda menü kapalı olduğu için üstte kalır */
+    /* Menü altı: profil kartı + Çıkış Yap */
+    .rk-side-foot{display:flex;flex-direction:column;gap:8px;padding:10px}
+    .rk-side-foot a{border:1px solid var(--line);border-radius:14px;text-decoration:none;transition:background .12s,border-color .12s}
+    .rk-side-foot a:hover{background:color-mix(in srgb,var(--mor1) 6%,var(--card))}
+    .rk-side-foot a.rk-sp{display:flex;align-items:center;gap:10px;height:auto;padding:8px 10px;color:var(--ink)}
+    .rk-side-foot a.rk-sp.aktif{border-color:color-mix(in srgb,var(--mor1) 45%,var(--line));background:color-mix(in srgb,var(--mor1) 8%,var(--card))}
+    .rk-sp-foto{flex:none;width:40px;height:40px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;font-size:16px;font-weight:800}
+    .rk-sp-foto img{width:100%;height:100%;object-fit:cover}
+    .rk-sp-ad{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+    .rk-sp-ad b{font-size:14px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rk-sp-ad small{font-size:12px;font-weight:600;color:var(--sub)}
+    .rk-sp-ok{flex:none;font-size:20px;color:var(--sub)}
+    .rk-side-foot a.rk-sp-cikis{padding:11px 14px}
+    @media(min-width:641px){
+        .rk-side:not(:hover):not(.genis) .rk-side-foot{padding:10px 8px}
+        .rk-side:not(:hover):not(.genis) .rk-side-foot a{border-color:transparent;justify-content:center;padding-left:0;padding-right:0}
+        .rk-side:not(:hover):not(.genis) .rk-sp-ad,.rk-side:not(:hover):not(.genis) .rk-sp-ok{display:none}
+    }
     /* ORTAK MODAL / OVERLAY — panel-kit.css'te yoktu, modal'lar akışta alta düşüyordu */
     .rk-modal-arka{position:fixed;inset:0;background:rgba(15,15,25,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
     .rk-modal-arka.acik{display:flex}
@@ -461,7 +480,6 @@
         <a href="/profilim" class="rk-side-head" style="text-decoration:none; color:inherit; display:block" title="Profilim">
             <div class="ad">🍔 ResteOS</div>
             <div class="sube">{{ $aktifSubeAd }}</div>
-            <div class="kul">{{ $kulAd }} · {{ $kulRol }}</div>
         </a>
         <nav class="rk-menu">
             @php
@@ -511,7 +529,20 @@
             @endforeach
         </nav>
         <div class="rk-side-foot">
-            <a href="/pos-cikis"><span class="material-icons-outlined">logout</span> Çıkış</a>
+            @if ($_pp)
+                <a href="/profilim" class="rk-sp{{ $path === '/profilim' ? ' aktif' : '' }}" title="{{ $kulAd }} · Profilim">
+                    <span class="rk-sp-foto">
+                        @if (!empty($_pp->foto) && str_starts_with((string) $_pp->foto, 'data:image'))
+                            <img src="/profilim-avatar?v={{ crc32($_pp->foto) }}" alt="">
+                        @else
+                            {{ mb_strtoupper(mb_substr((string) $kulAd, 0, 1)) }}
+                        @endif
+                    </span>
+                    <span class="rk-sp-ad"><b>{{ $kulAd }}</b><small>{{ $kulRol }}</small></span>
+                    <span class="material-icons-outlined rk-sp-ok">chevron_right</span>
+                </a>
+            @endif
+            <a href="/pos-cikis" class="rk-sp-cikis" title="Çıkış Yap"><span class="material-icons-outlined">logout</span> Çıkış Yap</a>
         </div>
     </aside>
     {{-- Menu durumu icerik cizilmeden uygulanir: sayfa gecisinde menu kipirdamasin --}}
