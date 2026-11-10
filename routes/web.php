@@ -9915,8 +9915,9 @@ Route::get('/mutfak-altdep-kur', function () {
     $bp = function_exists('_posPersonel') ? _posPersonel() : null;
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/departman-yonetim')->with('hata', 'Yalnızca sahip/müdür kurabilir.');
     try {
-        $n = _departmanSablonKur($sid, ['soguk_mutfak', 'pastane', 'kasap', 'bulasik']);
-        $msg = $n > 0 ? ($n . ' mutfak alt departmanı kuruldu') : 'Mutfak alt departmanları zaten kurulu';
+        // Ana mutfak (şefin bağlı olduğu, istasyon taleplerini onaylayan) istasyonlarla birlikte kurulur; yoksa istasyonların başı olmaz
+        $n = _departmanSablonKur($sid, ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bulasik']);
+        $msg = $n > 0 ? ($n . ' mutfak departmanı kuruldu (ana Mutfak + istasyonlar)') : 'Mutfak departmanları zaten kurulu';
         return redirect('/departman-yonetim')->with('ok', $msg . ' — artık menüde Mutfak / BOH altında görünür. Her birine Personel ekranından sorumlu/personel atayabilirsin.');
     } catch (\Throwable $e) { return redirect('/departman-yonetim')->with('hata', 'Kurulamadı: ' . $e->getMessage()); }
 });

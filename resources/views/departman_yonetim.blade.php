@@ -36,6 +36,9 @@
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <button class="rk-btn" style="background:var(--mor1)" onclick="depAc(null)"><span class="material-icons-outlined" style="font-size:18px">add</span> Yeni Departman</button>
     <a class="rk-btn bos" href="/isletme-olcegi" style="text-decoration:none"><span class="material-icons-outlined" style="font-size:18px">tune</span> İşletme Büyüklüğü</a>
+    @if (!collect($departmanlar)->contains(fn ($d) => ($d->kod ?? '') === 'mutfak' && (int) ($d->aktif ?? 1) === 1))
+    <a class="rk-btn bos" href="/mutfak-altdep-kur" style="text-decoration:none" title="Ana Mutfak (şef) + Soğuk Mutfak, Pastane, Kasap, Bulaşıkhane"><span class="material-icons-outlined" style="font-size:18px">soup_kitchen</span> Mutfak departmanlarını kur</a>
+    @endif
     @if (count($departmanlar) === 0)
     <form method="POST" action="/departman-sablon-kur" style="display:inline">@csrf
       <button class="rk-btn bos" type="submit"><span class="material-icons-outlined" style="font-size:18px">auto_awesome</span> Hazır departmanları oluştur</button>
