@@ -146,7 +146,58 @@ function gyYuzdeler(gid){
   GY.masalar.forEach(function(m){ y[m.id] = {n: y[m.id], p: mx ? Math.round(y[m.id] * 100 / mx) : 0}; });
   return y;
 }
-function gyIsiRenk(p){ return p >= 90 ? '#C026D3' : (p >= 70 ? '#F97316' : (p >= 40 ? '#6C8CF5' : '#C7D2FE')); }
+function gyIsiRenk(p){ return p >= 90 ? '#EF4444' : (p >= 70 ? '#F97316' : (p >= 40 ? '#EAB308' : '#3B82F6')); }
+var GY_DIS = '#C026D3'; // alan dışı işlem: ısı renklerinde olmayan mor
+var GY_PALET = null;
+function gyPalet(){
+  if(GY_PALET) return GY_PALET;
+  var c = document.createElement('canvas'); c.width = 256; c.height = 1;
+  var x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 256, 0);
+  [[0, '#1D4ED8'], [.3, '#06B6D4'], [.5, '#22C55E'], [.7, '#EAB308'], [.85, '#F97316'], [1, '#EF4444']].forEach(function(s){ g.addColorStop(s[0], s[1]); });
+  x.fillStyle = g; x.fillRect(0, 0, 256, 1);
+  return (GY_PALET = x.getImageData(0, 0, 256, 1).data);
+}
+// Zemin ısı katmanı: masadaki işlem yoğunluğu + servis noktasından masaya TAHMİNİ yol.
+// Yalnız işlem olan masalara iz düşer; konum takibi yok.
+function gyIsiKatman(W, H, noktalar, hub){
+  var c = document.createElement('canvas'); c.className = 'gy-isi-katman'; c.width = Math.max(1, Math.round(W)); c.height = Math.max(1, Math.round(H));
+  var x = c.getContext('2d'), mx = 0;
+  noktalar.forEach(function(p){ if(p.n > mx) mx = p.n; });
+  x.fillStyle = 'rgba(0,0,0,.07)'; x.fillRect(0, 0, W, H); // soğuk zemin
+  function leke(px, py, r, a){
+    var g = x.createRadialGradient(px, py, 0, px, py, r);
+    g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+  }
+  var sirali = noktalar.filter(function(p){ return p.n > 0; }).sort(function(a, b){ return a.n - b.n; });
+  sirali.forEach(function(p){
+    var o = p.n / mx;
+    if(hub){
+      var dx = p.x - hub.x, dy = p.y - hub.y, k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(5, p.r * .3)));
+      for(var i = 0; i <= k; i++) leke(hub.x + dx * i / k, hub.y + dy * i / k, p.r * .5, .04 + .12 * o);
+    }
+    leke(p.x, p.y, p.r * (1 + .7 * o), .3 + .6 * o);
+  });
+  var d = x.getImageData(0, 0, c.width, c.height), v = d.data, pal = gyPalet();
+  for(var i = 0; i < v.length; i += 4){
+    var a = v[i + 3]; if(!a) continue;
+    var j = Math.min(255, a) * 4;
+    v[i] = pal[j]; v[i + 1] = pal[j + 1]; v[i + 2] = pal[j + 2]; v[i + 3] = Math.min(210, 45 + a);
+  }
+  x.putImageData(d, 0, 0);
+  // En yoğun yollara yön oku (servis noktasından masaya)
+  if(hub){
+    x.setLineDash([7, 6]); x.lineWidth = 2; x.strokeStyle = 'rgba(255,255,255,.9)'; x.fillStyle = 'rgba(255,255,255,.9)';
+    sirali.slice(-4).forEach(function(p){
+      var dx = p.x - hub.x, dy = p.y - hub.y, L = Math.hypot(dx, dy); if(L < p.r * 1.5) return;
+      var ux = dx / L, uy = dy / L, sx = p.x - ux * p.r * .9, sy = p.y - uy * p.r * .9;
+      x.beginPath(); x.moveTo(hub.x + ux * 10, hub.y + uy * 10); x.lineTo(sx, sy); x.stroke();
+      x.beginPath(); x.moveTo(sx + ux * 8, sy + uy * 8); x.lineTo(sx - uy * 5, sy + ux * 5); x.lineTo(sx + uy * 5, sy - ux * 5); x.fill();
+    });
+    x.setLineDash([]);
+  }
+  return c;
+}
 // Garsonun sorumlu masaları. Atama yoksa null: tüm masalara bakar, alan dışı hesaplanmaz.
 function gyKendiMasalar(gid){
   var a = GY.atama[gid]; if(!a || (!a.b.length && !a.m.length)) return null;
@@ -182,16 +233,25 @@ function gyIsiCiz(cer, dun, gid, alan, mini){
   var list = GY.masalar.filter(function(m){ return m.b === alan; }), yer = idzYerlesim(list), y = gyYuzdeler(gid), kendi = gid ? gyKendiMasalar(gid) : null;
   var oran = (GY.plan._alan && GY.plan._alan[alan] || {}).oran;
   if(mini) gyMiniOlcu(cer, dun, yer, oran); else idzDunyaOlcu(cer, dun, yer, 1, oran);
-  var h = idzObjelerHtml(idzDekorListe(GY.plan, alan, GY.alanlar.length ? GY.alanlar[0].id : 0), -1);
+  var dekor = idzDekorListe(GY.plan, alan, GY.alanlar.length ? GY.alanlar[0].id : 0), h = idzObjelerHtml(dekor, -1);
   if(!list.length) h += mini ? '<div class="gy-mini-bos">Bu alanda masa yok</div>' : '<div class="idz-plan-bos"><b>Bu alanda masa yok</b><span>Masaları Masa Planı sekmesinden ekleyebilirsiniz.</span><button type="button" class="idz-btn dolu" onclick="idzSekme(\'plan\')">Masa Planı</button></div>';
   list.forEach(function(m){
     var pl = (GY.plan[m.id] && +GY.plan[m.id].b === m.b) ? GY.plan[m.id] : null, kay = pl || yer.poz[m.id], d = y[m.id], mboy = (pl && pl.boy) || 1;
     var g = idzMasaSvg({kapasite: m.kapasite, durum: d.p >= 90 ? 'dolu' : 'bos'}, idzSekil(m, pl), (pl && pl.rot) || 0);
     var alanDisi = kendi && !kendi[m.id], isaret = alanDisi ? (d.n ? ' gy-dis' : ' gy-soluk') : '';
     h += '<button type="button" class="idz-masa gy-m'+(g.yuvarlak ? ' yuv' : '')+isaret+'" data-ad="'+gyE(gyMasaAd(m))+'" data-n="'+d.n+'" data-p="'+d.p+'" data-dis="'+(alanDisi ? 1 : 0)+'" style="left:'+(kay.x / 10)+'%;top:'+(kay.y / 10)+'%;width:calc(var(--ts) * '+(g.oran * mboy)+');--mb:'+mboy+'" title="'+gyE(gyMasaAd(m))+' · '+d.n+' işlem · %'+d.p+(alanDisi ? ' · alan dışı' : '')+'">'+g.svg+
-      '<i class="gy-parlama" style="--r:'+(alanDisi && d.n ? '#EF4444' : gyIsiRenk(d.p))+'"></i><span class="et"><b>'+gyE(gyMasaEt(m))+'</b><small>%'+d.p+'</small></span>'+(alanDisi && d.n ? '<span class="gy-dis-rozet">'+d.n+'</span>' : '')+'</button>';
+      '<span class="et"><b>'+gyE(gyMasaEt(m))+'</b><small>%'+d.p+'</small></span>'+(alanDisi && d.n ? '<span class="gy-dis-rozet">'+d.n+'</span>' : '')+'</button>';
   });
   dun.innerHTML = h;
+  // Isı katmanı masaların altında; yol başı: mutfak > bar > kasa > giriş (alanda yoksa yalnız masa lekeleri)
+  var W = parseFloat(dun.style.width) || dun.clientWidth, H = parseFloat(dun.style.height) || dun.clientHeight;
+  var ts = parseFloat(dun.style.getPropertyValue('--ts')) || 80, hub = null;
+  ['mutfak', 'bar', 'kasa', 'giris'].some(function(t){ var o = dekor.find(function(x){ return x.t === t; }); if(o) hub = {x: o.x / 1000 * W, y: o.y / 1000 * H}; return !!o; });
+  var noktalar = list.map(function(m){
+    var pl = (GY.plan[m.id] && +GY.plan[m.id].b === m.b) ? GY.plan[m.id] : null, kay = pl || yer.poz[m.id];
+    return {x: kay.x / 1000 * W, y: kay.y / 1000 * H, n: y[m.id].n, r: ts * .85};
+  });
+  dun.insertBefore(gyIsiKatman(W, H, noktalar, hub), dun.firstChild);
 }
 function gySalonCiz(gid){
   var kap = document.getElementById('gySalon');
@@ -229,13 +289,15 @@ function gyUyumCiz(gid){
     '<div class="m"><b>'+ad+' işlemlerinin %'+u.oran+'\'i kendi alanında</b>'+
     '<span>'+u.ic+' işlem kendi alanında, '+u.dis+' işlem alan dışında'+(bolge ? ' ('+bolge+')' : '')+'</span>'+
     '<span class="c"><i style="width:'+u.oran+'%;background:'+gyUyumRenk(u.oran)+'"></i></span></div>'+
-    '<div class="ef"><span><i style="background:#EF4444"></i>Alan dışı işlem</span><span><i class="s"></i>Alan dışı, işlem yok</span></div></div>';
+    '<div class="ef"><span><i style="background:'+GY_DIS+'"></i>Alan dışı işlem</span><span><i class="s"></i>Alan dışı, işlem yok</span></div></div>';
 }
 function gyIlisteHtml(m, n, p, renk){
   return '<div class="gy-iliste"><b title="'+gyE(gyMasaAd(m))+'">'+gyE(gyMasaAd(m))+'</b><span class="c"><i style="width:'+p+'%;background:'+renk+'"></i></span><em>'+n+'</em></div>';
 }
 function gyYanCiz(gid){
   var h = '', bas = function(ikon, t){ return '<div class="gy-ef-bas" style="margin:0 0 8px"><span class="material-icons-outlined idz-mor">'+ikon+'</span>'+t+'</div>'; };
+  h += '<div class="gy-yan">'+bas('palette', 'Isı Haritası Renkleri')+'<div class="gy-renk"><i></i><span><b>En çok işlem</b><b>Orta</b><b>En az</b></span></div>'+
+    '<p class="gy-yan-not">Yollar tahminidir: servis noktasından (mutfak, bar, kasa ya da giriş) işlem yapılan masaya çizilir. Garsonun gerçek konumu ölçülmez.</p></div>';
   if(!gid){
     var sat = gyD.garsonlar.map(function(g){ var u = gyUyum(g.id); return {g: g, oran: u ? u.oran : null}; })
       .sort(function(a, b){ return (a.oran === null ? 999 : a.oran) - (b.oran === null ? 999 : b.oran); });
@@ -249,7 +311,7 @@ function gyYanCiz(gid){
     var u = gyUyum(gid);
     if(u && u.liste.length){
       var mx = u.liste[0].n;
-      h += '<div class="gy-yan">'+bas('warning_amber', 'Alan Dışı Masalar')+u.liste.slice(0, 8).map(function(x){ return gyIlisteHtml(x.m, x.n, Math.round(x.n * 100 / mx), '#EF4444'); }).join('')+'</div>';
+      h += '<div class="gy-yan">'+bas('warning_amber', 'Alan Dışı Masalar')+u.liste.slice(0, 8).map(function(x){ return gyIlisteHtml(x.m, x.n, Math.round(x.n * 100 / mx), GY_DIS); }).join('')+'</div>';
     }
   }
   var y = gyYuzdeler(gid), l = GY.masalar.slice().sort(function(a, b){ return y[b.id].n - y[a.id].n; }).filter(function(m){ return y[m.id].n > 0; }).slice(0, 8);

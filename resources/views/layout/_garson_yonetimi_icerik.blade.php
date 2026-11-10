@@ -32,10 +32,10 @@
         <div class="idz-cerceve gy-cerceve" id="gyCerceve1"><div class="idz-dunya" id="gyDunya1"></div></div>
         <div class="gy-efsane">
           <div class="gy-ef-bas"><span class="material-icons-outlined idz-mor">blur_on</span>Masa Yoğunluğu</div>
-          <div class="gy-ef"><i style="--r:#C026D3"></i><span>%90 – 100<small>Çok Yoğun</small></span></div>
+          <div class="gy-ef"><i style="--r:#EF4444"></i><span>%90 – 100<small>Çok Yoğun</small></span></div>
           <div class="gy-ef"><i style="--r:#F97316"></i><span>%70 – 90<small>Yoğun</small></span></div>
-          <div class="gy-ef"><i style="--r:#6C8CF5"></i><span>%40 – 70<small>Orta</small></span></div>
-          <div class="gy-ef"><i style="--r:#C7D2FE"></i><span>%0 – 40<small>Sakin</small></span></div>
+          <div class="gy-ef"><i style="--r:#EAB308"></i><span>%40 – 70<small>Orta</small></span></div>
+          <div class="gy-ef"><i style="--r:#3B82F6"></i><span>%0 – 40<small>Sakin</small></span></div>
           <div class="gy-oneri" id="gyOneri"></div>
         </div>
       </div>

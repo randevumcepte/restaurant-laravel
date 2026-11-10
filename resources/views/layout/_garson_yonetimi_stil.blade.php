@@ -111,7 +111,12 @@
 .gy-bolge-bas .material-icons-outlined{font-size:16px;color:var(--mor1)}
 .gy-rozet{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
 .gy-rozet.kendi{background:color-mix(in srgb,var(--mor1) 13%,transparent);color:var(--mor1)}
-.gy-rozet.dis{background:color-mix(in srgb,#EF4444 13%,transparent);color:#DC2626}
+.gy-rozet.dis{background:color-mix(in srgb,#C026D3 13%,transparent);color:#A21CAF}
+.gy-renk{display:flex;gap:10px;height:96px;margin-bottom:6px}
+.gy-renk i{width:14px;border-radius:7px;background:linear-gradient(#EF4444,#F97316,#EAB308,#22C55E,#06B6D4,#1D4ED8)}
+.gy-renk span{display:flex;flex-direction:column;justify-content:space-between}
+.gy-renk b{font-size:12px;font-weight:600;color:var(--ink)}
+.gy-isi-katman{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .gy-mini{box-sizing:border-box;overflow:hidden;border-width:5px;border-radius:12px;cursor:zoom-in}
 .gy-mini .idz-dunya{min-height:0}
 .gy-mini .idz-isik{display:none}
@@ -120,8 +125,8 @@
 .gy-mini .gy-m .et small{font-size:max(8px,calc(var(--ts) * .115))}
 .gy-mini-bos{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.92);color:#334155;font-size:12px;font-weight:600;white-space:nowrap}
 .gy-soluk{opacity:.32}
-.gy-dis svg{filter:drop-shadow(0 0 2px #EF4444) drop-shadow(0 0 8px #EF4444)}
-.gy-dis-rozet{position:absolute;top:2%;right:2%;display:flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 4px;border-radius:999px;background:#EF4444;color:#fff;font-size:11px;font-weight:800;line-height:1;box-shadow:0 0 0 2px #fff}
+.gy-dis svg{filter:drop-shadow(0 0 2px #C026D3) drop-shadow(0 0 8px #C026D3)}
+.gy-dis-rozet{position:absolute;top:2%;right:2%;display:flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 4px;border-radius:999px;background:#C026D3;color:#fff;font-size:11px;font-weight:800;line-height:1;box-shadow:0 0 0 2px #fff}
 .gy-yan{margin-bottom:16px}
 .gy-yan:last-child{margin-bottom:0}
 .gy-uyum-sat{grid-template-columns:minmax(60px,90px) minmax(0,1fr) 38px;width:100%;border:0;background:transparent;font:inherit;text-align:left;cursor:pointer;border-radius:8px}
