@@ -233,18 +233,20 @@ class GarsonPanel
         $ad = DB::table('personeller')->where('sube_id', $this->subeId)->pluck('ad', 'id');
         $tipAd = ['nakit' => 'Nakit', 'kredi' => 'Kart', 'yemek_karti' => 'Yemek Kartı', 'acik_hesap' => 'Açık Hesap'];
 
-        $satir = []; $ciro = 0; $odenen = 0; $acikTutar = 0; $sureTop = 0; $sureAdet = 0; $misafir = 0;
+        $satir = []; $ciro = 0; $odenen = 0; $acikTutar = 0; $sureTop = 0; $sureAdet = 0; $misafir = 0; $acilisSay = 0;
         foreach ($adisyonlar as $a) {
             $acilis = Carbon::parse($a->acilis);
             $bitis = $a->kapanis ? Carbon::parse($a->kapanis) : null;
             $sure = (int) $acilis->diffInMinutes($bitis ?: $simdi);
             $tutar = (float) $a->toplam;
+            // Aralıktan önce açılıp hâlâ açık (ya da aralıkta kapanan) hesap listelenir ama "açıldı" sayılmaz
+            $aralikta = $acilis->gte($bas);
+            if ($aralikta) { $acilisSay++; $misafir += (int) ($a->misafir_sayisi ?? 0); }
             if ($a->durum === 'odendi') { $ciro += $tutar; $odenen++; $sureTop += $sure; $sureAdet++; }
             elseif ($a->durum === 'acik') $acikTutar += $tutar;
-            $misafir += (int) ($a->misafir_sayisi ?? 0);
             $yerel = $acilis->copy()->setTimezone('Europe/Istanbul');
             $satir[] = [
-                'id' => (int) $a->id, 'durum' => $a->durum, 'tutar' => round($tutar, 2), 'sure_dk' => $sure,
+                'id' => (int) $a->id, 'durum' => $a->durum, 'tutar' => round($tutar, 2), 'sure_dk' => $sure, 'once' => !$aralikta,
                 'tarih' => $yerel->isToday() ? 'Bugün' : $yerel->format('d.m'), 'acilis' => $yerel->format('H:i'),
                 'kapanis' => $bitis ? $bitis->copy()->setTimezone('Europe/Istanbul')->format('H:i') : null,
                 'garson' => $ad[$a->acan_personel_id] ?? 'Personel', 'misafir' => (int) ($a->misafir_sayisi ?? 0), 'kalem' => (int) ($kalem[$a->id] ?? 0),
@@ -252,7 +254,7 @@ class GarsonPanel
             ];
         }
         return ['ok' => 1, 'masa' => ['id' => (int) $masa->id, 'ad' => $masa->ad, 'bolge' => $masa->bolge, 'kapasite' => (int) ($masa->kapasite ?? 0)],
-            'ozet' => ['acilis' => count($satir), 'ciro' => round($ciro, 2), 'acik_tutar' => round($acikTutar, 2), 'ort' => $odenen ? round($ciro / $odenen, 2) : 0,
+            'ozet' => ['acilis' => $acilisSay, 'ciro' => round($ciro, 2), 'acik_tutar' => round($acikTutar, 2), 'ort' => $odenen ? round($ciro / $odenen, 2) : 0,
                 'ort_sure' => $sureAdet ? (int) round($sureTop / $sureAdet) : null, 'misafir' => $misafir],
             'hesaplar' => $satir];
     }

@@ -369,7 +369,7 @@ function gyYukle(){
 // ---- Masa bilgi penceresi (ısı haritasında masaya tıklayınca) ----
 var GY_PENCERE_AD = {saat: 'Son 1 saat', bugun: 'Bugün', hafta: 'Son 7 gün'};
 var GY_DURUM = {odendi: ['Ödendi', '#10B981'], acik: ['Açık', '#F59E0B'], iptal: ['İptal', '#94A3B8']};
-function gySure2(dk){ if(dk == null) return '—'; return dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk'; }
+function gySure2(dk){ if(dk == null) return '—'; if(dk >= 1440) return Math.floor(dk / 1440) + ' gün ' + Math.floor(dk % 1440 / 60) + ' sa'; return dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk'; }
 function gyMasaKapat(){ var k = document.getElementById('gyMd'); if(k) k.classList.remove('acik'); document.removeEventListener('keydown', gyMasaEsc); }
 function gyMasaEsc(e){ if(e.key === 'Escape') gyMasaKapat(); }
 function gyMasaAc(id, gid){
@@ -412,7 +412,7 @@ function gyMasaAc(id, gid){
       var kart = function(ikon, renk, et, deger, alt){ return '<div class="gy-md-stat" style="--r:'+renk+'"><span class="material-icons-outlined">'+ikon+'</span><small>'+et+'</small><b>'+deger+'</b>'+(alt ? '<em>'+alt+'</em>' : '')+'</div>'; };
       var html = '<div class="gy-md-statlar">'+
         kart('restart_alt', '#7C3AED', 'Kaç kez açıldı', o.acilis, o.misafir ? o.misafir + ' misafir' : '')+
-        kart('payments', '#10B981', 'Toplam tutar', gyPara(o.ciro), o.acik_tutar > 0 ? '+ ' + gyPara(o.acik_tutar) + ' açık' : 'ödenen hesaplar')+
+        kart('payments', '#10B981', 'Toplam tutar', gyPara(o.ciro), o.acik_tutar > 0 ? '+ ' + gyPara(o.acik_tutar) + ' şu an açık' : 'ödenen hesaplar')+
         kart('receipt_long', '#2563EB', 'Ortalama hesap', o.ort ? gyPara(o.ort) : '—', '')+
         kart('hourglass_bottom', '#F59E0B', 'Ortalama oturma', gySure2(o.ort_sure), '')+
       '</div>' + calisanHtml;
@@ -420,7 +420,7 @@ function gyMasaAc(id, gid){
       html += d.hesaplar.length ? d.hesaplar.map(function(h){
         var du = GY_DURUM[h.durum] || [h.durum, '#94A3B8'];
         return '<div class="gy-md-hesap" style="--r:'+du[1]+'">'+
-          '<div class="zaman"><b>'+h.acilis+(h.kapanis ? ' – ' + h.kapanis : '')+'</b><small>'+h.tarih+' · '+(h.durum === 'acik' ? gySure2(h.sure_dk) + ', sürüyor' : gySure2(h.sure_dk))+'</small></div>'+
+          '<div class="zaman"><b>'+h.acilis+(h.kapanis ? ' – ' + h.kapanis : '')+'</b><small>'+h.tarih+' · '+(h.durum === 'acik' ? gySure2(h.sure_dk) + ', sürüyor' : gySure2(h.sure_dk))+(h.once ? ' · aralıktan önce açıldı' : '')+'</small></div>'+
           '<div class="kim"><span class="av">'+gyE(String(h.garson).charAt(0).toLocaleUpperCase('tr'))+'</span><span><b>'+gyE(h.garson)+'</b><small>'+(h.misafir ? h.misafir + ' kişi · ' : '')+h.kalem+' ürün</small></span></div>'+
           '<div class="tutar"><b>'+gyPara(h.tutar)+'</b><span class="rozet">'+du[0]+(h.odeme ? ' · ' + gyE(h.odeme) : '')+'</span></div>'+
         '</div>';
