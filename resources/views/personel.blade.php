@@ -484,12 +484,17 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
           $h      = $hesapMap[$pid] ?? ['maas'=>0,'prim_hesap'=>0,'net'=>0];
           $net    = (float)($h['net'] ?? 0);
           $netRenk = $net > 0 ? 'var(--kirmizi)' : 'var(--yesil)';
+          // Departman + ünvan (ör. Soğuk Mutfak · Mutfak Şefi): kalabalık işletmede kimin nerede olduğu kartta görünsün
+          $depKart = collect($departmanlar ?? [])->firstWhere('id', (int)($p['departman_id'] ?? 0));
+          $depRenk = ($depKart->renk ?? null) ?: '#64748B';
+          $depSorumlu = (int)($p['departman_sorumlu'] ?? 0) === 1;
+          $depUnvan = trim((string)($p['departman_unvan'] ?? ''));
           $detayData = array_merge($p, $h, ['hareketler' => $hareketDetayMap[$pid] ?? []]);
         @endphp
         <div class="p-kart{{ $aktif ? '' : ' pasif' }}"
              onclick='detayAc(@json($detayData))'
              data-pid="{{ $pid }}"
-             data-ad="{{ mb_strtolower($p['ad'] ?? '') }}"
+             data-ad="{{ mb_strtolower(($p['ad'] ?? '') . ' ' . ($depKart->ad ?? '') . ' ' . $depUnvan) }}"
              data-rol="{{ $rol }}"
              data-aktif="{{ $aktif ? 1 : 0 }}">
           <div class="strip" style="background:{{ $renk }}"></div>
@@ -497,7 +502,13 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
           <div class="p-meta">
             <div class="p-ad">{{ $p['ad'] ?? '—' }}</div>
             <div class="p-alt">
-              <span class="rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 14%,transparent)">{{ $rolAd[$rol] ?? $rol }}</span>
+              <span class="rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 14%,transparent)" title="Rol">{{ $rolAd[$rol] ?? $rol }}</span>
+              @if ($depKart)
+                <span class="rozet" style="color:{{ $depRenk }};background:color-mix(in srgb,{{ $depRenk }} 12%,transparent);border:1px solid color-mix(in srgb,{{ $depRenk }} 30%,transparent)" title="Departman">{{ $depKart->ad }}{{ $depUnvan !== '' ? ' · ' . $depUnvan : '' }}</span>
+              @endif
+              @if ($depSorumlu && $depKart)
+                <span class="rozet" style="color:#B45309;background:rgba(245,158,11,.16)" title="Departman sorumlusu (talepleri onaylar)">★ Sorumlu</span>
+              @endif
               @if (!$aktif)
                 <span class="rozet pasif">Pasif</span>
               @endif
