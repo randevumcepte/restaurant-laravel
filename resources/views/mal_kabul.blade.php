@@ -41,10 +41,10 @@
 @if ($acikSiparisler->count() && !$siparis)
   <div class="rk-card" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <span class="material-icons-outlined" style="color:var(--mavi)">receipt_long</span>
-    <div style="flex:1;min-width:200px"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Açık siparişten mal kabul</div><div class="rk-sub2" style="font-size:12px">Bir siparişi seç, kalemleri otomatik gelsin.</div></div>
-    <select class="rk-inp" style="max-width:260px" onchange="if(this.value)location.href='/mal-kabul?siparis_id='+this.value">
-      <option value="">— Açık sipariş seç —</option>
-      @foreach ($acikSiparisler as $s)<option value="{{ $s->id }}">{{ $s->siparis_no }} · {{ $s->tedarikci }}</option>@endforeach
+    <div style="flex:1;min-width:200px"><div style="font-weight:700;color:var(--ink);font-size:13.5px">Teslim bekleyen siparişten mal kabul ({{ $acikSiparisler->count() }})</div><div class="rk-sub2" style="font-size:12px">Bir siparişi seç, kalemleri otomatik gelsin. Teslim tarihi yakın olan üstte.</div></div>
+    <select class="rk-inp" style="max-width:340px" onchange="if(this.value)location.href='/mal-kabul?siparis_id='+this.value">
+      <option value="">— Teslim bekleyen sipariş seç —</option>
+      @foreach ($acikSiparisler as $s)<option value="{{ $s->id }}">{{ $s->siparis_no }} · {{ $s->tedarikci }}{{ !empty($s->beklenen_teslim) ? ' · teslim ' . \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m') : '' }}{{ ($s->durum ?? '') === 'onaylandi' ? ' · tedarikçi onayladı' : (($s->durum ?? '') === 'kismi' ? ' · kısmi geldi' : '') }}</option>@endforeach
     </select>
   </div>
 @endif

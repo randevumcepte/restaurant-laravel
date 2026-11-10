@@ -72,6 +72,11 @@
 
 .sd-salt-okunur{font-size:12.5px;color:var(--sub);padding:10px 14px;background:var(--card2);border-left:3px solid var(--amber);border-radius:9px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .sd-salt-okunur .material-icons-outlined{color:var(--amber);font-size:17px}
+.sd-onay{border:1px solid var(--line);border-left:4px solid var(--oc);background:var(--card);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.sd-onay-ust{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
+.sd-onay-ust .material-icons-outlined{color:var(--oc);font-size:20px}
+.sd-onay-zaman{margin-left:auto;font-size:11.5px;color:var(--sub)}
+.sd-onay-satir{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--ink)}
 </style>
 @endpush
 
@@ -82,6 +87,7 @@
   $mik = fn($v) => rtrim(rtrim(number_format((float) $v, 3, ',', '.'), '0'), ',');
   $durumAd = ['taslak' => 'Taslak', 'gonderildi' => 'Gönderildi', 'onaylandi' => 'Onaylandı', 'kismi' => 'Kısmi Teslim', 'tamamlandi' => 'Tamamlandı', 'iptal' => 'İptal'];
   $duzenlenebilir = $s && $s->durum === 'taslak';
+  $tarihDegisir = $s && in_array($s->durum, ['gonderildi', 'onaylandi', 'siparis', 'kismi'], true); // gönderilmiş siparişte yalnız teslim tarihi
 @endphp
 
 @if (!$s)
@@ -108,7 +114,7 @@
         <button class="sd-btn sd-kaydet" onclick="sdKaydet()"><span class="material-icons-outlined">save</span> Kaydet</button>
         <button class="sd-btn sd-gonder" onclick="sdGonder()"><span class="material-icons-outlined">send</span> Tedarikçiye Gönder (WA + Mail)</button>
         <button class="sd-btn sd-iptal" onclick="sdDurum('iptal')"><span class="material-icons-outlined">cancel</span> İptal Et</button>
-      @elseif ($s->durum === 'gonderildi')
+      @elseif (in_array($s->durum, ['gonderildi', 'onaylandi', 'siparis', 'kismi'], true))
         <button class="sd-btn sd-bos" onclick="sdDurum('tamamlandi')"><span class="material-icons-outlined">check_circle</span> Tamamlandı İşaretle</button>
         <a href="/mal-kabul?siparis_id={{ $s->id }}" class="sd-btn sd-kaydet"><span class="material-icons-outlined">inventory</span> Mal Kabul Oluştur</a>
       @endif
@@ -116,7 +122,33 @@
   </div>
 
   @if (!$duzenlenebilir)
-    <div class="sd-salt-okunur"><span class="material-icons-outlined">lock</span> Bu sipariş {{ strtolower($durumAd[$s->durum] ?? '') }} durumunda — artık düzenlenemez. Sadece durumunu değiştirebilirsin.</div>
+    <div class="sd-salt-okunur"><span class="material-icons-outlined">lock</span> Bu sipariş {{ mb_strtolower($durumAd[$s->durum] ?? '') }} durumunda — kalemler artık düzenlenemez{{ $tarihDegisir ? '; teslim tarihi değiştirilebilir' : '' }}.</div>
+  @endif
+
+  {{-- Tedarikçi onayı: durum, önerdiği tarih, onay bağlantısı --}}
+  @if (!$duzenlenebilir && !in_array($s->durum, ['iptal'], true))
+    @php
+      $od = $s->onay_durum ?? null;
+      $odAd = ['bekliyor' => ['Tedarikçi onayı bekleniyor', '#F59E0B', 'hourglass_top'], 'onaylandi' => ['Tedarikçi siparişi ve teslim tarihini onayladı', '#10B981', 'verified'], 'degisiklik' => ['Tedarikçi değişiklik istedi', '#F43F5E', 'edit_note']][$od] ?? ['Tedarikçiye onay bağlantısı gönderilmedi', '#64748b', 'link_off'];
+      $onayLink = !empty($s->onay_token) ? url('/siparis/onay/' . $s->onay_token) : null;
+    @endphp
+    <div class="sd-onay" style="--oc:{{ $odAd[1] }}">
+      <div class="sd-onay-ust"><span class="material-icons-outlined">{{ $odAd[2] }}</span><b>{{ $odAd[0] }}</b>
+        @if ($od === 'onaylandi' && $s->onay_at)<span class="sd-onay-zaman">{{ \Carbon\Carbon::parse($s->onay_at)->format('d.m.Y H:i') }}</span>@endif
+      </div>
+      @if ($od === 'degisiklik' && !empty($s->tedarikci_teslim))
+        <div class="sd-onay-satir">Önerdiği teslim tarihi: <b>{{ \Carbon\Carbon::parse($s->tedarikci_teslim)->format('d.m.Y') }}</b>
+          @if ($tarihDegisir)<button class="sd-btn sd-kaydet" onclick="sdTarihKaydet('{{ substr($s->tedarikci_teslim, 0, 10) }}')"><span class="material-icons-outlined">event_available</span> Bu tarihi kabul et</button>@endif
+        </div>
+      @endif
+      @if ($od === 'degisiklik' && !empty($s->onay_not))<div class="sd-onay-satir">Notu: {{ $s->onay_not }}</div>@endif
+      @if ($tarihDegisir)
+        <div class="sd-onay-satir">
+          @if ($onayLink)<button class="sd-btn sd-bos" onclick="sdKopyala('{{ $onayLink }}')"><span class="material-icons-outlined">content_copy</span> Onay bağlantısını kopyala</button>@endif
+          <button class="sd-btn sd-bos" onclick="sdGonder(true)"><span class="material-icons-outlined">send</span> {{ $onayLink ? 'Bağlantıyı yeniden gönder' : 'Onay bağlantısı gönder' }}</button>
+        </div>
+      @endif
+    </div>
   @endif
 
   <div class="sd-sonuc" id="sdSonuc"></div>
@@ -138,7 +170,7 @@
       <div class="sd-ted-alt">
         @if ($tedarikci)
           @if ($tedarikci->telefon)<span>📞 {{ $tedarikci->telefon }}</span>@endif
-          @if (!empty($tedarikci->eposta))<span>📧 {{ $tedarikci->eposta }}</span>@endif
+          @if (!empty($tedarikci->email))<span>📧 {{ $tedarikci->email }}</span>@endif
         @endif
       </div>
       @if ($tedarikciIstat)
@@ -153,6 +185,9 @@
       <h4><span class="material-icons-outlined">event</span> Beklenen Teslim</h4>
       @if ($duzenlenebilir)
         <input type="date" id="sdTeslim" class="sd-inp" value="{{ $s->beklenen_teslim ? \Carbon\Carbon::parse($s->beklenen_teslim)->format('Y-m-d') : '' }}">
+      @elseif ($tarihDegisir)
+        <input type="date" id="sdTeslimYeni" class="sd-inp" min="{{ now()->toDateString() }}" value="{{ $s->beklenen_teslim ? \Carbon\Carbon::parse($s->beklenen_teslim)->format('Y-m-d') : '' }}">
+        <button class="sd-btn sd-kaydet" style="margin-top:8px" onclick="sdTarihKaydet(document.getElementById('sdTeslimYeni').value)"><span class="material-icons-outlined">event</span> Tarihi güncelle</button>
       @else
         <div style="font-size:16px;font-weight:800;color:var(--ink)">{{ $s->beklenen_teslim ? \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y') : 'Belirtilmemiş' }}</div>
       @endif
@@ -351,15 +386,33 @@ async function sdKaydet(){
   }catch(e){ sdSonuc('⚠ Bağlantı hatası',false); return false; }
 }
 
-async function sdGonder(){
-  if(!confirm('Sipariş tedarikçiye WhatsApp + Mail ile gönderilecek. Devam et?')) return;
-  const kayitTamam = await sdKaydet();
-  if(!kayitTamam) return;
+async function sdGonder(gonderilmis){
+  if(!confirm(gonderilmis ? 'Onay bağlantısı tedarikçiye yeniden gönderilsin mi?' : 'Sipariş, onay bağlantısıyla tedarikçiye (e-posta + WhatsApp) gönderilecek. Devam et?')) return;
+  if(!gonderilmis){ const kayitTamam = await sdKaydet(); if(!kayitTamam) return; }
   try{
     const r=await fetch('/api/satinalma-siparis/gonder',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'},body:JSON.stringify({id:SD_ID})});
     const j=await r.json();
-    if(j.ok){ sdSonuc(j.mesaj,true); setTimeout(()=>location.reload(),1800); } else { sdSonuc('⚠ '+(j.hata||'Gönderilemedi'),false); }
+    if(!j.ok){ sdSonuc('⚠ '+(j.hata||'Gönderilemedi'),false); return; }
+    sdSonuc(j.mesaj, !!j.iletildi);
+    if(!j.iletildi && j.link){ await sdKopyala(j.link); }
+    setTimeout(()=>location.reload(), j.iletildi ? 1800 : 3500);
   }catch(e){ sdSonuc('⚠ Bağlantı hatası',false); }
+}
+// Gönderilmiş siparişin teslim tarihini değiştir (tedarikçiden yeniden onay istenir) veya tedarikçinin önerdiği tarihi kabul et
+async function sdTarihKaydet(tarih){
+  if(!tarih){ sdSonuc('⚠ Tarih seçin',false); return; }
+  try{
+    const r=await fetch('/api/satinalma-siparis/kaydet',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.csrf,'Accept':'application/json'},body:JSON.stringify({id:SD_ID,beklenen_teslim:tarih})});
+    const j=await r.json();
+    if(!j.ok){ sdSonuc('⚠ '+(j.hata||'Hata'),false); return; }
+    sdSonuc('✓ '+j.mesaj,true);
+    if(j.link) await sdKopyala(j.link);
+    setTimeout(()=>location.reload(),2200);
+  }catch(e){ sdSonuc('⚠ Bağlantı hatası',false); }
+}
+async function sdKopyala(link){
+  try{ await navigator.clipboard.writeText(link); sdSonuc('✓ Onay bağlantısı kopyalandı — tedarikçiye iletin: '+link,true); }
+  catch(e){ prompt('Onay bağlantısını kopyalayıp tedarikçiye iletin:', link); }
 }
 
 async function sdDurum(d){

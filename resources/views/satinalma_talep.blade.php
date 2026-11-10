@@ -394,6 +394,14 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 .sta-aks-btn:hover { opacity: .9; }
 .sta-aks-btn:disabled { opacity: .5; cursor: not-allowed; }
 .sta-aks-info { font-size: 12.5px; color: var(--sub,#64748b); text-align: center; margin-bottom: 10px; }
+.sta-bag-kutu { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; background: var(--card2); }
+.sta-bag-baslik { font-size: 11px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--sub); margin-bottom: 6px; }
+.sta-bag-satir { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line); }
+.sta-bag-satir:first-of-type { border-top: 0; }
+.sta-kopya { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 5px 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.sta-kopya .material-icons-outlined { font-size: 15px; }
+.sta-teslim-satir { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-weight: 700; font-size: 13.5px; color: var(--ink); }
+.sta-teslim-satir .rk-inp { max-width: 180px; }
 
 /* Spinner */
 .sta-spin {
@@ -726,17 +734,21 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 const malzemeler = @json($malzemeler->values());
 const birimler   = @json($birimler->values());
 const patronMu   = {{ ($patronMu ?? false) ? 'true' : 'false' }};
+const satinalmaGorur = {{ ($satinalmaci ?? false) ? 'true' : 'false' }}; // satın alma işlemleri (fiyat, öneri, sipariş) yalnız bu rollerde
 const staKritikler = @json($kritikler);
+const staKopya = {!! json_encode($kopya ?? null, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
 let staTedarikciler = [];
 let staAktifKalemler = [];
 let staAktifDurum = null;
+let staRfq = [];
+let staTeslimOneri = {};
 const durumRenkler = {
-    yeni:'#4F46E5', teklif:'#F59E0B', onayda:'#F59E0B',
-    onaylandi:'#10B981', siparis:'#0EA5E9', tamamlandi:'#10B981'
+    departman_onay:'#F59E0B', yeni:'#4F46E5', teklif:'#F59E0B', onayda:'#F59E0B',
+    onaylandi:'#10B981', siparis:'#0EA5E9', tamamlandi:'#10B981', reddedildi:'#F43F5E'
 };
 const durumMetinler = {
-    yeni:'Yeni', teklif:'Teklif Bekleniyor', onayda:'Onayda',
-    onaylandi:'Onaylandı', siparis:'Siparişte', tamamlandi:'Tamamlandı'
+    departman_onay:'Şef / Sorumlu Onayında', yeni:'Yeni', teklif:'Teklif Bekleniyor', onayda:'Onayda',
+    onaylandi:'Onaylandı', siparis:'Siparişte', tamamlandi:'Tamamlandı', reddedildi:'Reddedildi'
 };
 
 let seciliAciliyet = 'normal';
@@ -908,6 +920,17 @@ window.staTalepKaydet = async function() {
     }
 };
 
+/* ─── Reddedilen talebi düzenleyip tekrar gönder (?kopya=ID): yeni talep formu dolu açılır ── */
+if (staKopya) {
+    staYeniAc();
+    document.getElementById('staKalemler').innerHTML = '';
+    (staKopya.kalemler || []).forEach(k => staKalemEkle(k.malzeme_id, k.miktar, k.birim));
+    if (!(staKopya.kalemler || []).length) staKalemEkle();
+    staAcilSec(staKopya.aciliyet === 'acil' ? 'acil' : 'normal');
+    document.getElementById('staNot').value = staKopya.not || '';
+    toast('Talep #' + staKopya.id + ' forma yüklendi — düzeltip gönderin', '#7C3AED');
+}
+
 /* ─── Detay modal ──────────────────────────────────────── */
 window.staDetayAc = async function(id) {
     aktifTalepId = id;
@@ -944,6 +967,8 @@ window.staDetayAc = async function(id) {
         staTedarikciler = res.tedarikciler || [];
         staAktifKalemler = kalemler;
         staAktifDurum = t.durum;
+        staRfq = res.rfq || [];
+        staTeslimOneri = res.teslim_oneri || {};
 
         staAkisCiz(t.durum);
         staKalemleriCiz(kalemler, t.durum);
@@ -1067,6 +1092,22 @@ function staAksiyonCiz(durum) {
     const box = document.getElementById('staDetAksiyon');
     const teklifSay = (staAktifKalemler||[]).reduce((s,k)=>s+((k.teklifler||[]).length),0);
     let html = '';
+    if (durum === 'departman_onay') {
+        box.innerHTML = `<div class="sta-aks-info">⏳ Departman sorumlusunun (şefin) onayı bekleniyor. Onaylanınca satın almaya düşer.</div>`;
+        return;
+    }
+    if (durum === 'reddedildi') {
+        box.innerHTML = `<div class="sta-aks-info">🚫 Bu talep reddedildi. Düzeltip yeniden göndermek için <a href="/satinalma-talep?kopya=${aktifTalepId}" style="color:var(--mor1);font-weight:800">Düzenle ve tekrar gönder</a>.</div>`;
+        return;
+    }
+    if (!satinalmaGorur) {
+        // Talep eden / departman: sürecin nerede olduğunu görür, satın alma butonlarını görmez
+        const nerede = {yeni:'Satın almaya iletildi, fiyat araştırılacak.', teklif:'Satın alma tedarikçilerden fiyat topluyor.', onayda:'Teklifler yönetimin onayında.',
+            onaylandi:'Yönetim onayladı, sipariş geçilecek.', siparis:'Sipariş tedarikçiye geçildi, teslimat bekleniyor.', tamamlandi:'Ürünler teslim alındı.'}[durum] || '';
+        box.innerHTML = nerede ? `<div class="sta-aks-info">${nerede}</div>` : '';
+        return;
+    }
+    if (staRfq.length && ['teklif','onayda'].includes(durum)) html += staRfqCiz();
     if (['yeni','teklif','onayda'].includes(durum)) {
         // satın almacı: patrona gönder
         const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Fiyat Araştır ile tüm tedarikçilere teklif iste → tedarikçi linkten fiyat+teslim girer → teklifler buraya düşer → ⭐ ile öner → Patrona Gönder.';
@@ -1093,7 +1134,7 @@ function staAksiyonCiz(durum) {
         html += `<button class="sta-aks-btn" style="background:#0EA5E9" onclick="staPOOlustur()"><span class="material-icons-outlined">shopping_cart_checkout</span>Sipariş Oluştur (PO)</button>`;
     }
     if (durum === 'siparis') {
-        html += `<div class="sta-aks-info">✓ Sipariş oluşturuldu. Mal gelince <b>Mal Kabul</b> ekranından karşılaştır.</div>`;
+        html += `<div class="sta-aks-info">✓ Sipariş tedarikçiye geçildi. Tedarikçi bağlantıdan siparişi ve teslim tarihini onaylar; mal gelince <b>Mal Kabul</b> yapılınca talep kendiliğinden tamamlanır. Siparişler: <a href="/satinalma-siparis" style="color:var(--mor1);font-weight:800">Sipariş İşlemleri</a></div>`;
         html += `<button class="sta-aks-btn" style="background:#10B981" onclick="staDurumGuncelle('tamamlandi')"><span class="material-icons-outlined">task_alt</span>Tamamlandı İşaretle</button>`;
     }
     box.innerHTML = html;
@@ -1151,11 +1192,44 @@ window.staPatronSec = async function(kalemId, tedId) {
 };
 
 /* ─── Patrona gönder / onayla / PO ─────────────────────── */
+/* ─── Bağlantı listesi (teklif isteği / sipariş onayı) — ulaşılamayan tedarikçiye elle iletmek için ── */
+function staBaglantiSatiri(ad, link, iletildi, etiket) {
+    const durum = iletildi ? `<span style="color:#10B981;font-weight:700">✓ ${escHtml(etiket||'iletildi')}</span>` : `<span style="color:#F43F5E;font-weight:700">⚠ ulaşılamadı</span>`;
+    const kopya = link ? `<button type="button" class="sta-kopya" onclick="staKopyala('${escAttr(link)}')"><span class="material-icons-outlined">content_copy</span>Bağlantıyı kopyala</button>` : '';
+    return `<div class="sta-bag-satir"><b>${escHtml(ad||'—')}</b> ${durum} ${kopya}</div>`;
+}
+function staRfqCiz() {
+    const durumAd = {gonderildi:'teklif bekleniyor', teklif_geldi:'teklif verdi'};
+    let h = `<div class="sta-bag-kutu"><div class="sta-bag-baslik">Teklif istenen tedarikçiler</div>`;
+    staRfq.forEach(g => { h += staBaglantiSatiri(g.tedarikci, g.durum === 'teklif_geldi' ? null : g.link, g.iletildi || g.durum === 'teklif_geldi', g.durum === 'teklif_geldi' ? 'teklif verdi' : (durumAd[g.durum] || g.kanal)); });
+    return h + `</div>`;
+}
+window.staKopyala = async function(metin) {
+    try { await navigator.clipboard.writeText(metin); toast('✓ Bağlantı kopyalandı — tedarikçiye iletin', '#10B981'); }
+    catch (e) { if (typeof rkIste === 'function') rkIste('Bağlantıyı kopyalayın:', function(){}, { varsayilan: metin, ok: 'Tamam' }); else prompt('Bağlantıyı kopyalayın:', metin); }
+};
+function staGonderimPenceresi(baslik, satirlar) {
+    if (!satirlar.length) return;
+    const div = document.createElement('div');
+    div.className = 'rk-modal-arka acik';
+    div.innerHTML = `<div class="rk-modal" style="max-width:520px"><div class="rk-modal-head">${escHtml(baslik)}<button class="rk-modal-kapa" type="button">×</button></div>
+        <div class="rk-modal-govde"><div style="font-size:13px;color:var(--sub);margin-bottom:10px">E-postası/telefonu olmayan tedarikçiye bağlantıyı siz iletin (WhatsApp, telefon vb.).</div>${satirlar.join('')}</div></div>`;
+    const kapa = () => div.remove();
+    div.addEventListener('click', e => { if (e.target === div || e.target.classList.contains('rk-modal-kapa')) kapa(); });
+    document.body.appendChild(div);
+}
+
 window.staFiyatArastir = function() {
     const git = async () => {
         toast('Fiyat isteği gönderiliyor…', '#7C3AED');
         const res = await api('/satinalma-talep/fiyat-arastir', { id: aktifTalepId });
-        if (res.ok) { toast(`✓ ${res.gonderilen} tedarikçiye fiyat isteği gönderildi (mail ${res.mail}, WhatsApp ${res.wa}). Yanıtlar geldikçe buraya düşecek.`, '#10B981'); staDetayAc(aktifTalepId); }
+        if (res.ok) {
+            const ulas = res.ulasilamayan || [];
+            const giden = res.gonderilen - ulas.length;
+            toast(giden > 0 ? `✓ ${giden} tedarikçiye fiyat isteği gitti (e-posta ${res.mail}, WhatsApp ${res.wa}).` + (ulas.length ? ` ${ulas.length} tedarikçiye ulaşılamadı.` : '') : `⚠ Hiçbir tedarikçiye otomatik ulaşılamadı — bağlantıları elle iletin.`, giden > 0 ? '#10B981' : '#F59E0B');
+            staGonderimPenceresi('Teklif bağlantıları — ulaşılamayan tedarikçiler', ulas.map(u => staBaglantiSatiri(u.tedarikci, u.link, false)));
+            staDetayAc(aktifTalepId);
+        }
         else toast('⚠ ' + (res.hata || 'Gönderilemedi'), '#F43F5E');
     };
     if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', git, 'var(--mor1)', 'Evet, gönder');
@@ -1175,23 +1249,55 @@ window.staOnayla = async function() {
     if (res.ok) { toast('✓ Onaylandı', '#10B981'); staDetListeYenile('onaylandi'); staDetayAc(aktifTalepId); }
     else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
+/* ─── Sipariş penceresi: tedarikçi başına teslim tarihi (tedarikçinin teklifteki tarihi hazır gelir) ── */
+function staSiparisPenceresi(baslik, aciklama, tedIdler, gonder) {
+    const bugun = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const tedAd = id => (staTedarikciler.find(t => t.id == id) || {}).ad || ('Tedarikçi #' + id);
+    const satirlar = tedIdler.map(id => `<label class="sta-teslim-satir"><span>${escHtml(tedAd(id))}</span>
+        <input type="date" class="rk-inp" data-ted="${id}" min="${bugun}" value="${escAttr(staTeslimOneri[id] || '')}" required></label>`).join('');
+    const div = document.createElement('div');
+    div.className = 'rk-modal-arka acik';
+    div.innerHTML = `<div class="rk-modal" style="max-width:480px"><div class="rk-modal-head">${escHtml(baslik)}<button class="rk-modal-kapa" type="button">×</button></div>
+        <div class="rk-modal-govde"><div style="font-size:13px;color:var(--sub);margin-bottom:12px">${aciklama}</div>${satirlar}
+        <div class="sta-teslim-hata" style="color:#F43F5E;font-size:12.5px;font-weight:700;min-height:16px"></div></div>
+        <div class="rk-modal-foot"><button type="button" class="rkd-btn iptal">Vazgeç</button><button type="button" class="rkd-btn ok">Siparişi Geç</button></div></div>`;
+    const kapa = () => div.remove();
+    div.addEventListener('click', e => { if (e.target === div || e.target.classList.contains('rk-modal-kapa') || e.target.classList.contains('iptal')) kapa(); });
+    div.querySelector('.rkd-btn.ok').addEventListener('click', async function() {
+        const teslim = {}; let eksik = false;
+        div.querySelectorAll('input[data-ted]').forEach(i => { if (!i.value || i.value < bugun) eksik = true; teslim[i.dataset.ted] = i.value; });
+        if (eksik) { div.querySelector('.sta-teslim-hata').textContent = 'Her tedarikçi için bugün veya sonrası bir teslim tarihi seçin.'; return; }
+        this.disabled = true; this.textContent = 'Gönderiliyor…';
+        await gonder(teslim); kapa();
+    });
+    document.body.appendChild(div);
+}
+function staSiparisSonucu(res) {
+    const gon = res.gonderim || [];
+    const iletilen = gon.filter(g => g.iletildi).length;
+    toast('✓ Sipariş geçildi: ' + (res.siparisler||[]).join(', ') + (iletilen ? ` · ${iletilen} tedarikçiye onay bağlantısı gitti` : ''), '#10B981');
+    staGonderimPenceresi('Sipariş onay bağlantıları — ulaşılamayan tedarikçiler', gon.filter(g => !g.iletildi).map(g => staBaglantiSatiri(g.tedarikci, g.link, false)));
+}
 window.staPOOlustur = function() {
-    rkOnay('Onaylı tedarikçilere satın alma siparişi (PO) oluşturulsun mu? Telefonu olan tedarikçilere WhatsApp sipariş gider.', async function(){
-        const res = await api('/satinalma-talep/po-olustur', { id: aktifTalepId });
-        if (res.ok) { const wa = res.wa ? ` · ${res.wa} tedarikçiye WhatsApp gitti` : ''; toast('✓ Sipariş oluşturuldu: ' + (res.siparisler||[]).join(', ') + wa, '#10B981'); staDetListeYenile('siparis'); staDetayAc(aktifTalepId); }
+    const tedIdler = [...new Set((staAktifKalemler||[]).filter(k => k.secilen_tedarikci_id && k.malzeme_id).map(k => k.secilen_tedarikci_id))];
+    if (!tedIdler.length) { toast('⚠ Tedarikçi seçili kalem yok', '#F43F5E'); return; }
+    staSiparisPenceresi('Sipariş Oluştur', 'Her tedarikçi için teslim tarihini girin. Tedarikçi siparişi ve bu tarihi gelen bağlantıdan onaylayacak.', tedIdler, async function(teslim) {
+        const res = await api('/satinalma-talep/po-olustur', { id: aktifTalepId, teslim });
+        if (res.ok) { staSiparisSonucu(res); staDetListeYenile('siparis'); staDetayAc(aktifTalepId); }
         else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
-    }, 'var(--mor1)', 'Oluştur');
+    });
 };
 window.staAnlasmaliDirekt = function() {
-    rkOnay('Anlaşmalı tedarikçiye önerdiğin + fiyatı girili kalemler patron onayı OLMADAN direkt siparişe dönsün mü? Tedarikçiye WhatsApp sipariş gider.', async function(){
-        const res = await api('/satinalma-talep/anlasmali-direkt', { id: aktifTalepId });
+    const tedIdler = [...new Set((staAktifKalemler||[]).filter(k => k.onerilen_tedarikci_id && k.malzeme_id && (k.teklifler||[]).some(t => t.tedarikci_id == k.onerilen_tedarikci_id) && (staTedarikciler.find(t => t.id == k.onerilen_tedarikci_id) || {}).anlasmali == 1).map(k => k.onerilen_tedarikci_id))];
+    if (!tedIdler.length) { toast('⚠ Anlaşmalı tedarikçiye ⭐ önerilmiş ve fiyatı girili kalem yok', '#F43F5E'); return; }
+    staSiparisPenceresi('Anlaşmalıdan Direkt Sipariş', 'Patron onayı beklenmeden sipariş geçilecek. Her tedarikçi için teslim tarihini girin.', tedIdler, async function(teslim) {
+        const res = await api('/satinalma-talep/anlasmali-direkt', { id: aktifTalepId, teslim });
         if (res.ok) {
-            const wa = res.wa ? ` · ${res.wa} WhatsApp` : '';
-            const kalan = res.kalan ? ` · ${res.kalan} kalem onaya kaldı` : '';
-            toast('✓ Direkt sipariş: ' + (res.siparisler||[]).join(', ') + wa + kalan, '#10B981');
+            staSiparisSonucu(res);
+            if (res.kalan) toast(`${res.kalan} kalem onaya kaldı`, '#F59E0B');
             staDetListeYenile(res.kalan ? 'teklif' : 'siparis'); staDetayAc(aktifTalepId);
         } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
-    }, 'var(--mor1)', 'Onaylı');
+    });
 };
 
 function staRowDurumGuncelle(id, yeniDurum) {

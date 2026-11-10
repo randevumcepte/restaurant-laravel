@@ -21,6 +21,8 @@
   .rt-sebep{display:flex;gap:8px;align-items:flex-start;background:rgba(244,63,94,.08);border-radius:10px;padding:9px 12px;font-size:13px;color:var(--ink)}
   .rt-sebep .material-icons-outlined{font-size:17px;color:#e11d48;flex:none;margin-top:1px}
   .rt-kim{font-size:11px;color:var(--sub);margin-top:7px;text-align:right}
+  .rt-tekrar{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 13px;border-radius:10px;background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1);font-weight:700;font-size:12.5px;text-decoration:none}
+  .rt-tekrar .material-icons-outlined{font-size:17px}
 </style>
 <div class="rk-body">
 <div id="rt">
@@ -38,6 +40,9 @@
         @if($t->kalem_ozet)<div class="rt-kalem">📦 {{ $t->kalem_ozet }}</div>@endif
         <div class="rt-sebep"><span class="material-icons-outlined">block</span><span><b>Red sebebi:</b> {{ $t->red_sebep ?: '—' }}</span></div>
         <div class="rt-kim">Reddeden: {{ $t->karar_veren_ad ?: '—' }}{{ $t->karar_at ? ' · ' . \Carbon\Carbon::parse($t->karar_at)->format('d.m.Y H:i') : '' }}</div>
+        @if((int) $t->isteyen_id === ($benId ?? 0) || !empty($yonetici))
+          <a class="rt-tekrar" href="/satinalma-talep?kopya={{ $t->id }}"><span class="material-icons-outlined">edit_note</span> Düzenle ve tekrar gönder</a>
+        @endif
       </div>
     @endforeach
   @endif

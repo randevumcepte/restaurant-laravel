@@ -73,7 +73,7 @@
     @if ($durum === 'onaylandi')
       <div class="banner b-ok"><span class="material-icons-outlined">check_circle</span> Bu siparişi ONAYLADINIZ{{ $s->onay_at ? ' · '.\Carbon\Carbon::parse($s->onay_at)->format('d.m.Y H:i') : '' }}. Teşekkürler!</div>
     @elseif ($durum === 'degisiklik')
-      <div class="banner b-deg"><span class="material-icons-outlined">edit_note</span> Değişiklik talebiniz iletildi. Satın alma sizinle iletişime geçecek.</div>
+      <div class="banner b-deg"><span class="material-icons-outlined">edit_note</span> Değişiklik talebiniz iletildi{{ !empty($s->tedarikci_teslim) ? ' (önerdiğiniz teslim: '.\Carbon\Carbon::parse($s->tedarikci_teslim)->format('d.m.Y').')' : '' }}. Satın alma sizinle iletişime geçecek.</div>
     @else
       <div class="banner b-bek"><span class="material-icons-outlined">hourglass_top</span> Lütfen siparişi inceleyip <b>onaylayın</b> veya <b>değişiklik isteyin</b>.</div>
     @endif
@@ -114,21 +114,25 @@
     </div>
 
     @if (!empty($s->beklenen_teslim))
-      <div class="teslim"><b>İstenen Teslim Tarihi:</b> {{ \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y') }} <span style="color:var(--sub)">— farklı bir tarih uygunsa "Değişiklik İste" ile belirtin.</span></div>
+      <div class="teslim"><b>İstenen Teslim Tarihi:</b> {{ \Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y') }} <span style="color:var(--sub)">— farklı bir tarih uygunsa aşağıdan yeni tarih önerin.</span></div>
+    @else
+      <div class="teslim"><b>Teslim tarihi belirtilmedi.</b> <span style="color:var(--sub)">Teslim edebileceğiniz tarihi aşağıdan önerebilirsiniz.</span></div>
     @endif
 
-    @if ($durum !== 'onaylandi')
+    @if ($durum !== 'onaylandi' && !in_array($s->durum, ['iptal', 'tamamlandi'], true))
     <div class="aksiyon">
       <form method="POST" action="/siparis/onay/{{ $token }}/onayla" style="display:inline-block;margin-bottom:14px">
         @csrf
-        <button class="btn btn-onay" type="submit"><span class="material-icons-outlined" style="font-size:20px">check_circle</span> Siparişi Onayla</button>
+        <button class="btn btn-onay" type="submit"><span class="material-icons-outlined" style="font-size:20px">check_circle</span> {{ !empty($s->beklenen_teslim) ? 'Siparişi ve '.\Carbon\Carbon::parse($s->beklenen_teslim)->format('d.m.Y').' teslimini onayla' : 'Siparişi Onayla' }}</button>
       </form>
       <div style="margin-top:6px">
         <form method="POST" action="/siparis/onay/{{ $token }}/degisiklik">
           @csrf
-          <label style="font-weight:700;font-size:13.5px;color:var(--sub)">Değişiklik mi istiyorsun? (teslim tarihi, fiyat, miktar vb.)</label>
-          <textarea name="not" rows="3" placeholder="Örn: Teslim tarihini 2 gün ötelemek istiyoruz / dana kıyma fiyatını güncelleyelim...">{{ $s->onay_not ?? '' }}</textarea>
-          <button class="btn btn-deg" type="submit" style="margin-top:10px"><span class="material-icons-outlined" style="font-size:19px">edit_note</span> Değişiklik İste</button>
+          <label style="font-weight:700;font-size:13.5px;color:var(--sub)">Bu tarihte teslim edemiyor musunuz? Uygun teslim tarihiniz:</label>
+          <input type="date" name="teslim_tarihi" min="{{ now()->toDateString() }}" value="{{ !empty($s->tedarikci_teslim) ? substr($s->tedarikci_teslim, 0, 10) : '' }}" style="display:block;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit">
+          <label style="font-weight:700;font-size:13.5px;color:var(--sub);display:block;margin-top:12px">Başka bir değişiklik (fiyat, miktar vb.) — isteğe bağlı</label>
+          <textarea name="not" rows="3" placeholder="Örn: dana kıyma fiyatını güncelleyelim / 5 yerine 4 kg gönderebiliriz...">{{ $s->onay_not ?? '' }}</textarea>
+          <button class="btn btn-deg" type="submit" style="margin-top:10px"><span class="material-icons-outlined" style="font-size:19px">edit_note</span> Yeni Tarih / Değişiklik Öner</button>
         </form>
       </div>
     </div>
