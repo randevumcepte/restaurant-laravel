@@ -555,33 +555,17 @@
     function rkGrpTog(el){
         // Grup basligi tiklaninca AC/KAPA (akordiyon toggle)
         el.classList.toggle('kapali');
-        rkMenuDurumKaydet();
     }
     function rkCatTog(el){
         // Ust baslik (kategori) tiklaninca AC/KAPA
         el.classList.toggle('kapali');
-        rkMenuDurumKaydet();
     }
-    // Acik/kapali basliklar: kullanici kapatana kadar oldugu gibi kalir (fare cikisi ve sayfa degisimi bozmaz)
-    function rkMenuDurumKaydet(){
-        var d = {};
-        document.querySelectorAll('#rkSide .rk-cat, #rkSide .rk-grp').forEach(function(h){
-            d[h.dataset.cat ? 'c:'+h.dataset.cat : 'g:'+h.dataset.grp] = !h.classList.contains('kapali');
-        });
-        try{ localStorage.setItem('rk_menu_durum', JSON.stringify(d)); }catch(e){}
-    }
+    // Acik/kapali basliklar saklanmaz: her yuklemede baslangic duzeni + bulunulan sayfanin grubu acik (kullanici istegi)
     (function(){
         var side = document.getElementById('rkSide'); if(!side) return;
         var menu = side.querySelector('.rk-menu');
         var mq = window.matchMedia('(min-width:641px)');
-        var d = {};
-        try{ d = JSON.parse(localStorage.getItem('rk_menu_durum')) || {}; }catch(e){}
-        // Panel üste taşındı: eski "kapalı" kaydı bir kez yok sayılır, sonra kullanıcının seçimi geçerli
-        try{ if(!localStorage.getItem('rk_panel_ust')){ delete d['g:Panel']; localStorage.setItem('rk_panel_ust','1'); } }catch(e){}
-        side.querySelectorAll('.rk-cat, .rk-grp').forEach(function(h){
-            var k = h.dataset.cat ? 'c:'+h.dataset.cat : 'g:'+h.dataset.grp;
-            if(k in d) h.classList.toggle('kapali', !d[k]);
-        });
+        try{ localStorage.removeItem('rk_menu_durum'); localStorage.removeItem('rk_panel_ust'); }catch(e){} // eski kayitlar
         // Bulunulan sayfanin basliklari her zaman acik
         var aktifA = menu.querySelector('a.aktif');
         if(aktifA){
@@ -590,7 +574,6 @@
             if(aktifGrp && aktifGrp.classList.contains('rk-grp')) aktifGrp.classList.remove('kapali'); // başlıksız grubun önceki kardeşi başka grup olabilir
             if(aktifKat) aktifKat.previousElementSibling.classList.remove('kapali');
         }
-        rkMenuDurumKaydet();
 
         // Kaydirma konumu yalniz GENIS menu icin tutulur; dar menu (hepsi acik ikon listesi) bambaska yukseklikte
         var genisKonum = 0, t;
