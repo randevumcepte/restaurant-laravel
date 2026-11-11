@@ -5,8 +5,9 @@
 
 @push('head')
 <style>
-  #aj{max-width:1180px;margin:0 auto;
+  #aj{width:100%;max-width:none;margin:0;
       --t-hatirlatma:#F59E0B;--t-randevu:#4F46E5;--t-toplanti:#7C3AED;--t-not:#10B981;--t-dogumgunu:#EC4899}
+  .rk-body.aj-tam{padding:0} /* layout zaten .rk-body ile sarıyor; çift boşluk olmasın */
   #aj *{box-sizing:border-box}
   #aj .material-icons-outlined{vertical-align:middle}
 
@@ -39,7 +40,7 @@
   }
 
   /* ===== GRID ===== */
-  .aj-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px;align-items:start}
+  .aj-grid{display:grid;grid-template-columns:clamp(340px,26vw,420px) minmax(0,1fr);gap:18px;align-items:start}
   @media (max-width:1050px){.aj-grid{grid-template-columns:minmax(0,1fr)}}
   .aj-grid>*,.aj-hero-ust>div{min-width:0}
   .aj-kart{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--golge);padding:20px}
@@ -83,7 +84,7 @@
 
   /* ===== GÜN ŞERİDİ ===== */
   .aj-serit{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin;margin-bottom:14px}
-  .aj-gun{flex:0 0 58px;border-radius:16px;padding:9px 0 8px;text-align:center;cursor:pointer;border:1.5px solid var(--line);background:var(--card);transition:all .15s;font-family:inherit;color:var(--ink)}
+  .aj-gun{flex:1 0 58px;border-radius:16px;padding:9px 0 8px;text-align:center;cursor:pointer;border:1.5px solid var(--line);background:var(--card);transition:all .15s;font-family:inherit;color:var(--ink)}
   .aj-gun:hover{border-color:color-mix(in srgb,var(--mor1) 45%,var(--line));transform:translateY(-1px)}
   .aj-gun .g-ad{font-size:10.5px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.3px}
   .aj-gun .g-no{font-size:19px;font-weight:800;margin:2px 0 4px}
@@ -189,7 +190,7 @@
 @endpush
 
 @section('content')
-<div class="rk-body">
+<div class="rk-body aj-tam">
 <div id="aj">
   @php
     $rol = $personel->rol ?? '';
