@@ -24990,8 +24990,13 @@ Route::get('/mutfak-defteri', function (Request $r) {
     $sid = _webSubeId();
     $tipler = ['sicaklik' => 'Sıcaklık (HACCP)', 'fire' => 'Fire / İsraf', 'checklist' => 'Açılış / Kapanış', 'prep' => 'Prep / Par'];
     $tip = in_array($r->query('tip'), array_keys($tipler)) ? $r->query('tip') : 'sicaklik';
-    $liste = DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('tip', $tip)->orderByDesc('id')->limit(200)->get();
-    return view('mutfak_defteri', compact('tip', 'tipler', 'liste'));
+    $liste = DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('tip', $tip)->orderByDesc('tarih')->orderByDesc('id')->limit(200)->get();
+    // Sekme rozetleri: bugünkü kayıt sayısı (tip başına)
+    $sayilar = [];
+    try { $sayilar = DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('tarih', now()->toDateString())->select('tip', DB::raw('count(*) as n'))->groupBy('tip')->pluck('n', 'tip')->toArray(); } catch (\Throwable $e) {}
+    $ornekVar = false;
+    try { $ornekVar = DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('not', 'Örnek kayıt')->exists(); } catch (\Throwable $e) {}
+    return view('mutfak_defteri', compact('tip', 'tipler', 'liste', 'sayilar', 'ornekVar'));
 });
 Route::post('/mutfak-defteri/ekle', function (Request $r) {
     _mutfakDefterEnsure();
@@ -25004,7 +25009,9 @@ Route::post('/mutfak-defteri/ekle', function (Request $r) {
     $deger = trim((string) $r->input('deger', '')); $deger2 = trim((string) $r->input('deger2', ''));
     $sonuc = null;
     if ($tip === 'sicaklik' && $deger !== '' && $deger2 !== '' && is_numeric($deger) && is_numeric($deger2)) {
-        $sonuc = ((float) $deger <= (float) $deger2) ? 'uygun' : 'uygunsuz'; // ölçülen <= üst limit => uygun
+        // Soğuk zincir: ölçülen <= üst limit => uygun. Sıcak bekletme/pişirme: limit ALT sınırdır, ölçülen >= limit => uygun
+        $sicakMi = in_array(trim((string) $r->input('kategori', '')), ['Sıcak bekletme', 'Pişirme'], true);
+        $sonuc = ($sicakMi ? ((float) $deger >= (float) $deger2) : ((float) $deger <= (float) $deger2)) ? 'uygun' : 'uygunsuz';
     } elseif ($tip === 'checklist') { $sonuc = 'yapildi'; }
     try {
         DB::table('mutfak_kayitlari')->insert([
@@ -25029,6 +25036,53 @@ Route::post('/mutfak-defteri/sil', function (Request $r) {
     $tip = in_array($r->input('tip'), ['sicaklik', 'fire', 'checklist', 'prep']) ? $r->input('tip') : 'sicaklik';
     try { DB::table('mutfak_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->delete(); } catch (\Throwable $e) {}
     return redirect('/mutfak-defteri?tip=' . $tip)->with('ok', 'Silindi.');
+});
+// Örnek kayıtlar (not='Örnek kayıt' ile işaretli) — defteri denemek için yükle / sil
+Route::post('/mutfak-defteri/ornek', function (Request $r) {
+    _mutfakDefterEnsure();
+    $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    $sid = _webSubeId();
+    $tip = in_array($r->input('tip'), ['sicaklik', 'fire', 'checklist', 'prep']) ? $r->input('tip') : 'sicaklik';
+    $q = function () use ($sid) { return DB::table('mutfak_kayitlari')->where('sube_id', $sid)->where('not', 'Örnek kayıt'); };
+    if ($r->input('islem') === 'sil') { $n = $q()->delete(); return redirect('/mutfak-defteri?tip=' . $tip)->with('ok', $n . ' örnek kayıt silindi.'); }
+    $q()->delete();
+    $g = function ($n) { return now()->subDays($n)->toDateString(); };
+    $ad = $bp->ad ?? null;
+    $ornek = [
+        // [tip, kategori, başlık, değer, değer2, sonuç, birim, gün önce]
+        ['sicaklik', 'Buzdolabı', 'Et dolabı', '3.2', '4', 'uygun', null, 0],
+        ['sicaklik', 'Buzdolabı', 'Sebze dolabı', '6.1', '4', 'uygunsuz', null, 0],
+        ['sicaklik', 'Dondurucu', 'Derin dondurucu 1', '-19', '-18', 'uygun', null, 0],
+        ['sicaklik', 'Sıcak bekletme', 'Bain-marie (çorba)', '68', '63', 'uygun', null, 0],
+        ['sicaklik', 'Pişirme', 'Tavuk göğüs iç sıcaklık', '76', '75', 'uygun', null, 0],
+        ['sicaklik', 'Teslim alma', 'Süt ürünleri teslimatı', '3.8', '4', 'uygun', null, 1],
+        ['sicaklik', 'Sıcak bekletme', 'Pilav bekletme', '58', '63', 'uygunsuz', null, 1],
+        ['fire', 'Hazırlık fire', 'Domates (kabuk/çekirdek)', '1.2', '54', null, 'kg', 0],
+        ['fire', 'Bozulma / SKT', 'Krema (SKT geçti)', '2', '170', null, 'L', 0],
+        ['fire', 'Tabak / porsiyon', 'Pilav (tabakta kalan)', '3.5', '87.5', null, 'kg', 1],
+        ['fire', 'Pişirme hatası', 'Bonfile (fazla pişti)', '2', '640', null, 'adet', 1],
+        ['fire', 'Hazırlık fire', 'Soğan', '0.8', '16', null, 'kg', 2],
+        ['checklist', 'Açılış', 'Fırın 180°C\'ye ısıtıldı', null, null, 'yapildi', null, 0],
+        ['checklist', 'Açılış', 'Soğuk oda sıcaklığı kontrol edildi', null, null, 'yapildi', null, 0],
+        ['checklist', 'Açılış', 'Eller ve tezgahlar dezenfekte edildi', null, null, 'yapildi', null, 0],
+        ['checklist', 'Servis öncesi', 'Mise en place tam (tüm istasyonlar)', null, null, 'yapildi', null, 0],
+        ['checklist', 'Kapanış', 'Gaz vanaları kapatıldı', null, null, 'yapildi', null, 1],
+        ['checklist', 'Kapanış', 'Yağ tutucu boşaltıldı', null, null, 'yapildi', null, 1],
+        ['prep', null, 'Köfte harcı', '12', '4', null, 'kg', 0],
+        ['prep', null, 'Doğranmış soğan', '5', '5', null, 'kg', 0],
+        ['prep', null, 'Domates sos', '8', '3', null, 'L', 0],
+        ['prep', null, 'Marine tavuk', '10', '6', null, 'kg', 0],
+        ['prep', null, 'Salata yeşillik', '40', '28', null, 'porsiyon', 0],
+    ];
+    $sat = [];
+    foreach ($ornek as $o) {
+        $sat[] = ['sube_id' => $sid, 'tip' => $o[0], 'kategori' => $o[1], 'baslik' => $o[2], 'deger' => $o[3], 'deger2' => $o[4],
+            'sonuc' => $o[5], 'birim' => $o[6], 'tarih' => $g($o[7]), 'personel_id' => $bp->id ?? null, 'personel_ad' => $ad,
+            'not' => 'Örnek kayıt', 'created_at' => now(), 'updated_at' => now()];
+    }
+    DB::table('mutfak_kayitlari')->insert($sat);
+    return redirect('/mutfak-defteri?tip=' . $tip)->with('ok', count($sat) . ' örnek kayıt eklendi.');
 });
 Route::get('/api/patron/talep-detay', function (Request $r) {
     _satinalmaTalepEnsure();
