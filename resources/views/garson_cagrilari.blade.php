@@ -228,7 +228,7 @@
         <p>{{ $gecikenSay ? $gecikenSay . ' çağrı 1 dakikayı geçti, öncelik onlarda.' : 'Çağrıları karşıladıkça listeden düşer.' }}</p>
       @else
         <h2>Salon sakin, bekleyen çağrı yok</h2>
-        <p>Masalardan QR ile gelen çağrılar burada anında belirir.</p>
+        <p>Masalardan QR ile gelen çağrılar burada anında belirir. Ses açıksa uyarı çalar.</p>
       @endif
     </div>
     <div class="gc-hero-sag">
@@ -273,7 +273,8 @@
   </div>
 </div>
 
-{{-- ===== BEKLEYEN ÇAĞRILAR ===== --}}
+{{-- ===== BEKLEYEN ÇAĞRILAR (yoksa bölüm hiç çizilmez; durum zaten üst bantta) ===== --}}
+@if ($bekleyenSay)
 <div class="gc-bas">
   <h3><span class="cb"></span>Bekleyen Çağrılar
     @if ($bekleyenSay)<span class="n">{{ $bekleyenSay }}</span>@endif
@@ -292,13 +293,6 @@
   @endif
 </div>
 
-@if (!$bekleyenSay)
-  <div class="gc-bos">
-    <div class="hal"><span class="material-icons-outlined">check</span></div>
-    <div class="b">Her şey yolunda</div>
-    <div class="s">Ses açıksa yeni çağrı geldiğinde uyarı çalar.</div>
-  </div>
-@else
   <div class="gc-izgara" id="gcIzgara">
     @foreach ($bekleyen as $c)
       @php
