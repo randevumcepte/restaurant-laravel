@@ -400,6 +400,12 @@
     if ($_kp && isset($gruplar['Satın Alma']) && _mutfakEkibiMi($_kp)) {
         unset($gruplar['Satın Alma']);
         $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
+        // Şef istasyonların talebini onaylar: Onay Bekleyen Talepler Satın Alma Talebi'nin altında (yalnız sorumlu)
+        if (!empty($_kp->departman_sorumlu)) {
+            $_yeniBoh = [];
+            foreach ($gruplar['Mutfak / BOH'] ?? [] as $_it) { $_yeniBoh[] = $_it; if ($_it[0] === '/satinalma-talep') $_yeniBoh[] = ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B']; }
+            $gruplar['Mutfak / BOH'] = $_yeniBoh;
+        }
     }
     // Şefin Menü Yönetimi de Mutfak / BOH'ta; Menü & Ürünler (Happy Hour, Fix Menü, kampanya) mutfak ekibinde gizli
     if ($_kp && isset($gruplar['Menü & Ürünler']) && _mutfakEkibiMi($_kp)) {
