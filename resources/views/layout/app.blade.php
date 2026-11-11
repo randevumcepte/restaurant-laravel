@@ -403,6 +403,11 @@
         unset($gruplar['Menü & Ürünler']);
         $gruplar['Mutfak / BOH'][] = ['/menu', 'restaurant_menu', 'Menü Yönetimi', '#7C3AED'];
     }
+    // Mutfak ekibinde Departman Operasyon grubu yok: içindeki (Bulaşıkhane görevleri vb.) Mutfak / BOH altında
+    if ($_kp && isset($gruplar['Departman Operasyon']) && _mutfakEkibiMi($_kp)) {
+        $gruplar['Mutfak / BOH'] = array_merge($gruplar['Mutfak / BOH'] ?? [], $gruplar['Departman Operasyon']);
+        unset($gruplar['Departman Operasyon']);
+    }
     // Bulaşıkhane görevleri aşçıya ve istasyon çalışanına görünmez
     if ($_kp && !_bulasikGorur($_kp)) {
         foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => $it[0] !== '/bulasik'));
@@ -533,6 +538,8 @@
             @php
                 // En dar personel (yönetici/sorumlu değil, kademe Personel/Mutfak): kategori ve grup başlığı yok, ilgili sayfalar düz liste
                 $_kadM = $_pp ? ($_pp->kademe ?? _rolKademe($_pp->rol ?? '')) : null;
+                // Departman çalışanı (yönetici/satın almacı değil): kategori başlıkları (YÖNETİM, OPERASYON) gösterilmez
+                $_katsiz = $_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true);
                 $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
             @endphp
             @if ($_duzMenu)
@@ -564,7 +571,12 @@
                     $_catAktif = false;
                     foreach ($_catGruplar as $_g => $_gi) { foreach ($_gi as $_it) { if ($aktifMi($_it[0])) { $_catAktif = true; break 2; } } }
                 @endphp
-                @if (count($_catGruplar))
+                @if (count($_catGruplar) && $_katsiz && $katAd !== 'AYARLAR')
+                    {{-- Departman çalışanı (yönetici değil): YÖNETİM/OPERASYON başlığı yok, gruplar doğrudan --}}
+                    @foreach ($_catGruplar as $grupAd => $items)
+                        @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
+                    @endforeach
+                @elseif (count($_catGruplar))
                     <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM' || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
                     <div class="rk-cat-body">
                         @foreach ($_catGruplar as $grupAd => $items)
