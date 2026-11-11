@@ -169,6 +169,10 @@
   .aj-bos .bi .material-icons-outlined{font-size:36px}
   .aj-bos b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
   .aj-bos span{font-size:13px}
+  .aj-ornek-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--mor1),var(--mavi));box-shadow:0 8px 18px -10px var(--mor1)}
+  .aj-ornek-btn .material-icons-outlined{font-size:18px}
+  .aj-ornek-btn.sil{background:transparent;color:var(--sub2);border:1px dashed var(--line);box-shadow:none}
+  .aj-ornek-btn.sil:hover{color:var(--kirmizi);border-color:var(--kirmizi)}
   .aj-gecmis{margin-top:20px;border-top:1px solid var(--line);padding-top:6px}
   .aj-gecmis summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 0;font-size:12px;font-weight:800;color:var(--sub2);text-transform:uppercase;letter-spacing:.4px}
   .aj-gecmis summary::-webkit-details-marker{display:none}
@@ -391,7 +395,20 @@
         <div class="bi"><span class="material-icons-outlined">event_available</span></div>
         <b id="ajBosBas">Ajandan tertemiz ✨</b>
         <span id="ajBosAlt">Soldan bir hatırlatma, randevu ya da not ekleyerek başla.</span>
+        @if (!count($liste))
+          <form method="POST" action="/ajanda/ornek" style="margin-top:16px">
+            @csrf
+            <button type="submit" class="aj-ornek-btn"><span class="material-icons-outlined">auto_awesome</span> Örnek kayıtları yükle</button>
+          </form>
+        @endif
       </div>
+      @if (collect($liste)->contains('kaynak', 'ornek'))
+        <form method="POST" action="/ajanda/ornek" style="margin-top:14px;text-align:center">
+          @csrf
+          <input type="hidden" name="islem" value="sil">
+          <button type="submit" class="aj-ornek-btn sil"><span class="material-icons-outlined">delete_sweep</span> Örnek kayıtları sil</button>
+        </form>
+      @endif
 
       @if (count($gecmis))
       <details class="aj-gecmis">

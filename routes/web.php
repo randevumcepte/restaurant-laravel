@@ -13810,6 +13810,43 @@ Route::post('/ajanda/sil', function (Request $r) {
     _aiAjandaDuzenleSorgu($sid, $bp)->where('id', (int) $r->id)->delete();
     return back()->with('ok', 'Silindi.');
 });
+// Örnek kayıtlar: ajandayı denemek için kişiye özel demo veri (kaynak='ornek') — yükle / sil
+Route::post('/ajanda/ornek', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    _aiAjandaEnsure();
+    $sid = _webSubeId();
+    $q = function () use ($sid, $bp) { return DB::table('ai_ajanda')->where('sube_id', $sid)->where('personel_id', (int) $bp->id)->where('kaynak', 'ornek'); };
+    if ($r->input('islem') === 'sil') { $n = $q()->delete(); return back()->with('ok', $n . ' örnek kayıt silindi.'); }
+    $q()->delete();
+    $bugun = \Carbon\Carbon::today();
+    $at = function ($gun, $saat) use ($bugun) { return $bugun->copy()->addDays($gun)->setTimeFromTimeString($saat); };
+    $ornek = [
+        // [tip, başlık, açıklama, başlangıç, hatırlat_dk, katılımcılar]
+        ['hatirlatma', 'Kasa sayımını yap', 'Gün sonu Z raporu ile karşılaştır.', $at(0, '23:30'), 15, null],
+        ['hatirlatma', 'Doğalgaz faturasını öde', 'Son ödeme günü, otomatik talimat yok.', $at(1, '10:00'), 60, null],
+        ['hatirlatma', 'Tedarikçiye sebze siparişi geç', 'Domates, biber, marul — hafta sonu yoğunluğu için +%20.', $at(-1, '16:00'), 30, null],
+        ['randevu', 'Gıda denetimi — belediye', 'Hijyen belgeleri ve soğuk oda kayıtlarını hazır tut.', $at(0, '14:00'), 60, null],
+        ['randevu', 'Kombi servisi bakım', 'Mutfak kombisi, teknisyen Ahmet Bey 0532 000 00 00.', $at(2, '11:00'), 120, null],
+        ['randevu', 'Muhasebeci ile KDV görüşmesi', 'Ekim faturalarını götür.', $at(5, '15:30'), 1440, null],
+        ['toplanti', 'Haftalık personel toplantısı', 'Gündem: yeni menü, vardiya düzeni, müşteri şikayetleri.', $at(1, '09:30'), 30, 'Mutfak şefi, Salon şefi, Kasiyer'],
+        ['toplanti', 'Yeni menü tadım toplantısı', '5 yeni tatlı denemesi.', $at(3, '17:00'), 60, 'Şef, Pastacı, Patron'],
+        ['toplanti', 'Kahve tedarikçisi sunumu', 'Fiyat teklifini karşılaştır.', $at(8, '12:00'), 30, 'Satın alma'],
+        ['dogumgunu', 'Ayşe Hanım (müdavim) doğum günü', 'Masa 7, pasta ikramı + mum.', $at(4, '19:00'), 1440, null],
+        ['dogumgunu', 'Garson Mehmet doğum günü', 'Ekipten küçük sürpriz.', $at(10, '10:00'), 1440, null],
+        ['not', 'Wi-Fi şifresi değişti', 'Misafir ağı: Resto2026! — menülere de yazdır.', null, 0, null],
+        ['not', 'Yeni sos tarifi fikri', 'Nar ekşili, sarımsaklı yoğurt sos — şefle konuş.', null, 0, null],
+        ['not', 'Bahçe masaları için şemsiye bak', 'En az 6 adet, bordo renk.', null, 0, null],
+    ];
+    $sat = [];
+    foreach ($ornek as $o) {
+        $sat[] = ['sube_id' => $sid, 'personel_id' => (int) $bp->id, 'tip' => $o[0], 'baslik' => $o[1], 'aciklama' => $o[2],
+            'baslar_at' => $o[3], 'tum_gun' => 0, 'hatirlat_dk' => $o[4], 'katilimcilar' => $o[5],
+            'durum' => 'acik', 'hatirlatildi' => 1, 'kaynak' => 'ornek', 'created_at' => now(), 'updated_at' => now()];
+    }
+    DB::table('ai_ajanda')->insert($sat);
+    return back()->with('ok', count($sat) . ' örnek kayıt eklendi.');
+});
 
 // ----- AJANDA API (Bearer — Flutter paritesi) -----
 Route::get('/api/ajanda/liste', function (Request $r) {
