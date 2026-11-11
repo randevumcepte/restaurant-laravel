@@ -9255,7 +9255,7 @@ if (!function_exists('_stokYetkisiDevri')) {
     {
         $dep = (int) ($p->departman_id ?? 0);
         $kod = _personelDepartmanKodu($p);
-        if ($anahtar === 'gor_satinalma') return in_array($kod, ['satinalma', 'mal_kabul', 'depo', 'ust_yonetim', 'operasyon'], true);
+        if ($anahtar === 'gor_satinalma') return in_array($kod, ['satinalma', 'mal_kabul', 'ust_yonetim', 'operasyon'], true); // depo satın almayı görmez
         return !$dep || !empty($p->departman_sorumlu) || in_array($kod, ['satinalma', 'depo', 'ust_yonetim', 'operasyon'], true); // gor_sayim
     }
 }
@@ -9468,14 +9468,12 @@ if (!function_exists('_panelYetkiVar')) {
         if (_kasiyerMi($personel) && !in_array($sayfaKey, _kasaNoktaYetkileri($personel), true)) return false;
         $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
         if (is_array($sy) && array_key_exists($sayfaKey, $sy)) return !empty($sy[$sayfaKey]);
-        // Talep yetkisi yalnız elle verilir (ör. bölüm şefi). Ayrı anahtar gelmeden önce stok yetkisiyle talep açanlar etkilenmesin.
-        if ($sayfaKey === 'gor_talep' && is_array($sy) && array_key_exists('gor_stok', $sy)) return !empty($sy['gor_stok']);
+        // Talep yetkisi yalnız elle ya da şablonla verilir (stoktan otomatik gelmez; eski kayıtlar _talepYetkiTemizle ile korundu)
         // Satın alma ve sayım stok yetkisinden ayrıldı: eski kayıtta stok izni yalnız uygun departmanda bunlara geçer
         if (in_array($sayfaKey, ['gor_satinalma', 'gor_sayim'], true) && is_array($sy) && !empty($sy['gor_stok'])) return _stokYetkisiDevri($personel, $sayfaKey);
         $kademe = $personel->kademe ?? _rolKademe($personel->rol ?? '');
-        // Mutfak ekibinde kayıtta açık olmayan ekran kapalı: garson kademesinin Masalar/Rezervasyon varsayılanı aşçıya geçmesin
-        if (is_array($sy) && ($personel->rol ?? '') !== 'mudur' && !in_array($kademe, ['sahip', 'supervizor', 'satinalma'], true)
-            && in_array(_personelDepartmanKodu($personel), ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true)) return false;
+        // Departman üyesinde kayıtta açık olmayan ekran kapalı: "Personel" kademesinin garson varsayılanı (Masalar, Rezervasyon, Garson Çağrıları…) İK/Finans/IT çalışanına geçmesin. Kasiyer kasa noktasına bağlı.
+        if (is_array($sy) && !empty($personel->departman_id) && ($personel->rol ?? '') !== 'mudur' && !in_array($kademe, ['sahip', 'supervizor', 'satinalma'], true) && !_kasiyerMi($personel)) return false;
         return in_array($sayfaKey, _kademeSayfalar($kademe));
     }
 }
@@ -9558,10 +9556,10 @@ if (!function_exists('_departmanSablonlari')) {
             // ===== YÖNETİM =====
             'ust_yonetim' => ['ad' => 'Üst Yönetim', 'grup' => 'Yönetim', 'ikon' => 'admin_panel_settings', 'renk' => '#7C3AED', 'ai' => 'tam',
                 'unvan' => ['Genel Müdür', 'İşletme Sahibi', 'Yönetici'], 'sorumlu_ek' => [],
-                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_raporlar', 'gor_z_raporu', 'gor_cari', 'gor_muhasebe', 'gor_personel', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_hareketler', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_raporlar', 'gor_z_raporu', 'gor_cari', 'gor_muhasebe', 'gor_personel', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_hareketler', 'gor_copilot']],
             'operasyon' => ['ad' => 'İşletme / Operasyon', 'grup' => 'Yönetim', 'ikon' => 'manage_accounts', 'renk' => '#4F46E5', 'ai' => 'tam',
                 'unvan' => ['Operasyon Müdürü', 'Müdür Yardımcısı', 'Vardiya Amiri'], 'sorumlu_ek' => [],
-                'sayfa' => ['gor_dashboard', 'gor_pos', 'gor_mutfak', 'gor_rezervasyon', 'gor_paket', 'gor_kasa', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_personel', 'gor_puantaj', 'gor_raporlar', 'gor_garson_cagri', 'gor_garson_perf', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_pos', 'gor_mutfak', 'gor_rezervasyon', 'gor_paket', 'gor_kasa', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_personel', 'gor_puantaj', 'gor_raporlar', 'gor_garson_cagri', 'gor_garson_perf', 'gor_copilot']],
             // ===== ÖN SALON (FOH) =====
             'servis' => ['ad' => 'Servis / Garson', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'room_service', 'renk' => '#64748B', 'ai' => 'kapali',
                 'unvan' => ['Servis Şefi (Maître)', 'Kaptan Garson', 'Garson', 'Komi'], 'sorumlu_ek' => $yon,
@@ -9577,7 +9575,7 @@ if (!function_exists('_departmanSablonlari')) {
                 'sayfa' => ['gor_pos', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_cari', 'gor_paket', 'gor_rezervasyon', 'gor_masa_yonetim']],
             // ===== MUTFAK (BOH) ===== (üst: Mutfak Şefi; alt departmanlar aynı grupta)
             'mutfak' => ['ad' => 'Mutfak (Sıcak)', 'grup' => 'Mutfak (BOH)', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'ai' => 'kisitli',
-                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => ['gor_stok', 'gor_sayim'],
+                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => ['gor_stok', 'gor_sayim', 'gor_talep'], // şef istasyon taleplerini onaylar
                 'sayfa' => ['gor_mutfak']], // aşçı/komi yalnız mutfak; stok ve sayım şefte (sayımı başkasına elle verilir)
             'soguk_mutfak' => ['ad' => 'Soğuk Mutfak / Garde Manger', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kitchen', 'renk' => '#10B981', 'ai' => 'kisitli',
                 'unvan' => ['Soğuk Mutfak Şefi (Garde Manger)', 'Soğukçu', 'Komi'], 'sorumlu_ek' => [],
@@ -9594,7 +9592,7 @@ if (!function_exists('_departmanSablonlari')) {
             // ===== TEDARİK & DEPO =====
             'satinalma' => ['ad' => 'Satın Alma', 'grup' => 'Tedarik & Depo', 'ikon' => 'inventory_2', 'renk' => '#0EA5E9', 'ai' => 'kisitli',
                 'unvan' => ['Satın Alma Müdürü', 'Satın Alma Uzmanı', 'Satın Alma Elemanı'], 'sorumlu_ek' => $yon,
-                'sayfa' => ['gor_dashboard', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_cari', 'gor_raporlar', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_cari', 'gor_raporlar', 'gor_copilot']],
             'depo' => ['ad' => 'Depo / Ambar', 'grup' => 'Tedarik & Depo', 'ikon' => 'warehouse', 'renk' => '#78716C', 'ai' => 'kisitli',
                 'unvan' => ['Depo Sorumlusu', 'Depo Görevlisi'], 'sorumlu_ek' => ['gor_raporlar', 'gor_hareketler'],
                 'sayfa' => ['gor_stok', 'gor_sayim']],
@@ -19374,6 +19372,37 @@ if (!function_exists('_mutfakEkibiMi')) {
         $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
         if (in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor', 'satinalma'], true)) return false;
         return in_array(_personelDepartmanKodu($p), ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true);
+    }
+}
+if (!function_exists('_talepYetkiTemizle')) {
+    // Bir kez: talep yetkisi stoktan otomatik gelmez oldu; bugün talep açabilen sorumlu, satın alma/yönetim departmanı ve departmansız kişilerin izni kayda yazılır
+    function _talepYetkiTemizle()
+    {
+        if (cache()->get('talep_yetki_v1')) return;
+        try {
+            if (resto_ayar_al('talep_yetki_v1') != '1') {
+                if (Schema::hasTable('departmanlar')) {
+                    foreach (DB::table('departmanlar')->whereIn('kod', ['satinalma', 'ust_yonetim', 'operasyon', 'mutfak'])->get(['id', 'kod', 'sayfa_yetki', 'sorumlu_ek']) as $d) {
+                        if ($d->kod === 'mutfak') {
+                            $ek = json_decode((string) $d->sorumlu_ek, true) ?: [];
+                            if (!in_array('gor_talep', $ek, true)) { $ek[] = 'gor_talep'; DB::table('departmanlar')->where('id', $d->id)->update(['sorumlu_ek' => json_encode($ek)]); }
+                            continue;
+                        }
+                        $sy = json_decode((string) $d->sayfa_yetki, true);
+                        if (is_array($sy) && empty($sy['gor_talep'])) { $sy['gor_talep'] = 1; DB::table('departmanlar')->where('id', $d->id)->update(['sayfa_yetki' => json_encode($sy)]); }
+                    }
+                }
+                foreach (DB::table('personeller')->whereNotNull('sayfa_yetki')->get(['id', 'departman_id', 'departman_sorumlu', 'sayfa_yetki']) as $k) {
+                    $py = json_decode((string) $k->sayfa_yetki, true);
+                    if (!is_array($py) || array_key_exists('gor_talep', $py) || empty($py['gor_stok'])) continue; // yalnız bugün stoktan talep açabilenler
+                    $kod = _personelDepartmanKodu($k);
+                    $py['gor_talep'] = (!$k->departman_id || !empty($k->departman_sorumlu) || in_array($kod, ['satinalma', 'ust_yonetim', 'operasyon'], true)) ? 1 : 0;
+                    DB::table('personeller')->where('id', $k->id)->update(['sayfa_yetki' => json_encode($py)]);
+                }
+                resto_ayar_yaz('talep_yetki_v1', '1');
+            }
+            cache()->put('talep_yetki_v1', 1, now()->addDays(30));
+        } catch (\Throwable $e) {}
     }
 }
 if (!function_exists('_mutfakSefYetkiTemizle')) {
