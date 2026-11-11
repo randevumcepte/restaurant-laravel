@@ -391,6 +391,9 @@
             $_yeniG = [];
             foreach ($gruplar as $_ga => $_gi) { $_yeniG[$_ga] = $_gi; if ($_ga === 'Ajanda') $_yeniG += $_brf; }
             $gruplar = $_yeniG + $_brf;
+            // Kendi departmanının brifingi zaten en üstte: grup içindeki aynı bağlantı çift olmasın
+            $_kendiBrf = '/departman-brief?dep=' . _departmanBriefKod($_kp, (int) ($_kp->sube_id ?? 0));
+            foreach ($gruplar as $_ga => $_gi) if ($_ga !== 'Brifing') $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => $it[0] !== $_kendiBrf));
         }
     }
     // Mutfak ekibi (şef dahil) Satın Alma grubunu görmez; şefin stok bağlantısı Mutfak / BOH'ta

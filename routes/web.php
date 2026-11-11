@@ -463,7 +463,9 @@ Route::post('/pos-giris', function (Request $r) {
     $hedef = session('panel_hedef'); session()->forget('panel_hedef');
     // Masalar yetkisi olmayan mutfak çalışanı "yetkisiz" sayfasına değil Mutfak ekranına düşer
     $mutfakci = !$posSuz && !_panelYetkiVar($p, 'gor_pos') && _panelYetkiVar($p, 'gor_mutfak');
-    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($mutfakci ? '/mutfak' : '/pos')));
+    // Departman çalışanı (yönetici/kasiyer değil) brifingi görebiliyorsa güne Sabah Brifingim ile başlar
+    $brifingli = !$posSuz && !empty($p->departman_id) && !in_array($p->rol ?? '', ['sahip', 'mudur'], true) && !_kasiyerMi($p) && _brifingGorur($p);
+    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($brifingli ? '/departman-brief' : ($mutfakci ? '/mutfak' : '/pos'))));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
