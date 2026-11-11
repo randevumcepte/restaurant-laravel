@@ -6,70 +6,136 @@
 
 @push('head')
 <style>
-/* ====== garson_cagrilari_screen.dart BİREBİR ====== */
-#gcroot{--poll:10}
-/* AppBar başlık badge (Flutter kırmızı yuvarlak sayaç) */
-#gcroot .gc-badge{display:inline-flex;align-items:center;justify-content:center;
-  background:var(--kirmizi);color:#fff;border-radius:12px;padding:1px 9px;
-  font-size:13px;font-weight:700;min-width:24px;line-height:22px;margin-left:8px}
-/* Özet şerit kartları */
-#gcroot .gc-ozet{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-#gcroot .gc-ozet .gc-oc{display:flex;align-items:center;gap:8px;padding:10px 16px}
-/* Flutter ListView.separated padding:EdgeInsets.all(14), separatorBuilder: SizedBox(12) */
-#gcroot .gc-liste{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
-/* Flutter _kart Container: borderRadius:18, padding:16, boxShadow:golge */
-#gcroot .gc-kart{display:flex;align-items:center;gap:13px;padding:16px;
-  background:var(--card);border:1px solid var(--line);border-radius:18px;
-  box-shadow:var(--golge);transition:box-shadow .1s}
-#gcroot .gc-kart.geciken{border:1.6px solid var(--kirmizi)}
-/* Flutter icon box: width:50,height:50, borderRadius:14, color.withValues(alpha:0.16) */
-#gcroot .gc-ikon{width:50px;height:50px;flex:0 0 50px;border-radius:14px;
-  display:flex;align-items:center;justify-content:center}
-#gcroot .gc-ikon .material-icons-outlined{font-size:26px}
-/* Flutter Expanded > Column */
+/* ====== Garson Çağrıları — canlı çağrı panosu ====== */
+#gcroot{--gc-r:16px}
+/* Üst araç çubuğu: canlı rozet + ses + tümünü karşıla */
+#gcroot .gc-arac{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+#gcroot .gc-canli{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;
+  background:var(--card);border:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--sub2)}
+#gcroot .gc-canli i{width:8px;height:8px;border-radius:50%;background:var(--yesil);position:relative}
+#gcroot .gc-canli i::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--yesil);
+  opacity:0;animation:gcNabiz 2s infinite}
+#gcroot .gc-canli.kopuk i{background:var(--kirmizi)}
+#gcroot .gc-canli.kopuk i::after{display:none}
+@keyframes gcNabiz{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.6);opacity:0}}
+#gcroot .gc-arac .bosluk{flex:1}
+#gcroot .gc-dugme{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:12px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13.5px;font-weight:700;cursor:pointer;
+  font-family:inherit;transition:background .15s,border-color .15s}
+#gcroot .gc-dugme:hover{border-color:color-mix(in srgb,var(--mor1) 45%,var(--line))}
+#gcroot .gc-dugme .material-icons-outlined{font-size:19px}
+#gcroot .gc-dugme.ses-acik{color:var(--mor1);border-color:color-mix(in srgb,var(--mor1) 45%,transparent);
+  background:color-mix(in srgb,var(--mor1) 9%,var(--card))}
+#gcroot .gc-dugme.ana{background:#16A34A;border-color:#16A34A;color:#fff}
+#gcroot .gc-dugme.ana:hover{background:#15803D}
+
+/* Özet kutucukları */
+#gcroot .gc-ozet{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:22px}
+#gcroot .gc-oc{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--gc-r);box-shadow:var(--golge);min-width:0}
+#gcroot .gc-oc .ik{width:42px;height:42px;flex:0 0 42px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+#gcroot .gc-oc .ik .material-icons-outlined{font-size:22px}
+#gcroot .gc-oc .d{min-width:0}
+#gcroot .gc-oc .s{font-size:12px;color:var(--sub);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gcroot .gc-oc .v{font-size:22px;font-weight:800;color:var(--ink);line-height:1.15;font-variant-numeric:tabular-nums}
+#gcroot .gc-oc.alarm{border-color:color-mix(in srgb,var(--kirmizi) 45%,transparent);
+  background:color-mix(in srgb,var(--kirmizi) 6%,var(--card))}
+#gcroot .gc-oc.alarm .v{color:var(--kirmizi)}
+
+/* Bölüm başlığı + filtre çipleri */
+#gcroot .gc-bas{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+#gcroot .gc-bas h3{margin:0;font-size:16px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:8px}
+#gcroot .gc-bas h3 .n{font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px}
+#gcroot .gc-cipler{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+#gcroot .gc-cip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--sub2);font-size:12.5px;font-weight:700;font-family:inherit}
+#gcroot .gc-cip .material-icons-outlined{font-size:16px}
+#gcroot .gc-cip b{font-weight:800;opacity:.75}
+#gcroot .gc-cip.aktif{background:var(--ink);border-color:var(--ink);color:var(--card)}
+body.koyu #gcroot .gc-cip.aktif{background:var(--mor1);border-color:var(--mor1);color:#fff}
+
+/* Bekleyen çağrı kartları */
+#gcroot .gc-izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin-bottom:28px}
+#gcroot .gc-kart{position:relative;display:flex;flex-direction:column;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--gc-r);box-shadow:var(--golge);overflow:hidden;
+  transition:transform .15s,box-shadow .15s,opacity .2s}
+#gcroot .gc-kart::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--vurgu)}
+#gcroot .gc-kart:hover{transform:translateY(-2px)}
+#gcroot .gc-kart.geciken{border-color:color-mix(in srgb,var(--kirmizi) 55%,transparent);
+  animation:gcAlarm 1.8s ease-in-out infinite}
+@keyframes gcAlarm{0%,100%{box-shadow:var(--golge)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--kirmizi) 18%,transparent)}}
+#gcroot .gc-kart.yeni{animation:gcGir .45s ease-out}
+@keyframes gcGir{from{transform:scale(.96);opacity:0}to{transform:none;opacity:1}}
+#gcroot .gc-kart.gidiyor{opacity:.35;pointer-events:none}
+#gcroot .gc-ust{display:flex;align-items:flex-start;gap:12px;padding:16px 16px 12px 20px}
+#gcroot .gc-ikon{width:46px;height:46px;flex:0 0 46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--vurgu) 14%,transparent);color:var(--vurgu)}
+#gcroot .gc-ikon .material-icons-outlined{font-size:24px}
 #gcroot .gc-meta{min-width:0;flex:1}
-/* Flutter masa ad: fontSize:19, fontWeight:w900 */
-#gcroot .gc-masa{font-size:19px;font-weight:900;color:var(--ink);
+#gcroot .gc-masa{font-size:21px;font-weight:900;color:var(--ink);line-height:1.15;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Flutter tipYazi: fontSize:13.5, fontWeight:w700 */
-#gcroot .gc-tip{font-size:13.5px;font-weight:700;margin-top:2px}
-/* Flutter süre kolonisi */
+#gcroot .gc-masa .ok{color:var(--sub);font-weight:700;margin:0 4px}
+#gcroot .gc-tip{display:inline-flex;align-items:center;margin-top:5px;padding:2px 9px;border-radius:999px;
+  font-size:12px;font-weight:700;color:var(--vurgu);background:color-mix(in srgb,var(--vurgu) 11%,transparent)}
 #gcroot .gc-sure-col{text-align:right;flex:0 0 auto}
-/* Flutter süre: fontSize:16, fontWeight:w800; geciken=kirmizi, normal=gold */
-#gcroot .gc-sure{font-size:16px;font-weight:800}
-/* Flutter saat: fontSize:11, color:sub */
-#gcroot .gc-saat{font-size:11px;color:var(--sub)}
-/* Flutter FilledButton (karşıla / taşı) */
-#gcroot .gc-btn{display:inline-flex;align-items:center;gap:5px;padding:12px 16px;
-  border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
-  color:#fff;flex:0 0 auto;white-space:nowrap}
+#gcroot .gc-sure{font-size:20px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15}
+#gcroot .gc-kart.geciken .gc-sure{color:var(--kirmizi)}
+#gcroot .gc-saat{font-size:11.5px;color:var(--sub);margin-top:3px}
+/* Bekleme çubuğu: 0→5 dk dolar */
+#gcroot .gc-bar{height:4px;margin:0 16px 0 20px;border-radius:4px;background:var(--line);overflow:hidden}
+#gcroot .gc-bar i{display:block;height:100%;width:0;border-radius:4px;background:var(--amber);transition:width 1s linear}
+#gcroot .gc-kart.geciken .gc-bar i{background:var(--kirmizi)}
+#gcroot .gc-alt{padding:12px 16px 14px 20px}
+#gcroot .gc-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;
+  border:none;border-radius:12px;font-size:14.5px;font-weight:800;cursor:pointer;color:#fff;font-family:inherit;
+  transition:filter .15s}
+#gcroot .gc-btn:hover{filter:brightness(1.07)}
 #gcroot .gc-btn.yesil{background:#16A34A}
 #gcroot .gc-btn.mor{background:var(--mor1)}
-#gcroot .gc-btn .material-icons-outlined{font-size:18px}
-/* Flutter boş ekran: SizedBox(height: ~28%), Icon(60), Text(16,w600) */
-#gcroot .gc-bos{text-align:center;padding:64px 20px 48px;
-  background:var(--card);border:1px solid var(--line);border-radius:14px;
-  box-shadow:var(--golge)}
-#gcroot .gc-bos .material-icons-outlined{font-size:60px;color:var(--sub)}
-#gcroot .gc-bos .b{font-size:16px;font-weight:600;color:var(--sub);margin-top:14px}
-#gcroot .gc-bos .s{font-size:12.5px;color:var(--sub);margin-top:6px}
-/* Tümünü karşıla butonu (Flutter gold TextButton.icon) */
-#gcroot .gc-tumunu{display:inline-flex;align-items:center;gap:6px;
-  background:transparent;border:none;cursor:pointer;
-  color:var(--gold);font-size:14px;font-weight:700;padding:6px 8px;border-radius:8px}
-#gcroot .gc-tumunu:hover{background:color-mix(in srgb,var(--gold) 12%,transparent)}
-#gcroot .gc-tumunu .material-icons-outlined{font-size:19px;color:var(--gold)}
-/* Son karşılananlar tablosu — web'e özgü ek bilgi (Flutter'da yoktu, web paritesi) */
-#gcroot .gc-karsilanan-tablo .rk-rozet .material-icons-outlined{font-size:14px}
-/* Yenile göstergesi */
-#gcroot .gc-yenile{font-size:11.5px;color:var(--sub);margin-left:auto}
-body.koyu #gcroot .gc-kart{border-color:var(--line)}
-body.koyu #gcroot .gc-kart.geciken{border-color:var(--kirmizi)}
+#gcroot .gc-btn .material-icons-outlined{font-size:20px}
+
+/* Boş durum */
+#gcroot .gc-bos{text-align:center;padding:48px 20px;margin-bottom:28px;background:var(--card);
+  border:1px dashed var(--line);border-radius:var(--gc-r)}
+#gcroot .gc-bos .hal{width:72px;height:72px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--yesil) 12%,transparent)}
+#gcroot .gc-bos .hal .material-icons-outlined{font-size:36px;color:var(--yesil)}
+#gcroot .gc-bos .b{font-size:17px;font-weight:800;color:var(--ink);margin-top:14px}
+#gcroot .gc-bos .s{font-size:13px;color:var(--sub);margin-top:5px}
+#gcroot .gc-filtre-bos{display:none;grid-column:1/-1;text-align:center;padding:26px;color:var(--sub);font-size:13px;
+  border:1px dashed var(--line);border-radius:var(--gc-r)}
+
+/* Son karşılananlar — sade liste */
+#gcroot .gc-gecmis{background:var(--card);border:1px solid var(--line);border-radius:var(--gc-r);box-shadow:var(--golge);overflow:hidden}
+#gcroot .gc-gecmis summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 16px;
+  font-size:15px;font-weight:800;color:var(--ink)}
+#gcroot .gc-gecmis summary::-webkit-details-marker{display:none}
+#gcroot .gc-gecmis summary .n{font-size:12px;font-weight:800;padding:2px 9px;border-radius:999px;
+  color:var(--yesil);background:color-mix(in srgb,var(--yesil) 12%,transparent)}
+#gcroot .gc-gecmis summary .ac{margin-left:auto;color:var(--sub);transition:transform .2s}
+#gcroot .gc-gecmis[open] summary .ac{transform:rotate(180deg)}
+#gcroot .gc-satir{display:grid;grid-template-columns:34px minmax(0,1.1fr) minmax(0,1.6fr) auto;align-items:center;gap:12px;
+  padding:10px 16px;border-top:1px solid var(--line);font-size:13.5px}
+#gcroot .gc-satir .ki{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--vurgu) 11%,transparent);color:var(--vurgu)}
+#gcroot .gc-satir .ki .material-icons-outlined{font-size:18px}
+#gcroot .gc-satir .m{font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gcroot .gc-satir .t{color:var(--sub2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gcroot .gc-satir .z{text-align:right;white-space:nowrap;color:var(--sub);font-size:12.5px;font-variant-numeric:tabular-nums}
+#gcroot .gc-satir .z b{color:var(--ink);font-weight:700;margin-right:6px}
+
+@media (max-width:900px){#gcroot .gc-ozet{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){
+  #gcroot .gc-cipler{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+  #gcroot .gc-satir{grid-template-columns:34px minmax(0,1fr) auto}
+  #gcroot .gc-satir .t{display:none}
+  #gcroot .gc-arac .gc-dugme .yazi{display:none}
+}
 </style>
 @endpush
 
 @php
-  /* Flutter _tipYazi ile BİREBİR */
+  /* Flutter _tipYazi ile aynı */
   $tipAdi = function ($t) {
     return $t === 'servise_hazir' ? 'Servise hazır (mutfak)'
       : ($t === 'tasima'         ? 'Taşıma talebi'
@@ -78,7 +144,7 @@ body.koyu #gcroot .gc-kart.geciken{border-color:var(--kirmizi)}
       : ($t === 'siparis'        ? 'Sipariş verdi'
       : 'Garson çağırıyor'))));
   };
-  /* Flutter _tipIkon ile BİREBİR (material-icons-outlined karşılığı) */
+  /* Flutter _tipIkon ile aynı */
   $tipIkon = function ($t) {
     return $t === 'servise_hazir' ? 'room_service'
       : ($t === 'tasima'          ? 'swap_horiz'
@@ -87,26 +153,46 @@ body.koyu #gcroot .gc-kart.geciken{border-color:var(--kirmizi)}
       : ($t === 'siparis'         ? 'receipt_long'
       : 'notifications_active'))));
   };
-  /* Flutter vurgu: hesap=amber, diğer=kirmizi (taşıma mor buton, ikon rengi kirmizi) */
   $tipRenkVar = function ($t) {
     return $t === 'hesap' ? 'var(--amber)'
       : ($t === 'tasima'           ? 'var(--mor1)'
       : ($t === 'servise_hazir'    ? 'var(--yesil)'
-      : 'var(--kirmizi)'));
+      : ($t === 'odeme'            ? 'var(--amber)'
+      : 'var(--kirmizi)')));
   };
-  /* Flutter _sure: sn<60 -> 'X sn', else 'X dk' */
+  /* Filtre çipleri için kısa adlar */
+  $tipKisa = ['garson' => 'Garson', 'hesap' => 'Hesap', 'odeme' => 'Ödeme', 'servise_hazir' => 'Servise hazır', 'siparis' => 'Sipariş', 'tasima' => 'Taşıma'];
+  $tipNorm = function ($t) use ($tipKisa) { return isset($tipKisa[$t]) ? $t : 'garson'; };
   $sureYazi = function ($sn) {
     $sn = max(0, (int) $sn);
-    return $sn < 60 ? ($sn . ' sn') : (floor($sn / 60) . ' dk');
+    if ($sn < 60) return $sn . ' sn';
+    if ($sn < 3600) return floor($sn / 60) . ' dk';
+    return floor($sn / 3600) . ' sa ' . floor(($sn % 3600) / 60) . ' dk';
   };
-  $bekleyenSay = count($bekleyen ?? []);
-  $karsilananSay = count($karsilanan ?? []);
+  $oncesi = function ($sn) {
+    $sn = max(0, (int) $sn);
+    if ($sn < 60) return 'az önce';
+    if ($sn < 3600) return floor($sn / 60) . ' dk önce';
+    if ($sn < 86400) return floor($sn / 3600) . ' sa önce';
+    return floor($sn / 86400) . ' gün önce';
+  };
+  $bekleyen = $bekleyen ?? []; $karsilanan = $karsilanan ?? [];
+  $bekleyenSay = count($bekleyen);
+  $karsilananSay = count($karsilanan);
+  $gecikenSay = 0; $enUzun = 0; $tipSay = [];
+  foreach ($bekleyen as $c) {
+    $sn = (int) ($c['saniye'] ?? 0);
+    if ($sn >= 60) $gecikenSay++;
+    $enUzun = max($enUzun, $sn);
+    $k = $tipNorm($c['tip'] ?? 'garson');
+    $tipSay[$k] = ($tipSay[$k] ?? 0) + 1;
+  }
 @endphp
 
 @section('content')
 <div id="gcroot">
 
-{{-- ===== FLASH MESAJLARI ===== --}}
+{{-- ===== FLASH ===== --}}
 @if (session('ok'))
   <div class="rk-flash ok">✅ {{ session('ok') }}</div>
 @endif
@@ -114,175 +200,267 @@ body.koyu #gcroot .gc-kart.geciken{border-color:var(--kirmizi)}
   <div class="rk-flash err">⚠️ {{ session('hata') ?: $hata }}</div>
 @endif
 
-{{-- ===== AppBar benzer: özet + tümünü karşıla + sayaç ===== --}}
-{{-- Flutter AppBar title: 🔔 Garson Çağrıları + kırmızı badge + gold "Tümünü karşıla" + volume icon --}}
-<div class="gc-ozet">
-
-  {{-- Bekleyen sayaç (Flutter AppBar badge) --}}
-  <div class="rk-card gc-oc">
-    <span class="material-icons-outlined" style="color:var(--kirmizi)">notifications_active</span>
-    <span class="rk-sub">Bekleyen</span>
-    <b style="font-size:17px;color:{{ $bekleyenSay ? 'var(--kirmizi)' : 'var(--ink)' }}">{{ $bekleyenSay }}</b>
-    @if ($bekleyenSay)
-      <span class="gc-badge">{{ $bekleyenSay }}</span>
-    @endif
-  </div>
-
-  {{-- Son karşılanan sayaç --}}
-  <div class="rk-card gc-oc">
-    <span class="material-icons-outlined" style="color:var(--yesil)">done_all</span>
-    <span class="rk-sub">Son karşılanan</span>
-    <b style="font-size:17px;color:var(--ink)">{{ $karsilananSay }}</b>
-  </div>
-
-  {{-- Flutter "Tümünü karşıla" TextButton.icon (gold, sadece bekleyen varsa) --}}
-  @if ($bekleyenSay)
-    <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0">
+{{-- ===== ARAÇ ÇUBUĞU ===== --}}
+<div class="gc-arac">
+  <span class="gc-canli" id="gcCanli"><i></i><span id="gcCanliYazi">Canlı · her 5 sn güncellenir</span></span>
+  <span class="bosluk"></span>
+  <button type="button" class="gc-dugme" id="gcSesBtn" title="Yeni çağrıda sesli uyarı">
+    <span class="material-icons-outlined">volume_off</span><span class="yazi">Ses kapalı</span>
+  </button>
+  @if ($bekleyenSay > 1)
+    <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0" data-gc-form data-gc-hepsi>
       @csrf
       <input type="hidden" name="hepsi" value="1">
-      <button type="submit" class="gc-tumunu">
-        <span class="material-icons-outlined">done_all</span>
-        Tümünü karşıla
+      <button type="submit" class="gc-dugme ana">
+        <span class="material-icons-outlined">done_all</span><span class="yazi">Tümünü karşıla ({{ $bekleyenSay }})</span>
       </button>
     </form>
   @endif
-
-  {{-- Flutter 10 sn auto-yenile notu --}}
-  <span class="gc-yenile" id="gcSayac">10 sn'de bir yenilenir</span>
 </div>
 
-{{-- ===== BEKLEYEN ÇAĞRILAR BÖLÜMÜ ===== --}}
-{{-- Flutter: ListView.separated (bekleyen liste) --}}
-<div class="rk-bolum">
-  <span class="cubuk" style="background:var(--kirmizi)"></span>
-  <span class="b">Bekleyen Çağrılar</span>
-  @if ($bekleyenSay)
-    <span class="sayi" style="background:color-mix(in srgb,var(--kirmizi) 13%,transparent);color:var(--kirmizi)">{{ $bekleyenSay }}</span>
+{{-- ===== ÖZET ===== --}}
+<div class="gc-ozet">
+  <div class="gc-oc{{ $bekleyenSay ? ' alarm' : '' }}">
+    <div class="ik" style="background:color-mix(in srgb,var(--kirmizi) 12%,transparent);color:var(--kirmizi)"><span class="material-icons-outlined">notifications_active</span></div>
+    <div class="d"><div class="s">Bekleyen çağrı</div><div class="v">{{ $bekleyenSay }}</div></div>
+  </div>
+  <div class="gc-oc{{ $gecikenSay ? ' alarm' : '' }}">
+    <div class="ik" style="background:color-mix(in srgb,var(--amber) 14%,transparent);color:var(--amber)"><span class="material-icons-outlined">timer</span></div>
+    <div class="d"><div class="s">1 dk'yı geçen</div><div class="v">{{ $gecikenSay }}</div></div>
+  </div>
+  <div class="gc-oc">
+    <div class="ik" style="background:color-mix(in srgb,var(--mor1) 12%,transparent);color:var(--mor1)"><span class="material-icons-outlined">hourglass_top</span></div>
+    <div class="d"><div class="s">En uzun bekleme</div><div class="v" @if($bekleyenSay) data-gc-sn="{{ $enUzun }}" @endif>{{ $bekleyenSay ? $sureYazi($enUzun) : '—' }}</div></div>
+  </div>
+  <div class="gc-oc">
+    <div class="ik" style="background:color-mix(in srgb,var(--yesil) 12%,transparent);color:var(--yesil)"><span class="material-icons-outlined">done_all</span></div>
+    <div class="d"><div class="s">Son karşılanan</div><div class="v">{{ $karsilananSay }}</div></div>
+  </div>
+</div>
+
+{{-- ===== BEKLEYEN ÇAĞRILAR ===== --}}
+<div class="gc-bas">
+  <h3>Bekleyen Çağrılar
+    @if ($bekleyenSay)
+      <span class="n" style="background:color-mix(in srgb,var(--kirmizi) 12%,transparent);color:var(--kirmizi)">{{ $bekleyenSay }}</span>
+    @endif
+  </h3>
+  @if (count($tipSay) > 1)
+    <div class="gc-cipler" id="gcCipler">
+      <button type="button" class="gc-cip aktif" data-gc-tip="">Tümü <b>{{ $bekleyenSay }}</b></button>
+      @foreach ($tipKisa as $k => $ad)
+        @if (!empty($tipSay[$k]))
+          <button type="button" class="gc-cip" data-gc-tip="{{ $k }}">
+            <span class="material-icons-outlined" style="color:{{ $tipRenkVar($k) }}">{{ $tipIkon($k) }}</span>{{ $ad }} <b>{{ $tipSay[$k] }}</b>
+          </button>
+        @endif
+      @endforeach
+    </div>
   @endif
 </div>
 
 @if (!$bekleyenSay)
-  {{-- Flutter boş liste görünümü --}}
-  <div class="gc-bos" style="margin-bottom:24px">
-    <span class="material-icons-outlined">notifications_none</span>
-    <div class="b">Bekleyen çağrı yok</div>
-    <div class="s">QR menüden gelen çağrılar buraya anında düşer.</div>
+  <div class="gc-bos">
+    <div class="hal"><span class="material-icons-outlined">check_circle</span></div>
+    <div class="b">Her şey yolunda, bekleyen çağrı yok</div>
+    <div class="s">Masalardan QR ile gelen çağrılar burada anında belirir. Ses açıksa yeni çağrıda uyarı çalar.</div>
   </div>
 @else
-  {{-- Flutter ListView.separated, padding:14, gap:12 --}}
-  <div class="gc-liste">
+  <div class="gc-izgara" id="gcIzgara">
     @foreach ($bekleyen as $c)
       @php
         $tip      = $c['tip'] ?? 'garson';
-        $geciken  = ($c['saniye'] ?? 0) >= 60;   /* Flutter: sn >= 60 → kırmızı border */
-        $renkVar  = $tipRenkVar($tip);
+        $sn       = (int) ($c['saniye'] ?? 0);
         $tasimaMi = ($tip === 'tasima');
-        $masaAd   = $tasimaMi && !empty($c['hedef'])
-                      ? ($c['masa'] . ' → ' . $c['hedef'])
-                      : ($c['masa'] ?? '—');
       @endphp
-      {{-- Flutter _kart Container --}}
-      <div class="gc-kart{{ $geciken ? ' geciken' : '' }}">
-
-        {{-- Flutter: ikon kutu (50x50, borderRadius:14, vurgu %16 arka plan) --}}
-        <div class="gc-ikon"
-          style="background:color-mix(in srgb,{{ $renkVar }} 16%,transparent)">
-          <span class="material-icons-outlined" style="color:{{ $renkVar }}">{{ $tipIkon($tip) }}</span>
-        </div>
-
-        {{-- Flutter: Expanded Column (masa adı + tip yazısı) --}}
-        <div class="gc-meta">
-          <div class="gc-masa">{{ $masaAd }}</div>
-          <div class="gc-tip" style="color:{{ $renkVar }}">{{ $tipAdi($tip) }}</div>
-        </div>
-
-        {{-- Flutter: sağ kolon (süre + saat) --}}
-        <div class="gc-sure-col" style="margin-right:10px">
-          <div class="gc-sure" style="color:{{ $geciken ? 'var(--kirmizi)' : 'var(--gold)' }}">
-            {{ $sureYazi($c['saniye'] ?? 0) }}
+      <div class="gc-kart{{ $sn >= 60 ? ' geciken' : '' }}" data-gc-id="{{ $c['id'] }}" data-gc-kart-tip="{{ $tipNorm($tip) }}" style="--vurgu:{{ $tipRenkVar($tip) }}">
+        <div class="gc-ust">
+          <div class="gc-ikon"><span class="material-icons-outlined">{{ $tipIkon($tip) }}</span></div>
+          <div class="gc-meta">
+            <div class="gc-masa">
+              {{ $c['masa'] ?? '—' }}@if ($tasimaMi && !empty($c['hedef']))<span class="ok">→</span>{{ $c['hedef'] }}@endif
+            </div>
+            <span class="gc-tip">{{ $tipAdi($tip) }}</span>
           </div>
-          <div class="gc-saat">{{ $c['saat'] ?? '' }}</div>
+          <div class="gc-sure-col">
+            <div class="gc-sure" data-gc-sn="{{ $sn }}">{{ $sureYazi($sn) }}</div>
+            <div class="gc-saat">{{ $c['saat'] ?? '' }}'de geldi</div>
+          </div>
         </div>
-
-        {{-- Flutter: FilledButton — taşıma=mor+swap_horiz+'Taşı', diğer=yesil+'✓' --}}
-        <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0">
-          @csrf
-          <input type="hidden" name="id" value="{{ $c['id'] }}">
-          @if ($tasimaMi)
-            <button type="submit" class="gc-btn mor" title="Taşıma onayla">
-              <span class="material-icons-outlined">swap_horiz</span> Taşı
-            </button>
-          @else
-            <button type="submit" class="gc-btn yesil" title="Karşıla"
-              style="font-size:17px;font-weight:700">✓</button>
-          @endif
-        </form>
-
-      </div>{{-- /gc-kart --}}
+        <div class="gc-bar"><i data-gc-bar="{{ $sn }}" style="width:{{ min(100, round($sn / 3)) }}%"></i></div>
+        <div class="gc-alt">
+          <form method="POST" action="/garson-cagrilari/karsilandi" style="margin:0" data-gc-form>
+            @csrf
+            <input type="hidden" name="id" value="{{ $c['id'] }}">
+            @if ($tasimaMi)
+              <button type="submit" class="gc-btn mor"><span class="material-icons-outlined">swap_horiz</span> Taşımayı onayla</button>
+            @else
+              <button type="submit" class="gc-btn yesil"><span class="material-icons-outlined">check</span> Karşılandı</button>
+            @endif
+          </form>
+        </div>
+      </div>
     @endforeach
-  </div>{{-- /gc-liste --}}
+    <div class="gc-filtre-bos" id="gcFiltreBos">Bu tipte bekleyen çağrı yok.</div>
+  </div>
 @endif
 
-{{-- ===== SON KARŞILANANLAR (web bonus — Flutter'da list sonundaymış gibi düşün) ===== --}}
+{{-- ===== SON KARŞILANANLAR ===== --}}
 @if ($karsilananSay)
-  <div class="rk-bolum" style="margin-top:8px">
-    <span class="cubuk" style="background:var(--yesil)"></span>
-    <span class="b">Son Karşılananlar</span>
-    <span class="sayi"
-      style="background:color-mix(in srgb,var(--yesil) 13%,transparent);color:var(--yesil)">{{ $karsilananSay }}</span>
-  </div>
-  <div class="rk-tablo gc-karsilanan-tablo">
-    <table>
-      <thead>
-        <tr>
-          <th>Masa</th>
-          <th>Tip</th>
-          <th>Saat</th>
-          <th class="sag">Durum</th>
-        </tr>
-      </thead>
-      <tbody>
-        @foreach ($karsilanan as $c)
-          @php
-            $tip     = $c['tip'] ?? 'garson';
-            $masaAd  = ($tip === 'tasima' && !empty($c['hedef']))
-                         ? ($c['masa'] . ' → ' . $c['hedef'])
-                         : ($c['masa'] ?? '—');
-          @endphp
-          <tr>
-            <td style="font-weight:700;color:var(--sub2)">{{ $masaAd }}</td>
-            <td class="rk-sub">
-              <span class="material-icons-outlined"
-                style="font-size:17px;color:{{ $tipRenkVar($tip) }};vertical-align:-3px">{{ $tipIkon($tip) }}</span>
-              {{ $tipAdi($tip) }}
-            </td>
-            <td class="rk-sub">{{ $c['saat'] ?? '' }}</td>
-            <td class="sag">
-              <span class="rk-rozet"
-                style="color:var(--yesil);border-color:color-mix(in srgb,var(--yesil) 40%,transparent);background:color-mix(in srgb,var(--yesil) 13%,transparent)">
-                <span class="material-icons-outlined">check</span> Karşılandı
-              </span>
-            </td>
-          </tr>
-        @endforeach
-      </tbody>
-    </table>
-  </div>
+  <details class="gc-gecmis" id="gcGecmis" {{ $bekleyenSay ? '' : 'open' }}>
+    <summary>
+      <span class="material-icons-outlined" style="color:var(--yesil)">history</span>
+      Son Karşılananlar <span class="n">{{ $karsilananSay }}</span>
+      <span class="material-icons-outlined ac">expand_more</span>
+    </summary>
+    @foreach ($karsilanan as $c)
+      @php $tip = $c['tip'] ?? 'garson'; @endphp
+      <div class="gc-satir" style="--vurgu:{{ $tipRenkVar($tip) }}">
+        <span class="ki"><span class="material-icons-outlined">{{ $tipIkon($tip) }}</span></span>
+        <span class="m">{{ $c['masa'] ?? '—' }}@if ($tip === 'tasima' && !empty($c['hedef'])) → {{ $c['hedef'] }}@endif</span>
+        <span class="t">{{ $tipAdi($tip) }}</span>
+        <span class="z"><b>{{ $c['saat'] ?? '' }}</b>{{ $oncesi($c['saniye'] ?? 0) }}</span>
+      </div>
+    @endforeach
+  </details>
 @endif
 
 </div>{{-- /gcroot --}}
 
-{{-- ===== Flutter 4 sn poll karşılığı: 10 sn'de bir sayfa yenile + geri sayım ===== --}}
 <script>
 (function () {
-  var sn = 10, el = document.getElementById('gcSayac');
-  function tick() {
-    sn--;
-    if (el) el.textContent = sn > 0 ? (sn + ' sn\'de bir yenilenir') : 'Yenileniyor…';
-    if (sn <= 0) { window.location.reload(); return; }
-    setTimeout(tick, 1000);
+  var KOK = 'gcroot', SES_ANAHTAR = 'gc_ses', filtre = '', gecmisAcik = null, bilinen = null;
+  var sesAcik = false, ctx = null, sonCekim = Date.now(), yukluyor = false;
+  try { sesAcik = localStorage.getItem(SES_ANAHTAR) === '1'; } catch (e) {}
+
+  function kok() { return document.getElementById(KOK); }
+  function sureYazi(sn) {
+    if (sn < 60) return sn + ' sn';
+    if (sn < 3600) return Math.floor(sn / 60) + ' dk';
+    return Math.floor(sn / 3600) + ' sa ' + Math.floor((sn % 3600) / 60) + ' dk';
   }
-  setTimeout(tick, 1000);
+  function idler() {
+    var s = {}; kok().querySelectorAll('[data-gc-id]').forEach(function (k) { s[k.getAttribute('data-gc-id')] = 1; }); return s;
+  }
+
+  function bip() {
+    if (!sesAcik) return;
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.18].forEach(function (t) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = t ? 1175 : 880;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.16);
+        o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.17);
+      });
+    } catch (e) {}
+  }
+
+  function sesCiz() {
+    var b = document.getElementById('gcSesBtn'); if (!b) return;
+    b.classList.toggle('ses-acik', sesAcik);
+    b.querySelector('.material-icons-outlined').textContent = sesAcik ? 'volume_up' : 'volume_off';
+    b.querySelector('.yazi').textContent = sesAcik ? 'Ses açık' : 'Ses kapalı';
+  }
+
+  function filtreUygula() {
+    var r = kok(), gorunen = 0;
+    r.querySelectorAll('[data-gc-tip]').forEach(function (c) { c.classList.toggle('aktif', c.getAttribute('data-gc-tip') === filtre); });
+    if (filtre && !r.querySelector('[data-gc-tip="' + filtre + '"]')) { filtre = ''; return filtreUygula(); }
+    r.querySelectorAll('[data-gc-kart-tip]').forEach(function (k) {
+      var g = !filtre || k.getAttribute('data-gc-kart-tip') === filtre;
+      k.style.display = g ? '' : 'none'; if (g) gorunen++;
+    });
+    var fb = document.getElementById('gcFiltreBos'); if (fb) fb.style.display = gorunen ? 'none' : 'block';
+  }
+
+  function bagla() {
+    var r = kok(); if (!r) return;
+    sesCiz(); filtreUygula();
+    var g = document.getElementById('gcGecmis');
+    if (g && gecmisAcik !== null) g.open = gecmisAcik;
+    var simdi = idler();
+    if (bilinen) {
+      var yeniVar = false;
+      Object.keys(simdi).forEach(function (id) {
+        if (!bilinen[id]) { yeniVar = true; var k = r.querySelector('[data-gc-id="' + id + '"]'); if (k) k.classList.add('yeni'); }
+      });
+      if (yeniVar) bip();
+    }
+    bilinen = simdi;
+    // Sekme başlığına bekleyen sayısı
+    var n = Object.keys(simdi).length;
+    document.title = (n ? '(' + n + ') ' : '') + 'Garson Çağrıları — ResteOS';
+  }
+
+  function yenile(html) {
+    var d = new DOMParser().parseFromString(html, 'text/html'), yeni = d.getElementById(KOK);
+    if (!yeni) return false;
+    var g = document.getElementById('gcGecmis'); if (g) gecmisAcik = g.open;
+    kok().innerHTML = yeni.innerHTML;
+    sonCekim = Date.now(); bagla();
+    var c = document.getElementById('gcCanli'); if (c) c.classList.remove('kopuk');
+    return true;
+  }
+
+  function cek() {
+    if (yukluyor || document.hidden) return;
+    yukluyor = true;
+    fetch(location.pathname, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (res) { return res.text(); })
+      .then(function (h) { if (!yenile(h)) throw 0; })
+      .catch(function () {
+        var c = document.getElementById('gcCanli'), y = document.getElementById('gcCanliYazi');
+        if (c) c.classList.add('kopuk'); if (y) y.textContent = 'Bağlantı yok · tekrar deneniyor';
+      })
+      .then(function () { yukluyor = false; });
+  }
+
+  // Süre sayaçlarını her saniye canlı ilerlet (sunucuya gitmeden)
+  setInterval(function () {
+    var r = kok(); if (!r) return;
+    var gecen = Math.floor((Date.now() - sonCekim) / 1000);
+    r.querySelectorAll('[data-gc-sn]').forEach(function (el) {
+      var sn = parseInt(el.getAttribute('data-gc-sn'), 10) + gecen; el.textContent = sureYazi(sn);
+      var k = el.closest('.gc-kart'); if (k && sn >= 60) k.classList.add('geciken');
+    });
+    r.querySelectorAll('[data-gc-bar]').forEach(function (el) {
+      el.style.width = Math.min(100, (parseInt(el.getAttribute('data-gc-bar'), 10) + gecen) / 3) + '%';
+    });
+  }, 1000);
+  setInterval(cek, 5000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) cek(); });
+
+  // Tıklamalar (içerik yenilense de çalışsın diye delege)
+  document.addEventListener('click', function (e) {
+    var cip = e.target.closest('#' + KOK + ' [data-gc-tip]');
+    if (cip) { filtre = cip.getAttribute('data-gc-tip'); filtreUygula(); return; }
+    if (e.target.closest('#gcSesBtn')) {
+      sesAcik = !sesAcik;
+      try { localStorage.setItem(SES_ANAHTAR, sesAcik ? '1' : '0'); } catch (er) {}
+      sesCiz(); if (sesAcik) bip();
+    }
+  });
+
+  // Karşıla: sayfa yenilemeden gönder, dönen sayfayı yerine koy
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest('#' + KOK + ' [data-gc-form]'); if (!f) return;
+    e.preventDefault();
+    var gonder = function () {
+      var k = f.closest('.gc-kart'); if (k) k.classList.add('gidiyor');
+      fetch(f.action, { method: 'POST', body: new FormData(f), credentials: 'same-origin' })
+        .then(function (res) { return res.text(); })
+        .then(function (h) { if (!yenile(h)) f.submit(); })
+        .catch(function () { f.submit(); });
+    };
+    if (f.hasAttribute('data-gc-hepsi') && window.rkOnay) {
+      window.rkOnay('Bekleyen tüm çağrılar karşılandı olarak işaretlensin mi?', gonder, null, 'Tümünü karşıla');
+    } else gonder();
+  });
+
+  bagla();
 })();
 </script>
 @endsection
