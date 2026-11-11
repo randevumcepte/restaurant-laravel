@@ -54,6 +54,7 @@ class PanelYetki
         try { $izin = function_exists('_panelYetkiVar') ? _panelYetkiVar($p, $key) : true; } catch (\Throwable $e) { $izin = true; }
         if ($izin && function_exists('_kasiyerSayfaIzinli')) $izin = _kasiyerSayfaIzinli($p, $eslesen);
         if ($izin && in_array($eslesen, ['/uretim-riski', '/parti-takip', '/sayim'], true) && function_exists('_mutfakAltIstasyonMu') && _mutfakAltIstasyonMu($p)) $izin = false; // mutfak geneli ekranlar: şef ve yönetici
+        if ($izin && $eslesen === '/bulasik' && function_exists('_bulasikGorur') && !_bulasikGorur($p)) $izin = false;
         if (!$izin) {
             return response(view('yetkisiz', ['sayfa' => $eslesen]), 403);
         }

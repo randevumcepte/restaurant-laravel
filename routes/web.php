@@ -19364,6 +19364,18 @@ if (!function_exists('_mutfakIstasyonUrunleri')) {
         return $kayit[$id] = array_map('intval', $ids);
     }
 }
+if (!function_exists('_bulasikGorur')) {
+    // Bulaşıkhane görevleri: bulaşıkhane ekibi, mutfak şefi, yönetici ve departmansız (tek kişilik) mutfak. Aşçı/istasyon çalışanı görmez.
+    function _bulasikGorur($p)
+    {
+        if (!$p) return false;
+        $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
+        if (in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor'], true)) return true;
+        $kod = _personelDepartmanKodu($p);
+        if (!in_array($kod, ['mutfak', 'soguk_mutfak', 'pastane', 'kasap'], true)) return true;
+        return $kod === 'mutfak' && !empty($p->departman_sorumlu);
+    }
+}
 if (!function_exists('_mutfakAltIstasyonMu')) {
     // Soğuk/pastane/kasap/bulaşıkhane çalışanı mı (yönetici değil)? Mutfak geneli ekranlar buna kapalı.
     function _mutfakAltIstasyonMu($p)

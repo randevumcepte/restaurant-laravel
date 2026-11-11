@@ -386,6 +386,10 @@
         $gruplar['Satış & Servis'] = array_merge($_panelTasi, $gruplar['Satış & Servis'] ?? []);
         unset($gruplar['Panel']);
     }
+    // Bulaşıkhane görevleri aşçıya ve istasyon çalışanına görünmez
+    if ($_kp && !_bulasikGorur($_kp)) {
+        foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => $it[0] !== '/bulasik'));
+    }
     // Alt istasyon çalışanı mutfak geneli ekranları görmez (şef ve yönetici görür)
     if ($_kp && _mutfakAltIstasyonMu($_kp)) {
         foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => !in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim'], true)));
