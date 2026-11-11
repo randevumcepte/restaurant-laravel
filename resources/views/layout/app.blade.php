@@ -18,7 +18,7 @@
     <style>
     html._koyu body{}
     .rk-grp{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;
-      font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;opacity:1;color:#1e293b;
+      font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;opacity:1;color:#475569;
       padding:15px 16px 9px;margin-top:6px;border-top:1px solid rgba(120,120,140,.18)}
     body.koyu .rk-grp{color:#e2e8f0}
     .rk-grp:first-of-type{border-top:0;margin-top:0}
@@ -29,7 +29,7 @@
     .rk-grp.kapali .rk-grp-ok{transform:rotate(-90deg)}
     .rk-grp.kapali + .rk-grp-body{display:none}
     /* ÜST BAŞLIK (kategori) — açılır bölüm başlığı */
-    .rk-cat{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;padding:12px 16px;margin-top:8px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--mor1,#7C3AED);background:color-mix(in srgb,var(--mor1,#7C3AED) 9%,transparent);border-top:1px solid var(--line)}
+    .rk-cat{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;padding:12px 16px;margin-top:8px;font-size:11.5px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--mor1,#7C3AED);background:color-mix(in srgb,var(--mor1,#7C3AED) 9%,transparent);border-top:1px solid var(--line)}
     .rk-cat:first-of-type{margin-top:2px}
     .rk-cat .rk-cat-ik{font-size:17px}
     .rk-cat .rk-cat-ad{flex:1}
@@ -85,10 +85,14 @@
     .rk-sp-foto{flex:none;width:40px;height:40px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;font-size:16px;font-weight:800}
     .rk-sp-foto img{width:100%;height:100%;object-fit:cover}
     .rk-sp-ad{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
-    .rk-sp-ad b{font-size:14px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rk-sp-ad b{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .rk-sp-ad small{font-size:12px;font-weight:600;color:var(--sub)}
     .rk-sp-ok{flex:none;font-size:20px;color:var(--sub)}
-    .rk-side-foot a.rk-sp-cikis{padding:11px 14px}
+    .rk-side-foot a.rk-sp-cikis{padding:11px 14px;font-weight:500}
+    /* Menü yazıları yumuşak: bağlantı normal kalınlık, seçili sayfa hafif kalın (panel-kit 600/700 idi) */
+    .rk-menu a{font-weight:400}
+    .rk-menu a.aktif{font-weight:600}
+    .rk-pin .pt{font-weight:500}
     @media(min-width:641px){
         .rk-side:not(:hover):not(.genis) .rk-side-foot{padding:10px 8px}
         .rk-side:not(:hover):not(.genis) .rk-side-foot a{border-color:transparent;justify-content:center;padding-left:0;padding-right:0}
