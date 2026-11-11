@@ -3,7 +3,8 @@
         if (!$_pp) return true;
         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
         if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]); // başka departmanın brifingi görünmez
-        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda'])) return true; // kişisel ajanda herkese açık
+        if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp); // hattı olmayana boş sayfa göstermesin
+        if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true; // kişisel ajanda herkese açık
         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
         return false;                                                          // haritasız = kısıtlı role gizle
     }));

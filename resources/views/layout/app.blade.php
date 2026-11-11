@@ -382,9 +382,16 @@
     try { $_kp = _posPersonel(); if ($_kp && _kasiyerMi($_kp)) { $gruplar = _kasiyerMenu($gruplar, $_kp); $_kasiyerMenu = true; } } catch (\Throwable $e) {}
     // Panel başlığı yalnız kasalarda; diğer herkeste Mutfak ve Rezervasyon kendi gruplarında, kalanı Satış & Servis'e geçer
     if (!$_kasiyerMenu && isset($gruplar['Panel'])) {
-        $_panelTasi = array_values(array_filter($gruplar['Panel'], fn ($it) => in_array($it[0], ['/departman-brief', '/dashboard', '/pos', '/paket'], true)));
+        $_panelTasi = array_values(array_filter($gruplar['Panel'], fn ($it) => in_array($it[0], ['/dashboard', '/pos', '/paket'], true)));
         $gruplar['Satış & Servis'] = array_merge($_panelTasi, $gruplar['Satış & Servis'] ?? []);
         unset($gruplar['Panel']);
+        // Sabah Brifingim satışla ilgisiz: en üstte tek bağlantı (sahip/müdürün Patron AI Sabah Brifingi var)
+        if ($_kp && !in_array($_kp->rol ?? '', ['sahip', 'mudur'], true)) {
+            $_brf = ['Brifing' => [['/departman-brief', 'wb_sunny', 'Sabah Brifingim', '#F59E0B']]];
+            $_yeniG = [];
+            foreach ($gruplar as $_ga => $_gi) { $_yeniG[$_ga] = $_gi; if ($_ga === 'Ajanda') $_yeniG += $_brf; }
+            $gruplar = $_yeniG + $_brf;
+        }
     }
     // Bulaşıkhane görevleri aşçıya ve istasyon çalışanına görünmez
     if ($_kp && !_bulasikGorur($_kp)) {
@@ -505,7 +512,8 @@
                     if (!$_pp) return true;
                     if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
-                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda'])) return true;
+                    if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
+                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
                 };
@@ -514,7 +522,7 @@
             {{-- Kategorisiz (standalone) üst gruplar: Patron AI, __PIN__ — sırayı koru --}}
             @foreach ($gruplar as $grupAd => $items)
                 @if (!isset($_grupKat[$grupAd]))
-                    @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
+                    @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => $grupAd === 'Brifing'])
                 @endif
             @endforeach
             {{-- ÜST BAŞLIKLAR (açılır) → departman grupları --}}
