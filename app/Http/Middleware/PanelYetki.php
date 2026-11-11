@@ -25,6 +25,7 @@ class PanelYetki
         if (function_exists('_mutfakSefYetkiTemizle')) _mutfakSefYetkiTemizle();
         if (function_exists('_talepYetkiTemizle')) _talepYetkiTemizle();
         if (function_exists('_mutfakSefMenuYetki')) _mutfakSefMenuYetki();
+        if (function_exists('_mutfakSefRezYetki')) _mutfakSefRezYetki();
         if ($sinir = $this->ucretliSinir($request, $path)) return $sinir;
         if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
         if ($subeRed = $this->subeKapi($request, $path)) return $subeRed;

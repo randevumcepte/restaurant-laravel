@@ -406,6 +406,11 @@
         unset($gruplar['Menü & Ürünler']);
         $gruplar['Mutfak / BOH'][] = ['/menu', 'restaurant_menu', 'Menü Yönetimi', '#7C3AED'];
     }
+    // Mutfak ekibi rezervasyonu Mutfak / BOH'taki Rezervasyonlar'dan görür; satış/karşılama grupları gizli
+    if ($_kp && _mutfakEkibiMi($_kp)) {
+        unset($gruplar['Rezervasyon Satış'], $gruplar['Satış & Servis']);
+        foreach ($gruplar['Mutfak / BOH'] ?? [] as $_i => $_it) if ($_it[0] === '/rezervasyon') $gruplar['Mutfak / BOH'][$_i][2] = 'Rezervasyonlar';
+    }
     // Mutfak ekibinde Departman Operasyon grubu yok: içindeki (Bulaşıkhane görevleri vb.) Mutfak / BOH altında
     if ($_kp && isset($gruplar['Departman Operasyon']) && _mutfakEkibiMi($_kp)) {
         $gruplar['Mutfak / BOH'] = array_merge($gruplar['Mutfak / BOH'] ?? [], $gruplar['Departman Operasyon']);
@@ -580,7 +585,7 @@
                         @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
                     @endforeach
                 @elseif (count($_catGruplar))
-                    <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM' || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
+                    <div class="rk-cat{{ ($_catAktif || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
                     <div class="rk-cat-body">
                         @foreach ($_catGruplar as $grupAd => $items)
                             {{-- AYARLAR kategorisinin tek grubu başlıksız: sayfalar doğrudan kategorinin altında --}}

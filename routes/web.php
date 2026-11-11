@@ -9577,7 +9577,7 @@ if (!function_exists('_departmanSablonlari')) {
                 'sayfa' => ['gor_pos', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_cari', 'gor_paket', 'gor_rezervasyon', 'gor_masa_yonetim']],
             // ===== MUTFAK (BOH) ===== (üst: Mutfak Şefi; alt departmanlar aynı grupta)
             'mutfak' => ['ad' => 'Mutfak (Sıcak)', 'grup' => 'Mutfak (BOH)', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'ai' => 'kisitli',
-                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => ['gor_stok', 'gor_sayim', 'gor_talep', 'gor_menu'], // şef istasyon taleplerini onaylar, menüyü (ürün/fiyat/reçete) yönetir
+                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => ['gor_stok', 'gor_sayim', 'gor_talep', 'gor_menu', 'gor_rezervasyon'], // şef istasyon taleplerini onaylar, menüyü (ürün/fiyat/reçete) yönetir, rezervasyonları görür
                 'sayfa' => ['gor_mutfak']], // aşçı/komi yalnız mutfak; stok ve sayım şefte (sayımı başkasına elle verilir)
             'soguk_mutfak' => ['ad' => 'Soğuk Mutfak / Garde Manger', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kitchen', 'renk' => '#10B981', 'ai' => 'kisitli',
                 'unvan' => ['Soğuk Mutfak Şefi (Garde Manger)', 'Soğukçu', 'Komi'], 'sorumlu_ek' => [],
@@ -19404,6 +19404,29 @@ if (!function_exists('_talepYetkiTemizle')) {
                 resto_ayar_yaz('talep_yetki_v1', '1');
             }
             cache()->put('talep_yetki_v1', 1, now()->addDays(30));
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_mutfakSefRezYetki')) {
+    // Bir kez: mutfak şablonunun sorumlu ekine ve mevcut mutfak sorumlularına Rezervasyonlar (gor_rezervasyon) eklenir
+    function _mutfakSefRezYetki()
+    {
+        if (cache()->get('mutfak_sef_rez_v1')) return;
+        try {
+            if (resto_ayar_al('mutfak_sef_rez_v1') != '1' && Schema::hasTable('departmanlar')) {
+                foreach (DB::table('departmanlar')->where('kod', 'mutfak')->get(['id', 'sorumlu_ek']) as $d) {
+                    $ek = json_decode((string) $d->sorumlu_ek, true) ?: [];
+                    if (!in_array('gor_rezervasyon', $ek, true)) { $ek[] = 'gor_rezervasyon'; DB::table('departmanlar')->where('id', $d->id)->update(['sorumlu_ek' => json_encode($ek)]); }
+                    foreach (DB::table('personeller')->where('departman_id', $d->id)->where('departman_sorumlu', 1)->get(['id', 'sayfa_yetki']) as $k) {
+                        $py = json_decode((string) $k->sayfa_yetki, true);
+                        if (!is_array($py) || !empty($py['gor_rezervasyon'])) continue;
+                        $py['gor_rezervasyon'] = 1;
+                        DB::table('personeller')->where('id', $k->id)->update(['sayfa_yetki' => json_encode($py)]);
+                    }
+                }
+                resto_ayar_yaz('mutfak_sef_rez_v1', '1');
+            }
+            cache()->put('mutfak_sef_rez_v1', 1, now()->addDays(30));
         } catch (\Throwable $e) {}
     }
 }
