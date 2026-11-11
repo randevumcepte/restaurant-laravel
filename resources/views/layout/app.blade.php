@@ -519,14 +519,34 @@
                 };
                 $_grupGorunur = function ($items) use ($_itemGorunur) { foreach ($items as $it) if ($_itemGorunur($it)) return true; return false; };
             @endphp
-            {{-- Kategorisiz (standalone) üst gruplar: Patron AI, __PIN__ — sırayı koru --}}
+            @php
+                // En dar personel (yönetici/sorumlu değil, kademe Personel/Mutfak): kategori ve grup başlığı yok, ilgili sayfalar düz liste
+                $_kadM = $_pp ? ($_pp->kademe ?? _rolKademe($_pp->rol ?? '')) : null;
+                $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
+            @endphp
+            @if ($_duzMenu)
+                @php
+                    // Ajanda ayarların üstünde; aynı sayfa iki grupta varsa bir kez
+                    $_sira = array_merge(array_diff(array_keys($gruplar), ['Ajanda', 'Ayarlar & Entegrasyon']), ['Ajanda', 'Ayarlar & Entegrasyon']);
+                    $_gorulen = [];
+                @endphp
+                @foreach ($_sira as $grupAd)
+                    @continue(!isset($gruplar[$grupAd]))
+                    @php $items = array_values(array_filter($gruplar[$grupAd], function ($it) use (&$_gorulen) { if (isset($_gorulen[$it[0]])) return false; $_gorulen[$it[0]] = 1; return true; })); @endphp
+                    @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => true])
+                @endforeach
+            @else
+            {{-- Kategorisiz (standalone) üst gruplar: Patron AI, __PIN__ — sırayı koru (Ajanda AYARLAR'ın üstünde) --}}
             @foreach ($gruplar as $grupAd => $items)
-                @if (!isset($_grupKat[$grupAd]))
+                @if (!isset($_grupKat[$grupAd]) && $grupAd !== 'Ajanda')
                     @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => $grupAd === 'Brifing'])
                 @endif
             @endforeach
             {{-- ÜST BAŞLIKLAR (açılır) → departman grupları --}}
             @foreach ($_kategoriler as $katAd => $_katGrupAdlari)
+                @if ($katAd === 'AYARLAR' && isset($gruplar['Ajanda']))
+                    @include('layout._menu_grup', ['grupAd' => 'Ajanda', 'items' => $gruplar['Ajanda']])
+                @endif
                 @php
                     $_catGruplar = [];
                     foreach ($_katGrupAdlari as $_g) if (isset($gruplar[$_g]) && $_grupGorunur($gruplar[$_g])) $_catGruplar[$_g] = $gruplar[$_g];
@@ -543,6 +563,7 @@
                     </div>
                 @endif
             @endforeach
+            @endif
         </nav>
         <div class="rk-side-foot">
             @if ($_pp)
