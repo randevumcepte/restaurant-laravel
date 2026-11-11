@@ -258,7 +258,7 @@
         @csrf
         <div class="aj-tipler">
           @foreach ($tipler as $k => $t)
-            <button type="button" class="aj-tip {{ $k === 'hatirlatma' ? 'sec' : '' }}" data-tip="{{ $k }}" style="--tc:var(--t-{{ $k }})" onclick="ajTip(this)">
+            <button type="button" class="aj-tip {{ $k === 'hatirlatma' ? 'sec' : '' }}" data-tip="{{ $k }}" style="--tc:var(--t-{{ $k }})">
               <span class="material-icons-outlined">{{ $t[0] }}</span>{{ $t[1] }}
             </button>
           @endforeach
@@ -590,6 +590,10 @@
     document.getElementById('ajFormKart').style.setProperty('--tc', 'var(--t-' + el.dataset.tip + ')');
     onizle();
   };
+  // Inline onclick="ajTip()" formdaki id="ajTip" input'una çözülüyordu (form named access) → dinleyiciyle bağla
+  document.querySelector('.aj-tipler').addEventListener('click', function(e){
+    var b = e.target.closest('.aj-tip'); if (b) window.ajTip(b);
+  });
   function tarihAyarla(k){
     tarihInp.value = k;
     document.querySelectorAll('#ajGunCip .aj-cip').forEach(function(c){ c.classList.toggle('sec', ymd(gunEkle(+c.dataset.gun)) === k); });
