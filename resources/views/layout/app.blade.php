@@ -398,6 +398,11 @@
         unset($gruplar['Satın Alma']);
         $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
     }
+    // Şefin Menü Yönetimi de Mutfak / BOH'ta; Menü & Ürünler (Happy Hour, Fix Menü, kampanya) mutfak ekibinde gizli
+    if ($_kp && isset($gruplar['Menü & Ürünler']) && _mutfakEkibiMi($_kp)) {
+        unset($gruplar['Menü & Ürünler']);
+        $gruplar['Mutfak / BOH'][] = ['/menu', 'restaurant_menu', 'Menü Yönetimi', '#7C3AED'];
+    }
     // Bulaşıkhane görevleri aşçıya ve istasyon çalışanına görünmez
     if ($_kp && !_bulasikGorur($_kp)) {
         foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => $it[0] !== '/bulasik'));
