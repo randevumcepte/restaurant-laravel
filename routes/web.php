@@ -19495,6 +19495,15 @@ if (!function_exists('_talepAnaMutfakDepId')) {
         } catch (\Throwable $e) { return null; }
     }
 }
+if (!function_exists('_aiAsistanLinkAcik')) {
+    // Menüdeki departman AI asistanı: AI izni tek başına yetmez, sayfanın da istediği departman yetkisi gerekir (şefe İK AI görünmesin). null = AI bağlantısı değil
+    function _aiAsistanLinkAcik($p, $url)
+    {
+        $ek = ['/ik-asistan' => 'gor_personel', '/departman-asistan?dep=mutfak' => 'gor_mutfak', '/departman-asistan?dep=finans' => 'gor_finans', '/satinalma-asistan' => 'gor_satinalma'][$url] ?? null;
+        if ($ek === null) return null;
+        return _panelYetkiVar($p, 'gor_ai_asistan') && _panelYetkiVar($p, $ek);
+    }
+}
 if (!function_exists('_waHatGorur')) {
     // Menüde WhatsApp Hatları: yönetici ya da kendisine aktif hat atanmış personel (hattı olmayana boş sayfa göstermesin)
     function _waHatGorur($p)

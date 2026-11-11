@@ -523,6 +523,7 @@
                     if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
+                    if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
