@@ -9577,19 +9577,19 @@ if (!function_exists('_departmanSablonlari')) {
                 'sayfa' => ['gor_pos', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_cari', 'gor_paket', 'gor_rezervasyon', 'gor_masa_yonetim']],
             // ===== MUTFAK (BOH) ===== (üst: Mutfak Şefi; alt departmanlar aynı grupta)
             'mutfak' => ['ad' => 'Mutfak (Sıcak)', 'grup' => 'Mutfak (BOH)', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'ai' => 'kisitli',
-                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => array_merge($yon, ['gor_stok', 'gor_sayim']),
+                'unvan' => ['Mutfak Şefi (Executive Chef)', 'Sous Chef', 'Chef de Partie', 'Aşçı', 'Komi'], 'sorumlu_ek' => ['gor_stok', 'gor_sayim'],
                 'sayfa' => ['gor_mutfak']], // aşçı/komi yalnız mutfak; stok ve sayım şefte (sayımı başkasına elle verilir)
             'soguk_mutfak' => ['ad' => 'Soğuk Mutfak / Garde Manger', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kitchen', 'renk' => '#10B981', 'ai' => 'kisitli',
-                'unvan' => ['Soğuk Mutfak Şefi (Garde Manger)', 'Soğukçu', 'Komi'], 'sorumlu_ek' => $yon,
+                'unvan' => ['Soğuk Mutfak Şefi (Garde Manger)', 'Soğukçu', 'Komi'], 'sorumlu_ek' => [],
                 'sayfa' => ['gor_mutfak']],
             'pastane' => ['ad' => 'Pastane / Tatlı', 'grup' => 'Mutfak (BOH)', 'ikon' => 'cake', 'renk' => '#EC4899', 'ai' => 'kisitli',
-                'unvan' => ['Pastane Şefi (Pastry Chef)', 'Pastacı', 'Komi'], 'sorumlu_ek' => $yon,
+                'unvan' => ['Pastane Şefi (Pastry Chef)', 'Pastacı', 'Komi'], 'sorumlu_ek' => [],
                 'sayfa' => ['gor_mutfak']],
             'kasap' => ['ad' => 'Kasap / Et Hazırlık', 'grup' => 'Mutfak (BOH)', 'ikon' => 'kebab_dining', 'renk' => '#DC2626', 'ai' => 'kisitli',
-                'unvan' => ['Kasap Ustası', 'Kasap Yardımcısı'], 'sorumlu_ek' => $yon,
+                'unvan' => ['Kasap Ustası', 'Kasap Yardımcısı'], 'sorumlu_ek' => [],
                 'sayfa' => ['gor_mutfak']],
             'bulasik' => ['ad' => 'Bulaşıkhane / Steward', 'grup' => 'Mutfak (BOH)', 'ikon' => 'wash', 'renk' => '#06B6D4', 'ai' => 'kapali',
-                'unvan' => ['Bulaşıkhane Sorumlusu (Chief Steward)', 'Bulaşıkçı / Steward'], 'sorumlu_ek' => ['gor_puantaj'],
+                'unvan' => ['Bulaşıkhane Sorumlusu (Chief Steward)', 'Bulaşıkçı / Steward'], 'sorumlu_ek' => [],
                 'sayfa' => ['gor_mutfak']],
             // ===== TEDARİK & DEPO =====
             'satinalma' => ['ad' => 'Satın Alma', 'grup' => 'Tedarik & Depo', 'ikon' => 'inventory_2', 'renk' => '#0EA5E9', 'ai' => 'kisitli',
@@ -19364,6 +19364,41 @@ if (!function_exists('_mutfakIstasyonUrunleri')) {
             }
         } catch (\Throwable $e) {}
         return $kayit[$id] = array_map('intval', $ids);
+    }
+}
+if (!function_exists('_mutfakEkibiMi')) {
+    // Mutfak ailesi çalışanı ya da sorumlusu (yönetici/satın almacı değil): menüde yalnız mutfak işleri
+    function _mutfakEkibiMi($p)
+    {
+        if (!$p) return false;
+        $kademe = $p->kademe ?? _rolKademe($p->rol ?? '');
+        if (in_array($p->rol ?? '', ['sahip', 'mudur'], true) || in_array($kademe, ['sahip', 'supervizor', 'satinalma'], true)) return false;
+        return in_array(_personelDepartmanKodu($p), ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bulasik'], true);
+    }
+}
+if (!function_exists('_mutfakSefYetkiTemizle')) {
+    // Bir kez: mutfak ailesi sorumlularına şablondan gelen Raporlar (ciro), Puantaj, Hareketler kapanır
+    function _mutfakSefYetkiTemizle()
+    {
+        if (cache()->get('mutfak_sef_yetki_v1')) return;
+        try {
+            if (resto_ayar_al('mutfak_sef_yetki_v1') != '1' && Schema::hasTable('departmanlar')) {
+                $kaldir = ['gor_raporlar', 'gor_puantaj', 'gor_hareketler'];
+                foreach (DB::table('departmanlar')->whereIn('kod', ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bulasik'])->get(['id', 'sorumlu_ek']) as $d) {
+                    $ek = json_decode((string) $d->sorumlu_ek, true);
+                    if (is_array($ek)) DB::table('departmanlar')->where('id', $d->id)->update(['sorumlu_ek' => json_encode(array_values(array_diff($ek, $kaldir)))]);
+                    foreach (DB::table('personeller')->where('departman_id', $d->id)->whereNotIn('rol', ['sahip', 'mudur'])->get(['id', 'rol', 'kademe', 'sayfa_yetki']) as $k) {
+                        if (in_array($k->kademe ?? _rolKademe($k->rol ?? ''), ['sahip', 'supervizor', 'satinalma'], true)) continue;
+                        $py = json_decode((string) $k->sayfa_yetki, true);
+                        if (!is_array($py)) continue;
+                        foreach ($kaldir as $a) if (array_key_exists($a, $py)) $py[$a] = 0;
+                        DB::table('personeller')->where('id', $k->id)->update(['sayfa_yetki' => json_encode($py)]);
+                    }
+                }
+                resto_ayar_yaz('mutfak_sef_yetki_v1', '1');
+            }
+            cache()->put('mutfak_sef_yetki_v1', 1, now()->addDays(30));
+        } catch (\Throwable $e) {}
     }
 }
 if (!function_exists('_bulasikGorur')) {

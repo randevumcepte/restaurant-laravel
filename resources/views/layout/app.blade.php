@@ -393,6 +393,11 @@
             $gruplar = $_yeniG + $_brf;
         }
     }
+    // Mutfak ekibi (şef dahil) Satın Alma grubunu görmez; şefin stok bağlantısı Mutfak / BOH'ta
+    if ($_kp && isset($gruplar['Satın Alma']) && _mutfakEkibiMi($_kp)) {
+        unset($gruplar['Satın Alma']);
+        $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
+    }
     // Bulaşıkhane görevleri aşçıya ve istasyon çalışanına görünmez
     if ($_kp && !_bulasikGorur($_kp)) {
         foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => $it[0] !== '/bulasik'));
