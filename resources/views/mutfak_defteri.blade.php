@@ -65,7 +65,7 @@
   };
 @endphp
 <style>
-  #md{max-width:1100px;margin:0 auto;--c1:{{ $a['renk'] }};--c2:{{ $a['renk2'] }}}
+  #md{width:100%;max-width:1680px;margin:0 auto;--c1:{{ $a['renk'] }};--c2:{{ $a['renk2'] }}}
   #md *{box-sizing:border-box}
   .md-msg{padding:11px 15px;border-radius:12px;margin-bottom:14px;font-size:13px;font-weight:700}
   .md-msg.ok{background:rgba(16,185,129,.13);color:#047857} .md-msg.er{background:rgba(244,63,94,.12);color:#be123c}
@@ -166,12 +166,43 @@
   .md-ornek.sil:hover{color:#E11D48;border-color:#E11D48}
   .md-ornek .material-icons-outlined{font-size:18px}
 
-  @media (max-width:900px){.md-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:600px){
-    .md-hero{padding:18px}.md-hero h2{font-size:19px}
+  /* ---- Responsive ---- */
+  @media (max-width:1200px){
     .md-ist{width:100%}.md-ist div{flex:1;min-width:0}
+  }
+  @media (max-width:900px){
+    .md-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .md-alanlar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .md-alanlar>div:first-child{grid-column:1/-1}
+    .md-alanlar .md-add{grid-column:1/-1;justify-content:center;width:100%}
+  }
+  @media (max-width:600px){
+    .md-tabs{gap:8px;margin-bottom:12px}
+    .md-tab{padding:10px;gap:8px;border-radius:14px}
+    .md-tab .ik{width:34px;height:34px;flex-basis:34px;border-radius:10px}
+    .md-tab .ik .material-icons-outlined{font-size:19px}
+    .md-tab .ad{font-size:12.5px}.md-tab .alt{font-size:10.5px}
+    .md-hero{padding:16px;border-radius:18px}.md-hero-ic{gap:12px}
+    .md-hero .hik{width:46px;height:46px;flex-basis:46px;border-radius:14px}
+    .md-hero .hik .material-icons-outlined{font-size:26px}
+    .md-hero h2{font-size:18px}.md-hero p{font-size:12px}
+    .md-hero .hy{min-width:0;flex:1 1 200px}
+    .md-ist{gap:8px}.md-ist div{padding:8px 6px;border-radius:12px}
+    .md-ist b{font-size:18px}.md-ist span{font-size:10.5px}
+    .md-form{padding:14px;border-radius:16px}
+    .md-katlar{flex-wrap:nowrap;overflow-x:auto;margin:0 -14px 12px;padding:0 14px 4px;scrollbar-width:none}
+    .md-katlar::-webkit-scrollbar{display:none}
+    .md-kat span{white-space:nowrap}
     .md-grup{grid-template-columns:1fr}
-    .md-alanlar>div{flex:1 1 140px}
+    .md-r{padding:11px 12px;gap:10px}
+    .md-r .ik{width:36px;height:36px;flex-basis:36px;border-radius:11px}
+    .md-r .t{font-size:13.5px}
+    .md-val b{font-size:15px}
+    .md-bos{padding:26px 14px}
+  }
+  @media (max-width:380px){
+    .md-alanlar{grid-template-columns:1fr}
+    .md-tab .alt{display:none}
   }
 </style>
 <div class="rk-body">
@@ -294,6 +325,9 @@
   var TIP = {!! json_encode($tip) !!}, f = document.getElementById('mdForm'), on = document.getElementById('mdOnizle');
   var d1 = document.getElementById('mdDeger'), d2 = document.getElementById('mdDeger2'), lbl = document.getElementById('mdDeger2Lbl');
   if (!f || !on) return;
+  // Sunucu UTC; gece yarısından sonra varsayılan tarih dünde kalmasın → cihazın bugünü
+  var tInp = f.querySelector('input[name=tarih]');
+  if (tInp) { var n = new Date(); tInp.value = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0'); }
   // Kategoriye göre önerilen limit (HACCP genel değerler; işletme planına göre değiştirilebilir)
   var LIMIT = {'Buzdolabı': 4, 'Dondurucu': -18, 'Sıcak bekletme': 63, 'Pişirme': 75, 'Soğutma': 5, 'Teslim alma': 4};
   var SICAK = {'Sıcak bekletme': 1, 'Pişirme': 1};
