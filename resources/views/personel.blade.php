@@ -268,7 +268,8 @@ body.koyu #pnl{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--card3:#222a40;--i
 #pnl .p-kart.pasif{opacity:.55}
 #pnl .p-kart .strip{position:absolute;left:0;top:0;bottom:0;width:3px}
 #pnl .avatar{width:46px;height:46px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px}
-#pnl .p-meta{min-width:0}
+#pnl .p-meta{min-width:0;flex:1}
+#pnl .rozet.dep{max-width:100%;white-space:normal;line-height:1.35;padding-top:3px;padding-bottom:3px}
 #pnl .p-ad{font-weight:800;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
 #pnl .p-alt{display:flex;align-items:center;gap:7px;margin-top:5px;flex-wrap:wrap}
 #pnl .p-maas{font-size:11.5px;color:var(--sub);font-weight:600;display:inline-flex;align-items:center;gap:3px}
@@ -360,6 +361,10 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
 .rk-modal-kapa:hover{color:var(--ink)}
 .rk-modal-govde{padding:16px 20px}
 .rk-modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+/* Uzun yetki listesinde Kaydet/Vazgeç ekranın altında sabit kalsın (en alta inmeden görünsün) */
+.rk-modal-arka .rk-modal-foot{position:sticky;bottom:0;z-index:3;background:var(--card);border-radius:0 0 18px 18px;box-shadow:0 -8px 18px rgba(15,23,42,.08)}
+/* Sayfadaki "boş liste" kutusu stili (.bos) modal butonuna bulaşmasın */
+#pnl .rk-btn.bos{padding:10px 18px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--ink);text-align:center}
 .rk-yetki-satir{display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer;color:var(--ink);font-size:14px}
 .rk-chk{width:18px;height:18px;accent-color:var(--mor1);cursor:pointer}
 .rk-yetki-limit{display:flex;align-items:center;gap:8px;padding:0 0 10px 28px;flex-wrap:wrap}
@@ -504,7 +509,7 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
             <div class="p-alt">
               <span class="rozet" style="color:{{ $renk }};background:color-mix(in srgb,{{ $renk }} 14%,transparent)" title="Rol">{{ $rolAd[$rol] ?? $rol }}</span>
               @if ($depKart)
-                <span class="rozet" style="color:{{ $depRenk }};background:color-mix(in srgb,{{ $depRenk }} 12%,transparent);border:1px solid color-mix(in srgb,{{ $depRenk }} 30%,transparent)" title="Departman">{{ $depKart->ad }}{{ $depUnvan !== '' ? ' · ' . $depUnvan : '' }}</span>
+                <span class="rozet dep" style="color:{{ $depRenk }};background:color-mix(in srgb,{{ $depRenk }} 12%,transparent);border:1px solid color-mix(in srgb,{{ $depRenk }} 30%,transparent)" title="Departman: {{ $depKart->ad }}{{ $depUnvan !== '' ? ' · ' . $depUnvan : '' }}">{{ $depKart->ad }}{{ $depUnvan !== '' ? ' · ' . trim(preg_replace('/\s*\([^)]*\)/u', '', $depUnvan)) : '' }}</span>
               @endif
               @if ($depSorumlu && $depKart)
                 <span class="rozet" style="color:#B45309;background:rgba(245,158,11,.16)" title="Departman sorumlusu (talepleri onaylar)">★ Sorumlu</span>
