@@ -22,7 +22,9 @@
         @endforeach
     </div>
 @elseif (count($gorunur))
+    @if (empty($basliksiz))
     <div class="rk-grp{{ ($grupAktif || in_array($grupAd, ['Ajanda', 'Panel'], true)) ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+    @endif
     <div class="rk-grp-body">
         @foreach ($gorunur as [$url, $ikon, $ad, $renk])
             @php $aktif = $aktifMi($url); $badge = $_menuBadge[$url] ?? 0; @endphp

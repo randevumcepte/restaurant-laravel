@@ -526,7 +526,8 @@
                     <div class="rk-cat{{ ($_catAktif || $katAd === 'YÖNETİM' || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
                     <div class="rk-cat-body">
                         @foreach ($_catGruplar as $grupAd => $items)
-                            @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
+                            {{-- AYARLAR kategorisinin tek grubu başlıksız: sayfalar doğrudan kategorinin altında --}}
+                            @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => $grupAd === 'Ayarlar & Entegrasyon'])
                         @endforeach
                     </div>
                 @endif
@@ -585,7 +586,8 @@
         var aktifA = menu.querySelector('a.aktif');
         if(aktifA){
             var aktifGovde = aktifA.closest('.rk-grp-body'), aktifKat = aktifA.closest('.rk-cat-body');
-            if(aktifGovde) aktifGovde.previousElementSibling.classList.remove('kapali');
+            var aktifGrp = aktifGovde && aktifGovde.previousElementSibling;
+            if(aktifGrp && aktifGrp.classList.contains('rk-grp')) aktifGrp.classList.remove('kapali'); // başlıksız grubun önceki kardeşi başka grup olabilir
             if(aktifKat) aktifKat.previousElementSibling.classList.remove('kapali');
         }
         rkMenuDurumKaydet();
