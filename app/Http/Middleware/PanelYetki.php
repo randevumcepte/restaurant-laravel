@@ -29,6 +29,7 @@ class PanelYetki
         if ($sinir = $this->ucretliSinir($request, $path)) return $sinir;
         if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
         if ($subeRed = $this->subeKapi($request, $path)) return $subeRed;
+        if ($rezRed = $this->rezSaltKapi($request, $path)) return $rezRed;
         $harita = _sayfaYetkiHaritasi();
 
         // En uzun eşleşen öneki bul (ör. /pos/masa/5 -> /pos)
@@ -59,11 +60,24 @@ class PanelYetki
         if ($izin && function_exists('_kasiyerSayfaIzinli')) $izin = _kasiyerSayfaIzinli($p, $eslesen);
         if ($izin && in_array($eslesen, ['/uretim-riski', '/parti-takip', '/sayim'], true) && function_exists('_mutfakAltIstasyonMu') && _mutfakAltIstasyonMu($p)) $izin = false; // mutfak geneli ekranlar: şef ve yönetici
         if ($izin && $eslesen === '/bulasik' && function_exists('_bulasikGorur') && !_bulasikGorur($p)) $izin = false;
+        if ($izin && $key === 'gor_rezervasyon' && function_exists('_rezSaltOkur') && _rezSaltOkur($p) && !($eslesen === '/rezervasyon' && $request->isMethod('GET'))) $izin = false; // mutfak: rezervasyon salt okunur
         if (!$izin) {
             return response(view('yetkisiz', ['sayfa' => $eslesen]), 403);
         }
 
         return $next($request);
+    }
+
+    // Mutfak ekibi rezervasyonu salt okur: web ve uygulama uçlarında rezervasyonu değiştiren her istek (GET dışı) reddedilir. null = geçti.
+    private function rezSaltKapi(Request $request, string $path)
+    {
+        if ($request->isMethod('GET') || !str_contains($path, 'rezervasyon') || !function_exists('_rezSaltOkur')) return null;
+        $p = null;
+        try { $p = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$p && $request->bearerToken()) { try { $p = _apiPersonel($request); } catch (\Throwable $e) {} }
+        if (!_rezSaltOkur($p)) return null;
+        if (str_starts_with($path, '/api/')) return response()->json(['ok' => 0, 'hata' => 'Rezervasyonlar mutfakta yalnız görüntülenir'], 403);
+        return response(view('yetkisiz', ['sayfa' => $path]), 403);
     }
 
     // _ekYetkiHaritasi: menü dışı yönetim sayfaları + /api uçları. Şube parametresi kişinin şubesine sabitlenir. null = geçti.

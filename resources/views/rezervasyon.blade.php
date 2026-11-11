@@ -1,3 +1,4 @@
+@php $_rezSalt = function_exists('_rezSaltOkur') && _rezSaltOkur(_posPersonel()); @endphp
 @extends('layout.app')
 @section('rk_ikon', 'event_available')
 @section('baslik', 'Rezervasyonlar')
@@ -298,7 +299,7 @@
         <span class="material-icons-outlined" style="font-size:30px;color:var(--mor1)">event_available</span>
       </span>
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px">Bu gün için rezervasyon yok</div>
-      <div class="rk-sub" style="font-size:12.5px;margin-top:6px;line-height:1.35">Yeni rezervasyon eklemek için "+ Yeni Rezervasyon" butonunu kullanın.</div>
+      <div class="rk-sub" style="font-size:12.5px;margin-top:6px;line-height:1.35">{{ $_rezSalt ? 'Rezervasyonları karşılama / rezervasyon ekibi girer; burada yalnız görüntülenir.' : 'Yeni rezervasyon eklemek için "+ Yeni Rezervasyon" butonunu kullanın.' }}</div>
     </div>
   @else
     <div class="rk-tablo">
@@ -369,7 +370,8 @@
               </td>
               {{-- İŞLEM (Flutter _mAksiyonlar) --}}
               <td class="sag">
-                @if ($d === 'bekliyor')
+                @if ($_rezSalt)
+                @elseif ($d === 'bekliyor')
                   <div style="display:inline-flex;gap:8px;justify-content:flex-end">
                     <form method="POST" action="/rezervasyon/durum" style="margin:0">@csrf
                       <input type="hidden" name="tarih"  value="{{ $tarih }}">
@@ -427,7 +429,7 @@
         <span class="material-icons-outlined" style="font-size:30px;color:var(--mor1)">event_available</span>
       </span>
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px">Bu gün için rezervasyon yok</div>
-      <div class="rk-sub" style="font-size:12.5px;margin-top:6px;line-height:1.35">Yeni rezervasyon eklemek için "+ Yeni Rezervasyon" butonunu kullanın.</div>
+      <div class="rk-sub" style="font-size:12.5px;margin-top:6px;line-height:1.35">{{ $_rezSalt ? 'Rezervasyonları karşılama / rezervasyon ekibi girer; burada yalnız görüntülenir.' : 'Yeni rezervasyon eklemek için "+ Yeni Rezervasyon" butonunu kullanın.' }}</div>
     </div>
   @else
     @foreach ($rezervasyonlar as $r)
@@ -470,7 +472,8 @@
         @endif
         @if (!$pasif && $d !== 'geldi')
           <div style="display:flex;gap:8px;margin-top:12px">
-            @if ($d === 'bekliyor')
+            @if ($_rezSalt)
+            @elseif ($d === 'bekliyor')
               <form method="POST" action="/rezervasyon/durum" style="margin:0;flex:1">@csrf
                 <input type="hidden" name="tarih" value="{{ $tarih }}">
                 <input type="hidden" name="id"    value="{{ $r->id }}">
@@ -681,7 +684,8 @@
 </div>
 
 {{-- =============== + YENİ REZERVASYON (Flutter _ekleDialog → modal) =============== --}}
-{{-- Sabit FAB butonu sağ altta (Flutter FAB gibi) --}}
+{{-- Sabit FAB butonu sağ altta (Flutter FAB gibi); mutfak ekibinde yok (salt okur) --}}
+@if (!$_rezSalt)
 <button onclick="document.getElementById('rez-modal').style.display='flex'"
         style="position:fixed;bottom:28px;right:28px;display:flex;align-items:center;gap:8px;
                padding:14px 22px;border-radius:16px;background:var(--mor1);color:#fff;
@@ -689,6 +693,7 @@
                box-shadow:0 8px 24px color-mix(in srgb,var(--mor1) 45%,transparent);z-index:50">
   <span class="material-icons-outlined">add</span>Yeni Rezervasyon
 </button>
+@endif
 
 {{-- Modal overlay --}}
 <div id="rez-modal" onclick="if(event.target===this)this.style.display='none'"

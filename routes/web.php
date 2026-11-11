@@ -19407,6 +19407,13 @@ if (!function_exists('_talepYetkiTemizle')) {
         } catch (\Throwable $e) {}
     }
 }
+if (!function_exists('_rezSaltOkur')) {
+    // Mutfak ekibi (şef dahil) rezervasyonu yalnız görür: kuver/saat/alerji için liste, değişiklik karşılama/rezervasyon ekibinde
+    function _rezSaltOkur($p)
+    {
+        return $p && _mutfakEkibiMi($p);
+    }
+}
 if (!function_exists('_mutfakSefRezYetki')) {
     // Bir kez: mutfak şablonunun sorumlu ekine ve mevcut mutfak sorumlularına Rezervasyonlar (gor_rezervasyon) eklenir
     function _mutfakSefRezYetki()
