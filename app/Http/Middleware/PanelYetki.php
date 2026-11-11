@@ -21,6 +21,7 @@ class PanelYetki
 
         if (!function_exists('_sayfaYetkiHaritasi')) return $next($request);
         if (function_exists('_masaYetkiTemizle')) _masaYetkiTemizle();
+        if (function_exists('_stokYetkiBolmeTemizle')) _stokYetkiBolmeTemizle();
         if ($sinir = $this->ucretliSinir($request, $path)) return $sinir;
         if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
         if ($subeRed = $this->subeKapi($request, $path)) return $subeRed;

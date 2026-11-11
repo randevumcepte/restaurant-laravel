@@ -4,7 +4,6 @@
         if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
         if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]); // başka departmanın brifingi görünmez
         if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda'])) return true; // kişisel ajanda herkese açık
-        if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/mutfak-defteri', '/recete', '/rezervasyon'])) return true; // mutfak operasyon ekranları
         if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]); // haritadaki = yetkiye göre
         return false;                                                          // haritasız = kısıtlı role gizle
     }));

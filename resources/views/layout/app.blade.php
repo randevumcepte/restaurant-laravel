@@ -496,13 +496,12 @@
                 $_katIkon = ['YÖNETİM' => 'workspace_premium', 'OPERASYON' => 'tune', 'AYARLAR' => 'settings'];
                 $_grupKat = [];
                 foreach ($_kategoriler as $_kk => $_gs) foreach ($_gs as $_g) $_grupKat[$_g] = $_kk;
-                $_mutfakEkran = ['/uretim-riski', '/parti-takip', '/sayim', '/satinalma-talep', '/talep-onaylarim', '/reddedilen-talepler', '/mutfak-defteri', '/recete', '/rezervasyon'];
-                $_itemGorunur = function ($it) use ($_pp, $_harita, $_mutfakEkran) {
+                // Mutfak rolüne yetkisiz ekran gösteren istisna kalktı: her bağlantı kendi yetkisine bakar (aşçı satın almayı/sayımı görmez)
+                $_itemGorunur = function ($it) use ($_pp, $_harita) {
                     if (!$_pp) return true;
                     if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/wa-hatlar', '/ajanda'])) return true;
-                    if (_panelYetkiVar($_pp, 'gor_mutfak') && in_array($it[0], $_mutfakEkran)) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
                 };
