@@ -28,7 +28,15 @@
        'ipucu'=>'Günün beklenen yoğunluğuna göre PAR (hedef) ve mevcut miktarı yaz. Hazırlanacak miktar = Par − Mevcut otomatik hesaplanır.'],
   ];
   $a = $cfg[$tip] ?? $cfg['sicaklik'];
-  $sayilar = $sayilar ?? [];
+  // Route önbelleği/opcache eski kalırsa bu değişkenler gelmeyebilir → görünüm kendi hesaplar
+  if (!isset($sayilar)) {
+    $sayilar = [];
+    try { $sayilar = DB::table('mutfak_kayitlari')->where('sube_id', _webSubeId())->where('tarih', now()->toDateString())->select('tip', DB::raw('count(*) as n'))->groupBy('tip')->pluck('n', 'tip')->toArray(); } catch (\Throwable $e) {}
+  }
+  if (!isset($ornekVar)) {
+    $ornekVar = false;
+    try { $ornekVar = DB::table('mutfak_kayitlari')->where('sube_id', _webSubeId())->where('not', 'Örnek kayıt')->exists(); } catch (\Throwable $e) {}
+  }
   $bugun = now()->toDateString(); $dun = now()->subDay()->toDateString();
   $sayi = function ($v) { return rtrim(rtrim(number_format((float) $v, 2, ',', '.'), '0'), ','); };
   $hazirlaHesap = function ($k) { return (is_numeric($k->deger) && is_numeric($k->deger2)) ? max(0, (float) $k->deger - (float) $k->deger2) : null; };
