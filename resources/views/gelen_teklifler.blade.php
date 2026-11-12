@@ -7,31 +7,34 @@
 <style>
 #gt{--gt-yesil:#10B981;--gt-amber:#F59E0B;--gt-mor:#7C3AED;--gt-mavi:#4F46E5;--gt-kirmizi:#EF4444;--gt-pembe:#EC4899}
 /* HERO */
-#gt .gt-hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 22px;color:#fff;background:linear-gradient(130deg,#4C1D95 0%,#3730A3 50%,#1E3A8A 100%);box-shadow:0 14px 34px rgba(55,48,163,.28);margin-bottom:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-#gt .gt-hero:after{content:none}
+#gt .gt-hero{position:relative;overflow:hidden;border-radius:20px;padding:22px 22px 18px;color:var(--ink);background:var(--card);border:1px solid var(--line);box-shadow:0 8px 24px rgba(79,70,229,.08);margin-bottom:16px}
+#gt .gt-hero:before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,#7C3AED,#4F46E5,#0EA5E9,#10B981)}
 #gt .gt-hust{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;position:relative;z-index:1}
-#gt .gt-hero h2{margin:0;font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
-#gt .gt-hero p{margin:6px 0 0;font-size:13.5px;font-weight:400;color:#fff;max-width:640px;line-height:1.55}
+#gt .gt-hero h2{margin:0;font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--ink)}
+#gt .gt-hero h2 .material-icons-outlined{color:#7C3AED}
+#gt .gt-hero p{margin:6px 0 0;font-size:13.5px;font-weight:400;color:var(--sub);max-width:640px;line-height:1.55}
+#gt .gt-hero p b{color:var(--ink)}
 #gt .gt-aks{display:flex;gap:8px;flex-wrap:wrap}
 #gt .gt-btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:11px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;color:#fff;background:var(--gt-mor);white-space:nowrap;font-family:inherit;transition:transform .12s,box-shadow .12s}
 #gt .gt-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.12)}
 #gt .gt-btn .material-icons-outlined{font-size:18px}
-#gt .gt-btn.cam{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.45);font-weight:600}
-#gt .gt-btn.beyaz{background:#fff;color:#4F46E5}
+#gt .gt-btn.cam{background:var(--card2);color:var(--ink);border:1px solid var(--line);font-weight:600}
+#gt .gt-btn.cam .material-icons-outlined{color:#7C3AED}
+#gt .gt-btn.beyaz{background:#7C3AED;color:#fff}
 #gt .gt-btn.ikincil{background:var(--card);color:var(--ink);border:1px solid var(--line)}
 #gt .gt-btn.yesil{background:linear-gradient(135deg,#10B981,#059669)}
 #gt .gt-btn.sm{padding:6px 10px;font-size:12px;border-radius:9px}
 #gt .gt-btn.sm .material-icons-outlined{font-size:15px}
 #gt .gt-btn:disabled{opacity:.55;cursor:default;transform:none}
 #gt .gt-kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px;position:relative;z-index:1}
-#gt .gt-kpi div{background:rgba(15,23,42,.30);border:1px solid rgba(255,255,255,.20);border-radius:14px;padding:11px 13px}
-#gt .gt-kpi small{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:#E0E7FF}
-#gt .gt-kpi small .material-icons-outlined{font-size:16px}
-#gt .gt-kpi b{display:block;font-size:24px;font-weight:700;margin-top:4px;letter-spacing:-.3px;color:#fff}
+#gt .gt-kpi div{background:color-mix(in srgb,var(--k) 9%,var(--card));border:1px solid color-mix(in srgb,var(--k) 28%,transparent);border-radius:14px;padding:11px 13px}
+#gt .gt-kpi small{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink)}
+#gt .gt-kpi small .material-icons-outlined{font-size:17px;color:var(--k)}
+#gt .gt-kpi b{display:block;font-size:24px;font-weight:700;margin-top:4px;letter-spacing:-.3px;color:var(--k)}
 #gt .gt-nasil{display:none;position:relative;z-index:1;margin-top:14px}
 #gt .gt-nasil.acik{display:block}
 #gt .gt-adimlar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-#gt .gt-adim{background:#fff;color:#1e1b4b;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+#gt .gt-adim{background:var(--card2);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.5}
 #gt .gt-adim b.n{display:inline-flex;min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:var(--gt-mor);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-right:6px}
 #gt .gt-adim.ai{box-shadow:0 0 0 3px #FBBF24}
 /* DÜZEN */
@@ -101,7 +104,7 @@
 #gt .gt-tk .tm small{display:block;font-size:10.5px;color:var(--sub);font-weight:700}
 #gt .gt-tk .ta{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 #gt .gt-urunler{display:flex;flex-direction:column;gap:10px}
-#gt .gt-ur{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--card2)}
+#gt .gt-ur{display:grid;grid-template-columns:250px minmax(0,1fr);gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--card2)}
 #gt .gt-ur .ub b{display:block;font-size:14px;color:var(--ink)}
 #gt .gt-ur .ub small{display:block;font-size:11.5px;color:var(--sub);margin-top:2px}
 #gt .gt-ur .ub .tas{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;color:#047857;background:rgba(16,185,129,.14);border-radius:20px;padding:2px 8px}
@@ -122,6 +125,18 @@
 #gt .gt-bar.yok:hover{background:none}
 #gt .gt-bar.yok .cub{background:repeating-linear-gradient(90deg,rgba(148,163,184,.28) 0 8px,transparent 8px 14px)}
 #gt .gt-bar.yok .fy{color:var(--sub);font-weight:600;font-size:12px}
+#gt .gt-bar.refbar{cursor:default;background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(100,116,139,.06) 6px 12px)}
+#gt .gt-bar.refbar:hover{background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(100,116,139,.06) 6px 12px)}
+#gt .gt-bar.refbar .tad{color:var(--sub);font-style:italic}
+#gt .gt-bar.refbar .cub i{opacity:.55}
+#gt .gt-bar .fy b.pah{color:#DC2626}
+#gt .gt-bar .fy b.uc{color:#059669}
+#gt .gt-ur .refler{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+#gt .gt-ur .ref{font-size:11.5px;font-weight:600;border-radius:8px;padding:4px 8px;line-height:1.35}
+#gt .gt-ur .ref i{font-style:normal;font-weight:500;opacity:.8}
+#gt .gt-ur .ref.hal{background:rgba(22,163,74,.10);color:#166534}
+#gt .gt-ur .ref.alis{background:rgba(37,99,235,.10);color:#1e40af}
+#gt .gt-ur .ref.yok{background:rgba(100,116,139,.10);color:var(--sub);font-weight:500}
 #gt .gt-eslesmeyen{margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(245,158,11,.12);font-size:12.5px;color:var(--ink)}
 #gt .gt-ipucu{font-size:12px;color:var(--sub);margin-top:10px}
 #gt .gt-bos{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:40px 20px;text-align:center;color:var(--sub)}
@@ -251,6 +266,9 @@ const hucreler = (g, mid) => (g.hucre || {})[mid] || {};
 // Ürün başına (en pahalı − en ucuz) × miktar: en ucuzu seçince kazanılan
 const tasarrufU = (g, u) => { const f = Object.values(hucreler(g, u.id)).map(c => Number(c.fiyat)).filter(x => x > 0); return f.length > 1 ? (Math.max(...f) - Math.min(...f)) * (Number(u.miktar) || 0) : 0; };
 const tasarruf = g => g.urunler.reduce((s, u) => s + tasarrufU(g, u), 0);
+// Birim fiyatı başka birime çevir (hal kg → talep g gibi). Çevrilemezse null.
+const birimNorm = b => { b = String(b || '').toLocaleLowerCase('tr-TR').trim(); if (['kg','kilo','kilogram'].includes(b)) return ['kg', 1000]; if (['g','gr','gram'].includes(b)) return ['kg', 1]; if (['lt','l','litre','litr'].includes(b)) return ['lt', 1000]; if (['ml'].includes(b)) return ['lt', 1]; if (['ad','adet','tane'].includes(b)) return ['ad', 1]; if (['demet','bağ'].includes(b)) return [b, 1]; return [b, 1]; };
+const birimCevir = (fiyat, kaynak, hedef) => { const [ka, kk] = birimNorm(kaynak), [ha, hk] = birimNorm(hedef); if (!fiyat || !ka || ka !== ha) return null; return Number(fiyat) * hk / kk; };
 const durumRenk = g => !g.tedarikciler.length ? '#94a3b8' : g.yanitlayan >= g.tedarikciler.length ? '#10B981' : g.yanitlayan ? '#0EA5E9' : '#F59E0B';
 
 GT.forEach((g, gi) => {
@@ -270,8 +288,8 @@ function kpiCiz(){
     Object.values(g.hucre || {}).forEach(s => Object.values(s).forEach(c => { if (c.kaynak && c.kaynak !== 'portal') ai++; }));
     tas += tasarruf(g);
   });
-  const k = (ik, ad, v) => `<div><small><span class="material-icons-outlined">${ik}</span>${ad}</small><b>${v}</b></div>`;
-  document.getElementById('gtKpi').innerHTML = k('pending_actions', 'Açık talep', akt.length) + k('hourglass_top', 'Yanıt bekleyen', bek) + k('sell', 'Gelen fiyat', fiyat) + k('auto_awesome', 'AI\'ın okuduğu', ai) + k('savings', 'En ucuzla kazanç', paraK(tas));
+  const k = (ik, ad, v, c) => `<div style="--k:${c}"><small><span class="material-icons-outlined">${ik}</span>${ad}</small><b>${v}</b></div>`;
+  document.getElementById('gtKpi').innerHTML = k('pending_actions', 'Açık talep', akt.length, '#7C3AED') + k('hourglass_top', 'Yanıt bekleyen', bek, '#D97706') + k('sell', 'Gelen fiyat', fiyat, '#2563EB') + k('auto_awesome', 'AI\'ın okuduğu', ai, '#DB2777') + k('savings', 'En ucuzla kazanç', paraK(tas), '#059669');
 }
 
 function liHtml(g){
@@ -326,8 +344,18 @@ function detayHtml(g){
   ur.forEach(u => {
     const satir = hucreler(g, u.id);
     const fiyatlar = Object.values(satir).map(c => Number(c.fiyat)).filter(x => x > 0);
-    const maks = fiyatlar.length ? Math.max(...fiyatlar) : 0, cok = fiyatlar.length > 1, tu = tasarrufU(g, u);
-    h += `<div class="gt-ur"><div class="ub"><b>${esc(u.ad)}</b><small>İhtiyaç: ${mik(u.miktar)} ${esc(u.birim)}</small>${tu > 0 ? `<span class="tas">↓ ${para(tu)} fark</span>` : ''}</div><div class="gt-bars">`;
+    // Pazarlık referansı: hal fiyatı (talep birimine çevrilir) + bizim son alışımız
+    const halU = u.hal ? birimCevir(u.hal.ort, u.hal.birim, u.birim) : null;
+    const alisU = u.son_alis ? Number(u.son_alis.fiyat) : null;
+    const refler = [halU, alisU].filter(x => x > 0);
+    const maks = Math.max(0, ...fiyatlar, ...refler), cok = fiyatlar.length > 1, tu = tasarrufU(g, u);
+    const kiyas = halU || alisU, kiyasAd = halU ? 'hale' : 'son alışa';
+    let ref = '';
+    if (u.hal) ref += `<span class="ref hal" title="${esc(u.hal.ad)} · ${esc(u.hal.tarih)}">🥬 Hal: ${para(u.hal.ort)}/${esc(u.hal.birim)}${u.hal.min > 0 && u.hal.max > 0 ? ` <i>(${paraK(u.hal.min)}–${paraK(u.hal.max)})</i>` : ''}<i> · ${tarih(u.hal.tarih)}</i></span>`;
+    if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${para(u.son_alis.fiyat)}/${esc(u.birim)}<i>${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
+    if (!ref) ref = `<span class="ref yok">Hal / geçmiş alış verisi yok</span>`;
+    h += `<div class="gt-ur"><div class="ub"><b>${esc(u.ad)}</b><small>İhtiyaç: ${mik(u.miktar)} ${esc(u.birim)}</small>${tu > 0 ? `<span class="tas">↓ ${para(tu)} fark</span>` : ''}<div class="refler">${ref}</div></div><div class="gt-bars">`;
+    if (halU) h += `<div class="gt-bar refbar" style="--c:#64748B"><span class="tad"><i></i>Hal ortalaması</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * halU / maks))}%"></i></div><span class="fy">${para(halU)}/${esc(u.birim)}<small>${para(halU * u.miktar)} toplam</small></span></div>`;
     ted.forEach((t, ti) => {
       const c = satir[t.id];
       if (!c) { h += `<div class="gt-bar yok" style="--c:${t.renk}"><span class="tad"><i></i>${esc(t.ad)}</span><div class="cub"></div><span class="fy">${t.durum === 'geldi' ? 'fiyat vermedi' : 'bekleniyor'}</span></div>`; return; }
@@ -335,7 +363,7 @@ function detayHtml(g){
       const sec = !g.talep_id && String((gtSecim[gi] || {})[u.id]) === String(t.id);
       const tik = g.talep_id ? `gtTed(${gi},${ti})` : `gtSec(${gi},${u.id},${t.id})`;
       const w = maks ? Math.max(6, Math.round(100 * c.fiyat / maks)) : 6;
-      h += `<div class="gt-bar ${ucuz ? 'ucuz' : ''} ${sec ? 'sec' : ''}" style="--c:${t.renk}" onclick="${tik}" title="${g.talep_id ? 'Teklif detayı' : 'Bu teklifi seç'}"><span class="tad"><i></i>${esc(t.ad)}</span><div class="cub"><i style="width:${w}%"></i></div><span class="fy">${para(c.fiyat)}/${esc(u.birim)}${ucuz ? '<span class="rz">EN UCUZ</span>' : ''}<small>${para(c.fiyat * u.miktar)} toplam</small></span></div>`;
+      h += `<div class="gt-bar ${ucuz ? 'ucuz' : ''} ${sec ? 'sec' : ''}" style="--c:${t.renk}" onclick="${tik}" title="${g.talep_id ? 'Teklif detayı' : 'Bu teklifi seç'}"><span class="tad"><i></i>${esc(t.ad)}</span><div class="cub"><i style="width:${w}%"></i></div><span class="fy">${para(c.fiyat)}/${esc(u.birim)}${ucuz ? '<span class="rz">EN UCUZ</span>' : ''}<small>${para(c.fiyat * u.miktar)} toplam${kiyas ? (() => { const y = Math.round(100 * (c.fiyat - kiyas) / kiyas); return y === 0 ? ` · ${kiyasAd} eşit` : ` · <b class="${y > 0 ? 'pah' : 'uc'}">${kiyasAd} göre ${y > 0 ? '+' : '−'}%${Math.abs(y)}</b>`; })() : ''}</small></span></div>`;
     });
     h += `</div></div>`;
   });

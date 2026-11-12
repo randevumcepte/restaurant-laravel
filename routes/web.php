@@ -15550,10 +15550,51 @@ if (!function_exists('_gtGruplar')) {
                     'eslesmeyen' => $eslesmeyen, 'yanitlayan' => $yanitlayan, 'en_iyi_toplam' => $enIyiTop, 'gecmis' => $gecmis,
                 ];
             }
+            // PAZARLIK REFERANSI: her ürüne güncel HAL fiyatı (sebze-meyve) + bizim SON ALIŞ fiyatımız
+            try { _gtReferansEkle($sid, $out); } catch (\Throwable $e) {}
             // aktifler: en son hareket (yanıt/gönderim) en üstte
             usort($out, fn ($a, $b) => strcmp(($b['son_yanit'] ?: $b['gonderim']), ($a['son_yanit'] ?: $a['gonderim'])));
         } catch (\Throwable $e) {}
         return $out;
+    }
+}
+if (!function_exists('_gtReferansEkle')) {
+    // Gelen Teklifler: ürünlere 'hal' (son hal kaydı, ad eşleşmesi) ve 'son_alis' (son satın alma siparişi birim fiyatı) ekler.
+    function _gtReferansEkle($sid, array &$gruplar)
+    {
+        $mids = [];
+        foreach ($gruplar as $g) foreach ($g['urunler'] as $u) $mids[(int) $u['id']] = $u['ad'];
+        if (!$mids) return;
+        // HAL: şubenin hal kayıtları (son 30 gün), ürün adına göre en yeni kayıt
+        $hal = [];
+        if (Schema::hasTable('hal_fiyatlari')) {
+            $halSon = [];
+            foreach (DB::table('hal_fiyatlari')->where('sube_id', (int) $sid)->where('tarih', '>=', now()->subDays(30)->toDateString())->orderByDesc('tarih')->orderByDesc('id')->limit(2000)->get(['urun_ad', 'birim', 'asgari', 'azami', 'ortalama', 'tarih']) as $h) {
+                $k = mb_strtolower(trim((string) $h->urun_ad), 'UTF-8');
+                if ($k !== '' && !isset($halSon[$k]) && ((float) $h->ortalama > 0 || (float) $h->azami > 0)) $halSon[$k] = $h;
+            }
+            foreach ($mids as $mid => $ad) {
+                $a = mb_strtolower(trim((string) $ad), 'UTF-8'); $bul = $halSon[$a] ?? null;
+                if (!$bul && mb_strlen($a) >= 4) foreach ($halSon as $k => $h) { // "Domates" ↔ "Domates (Sofralık)" gibi baştan eşleşme
+                    if (mb_strpos($k, $a) === 0 || mb_strpos($a, $k) === 0) { $bul = $h; break; }
+                }
+                if ($bul) $hal[$mid] = ['ort' => (float) ($bul->ortalama ?: (((float) $bul->asgari + (float) $bul->azami) / 2)), 'min' => (float) $bul->asgari, 'max' => (float) $bul->azami, 'birim' => $bul->birim ?: 'kg', 'tarih' => (string) $bul->tarih, 'ad' => $bul->urun_ad];
+            }
+        }
+        // SON ALIŞ: bu şubenin en son siparişindeki birim fiyat (tedarikçi + tarih)
+        $sonAlis = [];
+        if (Schema::hasTable('satinalma_siparis_kalemleri') && Schema::hasTable('satinalma_siparisleri')) {
+            $rows = DB::table('satinalma_siparis_kalemleri as k')->join('satinalma_siparisleri as s', 's.id', '=', 'k.siparis_id')
+                ->where('s.sube_id', (int) $sid)->whereIn('k.malzeme_id', array_keys($mids))->where('k.birim_fiyat', '>', 0)
+                ->orderByDesc('k.id')->limit(500)->get(['k.malzeme_id', 'k.birim_fiyat', 's.tedarikci_id', 'k.created_at']);
+            $tedAd = DB::table('tedarikciler')->whereIn('id', $rows->pluck('tedarikci_id')->filter()->unique()->all())->pluck('ad', 'id');
+            foreach ($rows as $r) if (!isset($sonAlis[(int) $r->malzeme_id])) $sonAlis[(int) $r->malzeme_id] = ['fiyat' => (float) $r->birim_fiyat, 'ted' => $tedAd[$r->tedarikci_id] ?? null, 'tarih' => substr((string) $r->created_at, 0, 10)];
+        }
+        foreach (array_keys($gruplar) as $gi) foreach (array_keys($gruplar[$gi]['urunler']) as $ui) {
+            $mid = (int) $gruplar[$gi]['urunler'][$ui]['id'];
+            $gruplar[$gi]['urunler'][$ui]['hal'] = $hal[$mid] ?? null;
+            $gruplar[$gi]['urunler'][$ui]['son_alis'] = $sonAlis[$mid] ?? null;
+        }
     }
 }
 Route::post('/gelen-teklifler/oku', function (Request $r) {
@@ -25642,7 +25683,16 @@ Route::get('/api/patron/talep-detay', function (Request $r) {
         }
     }
     $surec = function_exists('_talepSureci') ? (_talepSureci((int) $talep->sube_id, [$talep])[(int) $talep->id] ?? null) : null;
-    return response()->json(['ok' => true, 'talep' => $talep, 'kalemler' => $kalemler, 'tedarikciler' => $tedarikciler, 'rfq' => $rfq, 'teslim_oneri' => $teslimOneri, 'surec' => $surec]);
+    // Bu talepten kısmi olarak onaya ayrılan ürünler (çift gönderimi önlemek için ana talepte görünür)
+    $ayrilan = [];
+    try {
+        _talepAnaEnsure();
+        foreach (DB::table('satinalma_talepleri')->where('sube_id', $p->sube_id)->where('ana_talep_id', $id)->orderBy('id')->get(['id', 'durum', 'created_at']) as $c) {
+            $adlar = DB::table('talep_kalemleri')->where('talep_id', $c->id)->get(['malzeme_id', 'ad'])->map(fn ($k) => $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'))->all();
+            $ayrilan[] = ['talep_id' => (int) $c->id, 'durum' => $c->durum, 'tarih' => (string) $c->created_at, 'urunler' => $adlar];
+        }
+    } catch (\Throwable $e) {}
+    return response()->json(['ok' => true, 'talep' => $talep, 'kalemler' => $kalemler, 'tedarikciler' => $tedarikciler, 'rfq' => $rfq, 'teslim_oneri' => $teslimOneri, 'surec' => $surec, 'ayrilan' => $ayrilan]);
 });
 Route::post('/satinalma-talep/durum-guncelle', function (Request $r) {
     _satinalmaTalepEnsure();
@@ -25764,6 +25814,16 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
     $talep = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $p->sube_id)->first();
     if (!$talep) return response()->json(['ok' => false, 'mesaj' => 'Bulunamadı.']);
     if ($kapali = _talepSatinalmayaKapali($talep)) return response()->json(['ok' => false, 'mesaj' => $kapali]);
+    // ÇİFT GÖNDERİM KORUMASI 1: yalnız henüz onaya gitmemiş talep gönderilebilir (onayda/onaylandı/sipariş → tekrar gitmez)
+    if (!in_array($talep->durum, ['yeni', 'teklif'], true)) {
+        $durumAd = ['onayda' => 'zaten patron onayında', 'fiyat_onay' => 'zaten fiyat onayında', 'onaylandi' => 'zaten onaylandı', 'siparis' => 'siparişi zaten verildi', 'tamamlandi' => 'zaten tamamlandı'][$talep->durum] ?? ('durumu: ' . $talep->durum);
+        return response()->json(['ok' => false, 'mesaj' => 'Bu talep ' . $durumAd . ' — tekrar gönderilmedi.']);
+    }
+    // ÇİFT GÖNDERİM KORUMASI 2: çift tıklama / aynı anda iki istek → ikinci bekletilmeden reddedilir
+    $kilit = cache()->lock('talep_patron_gonder_' . $id, 15);
+    if (!$kilit->get()) return response()->json(['ok' => false, 'mesaj' => 'Bu talep şu an gönderiliyor, lütfen birkaç saniye bekleyin.']);
+    try {
+    _talepAnaEnsure();
     // OTOMATİK ÖNERİ: teklif gelmiş ama ⭐ seçilmemiş kalemlere EN UCUZ teklifi öner (satın almacı istediğini elle değiştirebilir)
     $otoOner = 0;
     try { if (Schema::hasTable('talep_teklifleri')) {
@@ -25774,33 +25834,72 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
             $otoOner++;
         }
     } } catch (\Throwable $e) {}
-    $toplam = DB::table('talep_kalemleri')->where('talep_id', $id)->count();
-    $onerili = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNotNull('onerilen_tedarikci_id')->count();
-    if ($onerili === 0) return response()->json(['ok' => false, 'mesaj' => 'Henüz hiçbir ürüne tedarikçiden fiyat gelmedi. Önce "Fiyat Araştır" ile fiyat iste; fiyat gelince patrona gönderebilirsin.']);
-    // TAM: tüm kalemlerde öneri var → talep komple onaya gider
+    $kalemTum = DB::table('talep_kalemleri')->where('talep_id', $id)->get(['id', 'malzeme_id', 'ad', 'onerilen_tedarikci_id']);
+    $toplam = $kalemTum->count();
+    $oneriliK = $kalemTum->filter(fn ($k) => !empty($k->onerilen_tedarikci_id));
+    if ($oneriliK->isEmpty()) return response()->json(['ok' => false, 'mesaj' => 'Henüz hiçbir ürüne tedarikçiden fiyat gelmedi. Önce "Fiyat Araştır" ile fiyat iste; fiyat gelince patrona gönderebilirsin.']);
+    // ÇİFT GÖNDERİM KORUMASI 3: aynı ürün BAŞKA bir talepte hâlâ onayda / onaylanmış (sipariş bekliyor) ise bu ürün tekrar gitmez
+    $cift = [];
+    $malIds = $oneriliK->pluck('malzeme_id')->filter()->unique()->values()->all();
+    if ($malIds) {
+        $digerler = DB::table('talep_kalemleri as k')->join('satinalma_talepleri as t', 't.id', '=', 'k.talep_id')
+            ->where('t.sube_id', $talep->sube_id)->where('t.id', '!=', $id)->whereIn('t.durum', ['onayda', 'fiyat_onay', 'onaylandi'])
+            ->whereIn('k.malzeme_id', $malIds)->get(['k.malzeme_id', 't.id as talep_id', 't.durum']);
+        $malAd = DB::table('malzemeler')->whereIn('id', $malIds)->pluck('ad', 'id');
+        foreach ($oneriliK as $k) {
+            $d = $digerler->firstWhere('malzeme_id', $k->malzeme_id);
+            if ($k->malzeme_id && $d) $cift[$k->id] = ['ad' => $k->ad ?: ($malAd[$k->malzeme_id] ?? 'Ürün'), 'talep_id' => (int) $d->talep_id, 'durum' => $d->durum === 'onaylandi' ? 'onaylandı, sipariş bekliyor' : 'patron onayında'];
+        }
+    }
+    $gidecekIds = $oneriliK->pluck('id')->reject(fn ($kid) => isset($cift[$kid]))->values()->all();
+    if ($cift && !(int) $r->input('cift_haric')) {
+        return response()->json(['ok' => false, 'cift' => array_values($cift), 'gidecek' => count($gidecekIds),
+            'mesaj' => 'Şu ürünler zaten onay sürecinde: ' . implode(', ', array_map(fn ($c) => $c['ad'] . ' (Talep #' . $c['talep_id'] . ' · ' . $c['durum'] . ')', $cift)) . '. Tekrar gönderilmeyecek.']);
+    }
+    if (!$gidecekIds) return response()->json(['ok' => false, 'mesaj' => 'Gönderilecek yeni ürün yok — fiyatı gelen ürünlerin hepsi zaten onay sürecinde.']);
+    $onerili = count($gidecekIds);
+    // TAM: tüm kalemler gidiyor → talep komple onaya gider
     if ($onerili >= $toplam) {
-        DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onayda', 'updated_at' => now()]);
+        DB::table('satinalma_talepleri')->where('id', $id)->whereIn('durum', ['yeni', 'teklif'])->update(['durum' => 'onayda', 'updated_at' => now()]);
         try { _fcmPersoneleGonder($talep->sube_id, _talepUstYonetimIdleri($talep->sube_id), '📋 Onay bekleyen satın alma', $talep->departman . ' talebi onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $id]); } catch (\Throwable $e) {}
         return response()->json(['ok' => true, 'mesaj' => 'Onaya gönderildi.']);
     }
-    // KISMİ: bazı kalemlerde öneri yok. Onay almadan bölme.
+    // KISMİ: bazı kalemler gitmiyor (fiyatı yok / başka talepte onayda). Onay almadan bölme.
     $bekleyen = $toplam - $onerili;
     if (!(int) $r->input('kismi')) {
         return response()->json(['ok' => false, 'kismi_teklif' => true, 'onerili' => $onerili, 'bekleyen' => $bekleyen, 'oto_oner' => $otoOner,
-            'mesaj' => $onerili . ' kalemde öneri var, ' . $bekleyen . ' kalemde teklif bekleniyor.']);
+            'mesaj' => $onerili . ' kalem gönderilmeye hazır, ' . $bekleyen . ' kalem bekliyor.']);
     }
-    // KISMİ ONAY: öneri verilen kalemleri YENİ talebe (onayda) ayır; kalanlar bu talepte teklif beklemede kalır
+    // KISMİ ONAY: giden kalemler YENİ talebe (onayda) TAŞINIR → bu talepte artık yoklar, bir daha buradan gönderilemezler
     $childId = (int) DB::table('satinalma_talepleri')->insertGetId([
         'sube_id' => $talep->sube_id, 'departman' => $talep->departman, 'isteyen_id' => $talep->isteyen_id ?? null, 'isteyen_ad' => $talep->isteyen_ad ?? null,
-        'aciliyet' => $talep->aciliyet ?? 'normal', 'durum' => 'onayda',
+        'aciliyet' => $talep->aciliyet ?? 'normal', 'durum' => 'onayda', 'ana_talep_id' => $id,
         'not' => 'Kısmi onay — Talep #' . $id . ' için gelen teklifler (' . $onerili . ' kalem).',
         'created_at' => now(), 'updated_at' => now(),
     ]);
-    DB::table('talep_kalemleri')->where('talep_id', $id)->whereNotNull('onerilen_tedarikci_id')->update(['talep_id' => $childId, 'updated_at' => now()]);
+    DB::table('talep_kalemleri')->where('talep_id', $id)->whereIn('id', $gidecekIds)->update(['talep_id' => $childId, 'updated_at' => now()]);
     DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'teklif', 'updated_at' => now()]);
     try { _fcmPersoneleGonder($talep->sube_id, _talepUstYonetimIdleri($talep->sube_id), '📋 Onay bekleyen satın alma', $talep->departman . ' talebinden ' . $onerili . ' kalem onayınızı bekliyor', ['tur' => 'satinalma_talep', 'id' => (string) $childId]); } catch (\Throwable $e) {}
-    return response()->json(['ok' => true, 'yeni_talep' => $childId, 'mesaj' => $onerili . ' kalem onaya gönderildi (yeni talep #' . $childId . '). Kalan ' . $bekleyen . ' kalem teklif beklemeye devam ediyor.']);
+    return response()->json(['ok' => true, 'yeni_talep' => $childId, 'mesaj' => $onerili . ' ürün patron onayına gitti (Talep #' . $childId . '). Bu talepte kalan ' . $bekleyen . ' ürün fiyat beklemeye devam ediyor.']);
+    } finally { optional($kilit)->release(); }
 });
+if (!function_exists('_talepAnaEnsure')) {
+    // Kısmi gönderimde ayrılan talebin hangi talepten çıktığı (ana_talep_id) — ana talepte "onaya gidenler" gösterilir
+    function _talepAnaEnsure()
+    {
+        if (cache()->get('talep_ana_ensure_ok')) return;
+        try {
+            if (!Schema::hasColumn('satinalma_talepleri', 'ana_talep_id')) {
+                Schema::table('satinalma_talepleri', function ($t) { $t->unsignedBigInteger('ana_talep_id')->nullable()->index(); });
+                // eski kısmi ayrımlar: notundaki "Talep #N" ile geriye dönük bağla
+                foreach (DB::table('satinalma_talepleri')->where('not', 'like', 'Kısmi onay — Talep #%')->get(['id', 'not']) as $c) {
+                    if (preg_match('/Talep #(\d+)/', (string) $c->not, $m)) DB::table('satinalma_talepleri')->where('id', $c->id)->update(['ana_talep_id' => (int) $m[1]]);
+                }
+            }
+            cache()->put('talep_ana_ensure_ok', 1, now()->addDays(7));
+        } catch (\Throwable $e) {}
+    }
+}
 // Patron/üst yönetim: kaleme tedarikçi seç (öneriyi onayla veya override)
 Route::post('/satinalma-talep/patron-sec', function (Request $r) {
     _satinalmaTalepEnsure();

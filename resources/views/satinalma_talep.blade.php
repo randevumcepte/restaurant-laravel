@@ -777,6 +777,7 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
     {{-- Kalem listesi (RFQ + öneri + seçim) --}}
     <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px" id="staKalemBaslik">Kalemler · Teklifler</div>
     <div id="staDetKalemler" style="margin-bottom:14px"></div>
+    <div id="staDetAyrilan"></div>
 
     {{-- Dinamik aksiyon barı (role + duruma göre) --}}
     <div id="staDetAksiyon" style="margin-bottom:10px"></div>
@@ -1138,6 +1139,15 @@ window.staDetayAc = async function(id) {
 
         if (!staSurecCiz(res.surec)) staAkisCiz(t.durum);
         staKalemleriCiz(kalemler, t.durum);
+        // Bu talepten daha önce onaya ayrılan ürünler → burada görünür, tekrar gönderilmez
+        const ayr = res.ayrilan || [];
+        const ayrDur = {onayda:'⏳ Patron onayında', fiyat_onay:'⏳ Fiyat onayında', onaylandi:'✓ Onaylandı', siparis:'🚚 Sipariş verildi', tamamlandi:'✓ Teslim alındı', reddedildi:'✕ Reddedildi'};
+        document.getElementById('staDetAyrilan').innerHTML = ayr.length ? `<div style="margin-bottom:14px;border:1.5px solid rgba(16,185,129,.35);background:rgba(16,185,129,.07);border-radius:14px;padding:12px 14px">
+            <div style="font-weight:800;font-size:13px;color:var(--ink);margin-bottom:6px">📤 Bu talepten onaya gidenler <span style="font-weight:600;color:var(--sub);font-size:11.5px">— bunlar bu talepten çıktı, tekrar gönderilmez</span></div>
+            ${ayr.map(a => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">
+                <span><b>${escHtml(a.urunler.join(', ') || '—')}</b></span>
+                <a href="javascript:void(0)" onclick="staDetayAc(${a.talep_id})" style="white-space:nowrap;font-weight:700;color:var(--mor1);text-decoration:none">Talep #${a.talep_id} · ${escHtml(ayrDur[a.durum] || a.durum)} →</a></div>`).join('')}
+        </div>` : '';
         staAksiyonCiz(t.durum);
 
     } catch(e) {
@@ -1438,14 +1448,24 @@ window.staFiyatArastir = function() {
     if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', () => git(0), 'var(--mor1)', 'Evet, gönder');
     else git(0);
 };
-window.staPatronaGonder = async function(kismi) {
-    const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId, kismi: kismi ? 1 : 0 });
+let staGonderiyor = false;
+window.staPatronaGonder = async function(kismi, ciftHaric) {
+    if (staGonderiyor) return; // çift tıklama: ikinci istek gitmez
+    staGonderiyor = true;
+    let res;
+    try { res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId, kismi: kismi ? 1 : 0, cift_haric: ciftHaric ? 1 : 0 }); }
+    finally { staGonderiyor = false; }
     if (res.ok) {
         toast('✓ ' + (res.mesaj || 'Patrona gönderildi'), '#10B981');
         staDetListeYenile(res.yeni_talep ? 'teklif' : 'onayda'); staDetayAc(aktifTalepId);
+    } else if (res.cift) {
+        // Aynı ürün başka talepte zaten onayda / onaylı → o ürünler tekrar GİTMEZ
+        const liste = res.cift.map(c => '• ' + c.ad + ' → Talep #' + c.talep_id + ' (' + c.durum + ')').join('\n');
+        if (res.gidecek > 0) rkOnay('⚠ Bu ürünler zaten onay sürecinde, TEKRAR GÖNDERİLMEYECEK:\n' + liste + '\n\nKalan ' + res.gidecek + ' ürün patrona gönderilsin mi?', function(){ staPatronaGonder(kismi, true); }, 'var(--mor1)', 'Kalanları Gönder');
+        else rkOnay('⚠ Fiyatı gelen ürünlerin hepsi zaten onay sürecinde — tekrar gönderilmedi:\n' + liste, function(){}, 'var(--mor1)', 'Tamam');
     } else if (res.kismi_teklif) {
         if (res.oto_oner) staDetayYenile(); // otomatik ⭐ seçilenler görünsün
-        rkOnay('Fiyatı gelen ' + res.onerili + ' ürün şimdi patron onayına gitsin mi?' + (res.oto_oner ? '\n(Bu ürünlerde en ucuz teklif otomatik ⭐ seçildi; istersen önce değiştirebilirsin.)' : '') + '\n\nFiyatı henüz gelmeyen ' + res.bekleyen + ' ürün beklemede kalır; fiyatları gelince onları da ayrıca gönderirsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
+        rkOnay('Fiyatı gelen ' + res.onerili + ' ürün şimdi patron onayına gitsin mi?' + (res.oto_oner ? '\n(Bu ürünlerde en ucuz teklif otomatik ⭐ seçildi; istersen önce değiştirebilirsin.)' : '') + '\n\nKalan ' + res.bekleyen + ' ürün bu talepte bekler. Gönderdiğin ürünler bu talepten çıkar ve "Onaya gidenler" kutusunda görünür — bir daha gönderilemez.', function(){ staPatronaGonder(true, ciftHaric); }, 'var(--mor1)', 'Gelenleri Gönder');
     } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
 window.staOnayla = async function() {
