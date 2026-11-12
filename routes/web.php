@@ -8212,9 +8212,16 @@ Route::post('/api/wa/gelen', function (Request $r) {
     if ($hatAmac !== 'musteri') {
         try { _waLog($subeId, $from, $text, 1, 'hat:' . $hatAmac, 'gelen'); } catch (\Throwable $e) {}
         if ($hatAmac === 'satinalma' && $text !== '' && function_exists('_rfqTeklifIsle')) {
-            $n = 0;
-            try { $n = _rfqTeklifIsle($subeId, $text, 'whatsapp', 'wa-' . substr(md5($from . '|' . $text), 0, 16)); } catch (\Throwable $e) {}
+            $n = 0; $metinRfq = $text; $belirsiz = false;
+            // Kod yazılmadıysa: gönderen numaradan tedarikçiyi bul; açık TEK isteği varsa ona bağla, birden fazlaysa kodu sor.
+            if (!preg_match('/RFQ-\d+/i', $text) && function_exists('_rfqTelefondanBul')) {
+                $acik = []; try { $acik = _rfqTelefondanBul($subeId, $from); } catch (\Throwable $e) {}
+                if (count($acik) === 1) $metinRfq = $acik[0] . "\n" . $text;
+                elseif (count($acik) > 1) $belirsiz = $acik;
+            }
+            try { $n = _rfqTeklifIsle($subeId, $metinRfq, 'whatsapp', 'wa-' . substr(md5($from . '|' . $text), 0, 16)); } catch (\Throwable $e) {}
             if (!empty($n)) { try { _restoWaGonder($subeId, $yanitHedef, 'Teklifiniz alındı, teşekkür ederiz. 🙏', 'satinalma'); } catch (\Throwable $e) {} }
+            elseif ($belirsiz && preg_match('/\d/', $text)) { try { _restoWaGonder($subeId, $yanitHedef, 'Teşekkürler! Sizden birden fazla fiyat isteğimiz var (' . implode(', ', $belirsiz) . '). Bu fiyatlar hangisi için? Lütfen kodu da yazar mısınız, ya da size gönderdiğimiz linkten girebilirsiniz.', 'satinalma'); } catch (\Throwable $e) {} }
         }
         return response()->json(['ok' => 1, 'tip' => 'operasyonel', 'amac' => $hatAmac]);
     }
@@ -15336,6 +15343,22 @@ if (!function_exists('_rfqTeklifEnsure')) {
             }); } catch (\Throwable $e) {}
         }
         cache()->put('rfq_teklif_ensure_ok', 1, now()->addHours(12));
+    }
+}
+if (!function_exists('_rfqTelefondanBul')) {
+    // Gönderen telefondan tedarikçiyi bulur; son 14 günde ona gidip henüz siparişe dönmemiş RFQ kodlarını döndürür (en yeni önce).
+    function _rfqTelefondanBul($sid, $from)
+    {
+        $son10 = substr(preg_replace('/\D/', '', explode('@', (string) $from)[0]), -10);
+        if (strlen($son10) < 10) return []; // LID vb. → numara yok
+        $tedIds = [];
+        foreach (DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->get(['id', 'telefon']) as $t) {
+            if (substr(preg_replace('/\D/', '', $t->telefon), -10) === $son10) $tedIds[] = (int) $t->id;
+        }
+        if (!$tedIds) return [];
+        return DB::table('rfq_gonderim')->where('sube_id', (int) $sid)->whereIn('tedarikci_id', $tedIds)
+            ->whereIn('durum', ['gonderildi', 'teklif_geldi'])->where('created_at', '>=', now()->subDays(14))
+            ->orderByDesc('id')->limit(5)->get(['id', 'kod'])->map(function ($q) { return $q->kod ?: ('RFQ-' . $q->id); })->all();
     }
 }
 if (!function_exists('_rfqTeklifIsle')) {
