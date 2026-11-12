@@ -25065,8 +25065,9 @@ Route::get('/talep-onaylarim', function () {
     $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id', 'miktar', 'birim']) : collect();
     $malAd = DB::table('malzemeler')->pluck('ad', 'id');
     $kalemMap = [];
-    foreach ($kalemRows as $k) { $ad = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); $kalemMap[$k->talep_id][] = $ad . ' — ' . rtrim(rtrim(number_format((float) $k->miktar, 2, '.', ''), '0'), '.') . ' ' . $k->birim; }
-    $talepler = $talepler->map(function ($t) use ($kalemMap) { $t->kalemler = $kalemMap[$t->id] ?? []; return $t; });
+    $kalemDetay = [];
+    foreach ($kalemRows as $k) { $ad = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); $mk = rtrim(rtrim(number_format((float) $k->miktar, 2, '.', ''), '0'), '.'); $kalemMap[$k->talep_id][] = $ad . ' — ' . $mk . ' ' . $k->birim; $kalemDetay[$k->talep_id][] = ['ad' => $ad, 'miktar' => $mk, 'birim' => (string) $k->birim]; }
+    $talepler = $talepler->map(function ($t) use ($kalemMap, $kalemDetay) { $t->kalemler = $kalemMap[$t->id] ?? []; $t->kalemDetay = $kalemDetay[$t->id] ?? []; return $t; });
     return view('talep_onaylarim', ['talepler' => $talepler, 'yetkisiz' => false]);
 });
 // REDDEDİLEN TALEPLER — kayıt (sebep + kim reddetti)

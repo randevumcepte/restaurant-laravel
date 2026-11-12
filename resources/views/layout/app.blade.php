@@ -468,17 +468,22 @@
         if ($_aiI)   $_aiI[2]   = 'AI Asistan';
         if ($_stokI) $_stokI[2] = 'Stok & Satın Alma';
 
-        $_yeni = [];
-        $_pin = [];
-        if ($_ozetI) $_pin[] = $_ozetI;
-        if ($_aiI)   $_pin[] = $_aiI;
-        if ($_stokI) $_pin[] = $_stokI;
-        if ($_pin) $_yeni['__PIN__'] = $_pin;
-
-        if (isset($gruplar['Satın Alma']) && count($gruplar['Satın Alma']) > 0) {
-            $_yeni['İşlemler'] = $gruplar['Satın Alma'];
-        }
-        unset($gruplar['Satın Alma']);
+        // Tek "Satın Alma" grubu: Stok + AI başta, brifing üstteki Sabah Brifingim'de (yoksa grubun başında); Mutfak / BOH satın almacıda yok
+        $_bas = [];
+        if ($_ozetI && !isset($gruplar['Brifing'])) $_bas[] = $_ozetI;
+        if ($_stokI) $_bas[] = $_stokI;
+        if ($_aiI)   $_bas[] = $_aiI;
+        $_sa = array_merge($_bas, $gruplar['Satın Alma'] ?? []);
+        unset($gruplar['Satın Alma'], $gruplar['Mutfak / BOH']);
+        $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
+        unset($gruplar['Brifing']);
+        // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
+        $_saBol = ['Fatura & Fiyat' => ['/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
+            'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
+            'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim']];
+        $_saGrup = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
+        foreach ($_sa as $_it) { $_g = 'Satın Alma'; foreach ($_saBol as $_bg => $_bu) if (in_array($_it[0], $_bu, true)) { $_g = $_bg; break; } $_saGrup[$_g][] = $_it; }
+        foreach ($_saGrup as $_bg => $_its) if ($_its) $_yeni[$_bg] = $_its;
 
         $_dept = $gruplar['Departman Operasyon'] ?? null;
         unset($gruplar['Departman Operasyon']);
@@ -543,7 +548,7 @@
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
-                    if ($it[0] === '/talep-onaylarim' && _talepOnaylayiciMi($_pp)) return true;
+                    if ($it[0] === '/talep-onaylarim') return _talepOnaylayiciMi($_pp) || _talepUstYonetimMu($_pp);
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
@@ -554,7 +559,9 @@
                 // En dar personel (yönetici/sorumlu değil, kademe Personel/Mutfak): kategori ve grup başlığı yok, ilgili sayfalar düz liste
                 $_kadM = $_pp ? ($_pp->kademe ?? _rolKademe($_pp->rol ?? '')) : null;
                 // Departman çalışanı (yönetici/satın almacı değil): kategori başlıkları (YÖNETİM, OPERASYON) gösterilmez
-                $_katsiz = $_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true);
+                $_satinalmaciMenu = $_pp && in_array($_pp->rol ?? '', ['satinalmaci', 'satinalma'], true);
+                $_katsiz = $_satinalmaciMenu || ($_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true));
+                if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM'; } // satın alma grupları en üstte
                 $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
             @endphp
             @if ($_duzMenu)
