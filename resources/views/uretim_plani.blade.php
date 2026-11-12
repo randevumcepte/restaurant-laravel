@@ -32,6 +32,14 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 /* mod: günlük plan / özel gün */
 #up .mod-seg button{display:inline-flex;align-items:center;gap:5px}
 #up.ozel .mod-seg button.akt{background:linear-gradient(135deg,#EC4899,#F59E0B)}
+/* Özel gün butonu her zaman belirgin: gradyan + parıltı; seçiliyken halka */
+#up .mod-seg button[data-m="ozel"]{background:linear-gradient(135deg,#EC4899,#F59E0B);color:#fff;margin-left:4px;box-shadow:0 4px 14px color-mix(in srgb,#EC4899 35%,transparent);animation:upOzelParilti 2.6s ease-in-out infinite}
+#up .mod-seg button[data-m="ozel"]:hover{filter:brightness(1.06);transform:translateY(-1px)}
+#up.ozel .mod-seg button[data-m="ozel"]{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,#EC4899 30%,transparent),0 4px 14px color-mix(in srgb,#EC4899 35%,transparent)}
+@keyframes upOzelParilti{0%,100%{box-shadow:0 4px 14px color-mix(in srgb,#EC4899 30%,transparent)}50%{box-shadow:0 4px 22px color-mix(in srgb,#F59E0B 55%,transparent)}}
+/* Alınacaklar araç butonları: her biri kendi rengiyle */
+#up .btn.renk{background:color-mix(in srgb,var(--bc) 11%,var(--card));color:var(--bc);border:1px solid color-mix(in srgb,var(--bc) 32%,transparent);transition:background .15s,color .15s}
+#up .btn.renk:hover{background:var(--bc);color:#fff;border-color:var(--bc)}
 #up .ayrac{width:1px;height:26px;background:var(--line)}
 #up .sadece-ozel{display:none!important}
 #up.ozel .sadece-ozel{display:flex!important}
@@ -263,7 +271,7 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
     {{-- SAĞ: alınacaklar --}}
     <div class="kart">
       <div class="kart-bas"><h2>Alınacaklar</h2><span class="ozet" id="sagOzet"></span>
-        <div class="sag"><span id="alBtn" style="display:none"><button type="button" class="btn cizgi" onclick="menuGorAc()" title="Plandaki güncel menüyü gör" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">restaurant_menu</span>Menüyü gör</button><button type="button" class="btn cizgi" onclick="alKopyala()" title="Alınacaklar listesini kopyala (WhatsApp'a yapıştır)" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">content_copy</span>Kopyala</button><button type="button" class="btn cizgi" onclick="alYazdir()" title="Alınacaklar listesini yazdır" style="padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">print</span>Yazdır</button></span><button type="button" class="btn cizgi" id="rdBtn" onclick="receteDetayAc()" style="display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
+        <div class="sag"><span id="alBtn" style="display:none"><button type="button" class="btn renk" onclick="menuGorAc()" title="Plandaki güncel menüyü gör" style="--bc:#7C3AED;padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">restaurant_menu</span>Menüyü gör</button><button type="button" class="btn renk" onclick="alKopyala()" title="Alınacaklar listesini kopyala (WhatsApp'a yapıştır)" style="--bc:#2563EB;padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">content_copy</span>Kopyala</button><button type="button" class="btn renk" onclick="alYazdir()" title="Alınacaklar listesini yazdır" style="--bc:#059669;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">print</span>Yazdır</button></span><button type="button" class="btn renk" id="rdBtn" onclick="receteDetayAc()" style="--bc:#EA580C;display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
       </div>
       <div id="talepYer"></div>
       <div class="kaydir" id="sonuc"></div>
