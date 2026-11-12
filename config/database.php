@@ -59,6 +59,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // MySQL oturum saati PHP ile aynı (Europe/Istanbul, yaz saati yok): DEFAULT/ON UPDATE CURRENT_TIMESTAMP ile now() aynı saati yazar
+            'timezone' => env('DB_TIMEZONE', '+03:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -79,6 +81,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // MySQL oturum saati PHP ile aynı (Europe/Istanbul, yaz saati yok): DEFAULT/ON UPDATE CURRENT_TIMESTAMP ile now() aynı saati yazar
+            'timezone' => env('DB_TIMEZONE', '+03:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

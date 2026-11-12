@@ -65,7 +65,8 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Türkiye saati: kayıtlar, "bugün" hesapları, ekranlar ve Flutter aynı saati görür (MySQL oturumu da +03:00, config/database.php)
+    'timezone' => env('APP_TIMEZONE', 'Europe/Istanbul'),
 
     /*
     |--------------------------------------------------------------------------

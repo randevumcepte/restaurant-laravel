@@ -273,6 +273,9 @@ Route::get('/api/sync/pull', function (Request $r) {
     _syncKolonEnsure();
     $subeId = (int) $p->sube_id;
     $since = (int) $r->query('since', 0);           // ms
+    // Gelecekteki imleç geçersizdir (eskiden MySQL TR / PHP UTC karışık damga + UTC→TR saat geçişi 3 saat ileri imleç üretti):
+    // geri çek, aradaki değişiklikler kaçmasın (tekrar gelen satırlar upsert, zararsız)
+    if ($since > (time() + 60) * 1000) $since = (time() - 4 * 3600) * 1000;
     $sinceDt = $since > 0 ? _syncMsToDt($since) : '1970-01-01 00:00:00';
     $istenen = array_filter(array_map('trim', explode(',', (string) $r->query('entities', ''))));
     $entities = _syncEntities();

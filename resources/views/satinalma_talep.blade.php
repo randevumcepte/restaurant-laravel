@@ -584,8 +584,7 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
         <span class="st-mobiletiket">Talep No</span>
         <div>
           <div class="st-no">#{{ $talep->id }} @if($acil)<span class="roz acil" style="margin-left:4px">ACİL</span>@endif</div>
-          {{-- kayıt UTC tutulur (config app.timezone=UTC) → ekranda Türkiye saati --}}
-          <div class="st-tarih">{{ \Carbon\Carbon::parse($talep->created_at, 'UTC')->setTimezone('Europe/Istanbul')->format('d.m.Y H:i') }}</div>
+          <div class="st-tarih">{{ \Carbon\Carbon::parse($talep->created_at)->format('d.m.Y H:i') }}</div>
         </div>
       </div>
       <div class="st-urun">
@@ -1365,9 +1364,8 @@ document.getElementById('staYeniModal').addEventListener('click', function(e) {
 /* ─── Yardımcı: tarih ──────────────────────────────────── */
 function staRelative(ts) {
     if (!ts) return '';
-    // sunucu saati UTC ve saat dilimi eki olmadan gelir ("2026-11-12 09:28:00") → UTC olarak oku, yoksa 3 saat kayar
-    const s = String(ts).replace(' ', 'T');
-    const d = new Date(/(Z|[+-]\d\d:?\d\d)$/.test(s) ? s : s + 'Z');
+    // sunucu Türkiye saatiyle ve saat dilimi eki olmadan gönderir ("2026-11-12 12:28:00") → yerel saat olarak okunur
+    const d = new Date(String(ts).replace(' ', 'T'));
     const diff = Math.floor((Date.now() - d.getTime()) / 1000);
     if (diff < 60)  return 'az önce';
     if (diff < 3600) return Math.floor(diff/60) + ' dk önce';
