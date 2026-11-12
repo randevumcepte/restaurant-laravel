@@ -334,12 +334,11 @@ body.koyu .sta-akis { background: #161C2E; }
 #sta .st-surec-yazi{font-size:11px;color:var(--sub,#64748b);margin-top:4px;max-width:210px;line-height:1.3}
 #sta .st-surec-yazi b{color:var(--ink,#1e293b)}
 #sta .st-surec-yazi.red b{color:#F43F5E}
-/* ---- Talep süreci: detayda zaman çizelgesi ---- */
-.sts{display:flex;flex-direction:column;gap:0;background:var(--card2,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:12px 14px}
+/* ---- Talep süreci: detayda zaman çizelgesi (masaüstü yatay, telefonda dikey) ---- */
+.sts{display:flex;align-items:flex-start;width:100%;box-sizing:border-box;background:var(--card2,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:14px 8px 12px}
 body.koyu .sts{background:#161C2E}
-.sts-adim{display:flex;gap:11px;position:relative;padding-bottom:12px}
-.sts-adim:last-child{padding-bottom:0}
-.sts-adim::before{content:'';position:absolute;left:11px;top:24px;bottom:0;width:2px;background:var(--line,#e2e8f0)}
+.sts-adim{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;padding:0 4px}
+.sts-adim::before{content:'';position:absolute;top:11px;left:calc(50% + 14px);right:calc(-50% + 14px);height:2px;background:var(--line,#e2e8f0);border-radius:2px}
 .sts-adim:last-child::before{display:none}
 .sts-adim.tamam::before{background:#10B981}
 .sts-nok{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--card,#fff);border:2px solid var(--line,#cbd5e1);color:var(--sub2,#94a3b8);z-index:1}
@@ -347,15 +346,26 @@ body.koyu .sts{background:#161C2E}
 .sts-adim.tamam .sts-nok{background:#10B981;border-color:#10B981;color:#fff}
 .sts-adim.aktif .sts-nok{background:#7C3AED;border-color:#7C3AED;color:#fff;box-shadow:0 0 0 4px color-mix(in srgb,#7C3AED 20%,transparent)}
 .sts-adim.red .sts-nok{background:#F43F5E;border-color:#F43F5E;color:#fff}
-.sts-ic{flex:1;min-width:0;padding-top:2px}
-.sts-ust{display:flex;align-items:baseline;gap:8px}
-.sts-ad{font-size:13px;font-weight:800;color:var(--ink,#1e293b)}
+.sts-ic{min-width:0;margin-top:7px;width:100%}
+.sts-ust{display:flex;flex-direction:column;align-items:center;gap:1px}
+.sts-ad{font-size:12.5px;font-weight:800;color:var(--ink,#1e293b);line-height:1.25}
 .sts-adim.bekliyor .sts-ad{color:var(--sub2,#94a3b8);font-weight:700}
 .sts-adim.aktif .sts-ad{color:#7C3AED}
 .sts-adim.red .sts-ad{color:#F43F5E}
-.sts-zm{margin-left:auto;font-size:11px;color:var(--sub,#64748b);white-space:nowrap}
-.sts-dt{font-size:12px;color:var(--sub,#64748b);margin-top:1px;line-height:1.35}
+.sts-zm{font-size:10.5px;color:var(--sub,#64748b);white-space:nowrap}
+.sts-dt{font-size:11px;color:var(--sub,#64748b);margin-top:3px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.sts-adim.aktif .sts-dt{color:var(--ink,#1e293b)}
 .sts-adim.red .sts-dt{color:#BE123C}
+@media (max-width:560px){
+  .sts{flex-direction:column;padding:12px 14px}
+  .sts-adim{flex-direction:row;align-items:flex-start;text-align:left;gap:11px;padding:0 0 12px}
+  .sts-adim:last-child{padding-bottom:0}
+  .sts-adim::before{top:24px;bottom:0;left:11px;right:auto;width:2px;height:auto}
+  .sts-ic{margin-top:2px}
+  .sts-ust{flex-direction:row;align-items:baseline;gap:8px}
+  .sts-zm{margin-left:auto}
+  .sts-dt{-webkit-line-clamp:unset}
+}
 /* ---- Detay kalem kartı (RFQ) ---- */
 .sta-kk {
   background: var(--card2,#f1f5f9); border: 1px solid var(--line,#e2e8f0);
@@ -1153,7 +1163,7 @@ function staSurecCiz(s) {
         `<div class="sts-adim ${a.durum}"><span class="sts-nok"><span class="material-icons-outlined">${ik[a.durum] || ''}</span></span>
           <div class="sts-ic"><div class="sts-ust"><span class="sts-ad">${escHtml(a.ad)}</span>${a.zaman ? `<span class="sts-zm">${escHtml(a.zaman)}</span>` : ''}</div>
           ${a.detay ? `<div class="sts-dt">${escHtml(a.detay)}</div>` : ''}</div></div>`).join('') + '</div>';
-    el.style.background = 'none'; el.style.padding = '0'; el.style.border = '0';
+    el.style.background = 'none'; el.style.padding = '0'; el.style.border = '0'; el.style.display = 'block'; el.style.width = '100%';
     return true;
 }
 function staAkisCiz(durum) {
