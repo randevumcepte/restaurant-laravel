@@ -1629,6 +1629,8 @@ window.staDeptOnay = function(id){ stpAc('onay', id); };
 window.staDeptRed = function(id){ stpAc('red', id); };
 // ?durum=departman_onay ile gelindiyse (eski onay sayfası / bildirim) o çip seçili açılsın
 (function(){ const d = new URLSearchParams(location.search).get('durum'); if (!d) return; const c = document.querySelector('#staChips .sta-chip[data-d="' + d + '"]'); if (c) staFiltreDurum(c); })();
+// ?ac=ID ile gelindiyse (Gelen Teklifler → "Talepte aç") o talebin detayı açılsın
+(function(){ const a = parseInt(new URLSearchParams(location.search).get('ac') || '0', 10); if (a > 0) staDetayAc(a); })();
 })();
 </script>
 @endpush

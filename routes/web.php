@@ -15145,7 +15145,7 @@ if (!function_exists('_rfqEnsure')) {
 if (!function_exists('_rfqPortalEnsure')) {
     function _rfqPortalEnsure()
     {
-        if (cache()->get('rfq_portal_ok')) return;
+        if (cache()->get('rfq_portal_ok2')) return;
         _rfqEnsure();
         try {
             if (Schema::hasTable('rfq_gonderim')) {
@@ -15153,9 +15153,10 @@ if (!function_exists('_rfqPortalEnsure')) {
                 if (!Schema::hasColumn('rfq_gonderim', 'teslim_tarihi')) Schema::table('rfq_gonderim', function ($t) { $t->date('teslim_tarihi')->nullable(); });
                 if (!Schema::hasColumn('rfq_gonderim', 'teklif_notu')) Schema::table('rfq_gonderim', function ($t) { $t->string('teklif_notu', 400)->nullable(); });
                 if (!Schema::hasColumn('rfq_gonderim', 'yanit_at')) Schema::table('rfq_gonderim', function ($t) { $t->timestamp('yanit_at')->nullable(); });
+                if (!Schema::hasColumn('rfq_gonderim', 'vade')) Schema::table('rfq_gonderim', function ($t) { $t->string('vade', 80)->nullable(); });
             }
         } catch (\Throwable $e) {}
-        cache()->put('rfq_portal_ok', 1, now()->addHours(6));
+        cache()->put('rfq_portal_ok2', 1, now()->addHours(6));
     }
 }
 if (!function_exists('_rfqSupMapGonder')) {
@@ -15275,7 +15276,7 @@ Route::post('/teklif-ver/{token}', function (Request $r, $token) {
         $say++;
     }
     if ($say) {
-        try { DB::table('rfq_gonderim')->where('id', $rfq->id)->update(['durum' => 'teklif_geldi', 'teslim_tarihi' => $teslim ?: null, 'teklif_notu' => $not ?: null, 'yanit_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+        try { DB::table('rfq_gonderim')->where('id', $rfq->id)->update(['durum' => 'teklif_geldi', 'teslim_tarihi' => $teslim ?: null, 'teklif_notu' => $not ?: null, 'vade' => $vade !== '' ? mb_substr($vade, 0, 80) : null, 'yanit_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
         if (!empty($rfq->talep_id)) { try { DB::table('satinalma_talepleri')->where('id', $rfq->talep_id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
         $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
         try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat girdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfq->id], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
@@ -15439,33 +15440,120 @@ Route::get('/gelen-teklifler', function () {
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     _rfqEnsure(); if (function_exists('_rfqTeklifEnsure')) _rfqTeklifEnsure();
     $sid = _webSubeId();
-    $teklifler = collect();
-    try {
-        $teklifler = DB::table('rfq_teklif')->where('sube_id', $sid)->orderByDesc('id')->limit(200)->get();
-        $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
-        $malAd = DB::table('malzemeler')->pluck('ad', 'id');
-        // Her ürün için EN UCUZ teklifi bul (malzeme_id yoksa ürün adına göre)
-        $minFiyat = [];
-        foreach ($teklifler as $t) { $k = $t->malzeme_id ? ('m' . $t->malzeme_id) : ('u' . mb_strtolower(trim($t->urun_ad))); if (!isset($minFiyat[$k]) || (float) $t->fiyat < $minFiyat[$k]) $minFiyat[$k] = (float) $t->fiyat; }
-        $ucuzIsaretli = [];
-        $teklifler = $teklifler->map(function ($t) use ($tedAd, $malAd, $minFiyat, &$ucuzIsaretli) {
-            $t->tedarikci_ad = $tedAd[$t->tedarikci_id] ?? '—';
-            $t->malzeme_ad = $t->malzeme_id ? ($malAd[$t->malzeme_id] ?? $t->urun_ad) : $t->urun_ad;
-            $k = $t->malzeme_id ? ('m' . $t->malzeme_id) : ('u' . mb_strtolower(trim($t->urun_ad)));
-            $t->en_ucuz = (!isset($ucuzIsaretli[$k]) && abs((float) $t->fiyat - ($minFiyat[$k] ?? 0)) < 0.001);
-            if ($t->en_ucuz) $ucuzIsaretli[$k] = true;
-            return $t;
-        });
-    } catch (\Throwable $e) {}
-    $acikRfq = 0; try { $acikRfq = DB::table('rfq_gonderim')->where('sube_id', $sid)->count(); } catch (\Throwable $e) {}
-    return view('gelen_teklifler', ['teklifler' => $teklifler, 'acikRfq' => $acikRfq, 'sahip' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+    if (function_exists('_rfqPortalEnsure')) _rfqPortalEnsure();
+    // Sayfa açılınca gelen kutusunu arka planda AI ile tara (5 dk'da bir; yanıt gittikten sonra çalışır, sayfayı yavaşlatmaz)
+    if (cache()->add('gt_oto_oku_' . $sid, 1, 300)) app()->terminating(function () use ($sid) { try { _teklifleriOku($sid); } catch (\Throwable $e) {} });
+    $gruplar = function_exists('_gtGruplar') ? _gtGruplar($sid) : [];
+    $sonId = 0; try { $sonId = (int) DB::table('rfq_teklif')->where('sube_id', $sid)->max('id'); } catch (\Throwable $e) {}
+    return view('gelen_teklifler', ['gruplar' => $gruplar, 'sonId' => $sonId, 'sahip' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
 });
+if (!function_exists('_gtGruplar')) {
+    // Gelen Teklifler masası: RFQ'ları TALEBE göre (talepsizleri aynı dakikadaki gönderim partisine göre) grupla →
+    // her grupta ürün × tedarikçi fiyat matrisi, grup içi en ucuz, tedarikçi yanıt durumu (teslim/vade/not/link).
+    function _gtGruplar($sid)
+    {
+        $out = [];
+        try {
+            $rfqs = DB::table('rfq_gonderim')->where('sube_id', $sid)->orderByDesc('id')->limit(300)->get();
+            if ($rfqs->isEmpty()) return [];
+            $tedler = DB::table('tedarikciler')->get(['id', 'ad', 'telefon', 'email', 'anlasmali'])->keyBy('id');
+            $teklifler = DB::table('rfq_teklif')->where('sube_id', $sid)->whereIn('rfq_id', $rfqs->pluck('id'))->orderBy('id')->get()->groupBy('rfq_id');
+            $talepIds = $rfqs->pluck('talep_id')->filter()->unique()->values();
+            $talepler = $talepIds->count() ? DB::table('satinalma_talepleri')->whereIn('id', $talepIds)->get()->keyBy('id') : collect();
+            $grp = [];
+            foreach ($rfqs as $q) {
+                $k = $q->talep_id ? ('t' . $q->talep_id) : ('g' . substr(str_replace([' ', ':', '-'], '', (string) $q->created_at), 0, 12));
+                $grp[$k][] = $q;
+            }
+            foreach ($grp as $k => $liste) {
+                $ilk = end($liste); // en eski gönderim
+                $talep = $ilk->talep_id ? ($talepler[$ilk->talep_id] ?? null) : null;
+                $urunler = []; $tedS = []; $hucre = []; $eslesmeyen = []; $sonYanit = null;
+                foreach (array_reverse($liste) as $q) {
+                    foreach ((json_decode($q->kalemler_json ?? '[]', true) ?: []) as $kl) {
+                        $mid = (int) ($kl['malzeme_id'] ?? 0); if (!$mid) continue;
+                        if (!isset($urunler[$mid])) $urunler[$mid] = ['id' => $mid, 'ad' => $kl['ad'] ?? '?', 'miktar' => (float) ($kl['miktar'] ?? 0), 'birim' => $kl['birim'] ?? ''];
+                    }
+                    $tid = (int) $q->tedarikci_id;
+                    $t = $tedler[$tid] ?? null;
+                    $yanit = $q->yanit_at ?? null;
+                    foreach (($teklifler[$q->id] ?? []) as $tk) {
+                        if (!$tk->malzeme_id) { $eslesmeyen[] = ['ted' => $t->ad ?? '—', 'urun' => $tk->urun_ad, 'fiyat' => (float) $tk->fiyat, 'metin' => $tk->ham_metin]; continue; }
+                        $hucre[(int) $tk->malzeme_id][$tid] = ['id' => (int) $tk->id, 'fiyat' => (float) $tk->fiyat, 'kaynak' => $tk->kaynak, 'metin' => $tk->ham_metin, 'zaman' => (string) $tk->created_at];
+                        if (!$yanit || $tk->created_at > $yanit) $yanit = $tk->created_at;
+                    }
+                    if ($yanit && (!$sonYanit || $yanit > $sonYanit)) $sonYanit = $yanit;
+                    // aynı tedarikçiye aynı talepte birden çok RFQ gittiyse en yenisi geçerli (bilgi alanları için)
+                    if (!isset($tedS[$tid]) || $q->id > $tedS[$tid]['rfq_id']) {
+                        $tedS[$tid] = ['id' => $tid, 'ad' => $t->ad ?? '—', 'anlasmali' => (int) ($t->anlasmali ?? 0), 'rfq_id' => (int) $q->id, 'kod' => $q->kod ?: ('RFQ-' . $q->id),
+                            'kanal' => (string) $q->kanal, 'gonderim' => (string) $q->created_at, 'yanit' => $yanit ? (string) $yanit : null,
+                            'teslim' => $q->teslim_tarihi ?? null, 'vade' => $q->vade ?? null, 'not' => $q->teklif_notu ?? null,
+                            'link' => !empty($q->token) ? url('/teklif-ver/' . $q->token) : null, 'tel' => !empty($t->telefon)];
+                    } elseif ($yanit && (!$tedS[$tid]['yanit'] || $yanit > $tedS[$tid]['yanit'])) $tedS[$tid]['yanit'] = (string) $yanit;
+                }
+                // ürün bazında en ucuz + tedarikçi toplamı
+                $enUcuz = [];
+                foreach ($hucre as $mid => $row) { $min = null; foreach ($row as $tid => $c) if ($min === null || $c['fiyat'] < $row[$min]['fiyat']) $min = $tid; $enUcuz[$mid] = $min; }
+                foreach ($tedS as $tid => &$ts) {
+                    $top = 0; $say = 0;
+                    foreach ($urunler as $mid => $u) if (isset($hucre[$mid][$tid])) { $top += $hucre[$mid][$tid]['fiyat'] * $u['miktar']; $say++; }
+                    $ts['toplam'] = $top; $ts['fiyat_say'] = $say;
+                    $ts['durum'] = $say ? 'geldi' : 'bekliyor';
+                } unset($ts);
+                $yanitlayan = count(array_filter($tedS, fn ($x) => $x['durum'] === 'geldi'));
+                $tDurum = $talep->durum ?? null;
+                $gecmis = $talep ? in_array($tDurum, ['siparis', 'tamamlandi', 'reddedildi', 'onaylandi'], true)
+                                 : (strtotime((string) $ilk->created_at) < time() - 14 * 86400);
+                // en ucuzlarla sepet toplamı (karşılaştırma için)
+                $enIyiTop = 0; foreach ($enUcuz as $mid => $tid) if ($tid !== null) $enIyiTop += $hucre[$mid][$tid]['fiyat'] * ($urunler[$mid]['miktar'] ?? 0);
+                $out[] = [
+                    'anahtar' => $k, 'talep_id' => $ilk->talep_id ? (int) $ilk->talep_id : null,
+                    'baslik' => $talep ? ('Talep #' . $talep->id . ' · ' . ($talep->departman ?? 'Talep')) : 'Fiyat araştırması (talepsiz)',
+                    'etkinlik' => $talep && !empty($talep->etkinlik_ad) ? $talep->etkinlik_ad : null,
+                    'etkinlik_tarih' => $talep && !empty($talep->etkinlik_tarih) ? $talep->etkinlik_tarih : null,
+                    'isteyen' => $talep->isteyen_ad ?? null, 'talep_durum' => $tDurum,
+                    'gonderim' => (string) $ilk->created_at, 'son_yanit' => $sonYanit ? (string) $sonYanit : null,
+                    'urunler' => array_values($urunler), 'tedarikciler' => array_values($tedS), 'hucre' => $hucre, 'en_ucuz' => $enUcuz,
+                    'eslesmeyen' => $eslesmeyen, 'yanitlayan' => $yanitlayan, 'en_iyi_toplam' => $enIyiTop, 'gecmis' => $gecmis,
+                ];
+            }
+            // aktifler: en son hareket (yanıt/gönderim) en üstte
+            usort($out, fn ($a, $b) => strcmp(($b['son_yanit'] ?: $b['gonderim']), ($a['son_yanit'] ?: $a['gonderim'])));
+        } catch (\Throwable $e) {}
+        return $out;
+    }
+}
 Route::post('/gelen-teklifler/oku', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/patron-ai')->with('hata', 'Yetkisiz.');
     $sid = _webSubeId();
     $n = 0; try { $n = _teklifleriOku($sid); } catch (\Throwable $e) {}
-    return redirect('/gelen-teklifler')->with('ok', $n > 0 ? ('✅ ' . $n . ' yeni teklif okundu ve kaydedildi.') : 'Yeni teklif bulunamadı (gelen kutusunda RFQ kodlu yanıt yok ya da hepsi zaten işlenmiş).');
+    return redirect('/gelen-teklifler')->with('ok', $n > 0 ? ('✅ AI ' . $n . ' yeni fiyat okudu ve ilgili talebin altına yerleştirdi.')
+        : 'AI gelen kutularını taradı: yazıyla gelmiş yeni bir teklif yok. (Teklif formundan girilen fiyatlar zaten anında burada görünür; bu tarama sadece tedarikçinin WhatsApp/e-postaya yazıyla cevap verdiği teklifler içindir.)');
+});
+// Canlı yenileme: son teklif id'si (sayfa 30 sn'de bir sorar, yeni teklif varsa "yenile" şeridi çıkar)
+Route::get('/gelen-teklifler/son', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0], 403);
+    $sid = _webSubeId(); $son = 0;
+    try { $son = (int) DB::table('rfq_teklif')->where('sube_id', $sid)->max('id'); } catch (\Throwable $e) {}
+    return response()->json(['ok' => 1, 'son' => $son]);
+});
+// Yanıt vermeyen tedarikçiye WhatsApp ile kibar hatırlatma (aynı link). 2 saatte bir kez.
+Route::post('/gelen-teklifler/hatirlat', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    $sid = _webSubeId(); _rfqPortalEnsure();
+    $q = DB::table('rfq_gonderim')->where('id', (int) $r->input('rfq'))->where('sube_id', $sid)->first();
+    if (!$q || empty($q->token)) return response()->json(['ok' => 0, 'hata' => 'Fiyat isteği bulunamadı.']);
+    $t = DB::table('tedarikciler')->where('id', $q->tedarikci_id)->first();
+    if (!$t || empty($t->telefon)) return response()->json(['ok' => 0, 'hata' => 'Tedarikçinin telefonu kayıtlı değil — bağlantıyı kopyalayıp iletin.']);
+    if (!cache()->add('gt_hatirlat_' . $q->id, 1, 7200)) return response()->json(['ok' => 0, 'hata' => 'Bu tedarikçiye 2 saat içinde zaten hatırlatma gitti.']);
+    $sube = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
+    $msg = 'Merhaba, ' . $sube . ' olarak ' . ($q->kod ?: 'RFQ-' . $q->id) . " fiyat teklifinizi bekliyoruz 🙏\nFiyat ve teslim tarihinizi buradan girebilirsiniz:\n" . url('/teklif-ver/' . $q->token);
+    $ok = function_exists('_restoWaGonder') && _restoWaGonder($sid, $t->telefon, $msg, 'satinalma');
+    if (!$ok) { cache()->forget('gt_hatirlat_' . $q->id); return response()->json(['ok' => 0, 'hata' => function_exists('_rfqWaHataMetni') ? _rfqWaHataMetni($sid) : 'WhatsApp gönderilemedi.']); }
+    return response()->json(['ok' => 1]);
 });
 // Seçilen tekliflerden satın alma siparişi oluştur (tedarikçiye göre gruplu)
 Route::post('/gelen-teklifler/siparis', function (Request $r) {
