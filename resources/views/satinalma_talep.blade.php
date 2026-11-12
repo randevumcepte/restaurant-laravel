@@ -324,6 +324,38 @@ body.koyu .sta-akis { background: #161C2E; }
 .sta-akis .sa-adim .material-icons-outlined { font-size: 15px; }
 .sta-akis .sa-ok { color: var(--sub2,#94a3b8); font-size: 13px; }
 
+/* ---- Talep süreci: listede ilerleme çubuğu ---- */
+#sta .st-surec{display:flex;gap:3px;margin-top:7px;width:130px}
+#sta .st-surec i{flex:1;height:5px;border-radius:3px;background:var(--line,#e2e8f0)}
+#sta .st-surec i.t{background:#10B981}
+#sta .st-surec i.a{background:#7C3AED;animation:stSurecNabiz 1.6s ease-in-out infinite}
+#sta .st-surec i.r{background:#F43F5E}
+@keyframes stSurecNabiz{50%{opacity:.45}}
+#sta .st-surec-yazi{font-size:11px;color:var(--sub,#64748b);margin-top:4px;max-width:210px;line-height:1.3}
+#sta .st-surec-yazi b{color:var(--ink,#1e293b)}
+#sta .st-surec-yazi.red b{color:#F43F5E}
+/* ---- Talep süreci: detayda zaman çizelgesi ---- */
+.sts{display:flex;flex-direction:column;gap:0;background:var(--card2,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:12px 14px}
+body.koyu .sts{background:#161C2E}
+.sts-adim{display:flex;gap:11px;position:relative;padding-bottom:12px}
+.sts-adim:last-child{padding-bottom:0}
+.sts-adim::before{content:'';position:absolute;left:11px;top:24px;bottom:0;width:2px;background:var(--line,#e2e8f0)}
+.sts-adim:last-child::before{display:none}
+.sts-adim.tamam::before{background:#10B981}
+.sts-nok{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--card,#fff);border:2px solid var(--line,#cbd5e1);color:var(--sub2,#94a3b8);z-index:1}
+.sts-nok .material-icons-outlined{font-size:14px}
+.sts-adim.tamam .sts-nok{background:#10B981;border-color:#10B981;color:#fff}
+.sts-adim.aktif .sts-nok{background:#7C3AED;border-color:#7C3AED;color:#fff;box-shadow:0 0 0 4px color-mix(in srgb,#7C3AED 20%,transparent)}
+.sts-adim.red .sts-nok{background:#F43F5E;border-color:#F43F5E;color:#fff}
+.sts-ic{flex:1;min-width:0;padding-top:2px}
+.sts-ust{display:flex;align-items:baseline;gap:8px}
+.sts-ad{font-size:13px;font-weight:800;color:var(--ink,#1e293b)}
+.sts-adim.bekliyor .sts-ad{color:var(--sub2,#94a3b8);font-weight:700}
+.sts-adim.aktif .sts-ad{color:#7C3AED}
+.sts-adim.red .sts-ad{color:#F43F5E}
+.sts-zm{margin-left:auto;font-size:11px;color:var(--sub,#64748b);white-space:nowrap}
+.sts-dt{font-size:12px;color:var(--sub,#64748b);margin-top:1px;line-height:1.35}
+.sts-adim.red .sts-dt{color:#BE123C}
 /* ---- Detay kalem kartı (RFQ) ---- */
 .sta-kk {
   background: var(--card2,#f1f5f9); border: 1px solid var(--line,#e2e8f0);
@@ -670,6 +702,11 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
       <div>
         <span class="st-mobiletiket">Durum</span>
         <span class="st-pill" style="background:color-mix(in srgb,{{ $renk }} 13%,transparent);color:{{ $renk }}"><span class="dot" style="background:{{ $renk }}"></span>{{ $metin }}</span>
+        @php $sr = $surec[$talep->id] ?? null; @endphp
+        @if ($sr)
+          <div class="st-surec" title="{{ $sr['etiket'] }}">@foreach ($sr['adimlar'] as $sa)<i class="{{ ['tamam' => 't', 'aktif' => 'a', 'red' => 'r'][$sa['durum']] ?? '' }}"></i>@endforeach</div>
+          <div class="st-surec-yazi{{ $sr['red'] ? ' red' : '' }}"><b>{{ $sr['etiket'] }}</b>@if ($sr['alt']) · {{ $sr['alt'] }}@endif</div>
+        @endif
       </div>
       <div class="st-eden">
         <span class="st-mobiletiket">Talep Eden</span>
@@ -1089,7 +1126,7 @@ window.staDetayAc = async function(id) {
         staRfq = res.rfq || [];
         staTeslimOneri = res.teslim_oneri || {};
 
-        staAkisCiz(t.durum);
+        if (!staSurecCiz(res.surec)) staAkisCiz(t.durum);
         staKalemleriCiz(kalemler, t.durum);
         staAksiyonCiz(t.durum);
 
@@ -1107,6 +1144,18 @@ const AKIS = [
     {k:'onaylandi', ad:'Onaylandı', ik:'check_circle'},
     {k:'siparis', ad:'Sipariş', ik:'shopping_cart_checkout'},
 ];
+/* ─── Talep süreci (zaman çizelgesi) ─── */
+function staSurecCiz(s) {
+    const el = document.getElementById('staDetAkis');
+    if (!el || !s || !s.adimlar) return false;
+    const ik = {tamam: 'check', aktif: 'more_horiz', red: 'close', bekliyor: ''};
+    el.innerHTML = '<div class="sts">' + s.adimlar.map(a =>
+        `<div class="sts-adim ${a.durum}"><span class="sts-nok"><span class="material-icons-outlined">${ik[a.durum] || ''}</span></span>
+          <div class="sts-ic"><div class="sts-ust"><span class="sts-ad">${escHtml(a.ad)}</span>${a.zaman ? `<span class="sts-zm">${escHtml(a.zaman)}</span>` : ''}</div>
+          ${a.detay ? `<div class="sts-dt">${escHtml(a.detay)}</div>` : ''}</div></div>`).join('') + '</div>';
+    el.style.background = 'none'; el.style.padding = '0'; el.style.border = '0';
+    return true;
+}
 function staAkisCiz(durum) {
     const sira = AKIS.map(a=>a.k);
     let aktifIdx = sira.indexOf(durum);

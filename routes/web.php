@@ -24986,6 +24986,55 @@ Route::post('/uretim-plani/talep', function (Request $r) {
     $hedef = function_exists('_panelYetkiVar') && !_panelYetkiVar($bp, 'gor_talep') ? '/uretim-plani' : '/satinalma-talep';
     return redirect($hedef)->with('ok', ($etkMetin ? '🎉 ' . $etkMetin . ' için ' : 'Üretim planından ') . count($alinacak) . ' kalemlik talep oluşturuldu' . ($hedef === '/uretim-plani' ? ' — satın almaya iletildi.' : '.'));
 });
+if (!function_exists('_talepSureci')) {
+    // Talep(ler)in ilerleyişi: talep eden taraf "satın alma ne durumda" görsün. [talep_id => ['adim', 'etiket', 'alt', 'red', 'adimlar' => [[ad, durum(tamam|aktif|bekliyor|red), zaman, detay]]]]
+    function _talepSureci($sid, $talepler)
+    {
+        $out = [];
+        $talepler = collect($talepler);
+        if (!$talepler->count()) return $out;
+        $ids = $talepler->pluck('id')->map(fn ($x) => (int) $x)->all();
+        $fmt = fn ($ts) => $ts ? \Carbon\Carbon::parse($ts)->format('d.m H:i') : null;
+        $rfq = collect(); $sip = collect(); $mk = collect(); $tedAd = collect();
+        try { if (Schema::hasTable('rfq_gonderim')) $rfq = DB::table('rfq_gonderim')->whereIn('talep_id', $ids)->get(['talep_id', 'yanit_at', 'created_at'])->groupBy('talep_id'); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'talep_id')) $sip = DB::table('satinalma_siparisleri')->whereIn('talep_id', $ids)->where('durum', '!=', 'iptal')->get(['id', 'talep_id', 'tedarikci_id', 'siparis_no', 'beklenen_teslim', 'tedarikci_teslim', 'durum', 'onay_durum', 'created_at'])->groupBy('talep_id'); } catch (\Throwable $e) {}
+        try { $sipIds = $sip->flatten(1)->pluck('id')->all(); if ($sipIds && Schema::hasTable('mal_kabuller')) $mk = DB::table('mal_kabuller')->whereIn('siparis_id', $sipIds)->get(['siparis_id', 'tarih', 'created_at'])->groupBy('siparis_id'); } catch (\Throwable $e) {}
+        try { $tedAd = DB::table('tedarikciler')->pluck('ad', 'id'); } catch (\Throwable $e) {}
+        foreach ($talepler as $t) {
+            $d = (string) $t->durum;
+            $r = $rfq[$t->id] ?? collect(); $sorulan = $r->count(); $yanit = $r->whereNotNull('yanit_at')->count();
+            $s = $sip[$t->id] ?? collect();
+            $teslimler = $s->flatMap(fn ($x) => $mk[$x->id] ?? collect());
+            $tedler = $s->map(fn ($x) => $tedAd[$x->tedarikci_id] ?? '—')->unique()->implode(', ');
+            $beklenen = $s->map(fn ($x) => $x->tedarikci_teslim ?: $x->beklenen_teslim)->filter()->min();
+            $red = $d === 'reddedildi';
+            $sefOnay = !empty($t->karar_veren_ad) && !$red;
+            // adım sırası: 0 açıldı, 1 şef, 2 fiyat, 3 yönetim, 4 sipariş, 5 teslim
+            $aktif = ['departman_onay' => 1, 'yeni' => 2, 'teklif' => 2, 'teklif_geldi' => 2, 'onayda' => 3, 'fiyat_onay' => 3, 'onaylandi' => 4, 'siparis' => 5, 'tamamlandi' => 6][$d] ?? 2;
+            if ($s->count() && $aktif < 5) $aktif = 5;                         // sipariş geçildiyse teslim bekleniyor
+            if ($teslimler->count() && $s->count() === $s->filter(fn ($x) => isset($mk[$x->id]))->count()) $aktif = 6; // hepsi teslim alındı
+            $fiyatDetay = $sorulan ? ($sorulan . ' tedarikçiye soruldu · ' . $yanit . ' teklif geldi') : ($aktif === 2 ? 'Satın alma fiyat araştıracak' : null);
+            $adimlar = [
+                ['Talep açıldı', 'tamam', $fmt($t->created_at), trim(($t->isteyen_ad ?? '') . ' · ' . ($t->departman ?? ''), ' ·')],
+                ['Şef onayı', $aktif > 1 ? 'tamam' : 'aktif', $sefOnay ? $fmt($t->karar_at) : null, $aktif > 1 ? ($sefOnay ? $t->karar_veren_ad . ' onayladı' : 'Gerekmedi — doğrudan satın almaya') : 'Departman sorumlusu onaylayacak'],
+                ['Fiyat araştırma', $aktif > 2 ? 'tamam' : ($aktif === 2 ? 'aktif' : 'bekliyor'), $r->count() ? $fmt($r->min('created_at')) : null, $fiyatDetay],
+                ['Yönetim onayı', $aktif > 3 ? 'tamam' : ($aktif === 3 ? 'aktif' : 'bekliyor'), null, $aktif === 3 ? 'Teklifler yönetimin onayında' : ($aktif > 3 ? 'Onaylandı' : null)],
+                ['Sipariş', $aktif > 4 ? 'tamam' : ($aktif === 4 ? 'aktif' : 'bekliyor'), $s->count() ? $fmt($s->min('created_at')) : null, $s->count() ? ($tedler . ($s->count() > 1 ? ' (' . $s->count() . ' sipariş)' : ' · ' . $s->first()->siparis_no)) : ($aktif === 4 ? 'Sipariş hazırlanıyor' : null)],
+                ['Teslim', $aktif > 5 ? 'tamam' : ($aktif === 5 ? 'aktif' : 'bekliyor'), $teslimler->count() ? $fmt($teslimler->max('created_at')) : null, $aktif > 5 ? 'Depoya girdi' : ($beklenen ? 'Beklenen teslim ' . \Carbon\Carbon::parse($beklenen)->format('d.m.Y') . (\Carbon\Carbon::parse($beklenen)->isPast() && !\Carbon\Carbon::parse($beklenen)->isToday() ? ' — GECİKTİ' : '') : null)],
+            ];
+            $etiket = [1 => 'Şef onayı bekliyor', 2 => $sorulan ? 'Fiyat araştırılıyor' : 'Satın almada', 3 => 'Yönetim onayında', 4 => 'Sipariş hazırlanıyor', 5 => 'Sipariş verildi, teslim bekleniyor', 6 => 'Teslim alındı'][$aktif] ?? 'Satın almada';
+            $alt = $adimlar[min($aktif, 5)][3] ?? null;
+            if ($red) {
+                $adim = min(max($aktif, 1), 5);
+                foreach ($adimlar as $i => $a) if ($i >= $adim) $adimlar[$i][1] = 'bekliyor';
+                $adimlar[$adim] = [$adimlar[$adim][0], 'red', $fmt($t->karar_at), 'Reddedildi' . ($t->karar_veren_ad ? ' (' . $t->karar_veren_ad . ')' : '') . ($t->red_sebep ? ': ' . $t->red_sebep : '')];
+                $etiket = 'Reddedildi'; $alt = $t->red_sebep ?: null; $aktif = $adim;
+            }
+            $out[(int) $t->id] = ['adim' => $aktif, 'etiket' => $etiket, 'alt' => $alt, 'red' => $red, 'adimlar' => array_map(fn ($a) => ['ad' => $a[0], 'durum' => $a[1], 'zaman' => $a[2], 'detay' => $a[3]], $adimlar)];
+        }
+        return $out;
+    }
+}
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
     if (function_exists('_talepOnayEnsure')) _talepOnayEnsure(); // red_sebep / karar_veren kolonları garanti
@@ -25050,7 +25099,8 @@ Route::get('/satinalma-talep', function () {
         ->orderBy('malzemeler.ad')->get(['malzemeler.id', 'malzemeler.ad', 'birimler.kisaltma as birim_kisaltma']);
     $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
     $waTel = resto_ayar_al('satinalma_wa_tel_' . $sid, '');
-    return view('satinalma_talep', compact('talepler', 'ozet', 'malzemeler', 'birimler', 'rol', 'patronMu', 'satinalmaci', 'kritikler', 'waTel', 'kopya'));
+    $surec = function_exists('_talepSureci') ? _talepSureci($sid, DB::table('satinalma_talepleri')->whereIn('id', $talepler->pluck('id')->all())->get()) : [];
+    return view('satinalma_talep', compact('talepler', 'ozet', 'malzemeler', 'birimler', 'rol', 'patronMu', 'satinalmaci', 'kritikler', 'waTel', 'kopya', 'surec'));
 });
 Route::post('/satinalma-talep/wa-tel-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
@@ -25372,7 +25422,8 @@ Route::get('/api/patron/talep-detay', function (Request $r) {
             if ($tedId) $teslimOneri[$tedId] = _talepTeklifTeslimTarihi($id, (int) $tedId, $grp->pluck('id')->all());
         }
     }
-    return response()->json(['ok' => true, 'talep' => $talep, 'kalemler' => $kalemler, 'tedarikciler' => $tedarikciler, 'rfq' => $rfq, 'teslim_oneri' => $teslimOneri]);
+    $surec = function_exists('_talepSureci') ? (_talepSureci((int) $talep->sube_id, [$talep])[(int) $talep->id] ?? null) : null;
+    return response()->json(['ok' => true, 'talep' => $talep, 'kalemler' => $kalemler, 'tedarikciler' => $tedarikciler, 'rfq' => $rfq, 'teslim_oneri' => $teslimOneri, 'surec' => $surec]);
 });
 Route::post('/satinalma-talep/durum-guncelle', function (Request $r) {
     _satinalmaTalepEnsure();
