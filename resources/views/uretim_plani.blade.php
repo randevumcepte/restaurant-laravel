@@ -61,9 +61,39 @@ body.koyu #up .ozel-serit{color:#fdba74;background:#2a1d2a;border-color:#4a2a42}
 #alModal .seg2{display:inline-flex;background:var(--card2);border-radius:10px;padding:3px}
 #alModal .seg2 button{border:0;background:none;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:800;color:var(--sub);cursor:pointer}
 #alModal .seg2 button.akt{background:var(--vurgu);color:#fff}
-#alModal .mbtn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 13px;font-weight:800;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-#alModal .mbtn.yesil{background:#10B981;border-color:#10B981;color:#fff}
-#alModal .mbtn .material-icons-outlined{font-size:17px}
+.up-modal .mbtn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 13px;font-weight:800;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.up-modal .mbtn.yesil{background:#10B981;border-color:#10B981;color:#fff}
+.up-modal .mbtn .material-icons-outlined{font-size:17px}
+/* özel gün penceresi */
+#ozModal .oz-govde{overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+#ozModal .oz-izgara{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#ozModal .oz-alan{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:var(--sub)}
+#ozModal .oz-alan em{color:#F43F5E;font-style:normal}
+#ozModal .oz-inp{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--card);color:var(--ink);font-size:14px;font-family:inherit;font-weight:600}
+#ozModal .oz-inp:focus{outline:2px solid color-mix(in srgb,#EC4899 40%,transparent);border-color:#EC4899}
+#ozModal .oz-inp.hata{border-color:#F43F5E;background:color-mix(in srgb,#F43F5E 6%,var(--card))}
+#ozModal .oz-menu-bas{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--ink)}
+#ozModal .oz-menu-bas span{font-size:12px;color:var(--sub);font-weight:700}
+#ozModal .oz-menu{border:1px solid var(--line);border-radius:12px;max-height:300px;overflow-y:auto}
+#ozModal .oz-sat{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13.5px;font-weight:700;color:var(--ink)}
+#ozModal .oz-sat:last-child{border-bottom:0}
+#ozModal .oz-sat:hover{background:var(--card2)}
+#ozModal .oz-sat input[type=checkbox]{width:18px;height:18px;accent-color:#EC4899;flex:none}
+#ozModal .oz-sat .ad{flex:1}
+#ozModal .oz-sat.sec{background:color-mix(in srgb,#EC4899 7%,var(--card))}
+#ozModal .oz-sat .oz-adet{width:86px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;text-align:center;font-weight:800;font-size:13.5px;background:var(--card);color:var(--ink)}
+#ozModal .oz-sat .oz-adet:disabled{opacity:.35}
+#ozModal .oz-sat small{font-size:11px;color:var(--sub);font-weight:600;width:52px}
+#ozModal .oz-chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;flex-wrap:wrap}
+#ozModal .oz-chk input{width:17px;height:17px;accent-color:#EC4899}
+#ozModal .oz-chk small{color:var(--sub)}
+#ozModal .oz-alt{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+@media(max-width:600px){#ozModal .oz-izgara{grid-template-columns:1fr}}
+#up .oz-ozet{gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ink)}
+#up .oz-ozet .cip{display:inline-flex;align-items:center;gap:5px;background:var(--card2);border-radius:9px;padding:6px 10px;font-weight:700}
+#up .oz-ozet .cip .material-icons-outlined{font-size:16px;color:#db2777}
+#up .oz-ozet .cip.ad{background:linear-gradient(135deg,#fdf2f8,#fff7ed);color:#9d174d;font-weight:900}
+body.koyu #up .oz-ozet .cip.ad{background:#2a1d2a;color:#f9a8d4}
 /* ana ızgara */
 #up .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 @media(max-width:1000px){#up .grid{grid-template-columns:1fr}}
@@ -160,7 +190,7 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
   <div class="arac-cubuk">
     <div class="seg mod-seg" id="mod">
       <button data-m="rutin" class="akt" onclick="modSec('rutin')"><span class="material-icons-outlined" style="font-size:16px">calendar_view_week</span> Günlük plan</button>
-      <button data-m="ozel" onclick="modSec('ozel')"><span class="material-icons-outlined" style="font-size:16px">celebration</span> Özel gün / etkinlik</button>
+      <button data-m="ozel" onclick="ozelTikla()"><span class="material-icons-outlined" style="font-size:16px">celebration</span> Özel gün / etkinlik</button>
     </div>
     <span class="ayrac"></span>
     <div class="grp sadece-rutin"><span>Dönem</span>
@@ -178,19 +208,17 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
       </div>
     </div>
     <button class="btn ai sadece-rutin" onclick="akilliDoldur()"><span class="material-icons-outlined">auto_awesome</span>Tahmini Uygula</button>
-    {{-- özel gün: tarih + etkinlik adı + kişi sayısı --}}
-    <div class="grp sadece-ozel"><span>Tarih</span><input type="date" id="ozTarih" class="oz-inp" onchange="ozelTarihDegisti()"></div>
-    <div class="grp sadece-ozel"><input type="text" id="ozAd" class="oz-inp" placeholder="Etkinlik adı (ör. Yılmaz düğünü)" style="width:210px" oninput="ozelFormDoldur()"></div>
-    <div class="grp sadece-ozel"><span>Kişi</span><input type="number" id="ozKisi" class="oz-inp" min="1" placeholder="200" style="width:80px">
-      <button class="btn cizgi" onclick="kisiUygula()" title="Menüye eklenen tüm ürünlere bu adedi yaz">Menüdekilere uygula</button></div>
-    <label class="grp sadece-ozel oz-chk" title="Etkinliğin yanında o gün normal servis de olacaksa işaretle"><input type="checkbox" id="ozNormal" onchange="ozelNormalDegisti()"> O günün normal satışını da ekle</label>
-    <button class="btn bos" onclick="temizle()"><span class="material-icons-outlined">restart_alt</span>Sıfırla</button>
+    <button class="btn bos sadece-rutin" onclick="temizle()"><span class="material-icons-outlined">restart_alt</span>Sıfırla</button>
     <div class="tahmin-bilgi sadece-rutin" id="tahminBilgi"></div>
+    {{-- özel gün: tüm bilgiler pencereden girilir, burada yalnız özet + düzenle --}}
+    <div class="grp sadece-ozel oz-ozet" id="ozOzet"></div>
+    <button class="btn ai sadece-ozel" onclick="ozelPencereAc()" style="margin-left:auto"><span class="material-icons-outlined">edit_calendar</span>Etkinliği düzenle</button>
+    <button class="btn bos sadece-ozel" onclick="ozelPencereAc(true)"><span class="material-icons-outlined">add</span>Yeni etkinlik</button>
   </div>
 
   <div class="ozel-serit">
-    <span class="material-icons-outlined">celebration</span>
-    <span id="ozSeritMetin"><b>Özel gün menüsü:</b> tarih seç, soldaki ürünlerde <b>+ Menüye ekle</b>'ye bas, kişi sayısını yaz → <b>Menüdekilere uygula</b>. Malzeme listesi sağda çıkar.</span>
+    <span class="material-icons-outlined">info</span>
+    <span>Menüye ürün eklemek/çıkarmak için soldaki <b>+ Menüye ekle</b>'yi de kullanabilirsin. Stok <b>bugünkü</b> stoktur; etkinliğe kadar normal satış da stoktan düşeceği için gerçek eksik biraz daha fazla olabilir.</span>
   </div>
 
   <div class="nasil" id="nasil">
@@ -250,6 +278,31 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
   </div>
 
 </div>
+</div>
+
+{{-- Özel gün / etkinlik oluşturma penceresi --}}
+<div class="up-modal" id="ozModal" onclick="if(event.target===this)ozelPencereKapat()">
+  <div class="rdm" role="dialog" aria-modal="true" style="width:min(720px,100%)">
+    <div class="rdm-bas">
+      <div class="rdm-ik" style="background:linear-gradient(135deg,#EC4899,#F59E0B);color:#fff"><span class="material-icons-outlined">celebration</span></div>
+      <div><h3 id="ozBaslik">Özel gün / etkinlik oluştur</h3><p>Düğün, nişan, toplu yemek… menüyü seç, o günün malzeme listesi çıksın.</p></div>
+      <button type="button" class="rdm-kapat" onclick="ozelPencereKapat()" aria-label="Kapat"><span class="material-icons-outlined">close</span></button>
+    </div>
+    <div class="oz-govde">
+      <div class="oz-izgara">
+        <label class="oz-alan" style="grid-column:1/-1">Etkinlik adı<input type="text" id="ozAd" class="oz-inp" placeholder="ör. Yılmaz düğünü"></label>
+        <label class="oz-alan"><span>Tarih <em>*</em></span><input type="date" id="ozTarih" class="oz-inp" onchange="this.classList.remove('hata')"></label>
+        <label class="oz-alan">Kişi sayısı<input type="number" id="ozKisi" class="oz-inp" min="1" placeholder="ör. 200" oninput="ozKisiDegisti()"></label>
+      </div>
+      <div class="oz-menu-bas"><b>Menü</b><span id="ozMenuSay"></span><input type="search" class="oz-inp" placeholder="Ürün ara..." oninput="ozMenuAra(this.value)" style="margin-left:auto;width:180px"></div>
+      <div class="oz-menu" id="ozMenu"></div>
+      <label class="oz-chk"><input type="checkbox" id="ozNormal"> O gün normal servis de var — <b>normal satışı da ekle</b> <small>(satış geçmişinden o günün tahmini)</small></label>
+    </div>
+    <div class="oz-alt">
+      <button type="button" class="mbtn" onclick="ozelPencereKapat()">Vazgeç</button>
+      <button type="button" class="mbtn yesil" onclick="ozelOlustur()"><span class="material-icons-outlined">check</span><span id="ozOlusturMetin">Oluştur ve malzemeleri hesapla</span></button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -325,21 +378,64 @@ function modSec(m){
   MOD_DEGER[MOD]=adetleriAl(); MOD=m; adetleriYaz(MOD_DEGER[m]);
   document.getElementById('up').classList.toggle('ozel',m==='ozel');
   document.querySelectorAll('#mod button').forEach(b=>b.classList.toggle('akt',b.dataset.m===m));
-  if(m==='ozel'&&!document.getElementById('ozTarih').value) setTimeout(()=>{try{document.getElementById('ozTarih').showPicker();}catch(e){document.getElementById('ozTarih').focus();}},50);
   akilliDolu=false; oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
+}
+// "Özel gün" sekmesi: etkinlik yoksa önce oluşturma penceresi açılır
+function ozelTikla(){if(!document.getElementById('ozTarih').value) ozelPencereAc(); else modSec('ozel');}
+function ozelPencereAc(yeni){
+  const m=document.getElementById('ozModal');
+  if(yeni){['ozAd','ozTarih','ozKisi'].forEach(id=>document.getElementById(id).value='');document.getElementById('ozNormal').checked=false;}
+  const mevcut=yeni?{}:(MOD==='ozel'?adetleriAl():MOD_DEGER.ozel);
+  const kisi=+document.getElementById('ozKisi').value||0;
+  let h='';
+  document.querySelectorAll('#urunListe .urun-sat').forEach(s=>{
+    const id=s.dataset.urun, v=+mevcut[id]||0, ad=s.querySelector('.ad').textContent, br=s.querySelector('.birim');
+    h+='<label class="oz-sat'+(v>0?' sec':'')+'" data-ad="'+rdEsc(s.dataset.ad)+'"><input type="checkbox" data-urun="'+id+'"'+(v>0?' checked':'')+' onchange="ozSatSec(this)">'+
+      '<span class="ad">'+rdEsc(ad)+'</span><input type="number" class="oz-adet" min="0" step="any" value="'+(v>0?v:'')+'" placeholder="'+(kisi||'adet')+'"'+(v>0?'':' disabled')+(v>0&&v!==kisi?' data-elle="1"':'')+' oninput="this.dataset.elle=\'1\'">'+
+      '<small>'+rdEsc(br?br.options[br.selectedIndex].text:'')+'</small></label>';
+  });
+  document.getElementById('ozMenu').innerHTML=h||'<div style="padding:20px;text-align:center;color:var(--sub)">Reçetesi tanımlı ürün yok.</div>';
+  const varMi=!yeni&&!!document.getElementById('ozTarih').value;
+  document.getElementById('ozBaslik').textContent=varMi?'Etkinliği düzenle':'Özel gün / etkinlik oluştur';
+  document.getElementById('ozOlusturMetin').textContent=varMi?'Kaydet ve yeniden hesapla':'Oluştur ve malzemeleri hesapla';
+  document.getElementById('ozTarih').classList.remove('hata');
+  ozMenuSay(); m.classList.add('acik'); document.body.style.overflow='hidden';
+  setTimeout(()=>document.getElementById(document.getElementById('ozAd').value?'ozKisi':'ozAd').focus(),60);
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')ozelPencereKapat();});
+function ozelPencereKapat(){const m=document.getElementById('ozModal');if(m.classList.contains('acik')){m.classList.remove('acik');document.body.style.overflow='';}}
+function ozSatSec(cb){
+  const sat=cb.closest('.oz-sat'), inp=sat.querySelector('.oz-adet');
+  sat.classList.toggle('sec',cb.checked); inp.disabled=!cb.checked;
+  if(cb.checked&&!(+inp.value>0)){inp.value=+document.getElementById('ozKisi').value||1;delete inp.dataset.elle;}
+  ozMenuSay();
+}
+function ozKisiDegisti(){ // kişi sayısı değişince: elle değiştirilmemiş seçili ürünler kişi sayısını izler
+  const k=+document.getElementById('ozKisi').value||0;
+  document.querySelectorAll('#ozMenu .oz-sat').forEach(s=>{
+    const cb=s.querySelector('input[type=checkbox]'), inp=s.querySelector('.oz-adet');
+    inp.placeholder=k||'adet'; if(cb.checked&&inp.dataset.elle!=='1'&&k>0) inp.value=k;
+  });
+}
+function ozMenuAra(q){q=(q||'').toLocaleLowerCase('tr');document.querySelectorAll('#ozMenu .oz-sat').forEach(s=>s.style.display=s.dataset.ad.includes(q)?'':'none');}
+function ozMenuSay(){const n=document.querySelectorAll('#ozMenu input[type=checkbox]:checked').length;document.getElementById('ozMenuSay').textContent=n?n+' ürün seçildi':'menüdeki ürünleri işaretle';}
+async function ozelOlustur(){
+  const t=document.getElementById('ozTarih');
+  if(!t.value){t.classList.add('hata');t.focus();toast('⚠️ Etkinlik tarihini seç',true);return;}
+  const secim={};
+  document.querySelectorAll('#ozMenu .oz-sat').forEach(s=>{const cb=s.querySelector('input[type=checkbox]'),v=+s.querySelector('.oz-adet').value||0;if(cb.checked&&v>0)secim[cb.dataset.urun]=v;});
+  const normal=document.getElementById('ozNormal').checked;
+  if(!Object.keys(secim).length&&!normal){toast('⚠️ Menüden en az bir ürün seç',true);return;}
+  if(MOD!=='ozel'){MOD_DEGER[MOD]=adetleriAl();MOD='ozel';}
+  document.getElementById('up').classList.add('ozel');
+  document.querySelectorAll('#mod button').forEach(b=>b.classList.toggle('akt',b.dataset.m==='ozel'));
+  adetleriYaz(secim); MOD_DEGER.ozel=secim; ozelPencereKapat();
+  akilliDolu=false; await normalGetir(); oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
 }
 function menuToggle(urunId){ // butonlar her değişimde yeniden çizilir → elemana değil ürün id'sine bağlı
   const inp=document.querySelector('#urunListe .adet[data-urun="'+urunId+'"]'); if(!inp) return;
   inp.value=(+inp.value>0)?0:(+document.getElementById('ozKisi').value||1);
   degisti(inp);
-}
-function kisiUygula(){
-  const k=+document.getElementById('ozKisi').value||0;
-  if(k<=0){toast('⚠️ Önce kişi sayısını yaz',true);return;}
-  const dolu=[...document.querySelectorAll('#urunListe .adet')].filter(i=>+i.value>0);
-  if(!dolu.length){toast('⚠️ Önce soldan ürünleri "+ Menüye ekle" ile seç',true);return;}
-  dolu.forEach(i=>i.value=k); satirlariBoya(); hesaplaGecikmeli(0);
-  toast('✓ Menüdeki '+dolu.length+' ürüne '+k+' porsiyon yazıldı');
 }
 async function normalGetir(){
   const t=document.getElementById('ozTarih').value;
@@ -348,13 +444,15 @@ async function normalGetir(){
   try{const r=await fetch('/uretim-plani/tahmin?gun=1&pay=0&tarih='+t+'&_t='+Date.now(),{headers:{'Accept':'application/json'}});const j=await r.json();NORMAL=j.ok?(j.tahmin||{}):{};}
   catch(e){NORMAL={};toast('⚠️ Normal satış tahmini alınamadı',true);}
 }
-async function ozelNormalDegisti(){await normalGetir();oneriCiz();satirlariBoya();hesaplaGecikmeli(0);}
-async function ozelTarihDegisti(){ozelFormDoldur();if(document.getElementById('ozNormal').checked){await normalGetir();oneriCiz();hesaplaGecikmeli(0);}}
 function trTarih(t){if(!t)return '';const d=new Date(t+'T12:00:00');return d.toLocaleDateString('tr-TR',{day:'numeric',month:'long',year:'numeric'})+' '+GUN_AD[d.getDay()];}
 function ozelFormDoldur(){
   const t=document.getElementById('ozTarih').value, ad=document.getElementById('ozAd').value.trim();
-  const m=document.getElementById('ozSeritMetin');
-  if(t) m.innerHTML='<b>'+rdEsc(ad||'Özel gün')+' — '+rdEsc(trTarih(t))+'</b> · Ürünleri <b>+ Menüye ekle</b> ile seç, kişi sayısını yaz → <b>Menüdekilere uygula</b>. Stok bugünkü stoktur; o güne kadar normal satış da stoktan yiyecek.';
+  const kisi=+document.getElementById('ozKisi').value||0, urunSay=Object.keys(adetleriAl()).length;
+  document.getElementById('ozOzet').innerHTML=t?'<span class="cip ad"><span class="material-icons-outlined">celebration</span>'+rdEsc(ad||'Özel gün')+'</span>'+
+    '<span class="cip"><span class="material-icons-outlined">event</span>'+rdEsc(trTarih(t))+'</span>'+
+    (kisi?'<span class="cip"><span class="material-icons-outlined">groups</span>'+kisi+' kişi</span>':'')+
+    '<span class="cip"><span class="material-icons-outlined">restaurant_menu</span>'+urunSay+' ürün</span>'+
+    (document.getElementById('ozNormal').checked?'<span class="cip"><span class="material-icons-outlined">add_circle</span>normal satış dahil</span>':''):'';
   const f=document.querySelector('#talepYer form'); if(!f) return;
   // talep formu: özel günde teslim = etkinlikten 1 gün önce, not = etkinlik adı (kullanıcı elle değiştirdiyse dokunma)
   const otoYaz=(el,v)=>{if(el.value===''||el.value===el.dataset.oto){el.value=v;}el.dataset.oto=v;};
@@ -431,7 +529,7 @@ function satirlariBoya(){
   if(MOD==='ozel'){
     const nEk=Object.keys(NORMAL).length?' · <b>+ normal satış</b>':'';
     document.getElementById('solOzet').innerHTML=u?'<b>'+u+'</b> ürün menüde · <b>'+sayi(a)+'</b> porsiyon'+nEk:'menüye ürün ekle'+nEk;
-    oneriCiz();
+    oneriCiz(); ozelFormDoldur();
   }else document.getElementById('solOzet').innerHTML=u?'<b>'+u+'</b> ürün planlandı · <b>'+sayi(a)+'</b> porsiyon':'adet gir ya da ✨ öneriye tıkla';
   listeFiltre();
 }
