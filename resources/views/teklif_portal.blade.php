@@ -58,7 +58,7 @@ textarea{height:74px;resize:vertical}
 <div class="wrap">
 
   <div class="hero">
-    <span class="kod">{{ $rfq->kod }}</span>
+    <span class="kod">Fiyat Teklifi İsteği</span>
     <h1>{{ $sube->ad ?? 'İşletme' }}</h1>
     <p>Fiyat Teklifi İsteği — en uygun fiyatınızı girip gönderin</p>
   </div>
@@ -70,7 +70,7 @@ textarea{height:74px;resize:vertical}
       <h2>Teklifiniz alındı ✓</h2>
       <p><b>{{ $gonderildi }}</b> ürün için fiyatınız {{ $sube->ad ?? 'işletmeye' }} iletildi.</p>
       <p class="muted">Yetkililer değerlendirip size dönecektir. Teşekkür ederiz!</p>
-      <div class="badge-ok">{{ $rfq->kod }} · {{ now()->format('d.m.Y H:i') }}</div>
+      <div class="badge-ok">Teklifiniz alındı · {{ now()->format('d.m.Y H:i') }}</div>
       <p class="note">Fiyatınızı güncellemek isterseniz bu sayfayı yenileyip tekrar gönderebilirsiniz.</p>
       <div style="margin-top:14px"><a href="{{ url('/teklif-ver/'.$rfq->token) }}" style="color:var(--mor1);font-weight:800;font-size:13.5px;text-decoration:none">← Teklifi düzenle</a></div>
     </div>

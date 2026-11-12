@@ -8212,16 +8212,14 @@ Route::post('/api/wa/gelen', function (Request $r) {
     if ($hatAmac !== 'musteri') {
         try { _waLog($subeId, $from, $text, 1, 'hat:' . $hatAmac, 'gelen'); } catch (\Throwable $e) {}
         if ($hatAmac === 'satinalma' && $text !== '' && function_exists('_rfqTeklifIsle')) {
-            $n = 0; $metinRfq = $text; $belirsiz = false;
-            // Kod yazılmadıysa: gönderen numaradan tedarikçiyi bul; açık TEK isteği varsa ona bağla, birden fazlaysa kodu sor.
+            $n = 0; $metinRfq = $text;
+            // Tedarikçi kod yazmaz: numarasından + mesajdaki ürünlerden hangi isteğe ait olduğunu sistem kendisi bulur.
             if (!preg_match('/RFQ-\d+/i', $text) && function_exists('_rfqTelefondanBul')) {
-                $acik = []; try { $acik = _rfqTelefondanBul($subeId, $from); } catch (\Throwable $e) {}
-                if (count($acik) === 1) $metinRfq = $acik[0] . "\n" . $text;
-                elseif (count($acik) > 1) $belirsiz = $acik;
+                $kodO = null; try { $kodO = _rfqTelefondanBul($subeId, $from, $text); } catch (\Throwable $e) {}
+                if ($kodO) $metinRfq = $kodO . "\n" . $text;
             }
             try { $n = _rfqTeklifIsle($subeId, $metinRfq, 'whatsapp', 'wa-' . substr(md5($from . '|' . $text), 0, 16)); } catch (\Throwable $e) {}
             if (!empty($n)) { try { _restoWaGonder($subeId, $yanitHedef, 'Teklifiniz alındı, teşekkür ederiz. 🙏', 'satinalma'); } catch (\Throwable $e) {} }
-            elseif ($belirsiz && preg_match('/\d/', $text)) { try { _restoWaGonder($subeId, $yanitHedef, 'Teşekkürler! Sizden birden fazla fiyat isteğimiz var (' . implode(', ', $belirsiz) . '). Bu fiyatlar hangisi için? Lütfen kodu da yazar mısınız, ya da size gönderdiğimiz linkten girebilirsiniz.', 'satinalma'); } catch (\Throwable $e) {} }
         }
         return response()->json(['ok' => 1, 'tip' => 'operasyonel', 'amac' => $hatAmac]);
     }
@@ -15183,9 +15181,9 @@ if (!function_exists('_rfqSupMapGonder')) {
             foreach ($items as $m) $satir .= "\n- " . $m['ad'] . ' ' . rtrim(rtrim(number_format($m['miktar'], 2, ',', ''), '0'), ',') . ' ' . $m['birim'];
             $msg = (!empty($ted->yetkili) ? ($ted->yetkili . ' Bey/Hanım, ') : 'Merhaba, ') . $subeAd . " için aşağıdaki ürünlere en uygun fiyat teklifinizi rica ederiz:" . $satir
                 . "\n\n✅ Fiyat ve teslim tarihinizi tek ekrandan girip gönderin:\n" . $link
-                . "\n\n(İsterseniz bu mesaja yanıt olarak da yazabilirsiniz; lütfen " . $kod . " kodunu belirtin.) Teşekkürler.";
+                . "\n\nİsterseniz fiyatları bu mesaja yanıt olarak da yazabilirsiniz. Teşekkürler.";
             $kanal = [];
-            if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
+            if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $subeAd . ' (Ref: ' . $kod . ')', $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
             if (!empty($ted->telefon) && function_exists('_restoWaGonder')) {
                 if (_restoWaGonder($sid, $ted->telefon, $msg, 'satinalma')) { $kanal[] = 'wa'; $waSay++; }
                 elseif ($waHata === null) $waHata = _rfqWaHataMetni($sid); // sessizce yutma: neden gitmediğini ekranda söyle
@@ -15286,7 +15284,7 @@ Route::post('/teklif-ver/{token}', function (Request $r, $token) {
         try { DB::table('rfq_gonderim')->where('id', $rfq->id)->update(['durum' => 'teklif_geldi', 'teslim_tarihi' => $teslim ?: null, 'teklif_notu' => $not ?: null, 'vade' => $vade !== '' ? mb_substr($vade, 0, 80) : null, 'yanit_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
         if (!empty($rfq->talep_id)) { try { DB::table('satinalma_talepleri')->where('id', $rfq->talep_id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
         $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
-        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat girdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfq->id], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+        try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat girdi.', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfq->id], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
     }
     $rfq = DB::table('rfq_gonderim')->where('token', $token)->first();
     return view('teklif_portal', ['rfq' => $rfq, 'ted' => DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->first(), 'sube' => DB::table('subeler')->where('id', $sid)->first(), 'kalemler' => $kalemler, 'mevcut' => [], 'gonderildi' => $say]);
@@ -15346,19 +15344,31 @@ if (!function_exists('_rfqTeklifEnsure')) {
     }
 }
 if (!function_exists('_rfqTelefondanBul')) {
-    // Gönderen telefondan tedarikçiyi bulur; son 14 günde ona gidip henüz siparişe dönmemiş RFQ kodlarını döndürür (en yeni önce).
-    function _rfqTelefondanBul($sid, $from)
+    // KODSUZ OTOMATİK EŞLEŞTİRME: gönderen numaradan tedarikçiyi bulur, ona son 14 günde giden açık isteklerden
+    // mesajdaki ürün adlarıyla EN ÇOK örtüşeni seçer (eşitlikte henüz cevaplanmamış, sonra en yeni). RFQ kodu ya da null döner.
+    function _rfqTelefondanBul($sid, $from, $metin = '')
     {
         $son10 = substr(preg_replace('/\D/', '', explode('@', (string) $from)[0]), -10);
-        if (strlen($son10) < 10) return []; // LID vb. → numara yok
+        if (strlen($son10) < 10) return null; // LID vb. → numara yok
         $tedIds = [];
         foreach (DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->get(['id', 'telefon']) as $t) {
             if (substr(preg_replace('/\D/', '', $t->telefon), -10) === $son10) $tedIds[] = (int) $t->id;
         }
-        if (!$tedIds) return [];
-        return DB::table('rfq_gonderim')->where('sube_id', (int) $sid)->whereIn('tedarikci_id', $tedIds)
+        if (!$tedIds) return null;
+        $acik = DB::table('rfq_gonderim')->where('sube_id', (int) $sid)->whereIn('tedarikci_id', $tedIds)
             ->whereIn('durum', ['gonderildi', 'teklif_geldi'])->where('created_at', '>=', now()->subDays(14))
-            ->orderByDesc('id')->limit(5)->get(['id', 'kod'])->map(function ($q) { return $q->kod ?: ('RFQ-' . $q->id); })->all();
+            ->orderByDesc('id')->limit(10)->get(['id', 'kod', 'durum', 'kalemler_json']);
+        $enIyi = null; $enPuan = -1;
+        foreach ($acik as $q) {
+            $puan = 0;
+            foreach ((json_decode($q->kalemler_json ?? '[]', true) ?: []) as $k) {
+                $ad = trim((string) ($k['ad'] ?? '')); if ($ad === '') continue;
+                if (mb_stripos($metin, mb_substr($ad, 0, max(4, min(6, mb_strlen($ad))))) !== false) $puan += 10;
+            }
+            if ($q->durum === 'gonderildi') $puan += 1; // henüz cevap vermediği istek öncelikli
+            if ($puan > $enPuan) { $enPuan = $puan; $enIyi = $q; } // eşitlikte ilk gelen = en yeni
+        }
+        return $enIyi ? ($enIyi->kod ?: ('RFQ-' . $enIyi->id)) : null;
     }
 }
 if (!function_exists('_rfqTeklifIsle')) {
@@ -15399,7 +15409,7 @@ if (!function_exists('_rfqTeklifIsle')) {
         if ($say) {
             try { DB::table('rfq_gonderim')->where('id', $rfqId)->update(['durum' => 'teklif_geldi', 'updated_at' => now()]); } catch (\Throwable $e) {}
             $tedAd = DB::table('tedarikciler')->where('id', $rfq->tedarikci_id)->value('ad') ?: 'Tedarikçi';
-            try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat gönderdi (' . $rfq->kod . ').', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfqId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+            try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '💬 Fiyat Teklifi Geldi', $tedAd . ' ' . $say . ' ürün için fiyat gönderdi.', ['tur' => 'rfq_teklif', 'rfq' => (string) $rfqId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
         }
         return $say;
     }
@@ -15573,7 +15583,7 @@ Route::post('/gelen-teklifler/hatirlat', function (Request $r) {
     if (!$t || empty($t->telefon)) return response()->json(['ok' => 0, 'hata' => 'Tedarikçinin telefonu kayıtlı değil — bağlantıyı kopyalayıp iletin.']);
     if (!cache()->add('gt_hatirlat_' . $q->id, 1, 7200)) return response()->json(['ok' => 0, 'hata' => 'Bu tedarikçiye 2 saat içinde zaten hatırlatma gitti.']);
     $sube = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
-    $msg = 'Merhaba, ' . $sube . ' olarak ' . ($q->kod ?: 'RFQ-' . $q->id) . " fiyat teklifinizi bekliyoruz 🙏\nFiyat ve teslim tarihinizi buradan girebilirsiniz:\n" . url('/teklif-ver/' . $q->token);
+    $msg = 'Merhaba, ' . $sube . " olarak fiyat teklifinizi bekliyoruz 🙏\nFiyat ve teslim tarihinizi buradan girebilirsiniz:\n" . url('/teklif-ver/' . $q->token);
     $ok = function_exists('_restoWaGonder') && _restoWaGonder($sid, $t->telefon, $msg, 'satinalma');
     if (!$ok) { cache()->forget('gt_hatirlat_' . $q->id); return response()->json(['ok' => 0, 'hata' => function_exists('_rfqWaHataMetni') ? _rfqWaHataMetni($sid) : 'WhatsApp gönderilemedi.']); }
     return response()->json(['ok' => 1]);
