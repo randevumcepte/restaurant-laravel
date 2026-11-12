@@ -7,16 +7,16 @@
 <style>
 #gt{--gt-yesil:#10B981;--gt-amber:#F59E0B;--gt-mor:#7C3AED;--gt-mavi:#4F46E5;--gt-kirmizi:#EF4444;--gt-pembe:#EC4899}
 /* HERO */
-#gt .gt-hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 22px;color:#fff;background:linear-gradient(130deg,#6D28D9 0%,#4F46E5 48%,#0EA5E9 100%);box-shadow:0 14px 34px rgba(79,70,229,.25);margin-bottom:16px}
-#gt .gt-hero:after{content:"";position:absolute;right:-60px;top:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.22),transparent 70%);pointer-events:none}
+#gt .gt-hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 22px;color:#fff;background:linear-gradient(130deg,#4C1D95 0%,#3730A3 50%,#1E3A8A 100%);box-shadow:0 14px 34px rgba(55,48,163,.28);margin-bottom:16px;text-shadow:0 1px 2px rgba(0,0,0,.22)}
+#gt .gt-hero:after{content:none}
 #gt .gt-hust{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;position:relative;z-index:1}
 #gt .gt-hero h2{margin:0;font-size:20px;font-weight:800;display:flex;align-items:center;gap:8px}
-#gt .gt-hero p{margin:5px 0 0;font-size:13px;opacity:.9;max-width:620px;line-height:1.5}
+#gt .gt-hero p{margin:6px 0 0;font-size:13.5px;color:#fff;max-width:640px;line-height:1.55}
 #gt .gt-aks{display:flex;gap:8px;flex-wrap:wrap}
 #gt .gt-btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:11px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;color:#fff;background:var(--gt-mor);white-space:nowrap;font-family:inherit;transition:transform .12s,box-shadow .12s}
 #gt .gt-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.12)}
 #gt .gt-btn .material-icons-outlined{font-size:18px}
-#gt .gt-btn.cam{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(6px)}
+#gt .gt-btn.cam{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.45)}
 #gt .gt-btn.beyaz{background:#fff;color:#4F46E5}
 #gt .gt-btn.ikincil{background:var(--card);color:var(--ink);border:1px solid var(--line)}
 #gt .gt-btn.yesil{background:linear-gradient(135deg,#10B981,#059669)}
@@ -24,14 +24,14 @@
 #gt .gt-btn.sm .material-icons-outlined{font-size:15px}
 #gt .gt-btn:disabled{opacity:.55;cursor:default;transform:none}
 #gt .gt-kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px;position:relative;z-index:1}
-#gt .gt-kpi div{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:10px 12px}
-#gt .gt-kpi small{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;opacity:.9}
+#gt .gt-kpi div{background:rgba(15,23,42,.30);border:1px solid rgba(255,255,255,.20);border-radius:14px;padding:11px 13px}
+#gt .gt-kpi small{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:#E0E7FF}
 #gt .gt-kpi small .material-icons-outlined{font-size:16px}
-#gt .gt-kpi b{display:block;font-size:20px;font-weight:800;margin-top:3px;letter-spacing:-.3px}
+#gt .gt-kpi b{display:block;font-size:24px;font-weight:800;margin-top:4px;letter-spacing:-.3px;color:#fff}
 #gt .gt-nasil{display:none;position:relative;z-index:1;margin-top:14px}
 #gt .gt-nasil.acik{display:block}
 #gt .gt-adimlar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-#gt .gt-adim{background:rgba(255,255,255,.95);color:#1e1b4b;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+#gt .gt-adim{background:#fff;color:#1e1b4b;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.5;text-shadow:none}
 #gt .gt-adim b.n{display:inline-flex;min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:var(--gt-mor);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-right:6px}
 #gt .gt-adim.ai{box-shadow:0 0 0 3px #FBBF24}
 /* DÜZEN */
@@ -82,20 +82,22 @@
 #gt .gt-bb h4 .material-icons-outlined{font-size:18px;color:var(--gt-mor)}
 #gt .gt-bb small{font-size:11.5px;color:var(--sub)}
 #gt .gt-tedler{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
-#gt .gt-tk{border-radius:16px;border:1px solid var(--line);background:var(--card);padding:14px;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px}
-#gt .gt-tk:before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--c)}
-#gt .gt-tk.enIyi{border-color:#10B981;box-shadow:0 0 0 2px rgba(16,185,129,.25)}
+#gt .gt-tk{border-radius:16px;border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 7%,var(--card));padding:0 0 14px;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:10px;box-shadow:0 6px 18px color-mix(in srgb,var(--c) 14%,transparent)}
+#gt .gt-tk > *:not(.th):not(.rozet){margin:0 14px}
+#gt .gt-tk .th{background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 72%,#000));padding:12px 14px}
+#gt .gt-tk.enIyi{border-color:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.35)}
+#gt .gt-tk.enIyi .th{padding-right:118px}
 #gt .gt-tk .th{display:flex;gap:10px;align-items:center}
-#gt .gt-av{flex:0 0 38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--c);font-size:16px}
-#gt .gt-tk .th b{display:block;font-size:14px;color:var(--ink);cursor:pointer}
+#gt .gt-av{flex:0 0 38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--c);background:#fff;font-size:17px}
+#gt .gt-tk .th b{display:block;font-size:14.5px;color:#fff;cursor:pointer}
 #gt .gt-tk .th b:hover{text-decoration:underline}
-#gt .gt-tk .th small{display:block;font-size:11px;color:var(--sub);margin-top:1px}
-#gt .gt-tk .rozet{position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;color:#fff;background:#10B981;border-radius:20px;padding:3px 8px}
-#gt .gt-tk .tot{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+#gt .gt-tk .th small{display:block;font-size:11px;color:rgba(255,255,255,.88);margin-top:1px}
+#gt .gt-tk .rozet{position:absolute;top:14px;right:12px;font-size:10px;font-weight:800;color:#047857;background:#fff;border-radius:20px;padding:3px 8px}
+#gt .gt-tk .tot{font-size:22px;font-weight:800;color:var(--c);letter-spacing:-.3px}
 #gt .gt-tk .tot small{font-size:11.5px;font-weight:700;color:var(--sub);margin-left:4px;letter-spacing:0}
 #gt .gt-tk .bekl{font-size:13px;font-weight:700;color:#b45309;background:rgba(245,158,11,.12);border-radius:10px;padding:8px 10px}
 #gt .gt-tk .tm{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-#gt .gt-tk .tm div{background:var(--card2);border-radius:10px;padding:6px 8px;font-size:12px;color:var(--ink);font-weight:700}
+#gt .gt-tk .tm div{background:var(--card);border:1px solid color-mix(in srgb,var(--c) 20%,transparent);border-radius:10px;padding:6px 8px;font-size:12px;color:var(--ink);font-weight:700}
 #gt .gt-tk .tm small{display:block;font-size:10.5px;color:var(--sub);font-weight:700}
 #gt .gt-tk .ta{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 #gt .gt-urunler{display:flex;flex-direction:column;gap:10px}
@@ -233,7 +235,7 @@
 const GT = {!! json_encode($gruplar, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) !!};
 let gtSonId = {{ (int) $sonId }}, gtSekmeAktif = 'aktif', gtToastT = null, gtSecili = null;
 const gtSecim = {}; // talepsiz gruplarda: ürün → seçili tedarikçi
-const RENK = ['#7C3AED', '#0EA5E9', '#F59E0B', '#EC4899', '#14B8A6', '#6366F1', '#F97316', '#84CC16'];
+const RENK = ['#7C3AED', '#EA580C', '#0891B2', '#DB2777', '#2563EB', '#CA8A04', '#DC2626', '#0D9488'];
 const gtToast = (m, c) => { const t = document.getElementById('gtToast'); t.textContent = m; t.style.background = c || '#10B981'; t.style.display = 'block'; clearTimeout(gtToastT); gtToastT = setTimeout(() => t.style.display = 'none', 4200); };
 const para = n => (Number(n) || 0).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ₺';
 const paraK = n => (Number(n) || 0).toLocaleString('tr-TR', {maximumFractionDigits: 0}) + ' ₺';
