@@ -24800,7 +24800,7 @@ if (!function_exists('_uretimSatisTahmin')) {
 // Akıllı satış tahmini: son 8 haftanın HAFTANIN GÜNÜ ortalaması (Cuma≠Salı) × son 2 hafta trendi × güvenlik payı.
 // Dönem yarından başlar (1=yarın, 7=önümüzdeki 7 gün, 30=önümüzdeki 30 gün). Dönüş: [urun_id => [...]]
 if (!function_exists('_uretimAkilliTahmin')) {
-    function _uretimAkilliTahmin($sid, $gunSayi = 7, $payYuzde = 0)
+    function _uretimAkilliTahmin($sid, $gunSayi = 7, $payYuzde = 0, $baslangic = null)
     {
         $out = [];
         try {
@@ -24820,7 +24820,10 @@ if (!function_exists('_uretimAkilliTahmin')) {
             $son14 = $bugun->copy()->subDays(14)->toDateString(); $onc14 = $bugun->copy()->subDays(28)->toDateString();
             $acikSon = count(array_filter(array_keys($acik), fn ($g) => $g >= $son14));
             $acikOnc = count(array_filter(array_keys($acik), fn ($g) => $g >= $onc14 && $g < $son14));
-            $hedef = []; for ($i = 1; $i <= $gunSayi; $i++) { $hedef[] = (int) $bugun->copy()->addDays($i)->format('N'); }
+            // hedef günler: varsayılan yarından itibaren; özel gün için $baslangic (Y-m-d) tarihinden itibaren
+            $ilk = $bugun->copy()->addDay();
+            if ($baslangic) { try { $ilk = \Carbon\Carbon::parse($baslangic)->startOfDay(); } catch (\Throwable $e) {} }
+            $hedef = []; for ($i = 0; $i < $gunSayi; $i++) { $hedef[] = (int) $ilk->copy()->addDays($i)->format('N'); }
             $gunAd = [1 => 'Pazartesi', 2 => 'Salı', 3 => 'Çarşamba', 4 => 'Perşembe', 5 => 'Cuma', 6 => 'Cumartesi', 7 => 'Pazar'];
             foreach ($satis as $uid => $gunler) {
                 $toplam = array_sum($gunler);
@@ -24899,7 +24902,8 @@ Route::get('/uretim-plani', function () {
 Route::get('/uretim-plani/tahmin', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (Throwable $e) {}
     if (!$bp) return response()->json(['ok' => 0], 403);
-    return response()->json(['ok' => 1, 'tahmin' => (object) _uretimAkilliTahmin(_webSubeId(), (int) $r->input('gun', 7), (float) $r->input('pay', 10))]);
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : null; // özel gün: o tarihin normal satış tahmini
+    return response()->json(['ok' => 1, 'tahmin' => (object) _uretimAkilliTahmin(_webSubeId(), (int) $r->input('gun', 7), (float) $r->input('pay', 10), $tarih)]);
 });
 // Üretim planı: bir ürünün verim (üretim) birimini reçeteye kalıcı kaydet
 Route::post('/uretim-plani/birim-kaydet', function (Request $r) {
