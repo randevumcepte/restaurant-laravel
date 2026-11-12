@@ -15083,7 +15083,7 @@ if (!function_exists('_rfqSupMapGonder')) {
     {
         _rfqPortalEnsure();
         $subeAd = optional(DB::table('subeler')->where('id', $sid)->first())->ad ?: 'İşletme';
-        $gonderilen = 0; $mailSay = 0; $waSay = 0; $ulasilamayan = [];
+        $gonderilen = 0; $mailSay = 0; $waSay = 0; $ulasilamayan = []; $waHata = null;
         foreach ($supMap as $tid => $items) {
             $ted = DB::table('tedarikciler')->where('id', $tid)->first(); if (!$ted) continue;
             $token = \Illuminate\Support\Str::random(28);
@@ -15097,13 +15097,30 @@ if (!function_exists('_rfqSupMapGonder')) {
                 . "\n\n(İsterseniz bu mesaja yanıt olarak da yazabilirsiniz; lütfen " . $kod . " kodunu belirtin.) Teşekkürler.";
             $kanal = [];
             if (!empty($ted->email) && _epostaGonder($sid, $ted->email, 'Fiyat Teklifi İsteği — ' . $kod, $msg, null, $depId)) { $kanal[] = 'mail'; $mailSay++; }
-            if (!empty($ted->telefon) && function_exists('_restoWaGonder') && _restoWaGonder($sid, $ted->telefon, $msg, 'satinalma')) { $kanal[] = 'wa'; $waSay++; }
+            if (!empty($ted->telefon) && function_exists('_restoWaGonder')) {
+                if (_restoWaGonder($sid, $ted->telefon, $msg, 'satinalma')) { $kanal[] = 'wa'; $waSay++; }
+                elseif ($waHata === null) $waHata = _rfqWaHataMetni($sid); // sessizce yutma: neden gitmediğini ekranda söyle
+            }
             DB::table('rfq_gonderim')->where('id', $rfqId)->update(['kod' => $kod, 'kanal' => implode('+', $kanal)]);
             $gonderilen++;
             if (!$kanal) $ulasilamayan[] = ['tedarikci' => $ted->ad, 'link' => $link]; // satın alma bağlantıyı elle iletir
         }
         if ($talepId) { try { DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {} }
-        return ['gonderilen' => $gonderilen, 'mail' => $mailSay, 'wa' => $waSay, 'ulasilamayan' => $ulasilamayan];
+        return ['gonderilen' => $gonderilen, 'mail' => $mailSay, 'wa' => $waSay, 'ulasilamayan' => $ulasilamayan, 'wa_hata' => $waHata];
+    }
+}
+if (!function_exists('_rfqWaHataMetni')) {
+    // Satın alma WA gönderimi başarısızsa sebebi insan diliyle döndürür (hat çıkış yapmış / bağlı değil / servis yok).
+    function _rfqWaHataMetni($sid)
+    {
+        $key = function_exists('_waHatAnahtari') ? _waHatAnahtari($sid, 'satinalma') : (int) $sid;
+        $hat = null; try { $hat = DB::table('wa_hatlar')->where('sube_id', $sid)->where('session_key', $key)->first(); } catch (Throwable $e) {}
+        $ad = $hat ? ($hat->ad . ($hat->numara ? ' (' . $hat->numara . ')' : '')) : 'WhatsApp hattı';
+        $d = null; try { $d = function_exists('_waBridge') ? _waBridge('GET', '/session/' . $key . '/status') : null; } catch (Throwable $e) {}
+        $b = (array) ($d['body'] ?? []);
+        if (!$d || empty($d['ok'])) return 'WhatsApp servisine ulaşılamadı, mesaj gitmedi.';
+        if (empty($b['connected'])) return $ad . ' bağlı değil (' . ($b['status'] ?? 'kopuk') . '). WhatsApp Hatları sayfasından QR okutup yeniden bağlayın, sonra Fiyat Araştır butonuna tekrar basın.';
+        return $ad . ' üzerinden mesaj gönderilemedi (tedarikçinin numarası WhatsApp kullanmıyor olabilir).';
     }
 }
 Route::post('/fiyat-arastir', function (Request $r) {
@@ -15130,7 +15147,7 @@ Route::post('/fiyat-arastir', function (Request $r) {
     $res = _rfqSupMapGonder($sid, $supMap, $talepId, $depId);
     $ulas = $res['ulasilamayan'] ?? [];
     $ek = $ulas ? ' ⚠ ' . count($ulas) . ' tedarikçiye ulaşılamadı (e-posta/telefon yok): ' . implode(', ', array_column($ulas, 'tedarikci')) . ' — teklif bağlantısını talep ekranından kopyalayıp iletin.' : '';
-    return redirect($geri)->with('ok', ($res['gonderilen'] - count($ulas)) . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Tedarikçiler linkten fiyat+teslim girecek, otomatik düşecek.' . $ek);
+    return redirect($geri)->with('ok', ($res['gonderilen'] - count($ulas)) . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Tedarikçiler linkten fiyat+teslim girecek, otomatik düşecek.' . $ek . (!empty($res['wa_hata']) ? ' ⚠ WhatsApp: ' . $res['wa_hata'] : ''));
 });
 // ───────── TEDARİKÇİ TEKLİF PORTALI (public, tokenli) ─────────
 // Tedarikçi mail/WhatsApp'taki linke tıklar → fiyat + teslim tarihi girer → gönderir.
@@ -15217,7 +15234,7 @@ Route::post('/fiyat-arastir-sec', function (Request $r) {
     }
     if (!$supMap) return redirect('/fiyat-arastir-sec')->with('hata', 'Seçim çözümlenemedi.');
     $res = _rfqSupMapGonder($sid, $supMap, 0, 0);
-    return redirect('/gelen-teklifler')->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Yanıt gelince "Şimdi Teklifleri Oku" ile çek.');
+    return redirect('/gelen-teklifler')->with('ok', $res['gonderilen'] . ' tedarikçiye fiyat isteği gönderildi (e-posta: ' . $res['mail'] . ', WhatsApp: ' . $res['wa'] . '). Yanıt gelince "Şimdi Teklifleri Oku" ile çek.' . (!empty($res['wa_hata']) ? ' ⚠ WhatsApp: ' . $res['wa_hata'] : ''));
 });
 
 // ============================ P3 — GELEN TEKLİFLERİ AI OKU (WhatsApp + Gmail) ============================
@@ -25461,7 +25478,7 @@ Route::post('/satinalma-talep/fiyat-arastir', function (Request $r) {
     $res = ['gonderilen' => 0, 'mail' => 0, 'wa' => 0, 'ulasilamayan' => []];
     if (function_exists('_rfqSupMapGonder')) $res = _rfqSupMapGonder($sid, $supMap, $id, 0);
     try { DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {}
-    return response()->json(['ok' => true, 'gonderilen' => $res['gonderilen'], 'mail' => $res['mail'], 'wa' => $res['wa'], 'ulasilamayan' => $res['ulasilamayan'] ?? []]);
+    return response()->json(['ok' => true, 'gonderilen' => $res['gonderilen'], 'mail' => $res['mail'], 'wa' => $res['wa'], 'ulasilamayan' => $res['ulasilamayan'] ?? [], 'wa_hata' => $res['wa_hata'] ?? null]);
 });
 // Satın almacı: bir kaleme tedarikçi teklifi ekle (RFQ)
 Route::post('/satinalma-talep/teklif-ekle', function (Request $r) {
@@ -33192,5 +33209,3 @@ require __DIR__ . '/sync.php';
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
 
-// GEÇİCİ: WA/RFQ teşhisi (salt-okunur, yalnız sahip) — iş bitince silinecek
-require __DIR__ . '/wa_teshis.php';

@@ -1418,6 +1418,8 @@ window.staFiyatArastir = function() {
             toast(giden > 0 ? `✓ ${giden} tedarikçiye fiyat isteği gitti (e-posta ${res.mail}, WhatsApp ${res.wa}).` + (ulas.length ? ` ${ulas.length} tedarikçiye ulaşılamadı.` : '') : `⚠ Hiçbir tedarikçiye otomatik ulaşılamadı — bağlantıları elle iletin.`, giden > 0 ? '#10B981' : '#F59E0B');
             staGonderimPenceresi('Teklif bağlantıları — ulaşılamayan tedarikçiler', ulas.map(u => staBaglantiSatiri(u.tedarikci, u.link, false)));
             staDetayAc(aktifTalepId);
+            // WhatsApp gitmediyse sessiz geçme: sebebi göster, hattı bağlamaya yönlendir
+            if (res.wa_hata && typeof rkOnay === 'function') rkOnay('⚠ WhatsApp mesajı gitmedi. ' + res.wa_hata, function(){ location.href = '/wa-hatlar'; }, '#F59E0B', 'WhatsApp hattını bağla');
         }
         else toast('⚠ ' + (res.hata || 'Gönderilemedi'), '#F43F5E');
     };
