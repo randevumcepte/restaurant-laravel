@@ -46,21 +46,7 @@ body.koyu #up .ozel-serit{color:#fdba74;background:#2a1d2a;border-color:#4a2a42}
 #up .menu-btn{border:1px dashed color-mix(in srgb,#EC4899 55%,var(--line));background:none;color:#db2777;border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap}
 #up .menu-btn.var{border-style:solid;background:color-mix(in srgb,#EC4899 12%,transparent)}
 #up .normal-ek{font-size:11px;font-weight:700;color:var(--sub);white-space:nowrap}
-/* alışveriş listesi */
-#alModal .al-arac{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 18px 0}
-#alModal .al-govde{overflow-y:auto;padding:10px 18px 6px}
-#alModal .al-sat{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px;color:var(--ink)}
-#alModal .al-sat input{width:19px;height:19px;accent-color:#10B981;flex:none}
-#alModal .al-sat .ad{flex:1;font-weight:700}
-#alModal .al-sat .mk{font-weight:900;white-space:nowrap}
-#alModal .al-sat .tl{color:#d97706;font-weight:700;font-size:12.5px;width:80px;text-align:right}
-#alModal .al-sat.alindi .ad,#alModal .al-sat.alindi .mk{text-decoration:line-through;opacity:.45}
-#alModal .al-alt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line)}
-#alModal .al-alt .top{margin-right:auto;font-size:13px;color:var(--sub)}
-#alModal .al-alt .top b{color:var(--ink);font-size:16px}
-#alModal .seg2{display:inline-flex;background:var(--card2);border-radius:10px;padding:3px}
-#alModal .seg2 button{border:0;background:none;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:800;color:var(--sub);cursor:pointer}
-#alModal .seg2 button.akt{background:var(--vurgu);color:#fff}
+/* pencere butonları */
 .up-modal .mbtn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 13px;font-weight:800;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .up-modal .mbtn.yesil{background:#10B981;border-color:#10B981;color:#fff}
 .up-modal .mbtn .material-icons-outlined{font-size:17px}
@@ -270,7 +256,7 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
     {{-- SAĞ: alınacaklar --}}
     <div class="kart">
       <div class="kart-bas"><h2>Alınacaklar</h2><span class="ozet" id="sagOzet"></span>
-        <div class="sag"><button type="button" class="btn yesil" id="alBtn" onclick="alisverisAc()" style="display:none;padding:6px 11px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">checklist</span>Neler alayım?</button><button type="button" class="btn cizgi" id="rdBtn" onclick="receteDetayAc()" style="display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
+        <div class="sag"><span id="alBtn" style="display:none"><button type="button" class="btn cizgi" onclick="alKopyala()" title="Alınacaklar listesini kopyala (WhatsApp'a yapıştır)" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">content_copy</span>Kopyala</button><button type="button" class="btn cizgi" onclick="alYazdir()" title="Alınacaklar listesini yazdır" style="padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">print</span>Yazdır</button></span><button type="button" class="btn cizgi" id="rdBtn" onclick="receteDetayAc()" style="display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
       </div>
       <div id="talepYer"></div>
       <div class="kaydir" id="sonuc"></div>
@@ -461,29 +447,9 @@ function ozelFormDoldur(){
   otoYaz(f.teslim_tarihi,teslim); otoYaz(f.not,not);
 }
 
-/* ---- "Neler alayım?" alışveriş listesi ---- */
+/* ---- alışveriş listesi: kopyala / yazdır (eksik varsa eksikler, yoksa toplam ihtiyaç) ---- */
 let alKip='eksik';
-function alisverisAc(){
-  let m=document.getElementById('alModal');
-  if(!m){
-    m=document.createElement('div');m.id='alModal';m.className='up-modal';
-    m.innerHTML='<div class="rdm" role="dialog" aria-modal="true" style="width:min(620px,100%)"><div class="rdm-bas"><div class="rdm-ik" style="background:rgba(16,185,129,.14);color:#10B981"><span class="material-icons-outlined">checklist</span></div>'+
-      '<div><h3 id="alBaslik">Neler alayım?</h3><p id="alAlt"></p></div><button type="button" class="rdm-kapat" onclick="alisverisKapat()" aria-label="Kapat"><span class="material-icons-outlined">close</span></button></div>'+
-      '<div class="al-arac"><div class="seg2"><button data-k="eksik" onclick="alKipSec(\'eksik\')">Sadece eksikler</button><button data-k="tum" onclick="alKipSec(\'tum\')">Tüm ihtiyaç</button></div></div>'+
-      '<div class="al-govde" id="alGovde"></div>'+
-      '<div class="al-alt"><span class="top" id="alTop"></span>'+
-      '<button class="mbtn" onclick="alKopyala()"><span class="material-icons-outlined">content_copy</span>Kopyala</button>'+
-      '<button class="mbtn" onclick="alYazdir()"><span class="material-icons-outlined">print</span>Yazdır</button>'+
-      '<button class="mbtn yesil" id="alTalep" onclick="alisverisKapat();const b=document.getElementById(\'talepBtn\');if(b){b.scrollIntoView({block:\'center\'});b.focus();}"><span class="material-icons-outlined">send</span>Talep oluştur</button></div></div>';
-    m.addEventListener('click',e=>{if(e.target===m)alisverisKapat();});
-    document.addEventListener('keydown',e=>{if(e.key==='Escape')alisverisKapat();});
-    document.body.appendChild(m);
-  }
-  alKip=(sonSonuc&&(sonSonuc.rows||[]).some(x=>!x.yeterli))?'eksik':'tum';
-  alCiz(); m.classList.add('acik'); document.body.style.overflow='hidden';
-}
-function alisverisKapat(){const m=document.getElementById('alModal');if(m&&m.classList.contains('acik')){m.classList.remove('acik');document.body.style.overflow='';}}
-function alKipSec(k){alKip=k;alCiz();}
+function alKipBelirle(){alKip=(sonSonuc&&(sonSonuc.rows||[]).some(x=>!x.yeterli))?'eksik':'tum';}
 function alListe(){
   const rows=(sonSonuc&&sonSonuc.rows)||[];
   return alKip==='eksik'?rows.filter(x=>!x.yeterli).map(x=>({ad:x.ad,mk:x.net,br:x.birim,tl:x.tahmini_maliyet})):rows.map(x=>({ad:x.ad,mk:x.lazim,br:x.birim,tl:0}));
@@ -492,28 +458,17 @@ function alBaslikMetin(){
   if(MOD==='ozel'){const t=document.getElementById('ozTarih').value,ad=document.getElementById('ozAd').value.trim();return '🎉 '+(ad||'Özel gün')+(t?' · '+trTarih(t):'');}
   return 'Üretim planı · '+donemAd();
 }
-function alCiz(){
-  document.querySelectorAll('#alModal .seg2 button').forEach(b=>b.classList.toggle('akt',b.dataset.k===alKip));
-  const l=alListe();
-  document.getElementById('alBaslik').textContent='Neler alayım?';
-  document.getElementById('alAlt').textContent=alBaslikMetin()+(alKip==='eksik'?' · stok düşüldü, sadece alınacaklar':' · stoğa bakmadan toplam ihtiyaç');
-  document.getElementById('alGovde').innerHTML=l.length?l.map(x=>'<label class="al-sat"><input type="checkbox" onchange="this.closest(\'.al-sat\').classList.toggle(\'alindi\',this.checked)"><span class="ad">'+rdEsc(x.ad)+'</span><span class="mk">'+sayi(x.mk)+' '+rdEsc(x.br)+'</span>'+(alKip==='eksik'?'<span class="tl">'+(x.tl>0?'~'+tl(x.tl):'')+'</span>':'')+'</label>').join(''):
-    '<div style="text-align:center;color:var(--sub);padding:30px;font-size:13px">✓ Stok bu plan için yeterli — alınacak bir şey yok.</div>';
-  const top=l.reduce((t,x)=>t+(+x.tl||0),0);
-  document.getElementById('alTop').innerHTML='<b>'+l.length+'</b> kalem'+(alKip==='eksik'&&top>0?' · ~<b>'+tl(top)+'</b>':'');
-  document.getElementById('alTalep').style.display=(alKip==='eksik'&&l.length)?'':'none';
-}
 function alMetin(){
   const l=alListe();
   return '🛒 '+alBaslikMetin()+'\n'+(alKip==='eksik'?'(stok düşüldü, alınacaklar)':'(toplam ihtiyaç)')+'\n\n'+l.map(x=>'▫️ '+x.ad+' — '+sayi(x.mk)+' '+x.br).join('\n');
 }
 async function alKopyala(){
-  const s=alMetin();
+  alKipBelirle(); const s=alMetin();
   try{await navigator.clipboard.writeText(s);}catch(e){const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(_){}ta.remove();}
   toast('✓ Liste kopyalandı — WhatsApp\'a yapıştırabilirsin');
 }
 function alYazdir(){
-  const l=alListe(), w=window.open('','_blank','width=720,height=900'); if(!w){toast('⚠️ Açılır pencere engellendi',true);return;}
+  alKipBelirle(); const l=alListe(), w=window.open('','_blank','width=720,height=900'); if(!w){toast('⚠️ Açılır pencere engellendi',true);return;}
   const satir=l.map(x=>'<tr><td style="width:28px">☐</td><td>'+rdEsc(x.ad)+'</td><td style="text-align:right;font-weight:700">'+sayi(x.mk)+' '+rdEsc(x.br)+'</td></tr>').join('');
   w.document.write('<!doctype html><meta charset="utf-8"><title>Alışveriş listesi</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h2{margin:0 0 4px}p{margin:0 0 16px;color:#555}table{width:100%;border-collapse:collapse;font-size:15px}td{padding:9px 6px;border-bottom:1px solid #ddd}</style>'+
     '<h2>'+rdEsc(alBaslikMetin())+'</h2><p>'+(alKip==='eksik'?'Stok düşüldü — alınacaklar':'Toplam ihtiyaç')+' · '+new Date().toLocaleDateString('tr-TR')+'</p><table>'+satir+'</table>');
