@@ -269,6 +269,8 @@ const tasarruf = g => g.urunler.reduce((s, u) => s + tasarrufU(g, u), 0);
 // Birim fiyatı başka birime çevir (hal kg → talep g gibi). Çevrilemezse null.
 const birimNorm = b => { b = String(b || '').toLocaleLowerCase('tr-TR').trim(); if (['kg','kilo','kilogram'].includes(b)) return ['kg', 1000]; if (['g','gr','gram'].includes(b)) return ['kg', 1]; if (['lt','l','litre','litr'].includes(b)) return ['lt', 1000]; if (['ml'].includes(b)) return ['lt', 1]; if (['ad','adet','tane'].includes(b)) return ['ad', 1]; if (['demet','bağ'].includes(b)) return [b, 1]; return [b, 1]; };
 const birimCevir = (fiyat, kaynak, hedef) => { const [ka, kk] = birimNorm(kaynak), [ha, hk] = birimNorm(hedef); if (!fiyat || !ka || ka !== ha) return null; return Number(fiyat) * hk / kk; };
+// Gram/ml fiyatını okunur hâle getir: 0,01 ₺/g → 10,00 ₺/kg
+const okunurFiyat = (f, b) => { const n = String(b || '').toLocaleLowerCase('tr-TR'); if (['g','gr','gram'].includes(n)) return para(f * 1000) + '/kg'; if (n === 'ml') return para(f * 1000) + '/lt'; return para(f) + (b ? '/' + esc(b) : ''); };
 const durumRenk = g => !g.tedarikciler.length ? '#94a3b8' : g.yanitlayan >= g.tedarikciler.length ? '#10B981' : g.yanitlayan ? '#0EA5E9' : '#F59E0B';
 
 GT.forEach((g, gi) => {
@@ -352,7 +354,7 @@ function detayHtml(g){
     const kiyas = halU || alisU, kiyasAd = halU ? 'hale' : 'son alışa';
     let ref = '';
     if (u.hal) ref += `<span class="ref hal" title="${esc(u.hal.ad)} · ${esc(u.hal.tarih)}">🥬 Hal${u.hal.cesit > 1 ? ' (' + u.hal.cesit + ' çeşit)' : ''}: ${para(u.hal.ort)}/${esc(u.hal.birim)}${u.hal.min > 0 && u.hal.max > 0 ? ` <i>(${paraK(u.hal.min)}–${paraK(u.hal.max)})</i>` : ''}<i> · ${tarih(u.hal.tarih)}</i></span>`;
-    if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${para(u.son_alis.fiyat)}${u.son_alis.birim ? '/' + esc(u.son_alis.birim) : ''}<i>${u.son_alis.kaynak === 'fatura' ? ' · faturadan' : ' · siparişten'}${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
+    if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${okunurFiyat(u.son_alis.fiyat, u.son_alis.birim)}<i>${u.son_alis.kaynak === 'fatura' ? ' · faturadan' : ' · siparişten'}${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
     if (!ref) ref = `<span class="ref yok">Hal / geçmiş alış verisi yok</span>`;
     h += `<div class="gt-ur"><div class="ub"><b>${esc(u.ad)}</b><small>İhtiyaç: ${mik(u.miktar)} ${esc(u.birim)}</small>${tu > 0 ? `<span class="tas">↓ ${para(tu)} fark</span>` : ''}<div class="refler">${ref}</div></div><div class="gt-bars">`;
     if (halU) h += `<div class="gt-bar refbar" style="--c:#64748B"><span class="tad"><i></i>Hal ortalaması</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * halU / maks))}%"></i></div><span class="fy">${para(halU)}/${esc(u.birim)}<small>${para(halU * u.miktar)} toplam</small></span></div>`;
