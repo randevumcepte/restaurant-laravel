@@ -25764,9 +25764,19 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
     $talep = DB::table('satinalma_talepleri')->where('id', $id)->where('sube_id', $p->sube_id)->first();
     if (!$talep) return response()->json(['ok' => false, 'mesaj' => 'Bulunamadı.']);
     if ($kapali = _talepSatinalmayaKapali($talep)) return response()->json(['ok' => false, 'mesaj' => $kapali]);
+    // OTOMATİK ÖNERİ: teklif gelmiş ama ⭐ seçilmemiş kalemlere EN UCUZ teklifi öner (satın almacı istediğini elle değiştirebilir)
+    $otoOner = 0;
+    try { if (Schema::hasTable('talep_teklifleri')) {
+        foreach (DB::table('talep_kalemleri')->where('talep_id', $id)->whereNull('onerilen_tedarikci_id')->get(['id', 'oneri_gerekce']) as $k) {
+            $en = DB::table('talep_teklifleri')->where('talep_kalem_id', $k->id)->where('fiyat', '>', 0)->whereNotNull('tedarikci_id')->orderBy('fiyat')->first();
+            if (!$en) continue;
+            DB::table('talep_kalemleri')->where('id', $k->id)->update(['onerilen_tedarikci_id' => (int) $en->tedarikci_id, 'oneri_gerekce' => $k->oneri_gerekce ?: 'Otomatik: en ucuz teklif', 'updated_at' => now()]);
+            $otoOner++;
+        }
+    } } catch (\Throwable $e) {}
     $toplam = DB::table('talep_kalemleri')->where('talep_id', $id)->count();
     $onerili = DB::table('talep_kalemleri')->where('talep_id', $id)->whereNotNull('onerilen_tedarikci_id')->count();
-    if ($onerili === 0) return response()->json(['ok' => false, 'mesaj' => 'En az bir kaleme ⭐ ile tedarikçi öner (teklif gelen kaleme).']);
+    if ($onerili === 0) return response()->json(['ok' => false, 'mesaj' => 'Henüz hiçbir ürüne tedarikçiden fiyat gelmedi. Önce "Fiyat Araştır" ile fiyat iste; fiyat gelince patrona gönderebilirsin.']);
     // TAM: tüm kalemlerde öneri var → talep komple onaya gider
     if ($onerili >= $toplam) {
         DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'onayda', 'updated_at' => now()]);
@@ -25776,7 +25786,7 @@ Route::post('/satinalma-talep/patrona-gonder', function (Request $r) {
     // KISMİ: bazı kalemlerde öneri yok. Onay almadan bölme.
     $bekleyen = $toplam - $onerili;
     if (!(int) $r->input('kismi')) {
-        return response()->json(['ok' => false, 'kismi_teklif' => true, 'onerili' => $onerili, 'bekleyen' => $bekleyen,
+        return response()->json(['ok' => false, 'kismi_teklif' => true, 'onerili' => $onerili, 'bekleyen' => $bekleyen, 'oto_oner' => $otoOner,
             'mesaj' => $onerili . ' kalemde öneri var, ' . $bekleyen . ' kalemde teklif bekleniyor.']);
     }
     // KISMİ ONAY: öneri verilen kalemleri YENİ talebe (onayda) ayır; kalanlar bu talepte teklif beklemede kalır

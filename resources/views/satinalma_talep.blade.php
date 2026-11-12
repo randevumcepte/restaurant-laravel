@@ -1444,7 +1444,8 @@ window.staPatronaGonder = async function(kismi) {
         toast('✓ ' + (res.mesaj || 'Patrona gönderildi'), '#10B981');
         staDetListeYenile(res.yeni_talep ? 'teklif' : 'onayda'); staDetayAc(aktifTalepId);
     } else if (res.kismi_teklif) {
-        rkOnay('Sadece öneri verdiğin ' + res.onerili + ' kalemi ŞİMDİ onaya gönderelim mi? Kalan ' + res.bekleyen + ' kalem ayrı bir talepte teklif beklemeye devam eder — beklemezsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
+        if (res.oto_oner) staDetayYenile(); // otomatik ⭐ seçilenler görünsün
+        rkOnay('Fiyatı gelen ' + res.onerili + ' ürün şimdi patron onayına gitsin mi?' + (res.oto_oner ? '\n(Bu ürünlerde en ucuz teklif otomatik ⭐ seçildi; istersen önce değiştirebilirsin.)' : '') + '\n\nFiyatı henüz gelmeyen ' + res.bekleyen + ' ürün beklemede kalır; fiyatları gelince onları da ayrıca gönderirsin.', function(){ staPatronaGonder(true); }, 'var(--mor1)', 'Gelenleri Gönder');
     } else toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E');
 };
 window.staOnayla = async function() {
