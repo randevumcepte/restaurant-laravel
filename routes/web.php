@@ -33138,7 +33138,3 @@ require __DIR__ . '/sync.php';
 
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
-
-
-// GEÇİCİ: saat dilimi teşhisi (salt-okunur, yalnız sahip) — geçiş bitince silinecek
-require __DIR__ . '/saat_teshis.php';
