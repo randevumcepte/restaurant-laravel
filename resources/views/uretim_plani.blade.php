@@ -128,7 +128,14 @@ body.koyu #up .oz-ozet .cip.ad{background:#2a1d2a;color:#f9a8d4}
 #up .mt .tl{color:var(--amber);font-weight:800}
 #up .mt tr.yeter td{color:var(--sub);font-weight:600}
 #up .mt tr.yeter .al{background:color-mix(in srgb,var(--yesil) 15%,transparent);color:#059669}
-#up .ara-baslik td{background:var(--card2);font-size:11.5px;font-weight:800;color:var(--sub);cursor:pointer;text-align:left!important}
+#up .ara-baslik td{padding:10px 14px;text-align:left!important;border-bottom:0}
+#up .yeter-btn{width:100%;display:flex;align-items:center;gap:10px;border:1.5px solid color-mix(in srgb,var(--yesil) 45%,var(--line));background:color-mix(in srgb,var(--yesil) 9%,var(--card));color:#047857;border-radius:12px;padding:11px 14px;font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit;transition:.15s}
+#up .yeter-btn:hover{background:color-mix(in srgb,var(--yesil) 16%,var(--card));border-color:var(--yesil)}
+#up .yeter-btn .material-icons-outlined{font-size:20px}
+#up .yeter-btn .m{flex:1;text-align:left}
+#up .yeter-btn .m b{display:inline-block;background:var(--yesil);color:#fff;border-radius:20px;padding:0 9px;margin:0 3px;font-size:12px}
+#up .yeter-btn .g{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;background:var(--card);border:1px solid color-mix(in srgb,var(--yesil) 40%,var(--line));border-radius:9px;padding:4px 6px 4px 11px}
+body.koyu #up .yeter-btn{color:#6ee7b7}
 #up .bos-sonuc{text-align:center;color:var(--sub);padding:50px 20px;font-size:13px;line-height:1.6}
 #up .bos-sonuc .material-icons-outlined{font-size:40px;color:var(--sub2);display:block;margin-bottom:8px}
 #up .bos-sonuc b{color:var(--ink)}
@@ -294,7 +301,7 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
 <script>
 const MRP_CSRF=document.querySelector('meta[name=csrf-token]').content;
 let TAHMIN={!! json_encode((object) ($akilli ?? []), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
-let sonPlan=[], sonDetay=[], sonSonuc=null, akilliDolu=false, hesapZaman=null, hesapNo=0, yeterAcik=false;
+let sonPlan=[], sonDetay=[], sonSonuc=null, akilliDolu=false, hesapZaman=null, hesapNo=0, yeterAcik=null, yeterSonAcik=false;
 let MOD='rutin', NORMAL={}; const MOD_DEGER={rutin:{},ozel:{}}; // her modun adetleri ayrı tutulur
 const GUN_AD=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
 const GUVEN_AD={yuksek:'güven yüksek',orta:'güven orta',dusuk:'güven düşük'};
@@ -364,7 +371,7 @@ function modSec(m){
   MOD_DEGER[MOD]=adetleriAl(); MOD=m; adetleriYaz(MOD_DEGER[m]);
   document.getElementById('up').classList.toggle('ozel',m==='ozel');
   document.querySelectorAll('#mod button').forEach(b=>b.classList.toggle('akt',b.dataset.m===m));
-  akilliDolu=false; oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
+  akilliDolu=false; yeterAcik=null; oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
 }
 // "Özel gün" sekmesi: etkinlik yoksa önce oluşturma penceresi açılır
 function ozelTikla(){if(!document.getElementById('ozTarih').value) ozelPencereAc(); else modSec('ozel');}
@@ -416,7 +423,7 @@ async function ozelOlustur(){
   document.getElementById('up').classList.add('ozel');
   document.querySelectorAll('#mod button').forEach(b=>b.classList.toggle('akt',b.dataset.m==='ozel'));
   adetleriYaz(secim); MOD_DEGER.ozel=secim; ozelPencereKapat();
-  akilliDolu=false; await normalGetir(); oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
+  akilliDolu=false; yeterAcik=null; await normalGetir(); oneriCiz(); satirlariBoya(); ozelFormDoldur(); hesaplaGecikmeli(0);
 }
 function menuToggle(urunId){ // butonlar her değişimde yeniden çizilir → elemana değil ürün id'sine bağlı
   const inp=document.querySelector('#urunListe .adet[data-urun="'+urunId+'"]'); if(!inp) return;
@@ -554,7 +561,7 @@ function malSatir(x){
     '<td>'+(x.yeterli?'<span class="al">yeterli</span>':'<span class="al">'+sayi(x.net)+' '+rdEsc(x.birim)+'</span>')+'</td>'+
     '<td class="tl">'+(x.tahmini_maliyet>0?tl(x.tahmini_maliyet):'')+'</td></tr>';
 }
-function yeterAcKapa(){yeterAcik=!yeterAcik;ciz();}
+function yeterAcKapa(){yeterAcik=!yeterSonAcik;ciz();}
 function ciz(){
   const j=sonSonuc||{}, rows=j.rows||[], kutu=document.getElementById('sonuc'), talep=document.getElementById('talepYer');
   sonDetay=j.detay||[];
@@ -577,8 +584,12 @@ function ciz(){
   eksik.forEach(x=>h+=malSatir(x));
   if(!eksik.length) h+='<tr><td colspan="5"><div class="tamam-not" style="margin:4px 0"><span class="material-icons-outlined">verified</span>Stok bu plan için yeterli — satın almaya gerek yok.</div></td></tr>';
   if(yeter.length){
-    h+='<tr class="ara-baslik" onclick="yeterAcKapa()"><td colspan="5">'+(yeterAcik?'▾':'▸')+' Stokta yeterli olanlar ('+yeter.length+')</td></tr>';
-    if(yeterAcik) yeter.forEach(x=>h+=malSatir(x));
+    // eksik yoksa yeterliler kendiliğinden açık gelir (kullanıcı kapatırsa kapalı kalır)
+    yeterSonAcik=yeterAcik===null?!eksik.length:yeterAcik;
+    h+='<tr class="ara-baslik"><td colspan="5"><button type="button" class="yeter-btn'+(yeterSonAcik?' acik':'')+'" onclick="yeterAcKapa()">'+
+      '<span class="material-icons-outlined">inventory</span><span class="m">Stokta yeterli olanlar <b>'+yeter.length+'</b> malzeme</span>'+
+      '<span class="g">'+(yeterSonAcik?'Gizle':'Göster')+'<span class="material-icons-outlined">'+(yeterSonAcik?'expand_less':'expand_more')+'</span></span></button></td></tr>';
+    if(yeterSonAcik) yeter.forEach(x=>h+=malSatir(x));
   }
   kutu.innerHTML=h+'</tbody></table>';
 }
