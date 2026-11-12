@@ -111,6 +111,7 @@ if (!function_exists('_bmKatalog')) {
             'dogum_gunu'          => ['Bu hafta doğum günü olan müşteriler', ['crm', 'pazarlama'], 's', 0],
             // ---- IT / Teknik ----
             'cihaz_offline'       => ['Cihaz / yazıcı çevrimdışı', ['it'], 's', 0],
+            'wa_hat_koptu'        => ['WhatsApp hattı koptu / çıkış yaptı (hat sahibi + yönetim)', ['it'], 's', 1],
             'mali_fis_hata'       => ['Mali fiş / ÖKC hatası', ['it', 'kasa'], 's', 1],
             'surum_eski'          => ['Eski sürüm cihaz', ['it'], 's', 0],
             'ariza_acik'          => ['Açık arıza / destek kaydı', ['it', 'teknik'], 's', 0],
@@ -582,6 +583,8 @@ if (!function_exists('_bmMotor')) {
         $GLOBALS['bm_zorla'] = (bool) $zorla;
         if ($zorla || cache()->add('bm_olay_' . $sid, 1, 120)) { try { $sonuc['olay'] = _bmOlayTara($sid); } catch (\Throwable $e) {} }
         if ($zorla || cache()->add('bm_brif_' . $sid, 1, 900)) { try { $sonuc['brif'] = _bmBrifingTara($sid); } catch (\Throwable $e) {} }
+        // WhatsApp hat bekçisi (web.php _waHatSaglik): kopan/çıkış yapan hattı 3 dk'da bir yakala
+        if (function_exists('_waHatSaglik') && ($zorla || cache()->add('wa_saglik_' . $sid, 1, 180))) { try { $sonuc['wa'] = _waHatSaglik($sid); } catch (\Throwable $e) {} }
         return $sonuc;
     }
 }

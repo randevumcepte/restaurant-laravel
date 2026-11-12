@@ -7475,6 +7475,8 @@ if (!function_exists('_restoWaGonder')) {
             $ok = $kod >= 200 && $kod < 300;
             if ($ok) { try { \App\Services\KontorServisi::dus($subeId, 1, 'whatsapp-mesaj'); } catch (\Throwable $e) {} } // 1 mesaj = 1 kontör
             try { _waLog($subeId, $jid, (string) $mesaj, $ok ? 1 : 2, $ok ? null : ('http ' . $kod)); } catch (\Throwable $e) {} // istatistik logu
+            // 409 = hat bağlı değil → bekçi hemen kontrol edip hat sahibine/yönetime bildirsin
+            if ($kod === 409 && function_exists('_waHatSaglik')) { $skB = (int) $sessionKey; app()->terminating(function () use ($skB) { try { _waHatSaglik(null, $skB); } catch (\Throwable $e) {} }); }
             return $ok;
         } catch (\Throwable $e) { return false; }
     }
@@ -7549,6 +7551,78 @@ if (!function_exists('_waHatAnahtari')) {
             }
         } catch (\Throwable $e) {}
         return (int) $subeId; // legacy
+    }
+}
+// ============ WA HAT SAĞLIK BEKÇİSİ: kopan/çıkış yapan hattı yakala → hat sahibine + sahip/müdüre bildir ============
+// Tetik: bridge 'disconnected' webhook'u (anında) + panel açıkken bildirim motoru (3 dk'da bir).
+// 'disconnected' (ağ kopması) whatsmeow'da kendiliğinden yeniden bağlanır → 3 dk sürerse alarm. 'logged-out' = QR şart → anında alarm.
+if (!function_exists('_waHatSaglik')) {
+    function _waHatSaglik($sid = null, $sadeceKey = null)
+    {
+        if (function_exists('_waHatEnsure')) _waHatEnsure();
+        $q = DB::table('wa_hatlar')->where('aktif', 1);
+        if ($sid) $q->where('sube_id', (int) $sid);
+        if ($sadeceKey) $q->where('session_key', (int) $sadeceKey);
+        $sonuc = [];
+        foreach ($q->get() as $h) {
+            $d = function_exists('_waBridge') ? _waBridge('GET', '/session/' . (int) $h->session_key . '/status') : null;
+            if (!$d || empty($d['ok'])) { $sonuc[$h->id] = 'servis-yok'; continue; } // bridge'e ulaşılamadı: hat suçlu değil, yanlış alarm verme
+            $b = (array) ($d['body'] ?? []);
+            $st = (string) ($b['status'] ?? '');
+            $ck = 'wa_hat_kopuk_' . $h->id;
+            if (!empty($b['connected'])) {
+                $ilk = cache()->pull($ck);
+                if ($h->durum !== 'bagli') { try { DB::table('wa_hatlar')->where('id', $h->id)->update(['durum' => 'bagli', 'updated_at' => now()]); } catch (\Throwable $e) {} }
+                if ($ilk && !empty($ilk['alarm'])) _waHatAlarm($h, 'geri', $st);
+                $sonuc[$h->id] = 'bagli'; continue;
+            }
+            // Bridge yeniden başlamış ve oturumu yüklememiş → kendimiz başlat (kayıtlı cihaz varsa QR'sız döner)
+            if ($st === 'no-session') { try { _waBridge('POST', '/session/' . (int) $h->session_key . '/start'); } catch (\Throwable $e) {} }
+            if ($h->durum === 'bekliyor' && !cache()->has($ck)) { $sonuc[$h->id] = 'hic-baglanmamis'; continue; } // hiç bağlanmamış yeni hat: alarm yok
+            $kayit = cache()->get($ck) ?: ['ilk' => time(), 'alarm' => 0];
+            $kesin = in_array($st, ['logged-out', 'qr-pending'], true) || (time() - (int) $kayit['ilk']) >= 180;
+            // ilk alarm + düzelmezse 6 saatte bir hatırlat
+            if ($kesin && (empty($kayit['alarm']) || time() - (int) $kayit['alarm'] >= 6 * 3600)) { _waHatAlarm($h, 'koptu', $st); $kayit['alarm'] = time(); }
+            cache()->put($ck, $kayit, now()->addDays(30));
+            try { DB::table('wa_hatlar')->where('id', $h->id)->update(['durum' => $st === 'logged-out' ? 'cikis' : 'kopuk', 'updated_at' => now()]); } catch (\Throwable $e) {}
+            $sonuc[$h->id] = $st ?: 'kopuk';
+        }
+        return $sonuc;
+    }
+}
+if (!function_exists('_waHatAlarm')) {
+    function _waHatAlarm($h, $tur, $st = '')
+    {
+        $sid = (int) $h->sube_id;
+        $ad = $h->ad . ($h->numara ? ' (' . $h->numara . ')' : '');
+        $ids = [];
+        try { $ids = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->whereIn('rol', ['sahip', 'mudur'])->pluck('id')->map(fn ($x) => (int) $x)->all(); } catch (\Throwable $e) {}
+        if ($h->personel_id) $ids[] = (int) $h->personel_id;
+        $ids = array_values(array_unique($ids));
+        if ($tur === 'geri') {
+            $baslik = '✅ WhatsApp hattı yeniden bağlandı';
+            $govde = $ad . ' tekrar çalışıyor.';
+        } else {
+            $baslik = '⚠ WhatsApp hattı koptu: ' . $h->ad;
+            $govde = $st === 'logged-out'
+                ? $ad . ' WhatsApp\'tan çıkış yapmış. Mesajlar GİTMİYOR. WhatsApp Hatları sayfasında "Bağlan / QR" ile hattın telefonuyla QR okutun.'
+                : $ad . ' 3 dakikadır bağlı değil (' . ($st ?: 'kopuk') . '). Telefonun internetini kontrol edin; düzelmezse WhatsApp Hatları\'ndan yeniden bağlayın.';
+        }
+        $anahtar = 'wa_hat:' . $h->id . ':' . $tur . ':' . date('YmdHi');
+        if ($ids && function_exists('_bmEkle')) { try { _bmEkle($sid, $ids, 'wa_hat_koptu', $baslik, $govde, '/wa-hatlar', $tur === 'geri' ? 0 : 2, $anahtar); } catch (\Throwable $e) {} }
+        if ($tur === 'geri') return;
+        // Push henüz her cihazda yok → kişilerin kendi telefonuna, BAĞLI olan başka bir hattan WhatsApp at
+        try {
+            $diger = DB::table('wa_hatlar')->where('sube_id', $sid)->where('aktif', 1)->where('id', '!=', $h->id)->orderByDesc('varsayilan')->get();
+            $yedek = null;
+            foreach ($diger as $x) { $dd = _waBridge('GET', '/session/' . (int) $x->session_key . '/status'); if (!empty($dd['body']['connected'])) { $yedek = $x; break; } }
+            if (!$yedek) return;
+            foreach (DB::table('personeller')->whereIn('id', $ids)->get(['id', 'ad', 'telefon']) as $p) {
+                if (empty($p->telefon)) continue;
+                $jid = _waTelNorm($p->telefon); if ($jid === '') continue;
+                _waBridge('POST', '/session/' . (int) $yedek->session_key . '/send', ['to' => $jid, 'message' => '🔔 ResteOS: ' . $baslik . "\n" . $govde . "\n" . url('/wa-hatlar'), 'logId' => 0, 'urgent' => true]);
+            }
+        } catch (\Throwable $e) {}
     }
 }
 // WhatsApp mesaj logu (istatistik: başarılı/başarısız + günlük hacim grafiği)
@@ -8110,7 +8184,14 @@ Route::post('/api/wa/gelen', function (Request $r) {
         $num = (string) ($r->input('number') ?: $r->input('me') ?: $r->input('phone') ?: $r->input('jid') ?: '');
         // GERÇEK giriş = numara geldi. Sadece soket bağlanması (numarasız) "bağlı" sayılmaz.
         if ($sk > 0 && $num !== '') { try { _waHatEnsure(); DB::table('wa_hatlar')->where('session_key', $sk)->update(['durum' => 'bagli', 'numara' => preg_replace('/@.*$/', '', $num), 'updated_at' => now()]); } catch (\Throwable $e) {} }
+        if ($sk > 0) app()->terminating(function () use ($sk) { try { _waHatSaglik(null, $sk); } catch (\Throwable $e) {} }); // önceden koptu alarmı gittiyse "yeniden bağlandı" bildir
         return response()->json(['ok' => 1, 'tip' => 'connected']);
+    }
+    // Hat koptu / çıkış yaptı → bekçi hemen kontrol etsin (logged-out ise anında bildirim)
+    if (in_array($event, ['disconnected', 'logged_out', 'session.disconnected'])) {
+        $sk = (int) ($r->input('salonId') ?: $r->input('session') ?: 0);
+        if ($sk > 0) app()->terminating(function () use ($sk) { try { usleep(1500000); _waHatSaglik(null, $sk); } catch (\Throwable $e) {} });
+        return response()->json(['ok' => 1, 'tip' => 'disconnected']);
     }
     if ($event !== '' && $event !== 'message.received') {
         return response()->json(['ok' => 1, 'tip' => 'ignored', 'event' => $event]);

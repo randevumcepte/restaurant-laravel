@@ -39,6 +39,9 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #wh .durum-roz{font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;margin-left:auto}
 #wh .durum-roz.bagli{background:rgba(37,211,102,.16);color:#0b7a42}
 #wh .durum-roz.bekliyor{background:rgba(245,158,11,.16);color:#9a6400}
+#wh .durum-roz.kopuk{background:rgba(239,68,68,.14);color:#b91c1c;animation:whNabiz 1.6s ease-in-out infinite}
+#wh .hat.kopuk{border-color:rgba(239,68,68,.55)!important}
+@keyframes whNabiz{50%{opacity:.55}}
 #wh .hat-aks{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
 #wh .duzen{margin-top:11px;display:none;background:var(--card2);border-radius:12px;padding:12px}
 #wh .duzen.ac{display:block}
@@ -126,7 +129,7 @@ body.koyu #wh{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
               @if($h->numara) · 📞 {{ $h->numara }}@endif
             </div>
           </div>
-          <span class="durum-roz {{ $h->durum==='bagli'?'bagli':'bekliyor' }}" id="drz{{ $h->id }}">{{ $h->durum==='bagli'?'● Bağlı':'○ Bekliyor' }}</span>
+          <span class="durum-roz {{ $h->durum==='bagli'?'bagli':(in_array($h->durum,['cikis','kopuk'])?'kopuk':'bekliyor') }}" id="drz{{ $h->id }}">{{ $h->durum==='bagli'?'● Bağlı':($h->durum==='cikis'?'✕ Çıkış yapılmış — QR okut':($h->durum==='kopuk'?'✕ Bağlantı koptu':'○ Bekliyor')) }}</span>
         </div>
         <div class="hat-aks">
           <button class="btn yesil sm" onclick="qrAc({{ $h->id }},'{{ addslashes($h->ad) }}')"><span class="material-icons-outlined">qr_code_2</span> Bağlan / QR</button>
@@ -229,9 +232,17 @@ async function baglantiKes(id){
   location.reload();
 }
 waQ('#qrModal').addEventListener('click',function(e){if(e.target===this)qrKapat();});
-// açılışta her hattın durumunu bir kez tazele
-@foreach($hatlar as $h)
-(async()=>{try{const r=await fetch('/api/wa-hat/durum?hat={{ $h->id }}&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};const bagli=(b.connected===true)&&!!(b.phone||b.number||b.jid);const rz=document.getElementById('drz{{ $h->id }}');if(rz){if(bagli){rz.textContent='● Bağlı';rz.className='durum-roz bagli';document.getElementById('hat{{ $h->id }}').classList.add('bagli');}else{rz.textContent='○ Bekliyor';rz.className='durum-roz bekliyor';document.getElementById('hat{{ $h->id }}').classList.remove('bagli');}}}catch(e){}})();
-@endforeach
+// her hattın CANLI durumu: açılışta + dakikada bir (kopan hat kırmızı uyarıyla görünsün)
+async function hatDurumTazele(id){
+  try{const r=await fetch('/api/wa-hat/durum?hat='+id+'&_='+Date.now(),{cache:'no-store'});const j=await r.json();const b=j.body||{};
+    const bagli=(b.connected===true)&&!!(b.phone||b.number||b.jid);const rz=document.getElementById('drz'+id);const kt=document.getElementById('hat'+id);if(!rz)return;
+    const kop={'logged-out':'✕ Çıkış yapılmış — QR okut','disconnected':'✕ Bağlantı koptu','stream-replaced':'✕ Başka cihazda açıldı'}[b.status]||(b.status==='qr-pending'?'○ QR bekleniyor':'');
+    if(bagli){rz.textContent='● Bağlı';rz.className='durum-roz bagli';kt.classList.add('bagli');kt.classList.remove('kopuk');}
+    else if(kop&&kop[0]==='✕'){rz.textContent=kop;rz.className='durum-roz kopuk';kt.classList.remove('bagli');kt.classList.add('kopuk');}
+    else{rz.textContent=kop||'○ Bekliyor';rz.className='durum-roz bekliyor';kt.classList.remove('bagli','kopuk');}
+  }catch(e){}
+}
+const hatIdler={!! json_encode($hatlar->pluck('id')->map(fn($x)=>(int)$x)->values()) !!};
+hatIdler.forEach(hatDurumTazele); setInterval(()=>hatIdler.forEach(hatDurumTazele),60000);
 </script>
 @endsection
