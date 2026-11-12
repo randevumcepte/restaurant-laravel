@@ -9475,12 +9475,27 @@ if (!function_exists('_kasiyerMenu')) {
     }
 }
 // Etkin sayfa erişimi: sahip=hep; sayfa_yetki override varsa o; yoksa kademe varsayılanı
+if (!function_exists('_departmanSorumlusuMu')) {
+    // Herhangi bir departmanın sorumlusu mu (ana departman ya da çoklu departman kaydı)
+    function _departmanSorumlusuMu($p)
+    {
+        static $bellek = [];
+        if (!$p) return false;
+        if (!empty($p->departman_id) && !empty($p->departman_sorumlu)) return true;
+        $id = (int) ($p->id ?? 0);
+        if (!$id) return false;
+        if (!array_key_exists($id, $bellek)) { try { $bellek[$id] = Schema::hasTable('personel_departman') && DB::table('personel_departman')->where('personel_id', $id)->where('sorumlu', 1)->exists(); } catch (\Throwable $e) { $bellek[$id] = false; } }
+        return $bellek[$id];
+    }
+}
 if (!function_exists('_panelYetkiVar')) {
     function _panelYetkiVar($personel, $sayfaKey)
     {
         if (!$personel) return false;
         if (($personel->rol ?? '') === 'sahip') return true;
         if (_kasiyerMi($personel) && !in_array($sayfaKey, _kasaNoktaYetkileri($personel), true)) return false;
+        // Departman sorumlusu satın alma talebini her zaman açar/takip eder (ekibinin ihtiyacını o yönetir); üyelere elle verilir
+        if ($sayfaKey === 'gor_talep' && _departmanSorumlusuMu($personel)) return true;
         $sy = (isset($personel->sayfa_yetki) && $personel->sayfa_yetki) ? json_decode($personel->sayfa_yetki, true) : null;
         if (is_array($sy) && array_key_exists($sayfaKey, $sy)) return !empty($sy[$sayfaKey]);
         // Talep yetkisi yalnız elle ya da şablonla verilir (stoktan otomatik gelmez; eski kayıtlar _talepYetkiTemizle ile korundu)
