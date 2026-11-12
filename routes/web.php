@@ -9722,7 +9722,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'Patron AI' => ['/patron-ai', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
-            'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/satinalma-talep', '/recete', '/sayim'],
+            'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/uretim-plani', '/satinalma-talep', '/recete', '/sayim'],
             'Satış & Servis' => ['/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
             'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci'],
@@ -24698,12 +24698,16 @@ if (!function_exists('_kritikStokListesi')) {
 if (!function_exists('_uretimTalepKolonEnsure')) {
     function _uretimTalepKolonEnsure()
     {
-        if (cache()->get('satinalma_talep_teslim_ok')) return;
+        if (cache()->get('satinalma_talep_teslim_ok2')) return;
         try {
             if (Schema::hasTable('satinalma_talepleri') && !Schema::hasColumn('satinalma_talepleri', 'teslim_tarihi')) {
                 Schema::table('satinalma_talepleri', function ($t) { $t->date('teslim_tarihi')->nullable(); });
             }
-            cache()->put('satinalma_talep_teslim_ok', 1, now()->addHours(12));
+            // özel gün / etkinlik talebi: şef üretim planından açar, satın alma "Özel gün" başlığında toplar
+            if (Schema::hasTable('satinalma_talepleri') && !Schema::hasColumn('satinalma_talepleri', 'etkinlik_ad')) {
+                Schema::table('satinalma_talepleri', function ($t) { $t->string('etkinlik_ad', 120)->nullable(); $t->date('etkinlik_tarih')->nullable(); });
+            }
+            cache()->put('satinalma_talep_teslim_ok2', 1, now()->addHours(12));
         } catch (\Throwable $e) {}
     }
 }
@@ -24945,17 +24949,23 @@ Route::post('/uretim-plani/talep', function (Request $r) {
     $alinacak = array_values(array_filter($rows, fn ($x) => !$x['yeterli']));
     if (!$alinacak) return redirect('/uretim-plani')->with('mrp_hata', 'Satın alınacak malzeme yok (stok yeterli).');
     $notTam = 'Üretim planından otomatik' . ($not !== '' ? ' — ' . $not : '');
-    $ins = ['sube_id' => $sid, 'departman' => 'Mutfak (üretim planı)', 'isteyen_id' => $bp->id ?? null,
+    // özel gün (düğün vb.): etkinlik adı + tarihi talebe yazılır → satın alma listesinde "Özel gün" olarak toplanır
+    $etkTarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('etkinlik_tarih')) ? $r->input('etkinlik_tarih') : null;
+    $etkAd = $etkTarih ? (mb_substr(trim((string) $r->input('etkinlik_ad', '')), 0, 120) ?: 'Özel gün') : null;
+    $ins = ['sube_id' => $sid, 'departman' => $etkTarih ? 'Mutfak (özel gün)' : 'Mutfak (üretim planı)', 'isteyen_id' => $bp->id ?? null,
         'isteyen_ad' => $bp->ad ?? '', 'aciliyet' => 'normal', 'durum' => 'yeni', 'not' => $notTam,
         'created_at' => now(), 'updated_at' => now()];
+    if ($etkTarih) { $ins['etkinlik_ad'] = $etkAd; $ins['etkinlik_tarih'] = $etkTarih; }
+    try { $dep = function_exists('_talepDepartmanBilgi') ? _talepDepartmanBilgi($sid, $bp->id ?? 0) : null; if (!empty($dep['id'])) $ins['departman_id'] = (int) $dep['id']; } catch (\Throwable $e) {}
     if ($teslim) { try { $ins['teslim_tarihi'] = \Carbon\Carbon::parse($teslim)->toDateString(); } catch (\Throwable $e) {} }
     $talepId = DB::table('satinalma_talepleri')->insertGetId($ins);
     foreach ($alinacak as $k) {
         DB::table('talep_kalemleri')->insert(['talep_id' => $talepId, 'malzeme_id' => $k['malzeme_id'],
             'ad' => $k['ad'], 'miktar' => $k['net'], 'birim' => $k['birim'], 'created_at' => now(), 'updated_at' => now()]);
     }
-    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, '📋 Üretim Planı Talebi', ($bp->ad ?? 'Mutfak') . ' üretim planından ' . count($alinacak) . ' kalemlik satın alma talebi oluşturdu.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
-    return redirect('/satinalma-talep')->with('ok', 'Üretim planından ' . count($alinacak) . ' kalemlik talep oluşturuldu.');
+    $etkMetin = $etkTarih ? $etkAd . ' (' . \Carbon\Carbon::parse($etkTarih)->format('d.m.Y') . ')' : null;
+    try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, $etkMetin ? '🎉 Özel Gün Talebi' : '📋 Üretim Planı Talebi', ($bp->ad ?? 'Mutfak') . ($etkMetin ? ' ' . $etkMetin . ' için ' : ' üretim planından ') . count($alinacak) . ' kalemlik satın alma talebi oluşturdu.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
+    return redirect('/satinalma-talep')->with('ok', ($etkMetin ? '🎉 ' . $etkMetin . ' için ' : 'Üretim planından ') . count($alinacak) . ' kalemlik talep oluşturuldu.');
 });
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
@@ -24985,8 +24995,9 @@ Route::get('/satinalma-talep', function () {
     }
     // NOT: onay bekleyen (departman_onay) + reddedilen de listelenir; bu sayfada çip olarak süzülür,
     // yetkili şef onay-bekleyen satırını satır-içi Onayla/Reddet ile çözer (ayrı sayfaya gerek yok).
+    if (function_exists('_uretimTalepKolonEnsure')) _uretimTalepKolonEnsure(); // etkinlik_ad / etkinlik_tarih (özel gün) kolonları garanti
     $talepler = $q->orderByDesc('created_at')->limit(200)
-        ->get(['id', 'departman', 'departman_id', 'isteyen_ad', 'aciliyet', 'durum', 'red_sebep', 'karar_veren_ad', 'created_at']);
+        ->get(['id', 'departman', 'departman_id', 'isteyen_ad', 'aciliyet', 'durum', 'red_sebep', 'karar_veren_ad', 'created_at', 'etkinlik_ad', 'etkinlik_tarih']);
     // Hangi departmanların sorumlusuyum? (onay-bekleyen satırlarda satır-içi onay butonu için)
     $_sorumluDeps = $patronMu ? [] : (function_exists('_sorumluDepartmanIdleri') ? _sorumluDepartmanIdleri($sid, $pp->id ?? 0) : []);
     // Kalem özeti + tahmini tutar (tek sorguda, N+1 yok)

@@ -191,7 +191,7 @@
             ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
             ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B'],
             ['/reddedilen-talepler', 'block', 'Reddedilen Talepler', '#F43F5E'],
-            ['/uretim-plani', 'calculate', 'Üretim Planı → Malzeme', '#10B981'],
+            // Üretim planı / özel gün listesini mutfak şefi hazırlar → Mutfak / BOH grubunda
             ['/stok', 'inventory_2', 'Stok & Satın Alma', null],
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Sipariş İşlemleri', '#4F46E5'],
@@ -342,6 +342,7 @@
         ['/departman-brief?dep=kasap', 'kebab_dining', 'Kasap / Et Hazırlık', '#DC2626'],
         ['/departman-brief?dep=bulasik', 'wash', 'Bulaşıkhane', '#06B6D4'],
         ['/mutfak', 'restaurant', 'Mutfak / KDS Ekranı', '#F97316'],
+        ['/uretim-plani', 'auto_awesome', 'Üretim Planı / Özel Gün', '#10B981'],
         ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
         ['/satinalma-talep', 'assignment', 'Satın Alma Talebi', '#7C3AED'],
         ['/parti-takip', 'event_busy', 'SKT / Parti Takibi', '#64748B'],
@@ -428,7 +429,7 @@
     }
     // Alt istasyon çalışanı mutfak geneli ekranları görmez (şef ve yönetici görür)
     if ($_kp && _mutfakAltIstasyonMu($_kp)) {
-        foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => !in_array($it[0], ['/uretim-riski', '/parti-takip', '/sayim'], true)));
+        foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => !in_array($it[0], ['/uretim-plani', '/uretim-riski', '/parti-takip', '/sayim'], true)));
     }
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====

@@ -502,6 +502,10 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 #sta .sta-arama{display:flex;align-items:center;gap:7px;background:var(--card,#fff);border:1.5px solid var(--line,#e2e8f0);border-radius:12px;padding:0 12px;min-width:210px;flex:0 0 auto}
 #sta .sta-arama .material-icons-outlined{font-size:19px;color:var(--sub2,#94a3b8)}
 #sta .sta-arama input{border:0;outline:0;background:transparent;color:var(--ink,#1e293b);font-size:13.5px;padding:10px 0;width:100%;font-family:inherit}
+#sta .st-ozel{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;font-size:11.5px;font-weight:800;color:#be185d;background:linear-gradient(135deg,#fdf2f8,#fff7ed);border:1px solid #fbcfe8;border-radius:8px;padding:2px 8px}
+#sta .st-ozel span{font-weight:700;color:#9a3412}
+#sta .st-ozel span.yakin{color:#fff;background:#F43F5E;border-radius:6px;padding:0 6px}
+body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
 #sta .sta-filtre-bos{display:none;text-align:center;color:var(--sub2,#94a3b8);padding:34px;font-size:13.5px}
 #sta .sta-kart.islem::after{content:'';position:absolute;top:11px;right:38px;width:8px;height:8px;border-radius:50%;background:#F59E0B;box-shadow:0 0 0 0 rgba(245,158,11,.5);animation:staPulse 1.8s infinite}
 @keyframes staPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}70%{box-shadow:0 0 0 7px rgba(245,158,11,0)}100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}}
@@ -510,6 +514,11 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
 <div class="sta-filtre">
     <div class="sta-chips" id="staChips">
         <button class="sta-chip akt" data-d="" style="--cr:#7C3AED" onclick="staFiltreDurum(this)">Tümü <b>{{ $talepler->count() }}</b></button>
+        {{-- Özel gün (düğün vb.) talepleri: şef üretim planından açar; satın alma burada toplar --}}
+        @php $ozelSay = $talepler->filter(fn($t) => !empty($t->etkinlik_tarih))->count(); @endphp
+        @if($ozelSay > 0)
+        <button class="sta-chip" data-d="ozel" style="--cr:#EC4899" onclick="staFiltreDurum(this)">🎉 Özel gün <b>{{ $ozelSay }}</b></button>
+        @endif
         @foreach(['departman_onay','yeni','teklif','onayda','onaylandi','siparis','tamamlandi','reddedildi'] as $d)
             @php $c = $talepler->where('durum',$d)->count(); @endphp
             {{-- Onay Bekliyor + Reddedildi çipleri HER ZAMAN görünür (giriş noktası), diğerleri sadece sayı > 0 iken --}}
@@ -566,18 +575,24 @@ body.koyu .sta-gerekce textarea { background: #1b2235; }
       $avaPal = ['#7C3AED','#0EA5E9','#10B981','#F59E0B','#EC4899','#6366F1','#14B8A6'];
       $avaRenk = $avaPal[abs(crc32($ad)) % count($avaPal)];
     @endphp
-    <div class="st-row {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ara="{{ mb_strtolower($talep->departman.' '.$ad.' '.$talep->kalem_ozet) }}" @if(!$dedo)onclick="staDetayAc({{ $talep->id }})"@else style="cursor:default"@endif>
+    @php
+      $etkT = !empty($talep->etkinlik_tarih) ? \Carbon\Carbon::parse($talep->etkinlik_tarih) : null;
+      $etkKalan = $etkT ? (int) \Carbon\Carbon::parse(now('Europe/Istanbul')->toDateString())->diffInDays($etkT, false) : null;
+    @endphp
+    <div class="st-row {{ $islem ? 'islem' : '' }}" data-durum="{{ $talep->durum }}" data-ozel="{{ $etkT ? 1 : 0 }}" data-ara="{{ mb_strtolower($talep->departman.' '.$ad.' '.$talep->kalem_ozet.' '.($talep->etkinlik_ad ?? '')) }}" @if(!$dedo)onclick="staDetayAc({{ $talep->id }})"@else style="cursor:default"@endif>
       <div>
         <span class="st-mobiletiket">Talep No</span>
         <div>
           <div class="st-no">#{{ $talep->id }} @if($acil)<span class="roz acil" style="margin-left:4px">ACİL</span>@endif</div>
-          <div class="st-tarih">{{ \Carbon\Carbon::parse($talep->created_at)->format('d.m.Y H:i') }}</div>
+          {{-- kayıt UTC tutulur (config app.timezone=UTC) → ekranda Türkiye saati --}}
+          <div class="st-tarih">{{ \Carbon\Carbon::parse($talep->created_at, 'UTC')->setTimezone('Europe/Istanbul')->format('d.m.Y H:i') }}</div>
         </div>
       </div>
       <div class="st-urun">
         <div class="uic"><span class="material-icons-outlined">{{ $acil ? 'priority_high' : 'inventory_2' }}</span></div>
         <div style="min-width:0">
           <div class="ubas">{{ $talep->departman }}</div>
+          @if($etkT)<div class="st-ozel" title="Özel gün / etkinlik talebi">🎉 {{ $talep->etkinlik_ad ?: 'Özel gün' }} · {{ $etkT->locale('tr')->translatedFormat('d M D') }}<span class="{{ $etkKalan !== null && $etkKalan <= 3 ? 'yakin' : '' }}">{{ $etkKalan > 0 ? $etkKalan.' gün kaldı' : ($etkKalan === 0 ? 'bugün' : 'geçti') }}</span></div>@endif
           <div class="ualt">{{ $talep->kalem_ozet ?: ($talep->kalem_sayisi.' kalem') }}</div>
           @if($redd && !empty($talep->red_sebep))<div class="ualt" style="color:#F43F5E;font-weight:600;white-space:normal">⛔ {{ $talep->red_sebep }}@if($talep->karar_veren_ad) · {{ $talep->karar_veren_ad }}@endif</div>@endif
         </div>
@@ -1350,7 +1365,9 @@ document.getElementById('staYeniModal').addEventListener('click', function(e) {
 /* ─── Yardımcı: tarih ──────────────────────────────────── */
 function staRelative(ts) {
     if (!ts) return '';
-    const d = new Date(ts.replace(' ', 'T'));
+    // sunucu saati UTC ve saat dilimi eki olmadan gelir ("2026-11-12 09:28:00") → UTC olarak oku, yoksa 3 saat kayar
+    const s = String(ts).replace(' ', 'T');
+    const d = new Date(/(Z|[+-]\d\d:?\d\d)$/.test(s) ? s : s + 'Z');
     const diff = Math.floor((Date.now() - d.getTime()) / 1000);
     if (diff < 60)  return 'az önce';
     if (diff < 3600) return Math.floor(diff/60) + ' dk önce';
@@ -1380,7 +1397,7 @@ window.staFiltreUygula = function() {
     const q = (document.getElementById('staAra')?.value || '').toLowerCase().trim();
     let gorunen = 0;
     document.querySelectorAll('#staListe .st-row').forEach(k => {
-        const okD = !staAktifFiltre || k.dataset.durum === staAktifFiltre;
+        const okD = !staAktifFiltre || (staAktifFiltre === 'ozel' ? k.dataset.ozel === '1' : k.dataset.durum === staAktifFiltre);
         const okA = !q || (k.dataset.ara || '').includes(q);
         const g = okD && okA; k.style.display = g ? '' : 'none'; if (g) gorunen++;
     });

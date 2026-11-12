@@ -445,6 +445,8 @@ function ozelFormDoldur(){
   let teslim='', not='';
   if(MOD==='ozel'&&t){const d=new Date(t+'T12:00:00');d.setDate(d.getDate()-1);const bugun=new Date();bugun.setHours(12,0,0,0);if(d<bugun)d.setTime(bugun.getTime());teslim=d.toISOString().slice(0,10);not='🎉 '+(ad||'Özel gün')+' ('+trTarih(t)+') özel gün menüsü';}
   otoYaz(f.teslim_tarihi,teslim); otoYaz(f.not,not);
+  // özel gün bilgisi talebe ayrı alan olarak gider → satın alma "🎉 Özel gün" filtresinde toplar
+  f.etkinlik_tarih.value=(MOD==='ozel'&&t)?t:''; f.etkinlik_ad.value=(MOD==='ozel'&&t)?(ad||'Özel gün'):'';
 }
 
 /* ---- alışveriş listesi: kopyala / yazdır (eksik varsa eksikler, yoksa toplam ihtiyaç) ---- */
@@ -564,7 +566,7 @@ function ciz(){
   // talep satırı: listenin ÜSTÜNDE, hep görünür
   if(eksik.length){
     if(!talep.querySelector('form')) talep.innerHTML='<form method="POST" action="/uretim-plani/talep" class="talep-sat" onsubmit="return talepGonder(this)">'+
-      '<input type="hidden" name="_token" value="'+MRP_CSRF+'"><input type="hidden" name="plan_json" value="">'+
+      '<input type="hidden" name="_token" value="'+MRP_CSRF+'"><input type="hidden" name="plan_json" value=""><input type="hidden" name="etkinlik_ad" value=""><input type="hidden" name="etkinlik_tarih" value="">'+
       '<label>Teslim</label><input type="date" name="teslim_tarihi" title="Ne zaman elinde olsun?">'+
       '<input type="text" name="not" placeholder="Not (isteğe bağlı)" style="flex:1;min-width:120px">'+
       '<button type="submit" class="btn yesil" id="talepBtn"></button></form>';
@@ -580,7 +582,7 @@ function ciz(){
   }
   kutu.innerHTML=h+'</tbody></table>';
 }
-function talepGonder(f){f.plan_json.value=JSON.stringify(sonPlan);return true;}
+function talepGonder(f){ozelFormDoldur();f.plan_json.value=JSON.stringify(sonPlan);return true;}
 
 /* ---- reçete gramaj popup ---- */
 function receteDetayAc(){
