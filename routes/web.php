@@ -25549,17 +25549,30 @@ Route::post('/satinalma-talep/fiyat-arastir', function (Request $r) {
     $mats = [];
     foreach (DB::table('talep_kalemleri')->where('talep_id', $id)->get() as $k) if ($k->malzeme_id) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim];
     if (!$mats) return response()->json(['ok' => false, 'hata' => 'Talepte stok malzemesine bağlı kalem yok']);
-    $supMap = [];
+    $supMap = []; $bagsiz = []; // bagsiz: katalogda hiçbir tedarikçiye bağlı olmayan kalemler (kimseye sorulmazdı)
     foreach ($mats as $m) {
+        $var = false;
         try { $sups = DB::table('tedarikci_malzeme as tm')->join('tedarikciler as t', 't.id', '=', 'tm.tedarikci_id')
             ->where('tm.malzeme_id', $m['malzeme_id'])->where('tm.aktif', 1)->where('t.aktif', 1)->orderByDesc('t.anlasmali')->get(['t.id']);
-            foreach ($sups as $s) $supMap[(int) $s->id][] = $m; } catch (\Throwable $e) {}
+            foreach ($sups as $s) { $supMap[(int) $s->id][] = $m; $var = true; } } catch (\Throwable $e) {}
+        if (!$var) $bagsiz[] = $m;
     }
-    if (!$supMap) return response()->json(['ok' => false, 'hata' => 'Bu ürünlere bağlı tedarikçi yok (tedarikçi-malzeme kataloğu boş). Önce tedarikçilere ürün/fiyat ekle.']);
+    // Kullanıcı onayladıysa: SADECE bağsız kalemleri kayıtlı tüm aktif tedarikçilere (telefon/e-posta olan) sor — bağlı kalemler tekrar gitmez
+    if ($r->input('sadece_bagsiz')) {
+        if (!$bagsiz) return response()->json(['ok' => false, 'hata' => 'Tedarikçisiz kalem kalmadı.']);
+        $supMap = [];
+        try { foreach (DB::table('tedarikciler')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->pluck('id') as $tid) $supMap[(int) $tid] = $bagsiz; } catch (\Throwable $e) {}
+        if (!$supMap) return response()->json(['ok' => false, 'hata' => 'Telefonu veya e-postası kayıtlı aktif tedarikçi yok.']);
+        $bagsiz = [];
+    }
+    $bagsizAd = array_column($bagsiz, 'ad');
+    $tumSay = []; // onay penceresinde kime gideceği AÇIKÇA görünsün
+    try { $tumSay = DB::table('tedarikciler')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->orderBy('ad')->pluck('ad')->all(); } catch (\Throwable $e) {}
+    if (!$supMap) return response()->json(['ok' => false, 'bagsiz' => $bagsizAd, 'tum_tedarikci' => $tumSay, 'hata' => 'Bu ürünlere bağlı tedarikçi yok (tedarikçi-malzeme kataloğu boş).']);
     $res = ['gonderilen' => 0, 'mail' => 0, 'wa' => 0, 'ulasilamayan' => []];
     if (function_exists('_rfqSupMapGonder')) $res = _rfqSupMapGonder($sid, $supMap, $id, 0);
     try { DB::table('satinalma_talepleri')->where('id', $id)->update(['durum' => 'teklif', 'updated_at' => now()]); } catch (\Throwable $e) {}
-    return response()->json(['ok' => true, 'gonderilen' => $res['gonderilen'], 'mail' => $res['mail'], 'wa' => $res['wa'], 'ulasilamayan' => $res['ulasilamayan'] ?? [], 'wa_hata' => $res['wa_hata'] ?? null]);
+    return response()->json(['ok' => true, 'gonderilen' => $res['gonderilen'], 'mail' => $res['mail'], 'wa' => $res['wa'], 'ulasilamayan' => $res['ulasilamayan'] ?? [], 'wa_hata' => $res['wa_hata'] ?? null, 'bagsiz' => $bagsizAd, 'tum_tedarikci' => $tumSay]);
 });
 // Satın almacı: bir kaleme tedarikçi teklifi ekle (RFQ)
 Route::post('/satinalma-talep/teklif-ekle', function (Request $r) {
@@ -33291,5 +33304,3 @@ require __DIR__ . '/sync.php';
 require __DIR__ . '/bildirim_merkezi.php';
 
 
-// GEÇİCİ: RFQ katalog teşhisi (salt-okunur, yalnız sahip) — iş bitince silinecek
-require __DIR__ . '/wa_teshis.php';

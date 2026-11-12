@@ -769,7 +769,7 @@
       <div id="rkOnayIco" style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--mor1),var(--mavi));display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
         <span class="material-icons-outlined" style="color:#fff;font-size:28px">help_outline</span>
       </div>
-      <div id="rkOnayMsg" style="font-size:14.5px;line-height:1.55;color:var(--ink)"></div>
+      <div id="rkOnayMsg" style="font-size:14.5px;line-height:1.55;color:var(--ink);white-space:pre-line"></div>
     </div>
     <div class="rk-modal-foot" style="justify-content:center;gap:10px;padding:16px 22px 20px">
       <button type="button" class="rk-btn bos" onclick="rkOnayKapat()">Vazgeç</button>

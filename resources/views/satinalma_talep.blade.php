@@ -1409,9 +1409,20 @@ function staGonderimPenceresi(baslik, satirlar) {
 }
 
 window.staFiyatArastir = function() {
-    const git = async () => {
+    // Katalogda tedarikçisi olmayan kalemler kimseye sorulmaz → sessiz geçme, kime gideceğini göstererek sor
+    const bagsizSor = (res) => {
+        const b = res.bagsiz || [], aday = res.tum_tedarikci || [];
+        if (!b.length || typeof rkOnay !== 'function') return false;
+        if (!aday.length) { toast('⚠ ' + b.length + ' kalemin tedarikçisi yok ve telefonu/e-postası kayıtlı tedarikçi de yok: ' + b.join(', '), '#F59E0B'); return true; }
+        rkOnay('⚠ ' + b.length + ' kalem tedarikçi kataloğunda hiçbir tedarikçiye bağlı değil, bu yüzden KİMSEYE SORULMADI:\n' + b.join(', ')
+            + '\n\nBu kalemleri kayıtlı ' + aday.length + ' tedarikçinin hepsine soralım mı?\n(' + aday.join(', ') + ')\nVeremedikleri ürünü boş bırakırlar.',
+            () => git(1), 'var(--mor1)', 'Evet, hepsine sor');
+        return true;
+    };
+    const git = async (sadeceBagsiz) => {
         toast('Fiyat isteği gönderiliyor…', '#7C3AED');
-        const res = await api('/satinalma-talep/fiyat-arastir', { id: aktifTalepId });
+        const res = await api('/satinalma-talep/fiyat-arastir', sadeceBagsiz ? { id: aktifTalepId, sadece_bagsiz: 1 } : { id: aktifTalepId });
+        if (!res.ok && (res.bagsiz || []).length) { bagsizSor(res); return; }
         if (res.ok) {
             const ulas = res.ulasilamayan || [];
             const giden = res.gonderilen - ulas.length;
@@ -1420,11 +1431,12 @@ window.staFiyatArastir = function() {
             staDetayAc(aktifTalepId);
             // WhatsApp gitmediyse sessiz geçme: sebebi göster, hattı bağlamaya yönlendir
             if (res.wa_hata && typeof rkOnay === 'function') rkOnay('⚠ WhatsApp mesajı gitmedi. ' + res.wa_hata, function(){ location.href = '/wa-hatlar'; }, '#F59E0B', 'WhatsApp hattını bağla');
+            else bagsizSor(res);
         }
         else toast('⚠ ' + (res.hata || 'Gönderilemedi'), '#F43F5E');
     };
-    if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', git, 'var(--mor1)', 'Evet, gönder');
-    else git();
+    if (typeof rkOnay === 'function') rkOnay('Bu talepteki ürünleri sağlayan TÜM tedarikçilere fiyat isteği (mail + WhatsApp) gönderilsin mi?', () => git(0), 'var(--mor1)', 'Evet, gönder');
+    else git(0);
 };
 window.staPatronaGonder = async function(kismi) {
     const res = await api('/satinalma-talep/patrona-gonder', { id: aktifTalepId, kismi: kismi ? 1 : 0 });
