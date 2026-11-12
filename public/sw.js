@@ -1,7 +1,8 @@
 // ResteOS Service Worker — offline temeli
-// HTML: network-first (online'da daima guncel, offline'da cache)
-// Statik (css/js/img): cache-first (hizli)
-const CACHE = 'restoos-v2';
+// HTML + API/veri: network-first (online'da daima guncel, offline'da cache yedegi)
+// Statik (css/js/img/font): stale-while-revalidate (cache'ten hizli, arka planda tazelenir)
+// v3: API yanitlari eskiden cache-first'tu → acilan detay/zil/liste ilk yanitta takili kaliyordu
+const CACHE = 'restoos-v3';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
@@ -11,27 +12,34 @@ self.addEventListener('activate', (e) => {
     );
 });
 
+const STATIK = /\.(css|js|png|jpe?g|svg|webp|gif|ico|woff2?|ttf|otf|mp3|wav)$/i;
+
+function sakla(req, res) {
+    if (res && res.status === 200 && req.url.startsWith(self.location.origin)) {
+        const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(req, c));
+    }
+    return res;
+}
+
 self.addEventListener('fetch', (e) => {
     const req = e.request;
     if (req.method !== 'GET' || req.url.includes('/webhook/') || req.url.includes('/garson-yonetimi/veri')) return; // canlı veri önbelleğe alınmaz
 
-    const accept = req.headers.get('accept') || '';
-    const isHTML = req.mode === 'navigate' || accept.includes('text/html');
+    const url = new URL(req.url);
+    const statik = url.origin === self.location.origin && STATIK.test(url.pathname);
 
-    if (isHTML) {
+    if (statik) {
+        // cache'ten hemen ver, ağdan tazele (bir sonraki açılışta yeni sürüm)
         e.respondWith(
-            fetch(req)
-                .then((res) => { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(req, c)); return res; })
-                .catch(() => caches.match(req))
+            caches.match(req).then((cached) => {
+                const ag = fetch(req).then((res) => sakla(req, res)).catch(() => cached);
+                return cached || ag;
+            })
         );
-    } else {
-        e.respondWith(
-            caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-                if (res && res.status === 200 && req.url.startsWith(self.location.origin)) {
-                    const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(req, c));
-                }
-                return res;
-            }).catch(() => cached))
-        );
+        return;
     }
+    // HTML, API ve diğer her şey: önce ağ (güncel veri), ağ yoksa son kopya
+    e.respondWith(
+        fetch(req).then((res) => sakla(req, res)).catch(() => caches.match(req))
+    );
 });

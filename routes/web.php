@@ -24997,7 +24997,7 @@ if (!function_exists('_talepSureci')) {
         $fmt = fn ($ts) => $ts ? \Carbon\Carbon::parse($ts)->format('d.m H:i') : null;
         $rfq = collect(); $sip = collect(); $mk = collect(); $tedAd = collect();
         try { if (Schema::hasTable('rfq_gonderim')) $rfq = DB::table('rfq_gonderim')->whereIn('talep_id', $ids)->get(['talep_id', 'yanit_at', 'created_at'])->groupBy('talep_id'); } catch (\Throwable $e) {}
-        try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'talep_id')) $sip = DB::table('satinalma_siparisleri')->whereIn('talep_id', $ids)->where('durum', '!=', 'iptal')->get(['id', 'talep_id', 'tedarikci_id', 'siparis_no', 'beklenen_teslim', 'tedarikci_teslim', 'durum', 'onay_durum', 'created_at'])->groupBy('talep_id'); } catch (\Throwable $e) {}
+        try { if (Schema::hasTable('satinalma_siparisleri') && Schema::hasColumn('satinalma_siparisleri', 'talep_id')) $sip = DB::table('satinalma_siparisleri')->where('sube_id', (int) $sid)->whereIn('talep_id', $ids)->whereNotIn('durum', ['iptal', 'taslak'])->get(['id', 'talep_id', 'tedarikci_id', 'siparis_no', 'beklenen_teslim', 'tedarikci_teslim', 'durum', 'onay_durum', 'created_at'])->groupBy('talep_id'); } catch (\Throwable $e) {}
         try { $sipIds = $sip->flatten(1)->pluck('id')->all(); if ($sipIds && Schema::hasTable('mal_kabuller')) $mk = DB::table('mal_kabuller')->whereIn('siparis_id', $sipIds)->get(['siparis_id', 'tarih', 'created_at'])->groupBy('siparis_id'); } catch (\Throwable $e) {}
         try { $tedAd = DB::table('tedarikciler')->pluck('ad', 'id'); } catch (\Throwable $e) {}
         foreach ($talepler as $t) {
