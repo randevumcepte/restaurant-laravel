@@ -7773,6 +7773,15 @@ if (!function_exists('_fcmSubeyeGonder')) {
     function _fcmSubeyeGonder($subeId, $baslik, $govde, $data = [], $roller = null, $tip = null)
     {
         _fcmTokenEnsure();
+        // Bildirim kutusuna da yaz (panel zili): rol hedefli gönderimler + garson çağrısı (yalnız çağrıları gören)
+        if (function_exists('_bmFcmKoprusu') && ($roller || ($data['tur'] ?? '') === 'garson_cagri')) {
+            try {
+                $bmQ = DB::table('personeller')->where('sube_id', (int) $subeId)->where('aktif', 1);
+                if ($roller) $bmQ->whereIn('rol', (array) $roller);
+                $bmIds = $bmQ->get()->filter(fn ($bp) => $roller || _bildirimTipGorur($bp, 'garson_cagri'))->pluck('id')->all();
+                _bmFcmKoprusu($subeId, $bmIds, $baslik, $govde, $data, $tip);
+            } catch (\Throwable $e) {}
+        }
         try {
             $q = DB::table('cihaz_tokenlari')->where('sube_id', (int) $subeId)->where('kullanici_tipi', 'personel');
             if ($roller) {
@@ -10040,21 +10049,13 @@ Route::get('/bildirim-ayar', function () {
     _bildirimTercihEnsure();
     $bp = null;
     try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    $tipler = _bildirimTipleri();
-    $mevcut = $bp ? _bildirimTercihMap($bp->id) : [];
-    return view('bildirim_ayar', ['tipler' => $tipler, 'mevcut' => $mevcut, 'personel' => $bp]);
+    return view('bildirim_ayar', ['bolumler' => function_exists('_bmAyarBolumleri') ? _bmAyarBolumleri($bp) : [], 'personel' => $bp]);
 });
 Route::get('/api/bildirim/tercih', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    $tipler = _bildirimTipleri();
-    $mevcut = _bildirimTercihMap($p->id);
     $out = [];
-    foreach ($tipler as $tip => $info) {
-        if (!_bildirimTipGorur($p, $tip)) continue; // kişinin işiyle ilgisiz tipi gizle (ör. satın almaya rezervasyon)
-        $acik = array_key_exists($tip, $mevcut) ? ((int) $mevcut[$tip] === 1) : ((int) ($info[1] ?? 1) === 1);
-        $out[] = ['tip' => $tip, 'etiket' => $info[0], 'acik' => $acik];
-    }
+    foreach (_bmAyarBolumleri($p) as $bolum => $tipler) foreach ($tipler as $tip => $t) $out[] = ['tip' => $tip, 'etiket' => $t['ad'], 'acik' => $t['acik'], 'bolum' => $bolum, 'kritik' => $t['kritik']];
     return ['ok' => 1, 'tercihler' => $out];
 });
 Route::post('/api/bildirim/tercih-kaydet', function (Request $r) {
@@ -10063,7 +10064,7 @@ Route::post('/api/bildirim/tercih-kaydet', function (Request $r) {
     _bildirimTercihEnsure();
     $tip = (string) $r->input('tip');
     $acik = (int) $r->input('acik') === 1 ? 1 : 0;
-    if (!array_key_exists($tip, _bildirimTipleri())) return ['ok' => 0, 'hata' => 'Geçersiz tip'];
+    if (!array_key_exists($tip, _bildirimTipleri()) && !array_key_exists($tip, _bmKatalog())) return ['ok' => 0, 'hata' => 'Geçersiz tip'];
     try {
         $var = DB::table('bildirim_tercihleri')->where('personel_id', $p->id)->where('tip', $tip)->first();
         if ($var) DB::table('bildirim_tercihleri')->where('id', $var->id)->update(['acik' => $acik, 'updated_at' => now()]);
@@ -10078,14 +10079,14 @@ Route::post('/bildirim-ayar-kaydet', function (Request $r) {
     if (!$bp) return redirect('/bildirim-ayar')->with('hata', 'Oturum bulunamadı.');
     _bildirimTercihEnsure();
     try {
-        foreach (_bildirimTipleri() as $tip => $info) {
-            $roller = $info[2] ?? null;
-            if ($roller && !in_array(($bp->rol ?? ''), $roller)) continue;
-            $acik = $r->has('tip_' . $tip) ? 1 : 0;
+        // Yalnız ekranda gösterilen tipler kaydedilir (gizli tip kapalıya dönmesin); kritikler hep açık
+        foreach (array_merge(...array_values(_bmAyarBolumleri($bp) ?: [[]])) as $tip => $t) {
+            $acik = ($t['kritik'] || $r->has('tip_' . $tip)) ? 1 : 0;
             $var = DB::table('bildirim_tercihleri')->where('personel_id', $bp->id)->where('tip', $tip)->first();
             if ($var) DB::table('bildirim_tercihleri')->where('id', $var->id)->update(['acik' => $acik, 'updated_at' => now()]);
             else DB::table('bildirim_tercihleri')->insert(['sube_id' => (int) $bp->sube_id, 'personel_id' => (int) $bp->id, 'tip' => $tip, 'acik' => $acik, 'created_at' => now(), 'updated_at' => now()]);
         }
+        if (function_exists('_bmTakmaEsitle')) _bmTakmaEsitle($bp); // eski push tipleri (kritik_stok…) yeni anahtarı izlesin
     } catch (\Throwable $e) { return redirect('/bildirim-ayar')->with('hata', 'Kaydedilemedi.'); }
     return redirect('/bildirim-ayar')->with('ok', 'Bildirim tercihleri kaydedildi.');
 });
@@ -24622,6 +24623,7 @@ if (!function_exists('_talepUstYonetimMu')) {
     function _fcmPersoneleGonder($sid, $ids, $baslik, $govde, $data = [])
     {
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
+        if ($ids && function_exists('_bmFcmKoprusu')) { try { _bmFcmKoprusu($sid, $ids, $baslik, $govde, $data); } catch (\Throwable $e) {} } // panel zili
         if (!$ids || !function_exists('_fcmGonder')) return false;
         try {
             if (function_exists('_fcmTokenEnsure')) _fcmTokenEnsure();
@@ -33116,4 +33118,7 @@ require __DIR__ . '/resteos_yonetim.php';
 
 // ============================ LOCAL-FIRST SENKRON API (Flutter offline) ============================
 require __DIR__ . '/sync.php';
+
+// ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
+require __DIR__ . '/bildirim_merkezi.php';
 

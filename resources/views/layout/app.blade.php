@@ -713,6 +713,7 @@
             </div>
             <div class="sp"></div>
             @yield('rk_araclar')
+            @if ($_pp) @include('layout._bildirim_zil') @endif
             <button class="rk-tema" onclick="rkTema()" title="Gece / Gündüz"><span class="material-icons-outlined" id="rkTemaIk">dark_mode</span></button>
             @if ($_pp)
                 <a href="/profilim" class="rk-profil{{ $path === '/profilim' ? ' aktif' : '' }}" title="{{ $kulAd }} · Profilim" aria-label="Profilim">
