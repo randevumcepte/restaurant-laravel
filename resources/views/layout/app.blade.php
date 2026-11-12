@@ -474,7 +474,7 @@
         if ($_stokI) $_bas[] = $_stokI;
         if ($_aiI)   $_bas[] = $_aiI;
         $_sa = array_merge($_bas, $gruplar['Satın Alma'] ?? []);
-        unset($gruplar['Satın Alma'], $gruplar['Mutfak / BOH']);
+        unset($gruplar['Satın Alma'], $gruplar['Mutfak / BOH'], $gruplar['Kalite / HACCP']); // kalite mutfağın işi; satın almanın kontrolü Mal Kabul'de
         $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
         unset($gruplar['Brifing']);
         // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
