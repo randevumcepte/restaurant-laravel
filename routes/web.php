@@ -33191,3 +33191,6 @@ require __DIR__ . '/sync.php';
 
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
+
+// GEÇİCİ: WA/RFQ teşhisi (salt-okunur, yalnız sahip) — iş bitince silinecek
+require __DIR__ . '/wa_teshis.php';
