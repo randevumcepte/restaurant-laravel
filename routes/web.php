@@ -24967,7 +24967,9 @@ Route::post('/uretim-plani/talep', function (Request $r) {
     }
     $etkMetin = $etkTarih ? $etkAd . ' (' . \Carbon\Carbon::parse($etkTarih)->format('d.m.Y') . ')' : null;
     try { if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($sid, $etkMetin ? '🎉 Özel Gün Talebi' : '📋 Üretim Planı Talebi', ($bp->ad ?? 'Mutfak') . ($etkMetin ? ' ' . $etkMetin . ' için ' : ' üretim planından ') . count($alinacak) . ' kalemlik satın alma talebi oluşturdu.', ['tur' => 'satinalma_talep', 'id' => (string) $talepId], ['sahip', 'mudur', 'satinalmaci'], 'kritik_stok'); } catch (\Throwable $e) {}
-    return redirect('/satinalma-talep')->with('ok', ($etkMetin ? '🎉 ' . $etkMetin . ' için ' : 'Üretim planından ') . count($alinacak) . ' kalemlik talep oluşturuldu.');
+    // Talep sayfasına yetkisi olmayan (ör. talep izni verilmemiş şef) Üretim Planına başarı mesajıyla döner; "Erişim yok" görmesin
+    $hedef = function_exists('_panelYetkiVar') && !_panelYetkiVar($bp, 'gor_talep') ? '/uretim-plani' : '/satinalma-talep';
+    return redirect($hedef)->with('ok', ($etkMetin ? '🎉 ' . $etkMetin . ' için ' : 'Üretim planından ') . count($alinacak) . ' kalemlik talep oluşturuldu' . ($hedef === '/uretim-plani' ? ' — satın almaya iletildi.' : '.'));
 });
 Route::get('/satinalma-talep', function () {
     _satinalmaTalepEnsure();
