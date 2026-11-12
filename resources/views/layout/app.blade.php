@@ -401,7 +401,7 @@
         unset($gruplar['Satın Alma']);
         $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
         // Şef istasyonların talebini onaylar: Onay Bekleyen Talepler Satın Alma Talebi'nin altında (yalnız sorumlu)
-        if (!empty($_kp->departman_sorumlu)) {
+        if (_talepOnaylayiciMi($_kp)) {
             $_yeniBoh = [];
             foreach ($gruplar['Mutfak / BOH'] ?? [] as $_it) { $_yeniBoh[] = $_it; if ($_it[0] === '/satinalma-talep') $_yeniBoh[] = ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B']; }
             $gruplar['Mutfak / BOH'] = $_yeniBoh;
@@ -543,6 +543,7 @@
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
+                    if ($it[0] === '/talep-onaylarim' && _talepOnaylayiciMi($_pp)) return true;
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;

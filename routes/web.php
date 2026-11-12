@@ -19407,6 +19407,14 @@ if (!function_exists('_talepYetkiTemizle')) {
         } catch (\Throwable $e) {}
     }
 }
+if (!function_exists('_talepOnaylayiciMi')) {
+    // Talep onayı sorumlunun görevi: talep açma yetkisi (gor_talep) elle verilir, onay kutusu sorumluya her zaman açık
+    function _talepOnaylayiciMi($p)
+    {
+        if (!$p) return false;
+        return !empty(_sorumluDepartmanIdleri($p->sube_id ?? 0, $p->id ?? 0));
+    }
+}
 if (!function_exists('_rezSaltOkur')) {
     // Mutfak ekibi (şef dahil) rezervasyonu yalnız görür: kuver/saat/alerji için liste, değişiklik karşılama/rezervasyon ekibinde
     function _rezSaltOkur($p)
