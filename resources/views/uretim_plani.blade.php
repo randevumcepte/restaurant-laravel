@@ -256,7 +256,7 @@ body.koyu .up-modal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;-
     {{-- SAĞ: alınacaklar --}}
     <div class="kart">
       <div class="kart-bas"><h2>Alınacaklar</h2><span class="ozet" id="sagOzet"></span>
-        <div class="sag"><span id="alBtn" style="display:none"><button type="button" class="btn cizgi" onclick="alKopyala()" title="Alınacaklar listesini kopyala (WhatsApp'a yapıştır)" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">content_copy</span>Kopyala</button><button type="button" class="btn cizgi" onclick="alYazdir()" title="Alınacaklar listesini yazdır" style="padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">print</span>Yazdır</button></span><button type="button" class="btn cizgi" id="rdBtn" onclick="receteDetayAc()" style="display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
+        <div class="sag"><span id="alBtn" style="display:none"><button type="button" class="btn cizgi" onclick="menuGorAc()" title="Plandaki güncel menüyü gör" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">restaurant_menu</span>Menüyü gör</button><button type="button" class="btn cizgi" onclick="alKopyala()" title="Alınacaklar listesini kopyala (WhatsApp'a yapıştır)" style="padding:6px 10px;font-size:12px;margin-right:6px"><span class="material-icons-outlined" style="font-size:16px">content_copy</span>Kopyala</button><button type="button" class="btn cizgi" onclick="alYazdir()" title="Alınacaklar listesini yazdır" style="padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">print</span>Yazdır</button></span><button type="button" class="btn cizgi" id="rdBtn" onclick="receteDetayAc()" style="display:none;padding:6px 10px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px">menu_book</span>Reçete detayı</button></div>
       </div>
       <div id="talepYer"></div>
       <div class="kaydir" id="sonuc"></div>
@@ -605,6 +605,34 @@ function receteDetayAc(){
   m.classList.add('acik');document.body.style.overflow='hidden';
 }
 function receteDetayKapat(){const m=document.getElementById('rdModal');if(m&&m.classList.contains('acik')){m.classList.remove('acik');document.body.style.overflow='';}}
+
+/* ---- güncel menü (plandaki ürünler + adetler) ---- */
+function menuGorAc(){
+  let m=document.getElementById('mgModal');
+  if(!m){
+    m=document.createElement('div');m.id='mgModal';m.className='up-modal';
+    m.innerHTML='<div class="rdm" role="dialog" aria-modal="true" style="width:min(520px,100%)"><div class="rdm-bas"><div class="rdm-ik"><span class="material-icons-outlined">restaurant_menu</span></div>'+
+      '<div><h3>Güncel menü</h3><p id="mgAlt"></p></div><button type="button" class="rdm-kapat" onclick="menuGorKapat()" aria-label="Kapat"><span class="material-icons-outlined">close</span></button></div>'+
+      '<div id="mgGovde" style="overflow-y:auto;padding:6px 18px 14px"></div></div>';
+    m.addEventListener('click',e=>{if(e.target===m)menuGorKapat();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')menuGorKapat();});
+    document.body.appendChild(m);
+  }
+  // özel günde etkinlik menüsü ve "o günün normal servisi" ayrı başlıklarla gösterilir
+  const ozel=MOD==='ozel'; let top=0, hEt='', hNo='';
+  const sat=(ad,v,br)=>'<div class="rd-k" style="font-size:14px;padding:9px 0"><span style="color:var(--ink);font-weight:700">'+rdEsc(ad)+'</span><b>'+sayi(v)+' '+rdEsc(br)+'</b></div>';
+  document.querySelectorAll('#urunListe .urun-sat').forEach(s=>{
+    const v=+s.querySelector('.adet').value||0, n=ozel&&NORMAL[s.dataset.urun]?(+NORMAL[s.dataset.urun].oneri||0):0;
+    const ad=s.querySelector('.ad').textContent, b=s.querySelector('.birim'), br=b?b.options[b.selectedIndex].text:'';
+    if(v>0){hEt+=sat(ad,v,br);top+=v;} if(n>0){hNo+=sat(ad,n,br);top+=n;}
+  });
+  const bas=t=>'<div style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 2px">'+t+'</div>';
+  let h=ozel&&hNo?(hEt?bas('Etkinlik menüsü')+hEt:'')+bas('O günün normal servisi (tahmin)')+hNo:hEt;
+  document.getElementById('mgAlt').textContent=alBaslikMetin()+' · toplam '+sayi(top)+' porsiyon';
+  document.getElementById('mgGovde').innerHTML=h||'<div class="rd-yok">Menüde ürün yok.</div>';
+  m.classList.add('acik');document.body.style.overflow='hidden';
+}
+function menuGorKapat(){const m=document.getElementById('mgModal');if(m&&m.classList.contains('acik')){m.classList.remove('acik');document.body.style.overflow='';}}
 function rdFiltre(q){q=(q||'').toLocaleLowerCase('tr');let n=0;document.querySelectorAll('#rdGovde .rd-urun').forEach(x=>{const g=x.dataset.ara.includes(q);x.style.display=g?'':'none';if(g)n++;});document.getElementById('rdYok').style.display=n?'none':'';}
 
 // açılışta: geçmişi olan ürünlere 7 günlük tahmin hazır gelsin → liste hemen dolu
