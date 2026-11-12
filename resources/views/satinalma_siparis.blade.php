@@ -74,53 +74,50 @@ body.koyu #sas{--card:#161d2e;--card2:#1b2235;--card3:#222a40;--bg:#0f1623;
 #sas .ozet-bar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:16px;font-size:12.5px;color:var(--sub);flex-wrap:wrap}
 #sas .ozet-bar b{color:var(--ink);font-weight:800}
 
-/* Sipariş kartları grid */
-#sas .kart-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
-#sas .s-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;position:relative;overflow:hidden;text-decoration:none;color:inherit;display:block}
-#sas .s-kart:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:color-mix(in srgb,var(--mor1) 25%,var(--line))}
-/* AI tarafından oluşturulan sipariş kartları: mor gradient border + hafif tint arka plan */
-#sas .s-kart.ai-sip{background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 5%,var(--card)),var(--card));border:1.5px solid color-mix(in srgb,var(--mor1) 32%,transparent);box-shadow:0 2px 10px color-mix(in srgb,var(--mor1) 10%,transparent)}
-#sas .s-kart.ai-sip:hover{border-color:var(--mor1);box-shadow:0 8px 24px color-mix(in srgb,var(--mor1) 22%,transparent)}
-#sas .ai-rozet{position:absolute;top:12px;right:12px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:4px 9px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;box-shadow:0 3px 10px rgba(124,58,237,.3);z-index:2}
-#sas .ai-rozet .material-icons-outlined{font-size:12px}
-/* AI rozeti varsa onay-badge'i sol-üstte açsın (çakışmasın) */
-#sas .s-kart.ai-sip .onay-badge{left:12px;right:auto}
-/* Eksik taslak uyarı şeridi */
-#sas .eksik-uyari{background:color-mix(in srgb,#F59E0B 12%,transparent);border-left:3px solid #F59E0B;border-radius:7px;padding:7px 10px;margin:6px 0 10px;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#B45309;font-weight:700}
+/* Sipariş listesi (renkli satırlar) */
+#sas .liste{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--sh1)}
+#sas .l-bas,#sas .s-kart{display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(180px,1.6fr) minmax(120px,1fr) minmax(150px,1.1fr) minmax(110px,.9fr) 100px;gap:14px;align-items:center;padding:0 18px 0 22px}
+#sas .l-bas{height:42px;background:var(--card2);border-bottom:1px solid var(--line);font-size:10.5px;font-weight:800;color:var(--sub2);text-transform:uppercase;letter-spacing:.6px}
+#sas .sag{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+#sas .s-kart{position:relative;min-height:68px;padding-top:11px;padding-bottom:11px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .14s}
+#sas .s-kart:last-child{border-bottom:0}
+#sas .s-kart::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:4px;border-radius:0 4px 4px 0;background:var(--dr)}
+#sas .s-kart:hover{background:color-mix(in srgb,var(--dr) 6%,var(--card))}
+#sas .s-kart.ai-sip{background:linear-gradient(90deg,color-mix(in srgb,var(--mor1) 5%,var(--card)),var(--card) 45%)}
+#sas .s-kart.ai-sip:hover{background:linear-gradient(90deg,color-mix(in srgb,var(--mor1) 10%,var(--card)),color-mix(in srgb,var(--dr) 4%,var(--card)) 45%)}
+#sas .c-sip{min-width:0}
+#sas .sn{font-size:13.5px;font-weight:800;color:var(--ink);letter-spacing:-.2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#sas .sn-sub{font-size:11.5px;color:var(--sub);margin-top:3px;display:flex;align-items:center;gap:4px}
+#sas .sn-sub .material-icons-outlined{font-size:13px}
+#sas .ai-rozet{background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px}
+#sas .ai-rozet .material-icons-outlined{font-size:11px}
+#sas .c-ted{display:flex;align-items:center;gap:10px;min-width:0}
+#sas .av{width:34px;height:34px;border-radius:11px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0}
+#sas .ted-ad{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sas .ted-ad.yok{color:var(--sub2);font-weight:600;font-style:italic}
+#sas .eksik-uyari{margin-top:3px;display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#B45309;font-weight:700}
 body.koyu #sas .eksik-uyari{color:#FBBF24}
-#sas .eksik-uyari .material-icons-outlined{font-size:14px}
-/* AI rozeti varsa sağ üstteki durum pili aşağı kaysın */
-#sas .s-kart.ai-sip .ust{padding-top:20px}
-#sas .s-kart .strip{position:absolute;left:0;top:0;bottom:0;width:4px}
-#sas .s-kart .ust{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
-#sas .s-kart .sn{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.2}
-#sas .s-kart .sn-sub{font-size:11.5px;color:var(--sub);margin-top:3px;display:inline-flex;align-items:center;gap:4px}
-#sas .s-kart .sn-sub .material-icons-outlined{font-size:13px}
+#sas .eksik-uyari .material-icons-outlined{font-size:13px}
+#sas .teslim{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);font-weight:600}
+#sas .teslim .material-icons-outlined{font-size:15px}
+#sas .teslim.geciken{color:var(--kirmizi);font-weight:800}
+#sas .teslim.yakin{color:var(--amber);font-weight:800}
+#sas .teslim.bos-t{color:var(--sub2)}
+#sas .c-durum{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 #sas .d-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
-#sas .d-pill .material-icons-outlined{font-size:12px}
-
-#sas .s-kart .orta{display:flex;align-items:center;gap:11px;margin-bottom:12px;padding:11px 12px;background:var(--card2);border-radius:12px}
-#sas .s-kart .av{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,var(--mor1),var(--mavi));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0}
-#sas .s-kart .ted-ad{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-#sas .s-kart .ted-meta{font-size:11px;color:var(--sub);margin-top:2px}
-
-#sas .s-kart .alt-grid{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
-#sas .s-kart .tutar{font-size:20px;font-weight:900;color:var(--ink);letter-spacing:-.3px;line-height:1}
-#sas .s-kart .tutar .cur{font-size:14px;color:var(--sub);font-weight:700;margin-left:2px}
-#sas .s-kart .tutar-l{font-size:10.5px;color:var(--sub2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
-#sas .s-kart .detay-btn{display:inline-flex;align-items:center;gap:4px;padding:7px 12px;border-radius:10px;background:color-mix(in srgb,var(--mor1) 10%,transparent);color:var(--mor1);font-size:12px;font-weight:800;transition:background .14s}
+#sas .d-pill .material-icons-outlined{font-size:13px}
+#sas .onay-badge{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:var(--yesil)}
+#sas .onay-badge .material-icons-outlined{font-size:12px}
+#sas .onay-badge.bek{color:var(--amber)}
+#sas .onay-badge.dg{color:var(--kirmizi)}
+#sas .tutar{font-size:15px;font-weight:900;color:var(--ink);letter-spacing:-.3px;white-space:nowrap}
+#sas .tutar.sifir{color:var(--sub2);font-weight:700}
+#sas .detay-btn{display:inline-flex;align-items:center;justify-content:center;gap:3px;height:34px;padding:0 12px;border-radius:10px;background:color-mix(in srgb,var(--mor1) 10%,transparent);color:var(--mor1);font-size:12px;font-weight:800;text-decoration:none;transition:background .14s,color .14s;white-space:nowrap}
+#sas .detay-btn .material-icons-outlined{font-size:16px}
 #sas .s-kart:hover .detay-btn{background:var(--mor1);color:#fff}
-#sas .s-kart .detay-btn .material-icons-outlined{font-size:16px}
-
-#sas .s-kart .teslim{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--sub)}
-#sas .s-kart .teslim .material-icons-outlined{font-size:14px}
-#sas .s-kart .teslim.geciken{color:var(--kirmizi);font-weight:700}
-#sas .s-kart .teslim.yakin{color:var(--amber);font-weight:700}
-#sas .s-kart .onay-badge{position:absolute;top:12px;right:12px;background:rgba(16,185,129,.14);color:var(--yesil);padding:3px 9px;border-radius:999px;font-size:10px;font-weight:800;display:flex;align-items:center;gap:3px}
-#sas .s-kart .onay-badge .material-icons-outlined{font-size:12px}
-#sas .s-kart .onay-badge.bek{background:rgba(245,158,11,.14);color:var(--amber)}
-#sas .s-kart .onay-badge.dg{background:rgba(244,63,94,.14);color:var(--kirmizi)}
-
+#sas .detay-btn.duzenle{background:color-mix(in srgb,var(--amber) 14%,transparent);color:#B45309}
+#sas .s-kart:hover .detay-btn.duzenle{background:var(--amber);color:#fff}
+#sas .m-etiket{display:none}
 /* Boş durum */
 #sas .bos{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:60px 20px;text-align:center;color:var(--sub)}
 #sas .bos .ic{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,color-mix(in srgb,var(--mor1) 15%,var(--card3)),color-mix(in srgb,var(--mavi) 10%,var(--card3)));margin:0 auto 14px;display:flex;align-items:center;justify-content:center}
@@ -138,13 +135,30 @@ body.koyu #sas .eksik-uyari{color:#FBBF24}
   #sas .hero .tutar{font-size:30px}
   #sas .hero-kpi{grid-template-columns:repeat(3,1fr)}
 }
+@media(max-width:1100px){
+  #sas .l-bas,#sas .s-kart{grid-template-columns:minmax(150px,1.2fr) minmax(160px,1.5fr) minmax(140px,1fr) minmax(100px,.9fr) 96px}
+  #sas .c-teslim{display:none}
+}
 @media(max-width:640px){
+  #sas .l-bas{display:none}
+  #sas .liste{background:transparent;border:0;box-shadow:none;display:grid;gap:10px;overflow:visible}
+  #sas .s-kart{grid-template-columns:1fr auto;grid-template-areas:"sip durum" "ted ted" "teslim teslim" "tutar btn";gap:10px 12px;padding:14px 14px 14px 18px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh1)}
+  #sas .s-kart:last-child{border-bottom:1px solid var(--line)}
+  #sas .c-sip{grid-area:sip}
+  #sas .c-durum{grid-area:durum;align-items:flex-end}
+  #sas .c-ted{grid-area:ted;background:var(--card2);border-radius:12px;padding:9px 10px}
+  #sas .c-teslim{grid-area:teslim;display:block}
+  #sas .c-teslim.yok-t{display:none}
+  #sas .c-tutar{grid-area:tutar;align-items:flex-start}
+  #sas .c-btn{grid-area:btn;justify-content:flex-end}
+  #sas .m-etiket{display:block;font-size:10px;font-weight:800;color:var(--sub2);text-transform:uppercase;letter-spacing:.4px}
+  #sas .tutar{font-size:18px}
+  #sas .detay-btn{height:38px;padding:0 16px}
   #sas .pano{padding:0 0 24px}
   #sas .hero{padding:18px}
   #sas .hero .tutar{font-size:26px}
   #sas .hero-kpi{grid-template-columns:repeat(2,1fr)}
   #sas .alt-bar{flex-direction:column;align-items:stretch}
-  #sas .kart-grid{grid-template-columns:1fr}
 }
 
 /* MODAL (yeni sipariş) — mevcut tasarım korundu, hafif modernize */
@@ -196,15 +210,15 @@ body.koyu #sas .eksik-uyari{color:#FBBF24}
 
   $durumRenk = [
     'taslak'=>'#64748B','gonderildi'=>'#4F46E5','onaylandi'=>'#06B6D4',
-    'kismi'=>'#F59E0B','tamamlandi'=>'#10B981','iptal'=>'#F43F5E'
+    'kismi'=>'#F59E0B','tamamlandi'=>'#10B981','iptal'=>'#F43F5E','siparis'=>'#4F46E5'
   ];
   $durumAd = [
     'taslak'=>'Taslak','gonderildi'=>'Gönderildi','onaylandi'=>'Onaylandı',
-    'kismi'=>'Kısmi Teslim','tamamlandi'=>'Tamamlandı','iptal'=>'İptal'
+    'kismi'=>'Kısmi Teslim','tamamlandi'=>'Tamamlandı','iptal'=>'İptal','siparis'=>'Sipariş Verildi'
   ];
   $durumIk = [
     'taslak'=>'edit_note','gonderildi'=>'send','onaylandi'=>'verified',
-    'kismi'=>'inventory','tamamlandi'=>'check_circle','iptal'=>'cancel'
+    'kismi'=>'inventory','tamamlandi'=>'check_circle','iptal'=>'cancel','siparis'=>'send'
   ];
 
   // Hesaplar
@@ -340,7 +354,8 @@ body.koyu #sas .eksik-uyari{color:#FBBF24}
     <div>Yukarıdaki "Yeni Sipariş" ile başla.</div>
   </div>
 @else
-  <div class="kart-grid" id="sasListe">
+  <div class="liste" id="sasListe">
+    <div class="l-bas"><span>Sipariş</span><span>Tedarikçi</span><span class="c-teslim">Teslim</span><span>Durum</span><span class="sag">Tutar</span><span></span></div>
     @foreach ($siparisler as $s)
       @php
         $dr = $durumRenk[$s->durum] ?? '#64748B';
@@ -350,7 +365,7 @@ body.koyu #sas .eksik-uyari{color:#FBBF24}
         // Tarih + saat (created_at'ten alırız, created_at yoksa tarih'ten)
         $zamanKaynak = $s->created_at ?? $s->tarih;
         $tarihFmt = $zamanKaynak ? \Carbon\Carbon::parse($zamanKaynak)->format('d.m.Y H:i') : '—';
-        $tarihDiff = $zamanKaynak ? \Carbon\Carbon::parse($zamanKaynak)->diffForHumans() : '';
+        $tarihDiff = $zamanKaynak ? \Carbon\Carbon::parse($zamanKaynak)->locale('tr')->diffForHumans() : '';
         // AI olusturdu mu? (siparis_no AI- ile baslıyor veya notlar'da AI geçiyor)
         $aiOlusturdu = (strpos((string) $s->siparis_no, 'AI-') === 0) || (strpos((string) ($s->notlar ?? ''), 'AI') !== false);
         // Eksik taslak uyarısı (tedarikçi veya tutar 0)
@@ -378,68 +393,36 @@ body.koyu #sas .eksik-uyari{color:#FBBF24}
         }
         if ($onayDurum === 'bekliyor') $hizliTag .= ' onay';
       @endphp
-      <a href="/satinalma-siparis-detay?id={{ $s->id }}" class="s-kart{{ $aiOlusturdu ? ' ai-sip' : '' }}{{ $eksikTaslak ? ' eksik-taslak' : '' }}"
+      @php $detayUrl = '/satinalma-siparis-detay?id=' . $s->id; @endphp
+      <div class="s-kart{{ $aiOlusturdu ? ' ai-sip' : '' }}{{ $eksikTaslak ? ' eksik-taslak' : '' }}" style="--dr:{{ $dr }}"
+         onclick="if(!event.target.closest('a'))location.href='{{ $detayUrl }}'"
          data-durum="{{ $s->durum }}"
          data-ara="{{ mb_strtolower($s->siparis_no . ' ' . ($s->tedarikci ?? '')) }}"
          data-hizli="{{ $hizliTag }}"
          data-tutar="{{ (float) $s->genel_toplam }}">
-        <div class="strip" style="background:{{ $dr }}"></div>
-        @if ($aiOlusturdu)
-          <div class="ai-rozet"><span class="material-icons-outlined">auto_awesome</span> AI Hazırladı</div>
-        @endif
-        @if($onayDurum === 'onaylandi')
-          <div class="onay-badge"><span class="material-icons-outlined">verified</span>Tedarikçi onayladı</div>
-        @elseif($onayDurum === 'bekliyor')
-          <div class="onay-badge bek"><span class="material-icons-outlined">hourglass_bottom</span>Onay bekliyor</div>
-        @elseif($onayDurum === 'degisiklik')
-          <div class="onay-badge dg"><span class="material-icons-outlined">edit</span>Değişiklik istendi</div>
-        @endif
-
-        <div class="ust">
-          <div style="min-width:0">
-            <div class="sn">{{ $s->siparis_no }}</div>
-            <div class="sn-sub"><span class="material-icons-outlined">schedule</span>{{ $tarihFmt }}@if($tarihDiff) · {{ $tarihDiff }}@endif</div>
-          </div>
-          <span class="d-pill" style="background:color-mix(in srgb,{{ $dr }} 14%,transparent);color:{{ $dr }}">
-            <span class="material-icons-outlined">{{ $di }}</span>{{ $da }}
-          </span>
+        <div class="c-sip">
+          <div class="sn">{{ $s->siparis_no }}@if ($aiOlusturdu)<span class="ai-rozet" title="Bu siparişi AI hazırladı"><span class="material-icons-outlined">auto_awesome</span>AI</span>@endif</div>
+          <div class="sn-sub"><span class="material-icons-outlined">schedule</span>{{ $tarihFmt }}@if($tarihDiff) · {{ $tarihDiff }}@endif</div>
         </div>
-
-        @if ($eksikTaslak)
-          <div class="eksik-uyari">
-            <span class="material-icons-outlined">warning_amber</span>
-            @if (empty($s->tedarikci_id) && (float) $s->genel_toplam <= 0)
-              Tedarikçi + fiyat eksik — düzenle
-            @elseif (empty($s->tedarikci_id))
-              Tedarikçi seçilmedi
-            @else
-              Fiyatlar girilmedi
+        <div class="c-ted">
+          <div class="av" style="background:linear-gradient(135deg,{{ $dr }},color-mix(in srgb,{{ $dr }} 70%,#000))">{{ empty($s->tedarikci_id) ? '?' : $tedHarf }}</div>
+          <div style="min-width:0">
+            <div class="ted-ad{{ empty($s->tedarikci_id) ? ' yok' : '' }}">{{ empty($s->tedarikci_id) ? 'Tedarikçi seçilmedi' : $s->tedarikci }}</div>
+            @if ($eksikTaslak)
+              <div class="eksik-uyari"><span class="material-icons-outlined">warning_amber</span>{{ empty($s->tedarikci_id) && (float) $s->genel_toplam <= 0 ? 'Tedarikçi + fiyat eksik' : (empty($s->tedarikci_id) ? 'Tedarikçi eksik' : 'Fiyat girilmedi') }}</div>
             @endif
           </div>
-        @endif
-
-        <div class="orta">
-          <div class="av" style="background:linear-gradient(135deg,{{ $dr }},color-mix(in srgb,{{ $dr }} 70%,#000))">{{ $tedHarf }}</div>
-          <div style="flex:1;min-width:0">
-            <div class="ted-ad">{{ $s->tedarikci ?: 'Tedarikçi — belirsiz' }}</div>
-            @if(!empty($s->siparis_no))<div class="ted-meta">#{{ $s->siparis_no }}</div>@endif
-          </div>
         </div>
-
-        <div class="alt-grid">
-          <div>
-            <div class="tutar">{{ $tl($s->genel_toplam) }}</div>
-            <div class="tutar-l">genel toplam</div>
-          </div>
-          <div class="detay-btn">Detay<span class="material-icons-outlined">arrow_forward</span></div>
+        <div class="c-teslim{{ $teslimTxt ? '' : ' yok-t' }}">@if($teslimTxt)<span class="teslim {{ $teslimCls }}"><span class="material-icons-outlined">{{ $teslimIk }}</span>{{ $teslimTxt }}</span>@else<span class="teslim bos-t">—</span>@endif</div>
+        <div class="c-durum">
+          <span class="d-pill" style="background:color-mix(in srgb,{{ $dr }} 14%,transparent);color:{{ $dr }}"><span class="material-icons-outlined">{{ $di }}</span>{{ $da }}</span>
+          @if($onayDurum === 'onaylandi')<span class="onay-badge"><span class="material-icons-outlined">verified</span>Tedarikçi onayladı</span>
+          @elseif($onayDurum === 'bekliyor')<span class="onay-badge bek"><span class="material-icons-outlined">hourglass_bottom</span>Onay bekliyor</span>
+          @elseif($onayDurum === 'degisiklik')<span class="onay-badge dg"><span class="material-icons-outlined">edit</span>Değişiklik istendi</span>@endif
         </div>
-
-        @if($teslimTxt)
-          <div class="teslim {{ $teslimCls }}">
-            <span class="material-icons-outlined">{{ $teslimIk }}</span>{{ $teslimTxt }}
-          </div>
-        @endif
-      </a>
+        <div class="c-tutar sag"><span class="m-etiket">Genel toplam</span><span class="tutar{{ (float) $s->genel_toplam <= 0 ? ' sifir' : '' }}">{{ $tl($s->genel_toplam) }}</span></div>
+        <div class="c-btn sag"><a href="{{ $detayUrl }}" class="detay-btn{{ $eksikTaslak ? ' duzenle' : '' }}">{{ $eksikTaslak ? 'Düzenle' : 'Detay' }}<span class="material-icons-outlined">{{ $eksikTaslak ? 'edit' : 'arrow_forward' }}</span></a></div>
+      </div>
     @endforeach
   </div>
 
