@@ -48,15 +48,30 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 #up .pill{display:inline-block;padding:4px 11px;border-radius:20px;font-weight:800;font-size:12px}
 #up .net-pill{background:linear-gradient(135deg,#F43F5E,#be1e3c);color:#fff;box-shadow:0 2px 8px color-mix(in srgb,var(--kirmizi) 35%,transparent)}
 #up .yeter-pill{background:color-mix(in srgb,var(--yesil) 15%,transparent);color:#0b805e}
-#up .recete-detay{margin-top:14px}
-#up .recete-detay summary{cursor:pointer;font-size:12.5px;font-weight:800;color:var(--mor1);padding:8px 0}
-#up .rd-body{display:flex;flex-direction:column;gap:9px;margin-top:6px}
-#up .rd-urun{background:var(--card2);border-radius:12px;padding:10px 12px;border-left:3px solid var(--mor1)}
-#up .rd-bas{font-size:13px;font-weight:800;color:var(--ink);margin-bottom:7px}
-#up .rd-bas b{color:var(--mor1)}
-#up .rd-kalemler{display:flex;flex-wrap:wrap;gap:6px}
-#up .rd-k{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:11.5px;color:var(--sub)}
-#up .rd-k b{color:var(--ink)}
+#up .sonuc-ust{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+#up .sonuc-ust .say{font-size:12px;color:var(--sub);font-weight:600}
+#up .rd-ac{display:inline-flex;align-items:center;gap:7px;border:1.5px solid color-mix(in srgb,var(--mavi) 35%,var(--line));background:color-mix(in srgb,var(--mavi) 7%,var(--card));color:var(--mavi);border-radius:11px;padding:7px 12px;font-size:12.5px;font-weight:800;cursor:pointer;transition:.15s}
+#up .rd-ac:hover{background:var(--mavi);color:#fff;border-color:var(--mavi)}
+#up .rd-ac .material-icons-outlined{font-size:17px}
+#up .rd-ac em{font-style:normal;font-size:11px;font-weight:800;background:var(--card);color:var(--mavi);border-radius:20px;padding:1px 8px}
+#rdModal{--card:#fff;--card2:#f8fafc;--ink:#1e293b;--sub:#64748b;--line:#e2e8f0;--vurgu:#4F46E5;position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px}
+body.koyu #rdModal{--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub:#94a3b8;--line:#2c3650;--vurgu:#818cf8}
+#rdModal.acik{display:flex}
+#rdModal .rdm{background:var(--card);width:min(860px,100%);max-height:min(86vh,900px);border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.35);display:flex;flex-direction:column;overflow:hidden}
+#rdModal .rdm-bas{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+#rdModal .rdm-ik{width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--vurgu) 12%,transparent);color:var(--vurgu)}
+#rdModal .rdm-bas h3{margin:0;font-size:16px;font-weight:800;color:var(--ink)}
+#rdModal .rdm-bas p{margin:3px 0 0;font-size:12.5px;color:var(--sub)}
+#rdModal .rdm-kapat{margin-left:auto;border:0;background:var(--card2);color:var(--sub);width:34px;height:34px;border-radius:10px;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center}
+#rdModal .rdm-kapat:hover{color:var(--ink)}
+#rdModal .rdm-ara{margin:12px 18px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--ink);font-size:13px}
+#rdModal .rdm-govde{overflow-y:auto;padding:12px 18px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;align-content:start}
+#rdModal .rd-urun{background:var(--card2);border:1px solid var(--line);border-radius:13px;padding:11px 12px}
+#rdModal .rd-bas{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13.5px;font-weight:800;color:var(--ink);margin-bottom:8px}
+#rdModal .rd-por{font-size:11px;font-weight:800;color:var(--vurgu);background:color-mix(in srgb,var(--vurgu) 12%,transparent);border-radius:20px;padding:2px 9px;white-space:nowrap}
+#rdModal .rd-k{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--sub);padding:5px 0;border-top:1px dashed var(--line)}
+#rdModal .rd-k b{color:var(--ink);white-space:nowrap}
+#rdModal .rd-yok{grid-column:1/-1;text-align:center;color:var(--sub);padding:30px;font-size:13px}
 #mrpToast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;padding:12px 20px;border-radius:12px;font-size:13.5px;font-weight:600;box-shadow:0 14px 34px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:.3s cubic-bezier(.22,.68,0,1.2);z-index:9999;max-width:90vw;text-align:center}
 #mrpToast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #mrpToast.uyari{background:linear-gradient(135deg,#F59E0B,#d97706)}
@@ -136,7 +151,7 @@ body.koyu #up{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
 
 <script>
 const MRP_CSRF=document.querySelector('meta[name=csrf-token]').content;
-let sonPlan=[];
+let sonPlan=[], sonDetay=[];
 function donemSec(b){document.querySelectorAll('#donem button').forEach(x=>x.classList.remove('akt'));b.classList.add('akt');}
 function aktifGun(){return +document.querySelector('#donem button.akt').dataset.g;}
 function ara(q){q=(q||'').toLowerCase();document.querySelectorAll('#urunListe .urun-sat').forEach(s=>{s.style.display=s.dataset.ad.includes(q)?'':'none';});}
@@ -200,7 +215,10 @@ function ciz(j){
   const rows=j.rows||[];
   if(!rows.length){document.getElementById('sonuc').innerHTML='<div class="bos-sonuc"><span class="material-icons-outlined">block</span>Bu ürünlerde stok-takipli malzeme yok.</div>';return;}
   const alinacak=(j.alinacak||[]).length;
-  let h='<table class="mal-tablo"><thead><tr><th>Malzeme</th><th class="sag">Lazım (reçete)</th><th class="sag">Stok</th><th class="sag">Net Al</th><th class="sag">~Maliyet</th></tr></thead><tbody>';
+  sonDetay=j.detay||[];
+  let h='<div class="sonuc-ust"><span class="say">'+rows.length+' malzeme</span>'+
+    (sonDetay.length?'<button type="button" class="rd-ac" onclick="receteDetayAc()"><span class="material-icons-outlined">menu_book</span>Reçete Gramaj Detayı <em>'+sonDetay.length+' ürün</em></button>':'')+'</div>';
+  h+='<table class="mal-tablo"><thead><tr><th>Malzeme</th><th class="sag">Lazım (reçete)</th><th class="sag">Stok</th><th class="sag">Net Al</th><th class="sag">~Maliyet</th></tr></thead><tbody>';
   rows.forEach((x,i)=>{
     const c=PAL[i%PAL.length];
     h+='<tr class="'+(x.yeterli?'yeter':'eksik')+'" style="--rc:'+c+'">'+
@@ -212,15 +230,6 @@ function ciz(j){
   });
   h+='</tbody></table>';
   h+='<div class="ozet-bar"><span style="font-size:12.5px;color:var(--sub)"><b style="color:var(--kirmizi)">'+alinacak+'</b> kalem alınacak</span><span class="tut">~'+tl(j.toplam)+'</span></div>';
-  if(j.detay && j.detay.length){
-    h+='<details class="recete-detay"><summary>📋 Reçete Gramaj Detayı (ürün bazında — ne kadar üretim için)</summary><div class="rd-body">';
-    j.detay.forEach(d=>{
-      h+='<div class="rd-urun"><div class="rd-bas">'+d.urun+' <b>× '+d.adet+' porsiyon</b></div><div class="rd-kalemler">';
-      (d.kalemler||[]).forEach(k=>{ h+='<span class="rd-k">'+k.ad+' <b>'+sayi(k.miktar)+' '+k.birim+'</b></span>'; });
-      h+='</div></div>';
-    });
-    h+='</div></details>';
-  }
   if(alinacak>0){
     h+='<form method="POST" action="/uretim-plani/talep" class="talep-form" onsubmit="return talepGonder(this)">'+
       '<input type="hidden" name="_token" value="'+MRP_CSRF+'"><input type="hidden" name="plan_json" value="">'+
@@ -231,6 +240,30 @@ function ciz(j){
   }
   document.getElementById('sonuc').innerHTML=h;
 }
+function rdEsc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function receteDetayAc(){
+  let m=document.getElementById('rdModal');
+  if(!m){
+    m=document.createElement('div');m.id='rdModal';
+    m.innerHTML='<div class="rdm" role="dialog" aria-modal="true"><div class="rdm-bas"><div class="rdm-ik"><span class="material-icons-outlined">menu_book</span></div>'+
+      '<div><h3>Reçete Gramaj Detayı</h3><p id="rdAlt"></p></div><button type="button" class="rdm-kapat" onclick="receteDetayKapat()" aria-label="Kapat"><span class="material-icons-outlined">close</span></button></div>'+
+      '<input class="rdm-ara" id="rdAra" placeholder="Ürün veya malzeme ara..." oninput="rdFiltre(this.value)"><div class="rdm-govde" id="rdGovde"></div></div>';
+    m.addEventListener('click',e=>{if(e.target===m)receteDetayKapat();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')receteDetayKapat();});
+    document.body.appendChild(m);
+  }
+  const porsiyon=sonDetay.reduce((t,d)=>t+(+d.adet||0),0);
+  document.getElementById('rdAlt').textContent=sonDetay.length+' ürün · toplam '+sayi(porsiyon)+' porsiyon için malzeme miktarları';
+  document.getElementById('rdGovde').innerHTML=sonDetay.map(d=>{
+    const ara=(d.urun+' '+(d.kalemler||[]).map(k=>k.ad).join(' ')).toLocaleLowerCase('tr');
+    return '<div class="rd-urun" data-ara="'+rdEsc(ara)+'"><div class="rd-bas"><span>'+rdEsc(d.urun)+'</span><span class="rd-por">× '+rdEsc(d.adet)+' porsiyon</span></div>'+
+      (d.kalemler||[]).map(k=>'<div class="rd-k"><span>'+rdEsc(k.ad)+'</span><b>'+sayi(k.miktar)+' '+rdEsc(k.birim)+'</b></div>').join('')+'</div>';
+  }).join('')+'<div class="rd-yok" id="rdYok" style="display:none">Eşleşen ürün yok.</div>';
+  document.getElementById('rdAra').value='';
+  m.classList.add('acik');document.body.style.overflow='hidden';
+}
+function receteDetayKapat(){const m=document.getElementById('rdModal');if(m&&m.classList.contains('acik')){m.classList.remove('acik');document.body.style.overflow='';}}
+function rdFiltre(q){q=(q||'').toLocaleLowerCase('tr');let n=0;document.querySelectorAll('#rdGovde .rd-urun').forEach(x=>{const g=x.dataset.ara.includes(q);x.style.display=g?'':'none';if(g)n++;});document.getElementById('rdYok').style.display=n?'none':'';}
 function talepGonder(f){f.plan_json.value=JSON.stringify(sonPlan);return true;}
 </script>
 @endsection
