@@ -728,7 +728,7 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
     <div class="sta-akis" id="staDetAkis"></div>
 
     {{-- Kalem listesi (RFQ + öneri + seçim) --}}
-    <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px">Kalemler · Teklifler</div>
+    <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px" id="staKalemBaslik">Kalemler · Teklifler</div>
     <div id="staDetKalemler" style="margin-bottom:14px"></div>
 
     {{-- Dinamik aksiyon barı (role + duruma göre) --}}
@@ -852,6 +852,7 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
 const malzemeler = @json($malzemeler->values());
 const birimler   = @json($birimler->values());
 const patronMu   = {{ ($patronMu ?? false) ? 'true' : 'false' }};
+const satinalmaciMu = {{ ($satinalmaci ?? false) ? 'true' : 'false' }}; // tedarikçi/teklif/fiyat yalnız satın alma + yönetimde
 const satinalmaGorur = {{ ($satinalmaci ?? false) ? 'true' : 'false' }}; // satın alma işlemleri (fiyat, öneri, sipariş) yalnız bu rollerde
 const staKritikler = @json($kritikler);
 const staKopya = {!! json_encode($kopya ?? null, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
@@ -1134,9 +1135,11 @@ function staTedDropdown(secili) {
 function staKalemleriCiz(kalemler, durum) {
     const wrap = document.getElementById('staDetKalemler');
     if (!kalemler.length) { wrap.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:8px 0">Kalem yok.</div>'; return; }
-    // satın almacı teklif/öneri girebilir mi? (onaylandı/sipariş sonrası kilit)
-    const duzenle = ['yeni','teklif','onayda'].includes(durum);
+    // satın almacı teklif/öneri girebilir mi? (onaylandı/sipariş sonrası kilit). Mutfak vb. talep eden taraf yalnız ne istediğini görür
+    const satTaraf = satinalmaciMu || patronMu;
+    const duzenle = satinalmaciMu && ['yeni','teklif','onayda'].includes(durum);
     const patronSecebilir = patronMu && durum === 'onayda';
+    const _kb = document.getElementById('staKalemBaslik'); if (_kb) _kb.textContent = satTaraf ? 'Kalemler · Teklifler' : 'İstenen malzemeler';
     let html = '';
     if (duzenle && durum !== 'onayda') {
         const _ts = kalemler.reduce((s,k)=>s+((k.teklifler||[]).length),0);
@@ -1153,12 +1156,12 @@ function staKalemleriCiz(kalemler, durum) {
             <span class="material-icons-outlined">inventory_2</span>
             <span class="kk-ad" title="${escHtml(k.ad)}">${escHtml(k.ad)}</span>
             <span class="kk-mik">${numFmt(k.miktar)} ${escHtml(k.birim||'')}</span>
-            ${teklifler.length?`<span class="kk-tsay">${teklifler.length} teklif</span>`:''}
+            ${satTaraf && teklifler.length?`<span class="kk-tsay">${teklifler.length} teklif</span>`:''}
             ${duzenle?`<button type="button" class="kk-btn" title="Elle teklif gir (tedarikçiyle konuştuysan)" onclick="staKkAc(this,'.sta-tek-form')"><span class="material-icons-outlined">add</span><span class="yazi">Teklif</span></button>
             <button type="button" class="kk-btn${gerekce?' dolu':''}" title="Öneri gerekçesi" onclick="staKkAc(this,'.sta-gerekce')"><span class="material-icons-outlined">tips_and_updates</span><span class="yazi">Gerekçe</span></button>`:''}
           </div>`;
-        // teklifler (ince alt satırlar)
-        if (teklifler.length) {
+        // teklifler (ince alt satırlar) — yalnız satın alma / yönetim
+        if (satTaraf && teklifler.length) {
             teklifler.forEach(tk => {
                 const isOneri = (k.onerilen_tedarikci_id && tk.tedarikci_id == k.onerilen_tedarikci_id);
                 const isSecili = (k.secilen_tedarikci_id && tk.tedarikci_id == k.secilen_tedarikci_id);
@@ -1195,10 +1198,10 @@ function staKalemleriCiz(kalemler, durum) {
                 <textarea rows="1" placeholder="Öneri gerekçesi (neden bu tedarikçi?)" onchange="staGerekceKaydet(${k.id}, this.value)">${escHtml(gerekce)}</textarea>
               </div>`;
             if (gerekce) html += `<div class="kk-not kk-gerekce-ozet"><span class="material-icons-outlined">tips_and_updates</span><span>${escHtml(gerekce)}</span></div>`;
-        } else if (gerekce) {
+        } else if (satTaraf && gerekce) {
             html += `<div class="kk-not"><span class="material-icons-outlined">tips_and_updates</span><span><b>Satın almacı:</b> ${escHtml(gerekce)}</span></div>`;
         }
-        if (k.patron_not) {
+        if (satTaraf && k.patron_not) {
             html += `<div class="kk-not"><span class="material-icons-outlined" style="color:#10B981">verified</span><span><b>Yönetici:</b> ${escHtml(k.patron_not)}</span></div>`;
         }
         html += `</div>`;
