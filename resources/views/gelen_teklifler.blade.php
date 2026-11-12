@@ -109,7 +109,7 @@
 #gt .gt-ur .ub small{display:block;font-size:11.5px;color:var(--sub);margin-top:2px}
 #gt .gt-ur .ub .tas{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;color:#047857;background:rgba(16,185,129,.14);border-radius:20px;padding:2px 8px}
 #gt .gt-bars{display:flex;flex-direction:column;gap:6px}
-#gt .gt-bar{display:grid;grid-template-columns:140px minmax(0,1fr) 150px;gap:10px;align-items:center;border-radius:10px;padding:5px 8px;cursor:pointer}
+#gt .gt-bar{display:grid;grid-template-columns:140px minmax(0,1fr) 200px;gap:10px;align-items:center;border-radius:10px;padding:5px 8px;cursor:pointer}
 #gt .gt-bar:hover{background:rgba(124,58,237,.07)}
 #gt .gt-bar.sec{box-shadow:inset 0 0 0 2px var(--gt-mor);background:rgba(124,58,237,.06)}
 #gt .gt-bar .tad{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -118,7 +118,7 @@
 #gt .gt-bar .cub i{display:block;height:100%;border-radius:7px;background:var(--c);opacity:.85}
 #gt .gt-bar.ucuz .cub i{background:linear-gradient(90deg,#34D399,#059669);opacity:1}
 #gt .gt-bar .fy{text-align:right;font-size:13px;font-weight:800;color:var(--ink);white-space:nowrap}
-#gt .gt-bar .fy small{display:block;font-size:10.5px;font-weight:600;color:var(--sub)}
+#gt .gt-bar .fy small{display:block;font-size:10.5px;font-weight:600;color:var(--sub);white-space:normal;line-height:1.35}
 #gt .gt-bar.ucuz .fy{color:#047857}
 #gt .gt-bar .rz{font-size:9.5px;font-weight:800;background:#10B981;color:#fff;border-radius:6px;padding:1px 5px;margin-left:4px;vertical-align:middle}
 #gt .gt-bar.yok{cursor:default}
@@ -355,7 +355,8 @@ function detayHtml(g){
     let ref = '';
     if (u.hal) ref += `<span class="ref hal" title="${esc(u.hal.ad)} · ${esc(u.hal.tarih)}">🥬 Hal${u.hal.cesit > 1 ? ' (' + u.hal.cesit + ' çeşit)' : ''}: ${para(u.hal.ort)}/${esc(u.hal.birim)}${u.hal.min > 0 && u.hal.max > 0 ? ` <i>(${paraK(u.hal.min)}–${paraK(u.hal.max)})</i>` : ''}<i> · ${tarih(u.hal.tarih)}</i></span>`;
     if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${okunurFiyat(u.son_alis.fiyat, u.son_alis.birim)}<i>${u.son_alis.kaynak === 'fatura' ? ' · faturadan' : ' · siparişten'}${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
-    if (!ref) ref = `<span class="ref yok">Hal / geçmiş alış verisi yok</span>`;
+    if (!u.hal) ref = `<span class="ref yok" title="Hal yalnız taze sebze-meyve fiyatı yayınlar">🥬 Hal fiyatı yok — hal yalnız sebze-meyve satar</span>` + ref;
+    if (!u.son_alis) ref += `<span class="ref yok">🧾 Bu ürünü daha önce almamışız (fatura/sipariş yok)</span>`;
     h += `<div class="gt-ur"><div class="ub"><b>${esc(u.ad)}</b><small>İhtiyaç: ${mik(u.miktar)} ${esc(u.birim)}</small>${tu > 0 ? `<span class="tas">↓ ${para(tu)} fark</span>` : ''}<div class="refler">${ref}</div></div><div class="gt-bars">`;
     if (halU) h += `<div class="gt-bar refbar" style="--c:#64748B"><span class="tad"><i></i>Hal ortalaması</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * halU / maks))}%"></i></div><span class="fy">${para(halU)}/${esc(u.birim)}<small>${para(halU * u.miktar)} toplam</small></span></div>`;
     if (alisU) h += `<div class="gt-bar refbar" style="--c:#2563EB"><span class="tad"><i></i>Son alışımız</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * alisU / maks))}%"></i></div><span class="fy">${para(alisU)}/${esc(u.birim)}<small>${para(alisU * u.miktar)} toplam</small></span></div>`;
