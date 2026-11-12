@@ -25167,6 +25167,8 @@ Route::get('/talep-onaylarim', function () {
     $bp = null; try { if (function_exists('_posPersonel')) $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
     $sid = _webSubeId();
+    // Departman sorumlusu onayları Satın Alma Talepleri sayfasında yönetir (tek sayfa): onay filtresiyle oraya
+    if (!_talepUstYonetimMu($bp, $sid) && function_exists('_panelYetkiVar') && _panelYetkiVar($bp, 'gor_talep')) return redirect('/satinalma-talep?durum=departman_onay');
     $patron = _talepUstYonetimMu($bp, $sid);
     $sorumluDep = _sorumluDepartmanIdleri($sid, $bp->id ?? 0);
     if (!$patron && empty($sorumluDep)) return view('talep_onaylarim', ['talepler' => collect(), 'yetkisiz' => true]);

@@ -401,12 +401,6 @@
     if ($_kp && isset($gruplar['Satın Alma']) && _mutfakEkibiMi($_kp)) {
         unset($gruplar['Satın Alma']);
         $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
-        // Şef istasyonların talebini onaylar: Onay Bekleyen Talepler Satın Alma Talebi'nin altında (yalnız sorumlu)
-        if (_talepOnaylayiciMi($_kp)) {
-            $_yeniBoh = [];
-            foreach ($gruplar['Mutfak / BOH'] ?? [] as $_it) { $_yeniBoh[] = $_it; if ($_it[0] === '/satinalma-talep') $_yeniBoh[] = ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B']; }
-            $gruplar['Mutfak / BOH'] = $_yeniBoh;
-        }
     }
     // Şefin Menü Yönetimi de Mutfak / BOH'ta; Menü & Ürünler (Happy Hour, Fix Menü, kampanya) mutfak ekibinde gizli
     if ($_kp && isset($gruplar['Menü & Ürünler']) && _mutfakEkibiMi($_kp)) {
@@ -549,7 +543,7 @@
                     if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]);
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
-                    if ($it[0] === '/talep-onaylarim') return _talepOnaylayiciMi($_pp) || _talepUstYonetimMu($_pp);
+                    if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;

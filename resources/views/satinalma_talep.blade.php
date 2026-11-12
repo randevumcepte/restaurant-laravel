@@ -511,6 +511,46 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
 @keyframes staPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}70%{box-shadow:0 0 0 7px rgba(245,158,11,0)}100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}}
 @media(max-width:640px){#sta .sta-arama{flex:1;min-width:140px}}
 </style>
+{{-- ─── Onayını bekleyenler (şef / departman sorumlusu): tek sayfada yönetim ─── --}}
+@php $onayBek = $talepler->filter(fn ($t) => $t->onaylayabilir ?? false)->values(); @endphp
+@if ($onayBek->count())
+<style>
+#sta .sto-panel{background:linear-gradient(135deg,color-mix(in srgb,#8B5CF6 9%,var(--card,#fff)),var(--card,#fff) 70%);border:1.5px solid color-mix(in srgb,#8B5CF6 35%,transparent);border-radius:18px;padding:14px 16px;margin-bottom:14px}
+#sta .sto-bas{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+#sta .sto-bas .ik{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#8B5CF6;color:#fff;flex:none}
+#sta .sto-bas b{font-size:15px;color:var(--ink,#0f172a)}
+#sta .sto-bas small{display:block;font-size:12px;color:var(--sub,#64748b);margin-top:1px}
+#sta .sto-liste{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+#sta .sto-kart{background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:8px;transition:opacity .3s,transform .3s}
+#sta .sto-kart.acil{border-color:color-mix(in srgb,#F43F5E 45%,transparent)}
+#sta .sto-kart.gitti{opacity:0;transform:scale(.97)}
+#sta .sto-ust{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#sta .sto-ust .dep{font-weight:800;font-size:13.5px;color:var(--ink,#0f172a)}
+#sta .sto-ust .acil{font-size:10px;font-weight:800;color:#fff;background:#F43F5E;border-radius:999px;padding:2px 8px}
+#sta .sto-ust .zm{margin-left:auto;font-size:11.5px;color:var(--sub,#64748b)}
+#sta .sto-kim{font-size:12px;color:var(--sub,#64748b)}
+#sta .sto-kalem{font-size:12.5px;color:var(--ink,#0f172a);background:var(--card2,#f8fafc);border-radius:10px;padding:7px 10px}
+#sta .sto-btn{display:flex;gap:8px}
+#sta .sto-btn button{flex:1;border:0;border-radius:10px;padding:9px 10px;font-weight:800;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:inherit}
+#sta .sto-btn .o{background:linear-gradient(135deg,#10B981,#059669);color:#fff}
+#sta .sto-btn .r{background:transparent;color:#F43F5E;border:1.5px solid color-mix(in srgb,#F43F5E 45%,transparent)}
+#sta .sto-btn .material-icons-outlined{font-size:17px}
+@media(max-width:640px){#sta .sto-liste{grid-template-columns:1fr}}
+</style>
+<div class="sto-panel" id="staOnayPanel">
+  <div class="sto-bas"><span class="ik"><span class="material-icons-outlined">fact_check</span></span><div><b><span id="staOnaySay">{{ $onayBek->count() }}</span> talep onayını bekliyor</b><small>Ekibinden gelen talepler — onaylayınca satın almaya gider.</small></div></div>
+  <div class="sto-liste">
+    @foreach ($onayBek as $ot)
+      <div class="sto-kart{{ $ot->aciliyet === 'acil' ? ' acil' : '' }}" id="stoK{{ $ot->id }}" data-dep="{{ $ot->departman }}" data-kalem="{{ $ot->kalem_ozet ?: ($ot->kalem_sayisi . ' kalem') }}">
+        <div class="sto-ust"><span class="dep">{{ $ot->departman }}</span>@if ($ot->aciliyet === 'acil')<span class="acil">ACİL</span>@endif<span class="zm">{{ \Carbon\Carbon::parse($ot->created_at)->locale('tr')->diffForHumans() }}</span></div>
+        <div class="sto-kim">👤 {{ $ot->isteyen_ad ?: '—' }} · #{{ $ot->id }} · {{ $ot->kalem_sayisi }} kalem</div>
+        <div class="sto-kalem">{{ $ot->kalem_ozet ?: '—' }}</div>
+        <div class="sto-btn"><button type="button" class="o" onclick="staDeptOnay({{ $ot->id }})"><span class="material-icons-outlined">check_circle</span>Onayla</button><button type="button" class="r" onclick="staDeptRed({{ $ot->id }})"><span class="material-icons-outlined">close</span>Reddet</button></div>
+      </div>
+    @endforeach
+  </div>
+</div>
+@endif
 <div class="sta-filtre">
     <div class="sta-chips" id="staChips">
         <button class="sta-chip akt" data-d="" style="--cr:#7C3AED" onclick="staFiltreDurum(this)">Tümü <b>{{ $talepler->count() }}</b></button>
@@ -739,6 +779,43 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
   </div>
 </div>
 
+{{-- Onay / red popup (tarayıcı confirm/prompt yerine) --}}
+<style>
+.stp-arka{position:fixed;inset:0;z-index:9000;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.stp-arka.acik{display:flex}
+.stp-kutu{width:100%;max-width:440px;background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:22px;padding:24px 22px 18px;box-shadow:0 30px 70px -20px rgba(15,23,42,.55);text-align:center;animation:stpAc .22s cubic-bezier(.2,.9,.3,1.25)}
+@keyframes stpAc{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
+.stp-ik{width:60px;height:60px;margin:0 auto 12px;border-radius:18px;display:grid;place-items:center;background:color-mix(in srgb,var(--pr) 14%,transparent);color:var(--pr)}
+.stp-ik .material-icons-outlined{font-size:30px}
+.stp-kutu h3{margin:0 0 6px;font-size:17px;font-weight:800;color:var(--ink,#0f172a)}
+.stp-kutu p{margin:0;font-size:13px;color:var(--sub,#64748b);line-height:1.5}
+.stp-red{display:none;text-align:left;margin-top:14px}
+.stp-red.acik{display:block}
+.stp-hazir{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.stp-hazir button{border:1px solid var(--line,#e2e8f0);background:var(--card2,#f8fafc);color:var(--sub,#64748b);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.stp-hazir button:hover{border-color:#F43F5E;color:#F43F5E}
+.stp-red textarea{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#e2e8f0);background:var(--card2,#f8fafc);color:var(--ink,#0f172a);border-radius:12px;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;min-height:62px}
+.stp-red textarea:focus{outline:none;border-color:#F43F5E}
+.stp-red textarea.hata{border-color:#F43F5E}
+.stp-btn{display:flex;gap:10px;margin-top:18px}
+.stp-btn button{flex:1;border:0;border-radius:12px;padding:12px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.stp-btn .vaz{background:var(--card2,#f1f5f9);color:var(--ink,#0f172a);border:1px solid var(--line,#e2e8f0)}
+.stp-btn .ok{color:#fff;background:var(--pr)}
+.stp-btn button:disabled{opacity:.6;cursor:wait}
+@media(max-width:560px){.stp-arka{align-items:flex-end;padding:0}.stp-kutu{max-width:none;border-radius:22px 22px 0 0}}
+</style>
+<div class="stp-arka" id="stpArka" onclick="if(event.target===this)stpKapat()">
+  <div class="stp-kutu" role="dialog" aria-modal="true">
+    <div class="stp-ik" id="stpIk"><span class="material-icons-outlined" id="stpIkon">check_circle</span></div>
+    <h3 id="stpBaslik"></h3>
+    <p id="stpMetin"></p>
+    <div class="stp-red" id="stpRed">
+      <div class="stp-hazir">@foreach (['Stokta yeterli var', 'Miktar fazla, düzeltip tekrar gönder', 'Bütçe uygun değil', 'Başka tedarikçiden alınacak'] as $hs)<button type="button" onclick="stpHazir(this)">{{ $hs }}</button>@endforeach</div>
+      <textarea id="stpSebep" placeholder="Red sebebi (zorunlu) — talebi açan bu sebebi görecek"></textarea>
+    </div>
+    <div class="stp-btn"><button type="button" class="vaz" onclick="stpKapat()">Vazgeç</button><button type="button" class="ok" id="stpOk" onclick="stpTamam()"></button></div>
+  </div>
+</div>
 <div id="staTst"></div>
 
 @push('scripts')
@@ -1402,26 +1479,44 @@ window.staFiltreUygula = function() {
     const bos = document.getElementById('staFiltreBos'); if (bos) bos.style.display = gorunen ? 'none' : 'block';
 };
 
-/* ─── Onay bekleyen talep: satır-içi Onayla / Reddet (yetkili şef) ─── */
-window.staDeptOnay = async function(id){
-    if(!confirm('Talep onaylanıp satın almaya iletilecek. Onaylıyor musun?')) return;
-    try{
-        const res = await api('/satinalma-talep/dept-onayla', { id });
-        if(res.ok){ toast('✓ Onaylandı — satın almaya iletildi', '#10B981'); setTimeout(()=>location.reload(), 650); }
-        else alert(res.mesaj || 'İşlem başarısız.');
-    }catch(e){ alert('Bağlantı hatası.'); }
+/* ─── Onay bekleyen talep: Onayla / Reddet — kendi popup'ımız (tarayıcı confirm/prompt yok) ─── */
+let stpMod = null, stpId = 0;
+function stpAc(mod, id){
+    stpMod = mod; stpId = id;
+    const k = document.getElementById('stoK' + id), dep = k ? k.dataset.dep : 'Talep', kal = k ? k.dataset.kalem : '';
+    const kutu = document.querySelector('#stpArka .stp-kutu');
+    kutu.style.setProperty('--pr', mod === 'onay' ? '#10B981' : '#F43F5E');
+    document.getElementById('stpIkon').textContent = mod === 'onay' ? 'shopping_cart_checkout' : 'block';
+    document.getElementById('stpBaslik').textContent = mod === 'onay' ? 'Talep onaylansın mı?' : 'Talep reddedilsin mi?';
+    document.getElementById('stpMetin').textContent = dep + (kal ? ' · ' + kal : '') + (mod === 'onay' ? ' — satın almaya iletilecek.' : '');
+    document.getElementById('stpRed').classList.toggle('acik', mod === 'red');
+    const t = document.getElementById('stpSebep'); t.value = ''; t.classList.remove('hata');
+    const ok = document.getElementById('stpOk'); ok.disabled = false;
+    ok.innerHTML = '<span class="material-icons-outlined" style="font-size:18px">' + (mod === 'onay' ? 'check_circle' : 'block') + '</span>' + (mod === 'onay' ? 'Onayla' : 'Reddet');
+    document.getElementById('stpArka').classList.add('acik');
+    setTimeout(() => (mod === 'red' ? t : ok).focus(), 40);
+}
+window.stpKapat = function(){ document.getElementById('stpArka').classList.remove('acik'); stpMod = null; };
+window.stpHazir = function(b){ const t = document.getElementById('stpSebep'); t.value = b.textContent.trim(); t.classList.remove('hata'); t.focus(); };
+window.stpTamam = async function(){
+    const ok = document.getElementById('stpOk');
+    let sebep = '';
+    if (stpMod === 'red') { sebep = document.getElementById('stpSebep').value.trim(); if (sebep.length < 3) { document.getElementById('stpSebep').classList.add('hata'); return; } }
+    ok.disabled = true;
+    try {
+        const res = stpMod === 'onay' ? await api('/satinalma-talep/dept-onayla', { id: stpId }) : await api('/satinalma-talep/dept-reddet', { id: stpId, sebep });
+        if (res.ok) {
+            toast(stpMod === 'onay' ? '✓ Onaylandı — satın almaya iletildi' : 'Talep reddedildi', stpMod === 'onay' ? '#10B981' : '#F43F5E');
+            const k = document.getElementById('stoK' + stpId); if (k) k.classList.add('gitti');
+            stpKapat(); setTimeout(() => location.reload(), 650);
+        } else { ok.disabled = false; toast(res.mesaj || 'İşlem başarısız.', '#F43F5E'); }
+    } catch (e) { ok.disabled = false; toast('Bağlantı hatası.', '#F43F5E'); }
 };
-window.staDeptRed = async function(id){
-    var s = prompt('Red sebebi (zorunlu — talebi açan kişi bu sebebi görecek):');
-    if(s === null) return; s = s.trim();
-    if(s.length < 3){ alert('Red sebebi en az 3 karakter olmalı.'); return; }
-    try{
-        const res = await api('/satinalma-talep/dept-reddet', { id, sebep: s });
-        if(res.ok){ toast('Talep reddedildi', '#F43F5E'); setTimeout(()=>location.reload(), 650); }
-        else alert(res.mesaj || 'İşlem başarısız.');
-    }catch(e){ alert('Bağlantı hatası.'); }
-};
-
+document.addEventListener('keydown', e => { if (!stpMod) return; if (e.key === 'Escape') stpKapat(); if (e.key === 'Enter' && stpMod === 'onay') { e.preventDefault(); stpTamam(); } });
+window.staDeptOnay = function(id){ stpAc('onay', id); };
+window.staDeptRed = function(id){ stpAc('red', id); };
+// ?durum=departman_onay ile gelindiyse (eski onay sayfası / bildirim) o çip seçili açılsın
+(function(){ const d = new URLSearchParams(location.search).get('durum'); if (!d) return; const c = document.querySelector('#staChips .sta-chip[data-d="' + d + '"]'); if (c) staFiltreDurum(c); })();
 })();
 </script>
 @endpush
