@@ -27,8 +27,7 @@
     <div class="rk-card" style="padding:6px 16px;max-width:640px">
       @foreach ($tipler as $tip => $info)
         @php
-          $roller = $info[2] ?? null;
-          if ($roller && !in_array($rol, $roller)) continue;
+          if (!_bildirimTipGorur($personel, $tip)) continue; // kişinin işiyle ilgisiz tip görünmez
           $acik = array_key_exists($tip, $mevcut) ? ((int) $mevcut[$tip] === 1) : ((int) ($info[1] ?? 1) === 1);
         @endphp
         <label class="rk-yetki-satir" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)">

@@ -7780,11 +7780,15 @@ if (!function_exists('_fcmSubeyeGonder')) {
                 if (!$ids) return false;
                 $q->whereIn('personel_id', $ids);
             }
-            if ($tip && function_exists('_bildirimTercihKapali')) {
+            // Garson çağrısı tipsiz gönderiliyordu: herkese (satın alma, mutfak) gitmesin, yalnız çağrı ekranını gören ve kapatmamış olan alsın
+            $isTip = $tip ?: (($data['tur'] ?? '') === 'garson_cagri' ? 'garson_cagri' : null);
+            if ($isTip && function_exists('_bildirimTercihKapali')) {
                 $rows = $q->get(['token', 'personel_id']);
                 $tokenlar = [];
+                $kisiler = function_exists('_bildirimTipGorur') ? DB::table('personeller')->whereIn('id', $rows->pluck('personel_id')->filter()->unique()->all())->get()->keyBy('id') : collect();
                 foreach ($rows as $row) {
-                    if ($row->personel_id && _bildirimTercihKapali($row->personel_id, $tip)) continue;
+                    if ($row->personel_id && _bildirimTercihKapali($row->personel_id, $isTip)) continue;
+                    if ($row->personel_id && isset($kisiler[$row->personel_id]) && !_bildirimTipGorur($kisiler[$row->personel_id], $isTip)) continue;
                     $tokenlar[] = $row->token;
                 }
             } else {
@@ -10019,6 +10023,19 @@ Route::post('/isletme-olcegi', function (Request $r) {
 });
 
 // ---- WEB: Bildirim Ayarları (kişiye özel) ----
+if (!function_exists('_bildirimTipGorur')) {
+    // Kişi bu bildirim tipini alır/ayarlarda görür mü: yönetici hepsini; rol listeli tipler role göre; operasyon tipleri ilgili ekran yetkisine göre
+    function _bildirimTipGorur($p, $tip)
+    {
+        if (!$p) return false;
+        $info = _bildirimTipleri()[$tip] ?? null;
+        if (!$info) return true;
+        if (in_array($p->rol ?? '', ['sahip', 'mudur'], true)) return true;
+        if (!empty($info[2])) return in_array($p->rol ?? '', $info[2], true);
+        $yetki = ['yeni_rezervasyon' => 'gor_rezervasyon', 'garson_cagri' => 'gor_garson_cagri', 'yeni_paket' => 'gor_paket'][$tip] ?? null;
+        return $yetki === null || _panelYetkiVar($p, $yetki);
+    }
+}
 Route::get('/bildirim-ayar', function () {
     _bildirimTercihEnsure();
     $bp = null;
@@ -10034,8 +10051,7 @@ Route::get('/api/bildirim/tercih', function (Request $r) {
     $mevcut = _bildirimTercihMap($p->id);
     $out = [];
     foreach ($tipler as $tip => $info) {
-        $roller = $info[2] ?? null;
-        if ($roller && !in_array(($p->rol ?? ''), $roller)) continue; // bu role görünmeyen tipi gizle
+        if (!_bildirimTipGorur($p, $tip)) continue; // kişinin işiyle ilgisiz tipi gizle (ör. satın almaya rezervasyon)
         $acik = array_key_exists($tip, $mevcut) ? ((int) $mevcut[$tip] === 1) : ((int) ($info[1] ?? 1) === 1);
         $out[] = ['tip' => $tip, 'etiket' => $info[0], 'acik' => $acik];
     }
@@ -24755,7 +24771,8 @@ if (!function_exists('_uretimPlaniHesapla')) {
             $maliyet = round($net * (float) ($m->guncel_maliyet ?? 0), 2);
             $rows[] = ['malzeme_id' => (int) $mid, 'ad' => $m->ad,
                 'lazim' => $gLazim, 'mevcut' => $gMevcut, 'net' => $gNet, 'birim' => $gBirim,
-                'net_temel' => $net, 'tahmini_maliyet' => $maliyet, 'yeterli' => $net <= 0];
+                'net_temel' => $net, 'tahmini_maliyet' => $maliyet, 'yeterli' => $net <= 0,
+                'lazim_temel' => round($need, 3), 'mevcut_temel' => round($mevcut, 3), 'mevcut_birim' => _mrpGuzelBirim($mevcut, $kis)[1]];
         }
         usort($rows, fn ($a, $b) => $b['tahmini_maliyet'] <=> $a['tahmini_maliyet']);
         return $rows;
@@ -24777,6 +24794,60 @@ if (!function_exists('_uretimSatisTahmin')) {
                 $out[(int) $r->urun_id] = max(1, (int) round($gunluk * max(1, (int) $gunSayi)));
             }
         } catch (\Throwable $e) {}
+        return $out;
+    }
+}
+// Akıllı satış tahmini: son 8 haftanın HAFTANIN GÜNÜ ortalaması (Cuma≠Salı) × son 2 hafta trendi × güvenlik payı.
+// Dönem yarından başlar (1=yarın, 7=önümüzdeki 7 gün, 30=önümüzdeki 30 gün). Dönüş: [urun_id => [...]]
+if (!function_exists('_uretimAkilliTahmin')) {
+    function _uretimAkilliTahmin($sid, $gunSayi = 7, $payYuzde = 0)
+    {
+        $out = [];
+        try {
+            $gunSayi = max(1, min(31, (int) $gunSayi));
+            $bugun = now()->startOfDay();
+            $from = $bugun->copy()->subDays(56);
+            $rows = DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')
+                ->where('a.sube_id', $sid)->whereNotNull('a.kapanis')->where('a.kapanis', '>=', $from)->where('a.kapanis', '<', $bugun)
+                ->where('k.durum', '!=', 'iptal')->whereNotNull('k.urun_id')
+                ->selectRaw('k.urun_id, DATE(a.kapanis) gun, SUM(k.adet) toplam')->groupBy('k.urun_id', DB::raw('DATE(a.kapanis)'))->get();
+            if ($rows->isEmpty()) return [];
+            // işletmenin AÇIK olduğu günler (o gün en az bir satış) — kapalı günler ortalamayı düşürmesin
+            $acik = []; $satis = [];
+            foreach ($rows as $r) { $acik[$r->gun] = 1; $satis[(int) $r->urun_id][$r->gun] = (float) $r->toplam; }
+            $acikWd = []; foreach (array_keys($acik) as $g) { $acikWd[(int) date('N', strtotime($g))][] = $g; }
+            $acikSay = count($acik);
+            $son14 = $bugun->copy()->subDays(14)->toDateString(); $onc14 = $bugun->copy()->subDays(28)->toDateString();
+            $acikSon = count(array_filter(array_keys($acik), fn ($g) => $g >= $son14));
+            $acikOnc = count(array_filter(array_keys($acik), fn ($g) => $g >= $onc14 && $g < $son14));
+            $hedef = []; for ($i = 1; $i <= $gunSayi; $i++) { $hedef[] = (int) $bugun->copy()->addDays($i)->format('N'); }
+            $gunAd = [1 => 'Pazartesi', 2 => 'Salı', 3 => 'Çarşamba', 4 => 'Perşembe', 5 => 'Cuma', 6 => 'Cumartesi', 7 => 'Pazar'];
+            foreach ($satis as $uid => $gunler) {
+                $toplam = array_sum($gunler);
+                $genelOrt = $toplam / max(1, $acikSay);
+                $wdOrt = [];
+                foreach ($acikWd as $wd => $liste) {
+                    if (count($liste) < 2) continue; // tek örnek güvenilmez → genel ortalama
+                    $t = 0; foreach ($liste as $g) { $t += $gunler[$g] ?? 0; }
+                    $wdOrt[$wd] = $t / count($liste);
+                }
+                $taban = 0; foreach ($hedef as $wd) { $taban += $wdOrt[$wd] ?? $genelOrt; }
+                // trend: son 14 gün günlük ort. / önceki 14 gün günlük ort. (yeterli veri varsa), ±%30 ile sınırlı
+                $trend = 1.0;
+                if ($acikSon >= 4 && $acikOnc >= 4) {
+                    $tS = 0; $tO = 0;
+                    foreach ($gunler as $g => $a) { if ($g >= $son14) $tS += $a; elseif ($g >= $onc14) $tO += $a; }
+                    $oS = $tS / $acikSon; $oO = $tO / $acikOnc;
+                    if ($oO > 0 && ($tS + $tO) >= 6) $trend = max(0.7, min(1.3, $oS / $oO));
+                }
+                $oneri = (int) ceil($taban * $trend * (1 + max(0, min(50, (float) $payYuzde)) / 100) - 0.0001);
+                if ($oneri <= 0) continue;
+                $enIyi = null; if ($wdOrt) { arsort($wdOrt); $enIyi = (int) array_key_first($wdOrt); }
+                $guven = $acikSay >= 28 ? 'yuksek' : ($acikSay >= 10 ? 'orta' : 'dusuk');
+                $out[(int) $uid] = ['oneri' => $oneri, 'gunluk_ort' => round($genelOrt, 1), 'trend' => (int) round(($trend - 1) * 100),
+                    'en_yogun' => $enIyi ? $gunAd[$enIyi] : null, 'veri_gun' => $acikSay, 'guven' => $guven];
+            }
+        } catch (Throwable $e) {}
         return $out;
     }
 }
@@ -24817,11 +24888,18 @@ Route::get('/uretim-plani', function () {
         ->leftJoin('birimler as b', 'b.id', '=', 'r.verim_birim_id')
         ->where('u.sube_id', $sid)->where('u.aktif', 1)->where('r.tip', 'urun')
         ->orderBy('u.ad')->get(['u.id', 'u.ad', 'u.fiyat', 'r.id as recete_id', 'r.verim_miktar', 'r.verim_birim_id', 'b.kisaltma as verim_birim', 'b.tip as verim_tip']);
-    $tahmin = _uretimSatisTahmin($sid, 7); // haftalık öneri
+    $tahmin = _uretimSatisTahmin($sid, 7); // haftalık öneri (eski, geri uyum)
+    $akilli = _uretimAkilliTahmin($sid, 7, 10);
     // Birim seçici için: ağırlık (kg/g) ve hacim (lt/ml) birim id'leri
     $birimAll = DB::table('birimler')->get(['id', 'kisaltma', 'tip']);
     $birimMap = []; foreach ($birimAll as $b) { $birimMap[strtolower($b->kisaltma)] = (int) $b->id; }
-    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'ad' => $bp->ad ?? '', 'birimMap' => $birimMap, 'birimAll' => $birimAll]);
+    return view('uretim_plani', ['urunler' => $urunler, 'tahmin' => $tahmin, 'akilli' => $akilli, 'ad' => $bp->ad ?? '', 'birimMap' => $birimMap, 'birimAll' => $birimAll]);
+});
+// Akıllı tahmin (AJAX): dönem (gün) + güvenlik payı (%) değişince yeniden hesap
+Route::get('/uretim-plani/tahmin', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (Throwable $e) {}
+    if (!$bp) return response()->json(['ok' => 0], 403);
+    return response()->json(['ok' => 1, 'tahmin' => (object) _uretimAkilliTahmin(_webSubeId(), (int) $r->input('gun', 7), (float) $r->input('pay', 10))]);
 });
 // Üretim planı: bir ürünün verim (üretim) birimini reçeteye kalıcı kaydet
 Route::post('/uretim-plani/birim-kaydet', function (Request $r) {
