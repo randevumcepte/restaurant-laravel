@@ -385,6 +385,33 @@ body.koyu .sta-tek-form select, body.koyu .sta-tek-form input { background: #1b2
 }
 body.koyu .sta-gerekce textarea { background: #1b2235; }
 
+/* ---- İnce kalem listesi (detay penceresi) ---- */
+.sta-kk-liste { border: 1px solid var(--line,#e2e8f0); border-radius: 14px; overflow: hidden; background: var(--card,#fff); }
+body.koyu .sta-kk-liste { background: #161C2E; }
+.sta-kk-liste .sta-kk { background: transparent; border: 0; border-bottom: 1px solid var(--line,#e2e8f0); border-radius: 0; padding: 8px 10px 8px 12px; margin: 0; }
+.sta-kk-liste .sta-kk:last-child { border-bottom: 0; }
+.sta-kk-liste .sta-kk:hover { background: color-mix(in srgb,var(--mor1,#7C3AED) 4%,transparent); }
+.sta-kk-liste .kk-bas { margin: 0; gap: 8px; min-height: 30px; }
+.sta-kk-liste .kk-bas > .material-icons-outlined { font-size: 16px; opacity: .8; }
+.sta-kk-liste .kk-ad { font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sta-kk-liste .kk-mik { font-size: 12px; font-weight: 800; color: var(--mor1,#7C3AED); background: color-mix(in srgb,var(--mor1,#7C3AED) 10%,transparent); border-radius: 8px; padding: 3px 8px; }
+.sta-kk-liste .kk-tsay { font-size: 11px; font-weight: 800; color: var(--yesil,#10B981); white-space: nowrap; }
+.sta-kk-liste .kk-btn { border: 1px solid var(--line,#e2e8f0); background: var(--card,#fff); color: var(--sub,#64748b); border-radius: 8px; height: 28px; padding: 0 8px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-family: inherit; }
+body.koyu .sta-kk-liste .kk-btn { background: #1b2235; }
+.sta-kk-liste .kk-btn .material-icons-outlined { font-size: 15px; }
+.sta-kk-liste .kk-btn:hover, .sta-kk-liste .kk-btn.acik { color: var(--mor1,#7C3AED); border-color: var(--mor1,#7C3AED); }
+.sta-kk-liste .kk-btn.dolu { color: #B45309; border-color: color-mix(in srgb,var(--amber,#F59E0B) 50%,transparent); background: color-mix(in srgb,var(--amber,#F59E0B) 10%,transparent); }
+.sta-kk-liste .sta-tek { margin: 5px 0 0 24px; padding: 5px 9px; border-width: 1px; border-radius: 9px; }
+.sta-kk-liste .sta-tek .tk-ted .tk-ad { font-size: 12.5px; }
+.sta-kk-liste .sta-tek .tk-fiyat { font-size: 13px; }
+.sta-kk-liste .sta-tek-form { margin: 6px 0 0 24px; }
+.sta-kk-liste .sta-gerekce { margin: 6px 0 0 24px; padding: 5px 8px; }
+.sta-kk-liste .sta-gerekce textarea { min-height: 30px; padding: 5px 8px; }
+.sta-kk-liste .kk-not { margin: 3px 0 0 24px; font-size: 11.5px; color: var(--sub,#64748b); display: flex; gap: 5px; align-items: flex-start; }
+.sta-kk-liste .kk-not .material-icons-outlined { font-size: 14px; color: var(--amber,#F59E0B); }
+.sta-kalem-banner.ince { padding: 7px 11px; font-size: 12px; margin-bottom: 8px; }
+@media (max-width: 560px) { .sta-kk-liste .kk-btn .yazi { display: none; } .sta-kk-liste .sta-tek, .sta-kk-liste .sta-tek-form, .sta-kk-liste .sta-gerekce, .sta-kk-liste .kk-not { margin-left: 0; } }
+
 /* aksiyon barı buton */
 .sta-aks-btn {
   width: 100%; padding: 13px; border: none; border-radius: 13px; color: #fff;
@@ -1113,25 +1140,30 @@ function staKalemleriCiz(kalemler, durum) {
     let html = '';
     if (duzenle && durum !== 'onayda') {
         const _ts = kalemler.reduce((s,k)=>s+((k.teklifler||[]).length),0);
-        html += `<div class="sta-kalem-banner">💡 <b>Fiyatı sen girmezsin.</b> Aşağıda <b>"Fiyat Araştır"</b> ile tedarikçilere istek gider; onlar linkten kendi <b>fiyat + teslim tarihini</b> girer, teklifler buraya düşer.${_ts?'':' <br><span style="color:var(--sub)">Tedarikçiyle telefonda konuştuysan "✋ Elle teklif gir" ile kendin de ekleyebilirsin.</span>'}</div>`;
+        html += `<div class="sta-kalem-banner ince">💡 Fiyatı <b>"Fiyat Araştır"</b> ile tedarikçiler girer; telefonda konuştuysan satırdaki <b>Teklif</b> ile kendin ekle.${_ts?'':''}</div>`;
     }
+    html += '<div class="sta-kk-liste">';
     kalemler.forEach(k => {
         const teklifler = k.teklifler || [];
         const enUcuz = teklifler.length ? Math.min(...teklifler.map(x=>parseFloat(x.fiyat)||Infinity)) : null;
+        const gerekce = k.oneri_gerekce || '';
+        // tek satır: ad · miktar · (teklif sayısı) · [Teklif] [Gerekçe]
         html += `<div class="sta-kk" data-kid="${k.id}">
           <div class="kk-bas">
             <span class="material-icons-outlined">inventory_2</span>
-            <span class="kk-ad">${escHtml(k.ad)}</span>
+            <span class="kk-ad" title="${escHtml(k.ad)}">${escHtml(k.ad)}</span>
             <span class="kk-mik">${numFmt(k.miktar)} ${escHtml(k.birim||'')}</span>
+            ${teklifler.length?`<span class="kk-tsay">${teklifler.length} teklif</span>`:''}
+            ${duzenle?`<button type="button" class="kk-btn" title="Elle teklif gir (tedarikçiyle konuştuysan)" onclick="staKkAc(this,'.sta-tek-form')"><span class="material-icons-outlined">add</span><span class="yazi">Teklif</span></button>
+            <button type="button" class="kk-btn${gerekce?' dolu':''}" title="Öneri gerekçesi" onclick="staKkAc(this,'.sta-gerekce')"><span class="material-icons-outlined">tips_and_updates</span><span class="yazi">Gerekçe</span></button>`:''}
           </div>`;
-        // teklifler
+        // teklifler (ince alt satırlar)
         if (teklifler.length) {
             teklifler.forEach(tk => {
                 const isOneri = (k.onerilen_tedarikci_id && tk.tedarikci_id == k.onerilen_tedarikci_id);
                 const isSecili = (k.secilen_tedarikci_id && tk.tedarikci_id == k.secilen_tedarikci_id);
                 const ucuz = (enUcuz !== null && parseFloat(tk.fiyat) === enUcuz);
                 let cls = 'sta-tek'; if (isSecili) cls += ' secili'; else if (isOneri) cls += ' oneri';
-                // yıldız: satın almacı düzenleyebilirse tıklanır
                 const yildiz = duzenle
                     ? `<span class="material-icons-outlined tk-yildiz ${isOneri?'dolu':''}" onclick="event.stopPropagation();staOneriSec(${k.id},${tk.tedarikci_id})" title="Önerim">${isOneri?'star':'star_border'}</span>`
                     : (isOneri ? `<span class="material-icons-outlined tk-yildiz dolu">star</span>` : '');
@@ -1142,42 +1174,46 @@ function staKalemleriCiz(kalemler, durum) {
                 html += `<div class="${cls}" ${kartTik} style="${(patronSecebilir||duzenle)?'cursor:pointer':''}">
                     ${yildiz}
                     <div class="tk-ted">
-                      <div class="tk-ad">${escHtml(tk.tedarikci_ad)} ${ucuz?'<span class="tk-ucuz">EN UCUZ</span>':''} ${isSecili?'<span class="tk-ucuz" style="color:#10B981;background:color-mix(in srgb,#10B981 14%,transparent)">SEÇİLDİ</span>':''}</div>
-                      ${altlar.length?`<div class="tk-sub">${altlar.join(' · ')}</div>`:''}
+                      <div class="tk-ad">${escHtml(tk.tedarikci_ad)} ${ucuz?'<span class="tk-ucuz">EN UCUZ</span>':''} ${isSecili?'<span class="tk-ucuz" style="color:#10B981;background:color-mix(in srgb,#10B981 14%,transparent)">SEÇİLDİ</span>':''}${altlar.length?` <span class="tk-sub">· ${altlar.join(' · ')}</span>`:''}</div>
                     </div>
                     <div class="tk-fiyat">${numFmt(tk.fiyat)} ₺</div>
                     ${duzenle?`<span class="material-icons-outlined tk-sil" onclick="event.stopPropagation();staTeklifSil(${tk.id})" title="Sil">close</span>`:''}
                   </div>`;
             });
-        } else if (!duzenle) {
-            html += `<div style="font-size:12px;color:var(--sub);padding:4px 0">Teklif girilmedi.</div>`;
         }
-        // teklif ekleme formu (satın almacı, düzenlenebilir durumda)
         if (duzenle) {
-            html += `<button type="button" class="sta-elle-ac" onclick="this.style.display='none';this.nextElementSibling.style.display='flex'">✋ Elle teklif gir (tedarikçiyle zaten konuştuysan)</button>
-              <div class="sta-tek-form" style="display:none">
+            // gizli: elle teklif formu + gerekçe (satırdaki düğmeyle açılır); gerekçe yazılmışsa tek satır özet
+            html += `<div class="sta-tek-form" style="display:none">
                 <select class="tf-ted">${staTedDropdown()}</select>
                 <input class="tf-fiyat" type="number" step="0.01" min="0" placeholder="Fiyat ₺">
                 <input class="tf-gun" type="number" min="0" placeholder="gün">
                 <input class="tf-vade" style="width:90px" placeholder="vade">
                 <button class="tf-ekle" onclick="staTeklifEkle(${k.id}, this)">+ Teklif</button>
-              </div>`;
-            // ⭐ öneri gerekçesi
-            html += `<div class="sta-gerekce">
+              </div>
+              <div class="sta-gerekce" style="display:none">
                 <span class="material-icons-outlined">tips_and_updates</span>
-                <textarea rows="1" placeholder="Öneri gerekçesi (neden bu tedarikçi?)" onchange="staGerekceKaydet(${k.id}, this.value)">${escHtml(k.oneri_gerekce||'')}</textarea>
+                <textarea rows="1" placeholder="Öneri gerekçesi (neden bu tedarikçi?)" onchange="staGerekceKaydet(${k.id}, this.value)">${escHtml(gerekce)}</textarea>
               </div>`;
-        } else if (k.oneri_gerekce) {
-            html += `<div class="sta-gerekce"><span class="material-icons-outlined">tips_and_updates</span><div><b>Satın almacı:</b> ${escHtml(k.oneri_gerekce)}</div></div>`;
+            if (gerekce) html += `<div class="kk-not kk-gerekce-ozet"><span class="material-icons-outlined">tips_and_updates</span><span>${escHtml(gerekce)}</span></div>`;
+        } else if (gerekce) {
+            html += `<div class="kk-not"><span class="material-icons-outlined">tips_and_updates</span><span><b>Satın almacı:</b> ${escHtml(gerekce)}</span></div>`;
         }
         if (k.patron_not) {
-            html += `<div class="sta-gerekce" style="background:color-mix(in srgb,#10B981 8%,transparent)"><span class="material-icons-outlined" style="color:#10B981">verified</span><div><b>Yönetici:</b> ${escHtml(k.patron_not)}</div></div>`;
+            html += `<div class="kk-not"><span class="material-icons-outlined" style="color:#10B981">verified</span><span><b>Yönetici:</b> ${escHtml(k.patron_not)}</span></div>`;
         }
         html += `</div>`;
     });
+    html += '</div>';
     wrap.innerHTML = html;
 }
-
+// Satırdaki Teklif / Gerekçe düğmesi: ilgili gizli bölümü aç-kapa (gerekçe açılınca özet satırı gizlenir)
+window.staKkAc = function(btn, sec) {
+    const kk = btn.closest('.sta-kk'), el = kk && kk.querySelector(sec); if (!el) return;
+    const ac = el.style.display === 'none';
+    el.style.display = ac ? 'flex' : 'none'; btn.classList.toggle('acik', ac);
+    if (sec === '.sta-gerekce') { const oz = kk.querySelector('.kk-gerekce-ozet'); if (oz) oz.style.display = ac ? 'none' : ''; }
+    if (ac) { const i = el.querySelector('textarea, select'); if (i) i.focus(); }
+};
 /* ─── Aksiyon barı (durum + role göre) ─────────────────── */
 function staAksiyonCiz(durum) {
     const box = document.getElementById('staDetAksiyon');
