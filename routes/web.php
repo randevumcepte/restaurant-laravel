@@ -15574,21 +15574,39 @@ if (!function_exists('_gtReferansEkle')) {
                 if ($k !== '' && !isset($halSon[$k]) && ((float) $h->ortalama > 0 || (float) $h->azami > 0)) $halSon[$k] = $h;
             }
             foreach ($mids as $mid => $ad) {
-                $a = mb_strtolower(trim((string) $ad), 'UTF-8'); $bul = $halSon[$a] ?? null;
-                if (!$bul && mb_strlen($a) >= 4) foreach ($halSon as $k => $h) { // "Domates" ↔ "Domates (Sofralık)" gibi baştan eşleşme
-                    if (mb_strpos($k, $a) === 0 || mb_strpos($a, $k) === 0) { $bul = $h; break; }
-                }
-                if ($bul) $hal[$mid] = ['ort' => (float) ($bul->ortalama ?: (((float) $bul->asgari + (float) $bul->azami) / 2)), 'min' => (float) $bul->asgari, 'max' => (float) $bul->azami, 'birim' => $bul->birim ?: 'kg', 'tarih' => (string) $bul->tarih, 'ad' => $bul->urun_ad];
+                $a = mb_strtolower(trim((string) $ad), 'UTF-8'); if (mb_strlen($a) < 3) continue;
+                // Tam ad eşleşmesi yoksa: hal adı malzeme adıyla başlıyorsa ("Domates" → DOMATES SERA / SALKIM / BEEF…) tüm çeşitler
+                $cesit = isset($halSon[$a]) ? [$halSon[$a]] : array_values(array_filter($halSon, fn ($h, $k) => mb_strpos($k, $a . ' ') === 0 || mb_strpos($k, $a . '(') === 0 || $k === $a, ARRAY_FILTER_USE_BOTH));
+                if (!$cesit) continue;
+                $ortlar = array_map(fn ($h) => (float) ($h->ortalama ?: (((float) $h->asgari + (float) $h->azami) / 2)), $cesit); sort($ortlar);
+                $mins = array_filter(array_map(fn ($h) => (float) $h->asgari, $cesit)); $maxs = array_filter(array_map(fn ($h) => (float) $h->azami, $cesit));
+                $hal[$mid] = ['ort' => $ortlar[intdiv(count($ortlar), 2)], // çok çeşitte medyan
+                    'min' => $mins ? min($mins) : 0, 'max' => $maxs ? max($maxs) : 0, 'birim' => $cesit[0]->birim ?: 'kg',
+                    'tarih' => (string) max(array_map(fn ($h) => (string) $h->tarih, $cesit)),
+                    'ad' => count($cesit) > 1 ? count($cesit) . ' çeşit: ' . implode(', ', array_slice(array_map(fn ($h) => $h->urun_ad, $cesit), 0, 5)) : $cesit[0]->urun_ad, 'cesit' => count($cesit)];
             }
         }
-        // SON ALIŞ: bu şubenin en son siparişindeki birim fiyat (tedarikçi + tarih)
+        // SON ALIŞ: önce gerçek ALIŞ FATURASI, yoksa son SİPARİŞ birim fiyatı. Birim: satırın alış birimi, yoksa malzemenin temel birimi.
         $sonAlis = [];
-        if (Schema::hasTable('satinalma_siparis_kalemleri') && Schema::hasTable('satinalma_siparisleri')) {
-            $rows = DB::table('satinalma_siparis_kalemleri as k')->join('satinalma_siparisleri as s', 's.id', '=', 'k.siparis_id')
-                ->where('s.sube_id', (int) $sid)->whereIn('k.malzeme_id', array_keys($mids))->where('k.birim_fiyat', '>', 0)
-                ->orderByDesc('k.id')->limit(500)->get(['k.malzeme_id', 'k.birim_fiyat', 's.tedarikci_id', 'k.created_at']);
+        $birimAd = Schema::hasTable('birimler') ? DB::table('birimler')->pluck('kisaltma', 'id') : collect();
+        $temel = Schema::hasColumn('malzemeler', 'temel_birim_id') ? DB::table('malzemeler')->whereIn('id', array_keys($mids))->pluck('temel_birim_id', 'id') : collect();
+        $ekle = function ($rows, $kaynak) use (&$sonAlis, $birimAd, $temel) {
             $tedAd = DB::table('tedarikciler')->whereIn('id', $rows->pluck('tedarikci_id')->filter()->unique()->all())->pluck('ad', 'id');
-            foreach ($rows as $r) if (!isset($sonAlis[(int) $r->malzeme_id])) $sonAlis[(int) $r->malzeme_id] = ['fiyat' => (float) $r->birim_fiyat, 'ted' => $tedAd[$r->tedarikci_id] ?? null, 'tarih' => substr((string) $r->created_at, 0, 10)];
+            foreach ($rows as $r) {
+                $mid = (int) $r->malzeme_id; if (isset($sonAlis[$mid])) continue;
+                $bid = (int) ($r->alis_birim_id ?? 0) ?: (int) ($temel[$mid] ?? 0);
+                $sonAlis[$mid] = ['fiyat' => (float) $r->birim_fiyat, 'birim' => $bid ? ($birimAd[$bid] ?? '') : '', 'ted' => $tedAd[$r->tedarikci_id] ?? null, 'tarih' => substr((string) $r->tarih, 0, 10), 'kaynak' => $kaynak];
+            }
+        };
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari')) {
+            $ekle(DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'f.id', '=', 'k.fatura_id')
+                ->where('f.sube_id', (int) $sid)->whereIn('k.malzeme_id', array_keys($mids))->where('k.birim_fiyat', '>', 0)
+                ->orderByDesc('f.tarih')->orderByDesc('k.id')->limit(500)->get(['k.malzeme_id', 'k.birim_fiyat', 'k.alis_birim_id', 'f.tedarikci_id', 'f.tarih']), 'fatura');
+        }
+        if (Schema::hasTable('satinalma_siparis_kalemleri') && Schema::hasTable('satinalma_siparisleri')) {
+            $ekle(DB::table('satinalma_siparis_kalemleri as k')->join('satinalma_siparisleri as s', 's.id', '=', 'k.siparis_id')
+                ->where('s.sube_id', (int) $sid)->whereIn('k.malzeme_id', array_keys($mids))->where('k.birim_fiyat', '>', 0)
+                ->orderByDesc('k.id')->limit(500)->get(['k.malzeme_id', 'k.birim_fiyat', 'k.alis_birim_id', 's.tedarikci_id', 'k.created_at as tarih']), 'siparis');
         }
         foreach (array_keys($gruplar) as $gi) foreach (array_keys($gruplar[$gi]['urunler']) as $ui) {
             $mid = (int) $gruplar[$gi]['urunler'][$ui]['id'];

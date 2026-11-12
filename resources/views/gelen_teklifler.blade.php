@@ -346,16 +346,17 @@ function detayHtml(g){
     const fiyatlar = Object.values(satir).map(c => Number(c.fiyat)).filter(x => x > 0);
     // Pazarlık referansı: hal fiyatı (talep birimine çevrilir) + bizim son alışımız
     const halU = u.hal ? birimCevir(u.hal.ort, u.hal.birim, u.birim) : null;
-    const alisU = u.son_alis ? Number(u.son_alis.fiyat) : null;
+    const alisU = u.son_alis && u.son_alis.birim ? birimCevir(u.son_alis.fiyat, u.son_alis.birim, u.birim) : null; // birimi bilinmiyorsa kıyaslama yapılmaz
     const refler = [halU, alisU].filter(x => x > 0);
     const maks = Math.max(0, ...fiyatlar, ...refler), cok = fiyatlar.length > 1, tu = tasarrufU(g, u);
     const kiyas = halU || alisU, kiyasAd = halU ? 'hale' : 'son alışa';
     let ref = '';
-    if (u.hal) ref += `<span class="ref hal" title="${esc(u.hal.ad)} · ${esc(u.hal.tarih)}">🥬 Hal: ${para(u.hal.ort)}/${esc(u.hal.birim)}${u.hal.min > 0 && u.hal.max > 0 ? ` <i>(${paraK(u.hal.min)}–${paraK(u.hal.max)})</i>` : ''}<i> · ${tarih(u.hal.tarih)}</i></span>`;
-    if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${para(u.son_alis.fiyat)}/${esc(u.birim)}<i>${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
+    if (u.hal) ref += `<span class="ref hal" title="${esc(u.hal.ad)} · ${esc(u.hal.tarih)}">🥬 Hal${u.hal.cesit > 1 ? ' (' + u.hal.cesit + ' çeşit)' : ''}: ${para(u.hal.ort)}/${esc(u.hal.birim)}${u.hal.min > 0 && u.hal.max > 0 ? ` <i>(${paraK(u.hal.min)}–${paraK(u.hal.max)})</i>` : ''}<i> · ${tarih(u.hal.tarih)}</i></span>`;
+    if (u.son_alis) ref += `<span class="ref alis">🧾 Son alışımız: ${para(u.son_alis.fiyat)}${u.son_alis.birim ? '/' + esc(u.son_alis.birim) : ''}<i>${u.son_alis.kaynak === 'fatura' ? ' · faturadan' : ' · siparişten'}${u.son_alis.ted ? ' · ' + esc(u.son_alis.ted) : ''}${u.son_alis.tarih ? ' · ' + tarih(u.son_alis.tarih) : ''}</i></span>`;
     if (!ref) ref = `<span class="ref yok">Hal / geçmiş alış verisi yok</span>`;
     h += `<div class="gt-ur"><div class="ub"><b>${esc(u.ad)}</b><small>İhtiyaç: ${mik(u.miktar)} ${esc(u.birim)}</small>${tu > 0 ? `<span class="tas">↓ ${para(tu)} fark</span>` : ''}<div class="refler">${ref}</div></div><div class="gt-bars">`;
     if (halU) h += `<div class="gt-bar refbar" style="--c:#64748B"><span class="tad"><i></i>Hal ortalaması</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * halU / maks))}%"></i></div><span class="fy">${para(halU)}/${esc(u.birim)}<small>${para(halU * u.miktar)} toplam</small></span></div>`;
+    if (alisU) h += `<div class="gt-bar refbar" style="--c:#2563EB"><span class="tad"><i></i>Son alışımız</span><div class="cub"><i style="width:${Math.max(6, Math.round(100 * alisU / maks))}%"></i></div><span class="fy">${para(alisU)}/${esc(u.birim)}<small>${para(alisU * u.miktar)} toplam</small></span></div>`;
     ted.forEach((t, ti) => {
       const c = satir[t.id];
       if (!c) { h += `<div class="gt-bar yok" style="--c:${t.renk}"><span class="tad"><i></i>${esc(t.ad)}</span><div class="cub"></div><span class="fy">${t.durum === 'geldi' ? 'fiyat vermedi' : 'bekleniyor'}</span></div>`; return; }
