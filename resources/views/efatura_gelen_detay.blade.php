@@ -79,7 +79,8 @@
             </select>
             <input type="text" name="kalem[{{ $k->id }}][yeni_ad]" id="efdYeni{{ $k->id }}" class="rk-inp" value="{{ $k->ad }}" placeholder="Yeni malzeme adı" style="display:none;margin-top:5px">
             <div class="efd-esl">
-              @if ($k->eslesme === 'hafiza')<span style="color:var(--yesil)">✓ hafızadan eşleşti</span>
+              @if ($k->eslesme === 'birim')<span style="color:var(--kirmizi)">⚠ Bu ürün daha önce başka birimle geldi; sağda "1 {{ $birimAd[$k->alis_birim_id] ?? 'birim' }} = kaç" girip kaydedin</span>
+              @elseif ($k->eslesme === 'hafiza')<span style="color:var(--yesil)">✓ hafızadan eşleşti</span>
               @elseif ($k->eslesme === 'ad')<span style="color:var(--yesil)">✓ aynı adla eşleşti</span>
               @elseif ($k->eslesme === 'elle')<span style="color:var(--yesil)">✓ elle eşleştirildi</span>
               @elseif ($k->oneri)<span style="color:var(--amber)">Öneri: {{ $k->oneri->ad }} (kaydedince onaylanır)</span>

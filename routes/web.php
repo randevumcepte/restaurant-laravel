@@ -9408,7 +9408,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_talep', '/talep-onaylarim' => 'gor_talep', '/reddedilen-talepler' => 'gor_talep', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + onay/red + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_satinalma', '/fatura-ocr' => 'gor_satinalma', '/efatura-gelen' => 'gor_satinalma', '/satinalma-butce' => 'gor_satinalma', '/satinalma-ozet' => 'gor_satinalma', '/tedarikci-yaslandirma' => 'gor_satinalma', '/satinalma-onay-seviye' => 'gor_satinalma', '/mustahsil' => 'gor_satinalma', '/fiyat-anlasmalari' => 'gor_fiyat_anlasma', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_satinalma', '/fatura-ocr' => 'gor_satinalma', '/efatura-gelen' => 'gor_satinalma', '/fatura-denetim' => 'gor_satinalma', '/fatura-analiz' => 'gor_satinalma', '/satinalma-butce' => 'gor_satinalma', '/satinalma-ozet' => 'gor_satinalma', '/tedarikci-yaslandirma' => 'gor_satinalma', '/satinalma-onay-seviye' => 'gor_satinalma', '/mustahsil' => 'gor_satinalma', '/fiyat-anlasmalari' => 'gor_fiyat_anlasma', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }
@@ -9965,7 +9965,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/uretim-plani', '/satinalma-talep', '/recete', '/sayim'],
             'Satış & Servis' => ['/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
-            'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci', '/efatura-gelen'],
+            'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci', '/efatura-gelen', '/fatura-denetim'],
             'İnsan Kaynakları' => ['/personel', '/puantaj', '/departman-yonetim'],
             'Finans / Muhasebe' => ['/kasa', '/raporlar', '/gider', '/cari', '/z-raporu'],
             'Ayarlar & Entegrasyon' => $ayar,

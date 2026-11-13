@@ -65,9 +65,10 @@ Route::get('/efatura-gelen', function (Request $r) {
     if ($ara = trim((string) $r->query('q'))) $q->where(fn ($w) => $w->where('fatura_no', 'like', '%' . $ara . '%')->orWhere('satici_ad', 'like', '%' . $ara . '%'));
     $liste = $q->orderByDesc('tarih')->orderByDesc('id')->limit(300)->get();
     $eksik = $liste->count() ? DB::table('efatura_gelen_kalem')->whereIn('gelen_id', $liste->pluck('id'))->whereNull('malzeme_id')->selectRaw('gelen_id, COUNT(*) c')->groupBy('gelen_id')->pluck('c', 'gelen_id') : collect();
+    $birimBek = $liste->count() ? DB::table('efatura_gelen_kalem')->whereIn('gelen_id', $liste->pluck('id'))->where('eslesme', 'birim')->selectRaw('gelen_id, COUNT(*) c')->groupBy('gelen_id')->pluck('c', 'gelen_id') : collect();
     $kalemSay = $liste->count() ? DB::table('efatura_gelen_kalem')->whereIn('gelen_id', $liste->pluck('id'))->selectRaw('gelen_id, COUNT(*) c')->groupBy('gelen_id')->pluck('c', 'gelen_id') : collect();
     return view('efatura_gelen', [
-        'b' => $b, 'liste' => $liste, 'say' => $say, 'durum' => $durum, 'eksik' => $eksik, 'kalemSay' => $kalemSay, 'ara' => $ara,
+        'b' => $b, 'liste' => $liste, 'say' => $say, 'durum' => $durum, 'eksik' => $eksik, 'birimBek' => $birimBek, 'kalemSay' => $kalemSay, 'ara' => $ara,
         'entegratorler' => _efgEntegratorler(), 'yonetici' => _efgYonetici(), 'stokModu' => _efgStokModu($sid),
         'anahtarVar' => (bool) _efgAnahtar($b), 'cronKey' => env('SANTRAL_SECRET') ? 1 : 0,
     ]);
@@ -82,10 +83,10 @@ Route::post('/efatura-gelen/yukle', function (Request $r) {
     if (!is_array($dosyalar)) $dosyalar = [$dosyalar];
     if (!$dosyalar) return redirect('/efatura-gelen')->with('hata', 'XML ya da ZIP dosyası seç.');
     @set_time_limit(170);
-    $yeni = 0; $var = 0; $aktar = 0; $hatalar = [];
-    $isle = function ($icerik, $ad) use ($sid, &$yeni, &$var, &$aktar, &$hatalar) {
+    $yeni = 0; $var = 0; $aktar = 0; $hatalar = []; $yeniler = [];
+    $isle = function ($icerik, $ad) use ($sid, &$yeni, &$var, &$aktar, &$hatalar, &$yeniler) {
         $res = _efgKaydet($sid, $icerik, 'xml');
-        if ($res['durum'] === 'yeni') { $yeni++; if (!empty($res['aktarildi'])) $aktar++; }
+        if ($res['durum'] === 'yeni') { $yeni++; $yeniler[] = $res['id']; if (!empty($res['aktarildi'])) $aktar++; }
         elseif ($res['durum'] === 'var') $var++;
         else $hatalar[] = $ad . ': ' . ($res['mesaj'] ?? 'okunamadı');
     };
@@ -101,6 +102,7 @@ Route::post('/efatura-gelen/yukle', function (Request $r) {
         } else { $isle($ic, $ad); $toplam++; }
         if ($toplam >= 1000) { $hatalar[] = 'Tek seferde en fazla 1000 fatura; kalanını ayrı yükle.'; break; }
     }
+    if (function_exists('_fdTopluDenetle')) _fdTopluDenetle($yeniler); // ZIP sırası tarih sırası olmayabilir
     $msg = $yeni . ' yeni fatura · ' . $aktar . ' tanesi otomatik alış faturasına aktarıldı' . ($var ? ' · ' . $var . ' zaten kayıtlıydı' : '');
     $bekleyen = $yeni - $aktar;
     if ($bekleyen > 0) $msg .= ' · ' . $bekleyen . ' fatura kalem eşleştirmesi bekliyor';
@@ -214,9 +216,13 @@ Route::post('/efatura-gelen/{id}/eslestir', function (Request $r, $id) {
     // Diğer bekleyen faturalarda da hafızadan eşleşenleri doldur
     $dolan = 0;
     foreach (DB::table('efatura_gelen')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('satici_vkn', $g->satici_vkn)->where('id', '!=', $g->id)->pluck('id') as $digerId) {
-        foreach (DB::table('efatura_gelen_kalem')->where('gelen_id', $digerId)->whereNull('malzeme_id')->get() as $dk) {
-            $e = _efgKalemEslestir($sid, $g->satici_vkn, (array) $dk);
-            if ($e) DB::table('efatura_gelen_kalem')->where('id', $dk->id)->update(['malzeme_id' => $e['malzeme_id'], 'alis_birim_id' => $e['alis_birim_id'] ?: $dk->alis_birim_id, 'eslesme' => $e['eslesme']]);
+        foreach (DB::table('efatura_gelen_kalem')->where('gelen_id', $digerId)->where(fn ($w) => $w->whereNull('malzeme_id')->orWhere('eslesme', 'birim'))->get() as $dk) {
+            if ($dk->malzeme_id) { // birim çevrimi bekliyordu: az önce girildiyse serbest bırak
+                if (_efgCevrimVar($dk->malzeme_id, $dk->alis_birim_id)) DB::table('efatura_gelen_kalem')->where('id', $dk->id)->update(['eslesme' => 'hafiza']);
+                continue;
+            }
+            [$m, $b, $es] = _efgKalemBirim(_efgKalemEslestir($sid, $g->satici_vkn, (array) $dk), $dk->birim_kodu, $dk->alis_birim_id);
+            if ($m) DB::table('efatura_gelen_kalem')->where('id', $dk->id)->update(['malzeme_id' => $m, 'alis_birim_id' => $b, 'eslesme' => $es]);
         }
         $dg = DB::table('efatura_gelen')->where('id', $digerId)->first();
         if ($dg->tutarli && !DB::table('efatura_gelen_kalem')->where('gelen_id', $digerId)->whereNull('malzeme_id')->exists()) { $a = _efgAktar($digerId, _efgPersonelId()); if (!empty($a['ok'])) $dolan++; }
@@ -235,12 +241,14 @@ Route::post('/efatura-gelen/toplu-yeni', function () {
     $sid = _webSubeId();
     @set_time_limit(170);
     $gelenler = DB::table('efatura_gelen')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('tutarli', 1)->orderBy('tarih')->orderBy('id')->get();
-    $yeniKart = 0; $aktar = 0; $hata = 0; $basla = microtime(true); $yarim = false;
+    $yeniKart = 0; $aktar = 0; $hata = 0; $birimBek = 0; $basla = microtime(true); $yarim = false;
     foreach ($gelenler as $g) {
         if (microtime(true) - $basla > 120) { $yarim = true; break; } // zaman aşımına düşmeden dur; kalanlar ikinci basışta
-        foreach (DB::table('efatura_gelen_kalem')->where('gelen_id', $g->id)->whereNull('malzeme_id')->get() as $k) {
+        foreach (DB::table('efatura_gelen_kalem')->where('gelen_id', $g->id)->where(fn ($w) => $w->whereNull('malzeme_id')->orWhere('eslesme', 'birim'))->get() as $k) {
+            if ($k->malzeme_id) { if (_efgCevrimVar($k->malzeme_id, $k->alis_birim_id)) DB::table('efatura_gelen_kalem')->where('id', $k->id)->update(['eslesme' => 'hafiza']); continue; }
             $e = _efgKalemEslestir($sid, $g->satici_vkn, (array) $k); // önceki turda açılan kart hafızada olabilir
-            if ($e) { $mid = $e['malzeme_id']; $birimId = $e['alis_birim_id'] ?: $k->alis_birim_id; $kaynak = $e['eslesme']; }
+            // aynı ürün başka birimle (adet ↔ koli) geldiyse çevrimsiz aktarılmaz: 'birim' olarak bekler
+            if ($e) { [$mid, $birimId, $kaynak] = _efgKalemBirim($e, $k->birim_kodu, $k->alis_birim_id); }
             else {
                 $kol = ['ad' => mb_substr($k->ad, 0, 190), 'temel_birim_id' => $k->alis_birim_id, 'stok_takipli' => 1, 'kritik_stok' => 0, 'guncel_maliyet' => $k->birim_fiyat, 'created_at' => now(), 'updated_at' => now()];
                 if (Schema::hasColumn('malzemeler', 'sube_id')) $kol['sube_id'] = $sid;
@@ -251,10 +259,12 @@ Route::post('/efatura-gelen/toplu-yeni', function () {
             }
             DB::table('efatura_gelen_kalem')->where('id', $k->id)->update(['malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'eslesme' => $kaynak]);
         }
+        if (DB::table('efatura_gelen_kalem')->where('gelen_id', $g->id)->where('eslesme', 'birim')->exists()) { $birimBek++; continue; }
         $a = _efgAktar($g->id, _efgPersonelId());
         if (!empty($a['ok'])) $aktar++; else $hata++;
     }
-    return redirect('/efatura-gelen')->with('ok', $yeniKart . ' yeni malzeme kartı açıldı · ' . $aktar . ' fatura alış faturasına aktarıldı' . ($hata ? ' · ' . $hata . ' aktarılamadı' : '') . ($yarim ? '. Süre doldu; kalan faturalar için butona bir kez daha basın.' : '. Fiyat Radarı artık bu verilerle çalışıyor.'));
+    return redirect('/efatura-gelen')->with('ok', $yeniKart . ' yeni malzeme kartı açıldı · ' . $aktar . ' fatura alış faturasına aktarıldı' . ($hata ? ' · ' . $hata . ' aktarılamadı' : '')
+        . ($birimBek ? ' · ' . $birimBek . ' fatura birim çevrimi bekliyor (aynı ürün farklı birimle gelmiş; faturayı açıp "1 koli = kaç adet" girin)' : '') . ($yarim ? '. Süre doldu; kalan faturalar için butona bir kez daha basın.' : '. Fiyat Radarı artık bu verilerle çalışıyor.'));
 });
 
 // Tutarsız (toplamı tutmayan) faturayı bilerek aktar

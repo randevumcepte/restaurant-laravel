@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 if (!function_exists('_efgEnsure')) {
     function _efgEnsure()
     {
-        if (cache()->get('efatura_gelen_ensure_ok1')) return;
+        if (cache()->get('efatura_gelen_ensure_ok2')) return;
         try {
             if (!Schema::hasTable('efatura_baglanti')) {
                 Schema::create('efatura_baglanti', function ($t) {
@@ -102,11 +102,13 @@ if (!function_exists('_efgEnsure')) {
                     $t->unique(['sube_id', 'satici_vkn', 'anahtar']);
                 });
             }
+            // Birim hafızası: fatura birim kodu → alış birimi ({"C62":1,"BX":6}); aynı ürün adet de koli de gelebilir
+            if (Schema::hasTable('efatura_eslesme') && !Schema::hasColumn('efatura_eslesme', 'birimler')) Schema::table('efatura_eslesme', fn ($t) => $t->text('birimler')->nullable());
             if (Schema::hasTable('alis_faturalari')) {
                 if (!Schema::hasColumn('alis_faturalari', 'ettn')) Schema::table('alis_faturalari', fn ($t) => $t->string('ettn', 64)->nullable()->index());
                 if (!Schema::hasColumn('alis_faturalari', 'kaynak')) Schema::table('alis_faturalari', fn ($t) => $t->string('kaynak', 20)->nullable());
             }
-            cache()->put('efatura_gelen_ensure_ok1', 1, now()->addHours(12));
+            cache()->put('efatura_gelen_ensure_ok2', 1, now()->addHours(12));
         } catch (\Throwable $e) {}
     }
 }
@@ -288,9 +290,16 @@ if (!function_exists('_efgKalemEslestir')) {
         $anahtarlar = [];
         if (!empty($k['stok_kodu'])) $anahtarlar[] = 'kod:' . mb_substr(trim($k['stok_kodu']), 0, 110);
         $anahtarlar[] = 'ad:' . mb_substr(_efgNorm($k['ad']), 0, 115);
+        $kod = strtoupper(trim((string) ($k['birim_kodu'] ?? '')));
         foreach ($anahtarlar as $a) {
             $h = DB::table('efatura_eslesme')->where('sube_id', $sid)->where('satici_vkn', $vkn)->where('anahtar', $a)->first();
-            if ($h && DB::table('malzemeler')->where('id', $h->malzeme_id)->exists()) return ['malzeme_id' => (int) $h->malzeme_id, 'alis_birim_id' => $h->alis_birim_id ? (int) $h->alis_birim_id : null, 'eslesme' => 'hafiza'];
+            if (!$h || !DB::table('malzemeler')->where('id', $h->malzeme_id)->exists()) continue;
+            // Birim hafızası fatura birim koduna göre: aynı ürün bir faturada adet, diğerinde koli gelebilir.
+            // Bu koda öğrenilmiş birim yoksa null → çağıran faturadaki birimi kullanır ve çevrimi denetler.
+            $bh = json_decode((string) ($h->birimler ?? ''), true) ?: [];
+            $birim = $bh[$kod] ?? null;
+            if ($birim === null && !$bh && $h->alis_birim_id && (int) $h->alis_birim_id === _efgBirimId($kod)) $birim = (int) $h->alis_birim_id; // eski kayıt
+            return ['malzeme_id' => (int) $h->malzeme_id, 'alis_birim_id' => $birim ? (int) $birim : null, 'eslesme' => 'hafiza'];
         }
         $n = _efgNorm($k['ad']);
         foreach (_efgMalzemeler($sid) as $m) if (_efgNorm($m->ad) === $n) return ['malzeme_id' => (int) $m->id, 'alis_birim_id' => null, 'eslesme' => 'ad'];
@@ -304,8 +313,34 @@ if (!function_exists('_efgHafizaYaz')) {
         if (!$vkn || !$malzemeId) return;
         $a = !empty($kalem->stok_kodu) ? 'kod:' . mb_substr(trim($kalem->stok_kodu), 0, 110) : 'ad:' . mb_substr(_efgNorm($kalem->ad), 0, 115);
         $var = DB::table('efatura_eslesme')->where('sube_id', $sid)->where('satici_vkn', $vkn)->where('anahtar', $a)->first();
-        if ($var) DB::table('efatura_eslesme')->where('id', $var->id)->update(['malzeme_id' => $malzemeId, 'alis_birim_id' => $birimId, 'kullanim' => $var->kullanim + 1, 'updated_at' => now()]);
-        else DB::table('efatura_eslesme')->insert(['sube_id' => $sid, 'satici_vkn' => $vkn, 'anahtar' => $a, 'malzeme_id' => $malzemeId, 'alis_birim_id' => $birimId, 'kullanim' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $kod = strtoupper(trim((string) ($kalem->birim_kodu ?? '')));
+        $bh = $var && (int) $var->malzeme_id === (int) $malzemeId ? (json_decode((string) ($var->birimler ?? ''), true) ?: []) : [];
+        if ($kod !== '' && $birimId) $bh[$kod] = (int) $birimId;
+        $alan = ['malzeme_id' => $malzemeId, 'alis_birim_id' => $birimId, 'updated_at' => now()];
+        if (Schema::hasColumn('efatura_eslesme', 'birimler')) $alan['birimler'] = $bh ? json_encode($bh) : null;
+        if ($var) DB::table('efatura_eslesme')->where('id', $var->id)->update($alan + ['kullanim' => $var->kullanim + 1]);
+        else DB::table('efatura_eslesme')->insert($alan + ['sube_id' => $sid, 'satici_vkn' => $vkn, 'anahtar' => $a, 'kullanim' => 1, 'created_at' => now()]);
+    }
+}
+// Malzemenin bu birimden temel birime çevrimi biliniyor mu (aynı birim · tanımlı çevrim · kg↔g, lt↔ml)
+if (!function_exists('_efgCevrimVar')) {
+    function _efgCevrimVar($malzemeId, $birimId)
+    {
+        $temel = DB::table('malzemeler')->where('id', $malzemeId)->value('temel_birim_id');
+        if (!$birimId || !$temel || (int) $temel === (int) $birimId) return true;
+        if (DB::table('birim_cevrimleri')->where('malzeme_id', $malzemeId)->where('birim_id', $birimId)->where('temel_birim_karsiligi', '>', 0)->exists()) return true;
+        $b = DB::table('birimler')->where('id', $birimId)->value('kisaltma'); $t = DB::table('birimler')->where('id', $temel)->value('kisaltma');
+        return in_array($b . '>' . $t, ['kg>g', 'g>kg', 'lt>ml', 'ml>lt'], true);
+    }
+}
+// Hafızadan/addan bulunan malzemeye faturadaki birimi yerleştir; çevrim bilinmiyorsa 'birim' (elle çevrim bekler)
+if (!function_exists('_efgKalemBirim')) {
+    function _efgKalemBirim(?array $e, $birimKodu, $varsayilanBirim = null)
+    {
+        if (!$e) return [null, $varsayilanBirim ?: _efgBirimId($birimKodu), null];
+        if ($e['alis_birim_id']) return [$e['malzeme_id'], $e['alis_birim_id'], $e['eslesme']];
+        $b = _efgBirimId($birimKodu);
+        return [$e['malzeme_id'], $b, _efgCevrimVar($e['malzeme_id'], $b) ? $e['eslesme'] : 'birim'];
     }
 }
 
@@ -328,14 +363,26 @@ if (!function_exists('_efgKaydet')) {
         _efgEnsure();
         $u = _efgUblCoz($xml);
         if (!empty($u['hata'])) return ['durum' => 'hata', 'mesaj' => $u['hata']];
+        return _efgKaydetVeri($sid, $u, $kaynak, $xml);
+    }
+}
+// Çözümlenmiş faturayı kaydeder — XML: _efgUblCoz · PDF/fotoğraf: _faPdfFatura (aynı dizi biçimi).
+// $belge: ham XML içeriği ya da önceden saklanmış belgenin yolu ('yol:efatura/...').
+if (!function_exists('_efgKaydetVeri')) {
+    function _efgKaydetVeri($sid, array $u, $kaynak, $belge = null)
+    {
+        _efgEnsure();
         if (empty($u['ettn'])) return ['durum' => 'hata', 'mesaj' => 'ETTN (UUID) yok'];
         $var = DB::table('efatura_gelen')->where('sube_id', $sid)->where('ettn', $u['ettn'])->value('id');
         if ($var) return ['durum' => 'var', 'id' => (int) $var, 'mesaj' => ($u['fatura_no'] ?: $u['ettn']) . ' zaten kayıtlı'];
         $yol = null;
-        try { $yol = 'efatura/' . $sid . '/' . preg_replace('/[^A-Za-z0-9\-]/', '', $u['ettn']) . '.xml'; Storage::disk('local')->put($yol, $xml); } catch (\Throwable $e) { $yol = null; }
+        if (is_string($belge) && str_starts_with($belge, 'yol:')) $yol = substr($belge, 4);
+        elseif ($belge !== null) {
+            try { $yol = 'efatura/' . $sid . '/' . preg_replace('/[^A-Za-z0-9\-]/', '', $u['ettn']) . '.xml'; Storage::disk('local')->put($yol, $belge); } catch (\Throwable $e) { $yol = null; }
+        }
         $tedId = ($u['satici_vkn'] || $u['satici_ad']) ? _efgTedarikci($sid, $u['satici_vkn'], $u['satici_ad']) : null;
         $iade = in_array($u['tip'], ['IADE', 'TEVKIFATIADE', 'YTBIADE'], true);
-        $notlar = [];
+        $notlar = $u['notlar'] ?? [];
         if (!$u['tutarli']) $notlar[] = 'Kalem toplamı belge toplamını tutmuyor';
         $bizimVkn = null;
         try { $bizimVkn = preg_replace('/\D/', '', (string) DB::table('edonusum_ayarlari')->where('sube_id', $sid)->value('vkn_tckn')); } catch (\Throwable $e) {}
@@ -353,14 +400,17 @@ if (!function_exists('_efgKaydet')) {
                 'xml_yol' => $yol, 'created_at' => now(), 'updated_at' => now(),
             ]);
             foreach ($u['kalemler'] as $k) {
-                $e = _efgKalemEslestir($sid, $u['satici_vkn'], $k);
-                $birimId = ($e && $e['alis_birim_id']) ? $e['alis_birim_id'] : _efgBirimId($k['birim_kodu']);
-                DB::table('efatura_gelen_kalem')->insert($k + ['gelen_id' => $id, 'malzeme_id' => $e['malzeme_id'] ?? null, 'alis_birim_id' => $birimId, 'eslesme' => $e['eslesme'] ?? null]);
+                [$mid, $birimId, $eslesme] = _efgKalemBirim(_efgKalemEslestir($sid, $u['satici_vkn'], $k), $k['birim_kodu']);
+                DB::table('efatura_gelen_kalem')->insert($k + ['gelen_id' => $id, 'malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'eslesme' => $eslesme]);
             }
             return $id;
         });
+        $birimBekleyen = DB::table('efatura_gelen_kalem')->where('gelen_id', $id)->where('eslesme', 'birim')->count();
+        if ($birimBekleyen) DB::table('efatura_gelen')->where('id', $id)->update(['not' => mb_substr(trim(implode(' · ', array_merge($notlar, [$birimBekleyen . ' kalem farklı birimle geldi; çevrim girin (ör. 1 koli = kaç adet)']))), 0, 255)]);
         $aktarildi = false;
-        if (!$iade && $u['tutarli'] && !DB::table('efatura_gelen_kalem')->where('gelen_id', $id)->whereNull('malzeme_id')->exists()) {
+        if (function_exists('_fdDenetle')) { try { _fdDenetle($id); } catch (\Throwable $e) {} }
+        // Satırı/toplamı tutmayan, OCR'lı ya da birim çevrimi bekleyen fatura otomatik aktarılmaz
+        if (!$iade && $u['tutarli'] && empty($u['elle_kontrol']) && !$birimBekleyen && !DB::table('efatura_gelen_kalem')->where('gelen_id', $id)->whereNull('malzeme_id')->exists()) {
             $a = _efgAktar($id, null);
             $aktarildi = !empty($a['ok']);
         }
@@ -379,12 +429,13 @@ if (!function_exists('_efgAktar')) {
         if ($g->durum === 'iade') return ['ok' => 0, 'hata' => 'İade faturası alış faturasına aktarılmaz'];
         $kalemler = DB::table('efatura_gelen_kalem')->where('gelen_id', $g->id)->orderBy('sira')->get();
         if (!$kalemler->count() || $kalemler->whereNull('malzeme_id')->count()) return ['ok' => 0, 'hata' => 'Eşleşmeyen kalem var'];
+        if ($kb = $kalemler->where('eslesme', 'birim')->count()) return ['ok' => 0, 'hata' => $kb . ' kalemde birim çevrimi eksik (ör. 1 koli = kaç adet); stok yanlış yazılmasın diye aktarılmadı'];
         $sid = (int) $g->sube_id;
         if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
         if (function_exists('_restoGiderEnsure')) _restoGiderEnsure();
         $mod = _efgStokModu($sid);
         try {
-            return DB::transaction(function () use ($g, $kalemler, $sid, $mod, $personelId) {
+            $sonuc = DB::transaction(function () use ($g, $kalemler, $sid, $mod, $personelId) {
                 // Aynı fatura elle girilmişse ikinci kez yazma: ona bağla
                 $mevcut = null;
                 if ($g->fatura_no) $mevcut = DB::table('alis_faturalari')->where('sube_id', $sid)->where('fatura_no', $g->fatura_no)
@@ -448,6 +499,9 @@ if (!function_exists('_efgAktar')) {
                 DB::table('efatura_gelen')->where('id', $g->id)->update(['durum' => 'aktarildi', 'alis_fatura_id' => $fid, 'not' => mb_substr(trim(($g->not ? $g->not . ' · ' : '') . $not), 0, 255), 'updated_at' => now()]);
                 return ['ok' => 1, 'id' => $fid, 'fark' => $farklar];
             });
+            // Kalemler artık malzemeye bağlı: sözleşme/sipariş/mal kabul kontrolleri de çalışsın
+            if (!empty($sonuc['ok']) && function_exists('_fdDenetle')) { try { _fdDenetle($g->id); } catch (\Throwable $e) {} }
+            return $sonuc;
         } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Aktarılamadı: ' . mb_substr($e->getMessage(), 0, 120)]; }
     }
 }
@@ -472,4 +526,7 @@ if (!function_exists('_efgStokGiris')) {
 }
 
 require __DIR__ . '/efatura_gelen_surucu.php';
+require __DIR__ . '/fatura_pdf.php';        // PDF/fotoğraf okuma (sabit adresler {id}'den ÖNCE kayıtlı olmalı)
+require __DIR__ . '/fatura_denetim.php';    // Fatura Denetimi + fatura Excel'i
+require __DIR__ . '/fatura_analiz.php';     // Fatura analizleri (kaçan tasarruf, enflasyon, fiyat izi, ödeme takvimi)
 require __DIR__ . '/efatura_gelen_sayfa.php';
