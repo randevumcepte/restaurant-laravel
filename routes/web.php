@@ -9202,6 +9202,7 @@ if (!function_exists('_panelSayfaKategori')) {
             '📦 Stok & Ürün' => [
                 'gor_stok' => 'Stok / Üretim Riski / SKT / Barkod / Kalite', 'gor_sayim' => 'Sayım (Envanter)', 'gor_satinalma' => 'Satın Alma İşlemleri (sipariş, mal kabul, fatura, tedarikçi, fiyat, bütçe)', 'gor_menu' => 'Menü Yönetimi',
                 'gor_talep' => 'Satın Alma Talebi (talep açma / departman onayı)',
+                'gor_fiyat_anlasma' => 'Fiyat Anlaşmaları — görüntüle (sözleşme, belge, rapor)', 'gor_fiyat_anlasma_duzenle' => 'Fiyat Anlaşmaları — ekle / düzenle / sil',
                 'gor_transfer' => 'Şubeler Arası Transfer (istek, onay, sevk, teslim)',
             ],
             '👥 Personel & Müşteri' => [
@@ -9265,7 +9266,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satinalma-talep' => 'gor_talep', '/talep-onaylarim' => 'gor_talep', '/reddedilen-talepler' => 'gor_talep', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + onay/red + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
-            '/tedarikci-karne' => 'gor_satinalma', '/fatura-ocr' => 'gor_satinalma', '/satinalma-butce' => 'gor_satinalma', '/satinalma-ozet' => 'gor_satinalma', '/tedarikci-yaslandirma' => 'gor_satinalma', '/satinalma-onay-seviye' => 'gor_satinalma', '/mustahsil' => 'gor_satinalma', '/fiyat-anlasmalari' => 'gor_satinalma', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
+            '/tedarikci-karne' => 'gor_satinalma', '/fatura-ocr' => 'gor_satinalma', '/satinalma-butce' => 'gor_satinalma', '/satinalma-ozet' => 'gor_satinalma', '/tedarikci-yaslandirma' => 'gor_satinalma', '/satinalma-onay-seviye' => 'gor_satinalma', '/mustahsil' => 'gor_satinalma', '/fiyat-anlasmalari' => 'gor_fiyat_anlasma', '/demirbas' => 'gor_personel', '/personel-yemek' => 'gor_personel', // yeni: karne / OCR / bütçe / özet / yaşlandırma / onay seviyeleri
         ];
     }
 }
@@ -9290,7 +9291,7 @@ if (!function_exists('_kademeSayfalar')) {
             case 'sahip': return $tum;
             case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar', 'gor_ai_asistan'])); // ödeme/kaçak + AI asistan (premium, patron elle verir) hariç her şey
             case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
-            case 'satinalma': return ['gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_cari', 'gor_talep']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
+            case 'satinalma': return ['gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_cari', 'gor_talep', 'gor_fiyat_anlasma', 'gor_fiyat_anlasma_duzenle']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
             case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
             default: return ['gor_pos', 'gor_garson_cagri', 'gor_rezervasyon']; // personel / garson
         }
@@ -9659,10 +9660,10 @@ if (!function_exists('_departmanSablonlari')) {
             // ===== YÖNETİM =====
             'ust_yonetim' => ['ad' => 'Üst Yönetim', 'grup' => 'Yönetim', 'ikon' => 'admin_panel_settings', 'renk' => '#7C3AED', 'ai' => 'tam',
                 'unvan' => ['Genel Müdür', 'İşletme Sahibi', 'Yönetici'], 'sorumlu_ek' => [],
-                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_raporlar', 'gor_z_raporu', 'gor_cari', 'gor_muhasebe', 'gor_personel', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_hareketler', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_raporlar', 'gor_z_raporu', 'gor_cari', 'gor_muhasebe', 'gor_personel', 'gor_stok', 'gor_satinalma', 'gor_fiyat_anlasma', 'gor_fiyat_anlasma_duzenle', 'gor_sayim', 'gor_talep', 'gor_hareketler', 'gor_copilot']],
             'operasyon' => ['ad' => 'İşletme / Operasyon', 'grup' => 'Yönetim', 'ikon' => 'manage_accounts', 'renk' => '#4F46E5', 'ai' => 'tam',
                 'unvan' => ['Operasyon Müdürü', 'Müdür Yardımcısı', 'Vardiya Amiri'], 'sorumlu_ek' => [],
-                'sayfa' => ['gor_dashboard', 'gor_pos', 'gor_mutfak', 'gor_rezervasyon', 'gor_paket', 'gor_kasa', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_personel', 'gor_puantaj', 'gor_raporlar', 'gor_garson_cagri', 'gor_garson_perf', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_pos', 'gor_mutfak', 'gor_rezervasyon', 'gor_paket', 'gor_kasa', 'gor_stok', 'gor_satinalma', 'gor_fiyat_anlasma', 'gor_sayim', 'gor_talep', 'gor_personel', 'gor_puantaj', 'gor_raporlar', 'gor_garson_cagri', 'gor_garson_perf', 'gor_copilot']],
             // ===== ÖN SALON (FOH) =====
             'servis' => ['ad' => 'Servis / Garson', 'grup' => 'Ön Salon (FOH)', 'ikon' => 'room_service', 'renk' => '#64748B', 'ai' => 'kapali',
                 'unvan' => ['Servis Şefi (Maître)', 'Kaptan Garson', 'Garson', 'Komi'], 'sorumlu_ek' => $yon,
@@ -9695,20 +9696,20 @@ if (!function_exists('_departmanSablonlari')) {
             // ===== TEDARİK & DEPO =====
             'satinalma' => ['ad' => 'Satın Alma', 'grup' => 'Tedarik & Depo', 'ikon' => 'inventory_2', 'renk' => '#0EA5E9', 'ai' => 'kisitli',
                 'unvan' => ['Satın Alma Müdürü', 'Satın Alma Uzmanı', 'Satın Alma Elemanı'], 'sorumlu_ek' => $yon,
-                'sayfa' => ['gor_dashboard', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_cari', 'gor_raporlar', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_talep', 'gor_cari', 'gor_raporlar', 'gor_copilot', 'gor_fiyat_anlasma', 'gor_fiyat_anlasma_duzenle']],
             'depo' => ['ad' => 'Depo / Ambar', 'grup' => 'Tedarik & Depo', 'ikon' => 'warehouse', 'renk' => '#78716C', 'ai' => 'kisitli',
                 'unvan' => ['Depo Sorumlusu', 'Depo Görevlisi'], 'sorumlu_ek' => ['gor_raporlar', 'gor_hareketler'],
                 'sayfa' => ['gor_stok', 'gor_sayim']],
             'mal_kabul' => ['ad' => 'Mal Kabul / İrsaliye', 'grup' => 'Tedarik & Depo', 'ikon' => 'local_shipping', 'renk' => '#059669', 'ai' => 'kapali',
                 'unvan' => ['Mal Kabul Sorumlusu', 'Mal Kabul Görevlisi'], 'sorumlu_ek' => ['gor_hareketler'],
-                'sayfa' => ['gor_stok', 'gor_satinalma']],
+                'sayfa' => ['gor_stok', 'gor_satinalma', 'gor_fiyat_anlasma']],
             // ===== İDARİ OFİS ===== (grup; altında İK ve Finans AYRI işler)
             'ik' => ['ad' => 'İnsan Kaynakları', 'grup' => 'İdari Ofis', 'ikon' => 'groups', 'renk' => '#10B981', 'ai' => 'kisitli',
                 'unvan' => ['İK Müdürü', 'İK Uzmanı', 'İK Asistanı'], 'sorumlu_ek' => ['gor_hareketler'],
                 'sayfa' => ['gor_personel', 'gor_puantaj', 'gor_garson_perf']],
             'finans' => ['ad' => 'Finans / Muhasebe', 'grup' => 'İdari Ofis', 'ikon' => 'account_balance', 'renk' => '#4F46E5', 'ai' => 'kisitli',
                 'unvan' => ['Mali İşler Müdürü', 'Muhasebeci', 'Muhasebe Asistanı'], 'sorumlu_ek' => [],
-                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_gider', 'gor_cari', 'gor_muhasebe', 'gor_raporlar', 'gor_z_raporu', 'gor_hareketler', 'gor_copilot']],
+                'sayfa' => ['gor_dashboard', 'gor_finans', 'gor_gider', 'gor_cari', 'gor_muhasebe', 'gor_raporlar', 'gor_z_raporu', 'gor_hareketler', 'gor_copilot', 'gor_fiyat_anlasma']],
             'pazarlama' => ['ad' => 'Pazarlama / Sosyal Medya', 'grup' => 'İdari Ofis', 'ikon' => 'campaign', 'renk' => '#F43F5E', 'ai' => 'kisitli',
                 'unvan' => ['Pazarlama Müdürü', 'Sosyal Medya Uzmanı', 'İçerik Editörü'], 'sorumlu_ek' => ['gor_raporlar'],
                 'sayfa' => ['gor_app_yonetim', 'gor_indirimler', 'gor_odul_raporu', 'gor_whatsapp', 'gor_menu']],

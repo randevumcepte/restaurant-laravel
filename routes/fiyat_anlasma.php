@@ -71,15 +71,73 @@ if (!function_exists('_anlasmaliFiyat')) {
         } catch (\Throwable $e) { return null; }
     }
 }
-if (!function_exists('_faSaltGorur')) {
-    // Departman sorumlusu: anlaşmalı fiyatları salt okur (satın alma yetkisi yoksa). Belge ve rapor görmez.
-    function _faSaltGorur($p)
+if (!function_exists('_faYetki')) {
+    // Fiyat Anlaşmaları erişim seviyesi: 'duzenle' | 'gor' (sözleşme, belge, rapor) | 'salt' (departman sorumlusu: yalnız fiyatlar) | null
+    // Yetki ekranındaki iki kutucuk belirler; kayıtta yoksa varsayılan: satın alma erişimi → düzenle, finans/muhasebe → görüntüle.
+    function _faYetki($p)
     {
-        if (!$p || (function_exists('_satinalmaErisim') && _satinalmaErisim($p))) return false;
-        return function_exists('_departmanSorumlusuMu') && _departmanSorumlusuMu($p);
+        if (!$p) return null;
+        $rol = mb_strtolower((string) ($p->rol ?? ''), 'UTF-8');
+        if (in_array($rol, ['sahip', 'mudur', 'müdür'], true)) return 'duzenle';
+        if (function_exists('_kasiyerMi') && _kasiyerMi($p)) return null;
+        $sy = (isset($p->sayfa_yetki) && $p->sayfa_yetki) ? json_decode($p->sayfa_yetki, true) : null;
+        $var = fn ($k) => is_array($sy) && array_key_exists($k, $sy);
+        $duz = $var('gor_fiyat_anlasma_duzenle') ? !empty($sy['gor_fiyat_anlasma_duzenle']) : _faVarsayilan($p, 'duzenle');
+        $gor = $duz || ($var('gor_fiyat_anlasma') ? !empty($sy['gor_fiyat_anlasma']) : _faVarsayilan($p, 'gor'));
+        if ($duz) return 'duzenle';
+        if ($gor) return 'gor';
+        return function_exists('_departmanSorumlusuMu') && _departmanSorumlusuMu($p) ? 'salt' : null;
     }
 }
-if (!function_exists('_faBirimNorm')) {
+if (!function_exists('_faVarsayilan')) {
+    // Kayıtta kutucuk yokken: satın alma sayfalarına erişen → düzenler; finans/muhasebe → görür. İK/ofis/idare otomatik görmez.
+    function _faVarsayilan($p, $seviye)
+    {
+        $rol = mb_strtolower((string) ($p->rol ?? ''), 'UTF-8');
+        $kademe = $p->kademe ?? (function_exists('_rolKademe') ? _rolKademe($p->rol ?? '') : '');
+        if (in_array($kademe, ['supervizor', 'satinalma'], true) || in_array($rol, ['satinalmaci', 'satınalmacı', 'satinalma', 'ust_yonetim', 'yonetim', 'yönetim'], true)) return true;
+        $satin = false;
+        try { $satin = function_exists('_panelYetkiVar') && _panelYetkiVar($p, 'gor_satinalma'); } catch (\Throwable $e) {}
+        if ($satin) return true;
+        if ($seviye === 'gor') {
+            if (in_array($rol, ['muhasebe', 'finans'], true)) return true;
+            try { if (!empty($p->departman_id) && DB::table('departmanlar')->where('id', $p->departman_id)->value('kod') === 'finans') return true; } catch (\Throwable $e) {}
+        }
+        return false;
+    }
+}
+if (!function_exists('_faYetkiGoc')) {
+    // Tek seferlik: yetki kaydı olan personel ve departmanlara iki kutucuğu bugünkü erişimle yazar (yetki ekranı gerçek durumu göstersin, kaydedince kimse erişim kaybetmesin)
+    function _faYetkiGoc()
+    {
+        if (cache()->get('fa_yetki_goc_1')) return;
+        try {
+            if (!Schema::hasColumn('personeller', 'sayfa_yetki')) return;
+            foreach (DB::table('personeller')->whereNotNull('sayfa_yetki')->get() as $p) {
+                $sy = json_decode((string) $p->sayfa_yetki, true);
+                if (!is_array($sy) || (array_key_exists('gor_fiyat_anlasma', $sy) && array_key_exists('gor_fiyat_anlasma_duzenle', $sy))) continue;
+                if (in_array($p->rol ?? '', ['sahip'], true)) continue;
+                $duz = _faVarsayilan($p, 'duzenle');
+                if (!array_key_exists('gor_fiyat_anlasma_duzenle', $sy)) $sy['gor_fiyat_anlasma_duzenle'] = $duz ? 1 : 0;
+                if (!array_key_exists('gor_fiyat_anlasma', $sy)) $sy['gor_fiyat_anlasma'] = ($duz || _faVarsayilan($p, 'gor')) ? 1 : 0;
+                DB::table('personeller')->where('id', $p->id)->update(['sayfa_yetki' => json_encode($sy)]);
+            }
+            if (Schema::hasTable('departmanlar')) foreach (DB::table('departmanlar')->get() as $d) {
+                $sy = json_decode((string) $d->sayfa_yetki, true);
+                if (!is_array($sy) || array_key_exists('gor_fiyat_anlasma', $sy)) continue;
+                $satin = !empty($sy['gor_satinalma']);
+                $sy['gor_fiyat_anlasma'] = ($satin || $d->kod === 'finans') ? 1 : 0;
+                $sy['gor_fiyat_anlasma_duzenle'] = $satin ? 1 : 0;
+                DB::table('departmanlar')->where('id', $d->id)->update(['sayfa_yetki' => json_encode($sy)]);
+            }
+            cache()->forever('fa_yetki_goc_1', 1);
+        } catch (\Throwable $e) {}
+    }
+}
+if (!function_exists('_faSaltGorur')) {
+    // Departman sorumlusu: anlaşmalı fiyatları salt okur. Belge ve rapor görmez.
+    function _faSaltGorur($p) { return _faYetki($p) === 'salt'; }
+}if (!function_exists('_faBirimNorm')) {
     function _faBirimNorm($b) { return mb_strtolower(trim((string) $b), 'UTF-8'); }
 }
 if (!function_exists('_faBelgeKaydet')) {
@@ -158,9 +216,9 @@ if (!function_exists('_faEslesir')) {
 // ============================ SAYFA ============================
 Route::get('/fiyat-anlasmalari', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    $yonetir = $bp && _satinalmaErisim($bp);
-    $salt = !$yonetir && _faSaltGorur($bp);
-    if (!$yonetir && !$salt) return redirect('/pos-giris');
+    $seviye = _faYetki($bp);
+    if (!$seviye) return redirect('/pos-giris');
+    $salt = $seviye === 'salt'; $duzenler = $seviye === 'duzenle';
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $liste = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->limit(500)->get();
     $sozlesmeler = DB::table('fiyat_sozlesmeleri')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->limit(200)->get();
@@ -229,13 +287,13 @@ Route::get('/fiyat-anlasmalari', function () {
     foreach ($kalemler as $k) $ipucu[$k->tedarikci_id . '-' . $k->malzeme_id] = ['f' => (float) $k->birim_fiyat, 'b' => $birimKis[$k->alis_birim_id] ?? '', 't' => substr((string) $k->tarih, 0, 10)];
     $malBirim = []; foreach ($malzemeler as $m) $malBirim[$m->id] = $birimKis[$m->temel_birim_id] ?? '';
     $yukLimit = ini_get('upload_max_filesize');
-    return view('fiyat_anlasmalari', compact('kartlar', 'sozKart', 'kpi', 'tedarikciler', 'malzemeler', 'birimler', 'ipucu', 'malBirim', 'salt', 'yukLimit'));
+    return view('fiyat_anlasmalari', compact('kartlar', 'sozKart', 'kpi', 'tedarikciler', 'malzemeler', 'birimler', 'ipucu', 'malBirim', 'salt', 'duzenler', 'yukLimit'));
 });
 
 // Tekli anlaşma: ekle / düzenle (+ belge)
 Route::post('/fiyat-anlasmalari/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return back();
+    if (_faYetki($bp) !== 'duzenle') return back()->with('hata', 'Fiyat anlaşmalarını düzenleme yetkin yok.');
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $tid = (int) $r->input('tedarikci_id'); $mid = (int) $r->input('malzeme_id');
     if (!$tid || !$mid) return back()->with('hata', 'Tedarikçi ve malzeme seçin.');
@@ -260,7 +318,7 @@ Route::post('/fiyat-anlasmalari/ekle', function (Request $r) {
 });
 Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return back();
+    if (_faYetki($bp) !== 'duzenle') return back()->with('hata', 'Fiyat anlaşmalarını düzenleme yetkin yok.');
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $a = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
     if ($a) {
@@ -275,7 +333,7 @@ Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
 // Çerçeve sözleşme: ekle / düzenle — başlık + şartlar + kalemler (her kalem bir fiyat_anlasmalari satırı) + belgeler
 Route::post('/fiyat-anlasmalari/sozlesme', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return back();
+    if (_faYetki($bp) !== 'duzenle') return back()->with('hata', 'Fiyat anlaşmalarını düzenleme yetkin yok.');
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $tid = (int) $r->input('tedarikci_id');
     if (!$tid) return back()->with('hata', 'Tedarikçi seçin.');
@@ -327,7 +385,7 @@ Route::post('/fiyat-anlasmalari/sozlesme', function (Request $r) {
 });
 Route::post('/fiyat-anlasmalari/sozlesme-durum', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return back();
+    if (_faYetki($bp) !== 'duzenle') return back()->with('hata', 'Fiyat anlaşmalarını düzenleme yetkin yok.');
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $s = DB::table('fiyat_sozlesmeleri')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
     if (!$s) return back();
@@ -345,7 +403,7 @@ Route::post('/fiyat-anlasmalari/sozlesme-durum', function (Request $r) {
 // Belge: görüntüle / indir (yalnız yönetenler — departman sorumlusu belge açamaz)
 Route::get('/fiyat-anlasmalari/belge/{id}', function (Request $r, $id) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) abort(403);
+    if (!in_array(_faYetki($bp), ['gor', 'duzenle'], true)) abort(403);
     _fiyatAnlasmaEnsure();
     $b = DB::table('sozlesme_belgeleri')->where('sube_id', _webSubeId())->where('id', (int) $id)->first();
     if (!$b) abort(404);
@@ -357,7 +415,7 @@ Route::get('/fiyat-anlasmalari/belge/{id}', function (Request $r, $id) {
 })->where('id', '[0-9]+');
 Route::post('/fiyat-anlasmalari/belge-sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return back();
+    if (_faYetki($bp) !== 'duzenle') return back()->with('hata', 'Fiyat anlaşmalarını düzenleme yetkin yok.');
     _fiyatAnlasmaEnsure();
     $b = DB::table('sozlesme_belgeleri')->where('sube_id', _webSubeId())->where('id', (int) $r->input('id'))->first();
     if ($b) _faBelgeSil($b);
@@ -538,7 +596,7 @@ if (!function_exists('_faRaporFiltre')) {
 }
 Route::get('/fiyat-anlasmalari/rapor', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) return redirect('/fiyat-anlasmalari');
+    if (!in_array(_faYetki($bp), ['gor', 'duzenle'], true)) return redirect('/fiyat-anlasmalari');
     $sid = _webSubeId();
     [$bas, $bit, $ted] = _faRaporFiltre($r);
     $rapor = _faRaporVeri($sid, $bas, $bit, $ted);
@@ -548,7 +606,7 @@ Route::get('/fiyat-anlasmalari/rapor', function (Request $r) {
 // Excel (CSV, Türkçe Excel uyumlu: UTF-8 BOM + noktalı virgül)
 Route::get('/fiyat-anlasmalari/rapor-indir', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !_satinalmaErisim($bp)) abort(403);
+    if (!in_array(_faYetki($bp), ['gor', 'duzenle'], true)) abort(403);
     $sid = _webSubeId();
     [$bas, $bit, $ted] = _faRaporFiltre($r);
     $d = _faRaporVeri($sid, $bas, $bit, $ted);

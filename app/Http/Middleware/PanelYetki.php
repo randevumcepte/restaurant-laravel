@@ -26,6 +26,7 @@ class PanelYetki
         if (function_exists('_talepYetkiTemizle')) _talepYetkiTemizle();
         if (function_exists('_mutfakSefMenuYetki')) _mutfakSefMenuYetki();
         if (function_exists('_mutfakSefRezYetki')) _mutfakSefRezYetki();
+        if (function_exists('_faYetkiGoc')) _faYetkiGoc();
         if ($sinir = $this->ucretliSinir($request, $path)) return $sinir;
         if ($ekRed = $this->ekKapi($request, $path)) return $ekRed;
         if ($subeRed = $this->subeKapi($request, $path)) return $subeRed;
@@ -58,7 +59,7 @@ class PanelYetki
         $izin = true;
         try { $izin = function_exists('_panelYetkiVar') ? _panelYetkiVar($p, $key) : true; } catch (\Throwable $e) { $izin = true; }
         if (!$izin && ($path === '/talep-onaylarim' || in_array($path, ['/satinalma-talep/dept-onayla', '/satinalma-talep/dept-reddet'], true)) && function_exists('_talepOnaylayiciMi') && _talepOnaylayiciMi($p)) $izin = true; // sorumlu onay kutusu
-        if (!$izin && $path === '/fiyat-anlasmalari' && $request->isMethod('GET') && function_exists('_faSaltGorur') && _faSaltGorur($p)) $izin = true; // departman sorumlusu anlaşmalı fiyatları salt okur
+        if (!$izin && ($path === '/fiyat-anlasmalari' || str_starts_with($path, '/fiyat-anlasmalari/')) && function_exists('_faYetki') && _faYetki($p)) $izin = true; // seviye (görüntüle/düzenle/sorumlu salt) sayfanın kendisinde
         if ($izin && function_exists('_kasiyerSayfaIzinli')) $izin = _kasiyerSayfaIzinli($p, $eslesen);
         if ($izin && in_array($eslesen, ['/uretim-riski', '/parti-takip', '/sayim'], true) && function_exists('_mutfakAltIstasyonMu') && _mutfakAltIstasyonMu($p)) $izin = false; // mutfak geneli ekranlar: şef ve yönetici
         if ($izin && $eslesen === '/bulasik' && function_exists('_bulasikGorur') && !_bulasikGorur($p)) $izin = false;

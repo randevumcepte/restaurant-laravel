@@ -255,7 +255,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
 
 @section('content')
 @php
-  $salt = $salt ?? false;
+  $salt = $salt ?? false; $duzenler = $duzenler ?? !$salt;
   $tl = fn ($v) => number_format((float) $v, 2, ',', '.');
   $tl0 = fn ($v) => number_format(round((float) $v), 0, ',', '.');
   $mk = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, ',', '.'), '0'), ',');
@@ -300,6 +300,11 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
     </div>
     @if ($salt)
       <span class="salt-rozet"><span class="ms" style="font-size:18px">visibility</span> Salt okunur — anlaşmaları satın alma yönetir</span>
+    @elseif (!$duzenler)
+      <div class="hero-btn">
+        <span class="salt-rozet"><span class="ms" style="font-size:18px">visibility</span> Görüntüleme yetkisi</span>
+        <a class="ekle-btn ik" href="/fiyat-anlasmalari/rapor"><span class="ms">insights</span> Raporlar</a>
+      </div>
     @else
       <div class="hero-btn">
         <button class="ekle-btn" type="button" onclick="szAc()"><span class="ms">post_add</span> Yeni Sözleşme</button>
@@ -309,7 +314,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
     @endif
   </div>
 
-  @if (!$salt)
+  @if ($duzenler)
   <div class="adimlar">
     <div class="adim"><span class="no" style="background:#4F46E5">1</span><div><b>Sözleşmeyi ekle</b><span class="t">Belgeyi yükle ya da fotoğrafını çek, malzemeleri ve fiyatları gir.</span></div></div>
     <div class="adim"><span class="no" style="background:#7C3AED">2</span><div><b>Sipariş bu fiyattan çıkar</b><span class="t">Otomatik ve acil siparişte anlaşmalı fiyat kullanılır.</span></div></div>
@@ -337,7 +342,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
       <h3>Henüz anlaşmalı fiyat yok</h3>
       <p>Tedarikçinle yaptığın sözleşmeyi ekle: belgeyi yükle, kapsadığı malzemeleri ve fiyatları gir. Fiyat dalgalansa da sipariş anlaşmalı fiyattan çıkar; tedarikçi farklı fatura keserse fark burada görünür.</p>
       <div class="ornek"><span class="ms" style="font-size:17px;color:#4F46E5">lightbulb</span> Örnek: <b>Metro Gıda yıllık sözleşmesi</b> · Ayçiçek yağı, un, şeker · <b>12 ay</b></div><br>
-      @unless ($salt)<button class="ekle-btn" type="button" onclick="szAc()"><span class="ms">post_add</span> İlk sözleşmeyi ekle</button>@endunless
+      @if ($duzenler)<button class="ekle-btn" type="button" onclick="szAc()"><span class="ms">post_add</span> İlk sözleşmeyi ekle</button>@endif
     </div>
   @else
     <div class="arac">
@@ -369,7 +374,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
               @if ($k['sozlesme_id'] || $k['taahhut'] || count($k['belgeler']))
                 <div class="etiketler">
                   @if ($k['sozlesme_id'])
-                    @if ($salt)<span class="etk soz"><span class="ms">description</span>{{ $k['sozlesme_ad'] }}</span>
+                    @if (!$duzenler)<span class="etk soz"><span class="ms">description</span>{{ $k['sozlesme_ad'] }}</span>
                     @else<button type="button" class="etk soz" onclick="szAcId({{ $k['sozlesme_id'] }})" title="Sözleşmeyi aç"><span class="ms">description</span>{{ $k['sozlesme_ad'] }}</button>@endif
                   @endif
                   @if ($k['taahhut'])<span class="etk"><span class="ms">flag</span>Taahhüt {{ $mk($k['taahhut']) }} {{ $k['birim'] }}/ay</span>@endif
@@ -400,7 +405,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
           @else
             <div class="uyum yok"><span class="ms">receipt_long</span><div><b>Henüz fatura yok</b><span class="a">Fatura gelince fiyat kontrol edilecek</span></div></div>
           @endif
-          @if ($salt)
+          @if (!$duzenler)
             <div></div>
           @else
             <div class="islem">
@@ -428,7 +433,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
       <span class="ms b">description</span>
       <h3>Henüz sözleşme yok</h3>
       <p>Tek sözleşme birçok malzemeyi kapsar: belgeyi bir kez yükle, malzemeleri ve fiyatları altına ekle. Ödeme vadesi, teslim süresi, fiyat artış maddesi ve fesih bildirim süresi de burada durur.</p>
-      @unless ($salt)<button class="ekle-btn" type="button" onclick="szAc()"><span class="ms">post_add</span> Sözleşme ekle</button>@endunless
+      @if ($duzenler)<button class="ekle-btn" type="button" onclick="szAc()"><span class="ms">post_add</span> Sözleşme ekle</button>@endif
     </div>
   @else
     <div class="soz-liste">
@@ -476,17 +481,17 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
                   <button type="button" class="etk belge" onclick='bgAc(@json($s['belgeler']), {{ $bi }})' title="{{ $b['ad'] }}"><span class="ms">{{ str_contains((string) $b['mime'], 'pdf') ? 'picture_as_pdf' : (str_starts_with((string) $b['mime'], 'image/') ? 'image' : 'description') }}</span>{{ \Illuminate\Support\Str::limit($b['ad'], 22) }}</button>
                 @endforeach
               @else
-                <button type="button" class="etk" style="color:#B45309" onclick="szAcId({{ $s['id'] }})"><span class="ms">upload_file</span>Belge eklenmemiş</button>
+                @if ($duzenler)<button type="button" class="etk" style="color:#B45309" onclick="szAcId({{ $s['id'] }})"><span class="ms">upload_file</span>Belge eklenmemiş</button>@else<span class="etk"><span class="ms">upload_file</span>Belge eklenmemiş</span>@endif
               @endif
             </div>
-            @unless ($salt)
+            @if ($duzenler)
               <div class="islem">
                 <button type="button" class="ib" title="Düzenle" onclick="szAcId({{ $s['id'] }})"><span class="ms">edit</span></button>
                 <form method="POST" action="/fiyat-anlasmalari/sozlesme-durum" style="margin:0">@csrf<input type="hidden" name="id" value="{{ $s['id'] }}">
                   <button type="submit" class="ib" title="{{ $s['aktif'] ? 'Durdur' : 'Yeniden başlat' }}"><span class="ms">{{ $s['aktif'] ? 'pause' : 'play_arrow' }}</span></button></form>
                 <button type="button" class="ib sil" title="Sil" onclick='silSor("/fiyat-anlasmalari/sozlesme-durum", {{ $s['id'] }}, @json($sAd . ' · ' . $s['ted']), "Sözleşme silinsin mi?", "Sözleşme, içindeki tüm malzeme fiyatları ve belgeleri silinir. Geri gelmez; askıya almak için Durdur kullan.")'><span class="ms">delete</span></button>
               </div>
-            @endunless
+            @endif
           </div>
         </div>
       @endforeach
@@ -495,7 +500,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
   </div>
 </div></div>
 
-@unless ($salt)
+@if ($duzenler)
 {{-- ===== Sözleşme popup ===== --}}
 <div class="fap-ort" id="szPop">
   <form class="fap genis" method="POST" action="/fiyat-anlasmalari/sozlesme" enctype="multipart/form-data" onsubmit="return szKontrol()">
@@ -635,6 +640,8 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
   </form>
 </div>
 
+@endif
+@unless ($salt)
 {{-- ===== Belge görüntüleyici ===== --}}
 <div class="fap-ort" id="bgPop" onclick="if (event.target === this) bgKapat()">
   <div class="fap goruntule">
@@ -651,7 +658,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
 
 <script>
 (function () {
-  const SALT = @json($salt);
+  const SALT = @json($salt), DUZ = @json($duzenler);
   const el = (x) => document.getElementById(x);
   const para = (v) => Number(v).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const yerel = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -681,6 +688,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
     if (el('faYok')) el('faYok').style.display = gor ? 'none' : 'block';
   };
   if (SALT) return;
+  if (DUZ) {
 
   const IPUCU = @json((object) ($ipucu ?? [])), MALBIRIM = @json((object) ($malBirim ?? []));
   const SOZ = @json(collect($sozKart)->keyBy('id'));
@@ -872,6 +880,7 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
     el('silPop').classList.add('ac');
   };
 
+  }
   // ---------- Belge görüntüleyici ----------
   let bgListe = [], bgSira = 0;
   window.bgAc = function (liste, i) { bgListe = liste || []; bgSira = i || 0; bgGoster(); el('bgPop').classList.add('ac'); };
@@ -890,11 +899,11 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
   }
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { szKapat(); faKapat(); bgKapat(); el('silPop').classList.remove('ac'); }
+    if (e.key === 'Escape') { if (DUZ) { szKapat(); faKapat(); el('silPop').classList.remove('ac'); } bgKapat(); }
     if (el('bgPop').classList.contains('ac') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) bgGit(e.key === 'ArrowRight' ? 1 : -1);
   });
   // popup'lar body'ye: sayfa kapsayıcısı içinde ortalanmaz
-  ['szPop', 'faPop', 'silPop', 'bgPop'].forEach(i => document.body.appendChild(el(i)));
+  ['szPop', 'faPop', 'silPop', 'bgPop'].forEach(i => { if (el(i)) document.body.appendChild(el(i)); });
 })();
 </script>
 @endsection
