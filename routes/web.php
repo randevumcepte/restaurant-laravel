@@ -19258,15 +19258,28 @@ if (!function_exists('_halCek')) {
             $tarih = $tarih ?: now()->toDateString();
             $url = str_replace('{tarih}', $tarih, $k['url']);
             static $hafiza = []; // aynı istekte tüm şubeler için API bir kez çağrılır
-            if (!isset($hafiza[$url])) { $resp = \Illuminate\Support\Facades\Http::timeout(20)->acceptJson()->get($url); $hafiza[$url] = $resp->successful() ? ['ok' => 1, 'json' => $resp->json()] : ['ok' => 0, 'kod' => $resp->status()]; }
-            if (empty($hafiza[$url]['ok'])) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına ulaşılamadı (' . $hafiza[$url]['kod'] . ').'];
+            if (!isset($hafiza[$url])) {
+                // IPv4 zorunlu + kısa süre: sunucuda IPv6 denemesi 20 sn takılıp hata veriyordu. 2 deneme, toplam en fazla ~16 sn.
+                $hafiza[$url] = ['ok' => 0, 'kod' => 'bağlantı'];
+                foreach ([1, 2] as $deneme) {
+                    try {
+                        $resp = \Illuminate\Support\Facades\Http::connectTimeout(4)->timeout(8)->acceptJson()
+                            ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]])->get($url);
+                        $hafiza[$url] = $resp->successful() ? ['ok' => 1, 'json' => $resp->json()] : ['ok' => 0, 'kod' => $resp->status()];
+                        if ($resp->successful() || $resp->status() < 500) break;
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('hal cek ' . $url . ' deneme ' . $deneme . ': ' . $e->getMessage());
+                        $hafiza[$url] = ['ok' => 0, 'kod' => stripos($e->getMessage(), 'timed out') !== false ? 'zaman aşımı' : 'bağlantı'];
+                    }
+                }
+            }
+            if (empty($hafiza[$url]['ok'])) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına şu an ulaşılamadı (' . $hafiza[$url]['kod'] . '). Mevcut fiyatlar geçerli; sistem saatte bir kendisi tekrar dener.'];
             $data = $hafiza[$url]['json'];
             $rows = [];
             if (is_array($data)) $rows = isset($data[0]) ? $data : ($data['HalFiyatListesi'] ?? $data['halFiyatListesi'] ?? $data['data'] ?? $data['result'] ?? $data['value'] ?? $data['items'] ?? []);
             if (!is_array($rows) || !count($rows)) return ['ok' => 0, 'mesaj' => 'Veri boş geldi (API formatı farklı olabilir).'];
             $al = function ($r, $keys) { foreach ($keys as $kk) { if (isset($r[$kk]) && $r[$kk] !== '' && $r[$kk] !== null) return $r[$kk]; } return null; };
-            DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', $tarih)->where('kaynak', 'api')->delete();
-            $eklenen = 0;
+            $yeni = []; $katalog = [];
             foreach ($rows as $r) {
                 if (!is_array($r)) continue;
                 $ad = $al($r, ['malAdi', 'mal_adi', 'MalAdi', 'ad', 'Ad', 'AD', 'urunAdi', 'UrunAdi', 'maladi']);
@@ -19277,17 +19290,37 @@ if (!function_exists('_halCek')) {
                 $ort = (float) ($al($r, ['ortalamaUcret', 'ortalama', 'OrtalamaUcret', 'ortalamaFiyat', 'ortFiyat', 'ortalamaUcreti']) ?: 0);
                 if ($ort <= 0 && $asg > 0 && $azm > 0) $ort = round(($asg + $azm) / 2, 2);
                 if ($ort <= 0 && $asg <= 0 && $azm <= 0) continue;
-                DB::table('hal_fiyatlari')->insert(['sube_id' => $sid, 'urun_ad' => mb_substr((string) $ad, 0, 80), 'birim' => mb_substr((string) $birim, 0, 12),
-                    'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'api', 'created_at' => now(), 'updated_at' => now()]);
-                // sistem geneli ürün kataloğuna da yaz (tüm restoranlar kullanır)
-                if (function_exists('_urunKatalogEkle')) {
-                    $tip = $al($r, ['MalTipAdi', 'malTipAdi', 'tip', 'Tip', 'kategori']);
-                    _urunKatalogEkle($ad, $tip ? mb_strtolower((string) $tip, 'UTF-8') : null, $birim);
-                }
-                $eklenen++;
+                $yeni[] = ['sube_id' => $sid, 'urun_ad' => mb_substr((string) $ad, 0, 80), 'birim' => mb_substr((string) $birim, 0, 12),
+                    'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'api', 'created_at' => now(), 'updated_at' => now()];
+                $tip = $al($r, ['MalTipAdi', 'malTipAdi', 'tip', 'Tip', 'kategori']);
+                $katalog[] = [$ad, $tip ? mb_strtolower((string) $tip, 'UTF-8') : null, $birim];
+            }
+            $eklenen = count($yeni);
+            if ($eklenen) {
+                // tek seferde yaz (satır satır 88 insert + katalog sorguları sayfayı bekletiyordu)
+                DB::transaction(function () use ($sid, $tarih, $yeni) {
+                    DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', $tarih)->where('kaynak', 'api')->delete();
+                    foreach (array_chunk($yeni, 200) as $parca) DB::table('hal_fiyatlari')->insert($parca);
+                });
+                // sistem geneli ürün kataloğuna yalnız yeni adları ekle (tüm restoranlar kullanır)
+                try {
+                    if (function_exists('_urunNorm') && Schema::hasTable('urun_katalogu')) {
+                        $var = array_flip(DB::table('urun_katalogu')->pluck('ad_norm')->all()); $kat = [];
+                        foreach ($katalog as [$kAd, $kTip, $kBirim]) {
+                            $kAd = trim(preg_replace('/\s+/', ' ', (string) $kAd)); $n = _urunNorm($kAd);
+                            if ($n === '' || isset($var[$n])) continue; $var[$n] = 1;
+                            $kat[] = ['ad' => mb_convert_case(mb_substr($kAd, 0, 80), MB_CASE_TITLE, 'UTF-8'), 'ad_norm' => $n, 'birim' => $kBirim ? mb_substr($kBirim, 0, 12) : null,
+                                'tip' => $kTip ? mb_substr((string) $kTip, 0, 24) : null, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
+                        }
+                        if ($kat) DB::table('urun_katalogu')->insertOrIgnore($kat);
+                    }
+                } catch (\Throwable $e) {}
             }
             return $eklenen ? ['ok' => 1, 'mesaj' => $eklenen . ' ürün çekildi (' . $k['ad'] . ' · ' . $tarih . ').'] : ['ok' => 0, 'mesaj' => 'Eşleşen veri çıkmadı (bugün yayınlanmamış olabilir).'];
-        } catch (\Throwable $e) { return ['ok' => 0, 'mesaj' => 'Bağlantı/format hatası (sunucu dış erişime kapalı olabilir).']; }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('hal cek hata: ' . $e->getMessage());
+            return ['ok' => 0, 'mesaj' => 'Hal fiyatları şu an çekilemedi. Mevcut fiyatlar geçerli; sistem saatte bir kendisi tekrar dener.'];
+        }
     }
 }
 if (!function_exists('_halAdNorm')) {

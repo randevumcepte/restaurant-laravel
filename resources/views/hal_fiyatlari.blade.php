@@ -24,7 +24,8 @@
 
 {{-- Otomatik çek --}}
 <div class="rk-card" style="margin-bottom:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:color-mix(in srgb,#059669 5%,transparent);border-color:color-mix(in srgb,#059669 25%,transparent)">
-  <form method="POST" action="/hal-fiyatlari/cek" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;flex:1">
+  <form method="POST" action="/hal-fiyatlari/cek" onsubmit="var b=this.querySelector('[type=submit]');b.disabled=true;b.style.opacity=.75;b.innerHTML='<span class=&quot;material-icons-outlined&quot; style=&quot;color:#fff;font-size:18px;animation:halDon 1s linear infinite&quot;>sync</span> Çekiliyor…'" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;flex:1">
+    <style>@keyframes halDon{to{transform:rotate(-360deg)}}</style>
     @csrf
     <div><label class="rk-lbl" style="margin-top:0">Hal kaynağı</label>
       <select name="kaynak" class="rk-inp" style="min-width:200px">
