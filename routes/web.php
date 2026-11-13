@@ -19182,10 +19182,10 @@ Route::get('/hal-fiyatlari', function () {
         try {
             $flag = 'hal_cek_' . $sid . '_' . today()->toDateString();
             $varMi = DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', today()->toDateString())->where('kaynak', 'api')->exists();
-            if (function_exists('_halCek') && !$varMi && !cache()->get($flag)) {
+            if (function_exists('_halCek') && !$varMi && !cache()->get($flag) && cache()->add($flag . '_deneme', 1, 3600)) {
+                // başarısızsa 1 saat tekrar deneme yok (her açılışta bağlantı bekletmesin; tarayıcı zaten kendisi çeker)
                 $res = _halCek($sid, 'izmir');
                 if (!empty($res['ok'])) cache()->put($flag, 1, now()->addHours(18));
-                else $d['hal_mesaj'] = $res['mesaj'] ?? null;
             }
         } catch (\Throwable $e) {}
         $d['hal'] = DB::table('hal_fiyatlari')->where('sube_id', $sid)->orderByDesc('tarih')->orderBy('urun_ad')->limit(200)->get();
@@ -19249,7 +19249,8 @@ if (!function_exists('_halKaynaklar')) {
     }
 }
 if (!function_exists('_halCek')) {
-    function _halCek($sid, $kaynakKod = 'izmir', $tarih = null)
+    // $hazirJson: tarayıcının belediye API'sinden çekip gönderdiği bülten (sunucu dış bağlantı kuramadığında). Verilirse HTTP'ye çıkılmaz.
+    function _halCek($sid, $kaynakKod = 'izmir', $tarih = null, $hazirJson = null)
     {
         try {
             if (function_exists('_restoHalEnsure')) _restoHalEnsure();
@@ -19258,6 +19259,12 @@ if (!function_exists('_halCek')) {
             $tarih = $tarih ?: now()->toDateString();
             $url = str_replace('{tarih}', $tarih, $k['url']);
             static $hafiza = []; // aynı istekte tüm şubeler için API bir kez çağrılır
+            if ($hazirJson !== null) {
+                $hafiza[$url] = ['ok' => 1, 'json' => $hazirJson];
+                cache()->put('hal_json_' . md5($url), $hazirJson, now()->addHours(20)); // diğer şubelerin oto güncellemesi de kullansın
+            } elseif (!isset($hafiza[$url]) && ($onbellek = cache()->get('hal_json_' . md5($url)))) {
+                $hafiza[$url] = ['ok' => 1, 'json' => $onbellek];
+            }
             if (!isset($hafiza[$url])) {
                 // IPv4 zorunlu + kısa süre: sunucuda IPv6 denemesi 20 sn takılıp hata veriyordu. 2 deneme, toplam en fazla ~16 sn.
                 $hafiza[$url] = ['ok' => 0, 'kod' => 'bağlantı'];
@@ -19269,7 +19276,7 @@ if (!function_exists('_halCek')) {
                         if ($resp->successful() || $resp->status() < 500) break;
                     } catch (\Throwable $e) {
                         \Illuminate\Support\Facades\Log::warning('hal cek ' . $url . ' deneme ' . $deneme . ': ' . $e->getMessage());
-                        $hafiza[$url] = ['ok' => 0, 'kod' => stripos($e->getMessage(), 'timed out') !== false ? 'zaman aşımı' : 'bağlantı'];
+                        $hafiza[$url] = ['ok' => 0, 'kod' => preg_match('/cURL error \d+/', $e->getMessage(), $cm) ? $cm[0] : 'bağlantı'];
                     }
                 }
             }
@@ -19425,6 +19432,19 @@ Route::post('/hal-fiyatlari/cek', function (Request $r) {
     $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : null;
     $sonuc = _halCek($sid, $kaynak, $tarih);
     return redirect('/hal-fiyatlari')->with($sonuc['ok'] ? 'hal_ok' : 'hal_hata', $sonuc['mesaj']);
+});
+// Tarayıcı İzmir API'sinden (CORS açık) çekip gönderir — sunucunun dış bağlantısı kesik olsa da çalışır
+Route::post('/hal-fiyatlari/yukle', function (Request $r) {
+    $sid = _webSubeId();
+    $kaynak = in_array($r->input('kaynak'), array_keys(_halKaynaklar())) ? $r->input('kaynak') : 'izmir';
+    $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('tarih')) ? $r->input('tarih') : null;
+    $json = $r->input('veri');
+    $liste = is_array($json) ? ($json['HalFiyatListesi'] ?? (isset($json[0]) ? $json : null)) : null;
+    if (!is_array($liste) || !count($liste) || count($liste) > 1000) return response()->json(['ok' => 0, 'mesaj' => 'Bülten verisi geçersiz.']);
+    $sonuc = _halCek($sid, $kaynak, $tarih, $json);
+    if ($r->boolean('sessiz')) return response()->json($sonuc);
+    session()->flash($sonuc['ok'] ? 'hal_ok' : 'hal_hata', $sonuc['mesaj']);
+    return response()->json($sonuc);
 });
 
 // SİSTEM GENELİ ürün kataloğu — malzeme eklerken isim önerisi (tüm restoranlar ortak).

@@ -24,7 +24,7 @@
 
 {{-- Otomatik çek --}}
 <div class="rk-card" style="margin-bottom:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:color-mix(in srgb,#059669 5%,transparent);border-color:color-mix(in srgb,#059669 25%,transparent)">
-  <form method="POST" action="/hal-fiyatlari/cek" onsubmit="var b=this.querySelector('[type=submit]');b.disabled=true;b.style.opacity=.75;b.innerHTML='<span class=&quot;material-icons-outlined&quot; style=&quot;color:#fff;font-size:18px;animation:halDon 1s linear infinite&quot;>sync</span> Çekiliyor…'" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;flex:1">
+  <form method="POST" action="/hal-fiyatlari/cek" id="halCekForm" onsubmit="return halSimdiCek(this)" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;flex:1">
     <style>@keyframes halDon{to{transform:rotate(-360deg)}}</style>
     @csrf
     <div><label class="rk-lbl" style="margin-top:0">Hal kaynağı</label>
@@ -81,6 +81,35 @@
     document.querySelectorAll('#halListe tbody tr').forEach(function (tr) { tr.style.display = !q || tr.dataset.ad.indexOf(q) > -1 ? '' : 'none'; });
   }
   try { if (localStorage.getItem('halListeAcik') === '1') halListeAcKapa(); } catch (e) {}
+
+  // İzmir API'si tarayıcıya açık (CORS *): önce tarayıcı çeker, sunucuya gönderir. Olmazsa form sunucudan dener.
+  var HAL_IZMIR = 'https://openapi.izmir.bel.tr/api/ibb/halfiyatlari/sebzemeyve/';
+  function halBugun() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function halTarayicidan(tarih, sessiz) {
+    var ctl = new AbortController(); setTimeout(function () { ctl.abort(); }, 10000);
+    return fetch(HAL_IZMIR + tarih, { signal: ctl.signal }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (veri) {
+        if (!veri || !veri.HalFiyatListesi || !veri.HalFiyatListesi.length) throw 0;
+        return fetch('/hal-fiyatlari/yukle', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('#halCekForm [name=_token]').value },
+          body: JSON.stringify({ kaynak: 'izmir', tarih: tarih, veri: veri, sessiz: sessiz ? 1 : 0 }) }).then(function (r) { return r.json(); });
+      });
+  }
+  var halGonderildi = false;
+  function halSimdiCek(f) {
+    if (halGonderildi) return true;
+    var b = f.querySelector('[type=submit]'); b.disabled = true; b.style.opacity = .75;
+    b.innerHTML = '<span class="material-icons-outlined" style="color:#fff;font-size:18px;animation:halDon 1s linear infinite">sync</span> Çekiliyor…';
+    if (f.kaynak.value !== 'izmir') { halGonderildi = true; return true; }
+    halTarayicidan(f.tarih.value || halBugun(), false)
+      .then(function (s) { if (!s || !s.ok) throw 0; location.href = '/hal-fiyatlari'; })
+      .catch(function () { halGonderildi = true; b.disabled = false; f.submit(); });
+    return false;
+  }
+  @if (!$hal->where('kaynak', 'api')->where('tarih', date('Y-m-d'))->count())
+  // bugünün bülteni yok → arka planda sessizce çek, gelirse sayfayı yenile
+  try { if (sessionStorage.getItem('halOto') !== halBugun()) { sessionStorage.setItem('halOto', halBugun());
+    halTarayicidan(halBugun(), true).then(function (s) { if (s && s.ok) location.reload(); }).catch(function () {}); } } catch (e) {}
+  @endif
 </script>
 
 {{-- "SEN vs HAL" karşılaştırma --}}
