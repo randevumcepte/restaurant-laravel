@@ -880,6 +880,7 @@
     };
   })();
 </script>
+@include('partials.hal_oto')
 @stack('scripts')
 </body>
 </html>

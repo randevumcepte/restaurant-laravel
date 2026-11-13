@@ -19442,6 +19442,10 @@ Route::post('/hal-fiyatlari/yukle', function (Request $r) {
     $liste = is_array($json) ? ($json['HalFiyatListesi'] ?? (isset($json[0]) ? $json : null)) : null;
     if (!is_array($liste) || !count($liste) || count($liste) > 1000) return response()->json(['ok' => 0, 'mesaj' => 'Bülten verisi geçersiz.']);
     $sonuc = _halCek($sid, $kaynak, $tarih, $json);
+    // bugünün İzmir bülteni geldiyse eksik diğer şubelere de yaz (_halCek önbellekten okur, dışarı çıkmaz)
+    if (!empty($sonuc['ok']) && $kaynak === 'izmir' && (!$tarih || $tarih === today()->toDateString()) && function_exists('_halOtoGuncelle')) {
+        try { cache()->forget('hal_oto_deneme'); _halOtoGuncelle(); } catch (\Throwable $e) {}
+    }
     if ($r->boolean('sessiz')) return response()->json($sonuc);
     session()->flash($sonuc['ok'] ? 'hal_ok' : 'hal_hata', $sonuc['mesaj']);
     return response()->json($sonuc);

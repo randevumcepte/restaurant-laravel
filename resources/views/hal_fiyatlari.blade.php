@@ -82,34 +82,17 @@
   }
   try { if (localStorage.getItem('halListeAcik') === '1') halListeAcKapa(); } catch (e) {}
 
-  // İzmir API'si tarayıcıya açık (CORS *): önce tarayıcı çeker, sunucuya gönderir. Olmazsa form sunucudan dener.
-  var HAL_IZMIR = 'https://openapi.izmir.bel.tr/api/ibb/halfiyatlari/sebzemeyve/';
-  function halBugun() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  function halTarayicidan(tarih, sessiz) {
-    var ctl = new AbortController(); setTimeout(function () { ctl.abort(); }, 10000);
-    return fetch(HAL_IZMIR + tarih, { signal: ctl.signal }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function (veri) {
-        if (!veri || !veri.HalFiyatListesi || !veri.HalFiyatListesi.length) throw 0;
-        return fetch('/hal-fiyatlari/yukle', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('#halCekForm [name=_token]').value },
-          body: JSON.stringify({ kaynak: 'izmir', tarih: tarih, veri: veri, sessiz: sessiz ? 1 : 0 }) }).then(function (r) { return r.json(); });
-      });
-  }
-  var halGonderildi = false;
+  // İzmir: önce tarayıcı çeker (rkHalTarayicidan, partials/hal_oto — sunucu API'ye bağlanamıyor). Olmazsa form sunucudan dener.
+  // Bugünün bülteni yoksa otomatik çekim de partials/hal_oto'da (tüm panel sayfalarında).
   function halSimdiCek(f) {
-    if (halGonderildi) return true;
     var b = f.querySelector('[type=submit]'); b.disabled = true; b.style.opacity = .75;
     b.innerHTML = '<span class="material-icons-outlined" style="color:#fff;font-size:18px;animation:halDon 1s linear infinite">sync</span> Çekiliyor…';
-    if (f.kaynak.value !== 'izmir') { halGonderildi = true; return true; }
-    halTarayicidan(f.tarih.value || halBugun(), false)
+    if (f.kaynak.value !== 'izmir' || !window.rkHalTarayicidan) return true;
+    window.rkHalTarayicidan(f.tarih.value || window.rkHalBugun(), false)
       .then(function (s) { if (!s || !s.ok) throw 0; location.href = '/hal-fiyatlari'; })
-      .catch(function () { halGonderildi = true; b.disabled = false; f.submit(); });
+      .catch(function () { f.submit(); }); // form.submit() onsubmit'i tekrar çağırmaz
     return false;
   }
-  @if (!$hal->where('kaynak', 'api')->where('tarih', date('Y-m-d'))->count())
-  // bugünün bülteni yok → arka planda sessizce çek, gelirse sayfayı yenile
-  try { if (sessionStorage.getItem('halOto') !== halBugun()) { sessionStorage.setItem('halOto', halBugun());
-    halTarayicidan(halBugun(), true).then(function (s) { if (s && s.ok) location.reload(); }).catch(function () {}); } } catch (e) {}
-  @endif
 </script>
 
 {{-- "SEN vs HAL" karşılaştırma --}}
