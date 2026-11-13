@@ -34,7 +34,11 @@
       </select></div>
     <div><label class="rk-lbl" style="margin-top:0">Tarih (ops.)</label><input type="date" name="tarih" class="rk-inp"></div>
     <button type="submit" class="rk-btn" style="background:#059669;padding:11px 16px"><span class="material-icons-outlined" style="color:#fff;font-size:18px">cloud_download</span> Şimdi Çek</button>
-    <button type="button" id="halListeBtn" class="rk-btn bos" onclick="halListeAcKapa()" style="padding:11px 16px;color:#059669;border-color:color-mix(in srgb,#059669 40%,transparent)"><span class="material-icons-outlined" style="font-size:18px">list_alt</span> Hal Fiyatları ({{ $hal->count() }}) <span class="material-icons-outlined" id="halListeOk" style="font-size:18px">expand_more</span></button>
+    <style>.hal-sekme{padding:11px 16px;color:#059669;border-color:color-mix(in srgb,#059669 40%,transparent)} .hal-sekme.aktif{background:#059669;color:#fff;border-color:#059669} .hal-sekme.aktif .material-icons-outlined{color:#fff}</style>
+    <div style="display:flex;gap:6px">
+      <button type="button" id="halSekmeKiyas" class="rk-btn bos hal-sekme aktif" onclick="halSekme('kiyas')"><span class="material-icons-outlined" style="font-size:18px">compare_arrows</span> Sen vs Hal ({{ $kiyas->count() }})</button>
+      <button type="button" id="halSekmeListe" class="rk-btn bos hal-sekme" onclick="halSekme('liste')"><span class="material-icons-outlined" style="font-size:18px">list_alt</span> Hal Fiyatları ({{ $hal->count() }})</button>
+    </div>
   </form>
   <div class="rk-sub2" style="font-size:11px;max-width:300px">Antalya'nın açık API'si yok (sadece bülten). En yakın güvenilir referans İzmir/Balıkesir; fiyatı <b>trend/bant kozu</b> olarak kullan. Sayfayı her gün ilk açışta otomatik çekilir.</div>
 </div>
@@ -70,17 +74,19 @@
   @endif
 </div>
 <script>
-  function halListeAcKapa() {
-    var el = document.getElementById('halListe'), acik = el.style.display === 'none';
-    el.style.display = acik ? '' : 'none';
-    document.getElementById('halListeOk').textContent = acik ? 'expand_less' : 'expand_more';
-    try { localStorage.setItem('halListeAcik', acik ? '1' : '0'); } catch (e) {}
+  // iki sekme: Sen vs Hal (varsayılan) ↔ Hal Fiyatları listesi
+  function halSekme(s) {
+    var liste = s === 'liste';
+    document.getElementById('halListe').style.display = liste ? '' : 'none';
+    document.getElementById('halKiyas').style.display = liste ? 'none' : '';
+    document.getElementById('halSekmeListe').classList.toggle('aktif', liste);
+    document.getElementById('halSekmeKiyas').classList.toggle('aktif', !liste);
+    try { localStorage.setItem('halSekme', s); } catch (e) {}
   }
   function halListeSuz(q) {
     q = q.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase().trim();
     document.querySelectorAll('#halListe tbody tr').forEach(function (tr) { tr.style.display = !q || tr.dataset.ad.indexOf(q) > -1 ? '' : 'none'; });
   }
-  try { if (localStorage.getItem('halListeAcik') === '1') halListeAcKapa(); } catch (e) {}
 
   // İzmir: önce tarayıcı çeker (rkHalTarayicidan, partials/hal_oto — sunucu API'ye bağlanamıyor). Olmazsa form sunucudan dener.
   // Bugünün bülteni yoksa otomatik çekim de partials/hal_oto'da (tüm panel sayfalarında).
@@ -96,6 +102,7 @@
 </script>
 
 {{-- "SEN vs HAL" karşılaştırma --}}
+<div id="halKiyas">
 @if ($kiyas->count())
   <div class="rk-bolum"><span class="cubuk" style="background:var(--kirmizi)"></span><span class="b">Sen vs Hal</span>
     <span class="rk-rozet" style="color:var(--kirmizi);background:color-mix(in srgb,var(--kirmizi) 13%,transparent);border-color:color-mix(in srgb,var(--kirmizi) 40%,transparent)">{{ $kiyas->where('fark','>',0)->count() }} fazla</span></div>
@@ -122,6 +129,8 @@
 @elseif ($hal->count())
   <div class="rk-card" style="text-align:center;padding:22px;margin-bottom:22px"><div class="rk-sub">Hal fiyatı girdin ama ada göre eşleşen malzeme/alış bulunamadı. Hal ürün adını malzeme adına benzet (ör. "Domates").</div></div>
 @endif
+</div>
+<script>try { if (localStorage.getItem('halSekme') === 'liste') halSekme('liste'); } catch (e) {}</script>
 
 {{-- Hal fiyatı gir --}}
 <div class="rk-card" style="margin-bottom:18px">
