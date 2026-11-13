@@ -140,7 +140,7 @@ if (!function_exists('_copilotCevap')) {
             return ['cevap' => "Son 30 günün en iyi personelleri: {$l}.", 'kaynak' => 'adisyonlar'];
         }
         if ($has(['kritik', 'stok', 'biten', 'azalan'])) {
-            $r = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($sid) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $sid); })
+            $r = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->leftJoin('stok_hareketleri', function ($j) use ($sid) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $sid); })
                 ->select('malzemeler.ad', DB::raw('COALESCE(SUM(stok_hareketleri.miktar),0) as st'), 'malzemeler.kritik_stok')
                 ->groupBy('malzemeler.id', 'malzemeler.ad', 'malzemeler.kritik_stok')
                 ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->limit(6)->get();
@@ -335,7 +335,7 @@ Route::get('/dashboard', function () {
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
 
     // --- Kritik stoklar (defterden turetilen anlik stok < kritik) ---
-    $kritikStoklar = DB::table('malzemeler')
+    $kritikStoklar = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _webSubeId(), 'malzemeler.id')
         ->leftJoin('stok_hareketleri', function ($j) use ($subeId) {
             $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $subeId);
         })
@@ -4156,12 +4156,12 @@ Route::get('/recete', function () {
                     'maliyet' => round($mal, 2), 'food_cost' => $fc, 'receteli' => isset($receteliSet[$u->id])];
             });
         $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
-        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get()
+        $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _aktifSubeId(), 'malzemeler.id')->orderBy('ad')->get()
             ->map(fn ($m) => (object) ['id' => (int) $m->id, 'ad' => $m->ad, 'temel_birim_id' => (int) $m->temel_birim_id,
                 'guncel_maliyet' => (float) $m->guncel_maliyet, 'birim' => $birimKis[$m->temel_birim_id] ?? '']);
         $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma', 'tip']);
         $kalemSay = DB::table('recete_kalemleri')->selectRaw('recete_id, COUNT(*) c')->groupBy('recete_id')->pluck('c', 'recete_id');
-        $yarimamuller = DB::table('receteler')->where('tip', 'yari_mamul')->orderBy('ad')->get()
+        $yarimamuller = _katalogFiltre(DB::table('receteler'), 'recete', _aktifSubeId(), 'receteler.id')->where('tip', 'yari_mamul')->orderBy('ad')->get()
             ->map(function ($rec) use ($birimKis, $kalemSay) {
                 $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
                 $toplam = _restoReceteToplamMaliyet($rec->id);
@@ -4200,8 +4200,8 @@ Route::get('/alis-fatura', function (Request $r) {
                     return $f;
                 });
         }
-        $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
-        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+        $tedarikciler = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', _aktifSubeId(), 'tedarikciler.id')->orderBy('ad')->get(['id', 'ad']);
+        $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _aktifSubeId(), 'malzemeler.id')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
         $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
     } catch (\Throwable $e) {}
     return view('alis_fatura', compact('faturalar', 'tedarikciler', 'malzemeler', 'birimler', 'ay', 'duzenleyebilir'));
@@ -4211,13 +4211,13 @@ Route::get('/stok/malzeme', function () {
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
     // Stok toplamini alt-sorgu ile al (GROUP BY / ONLY_FULL_GROUP_BY sorunu olmasin)
     // SUBE-IZOLASYONU: stok seviyesi stok_hareketleri.sube_id ile bu subeye filtreli (malzeme listesi paylasimli).
-    $malzemeler = DB::table('malzemeler')
+    $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _aktifSubeId(), 'malzemeler.id')
         ->leftJoin('malzeme_kategorileri', 'malzemeler.kategori_id', '=', 'malzeme_kategorileri.id')
         ->select('malzemeler.*', 'malzeme_kategorileri.ad as kategori',
             DB::raw('(SELECT COALESCE(SUM(sh.miktar),0) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as stok'),
             DB::raw('(SELECT MAX(sh.created_at) FROM stok_hareketleri sh WHERE sh.malzeme_id = malzemeler.id AND sh.sube_id = ' . (int) $subeId . ') as son_hareket'))
         ->orderBy('malzemeler.ad')->get();
-    $receteler = DB::table('receteler')->leftJoin('urunler', 'receteler.urun_id', '=', 'urunler.id')
+    $receteler = _katalogFiltre(DB::table('receteler'), 'recete', _aktifSubeId(), 'receteler.id')->leftJoin('urunler', 'receteler.urun_id', '=', 'urunler.id')
         ->select('receteler.id', 'receteler.ad', 'receteler.tip', DB::raw('(SELECT COUNT(*) FROM recete_kalemleri WHERE recete_kalemleri.recete_id = receteler.id) as kalem_sayisi'))
         ->orderBy('receteler.tip')->get();
     return view('stok.index', compact('malzemeler', 'birimler', 'receteler'));
@@ -4238,7 +4238,7 @@ Route::get('/satinalma', function () {
             'alis_fatura_kalemleri.onceki_fiyat', 'alis_fatura_kalemleri.fiyat_farki_yuzde',
             'alis_fatura_kalemleri.fiyat_farki_tutar', 'alis_faturalari.tarih')
         ->orderByDesc('alis_faturalari.tarih')->limit(25)->get();
-    $tedarikciler = DB::table('tedarikciler')->get();
+    $tedarikciler = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', _aktifSubeId(), 'tedarikciler.id')->get();
     return view('satinalma.index', compact('faturalar', 'uyarilar', 'tedarikciler'));
 });
 
@@ -4739,7 +4739,7 @@ Route::get('/patron', function () {
     } elseif ($dun > 0 && $bugun > $dun * 1.15) {
         $uyarilar[] = ['ikon' => '🚀', 'renk' => 'emerald', 'msg' => 'Bugün ciro, dün aynı saate göre %' . round(($bugun - $dun) / $dun * 100) . ' önde. Harika gidiyor!'];
     }
-    $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($subeId) {
+    $kritik = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $subeId, 'malzemeler.id')->leftJoin('stok_hareketleri', function ($j) use ($subeId) {
             $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $subeId);
         })
         ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
@@ -13640,8 +13640,8 @@ Route::get('/acil-siparis-hazirla', function () {
     };
     foreach ($items as &$it) { $it['secili'] = $bestTed($it['malzeme_id']); $it['birim'] = $it['birim'] ?: ''; }
     unset($it);
-    $tumTedarikci = DB::table('tedarikciler')->where('aktif', 1)->orderByDesc('anlasmali')->orderBy('ad')->get(['id', 'ad', 'anlasmali']);
-    $tumMalzeme = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+    $tumTedarikci = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->where('aktif', 1)->orderByDesc('anlasmali')->orderBy('ad')->get(['id', 'ad', 'anlasmali']);
+    $tumMalzeme = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->where('stok_takipli', 1)->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
     return view('acil_siparis_hazirla', ['satirlar' => $items, 'tumTedarikci' => $tumTedarikci, 'tumMalzeme' => $tumMalzeme, 'birimler' => $birim, 'talepId' => $talepId]);
 });
 Route::post('/acil-siparis-gec', function (Request $r) {
@@ -15486,7 +15486,7 @@ if (!function_exists('_rfqTelefondanBul')) {
         $son10 = substr(preg_replace('/\D/', '', explode('@', (string) $from)[0]), -10);
         if (strlen($son10) < 10) return null; // LID vb. → numara yok
         $tedIds = [];
-        foreach (DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->get(['id', 'telefon']) as $t) {
+        foreach (_katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->whereNotNull('telefon')->where('telefon', '!=', '')->get(['id', 'telefon']) as $t) {
             if (substr(preg_replace('/\D/', '', $t->telefon), -10) === $son10) $tedIds[] = (int) $t->id;
         }
         if (!$tedIds) return null;
@@ -15838,6 +15838,7 @@ Route::post('/rfq-test-kur', function (Request $r) {
             if (Schema::hasColumn('malzemeler', 'temel_birim_id')) $kol['temel_birim_id'] = $birimId;
             if (Schema::hasColumn('malzemeler', 'sube_id')) $kol['sube_id'] = $sid;
             $mid = (int) DB::table('malzemeler')->insertGetId($kol);
+            _katalogSahiplen('malzeme', $mid, $sid);
         }
         // Test tedarikçisi — maili varsa departmanın bağlı mailine ayarla (RFQ kendi kutuna düşsün)
         $testMail = null;
@@ -15847,6 +15848,7 @@ Route::post('/rfq-test-kur', function (Request $r) {
             $tkol = ['ad' => 'TEST Tedarik AŞ', 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
             foreach (['email' => $testMail, 'telefon' => null, 'yetkili' => 'Test Yetkili', 'anlasmali' => 1] as $k => $v) if (Schema::hasColumn('tedarikciler', $k)) $tkol[$k] = $v;
             $tid = (int) DB::table('tedarikciler')->insertGetId($tkol);
+            _katalogSahiplen('tedarikci', $tid, $sid);
         } elseif ($testMail && Schema::hasColumn('tedarikciler', 'email')) {
             DB::table('tedarikciler')->where('id', $tid)->update(['email' => $testMail]);
         }
@@ -17635,7 +17637,7 @@ Route::get('/tedarikci', function () {
             if (Schema::hasTable('alis_faturalari')) $alis = DB::table('alis_faturalari')->where('sube_id', $sid)->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
             $kolonlar = ['id', 'ad', 'telefon', 'aciklama'];
             foreach (['unvan', 'vkn_tckn', 'vergi_dairesi', 'adres', 'yetkili', 'email', 'iban', 'odeme_vade_gun', 'aktif', 'cari_id', 'anlasmali'] as $k) { if (Schema::hasColumn('tedarikciler', $k)) $kolonlar[] = $k; }
-            $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get($kolonlar)->map(function ($x) use ($alis) {
+            $tedarikciler = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', _webSubeId(), 'tedarikciler.id')->orderBy('ad')->get($kolonlar)->map(function ($x) use ($alis) {
                 $a = $alis[$x->id] ?? null; $x->toplam_alis = $a ? (float) $a->t : 0.0; $x->fatura_sayisi = $a ? (int) $a->c : 0; return $x;
             });
         }
@@ -17655,9 +17657,11 @@ Route::post('/tedarikci/kaydet', function (Request $r) {
         if (Schema::hasColumn('tedarikciler', 'odeme_vade_gun')) $veri['odeme_vade_gun'] = $r->filled('odeme_vade_gun') ? max(0, (int) $r->input('odeme_vade_gun')) : null;
         if (Schema::hasColumn('tedarikciler', 'anlasmali')) $veri['anlasmali'] = $r->input('anlasmali') ? 1 : 0;
         $id = (int) $r->id;
+        if ($id > 0 && !_katalogSahibiMi('tedarikci', $id, _webSubeId())) return redirect('/tedarikci')->with('ted_hata', 'Bu kayıt işletmenize ait değil.');
         if ($id > 0) { DB::table('tedarikciler')->where('id', $id)->update($veri); return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi güncellendi.'); }
         $veri['created_at'] = now();
-        DB::table('tedarikciler')->insert($veri);
+        $yeniTed = DB::table('tedarikciler')->insertGetId($veri);
+        _katalogSahiplen('tedarikci', $yeniTed, _webSubeId()); // yeni tedarikçi yalnız bu işletmeye görünür
         return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi eklendi.');
     } catch (\Throwable $e) { return redirect('/tedarikci')->with('ted_hata', 'Kaydedilemedi.'); }
 });
@@ -17666,6 +17670,7 @@ Route::post('/tedarikci/sil', function (Request $r) {
         if (!Schema::hasTable('tedarikciler')) return redirect('/tedarikci')->with('ted_hata', 'Tedarikçi tablosu bulunamadı.');
         $id = (int) $r->id;
         if ($id <= 0) return redirect('/tedarikci')->with('ted_hata', 'Geçersiz kayıt.');
+        if (!_katalogSahibiMi('tedarikci', $id, _webSubeId())) return redirect('/tedarikci')->with('ted_hata', 'Bu kayıt işletmenize ait değil.');
         if (Schema::hasTable('alis_faturalari') && DB::table('alis_faturalari')->where('tedarikci_id', $id)->exists()) return redirect('/tedarikci')->with('ted_hata', 'Bu tedarikçinin faturaları var, silinemez.');
         DB::table('tedarikciler')->where('id', $id)->delete();
         return redirect('/tedarikci')->with('ted_ok', 'Tedarikçi silindi.');
@@ -18061,8 +18066,8 @@ Route::get('/satinalma-siparis-detay', function (Request $r) {
 
         $d['s'] = $s;
         $d['tedarikci'] = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
-        $d['tedarikciler'] = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'email as eposta']); // kolon adı email (eskiden hata → sipariş detayı boş açılıyordu)
-        $d['malzemeler'] = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id', 'kritik_stok', 'guncel_maliyet']);
+        $d['tedarikciler'] = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->orderBy('ad')->get(['id', 'ad', 'telefon', 'email as eposta']); // kolon adı email (eskiden hata → sipariş detayı boş açılıyordu)
+        $d['malzemeler'] = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id', 'kritik_stok', 'guncel_maliyet']);
         $d['birimler'] = DB::table('birimler')->get(['id', 'ad', 'kisaltma']);
         $birim = DB::table('birimler')->pluck('kisaltma', 'id');
         $malAd = DB::table('malzemeler')->pluck('ad', 'id');
@@ -18685,7 +18690,7 @@ Route::get('/siparis-onerisi', function () {
         $tuketim = DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'tuketim')->where('created_at', '>=', $from)->selectRaw('malzeme_id, SUM(-miktar) t')->groupBy('malzeme_id')->pluck('t', 'malzeme_id');
         $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
         $kolon = ['id', 'ad', 'temel_birim_id', 'kritik_stok', 'stok_takipli', 'guncel_maliyet']; if ($hedefVar) $kolon[] = 'hedef_stok';
-        $malz = DB::table('malzemeler')->where('stok_takipli', 1)->get($kolon);
+        $malz = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->where('stok_takipli', 1)->get($kolon);
         $katalogVar = Schema::hasTable('tedarikci_malzeme');
         $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
         $oner = collect();
@@ -19653,7 +19658,7 @@ if (!function_exists('_satinalmaBaglam')) {
             $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
             $kol = ['id', 'ad', 'kritik_stok']; if ($hedefVar) $kol[] = 'hedef_stok';
             $oneri = 0;
-            foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+            foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->where('stok_takipli', 1)->get($kol) as $m) {
                 $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
                 if ($kritik > 0 && $mevcut <= $kritik) $b['kritik'][] = $m->ad;
                 $ref = $hedef > 0 ? $hedef : $kritik;
@@ -21122,7 +21127,7 @@ if (!function_exists('_satinalmaAsistanEylemHazirla')) {
                 $tedSayi = 0;
                 try {
                     if (Schema::hasTable('tedarikciler')) {
-                        $tedSayi = (int) DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->count();
+                        $tedSayi = (int) _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->whereNotNull('telefon')->where('telefon', '!=', '')->count();
                     }
                 } catch (\Throwable $e) {}
                 if ($tedSayi === 0) return ['ok' => false, 'hata' => 'Telefon numarası kayıtlı tedarikçi yok.'];
@@ -21235,7 +21240,7 @@ if (!function_exists('_satinalmaAsistanEylemUygula')) {
                 if (!$mid) return ['ok' => false, 'mesaj' => 'Malzeme belirtilmedi.'];
                 $isletme = (string) (DB::table('subeler')->where('id', $sid)->value('ad') ?: 'İşletme');
                 $gon = 0; $telsiz = 0;
-                foreach (DB::table('tedarikciler')->whereNotNull('telefon')->where('telefon', '!=', '')->get() as $t) {
+                foreach (_katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->whereNotNull('telefon')->where('telefon', '!=', '')->get() as $t) {
                     $msg = ($t->ad ? $t->ad : 'Merhaba') . ", {$isletme} olarak '{$mad}' için güncel birim fiyatınızı ve teslim sürenizi paylaşabilir misiniz? Teşekkürler.";
                     if (function_exists('_restoWaGonder') && _restoWaGonder($sid, $t->telefon, $msg)) $gon++; else $telsiz++;
                 }
@@ -21490,7 +21495,7 @@ if (!function_exists('_satinalmaExportUret')) {
                 $stok = DB::table('stok_hareketleri')->where('sube_id', $sid)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
                 $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
                 $kol = ['id', 'ad', 'kritik_stok']; if ($hedefVar) $kol[] = 'hedef_stok';
-                foreach (DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get($kol) as $m) {
+                foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->where('stok_takipli', 1)->orderBy('ad')->get($kol) as $m) {
                     $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
                     $ref = $hedef > 0 ? $hedef : $kritik;
                     if ($ref <= 0 || $mevcut >= $ref) continue;
@@ -21853,7 +21858,7 @@ Route::get('/api/patron/siparis-onerisi', function (Request $r) {
         $kol = ['id', 'ad', 'temel_birim_id', 'kritik_stok', 'stok_takipli', 'guncel_maliyet']; if ($hedefVar) $kol[] = 'hedef_stok';
         $katalogVar = Schema::hasTable('tedarikci_malzeme'); $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
         $oner = [];
-        foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+        foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $p->sube_id, 'malzemeler.id')->where('stok_takipli', 1)->get($kol) as $m) {
             $mevcut = (float) ($stok[$m->id] ?? 0); $hedef = $hedefVar ? (float) $m->hedef_stok : 0; $kritik = (float) $m->kritik_stok;
             $ref = $hedef > 0 ? $hedef : ($kritik > 0 ? $kritik * 2 : 0);
             if ($ref <= 0 || $mevcut >= ($hedef > 0 ? $hedef : $kritik)) continue;
@@ -22445,7 +22450,7 @@ Route::get('/sayim', function () {
         $birim = Schema::hasTable('birimler') ? DB::table('birimler')->pluck('kisaltma', 'id') : collect();
         $kat = Schema::hasTable('malzeme_kategorileri') ? DB::table('malzeme_kategorileri')->pluck('ad', 'id') : collect();
         if (Schema::hasTable('malzemeler')) {
-            $malzemeler = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => ['malzeme_id' => (int) $m->id, 'ad' => $m->ad,
+            $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _webSubeId(), 'malzemeler.id')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => ['malzeme_id' => (int) $m->id, 'ad' => $m->ad,
                 'kategori' => $kat[$m->kategori_id] ?? '—', 'birim' => $birim[$m->temel_birim_id] ?? '', 'teorik' => round((float) ($mevcut[$m->id] ?? 0), 3), 'guncel_maliyet' => (float) $m->guncel_maliyet])->values()->all();
         }
         if (Schema::hasTable('sayimlar') && Schema::hasTable('sayim_kalemleri')) {
@@ -22508,7 +22513,7 @@ Route::get('/barkod', function () {
     $urunler = []; $malzemeler = []; $barkodlar = [];
     try {
         $urunler = DB::table('urunler')->orderBy('ad')->get(['id', 'ad']);
-        $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad']);
+        $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', _webSubeId(), 'malzemeler.id')->orderBy('ad')->get(['id', 'ad']);
         $rows = DB::table('barkodlar')->where('sube_id', $sid)->orderByDesc('id')->get(['id', 'barkod', 'tur', 'hedef_id']);
         $urunAd = DB::table('urunler')->pluck('ad', 'id'); $malAd = DB::table('malzemeler')->pluck('ad', 'id');
         foreach ($rows as $b) $b->hedef_ad = $b->tur === 'urun' ? ($urunAd[$b->hedef_id] ?? null) : ($malAd[$b->hedef_id] ?? null);
@@ -23343,7 +23348,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     }
     try {
         // Ucuz gate: kritik malzeme var mi? (yoksa agir risk hesabini hic calistirma)
-        $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($p) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $p->sube_id); })
+        $kritik = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $p->sube_id, 'malzemeler.id')->leftJoin('stok_hareketleri', function ($j) use ($p) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $p->sube_id); })
             ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
             ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
         if ($kritik > 0) {
@@ -24939,6 +24944,8 @@ if (!function_exists('_yariMamulMirror')) {
             'kritik_stok' => 0, 'stok_takipli' => 1, 'guncel_maliyet' => round($birimMaliyet, 4),
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        // yarı mamülün malzeme aynası, reçetesinin sahiplerine görünür
+        try { foreach (DB::table('katalog_sahip')->where('tur', 'recete')->where('kayit_id', $receteId)->pluck('sahip') as $_sh) DB::table('katalog_sahip')->insertOrIgnore(['tur' => 'malzeme', 'kayit_id' => $mid, 'sahip' => $_sh, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
         DB::table('receteler')->where('id', $receteId)->update(['malzeme_id' => $mid]);
         return (int) $mid;
     }
@@ -25257,7 +25264,7 @@ if (!function_exists('_kritikStokListesi')) {
             $hedefVar = Schema::hasColumn('malzemeler', 'hedef_stok');
             $kol = ['id', 'ad', 'kritik_stok', 'temel_birim_id']; if ($hedefVar) $kol[] = 'hedef_stok';
             $birim = DB::table('birimler')->pluck('kisaltma', 'id');
-            foreach (DB::table('malzemeler')->where('stok_takipli', 1)->get($kol) as $m) {
+            foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->where('stok_takipli', 1)->get($kol) as $m) {
                 $mevcut = (float) ($stok[$m->id] ?? 0); $kritik = (float) $m->kritik_stok; $hedef = $hedefVar ? (float) ($m->hedef_stok ?? 0) : 0;
                 if ($kritik <= 0 || $mevcut > $kritik) continue;
                 $hedefRef = $hedef > 0 ? $hedef : $kritik * 2;
@@ -25656,7 +25663,7 @@ Route::get('/satinalma-talep', function () {
         'yeni' => $talepler->where('durum', 'yeni')->count(),
         'onayda' => $talepler->whereIn('durum', ['teklif', 'onayda'])->count(),
     ];
-    $malzemeler = DB::table('malzemeler')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
+    $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
         ->orderBy('malzemeler.ad')->get(['malzemeler.id', 'malzemeler.ad', 'birimler.kisaltma as birim_kisaltma']);
     $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
     $waTel = resto_ayar_al('satinalma_wa_tel_' . $sid, '');
@@ -25999,7 +26006,7 @@ Route::get('/api/patron/talep-detay', function (Request $r) {
     $tedKol = ['id', 'ad'];
     if (Schema::hasColumn('tedarikciler', 'anlasmali')) $tedKol[] = 'anlasmali';
     if (Schema::hasColumn('tedarikciler', 'telefon')) $tedKol[] = 'telefon';
-    $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get($tedKol);
+    $tedarikciler = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $p->sube_id, 'tedarikciler.id')->orderBy('ad')->get($tedKol);
     // Satın alma için: teklif istenen tedarikçiler (bağlantı + ulaşıldı mı) ve siparişte önerilecek teslim tarihleri
     $satinalmaGorur = in_array(($p->rol ?? ''), ['sahip', 'mudur', 'satinalmaci'], true) || _talepUstYonetimMu($p, $p->sube_id);
     $rfq = []; $teslimOneri = [];
@@ -26064,13 +26071,13 @@ Route::post('/satinalma-talep/fiyat-arastir', function (Request $r) {
     if ($r->input('sadece_bagsiz')) {
         if (!$bagsiz) return response()->json(['ok' => false, 'hata' => 'Tedarikçisiz kalem kalmadı.']);
         $supMap = [];
-        try { foreach (DB::table('tedarikciler')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->pluck('id') as $tid) $supMap[(int) $tid] = $bagsiz; } catch (\Throwable $e) {}
+        try { foreach (_katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $p->sube_id, 'tedarikciler.id')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->pluck('id') as $tid) $supMap[(int) $tid] = $bagsiz; } catch (\Throwable $e) {}
         if (!$supMap) return response()->json(['ok' => false, 'hata' => 'Telefonu veya e-postası kayıtlı aktif tedarikçi yok.']);
         $bagsiz = [];
     }
     $bagsizAd = array_column($bagsiz, 'ad');
     $tumSay = []; // onay penceresinde kime gideceği AÇIKÇA görünsün
-    try { $tumSay = DB::table('tedarikciler')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->orderBy('ad')->pluck('ad')->all(); } catch (\Throwable $e) {}
+    try { $tumSay = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $p->sube_id, 'tedarikciler.id')->where('aktif', 1)->where(function ($w) { $w->where(function ($x) { $x->whereNotNull('telefon')->where('telefon', '!=', ''); })->orWhere(function ($x) { $x->whereNotNull('email')->where('email', '!=', ''); }); })->orderBy('ad')->pluck('ad')->all(); } catch (\Throwable $e) {}
     if (!$supMap) return response()->json(['ok' => false, 'bagsiz' => $bagsizAd, 'tum_tedarikci' => $tumSay, 'hata' => 'Bu ürünlere bağlı tedarikçi yok (tedarikçi-malzeme kataloğu boş).']);
     $res = ['gonderilen' => 0, 'mail' => 0, 'wa' => 0, 'ulasilamayan' => []];
     if (function_exists('_rfqSupMapGonder')) $res = _rfqSupMapGonder($sid, $supMap, $id, 0);
@@ -26414,10 +26421,10 @@ Route::get('/api/patron/talep-liste', function (Request $r) {
         'onayda' => $talepler->whereIn('durum', ['teklif', 'onayda'])->count(),
         'tamamlanan' => $talepler->where('durum', 'tamamlandi')->count(),
     ];
-    $malzemeler = DB::table('malzemeler')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
+    $malzemeler = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->leftJoin('birimler', 'malzemeler.temel_birim_id', '=', 'birimler.id')
         ->orderBy('malzemeler.ad')->get(['malzemeler.id', 'malzemeler.ad', 'birimler.kisaltma as birim_kisaltma']);
     $birimler = DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma']);
-    $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
+    $tedarikciler = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $sid, 'tedarikciler.id')->orderBy('ad')->get(['id', 'ad']);
     return response()->json([
         'ok' => true,
         'talepler' => $talepler->values(),
@@ -26497,7 +26504,7 @@ function _restoUretimRiski($subeId, $esik = 15)
     $urunAd = DB::table('urunler')->pluck('ad', 'id'); // ürün adları tek sorQuda (döngü içi N+1 yerine)
     // 1) Kritik malzemeler (stok <= kritik esik)
     $kritik = [];
-    foreach (DB::table('malzemeler')->where('stok_takipli', 1)->where('kritik_stok', '>', 0)->get(['id', 'ad', 'kritik_stok', 'temel_birim_id']) as $m) {
+    foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $subeId, 'malzemeler.id')->where('stok_takipli', 1)->where('kritik_stok', '>', 0)->get(['id', 'ad', 'kritik_stok', 'temel_birim_id']) as $m) {
         $mevcut = (float) ($stok[$m->id] ?? 0);
         if ($mevcut <= (float) $m->kritik_stok) {
             $kritik[] = ['id' => (int) $m->id, 'ad' => $m->ad, 'mevcut' => round($mevcut, 2), 'kritik' => (float) $m->kritik_stok, 'birim' => $birimAd[$m->temel_birim_id] ?? ''];
@@ -26541,7 +26548,7 @@ Route::get('/api/patron/stok-meta', function (Request $r) {
     return ['ok' => 1,
         'birimler' => DB::table('birimler')->orderBy('id')->get(['id', 'ad', 'kisaltma', 'tip']),
         'kategoriler' => DB::table('malzeme_kategorileri')->orderBy('ad')->get(['id', 'ad']),
-        'tedarikciler' => DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']),
+        'tedarikciler' => _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $p->sube_id, 'tedarikciler.id')->orderBy('ad')->get(['id', 'ad']),
     ];
 });
 
@@ -26553,7 +26560,7 @@ Route::get('/api/patron/malzemeler', function (Request $r) {
     $mevcut = _restoStokMevcut($p->sube_id);
     $birimler = DB::table('birimler')->pluck('kisaltma', 'id');
     $katlar = DB::table('malzeme_kategorileri')->pluck('ad', 'id');
-    $liste = DB::table('malzemeler')->orderBy('ad')->get();
+    $liste = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $p->sube_id, 'malzemeler.id')->orderBy('ad')->get();
     $toplamDeger = 0.0; $kritikSayi = 0;
     $rows = $liste->map(function ($m) use ($mevcut, $birimler, $katlar, &$toplamDeger, &$kritikSayi) {
         $stok = (float) ($mevcut[$m->id] ?? 0);
@@ -26595,6 +26602,7 @@ Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
     $veri = ['ad' => $ad, 'kategori_id' => (int) $r->kategori_id ?: null, 'temel_birim_id' => $temel,
         'kritik_stok' => max(0, (float) $r->kritik_stok), 'stok_takipli' => $r->stok_takipli === '0' ? 0 : 1, 'updated_at' => now()];
     $id = (int) $r->id;
+    if ($id > 0 && !_katalogSahibiMi('malzeme', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     if ($id > 0) {
         DB::table('malzemeler')->where('id', $id)->update($veri);
         return ['ok' => 1, 'id' => $id];
@@ -26603,6 +26611,7 @@ Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
     $veri['guncel_maliyet'] = max(0, (float) $r->guncel_maliyet);
     $veri['created_at'] = now();
     $yeni = DB::table('malzemeler')->insertGetId($veri);
+    _katalogSahiplen('malzeme', $yeni, $p->sube_id); // yeni malzeme kartı yalnız bu işletmeye görünür
     // TEK EKRAN: malzeme eklenirken opsiyonel başlangıç stok + barkod da işlensin (web "+ Malzeme" formu)
     $bs = (float) $r->input('baslangic_stok', 0);
     if ($bs > 0) {
@@ -26629,6 +26638,7 @@ Route::post('/api/patron/malzeme-sil', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $id = (int) $r->id;
+    if (!_katalogSahibiMi('malzeme', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     if (DB::table('recete_kalemleri')->where('malzeme_id', $id)->exists()) return ['ok' => 0, 'hata' => 'Bu malzeme bir reçetede kullanılıyor, önce reçeteden çıkarın.'];
     // Malzeme kartı tüm şubelerde ortak: başka şubede hareketi/stoku varsa silmek onların kaydını bozar
     if (DB::table('stok_hareketleri')->where('malzeme_id', $id)->where('sube_id', '!=', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bu malzeme başka bir şubede de kullanılıyor (stok/transfer kaydı var); silinemez.'];
@@ -26694,7 +26704,7 @@ Route::get('/api/patron/sayim-yeni', function (Request $r) {
     $mevcut = _restoStokMevcut($p->sube_id);
     $birim = DB::table('birimler')->pluck('kisaltma', 'id');
     $kat = DB::table('malzeme_kategorileri')->pluck('ad', 'id');
-    $rows = DB::table('malzemeler')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => [
+    $rows = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $p->sube_id, 'malzemeler.id')->where('stok_takipli', 1)->orderBy('ad')->get()->map(fn ($m) => [
         'malzeme_id' => (int) $m->id, 'ad' => $m->ad, 'kategori' => $kat[$m->kategori_id] ?? '—',
         'birim' => $birim[$m->temel_birim_id] ?? '', 'teorik' => round((float) ($mevcut[$m->id] ?? 0), 3), 'guncel_maliyet' => (float) $m->guncel_maliyet,
     ]);
@@ -27214,7 +27224,7 @@ Route::get('/api/patron/tedarikciler', function (Request $r) {
         ->selectRaw('tedarikci_id, SUM(toplam) t, COUNT(*) c, MAX(tarih) son')->groupBy('tedarikci_id')->get()->keyBy('tedarikci_id');
     $tedKolonlar = ['id', 'ad', 'telefon', 'aciklama'];
     if (Schema::hasColumn('tedarikciler', 'anlasmali')) $tedKolonlar[] = 'anlasmali';
-    $liste = DB::table('tedarikciler')->orderBy('ad')->get($tedKolonlar)->map(function ($x) use ($alis) {
+    $liste = _katalogFiltre(DB::table('tedarikciler'), 'tedarikci', $p->sube_id, 'tedarikciler.id')->orderBy('ad')->get($tedKolonlar)->map(function ($x) use ($alis) {
         $a = $alis[$x->id] ?? null;
         return ['id' => (int) $x->id, 'ad' => $x->ad, 'telefon' => $x->telefon, 'aciklama' => $x->aciklama,
             'anlasmali' => (int) ($x->anlasmali ?? 0),
@@ -27231,15 +27241,19 @@ Route::post('/api/patron/tedarikci-kaydet', function (Request $r) {
     $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'aciklama' => $r->aciklama ? (string) $r->aciklama : null, 'updated_at' => now()];
     if (Schema::hasColumn('tedarikciler', 'anlasmali')) $veri['anlasmali'] = $r->input('anlasmali') ? 1 : 0;
     $id = (int) $r->id;
+    if ($id > 0 && !_katalogSahibiMi('tedarikci', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     if ($id > 0) { DB::table('tedarikciler')->where('id', $id)->update($veri); return ['ok' => 1, 'id' => $id]; }
     $veri['created_at'] = now();
-    return ['ok' => 1, 'id' => DB::table('tedarikciler')->insertGetId($veri)];
+    $yeniTed = DB::table('tedarikciler')->insertGetId($veri);
+    _katalogSahiplen('tedarikci', $yeniTed, $p->sube_id); // yeni tedarikçi yalnız bu işletmeye görünür
+    return ['ok' => 1, 'id' => $yeniTed];
 });
 
 Route::post('/api/patron/tedarikci-sil', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $id = (int) $r->id;
+    if (!_katalogSahibiMi('tedarikci', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     if (DB::table('alis_faturalari')->where('tedarikci_id', $id)->exists()) return ['ok' => 0, 'hata' => 'Bu tedarikçinin faturaları var, silinemez.'];
     DB::table('tedarikciler')->where('id', $id)->delete();
     return ['ok' => 1];
@@ -27420,7 +27434,7 @@ Route::post('/api/patron/recete-kaydet', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Reçeteyi sadece işletme sahibi düzenleyebilir.'], 403);
     $urunId = (int) $r->urun_id;
-    $urun = DB::table('urunler')->where('id', $urunId)->first();
+    $urun = DB::table('urunler')->where('id', $urunId)->where('sube_id', $p->sube_id)->first(); // yalnız kendi ürünü
     if (!$urun) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $kalemler = json_decode((string) $r->kalemler, true);
     if (!is_array($kalemler)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
@@ -27431,6 +27445,7 @@ Route::post('/api/patron/recete-kaydet', function (Request $r) {
             DB::table('recete_kalemleri')->where('recete_id', $receteId)->delete();
         } else {
             $receteId = DB::table('receteler')->insertGetId(['ad' => $urun->ad . ' Reçetesi', 'tip' => 'urun', 'urun_id' => $urunId, 'verim_miktar' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            _katalogSahiplen('recete', $receteId, $p->sube_id); // yeni reçete bu işletmenin
         }
         foreach ($kalemler as $k) {
             $miktar = (float) ($k['miktar'] ?? 0);
@@ -27479,7 +27494,7 @@ Route::get('/api/patron/yarimamuller', function (Request $r) {
     if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     $birim = DB::table('birimler')->pluck('kisaltma', 'id');
     $kalemSay = DB::table('recete_kalemleri')->selectRaw('recete_id, COUNT(*) c')->groupBy('recete_id')->pluck('c', 'recete_id');
-    $liste = DB::table('receteler')->where('tip', 'yari_mamul')->orderBy('ad')->get()->map(function ($rec) use ($birim, $kalemSay) {
+    $liste = _katalogFiltre(DB::table('receteler'), 'recete', $p->sube_id, 'receteler.id')->where('tip', 'yari_mamul')->orderBy('ad')->get()->map(function ($rec) use ($birim, $kalemSay) {
         $verim = (float) $rec->verim_miktar > 0 ? (float) $rec->verim_miktar : 1.0;
         $toplam = _restoReceteToplamMaliyet($rec->id);
         return ['id' => (int) $rec->id, 'ad' => $rec->ad, 'verim_miktar' => (float) $rec->verim_miktar,
@@ -27535,6 +27550,7 @@ Route::post('/api/patron/yarimamul-kaydet', function (Request $r) {
     $kalemler = json_decode((string) $r->kalemler, true);
     if (!is_array($kalemler)) return ['ok' => 0, 'hata' => 'Geçersiz veri'];
     $id = (int) $r->id;
+    if ($id > 0 && !_katalogSahibiMi('recete', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     return DB::transaction(function () use ($ad, $verim, $verimBirim, $kalemler, $id) {
         if ($id > 0) {
             $rec = DB::table('receteler')->where('id', $id)->where('tip', 'yari_mamul')->first();
@@ -27545,6 +27561,7 @@ Route::post('/api/patron/yarimamul-kaydet', function (Request $r) {
         } else {
             $receteId = DB::table('receteler')->insertGetId(['ad' => $ad, 'tip' => 'yari_mamul', 'urun_id' => null,
                 'verim_miktar' => $verim, 'verim_birim_id' => $verimBirim, 'created_at' => now(), 'updated_at' => now()]);
+            _katalogSahiplen('recete', $receteId, $p->sube_id); // yeni yarı mamül reçetesi bu işletmenin
         }
         foreach ($kalemler as $k) {
             $miktar = (float) ($k['miktar'] ?? 0);
@@ -27569,6 +27586,7 @@ Route::post('/api/patron/yarimamul-sil', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $id = (int) $r->id;
+    if (!_katalogSahibiMi('recete', $id, $p->sube_id)) return ['ok' => 0, 'hata' => 'Bu kayıt işletmenize ait değil.'];
     $kullanan = DB::table('recete_kalemleri')->where('alt_recete_id', $id)->count();
     if ($kullanan > 0) return ['ok' => 0, 'hata' => "Bu yarı mamül $kullanan reçetede kullanılıyor; önce oralardan çıkarın."];
     DB::table('recete_kalemleri')->where('recete_id', $id)->delete();
@@ -33939,5 +33957,7 @@ require __DIR__ . '/fiyat_radari.php';
 require __DIR__ . '/fiyat_anlasma.php';
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
+// ============================ GLOBAL KATALOG SAHİPLİĞİ (malzeme/tedarikçi/reçete şube görünürlüğü) ============================
+require __DIR__ . '/katalog_sahip.php';
 
 

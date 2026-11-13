@@ -339,7 +339,7 @@ class RestoAsistan
         try {
             if (!Schema::hasTable('malzemeler')) return $this->paket_('stok', 'Henüz stok/malzeme kaydı yok.', $niyet);
             $mevcut = DB::table('stok_hareketleri')->where('sube_id', $this->sid())->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
-            $malz = DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'guncel_maliyet', 'stok_takipli']);
+            $malz = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $this->sid(), 'malzemeler.id')->get(['id', 'ad', 'kritik_stok', 'guncel_maliyet', 'stok_takipli']);
             if ($malz->isEmpty()) return $this->paket_('stok', 'Henüz tanımlı malzeme yok. Stok ekranından ekleyebilirsiniz.', $niyet);
             $toplamDeger = 0.0; $kritikler = [];
             foreach ($malz as $m) {
@@ -886,7 +886,7 @@ class RestoAsistan
         try {
             $mevcut = DB::table('stok_hareketleri')->where('sube_id', $subeId)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
             $krit = [];
-            foreach (DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
+            foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $subeId, 'malzemeler.id')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
                 if (!$m->stok_takipli || (float) $m->kritik_stok <= 0) continue;
                 if ((float) ($mevcut[$m->id] ?? 0) <= (float) $m->kritik_stok) $krit[] = $m->ad;
             }
@@ -1095,7 +1095,7 @@ class RestoAsistan
                 try {
                     $mevcut = DB::table('stok_hareketleri')->where('sube_id', $subeId)->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
                     $krit = [];
-                    foreach (DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
+                    foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $subeId, 'malzemeler.id')->get(['id', 'ad', 'kritik_stok', 'stok_takipli']) as $m) {
                         if (!$m->stok_takipli || (float) $m->kritik_stok <= 0) continue;
                         if ((float) ($mevcut[$m->id] ?? 0) <= (float) $m->kritik_stok) $krit[] = $m->ad;
                     }

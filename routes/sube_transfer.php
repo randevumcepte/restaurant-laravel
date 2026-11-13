@@ -407,6 +407,7 @@ if (!function_exists('_trfFinans')) {
             if (_trfKolon('tedarikciler', 'aktif')) $row['aktif'] = 1;
             $tedId = DB::table('tedarikciler')->insertGetId($row);
         } else $tedId = (int) $ted->id;
+        if (function_exists('_katalogSahiplen')) _katalogSahiplen('tedarikci', $tedId, $t->alan_sube_id); // alan işletme bu tedarikçiyi görsün
         $fat = ['sube_id' => $t->alan_sube_id, 'tedarikci_id' => $tedId, 'fatura_no' => $t->transfer_no, 'tarih' => now()->toDateString(), 'toplam' => $brut,
             'durum' => 'onaylandi', 'giren_personel_id' => $p->id ?? null, 'created_at' => now(), 'updated_at' => now()];
         if (_trfKolon('alis_faturalari', 'kdv')) $fat['kdv'] = $kdv;
@@ -524,7 +525,7 @@ Route::get('/sube-transfer', function (Request $r) {
             'kalem' => $ks->count(), 'ozet' => $ks->take(4)->map(fn ($k) => $k->ad . ' ' . rtrim(rtrim(number_format((float) ($k->teslim_alinan ?? $k->gonderilen ?? $k->onaylanan ?? $k->istenen), 3, ',', '.'), '0'), ',') . ' ' . $k->birim)->implode(', '),
             'tutar' => (float) ($t->net_toplam ?: $t->maliyet_toplam)];
     })->values();
-    $mal = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+    $mal = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
     $birim = DB::table('birimler')->pluck('kisaltma', 'id');
     $malzemeler = $mal->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'birim' => (string) ($birim[$m->temel_birim_id] ?? '')])->values();
     $ayar = _trfAyar($sid);
@@ -989,7 +990,7 @@ Route::get('/api/sube-transfer/liste', function (Request $r) {
         'yon' => (int) $t->gonderen_sube_id === $sid ? 'giden' : 'gelen', 'gonderen' => (string) ($ad[$t->gonderen_sube_id] ?? ''), 'alan' => (string) ($ad[$t->alan_sube_id] ?? ''),
         'isteyen' => $t->isteyen_ad, 'tarih' => \Carbon\Carbon::parse($t->created_at)->format('d.m.Y H:i'), 'talep_id' => $t->talep_id,
         'ozet' => ($kal[$t->id] ?? collect())->take(4)->map(fn ($k) => $k->ad)->implode(', '), 'kalem' => ($kal[$t->id] ?? collect())->count()])->values();
-    $mal = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']); $birim = DB::table('birimler')->pluck('kisaltma', 'id');
+    $mal = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']); $birim = DB::table('birimler')->pluck('kisaltma', 'id');
     return response()->json(['ok' => true, 'sube_id' => $sid, 'sube_ad' => (string) ($ad[$sid] ?? ''), 'liste' => $liste, 'ortaklar' => array_values(_transferOrtaklari($sid)),
         'malzemeler' => $mal->map(fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'birim' => (string) ($birim[$m->temel_birim_id] ?? '')])->values()]);
 });
