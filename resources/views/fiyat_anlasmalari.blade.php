@@ -250,6 +250,49 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
   #fa .k .kd{font-size:19px}
   .fap .iki,.fap .uc{grid-template-columns:minmax(0,1fr)}
 }
+
+/* ── Renk katmanı ── */
+#fa{background:radial-gradient(900px 420px at 0% 0%,rgba(124,58,237,.07),transparent 60%),radial-gradient(800px 400px at 100% 10%,rgba(16,185,129,.07),transparent 60%),var(--bg)}
+#fa .hero{background:linear-gradient(120deg,#4338CA 0%,#7C3AED 48%,#C026D3 78%,#0EA5E9 130%);border:0;box-shadow:0 14px 34px rgba(91,33,182,.28)}
+body.koyu #fa .hero{background:linear-gradient(120deg,#312E81 0%,#5B21B6 50%,#86198F 85%,#0369A1 130%)}
+#fa .hero::before{content:'';position:absolute;right:-60px;top:-80px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
+#fa .hero::after{content:'';position:absolute;right:180px;bottom:-110px;width:200px;height:200px;border-radius:50%;background:rgba(52,211,153,.22);filter:blur(10px);pointer-events:none}
+#fa .hero > *{position:relative;z-index:1}
+#fa .hero h2{color:#fff}
+#fa .hero p{color:rgba(255,255,255,.86)}
+#fa .hero-ik{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);box-shadow:none;backdrop-filter:blur(4px)}
+#fa .hero .ekle-btn:not(.ik){background:#fff;color:#5B21B6;box-shadow:0 8px 18px rgba(30,10,60,.25)}
+#fa .hero .ekle-btn.ik,#fa .hero .salt-rozet{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.4);color:#fff}
+#fa .hero .ekle-btn.ik:hover{background:rgba(255,255,255,.24)}
+
+#fa .adim{--ac:#4F46E5;background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 11%,var(--card)),var(--card) 75%);border-color:color-mix(in srgb,var(--ac) 28%,var(--line))}
+#fa .adim:nth-child(2){--ac:#C026D3}
+#fa .adim:nth-child(3){--ac:#10B981}
+#fa .adim .no{background:linear-gradient(135deg,var(--ac),color-mix(in srgb,var(--ac) 60%,#000)) !important;box-shadow:0 5px 12px color-mix(in srgb,var(--ac) 35%,transparent)}
+#fa .adim b{color:color-mix(in srgb,var(--ac) 70%,var(--ink))}
+
+#fa .k{position:relative;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 13%,var(--card)) 0%,var(--card) 70%);border-color:color-mix(in srgb,var(--kr) 30%,var(--line))}
+#fa .k::after{content:'';position:absolute;right:-24px;bottom:-24px;width:84px;height:84px;border-radius:50%;background:color-mix(in srgb,var(--kr) 12%,transparent);pointer-events:none}
+#fa .k .ki{background:linear-gradient(135deg,var(--kr),color-mix(in srgb,var(--kr) 65%,#000));color:#fff;box-shadow:0 6px 14px color-mix(in srgb,var(--kr) 35%,transparent)}
+#fa .k .kd{color:color-mix(in srgb,var(--kr) 75%,var(--ink));font-size:24px}
+#fa .k:hover{transform:translateY(-2px);box-shadow:0 10px 22px color-mix(in srgb,var(--kr) 22%,transparent)}
+#fa .k{transition:border-color .15s,box-shadow .15s,transform .15s}
+
+#fa .sekmeler{box-shadow:0 4px 14px rgba(79,70,229,.08)}
+#fa .sekme.on{background:linear-gradient(135deg,#4F46E5,#7C3AED 60%,#C026D3);box-shadow:0 6px 14px rgba(124,58,237,.3)}
+
+#fa .bos{background:linear-gradient(160deg,color-mix(in srgb,#7C3AED 7%,var(--card)) 0%,var(--card) 45%,color-mix(in srgb,#10B981 7%,var(--card)) 100%);border:1.5px dashed color-mix(in srgb,#7C3AED 30%,var(--line))}
+#fa .bos .ms.b{color:#fff;background:linear-gradient(135deg,#4F46E5,#7C3AED 55%,#C026D3);box-shadow:0 12px 26px rgba(124,58,237,.32)}
+#fa .bos h3{font-weight:900}
+#fa .ornek{background:color-mix(in srgb,#F59E0B 13%,var(--card));color:#92400E;border:1px solid color-mix(in srgb,#F59E0B 30%,transparent)}
+body.koyu #fa .ornek{color:#fcd34d}
+#fa .ornek .ms{color:#D97706 !important}
+#fa .ornek b{color:inherit}
+#fa .bos .ekle-btn{background:linear-gradient(135deg,#4F46E5,#7C3AED 60%,#C026D3)}
+/* .etk.soz etiketi sözleşme kartı (.soz) stilini almasın */
+#fa .etk.soz{display:inline-flex;flex-direction:row;gap:4px;padding:2px 8px;border-radius:20px;border:0;overflow:visible;position:static}
+#fa .etk.soz::before{display:none}
+#fa .soz-liste .soz{box-shadow:0 4px 14px color-mix(in srgb,var(--dr) 10%,transparent)}
 </style>
 @endpush
 
