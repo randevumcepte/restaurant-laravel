@@ -19077,50 +19077,7 @@ Route::post('/fatura-ocr/oku', function (Request $r) {
     return view('fatura_ocr', ['sonuc' => $res['veri']]);
 });
 // ===== FAZ 5 (temel): Fiyat Radarı — Gizli Zam Dedektörü + daha ucuz tedarikçi (kendi alış geçmişi + katalog) =====
-Route::get('/fiyat-radari', function () {
-    $sid = _webSubeId();
-    $d = ['zamlar' => collect(), 'firsatlar' => collect(), 'esik' => 8];
-    try {
-        if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
-        if (!Schema::hasTable('alis_fatura_kalemleri') || !Schema::hasTable('alis_faturalari')) return view('fiyat_radari', $d);
-        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
-        $from = today()->subDays(120);
-        $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
-            ->where('f.sube_id', $sid)->whereDate('f.tarih', '>=', $from)
-            ->orderBy('k.malzeme_id')->orderBy('f.tarih')->orderBy('k.id')
-            ->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar', 'f.tarih']);
-        $esik = 8; $zamlar = collect();
-        foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
-            if ($g->count() < 2) continue;
-            $ilk = (float) $g->first()->birim_fiyat; $son = (float) $g->last()->birim_fiyat;
-            if ($ilk <= 0) continue;
-            $yuzde = round(($son - $ilk) / $ilk * 100, 1);
-            if ($yuzde < $esik) continue;
-            $yillikMik = (float) $g->sum('miktar') * (365 / 120);
-            $zamlar->push((object) ['ad' => $malAd[$mid] ?? '—', 'birim' => $birimKis[$g->first()->alis_birim_id] ?? '', 'ilk' => $ilk, 'son' => $son, 'yuzde' => $yuzde,
-                'adet' => $g->count(), 'ilk_tarih' => $g->first()->tarih, 'son_tarih' => $g->last()->tarih, 'yillik_etki' => round(($son - $ilk) * $yillikMik, 0)]);
-        }
-        $d['zamlar'] = $zamlar->sortByDesc('yillik_etki')->values();
-        if (Schema::hasTable('tedarikci_malzeme')) {
-            $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
-            $kat = DB::table('tedarikci_malzeme')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('guncel_fiyat')->where('guncel_fiyat', '>', 0)->get();
-            $firsat = collect();
-            foreach ($kat->groupBy('malzeme_id') as $mid => $cs) {
-                if ($cs->count() < 2) continue;
-                $sorted = $cs->sortBy('guncel_fiyat')->values();
-                $enUcuz = $sorted->first(); $enPahali = $sorted->last();
-                if ((float) $enPahali->guncel_fiyat <= 0) continue;
-                $tasarruf = round(((float) $enPahali->guncel_fiyat - (float) $enUcuz->guncel_fiyat) / (float) $enPahali->guncel_fiyat * 100, 1);
-                if ($tasarruf < 5) continue;
-                $firsat->push((object) ['ad' => $malAd[$mid] ?? '—', 'en_ucuz_ted' => $tedAd[$enUcuz->tedarikci_id] ?? '—', 'en_ucuz_fiyat' => (float) $enUcuz->guncel_fiyat,
-                    'en_pahali_fiyat' => (float) $enPahali->guncel_fiyat, 'tasarruf' => $tasarruf, 'ted_say' => $cs->count()]);
-            }
-            $d['firsatlar'] = $firsat->sortByDesc('tasarruf')->values();
-        }
-    } catch (\Throwable $e) {}
-    try { if (function_exists('_restoHalEnsure')) _restoHalEnsure(); $d['hal'] = _radarHalKiyas($sid); } catch (\Throwable $e) {}
-    return view('fiyat_radari', $d);
-});
+// /fiyat-radari sayfası → routes/fiyat_radari.php (v2: rapor merkezi + Excel/PDF + AI)
 
 // ===== FAZ 5 (temel): Hal Fiyatı — manuel referans (+ ileride oto-çekim) + "sen vs hal" karşılaştırma =====
 if (!function_exists('_restoHalEnsure')) {
@@ -33803,5 +33760,6 @@ require __DIR__ . '/sync.php';
 
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
+require __DIR__ . '/fiyat_radari.php';
 
 
