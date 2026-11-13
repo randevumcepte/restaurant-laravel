@@ -405,7 +405,7 @@
       <button type="button" class="fr-ai-btn" style="padding:10px 14px" onclick="frSor()"><span class="material-icons-outlined">send</span></button></div>
     <div id="frCevap"></div>
   </div>
-  <div id="frAiSonuc"><div class="fr-bos" style="--c:#9333EA"><span class="material-icons-outlined">auto_awesome</span>Henüz analiz yok. <b>Analiz Et</b>'e bas — 20-40 saniye sürer.</div></div>
+  <div id="frAiSonuc"><div class="fr-bos" style="--c:#9333EA"><span class="material-icons-outlined">auto_awesome</span>Henüz analiz yok. <b>Analiz Et</b>'e bas — yaklaşık 10 saniye sürer.</div></div>
   <div style="display:flex;gap:8px;margin-top:12px" id="frAiIndir" @if (!$ai) hidden @endif>
     <a class="fr-xbtn x" href="{{ $indir('ai', 'xlsx') }}"><span class="material-icons-outlined">table_view</span> AI raporu Excel</a>
     <a class="fr-xbtn p" href="{{ $indir('ai', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> AI raporu PDF</a>
@@ -509,7 +509,7 @@
   function frHata(m, ik) { document.getElementById('frAiSonuc').innerHTML = '<div class="fr-bos" style="--c:#F43F5E"><span class="material-icons-outlined">' + (ik || 'error_outline') + '</span>' + frEsc(m) + '</div>'; }
   function frAi(yenile) {
     var b = document.getElementById('frAiBtn'); if (b.disabled) return;
-    frYukleniyor(b, 'Analiz ediliyor… (20-40 sn)');
+    frYukleniyor(b, 'Analiz ediliyor… (~10 sn)');
     frPost({ yenile: yenile ? 1 : 0 }).then(function (s) {
       frBitti(b);
       if (!s.ok) return frHata(s.hata || 'Analiz yapılamadı.');

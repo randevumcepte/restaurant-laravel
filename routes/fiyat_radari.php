@@ -402,6 +402,68 @@ if (!function_exists('_fr2AiCagir')) {
     }
 }
 
+if (!function_exists('_fr2AiParcali')) {
+    // Tam analiz: 2 parça AYNI ANDA (Http::pool) + şemalı araç çağrısı (tool_use) → JSON her zaman geçerli.
+    // Eski tek çağrı 3500 token sınırına dayanıp kesiliyordu (~34 sn + "çözümlenemedi").
+    function _fr2AiParcali($sys, $mesaj)
+    {
+        $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
+        if (!$key) return ['hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
+        $str = ['type' => 'string']; $sayi = ['type' => ['number', 'null']];
+        $madde = fn ($ek = []) => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'object', 'properties' => ['baslik' => $str, 'detay' => $str] + $ek, 'required' => ['baslik', 'detay']]];
+        // 4 parça aynı anda: her biri ~600-900 token → toplam süre en yavaş parçanın süresi (~8-10 sn)
+        $parcalar = [
+            'a' => ['tanim' => 'Genel değerlendirme ve kritik bulgular', 'sema' => [
+                'ozet' => $str + ['description' => '3-4 cümle genel değerlendirme'],
+                'skor' => ['type' => 'integer', 'description' => '0-100 satın alma disiplini puanı'],
+                'kritik' => $madde(['tutar' => $sayi]) + ['description' => '3-4 en kritik bulgu'],
+            ]],
+            'b' => ['tanim' => 'Geçmiş hatalar', 'sema' => [
+                'gecmis_hatalar' => $madde() + ['description' => '3-4 geçmiş hata: hangi malzeme, tedarikçi, tarih/fiyat, neden hata'],
+            ]],
+            'c' => ['tanim' => 'Tasarruf fırsatları ve gelecek önerileri', 'sema' => [
+                'firsatlar' => $madde(['tutar' => $sayi]) + ['description' => '3-4 tasarruf fırsatı, tutar = tahmini yıllık TL'],
+                'gelecek' => $madde() + ['description' => '3 öneri: önümüzdeki 1-3 ay sezon/trend/stoklama/sözleşme'],
+            ]],
+            'd' => ['tanim' => 'Pazarlık argümanları ve yapılacaklar listesi', 'sema' => [
+                'pazarlik' => ['type' => 'array', 'maxItems' => 4, 'description' => 'en çok para giden tedarikçiler için somut rakamlı pazarlık argümanı',
+                    'items' => ['type' => 'object', 'properties' => ['tedarikci' => $str, 'arguman' => $str], 'required' => ['tedarikci', 'arguman']]],
+                'aksiyonlar' => ['type' => 'array', 'maxItems' => 5, 'description' => '4-5 öncelikli yapılacak iş',
+                    'items' => ['type' => 'object', 'properties' => ['oncelik' => ['type' => 'string', 'enum' => ['yuksek', 'orta', 'dusuk']], 'is' => $str,
+                        'sorumlu' => ['type' => 'string', 'enum' => ['Satın almacı', 'Müdür', 'Şef', 'Patron']]], 'required' => ['oncelik', 'is', 'sorumlu']]],
+            ]],
+        ];
+        $govde = function ($p) use ($sys, $mesaj) {
+            return ['model' => config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001', 'max_tokens' => 2500,
+                'system' => $sys . ' Kısa yaz: her "detay"/"arguman" en fazla 2 cümle (~30 kelime), somut malzeme/tedarikçi adı ve rakamla.',
+                'tools' => [['name' => 'analiz_kaydet', 'description' => $p['tanim'], 'input_schema' => ['type' => 'object', 'properties' => $p['sema'], 'required' => array_keys($p['sema'])]]],
+                'tool_choice' => ['type' => 'tool', 'name' => 'analiz_kaydet'],
+                'messages' => [['role' => 'user', 'content' => $mesaj . "\n\nSadece şu bölümleri üret: " . $p['tanim'] . '.']]];
+        };
+        try {
+            $yanit = \Illuminate\Support\Facades\Http::pool(fn ($pool) => array_map(
+                fn ($k) => $pool->as($k)->withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->timeout(60)->post('https://api.anthropic.com/v1/messages', $govde($parcalar[$k])),
+                array_keys($parcalar)));
+        } catch (\Throwable $e) { return ['hata' => 'AI servisine bağlanılamadı.']; }
+        $sonuc = [];
+        foreach (array_keys($parcalar) as $k) {
+            $r = $yanit[$k] ?? null;
+            if (!$r instanceof \Illuminate\Http\Client\Response || !$r->successful()) {
+                \Illuminate\Support\Facades\Log::warning('fiyat radari ai ' . $k . ': ' . ($r instanceof \Throwable ? $r->getMessage() : ($r ? $r->status() . ' ' . mb_substr($r->body(), 0, 300) : 'yanıt yok')));
+                return ['hata' => 'AI servisi şu an cevap vermedi' . ($r instanceof \Illuminate\Http\Client\Response ? ' (' . $r->status() . ')' : '') . '. Tekrar dene.'];
+            }
+            $girdi = null;
+            foreach ((array) $r->json('content') as $b) if (($b['type'] ?? '') === 'tool_use') $girdi = $b['input'] ?? null;
+            if (!is_array($girdi)) {
+                \Illuminate\Support\Facades\Log::warning('fiyat radari ai ' . $k . ' tool_use yok, stop=' . $r->json('stop_reason'));
+                return ['hata' => 'AI yanıtı eksik geldi, tekrar dene.'];
+            }
+            $sonuc += $girdi;
+        }
+        return ['analiz' => $sonuc];
+    }
+}
+
 if (!function_exists('_fr2Erisim')) {
     function _fr2Erisim()
     {
@@ -466,24 +528,16 @@ if (!function_exists('_fr2AiIslem')) {
                 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru, 1500);
             if (!empty($res['hata'])) return ['ok' => 0, 'hata' => $res['hata']];
             cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->endOfDay());
-            return ['ok' => 1, 'cevap' => $res['metin']];
+            // ekran düz metin gösterir: markdown başlık/kalın işaretlerini temizle
+            $cevap = preg_replace(['/^#{1,6}\s*/m', '/\*\*(.+?)\*\*/s', '/^\s*[-*]\s+/m'], ['', '$1', '• '], $res['metin']);
+            return ['ok' => 1, 'cevap' => trim($cevap)];
         }
         $fp = md5(json_encode($baglam));
         $onb = cache()->get('fr2_ai_' . $sid . '_' . $fp);
         if ($onb && !$yenile) return ['ok' => 1, 'analiz' => $onb, 'onbellek' => 1];
-        $sema = '{"ozet":"3-5 cümle genel değerlendirme","skor":0-100 (satın alma disiplini puanı),'
-            . '"kritik":[{"baslik":"","detay":"","tutar":sayı veya null}],'
-            . '"gecmis_hatalar":[{"baslik":"","detay":"hangi malzeme, hangi tedarikçi, hangi tarih/fiyat — neden hata"}],'
-            . '"firsatlar":[{"baslik":"","detay":"","tutar":tahmini yıllık tasarruf sayı veya null}],'
-            . '"gelecek":[{"baslik":"","detay":"önümüzdeki 1-3 ay için öngörü/öneri: sezon, trend, stoklama, sözleşme"}],'
-            . '"pazarlik":[{"tedarikci":"","arguman":"o tedarikçiyle konuşurken kullanılacak somut rakamlı argüman"}],'
-            . '"aksiyonlar":[{"oncelik":"yuksek|orta|dusuk","is":"","sorumlu":"Satın almacı|Müdür|Şef|Patron"}]}';
-        $res = _fr2AiCagir($sys . ' SADECE geçerli JSON döndür, başka metin yazma. Şema: ' . $sema . ' Her listede 3-7 madde; somut malzeme/tedarikçi adı ve rakam kullan.',
-            'Son ' . $f['gun'] . ' günün satın alma verisi: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nBu veriyi analiz et: geçmiş hataları, tasarruf fırsatlarını, gelecek önerilerini, pazarlık argümanlarını ve aksiyon listesini çıkar.");
+        $res = _fr2AiParcali($sys, 'Son ' . $f['gun'] . ' günün satın alma verisi: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE));
         if (!empty($res['hata'])) return ['ok' => 0, 'hata' => $res['hata']];
-        $t = $res['metin']; $s = strpos($t, '{'); $e = strrpos($t, '}');
-        $j = ($s !== false && $e > $s) ? json_decode(substr($t, $s, $e - $s + 1), true) : null;
-        if (!is_array($j)) return ['ok' => 0, 'hata' => 'AI yanıtı çözümlenemedi, tekrar dene.'];
+        $j = $res['analiz'];
         $j['_zaman'] = now()->format('d.m.Y H:i'); $j['_donem'] = $f['gun'];
         cache()->put('fr2_ai_' . $sid . '_' . $fp, $j, now()->addHours(12));
         cache()->put('fr2_ai_son_' . $sid, $j, now()->addDays(30));
