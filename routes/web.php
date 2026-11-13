@@ -25526,13 +25526,44 @@ Route::get('/reddedilen-talepler', function () {
         if (!empty($sorumluDep)) $w->orWhereIn('departman_id', $sorumluDep);
     });
     $talepler = $q->orderByDesc('karar_at')->limit(300)->get(['id', 'departman', 'isteyen_id', 'isteyen_ad', 'aciliyet', 'red_sebep', 'karar_veren_ad', 'karar_at', 'created_at']);
-    $ids = $talepler->pluck('id')->all();
-    $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id']) : collect();
+    // Patronun FİYAT reddi: talep silinmez, 'teklif'e döner; iz not alanında "[Fiyat REDDEDİLDİ: ad]" olarak kalır
+    $fq = DB::table('satinalma_talepleri')->where('sube_id', $sid)->where('not', 'like', '%[Fiyat REDDEDİLDİ:%');
+    if (!$patron) $fq->where(function ($w) use ($bp, $sorumluDep) {
+        $w->where('isteyen_id', $bp->id ?? 0);
+        if (!empty($sorumluDep)) $w->orWhereIn('departman_id', $sorumluDep);
+    });
+    $fiyatRed = collect();
+    try { $fiyatRed = $fq->orderByDesc('updated_at')->limit(200)->get(['id', 'departman', 'isteyen_id', 'isteyen_ad', 'aciliyet', 'durum', 'not', 'created_at', 'updated_at']); } catch (\Throwable $e) {}
+    $ids = array_merge($talepler->pluck('id')->all(), $fiyatRed->pluck('id')->all());
+    $kalemRows = $ids ? DB::table('talep_kalemleri')->whereIn('talep_id', $ids)->orderBy('id')->get(['talep_id', 'ad', 'malzeme_id', 'miktar', 'birim']) : collect();
     $malAd = DB::table('malzemeler')->pluck('ad', 'id');
     $kalemMap = [];
-    foreach ($kalemRows as $k) { $kalemMap[$k->talep_id][] = $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'); }
-    $talepler = $talepler->map(function ($t) use ($kalemMap) { $arr = $kalemMap[$t->id] ?? []; $t->kalem_ozet = implode(', ', array_slice($arr, 0, 4)) . (count($arr) > 4 ? ' +' . (count($arr) - 4) : ''); return $t; });
-    return view('reddedilen_talepler', ['talepler' => $talepler, 'benId' => (int) ($bp->id ?? 0), 'yonetici' => $patron]);
+    foreach ($kalemRows as $k) {
+        $mk = (float) $k->miktar;
+        $kalemMap[$k->talep_id][] = ['ad' => $k->ad ?: ($malAd[$k->malzeme_id] ?? '—'), 'miktar' => $mk > 0 ? rtrim(rtrim(number_format($mk, 3, ',', '.'), '0'), ',') . ($k->birim ? ' ' . $k->birim : '') : ''];
+    }
+    $tarihF = function ($d) { return $d ? \Carbon\Carbon::parse($d) : null; };
+    $sureF = function ($a, $b) { if (!$a || !$b) return ''; $dk = max(0, $a->diffInMinutes($b)); return $dk < 60 ? $dk . ' dk' : ($dk < 1440 ? floor($dk / 60) . ' saat' : floor($dk / 1440) . ' gün'); };
+    $kayitlar = [];
+    foreach ($talepler as $t) {
+        $ta = $tarihF($t->created_at); $ka = $tarihF($t->karar_at);
+        $kayitlar[] = ['tip' => 'dept', 'id' => (int) $t->id, 'departman' => $t->departman ?: '—', 'isteyen_id' => (int) $t->isteyen_id, 'isteyen_ad' => $t->isteyen_ad ?: '—',
+            'acil' => $t->aciliyet === 'acil', 'sebep' => $t->red_sebep ?: '', 'reddeden' => $t->karar_veren_ad ?: '—',
+            'talep_tarih' => $ta ? $ta->format('d.m.Y H:i') : '', 'red_tarih' => $ka ? $ka->format('d.m.Y H:i') : '', 'red_ts' => $ka ? $ka->timestamp : ($ta ? $ta->timestamp : 0),
+            'sure' => $sureF($ta, $ka), 'durum' => 'Reddedildi', 'kalemler' => $kalemMap[$t->id] ?? []];
+    }
+    $durumAd = ['yeni' => 'Yeni', 'teklif' => 'Tekrar fiyat araştırılıyor', 'onayda' => 'Yeniden patron onayında', 'fiyat_onay' => 'Fiyat onayında', 'onaylandi' => 'Sonra onaylandı', 'siparis' => 'Siparişe döndü', 'tamamlandi' => 'Tamamlandı', 'reddedildi' => 'Reddedildi', 'departman_onay' => 'Departman onayında'];
+    foreach ($fiyatRed as $t) {
+        preg_match_all('/\[Fiyat REDDEDİLDİ: ?([^\]]*)\]/u', (string) $t->not, $mm);
+        $kac = count($mm[1]); $kim = $kac ? trim((string) $mm[1][$kac - 1]) : '';
+        $ta = $tarihF($t->created_at); $ua = $tarihF($t->updated_at);
+        $kayitlar[] = ['tip' => 'fiyat', 'id' => (int) $t->id, 'departman' => $t->departman ?: '—', 'isteyen_id' => (int) $t->isteyen_id, 'isteyen_ad' => $t->isteyen_ad ?: '—',
+            'acil' => $t->aciliyet === 'acil', 'sebep' => 'Patron gelen fiyatları uygun bulmadı' . ($kac > 1 ? ' (' . $kac . ' kez)' : '') . ' — talep tekrar fiyat araştırmasına döndü.', 'reddeden' => $kim ?: '—',
+            'talep_tarih' => $ta ? $ta->format('d.m.Y H:i') : '', 'red_tarih' => $ua ? $ua->format('d.m.Y H:i') : '', 'red_ts' => $ua ? $ua->timestamp : 0,
+            'sure' => '', 'durum' => $durumAd[$t->durum] ?? $t->durum, 'kalemler' => $kalemMap[$t->id] ?? []];
+    }
+    usort($kayitlar, function ($a, $b) { return $b['red_ts'] <=> $a['red_ts']; });
+    return view('reddedilen_talepler', ['kayitlar' => $kayitlar, 'benId' => (int) ($bp->id ?? 0), 'yonetici' => $patron]);
 });
 // ===== MUTFAK KONTROL DEFTERİ — Sıcaklık(HACCP) / Fire / Açılış-Kapanış / Prep-Par (tek tablo, sekmeli) =====
 if (!function_exists('_mutfakDefterEnsure')) {
