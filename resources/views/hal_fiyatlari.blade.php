@@ -105,7 +105,7 @@
     <span class="rk-rozet" style="color:var(--kirmizi);background:color-mix(in srgb,var(--kirmizi) 13%,transparent);border-color:color-mix(in srgb,var(--kirmizi) 40%,transparent)">{{ $kiyas->where('fark','>',0)->count() }} fazla</span></div>
   <div class="rk-tablo" style="margin-bottom:22px">
     <table>
-      <thead><tr><th style="width:22%">Malzeme</th><th>Hal Ürünü</th><th class="sag">Asgari</th><th class="sag">Ortalama</th><th class="sag">Azami</th><th class="sag">Senin Son</th><th class="orta">Fark</th></tr></thead>
+      <thead><tr><th style="width:22%">Malzeme</th><th>Hal Ürünü</th><th class="sag">Hal Asgari</th><th class="sag">Hal Ortalama</th><th class="sag">Hal Azami</th><th class="sag">Senin Son</th><th class="orta">Fark</th></tr></thead>
       <tbody>
         @foreach ($kiyas as $k)
           @php $fazla = $k->fark > 0; $renk = $k->fark >= 20 ? 'var(--kirmizi)' : ($k->fark > 0 ? 'var(--amber)' : 'var(--yesil)'); @endphp
