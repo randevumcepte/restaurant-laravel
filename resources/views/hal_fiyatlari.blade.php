@@ -34,11 +34,9 @@
       </select></div>
     <div><label class="rk-lbl" style="margin-top:0">Tarih (ops.)</label><input type="date" name="tarih" class="rk-inp"></div>
     <button type="submit" class="rk-btn" style="background:#059669;padding:11px 16px"><span class="material-icons-outlined" style="color:#fff;font-size:18px">cloud_download</span> Şimdi Çek</button>
-    <style>.hal-sekme{padding:11px 16px;color:#059669;border-color:color-mix(in srgb,#059669 40%,transparent)} .hal-sekme.aktif{background:#059669;color:#fff;border-color:#059669} .hal-sekme.aktif .material-icons-outlined{color:#fff}</style>
-    <div style="display:flex;gap:6px">
-      <button type="button" id="halSekmeKiyas" class="rk-btn bos hal-sekme aktif" onclick="halSekme('kiyas')"><span class="material-icons-outlined" style="font-size:18px">compare_arrows</span> Sen vs Hal ({{ $kiyas->count() }})</button>
-      <button type="button" id="halSekmeListe" class="rk-btn bos hal-sekme" onclick="halSekme('liste')"><span class="material-icons-outlined" style="font-size:18px">list_alt</span> Hal Fiyatları ({{ $hal->count() }})</button>
-    </div>
+    <style>.hal-sekme{padding:11px 16px;color:var(--hs);border-color:color-mix(in srgb,var(--hs) 40%,transparent)} .hal-sekme.aktif{background:color-mix(in srgb,var(--hs) 12%,transparent);border-color:var(--hs)}</style>
+    <button type="button" id="halSekmeListe" class="rk-btn bos hal-sekme" style="--hs:#059669" onclick="halSekme('liste')"><span class="material-icons-outlined" style="font-size:18px">list_alt</span> Hal Fiyatları ({{ $hal->count() }})</button>
+    <button type="button" id="halSekmeKiyas" class="rk-btn bos hal-sekme aktif" style="--hs:var(--kirmizi)" onclick="halSekme('kiyas')"><span class="material-icons-outlined" style="font-size:18px">compare_arrows</span> Sen vs Hal ({{ $kiyas->count() }})</button>
   </form>
   <div class="rk-sub2" style="font-size:11px;max-width:300px">Antalya'nın açık API'si yok (sadece bülten). En yakın güvenilir referans İzmir/Balıkesir; fiyatı <b>trend/bant kozu</b> olarak kullan. Sayfayı her gün ilk açışta otomatik çekilir.</div>
 </div>
@@ -81,7 +79,6 @@
     document.getElementById('halKiyas').style.display = liste ? 'none' : '';
     document.getElementById('halSekmeListe').classList.toggle('aktif', liste);
     document.getElementById('halSekmeKiyas').classList.toggle('aktif', !liste);
-    try { localStorage.setItem('halSekme', s); } catch (e) {}
   }
   function halListeSuz(q) {
     q = q.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase().trim();
@@ -130,7 +127,6 @@
   <div class="rk-card" style="text-align:center;padding:22px;margin-bottom:22px"><div class="rk-sub">Hal fiyatı girdin ama ada göre eşleşen malzeme/alış bulunamadı. Hal ürün adını malzeme adına benzet (ör. "Domates").</div></div>
 @endif
 </div>
-<script>try { if (localStorage.getItem('halSekme') === 'liste') halSekme('liste'); } catch (e) {}</script>
 
 {{-- Hal fiyatı gir --}}
 <div class="rk-card" style="margin-bottom:18px">
