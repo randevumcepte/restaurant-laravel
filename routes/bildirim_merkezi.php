@@ -459,8 +459,30 @@ if (!function_exists('_bmOlayTara')) {
             }
         } } catch (\Throwable $e) {}
         try { if ($t('fiyat_anlasmalari')) {
-            $n = (int) DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('bitis')->whereBetween('bitis', [$bugun, date('Y-m-d', strtotime('+15 day'))])->count();
-            if ($n) $say += _bmTipeGonder($sid, 'fiyat_anlasma', '📄 ' . $n . ' fiyat anlaşması 15 gün içinde bitiyor', 'Tedarikçiyle yenile.', '/fiyat-anlasmalari', 0, 'anlasma:' . $bugun, $n);
+            // Bitişe 30 / 15 / 7 gün kala (her eşik bir kez) + sözleşmede fesih bildirimi için son gün yaklaşınca
+            $esikBul = function ($gun) { foreach ([7, 15, 30] as $e) if ($gun <= $e) return $e; return null; };
+            $tedAdB = DB::table('tedarikciler')->pluck('ad', 'id'); $malAdB = DB::table('malzemeler')->pluck('ad', 'id');
+            $ufuk = date('Y-m-d', strtotime('+30 day'));
+            $sozVar = $t('fiyat_sozlesmeleri') && $c('fiyat_anlasmalari', 'sozlesme_id');
+            if ($sozVar) foreach (DB::table('fiyat_sozlesmeleri')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('bitis')->where('bitis', '>=', $bugun)->get() as $s) {
+                $ad = ($s->sozlesme_no ?: ($s->baslik ?: 'Sözleşme')) . ' (' . ($tedAdB[$s->tedarikci_id] ?? 'tedarikçi') . ')';
+                $kalan = (int) floor((strtotime($s->bitis) - strtotime($bugun)) / 86400);
+                if ($s->bitis <= $ufuk && ($e = $esikBul($kalan)))
+                    $say += _bmTipeGonder($sid, 'fiyat_anlasma', '📄 Sözleşme ' . ($kalan ? $kalan . ' gün sonra' : 'bugün') . ' bitiyor: ' . $ad, 'Fiyatları yenilemek için tedarikçiyle görüş.', '/fiyat-anlasmalari', $e === 7 ? 1 : 0, 'soz:' . $s->id . ':' . $s->bitis . ':' . $e);
+                if ($s->fesih_ihbar_gun) {
+                    $fesih = date('Y-m-d', strtotime($s->bitis . ' -' . (int) $s->fesih_ihbar_gun . ' day'));
+                    $fk = (int) floor((strtotime($fesih) - strtotime($bugun)) / 86400);
+                    if ($fk >= 0 && ($e = $esikBul($fk)) && $e <= 15)
+                        $say += _bmTipeGonder($sid, 'fiyat_anlasma', '⏰ Fesih bildirimi için son ' . $fk . ' gün: ' . $ad, 'Sözleşmeyi sürdürmeyeceksen ' . date('d.m.Y', strtotime($fesih)) . ' tarihine kadar tedarikçiye bildir; yoksa koşullar devam edebilir.', '/fiyat-anlasmalari', 1, 'fesih:' . $s->id . ':' . $fesih . ':' . $e);
+                }
+            }
+            $tekli = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('aktif', 1)->whereNotNull('bitis')->whereBetween('bitis', [$bugun, $ufuk]);
+            if ($sozVar) $tekli->whereNull('sozlesme_id');
+            foreach ($tekli->get() as $a) {
+                $kalan = (int) floor((strtotime($a->bitis) - strtotime($bugun)) / 86400);
+                if ($e = $esikBul($kalan))
+                    $say += _bmTipeGonder($sid, 'fiyat_anlasma', '📄 Fiyat anlaşması ' . ($kalan ? $kalan . ' gün sonra' : 'bugün') . ' bitiyor: ' . ($malAdB[$a->malzeme_id] ?? 'malzeme'), ($tedAdB[$a->tedarikci_id] ?? 'Tedarikçi') . ' · ' . number_format((float) $a->birim_fiyat, 2, ',', '.') . ' ₺' . ($a->birim ? '/' . $a->birim : '') . ' — yenile ya da yeni fiyat al.', '/fiyat-anlasmalari', $e === 7 ? 1 : 0, 'anl:' . $a->id . ':' . $a->bitis . ':' . $e);
+            }
         } } catch (\Throwable $e) {}
         try { if ($t('sayimlar') && $t('sayim_kalemleri')) foreach (DB::table('sayimlar')->where('sube_id', $sid)->where('created_at', '>', $simdi->copy()->subDays(2))->get(['id']) as $sy) {
             $fm = (float) DB::table('sayim_kalemleri')->where('sayim_id', $sy->id)->sum(DB::raw('ABS(COALESCE(fark_maliyet,0))'));

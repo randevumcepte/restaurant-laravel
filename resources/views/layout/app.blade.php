@@ -401,6 +401,7 @@
     if ($_kp && isset($gruplar['Satın Alma']) && _mutfakEkibiMi($_kp)) {
         unset($gruplar['Satın Alma']);
         $gruplar['Mutfak / BOH'][] = ['/stok', 'inventory_2', 'Stok', '#0EA5E9'];
+        if (function_exists('_faSaltGorur') && _faSaltGorur($_kp)) $gruplar['Mutfak / BOH'][] = ['/fiyat-anlasmalari', 'handshake', 'Anlaşmalı Fiyatlar', '#10B981']; // şef: salt okunur
     }
     // Şefin Menü Yönetimi de Mutfak / BOH'ta; Menü & Ürünler (Happy Hour, Fix Menü, kampanya) mutfak ekibinde gizli
     if ($_kp && isset($gruplar['Menü & Ürünler']) && _mutfakEkibiMi($_kp)) {
@@ -555,6 +556,7 @@
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
+                    if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faSaltGorur') && _faSaltGorur($_pp)) return true; // sorumlu: anlaşmalı fiyatlar salt okunur
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
