@@ -179,6 +179,22 @@ if (!function_exists('_syncMsToDt')) {
     }
 }
 
+// Kaydın şubesi (odemeler/adisyon_kalemleri adisyon üzerinden). Bulunamazsa null.
+if (!function_exists('_syncKayitSubesi')) {
+    function _syncKayitSubesi(string $tablo, $id): ?int
+    {
+        if (!$id) return null;
+        try {
+            if (in_array($tablo, ['odemeler', 'adisyon_kalemleri'], true)) {
+                $v = DB::table($tablo . ' as k')->join('adisyonlar as a', 'a.id', '=', 'k.adisyon_id')->where('k.id', $id)->value('a.sube_id');
+            } else {
+                $v = DB::table($tablo)->where('id', $id)->value('sube_id');
+            }
+            return $v === null ? null : (int) $v;
+        } catch (\Throwable $e) { return null; }
+    }
+}
+
 // Tek bir op'u uygula; server_id doner.
 if (!function_exists('_syncUpsert')) {
     function _syncUpsert(array $cfg, string $op, string $uuid, array $payload, int $subeId): ?int
@@ -193,6 +209,8 @@ if (!function_exists('_syncUpsert')) {
             $refUuid = $payload[$localUuidKey] ?? null;
             if ($refUuid) {
                 $rid = DB::table($refTablo)->where('uuid', $refUuid)->value('id');
+                // başka restoranın kaydına bağlanamaz (eskiden başka işletmenin adisyonuna kalem/ödeme eklenebiliyordu)
+                if ($rid && _syncKayitSubesi($refTablo, $rid) !== $subeId) throw new \RuntimeException('Bağlı kayıt bu işletmeye ait değil');
                 if ($rid) $veri[$backendCol] = $rid;
             }
         }
@@ -200,10 +218,16 @@ if (!function_exists('_syncUpsert')) {
         foreach ($cfg['zaman'] as $zcol) {
             if (array_key_exists($zcol, $payload)) $veri[$zcol] = _syncMsToDt($payload[$zcol]);
         }
+        // id ile gelen bağlantılar da bu şubenin olmalı
+        foreach (['kategori_id' => 'menu_kategorileri', 'urun_id' => 'urunler', 'bolge_id' => 'bolgeler', 'acan_personel_id' => 'personeller', 'personel_id' => 'personeller'] as $fk => $fkT) {
+            if (!empty($veri[$fk]) && _syncKayitSubesi($fkT, (int) $veri[$fk]) !== $subeId) unset($veri[$fk]);
+        }
         if (!empty($cfg['sube']) && Schema::hasColumn($t, 'sube_id')) $veri['sube_id'] = $subeId;
         if (Schema::hasColumn($t, 'updated_at')) $veri['updated_at'] = now();
 
         $mevcut = DB::table($t)->where('uuid', $uuid)->first();
+        // uuid tahmin edilebilir (srv_<tablo>_<id>): başka restoranın kaydı güncellenemez/iptal edilemez
+        if ($mevcut && _syncKayitSubesi($t, $mevcut->id) !== $subeId) throw new \RuntimeException('Kayıt bu işletmeye ait değil');
         if ($mevcut) {
             if ($op === 'delete') {
                 // Backend'de genel 'deleted' kolonu yok; iptal edilebilir kayitlar durum ile isaretlenir.
@@ -241,6 +265,11 @@ Route::post('/api/sync/push', function (Request $r) {
         $payload = $o['payload'] ?? [];
         if (is_string($payload)) $payload = json_decode($payload, true) ?: [];
         if (!isset($entities[$entity]) || $uuid === '' || !in_array($op, ['insert', 'update', 'delete'], true)) continue;
+        // Menü (ürün/fiyat/kategori) değişikliği menü yetkisi ister; garson senkronla fiyat değiştiremez
+        if (in_array($entities[$entity]['tablo'], ['urunler', 'menu_kategorileri'], true) && function_exists('_panelYetkiVar') && !_panelYetkiVar($p, 'gor_menu')) {
+            $acks[] = ['uuid' => $uuid, 'server_id' => null, 'entity' => $entity, 'idem' => $idem, 'hata' => 'Menü değiştirme yetkiniz yok'];
+            continue;
+        }
 
         // Idempotency: daha once uygulandiysa sadece mevcut eslemeyi dondur
         if ($idem !== '') {

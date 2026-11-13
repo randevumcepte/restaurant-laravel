@@ -608,7 +608,7 @@ Route::post('/sube-transfer/iste', function (Request $r) {
             foreach ($kalemler as $k) {
                 $m = $mal[$k['malzeme_id']] ?? null; if (!$m) continue;
                 DB::table('sube_transfer_kalemleri')->insert(['transfer_id' => $id, 'malzeme_id' => $m->id, 'ad' => $m->ad, 'birim' => (string) ($birim[$m->temel_birim_id] ?? ''),
-                    'istenen' => $k['miktar'], 'birim_maliyet' => (float) $m->guncel_maliyet, 'talep_kalem_id' => $k['talep_kalem_id'] ?: null, 'created_at' => now(), 'updated_at' => now()]);
+                    'istenen' => $k['miktar'], 'birim_maliyet' => (float) $m->guncel_maliyet, 'talep_kalem_id' => ($talep && $k['talep_kalem_id']) ? $k['talep_kalem_id'] : null, 'created_at' => now(), 'updated_at' => now()]);
             }
             // Talepten geldiyse: transferle karşılanan miktar ALT TALEBE taşınır (ana talepte kalan satın almaya devam eder)
             if ($talep) {
@@ -864,7 +864,7 @@ Route::get('/api/sube-transfer/detay', function (Request $r) {
     _trfEnsure();
     $p = _trfPersonel($r);
     $t = _trfDetay((int) $r->query('id'));
-    if (!$p || !_trfGorur($p, $t)) return response()->json(['ok' => false, 'mesaj' => 'Transfer bulunamadı.'], 404);
+    if (!$p || !_trfGorur($p, $t) || !_trfYetkili($p)) return response()->json(['ok' => false, 'mesaj' => 'Transfer bulunamadı.'], 404); // yalnız transfer yetkilisi
     $t->ben = (int) $p->sube_id === (int) $t->gonderen_sube_id ? 'gonderen' : 'alan';
     $t->yetkili = _trfYetkili($p);
     return response()->json(['ok' => true, 'transfer' => $t]);
@@ -875,7 +875,7 @@ Route::get('/sube-transfer/belge/{id}', function (Request $r, $id) {
     _trfEnsure();
     $p = _trfPersonel($r);
     $t = _trfDetay((int) $id);
-    if (!$p || !_trfGorur($p, $t)) abort(404);
+    if (!$p || !_trfGorur($p, $t) || !_trfYetkili($p)) abort(404);
     $gon = ['unvan' => _subeUnvan($t->gonderen_sube_id), 'vkn' => _subeVkn($t->gonderen_sube_id), 'adres' => (string) DB::table('subeler')->where('id', $t->gonderen_sube_id)->value('adres')];
     $alan = ['unvan' => _subeUnvan($t->alan_sube_id), 'vkn' => _subeVkn($t->alan_sube_id), 'adres' => (string) DB::table('subeler')->where('id', $t->alan_sube_id)->value('adres')];
     return view('sube_transfer_belge', ['t' => $t, 'gon' => $gon, 'alan' => $alan]);
