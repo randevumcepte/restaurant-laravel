@@ -264,6 +264,39 @@ if (!function_exists('_fr2AyAd')) {
     }
 }
 
+if (!function_exists('_fr2BosNedenleri')) {
+    // Bölüm boş kalırsa gösterilecek açıklama: NE eksik + rapor NEDEN buna ihtiyaç duyar + NASIL dolar (ekran yolu)
+    function _fr2BosNedenleri(array $v)
+    {
+        $f = $v['filtre']; $k = $v['kpi'];
+        $donem = (isset($k['baslangic']) ? \Carbon\Carbon::parse($k['baslangic'])->format('d.m.Y') . ' – ' . \Carbon\Carbon::parse($k['bitis'])->format('d.m.Y') : 'son ' . $f['gun'] . ' gün');
+        $girisYolu = 'Alışları Satın Alma > Mal Kabul / İrsaliye ya da Satın Alma > Fatura OCR (AI) ekranından alış faturası olarak girin';
+        $genel = 'Seçili dönemde (' . $donem . ') hiç alış faturası kaydı yok. Bu rapor alış faturalarındaki kalemlerden (malzeme, miktar, birim fiyat, tedarikçi) hesaplanır. Dolması için: ' . $girisYolu . '; ya da üstten daha uzun bir dönem seçin.'
+            . (!empty($f['ted']) ? ' Not: tedarikçi filtresi açık; yalnız seçili tedarikçinin alışlarına bakılıyor.' : '');
+        $n = [];
+        $n['genel'] = $genel;
+        if (empty($k['kalem'])) return ['genel' => $genel, 'zam' => $genel, 'ted' => $genel, 'katalog' => _fr2BosKatalog(), 'hal' => $genel];
+        $cok = count(array_filter($v['malzemeler'], fn ($m) => $m['alis_say'] >= 2));
+        $n['zam'] = $cok === 0
+            ? 'Bu dönemde her malzeme yalnız 1 kez alınmış (' . count($v['malzemeler']) . ' malzeme). Gizli zam, aynı malzemenin dönemdeki İLK ve SON alış fiyatı karşılaştırılarak bulunur; bunun için aynı malzemenin en az 2 alışı gerekir. Dolması için: üstten daha uzun bir dönem seçin (ör. Son 6 ay) ve her alışı faturayla girmeye devam edin.'
+            : 'Veri eksik değil: bu dönemde 2+ kez alınan ' . $cok . ' malzeme var ama hiçbirinin fiyatı ilk alıştan son alışa %' . $f['esik'] . ' ya da daha fazla artmamış. Daha küçük artışları görmek için üstten zam eşiğini düşürün (ör. %3).';
+        $tekTed = count(array_filter($v['malzemeler'], fn ($m) => $m['ted_say'] < 2));
+        $n['ted'] = !empty($f['ted'])
+            ? 'Tedarikçi filtresi açık: yalnız seçili tedarikçinin alışları gösterildiği için tedarikçiler karşılaştırılamaz. Üstten "Tüm tedarikçiler"i seçin.'
+            : 'Bu dönemde hiçbir malzeme 2 farklı tedarikçiden alınmamış (' . $tekTed . ' malzemenin hepsi tek tedarikçiden). Tedarikçi karşılaştırması, aynı malzemenin farklı tedarikçilerden gelen alış faturalarındaki fiyatlarla yapılır. Dolması için: aynı malzemeyi farklı tedarikçiden aldığınızda faturasını girin; ya da Satın Alma > Satın Alma Talepleri\'nden birden çok tedarikçiden teklif toplayın; alternatif liste fiyatları için Satın Alma > Tedarikçiler > tedarikçi kartına ürün fiyatı girin (Katalog Fiyatları bölümünde görünür).';
+        $n['katalog'] = _fr2BosKatalog();
+        $bulten = $v['hal']['bulten'] ?? null;
+        $n['hal'] = !$bulten
+            ? 'Hal bülteni henüz çekilmedi. Hal kıyası, İzmir Büyükşehir hal bülteninin asgari/ortalama/azami fiyatlarıyla yapılır. Dolması için: Satın Alma > Hal Fiyatları sayfasını açın (bülten günde bir otomatik çekilir) ya da oradan "Şimdi Çek"e basın.'
+            : 'Hal bülteninde ' . (int) ($v['hal']['urun_say'] ?? 0) . ' ürün var (' . \Carbon\Carbon::parse($bulten)->format('d.m.Y') . ') ama alış faturalarınızdaki malzemelerle ad eşleşmesi çıkmadı. Eşleşme malzeme adıyla yapılır (ör. "Domates" ↔ "DOMATES SERA", "Soğan" ↔ "SOĞAN KURU"). Ya bu dönemde sebze-meyve alışı yok, ya da malzemeler farklı adlandırılmış (ör. "Dom. kg"); malzeme adını hal ürün adına yakın yazarsanız eşleşir.';
+        return $n;
+    }
+    function _fr2BosKatalog()
+    {
+        return 'Tedarikçi kartlarında aynı malzeme için en az 2 tedarikçinin güncel liste fiyatı girilmemiş (ya da aralarındaki fark %5\'ten az). Bu bölüm faturadan değil, tedarikçi kartındaki ürün fiyatlarından hesaplanır. Dolması için: Satın Alma > Tedarikçiler > tedarikçi kartı > ürünler bölümüne malzeme ve güncel fiyatı girin.';
+    }
+}
+
 if (!function_exists('_fr2Ek')) {
     // Raporlara özel türetilmiş veriler (yorum değil, hesap): ABC, karne puanı, fatura grupları, matrisler, fiyat seyri
     function _fr2Ek(array $v)
@@ -460,7 +493,7 @@ if (!function_exists('_fr2Sayfalar')) {
         $mx = min($mx, 10); $seyirKol = [['Malzeme', 'm', 22], ['Birim', 'm', 7]];
         for ($i = 1; $i <= $mx; $i++) $seyirKol[] = [$i . '. alış', 'tl', 11];
         $seyirKol[] = ['İlk → Son %', 'y', 11, $es];
-        $seyir = ['ad' => 'Fiyat Seyri', 'not' => 'Zamlı malzemelerin dönemdeki alış fiyatları, tarih sırasıyla (soldan sağa). Son ' . $mx . ' alış gösterilir.', 'kol' => $seyirKol,
+        $seyir = ['ad' => 'Fiyat Seyri', 'not' => 'Zamlı malzemelerin dönemdeki alış fiyatları, tarih sırasıyla (soldan sağa).' . ($mx ? ' Son ' . $mx . ' alış gösterilir.' : ''), 'kol' => $seyirKol,
             'sat' => array_map(function ($z) use ($v, $mx) {
                 $g = array_slice($v['gecmis'][$z['id']] ?? [], -$mx); $r = [$z['ad'], $z['birim']];
                 for ($i = 0; $i < $mx; $i++) $r[] = isset($g[$i]) ? (float) $g[$i]['birim_fiyat'] : null;
@@ -529,6 +562,11 @@ if (!function_exists('_fr2Sayfalar')) {
             $aiS[] = ['ad' => 'Pazarlık Notları', 'ai' => 1, 'not' => $uyari, 'kol' => [['Tedarikçi', 'm', 24], ['AI Pazarlık Argümanı', 'm', 80], ['Dönem Harcaması', 'tl', 16, 'top bar'], ['Pay %', 'y', 9], ['Zamlı Kalem', 's', 11], ['Pahalı Kaldığı', 's', 12]],
                 'sat' => array_map(function ($p) use ($kHar) { $kr = $kHar[$p['tedarikci'] ?? ''] ?? null; return [$p['tedarikci'] ?? '', $p['arguman'] ?? '', $kr['harcama'] ?? null, $kr['pay'] ?? null, $kr['zamli'] ?? null, $kr['pahali'] ?? null]; }, (array) ($ai['pazarlik'] ?? []))];
         }
+        // Boş kalan her bölüm NEDENİNİ yazsın (veri eksik mi, sonuç mu yok, nereden girilir)
+        $bos = _fr2BosNedenleri($v);
+        if (empty($v['kpi']['kalem'])) $pano['bos'] = $bos['genel'];
+        foreach (['zam' => 'zam', 'seyir' => 'zam', 'mlz' => 'genel', 'ted' => 'ted', 'katS' => 'katalog', 'karne' => 'genel', 'hal' => 'hal', 'faturaS' => 'genel', 'dokum' => 'genel',
+            'aylik' => 'genel', 'kategori' => 'genel', 'katAy' => 'genel', 'tedAy' => 'genel'] as $deg => $neden) ${$deg}['bos'] = $bos[$neden];
         switch ($rapor) {
             case 'zam': return [$pano, $zam, $seyir];
             case 'malzeme': return [$pano, $mlz];
@@ -578,6 +616,7 @@ if (!function_exists('_fr2Xlsx')) {
             'top_y' => $xf($font(10, '1E293B', true), $fill($acik), 165, 2), 'top_s' => $xf($font(10, '1E293B', true), $fill($acik), 166, 2),
             'grup' => $xf($font(10, $tema, true), $fill('F8FAFC'), 0, 1), 'ara_m' => $xf($font(9, '475569', true), 0, 0, 1), 'ara_tl' => $xf($font(9, '475569', true), 0, 164, 1),
             'blok' => $xf($font(12, $tema, true)),
+            'bos' => $xf($font(10, '92400E'), $fill('FFFBEB'), 0, 0, '<alignment vertical="top" wrapText="1"/>'),
         ];
         $tmp = tempnam(sys_get_temp_dir(), 'frx');
         $z = new \ZipArchive();
@@ -648,6 +687,11 @@ if (!function_exists('_fr2Xlsx')) {
                     $r += 4;
                 }
                 $r += 1;
+                if (!empty($s['bos'])) {
+                    $rows .= '<row r="' . $r . '" ht="62" customHeight="1"><c r="B' . $r . '" t="inlineStr" s="' . $S['bos'] . '"><is><t xml:space="preserve">' . $x('Rapor boş. ' . $s['bos']) . '</t></is></c>';
+                    for ($c = 2; $c <= 12; $c++) $rows .= '<c r="' . $harf($c) . $r . '" s="' . $S['bos'] . '"/>';
+                    $rows .= '</row>'; $merge[] = 'B' . $r . ':M' . $r; $r += 2;
+                }
                 $anchors = ''; $drRels = ''; $gSay = 0;
                 foreach ($s['bloklar'] as $bl) {
                     $bas = $r; $adet = count($bl['sat']); $vt = $bl['kol'][1][1];
@@ -702,6 +746,12 @@ if (!function_exists('_fr2Xlsx')) {
                 foreach ($s['kol'] as $c => $k) $rows .= '<c r="' . $harf($c) . '4" t="inlineStr" s="' . $S['kolon'] . '"><is><t>' . $x($k[0]) . '</t></is></c>';
                 $rows .= '</row>';
                 $r = 5; $grupIlk = null;
+                if (!count($s['sat']) && !empty($s['bos'])) {
+                    // boş bölüm: nedeni + nasıl dolar
+                    $rows .= '<row r="5" ht="62" customHeight="1"><c r="A5" t="inlineStr" s="' . $S['bos'] . '"><is><t xml:space="preserve">' . $x('Bu bölüm boş. ' . $s['bos']) . '</t></is></c>';
+                    for ($c = 1; $c < $kolSay; $c++) $rows .= '<c r="' . $harf($c) . '5" s="' . $S['bos'] . '"/>';
+                    $rows .= '</row>'; $merge[] = 'A5:' . $sonK . '5';
+                }
                 foreach ($s['sat'] as $sat) {
                     if (isset($sat['_baslik'])) {
                         $rows .= '<row r="' . $r . '"><c r="A' . $r . '" t="inlineStr" s="' . $S['grup'] . '"><is><t>' . $x($sat['_baslik']) . '</t></is></c>';
@@ -911,6 +961,7 @@ Route::get('/fiyat-radari', function (Request $r) {
     $v = ['filtre' => $f, 'kpi' => []];
     try { $v = _fr2Veri($sid, $f); } catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('fiyat radari: ' . $e->getMessage()); }
     $v['ai'] = cache()->get('fr2_ai_son_' . $sid);
+    try { $v['bos'] = _fr2BosNedenleri($v); } catch (\Throwable $e) { $v['bos'] = []; }
     // Rapor Merkezi yalnız yorumsuz veri raporları; AI raporu AI Analiz sekmesinden indirilir
     $v['raporlar'] = array_diff_key(_fr2Raporlar(), ['ai' => 1]);
     return view('fiyat_radari', $v);
@@ -1022,6 +1073,7 @@ Route::get('/api/patron/fiyat-radari-v2', function (Request $r) {
     $gec = []; foreach ($v['gecmis'] as $mid => $g) $gec[(string) $mid] = array_slice(array_reverse($g), 0, 30);
     $v['gecmis'] = (object) $gec;
     $v['ai'] = cache()->get('fr2_ai_son_' . $p->sube_id);
+    $v['bos'] = _fr2BosNedenleri($v); // boş bölümlerin nedeni (uygulama da gösterebilir)
     $v['raporlar'] = array_map(fn ($k, $x) => ['anahtar' => $k, 'ad' => $x[0], 'aciklama' => $x[1], 'ikon' => $x[2], 'renk' => $x[3]], array_keys(array_diff_key(_fr2Raporlar(), ['ai' => 1])), array_diff_key(_fr2Raporlar(), ['ai' => 1]));
     $v['ok'] = 1;
     return response()->json($v);

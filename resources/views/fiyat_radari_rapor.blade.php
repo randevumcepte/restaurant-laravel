@@ -98,7 +98,7 @@
   td.cb .cbi{position:absolute;left:0;top:3px;bottom:3px;border-radius:0 4px 4px 0;background:{{ $hexA($tema, .2) }}}
   td.cb span{position:relative}
   .onc{display:inline-block;padding:2px 7px;border-radius:99px;font-weight:900;font-size:9.5px}
-  .bos{padding:16px;text-align:center;color:#64748B;background:#fff;border:1px dashed #CBD5E1;border-radius:10px}
+  .bos{padding:13px 16px;color:#92400E;background:#FFFBEB;border:1px dashed #FCD34D;border-radius:10px;font-size:11.5px;line-height:1.55}
   .ai{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .ai .k{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px;border-top:3px solid var(--c);page-break-inside:avoid}
   .ai .k h3{margin:0 0 6px;font-size:12px;color:var(--c)}
@@ -137,6 +137,7 @@
           <div style="--c:#{{ $renk }}"><span>{{ $et }}</span><b class="{{ $fmt === 'metin' ? 'metin' : '' }}">{{ $kpiDeg($deg, $fmt) }}</b></div>
         @endforeach
       </div>
+      @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Rapor boş.</b> {{ $s['bos'] }}</div>@endif
       <div class="grafikler">
         @foreach ($s['bloklar'] as $bl)
           @php $vt = $bl['kol'][1][1]; $mx = max(1, ...array_map(fn($r) => abs((float) $r[1]), $bl['sat'])); $ozel = $bl['pdf'] ?? null; @endphp
@@ -238,7 +239,7 @@
     <h2>{{ $s['ad'] }}</h2>
     @if (!empty($s['not']))<p class="not">{{ $s['not'] }}</p>@endif
     @if (!count($s['sat']))
-      <div class="bos">Bu bölümde kayıt yok.</div>
+      <div class="bos"><b>Bu bölüm boş.</b> {{ $s['bos'] ?? 'Seçili dönem ve filtrelerle eşleşen kayıt yok.' }}</div>
     @else
       @php
         $duz = array_values(array_filter($s['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara'])));

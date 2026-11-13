@@ -9,6 +9,7 @@
   $filtre = $filtre ?? ['gun' => 120, 'ted' => 0, 'esik' => 8];
   $kpi = $kpi ?? []; $zamlar = $zamlar ?? []; $malzemeler = $malzemeler ?? []; $karsilastirma = $karsilastirma ?? []; $katalog = $katalog ?? [];
   $karne = $karne ?? []; $hal = $hal ?? ['satirlar' => [], 'bulten' => null, 'urun_say' => 0, 'yillik_fazla' => 0]; $aylik = $aylik ?? []; $kategori = $kategori ?? [];
+  $bos = $bos ?? [];
   $dokum = $dokum ?? []; $gecmis = $gecmis ?? []; $tedarikciler = $tedarikciler ?? []; $raporlar = $raporlar ?? []; $ai = $ai ?? null;
   $tl = fn($v) => number_format((float) $v, 2, ',', '.') . ' ₺';
   $tl0 = fn($v) => number_format(round((float) $v), 0, ',', '.') . ' ₺';
@@ -234,7 +235,7 @@
       <a class="fr-xbtn p" href="{{ $indir('zam', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> PDF</a></div></div>
   <div class="fr-nasil"><span class="material-icons-outlined">info</span><div><b>Neye göre?</b> Seçili dönemdeki <b>ilk alış</b> ile <b>son alış</b> karşılaştırılır (hangi tedarikçiden, hangi faturadan olduğu yazılı). Tedarikçi değiştiyse ayrıca <b>aynı tedarikçinin kendi zammı</b> gösterilir; böylece "zam mı yaptı, yoksa pahalı tedarikçiye mi geçtik" ayrılır. Yıllık etki = (son − ilk) × dönemdeki alım miktarı, yıla oranlanmış.</div></div>
   @if (!$zamlar)
-    <div class="fr-bos" style="--c:var(--yesil)"><span class="material-icons-outlined">verified</span>%{{ $filtre['esik'] }} üstü zam yok 👍 (En az 2 alışı olan malzemeler kıyaslanır.)</div>
+    <div class="fr-bos" style="--c:var(--amber);text-align:left"><span class="material-icons-outlined">info</span>{{ $bos['zam'] ?? '' }}</div>
   @else
   <div class="fr-t"><table id="tZam">
     <thead><tr><th>Malzeme</th><th>İlk alış (kimden)</th><th class="s">İlk fiyat</th><th>Son alış (kimden)</th><th class="s">Son fiyat</th><th class="o">Artış</th><th class="o">Aynı tedarikçide</th><th>Dönemin en ucuzu</th><th class="s">Yıllık etki</th></tr></thead>
@@ -264,7 +265,7 @@
       <a class="fr-xbtn x" href="{{ $indir('malzeme', 'xlsx') }}"><span class="material-icons-outlined">table_view</span> Excel</a>
       <a class="fr-xbtn p" href="{{ $indir('malzeme', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> PDF</a></div></div>
   <div class="fr-nasil"><span class="material-icons-outlined">info</span><div><b>Neye göre?</b> Ortalama fiyat <b>miktar ağırlıklıdır</b> (toplam tutar ÷ toplam miktar). En düşük / en yüksek / son fiyatın yanında <b>hangi tedarikçiden</b> alındığı yazılı. Oynaklık = (en yüksek − en düşük) ÷ en düşük. Tasarruf payı = hep en düşük fiyattan alsaydın kazancın.</div></div>
-  @if (!$malzemeler)<div class="fr-bos" style="--c:var(--sub)"><span class="material-icons-outlined">inbox</span>Bu dönemde alış yok.</div>@else
+  @if (!$malzemeler)<div class="fr-bos" style="--c:var(--sub);text-align:left"><span class="material-icons-outlined">inbox</span>{{ $bos['genel'] ?? '' }}</div>@else
   <div class="fr-t"><table id="tMal">
     <thead><tr><th>Malzeme</th><th class="s">Harcama</th><th class="s">Ort. fiyat</th><th>En düşük (kimden)</th><th>En yüksek (kimden)</th><th>Son (kimden)</th><th class="o">Oynaklık</th><th class="s">Tasarruf payı</th></tr></thead>
     <tbody>
@@ -292,7 +293,7 @@
       <a class="fr-xbtn p" href="{{ $indir('tedarikci', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> PDF</a></div></div>
   <div class="fr-nasil"><span class="material-icons-outlined">info</span><div><b>Neye göre?</b> Aynı malzemeyi dönem içinde <b>gerçekten farklı tedarikçilerden aldığın</b> faturalar karşılaştırılır (miktar ağırlıklı ortalama). Kayıp = her tedarikçiden aldığın miktarı en ucuz tedarikçinin fiyatından alsaydın ödeyeceğin fark.</div></div>
   @if (!$karsilastirma)
-    <div class="fr-bos" style="--c:#0EA5E9"><span class="material-icons-outlined">compare_arrows</span>Kıyas için bir malzemeyi bu dönemde <b>en az 2 farklı tedarikçiden</b> almış olman gerekir.</div>
+    <div class="fr-bos" style="--c:#0EA5E9;text-align:left"><span class="material-icons-outlined">compare_arrows</span>{{ $bos['ted'] ?? '' }}</div>
   @else
   <div class="fr-t"><table id="tTed">
     <thead><tr><th>Malzeme</th><th>Tedarikçiler (ucuzdan pahalıya)</th><th class="o">Fark</th><th>Şu an kimden alıyorsun</th><th class="s">Dönem kaybı</th><th class="s">Yıllık</th></tr></thead>
@@ -327,7 +328,7 @@
     <div class="sag"><a class="fr-xbtn x" href="{{ $indir('karne', 'xlsx') }}"><span class="material-icons-outlined">table_view</span> Excel</a>
       <a class="fr-xbtn p" href="{{ $indir('karne', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> PDF</a></div></div>
   <div class="fr-nasil"><span class="material-icons-outlined">info</span><div><b>Zamlı kalem</b> = o tedarikçinin kendi fiyatını %{{ $filtre['esik'] }}+ artırdığı malzeme. <b>Pahalı kaldığı</b> = aynı malzemeyi başka tedarikçiden %5+ ucuza aldığın durum.</div></div>
-  @if (!$karne)<div class="fr-bos" style="--c:var(--sub)"><span class="material-icons-outlined">inbox</span>Bu dönemde alış yok.</div>@else
+  @if (!$karne)<div class="fr-bos" style="--c:var(--sub);text-align:left"><span class="material-icons-outlined">inbox</span>{{ $bos['genel'] ?? '' }}</div>@else
   <div class="fr-t"><table>
     <thead><tr><th>Tedarikçi</th><th class="s">Harcama</th><th>Pay</th><th class="s">Fatura</th><th class="s">Malzeme</th><th class="o">Zamlı kalem</th><th class="o">Ort. zam</th><th class="o">Pahalı kaldığı</th><th>Son alış</th></tr></thead>
     <tbody>@foreach ($karne as $k)
@@ -352,7 +353,7 @@
       <a class="fr-xbtn" style="color:var(--sub2);border-color:var(--line)" href="/hal-fiyatlari"><span class="material-icons-outlined">open_in_new</span> Hal fiyatları</a></div></div>
   <div class="fr-nasil"><span class="material-icons-outlined">info</span><div><b>Neye göre?</b> Son alış fiyatın, <b>İzmir Büyükşehir hal bülteni</b>@if (!empty($hal['bulten'])) ({{ $tar($hal['bulten']) }})@endif ile karşılaştırılır. Hal toptan fiyattır; tedarikçinin <b>%10–20 üstü normaldir</b>. Fark yalnız birimler aynıysa (kg↔kg) hesaplanır; çuval/kasa alımlarında "birim farklı" yazar.</div></div>
   @if (!$halSat)
-    <div class="fr-bos" style="--c:#10B981"><span class="material-icons-outlined">storefront</span>@if (empty($hal['bulten'])) Hal bülteni henüz gelmedi. @else Alışlardaki sebze-meyve malzemelerin halde eşleşince burada çıkar. @endif</div>
+    <div class="fr-bos" style="--c:#10B981;text-align:left"><span class="material-icons-outlined">storefront</span>{{ $bos['hal'] ?? '' }}</div>
   @else
   <div class="fr-t"><table>
     <thead><tr><th>Malzeme</th><th>Son tedarikçi</th><th>Haldeki karşılığı</th><th class="s">Hal asgari</th><th class="s">Hal ortalama</th><th class="s">Hal azami</th><th class="s">Senin son alış</th><th class="o">Fark</th><th class="s">Yıllık fazla</th></tr></thead>
@@ -379,7 +380,7 @@
       <a class="fr-xbtn x" href="{{ $indir('dokum', 'xlsx') }}"><span class="material-icons-outlined">table_view</span> Excel</a>
       <a class="fr-xbtn p" href="{{ $indir('dokum', 'pdf') }}" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span> PDF</a></div></div>
   @if (count($dokum) > count($dokumGoster))<div class="fr-nasil"><span class="material-icons-outlined">info</span><div>Ekranda son {{ count($dokumGoster) }} satır gösteriliyor; <b>tamamı ({{ count($dokum) }} satır) Excel'de</b>.</div></div>@endif
-  @if (!$dokum)<div class="fr-bos" style="--c:var(--sub)"><span class="material-icons-outlined">inbox</span>Bu dönemde alış yok.</div>@else
+  @if (!$dokum)<div class="fr-bos" style="--c:var(--sub);text-align:left"><span class="material-icons-outlined">inbox</span>{{ $bos['genel'] ?? '' }}</div>@else
   <div class="fr-t"><table id="tDok">
     <thead><tr><th>Tarih</th><th>Malzeme</th><th>Tedarikçi</th><th>Fatura</th><th class="s">Miktar</th><th class="s">Birim fiyat</th><th class="s">Tutar</th><th class="o">Önceki alışa göre</th></tr></thead>
     <tbody>@foreach ($dokumGoster as $d)
