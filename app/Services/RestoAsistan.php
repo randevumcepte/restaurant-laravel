@@ -18,6 +18,35 @@ class RestoAsistan
 {
     public $aiTeshis = null;
 
+    /** ŞUBE BAĞLAMI: her sorgu bu restorana süzülür (çok restoranlı sistemde cirolar karışmasın). */
+    public $subeId = 0;
+
+    public function sube($id)
+    {
+        $this->subeId = (int) $id;
+        return $this;
+    }
+
+    protected function sid()
+    {
+        if (!$this->subeId && function_exists('_aktifSubeId')) $this->subeId = (int) _aktifSubeId();
+        return (int) $this->subeId;
+    }
+
+    /** Tahsilat toplamı (odemeler'de sube_id yok -> adisyon üzerinden şube) */
+    protected function odeme($from, $to = null)
+    {
+        $q = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $this->sid());
+        $to === null ? $q->where('odemeler.created_at', '>=', $from) : $q->whereBetween('odemeler.created_at', [$from, $to]);
+        return (float) $q->sum('odemeler.tutar');
+    }
+
+    /** Bu şubenin adisyonları */
+    protected function ad()
+    {
+        return DB::table('adisyonlar')->where('adisyonlar.sube_id', $this->sid());
+    }
+
     protected $niyetAnahtarlari = [
         'ciro' => ['ciro', 'kasa', 'hasilat', 'kazanc', 'kazandik', 'ne kadar kazan', 'kac para', 'ne kadar para',
             'tahsilat', 'gelir', 'kac lira', 'ne kadar sattik', 'ne kadar satis', 'satis ne kadar', 'toplam satis',
@@ -161,14 +190,14 @@ class RestoAsistan
             $now = now();
             $gun = (int) $now->day;
             $buBas = $now->copy()->startOfMonth();
-            $buCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$buBas, $now])->sum('tutar');
+            $buCiro = $this->odeme($buBas, $now);
             $gecBas = $now->copy()->subMonthNoOverflow()->startOfMonth();
             $gecSon = $gecBas->copy()->endOfMonth();
             $gecAyniGun = $gecBas->copy()->addDays($gun - 1)->endOfDay();
             if ($gecAyniGun->gt($gecSon)) $gecAyniGun = $gecSon;
-            $gecCiro = (float) DB::table('odemeler')->whereBetween('created_at', [$gecBas, $gecAyniGun])->sum('tutar');
-            $buAdet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$buBas, $now])->count();
-            $gecAdet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecAyniGun])->count();
+            $gecCiro = $this->odeme($gecBas, $gecAyniGun);
+            $buAdet = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$buBas, $now])->count();
+            $gecAdet = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecAyniGun])->count();
             if ($buCiro <= 0 && $gecCiro <= 0) return $this->paket_('karsilastir', 'Karşılaştıracak yeterli satış verisi yok henüz.', $niyet);
             if ($gecCiro <= 0) {
                 $cevap = 'Bu ayın ilk ' . $gun . ' günü ' . $this->tl($buCiro) . ' ciro var; geçen ay aynı dönemde kayıt yok, kıyas yapamıyorum.';
@@ -195,12 +224,12 @@ class RestoAsistan
             $now = now();
             $gecBas = $now->copy()->subMonthNoOverflow()->startOfMonth();
             $gecSon = $gecBas->copy()->endOfMonth();
-            $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$gecBas, $gecSon])->sum('tutar');
+            $ciro = $this->odeme($gecBas, $gecSon);
             if ($ciro <= 0) return $this->paket_('gecenay', 'Geçen ay için kayıtlı satış görünmüyor.', $niyet);
-            $adet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->count();
-            $misafir = (int) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->sum('misafir_sayisi');
+            $adet = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->count();
+            $misafir = (int) $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$gecBas, $gecSon])->sum('misafir_sayisi');
             $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$gecBas, $gecSon])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$gecBas, $gecSon])->where('adisyon_kalemleri.durum', '!=', 'iptal')
                 ->select('urun_adi', DB::raw('SUM(adet) adet'))->groupBy('urun_adi')->orderByDesc('adet')->first();
             $ay = $this->_ayAdi($gecBas->month);
             $cevap = 'Geçen ay ' . $ay . ' toplam ' . $this->tl($ciro) . ' ciro, ' . $adet . ' adisyon kapandı';
@@ -219,9 +248,9 @@ class RestoAsistan
     {
         try {
             [$bas, $to] = $this->ayAralik();
-            $gelir = (float) DB::table('odemeler')->whereBetween('created_at', [$bas, $to])->sum('tutar');
+            $gelir = $this->odeme($bas, $to);
             $gider = 0.0;
-            if (Schema::hasTable('giderler')) $gider = (float) DB::table('giderler')->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])->sum('tutar');
+            if (Schema::hasTable('giderler')) $gider = (float) DB::table('giderler')->where('sube_id', $this->sid())->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])->sum('tutar');
             $net = $gelir - $gider;
             if ($gelir <= 0 && $gider <= 0) return $this->paket_('finans', 'Bu ay için henüz gelir veya gider hareketi görünmüyor.', $niyet);
             $durum = $net >= 0 ? 'net kâr' : 'net zarar';
@@ -242,14 +271,14 @@ class RestoAsistan
             if (!Schema::hasTable('alis_faturalari')) return $this->paket_('satinalma', 'Henüz alış faturası kaydı yok.', $niyet);
             [$bas, $to] = $this->ayAralik();
             $b = $bas->toDateString(); $e = $to->toDateString();
-            $toplam = (float) DB::table('alis_faturalari')->whereBetween('tarih', [$b, $e])->sum('toplam');
+            $toplam = (float) DB::table('alis_faturalari')->where('sube_id', $this->sid())->whereBetween('tarih', [$b, $e])->sum('toplam');
             if ($toplam <= 0) return $this->paket_('satinalma', 'Bu ay henüz alış faturası girilmemiş.', $niyet);
             $topTed = DB::table('alis_faturalari')->join('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
-                ->whereBetween('alis_faturalari.tarih', [$b, $e])->select('tedarikciler.ad', DB::raw('SUM(alis_faturalari.toplam) as t'))
+                ->where('alis_faturalari.sube_id', $this->sid())->whereBetween('alis_faturalari.tarih', [$b, $e])->select('tedarikciler.ad', DB::raw('SUM(alis_faturalari.toplam) as t'))
                 ->groupBy('tedarikciler.id', 'tedarikciler.ad')->orderByDesc('t')->first();
             $zamlar = DB::table('alis_fatura_kalemleri')->join('alis_faturalari', 'alis_fatura_kalemleri.fatura_id', '=', 'alis_faturalari.id')
                 ->join('malzemeler', 'alis_fatura_kalemleri.malzeme_id', '=', 'malzemeler.id')
-                ->whereBetween('alis_faturalari.tarih', [$b, $e])->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
+                ->where('alis_faturalari.sube_id', $this->sid())->whereBetween('alis_faturalari.tarih', [$b, $e])->whereIn('alis_fatura_kalemleri.uyari', ['sari', 'kirmizi'])
                 ->select('malzemeler.ad', 'alis_fatura_kalemleri.fiyat_farki_yuzde')->orderByDesc('alis_fatura_kalemleri.fiyat_farki_yuzde')->limit(3)->get();
             $cevap = 'Bu ay toplam ' . $this->tl($toplam) . ' alış yapmışsınız';
             if ($topTed) $cevap .= '. En çok ' . $topTed->ad . ' tedarikçisinden (' . $this->tl((float) $topTed->t) . ')';
@@ -276,7 +305,7 @@ class RestoAsistan
             $norm = $this->normalize($niyet['ham']);
             // İsim geçiyor mu? (kişiye özel cevap)
             $kisi = null;
-            foreach (DB::table('personeller')->where('aktif', 1)->get(['id', 'ad', 'maas']) as $p) {
+            foreach (DB::table('personeller')->where('sube_id', $this->sid())->where('aktif', 1)->get(['id', 'ad', 'maas']) as $p) {
                 $ad = $this->normalize($p->ad);
                 if ($ad && strpos($norm, $ad) !== false) { $kisi = $p; break; }
                 $ilk = explode(' ', $ad)[0] ?? '';
@@ -290,10 +319,10 @@ class RestoAsistan
                     ['k' => 'Maaş', 'v' => $this->tl((float) $kisi->maas)], ['k' => 'Ödenen', 'v' => $this->tl($odenen)], ['k' => 'Avans', 'v' => $this->tl($avans)],
                 ]]);
             }
-            $maasToplam = (float) DB::table('personeller')->where('aktif', 1)->sum('maas');
-            $avans = (float) DB::table('personel_hareketleri')->where('tur', 'avans')->whereBetween('tarih', [$b, $e])->sum('tutar');
-            $odenen = (float) DB::table('personel_hareketleri')->where('tur', 'odeme')->whereBetween('tarih', [$b, $e])->sum('tutar');
-            $prim = (float) DB::table('personel_hareketleri')->where('tur', 'prim')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $maasToplam = (float) DB::table('personeller')->where('sube_id', $this->sid())->where('aktif', 1)->sum('maas');
+            $avans = (float) DB::table('personel_hareketleri')->where('sube_id', $this->sid())->where('tur', 'avans')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $odenen = (float) DB::table('personel_hareketleri')->where('sube_id', $this->sid())->where('tur', 'odeme')->whereBetween('tarih', [$b, $e])->sum('tutar');
+            $prim = (float) DB::table('personel_hareketleri')->where('sube_id', $this->sid())->where('tur', 'prim')->whereBetween('tarih', [$b, $e])->sum('tutar');
             $cevap = 'Bu ay toplam maaş tahakkuku ' . $this->tl($maasToplam) . '. Şu ana kadar ' . $this->tl($odenen) . ' ödenmiş, ' . $this->tl($avans) . ' avans verilmiş';
             if ($prim > 0) $cevap .= ', ' . $this->tl($prim) . ' de prim';
             $cevap .= '.';
@@ -309,7 +338,7 @@ class RestoAsistan
     {
         try {
             if (!Schema::hasTable('malzemeler')) return $this->paket_('stok', 'Henüz stok/malzeme kaydı yok.', $niyet);
-            $mevcut = DB::table('stok_hareketleri')->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
+            $mevcut = DB::table('stok_hareketleri')->where('sube_id', $this->sid())->selectRaw('malzeme_id, SUM(miktar) m')->groupBy('malzeme_id')->pluck('m', 'malzeme_id');
             $malz = DB::table('malzemeler')->get(['id', 'ad', 'kritik_stok', 'guncel_maliyet', 'stok_takipli']);
             if ($malz->isEmpty()) return $this->paket_('stok', 'Henüz tanımlı malzeme yok. Stok ekranından ekleyebilirsiniz.', $niyet);
             $toplamDeger = 0.0; $kritikler = [];
@@ -338,7 +367,7 @@ class RestoAsistan
         try {
             if (!Schema::hasTable('giderler')) return $this->paket_('gider', 'Bu ay henüz gider kaydı yok.', $niyet);
             [$bas, $to] = $this->ayAralik();
-            $rows = DB::table('giderler')->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])
+            $rows = DB::table('giderler')->where('sube_id', $this->sid())->whereBetween('tarih', [$bas->toDateString(), $to->toDateString()])
                 ->selectRaw('kategori, SUM(tutar) t')->groupBy('kategori')->orderByDesc('t')->get();
             if ($rows->isEmpty()) return $this->paket_('gider', 'Bu ay henüz gider kaydı görünmüyor.', $niyet);
             $adlar = ['kira' => 'kira', 'fatura' => 'fatura', 'malzeme' => 'malzeme/alış', 'maas' => 'maaş', 'vergi' => 'vergi', 'diger' => 'diğer'];
@@ -358,8 +387,8 @@ class RestoAsistan
 
     protected function ciCiro($from, $to, $d, $niyet)
     {
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
-        $adet = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
+        $ciro = $this->odeme($from, $to);
+        $adet = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
         if ($ciro <= 0) return $this->paket_('ciro', ucfirst($d) . ' için henüz bir tahsilat görünmüyor.', $niyet);
         $cevap = ucfirst($d) . ' toplam ' . $this->tl($ciro) . ' ciro gerçekleşmiş, ' . $adet . ' adisyon kapanmış.';
         if ($adet > 0) $cevap .= ' Adisyon ortalaması ' . $this->tl($ciro / $adet) . '.';
@@ -368,7 +397,7 @@ class RestoAsistan
 
     protected function cvGarson($from, $to, $d, $niyet)
     {
-        $liste = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+        $liste = $this->ad()->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
             ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
             ->select('personeller.ad', DB::raw('COUNT(*) as adet'), DB::raw('SUM(adisyonlar.toplam) as ciro'))
             ->groupBy('personeller.id', 'personeller.ad')->orderByDesc('ciro')->get();
@@ -391,7 +420,7 @@ class RestoAsistan
     protected function cvUrun($from, $to, $d, $niyet)
     {
         $liste = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->select('urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as ciro'))
             ->groupBy('urun_adi')->orderByDesc('adet')->limit(10)->get();
         if ($liste->isEmpty()) return $this->paket_('urun', ucfirst($d) . ' için henüz bir ürün satışı görünmüyor.', $niyet);
@@ -405,9 +434,9 @@ class RestoAsistan
 
     protected function cvMasa($d, $niyet)
     {
-        $acik = DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->count();
-        $toplam = DB::table('masalar')->count();
-        $tutar = (float) DB::table('adisyonlar')->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
+        $acik = $this->ad()->where('durum', 'acik')->whereNotNull('masa_id')->count();
+        $toplam = DB::table('masalar')->where('sube_id', $this->sid())->count();
+        $tutar = (float) $this->ad()->where('durum', 'acik')->whereNotNull('masa_id')->sum('toplam');
         $cevap = $acik > 0
             ? 'Şu an ' . $acik . ' masa dolu (' . $toplam . ' masadan), açık adisyonlarda toplam ' . $this->tl($tutar) . ' bekliyor.'
             : 'Şu an açık masa yok, tüm masalar boş.';
@@ -416,19 +445,19 @@ class RestoAsistan
 
     protected function cvPaket($d, $niyet)
     {
-        $acik = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')->count();
+        $acik = $this->ad()->where('kanal', 'paket')->where('durum', 'acik')->count();
         $cevap = $acik > 0 ? 'Şu an ' . $acik . ' aktif paket/kurye siparişi var.' : 'Şu an aktif paket siparişi yok.';
         return $this->cvp('paket', $cevap, $niyet, ['tip' => 'paket', 'baslik' => 'Paket', 'acik' => $acik]);
     }
 
     protected function cvMaliyet($from, $to, $d, $niyet)
     {
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+        $ciro = $this->odeme($from, $to);
         $maliyet = 0.0;
         if (function_exists('_restoUrunMaliyetMap')) {
             $map = _restoUrunMaliyetMap();
             $satir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
                 ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
                 ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')->get();
             foreach ($satir as $s) {
@@ -450,19 +479,19 @@ class RestoAsistan
 
     protected function cvKayip($from, $to, $d, $niyet)
     {
-        $q = fn () => DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
+        $q = fn () => $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to]);
         $iskonto = (float) $q()->sum('indirim');
         $ikram = (float) $q()->sum('ikram');
         $silinen = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyon_kalemleri.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])->sum('adisyon_kalemleri.tutar');
+            ->where('adisyonlar.sube_id', $this->sid())->where('adisyon_kalemleri.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])->sum('adisyon_kalemleri.tutar');
         $fire = 0.0;
         try {
-            $fire = (float) DB::table('stok_hareketleri')->where('tip', 'fire')->whereBetween('created_at', [$from, $to])
+            $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $this->sid())->where('tip', 'fire')->whereBetween('created_at', [$from, $to])
                 ->select(DB::raw('COALESCE(SUM(ABS(miktar)*birim_maliyet),0) as t'))->value('t');
         } catch (\Throwable $e) {
         }
-        $iptal = (float) DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->sum('toplam');
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
+        $iptal = (float) $this->ad()->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->sum('toplam');
+        $ciro = $this->odeme($from, $to);
         $toplamKayip = $iskonto + $ikram + $silinen + $fire + $iptal;
         $cevap = ucfirst($d) . ' toplam sızıntı yaklaşık ' . $this->tl($toplamKayip) . '. '
             . 'İskonto ' . $this->tl($iskonto) . ', ikram ' . $this->tl($ikram) . ', silinen ürün ' . $this->tl($silinen)
@@ -474,7 +503,7 @@ class RestoAsistan
 
     protected function cvIptal($from, $to, $d, $niyet)
     {
-        $q = DB::table('adisyonlar')->where('durum', 'iptal')->whereBetween('acilis', [$from, $to]);
+        $q = $this->ad()->where('durum', 'iptal')->whereBetween('acilis', [$from, $to]);
         $adet = (clone $q)->count();
         $tutar = (float) (clone $q)->sum('toplam');
         $cevap = $adet > 0
@@ -485,8 +514,8 @@ class RestoAsistan
 
     protected function cvMusteri($from, $to, $d, $niyet)
     {
-        $misafir = (int) DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('misafir_sayisi');
-        $folyo = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
+        $misafir = (int) $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('misafir_sayisi');
+        $folyo = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
         if ($folyo === 0) return $this->paket_('musteri', ucfirst($d) . ' için henüz bir müşteri hareketi görünmüyor.', $niyet);
         $cevap = ucfirst($d) . ' toplam ' . $misafir . ' misafir ağırlanmış, ' . $folyo . ' adisyonda.';
         return $this->cvp('musteri', $cevap, $niyet, ['tip' => 'musteri', 'baslik' => 'Müşteri · ' . ucfirst($d), 'misafir' => $misafir, 'folyo' => $folyo]);
@@ -494,15 +523,15 @@ class RestoAsistan
 
     protected function cvOzet($from, $to, $d, $niyet)
     {
-        $ciro = (float) DB::table('odemeler')->whereBetween('created_at', [$from, $to])->sum('tutar');
-        $folyo = DB::table('adisyonlar')->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
+        $ciro = $this->odeme($from, $to);
+        $folyo = $this->ad()->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->count();
         $topUrun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->select('urun_adi', DB::raw('SUM(adet) as adet'))->groupBy('urun_adi')->orderByDesc('adet')->first();
-        $topGarson = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
+        $topGarson = $this->ad()->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
             ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
             ->select('personeller.ad', DB::raw('SUM(adisyonlar.toplam) as ciro'))->groupBy('personeller.id', 'personeller.ad')->orderByDesc('ciro')->first();
-        $acik = DB::table('adisyonlar')->where('durum', 'acik')->count();
+        $acik = $this->ad()->where('durum', 'acik')->count();
         $cumleler = [];
         $cumleler[] = $ciro > 0 ? (ucfirst($d) . ' toplam ' . $this->tl($ciro) . ' ciro, ' . $folyo . ' adisyon') : (ucfirst($d) . ' henüz satış görünmüyor');
         if ($topUrun) $cumleler[] = 'En çok satan ' . $topUrun->urun_adi . ' (' . (int) $topUrun->adet . ' adet)';
@@ -518,9 +547,11 @@ class RestoAsistan
     {
         try {
             // Cache'e DUZ DIZI koy (stdClass cache'te "incomplete object"e donusup patlayabiliyor)
-            return Cache::remember('resto_kalip_liste_v2', now()->addMinutes(5), function () {
+            $sid = $this->sid();
+            return Cache::remember('resto_kalip_liste_v3:' . $sid, now()->addMinutes(5), function () use ($sid) {
                 if (!Schema::hasTable('asistan_kalip')) return [];
-                return DB::table('asistan_kalip')->where('aktif', 1)->select('id', 'tetikleyiciler', 'cevap')->get()
+                if (function_exists('_kalipSubeEnsure')) _kalipSubeEnsure();
+                return DB::table('asistan_kalip')->where('aktif', 1)->whereIn('sube_id', [0, $sid])->select('id', 'tetikleyiciler', 'cevap')->get()
                     ->map(fn ($x) => ['id' => (int) $x->id, 'tetikleyiciler' => (string) $x->tetikleyiciler, 'cevap' => (string) $x->cevap])->all();
             });
         } catch (\Throwable $e) {
@@ -790,6 +821,7 @@ class RestoAsistan
      */
     public function tespitler($subeId)
     {
+        $this->subeId = (int) $subeId;
         $t = [];
         $now = now();
         $buBas = (clone $now)->subDays(7);
@@ -798,8 +830,8 @@ class RestoAsistan
 
         // 1) Ciro trendi (bu hafta vs geçen hafta)
         try {
-            $bu = (float) DB::table('odemeler')->whereBetween('created_at', [$buBas, $now])->sum('tutar');
-            $on = (float) DB::table('odemeler')->whereBetween('created_at', [$onBas, $buBas])->sum('tutar');
+            $bu = $this->odeme($buBas, $now);
+            $on = $this->odeme($onBas, $buBas);
             if ($on > 0) {
                 $deg = (int) round(($bu - $on) / $on * 100);
                 if ($deg <= -10) {
@@ -871,7 +903,7 @@ class RestoAsistan
             if (function_exists('_restoUrunMaliyetMap')) {
                 $map = _restoUrunMaliyetMap();
                 $sat = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                    ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$buBas, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                    ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$buBas, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
                     ->groupBy('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi')
                     ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) adet'), DB::raw('SUM(adisyon_kalemleri.tutar) ciro'))->get();
                 if ($sat->count() > 0) {
@@ -911,7 +943,7 @@ class RestoAsistan
                 $ayBas = (clone $now)->startOfMonth()->toDateString();
                 $agir = [];
                 foreach (DB::table('personeller')->where('sube_id', $subeId)->where('aktif', 1)->where('maas', '>', 0)->get(['id', 'ad', 'maas']) as $p) {
-                    $av = (float) DB::table('personel_hareketleri')->where('personel_id', $p->id)->where('tur', 'avans')->where('tarih', '>=', $ayBas)->sum('tutar');
+                    $av = (float) DB::table('personel_hareketleri')->where('sube_id', $subeId)->where('personel_id', $p->id)->where('tur', 'avans')->where('tarih', '>=', $ayBas)->sum('tutar');
                     if ($av > (float) $p->maas * 0.4) $agir[] = $p->ad . ' (' . $this->tl($av) . ')';
                 }
                 if (count($agir) > 0) $t[] = ['seviye' => 'uyari', 'baslik' => 'Avans yükü birikmiş',
@@ -965,6 +997,7 @@ class RestoAsistan
     public function patronBrief($subeId)
     {
         try {
+            $this->subeId = (int) $subeId;
             return Cache::remember('resto_patron_brief:' . (int) $subeId, now()->addSeconds(60), function () use ($subeId) {
                 $now = now();
                 $g0 = today()->startOfDay();
@@ -973,9 +1006,9 @@ class RestoAsistan
                 $b = ['tarih' => $now->format('d.m.Y H:i')];
 
                 // Ciro: bugün / bu hafta / geçen hafta
-                $ciroBu = (float) DB::table('odemeler')->whereBetween('created_at', [$h0, $now])->sum('tutar');
-                $ciroOn = (float) DB::table('odemeler')->whereBetween('created_at', [$h1, $h0])->sum('tutar');
-                $b['ciro_bugun'] = round((float) DB::table('odemeler')->where('created_at', '>=', $g0)->sum('tutar'));
+                $ciroBu = $this->odeme($h0, $now);
+                $ciroOn = $this->odeme($h1, $h0);
+                $b['ciro_bugun'] = round($this->odeme($g0));
                 $b['ciro_bu_hafta'] = round($ciroBu);
                 $b['ciro_gecen_hafta'] = round($ciroOn);
                 if ($ciroOn > 0) $b['ciro_degisim_yuzde'] = (int) round(($ciroBu - $ciroOn) / $ciroOn * 100);
@@ -1006,7 +1039,7 @@ class RestoAsistan
                         $ekUrun = DB::table('urunler')->whereIn('kategori_id', $ekKat)->pluck('id')->toArray();
                         if ($ekUrun) {
                             $ek = fn ($f, $t) => (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$f, $t])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                                ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$f, $t])->where('adisyon_kalemleri.durum', '!=', 'iptal')
                                 ->whereIn('adisyon_kalemleri.urun_id', $ekUrun)->sum('adisyon_kalemleri.tutar');
                             $ekBu = $ek($h0, $now); $ekOn = $ek($h1, $h0);
                             $b['ek_urun_pay_bu_hafta'] = $ciroBu > 0 ? round($ekBu / $ciroBu * 100) : 0;
@@ -1028,7 +1061,7 @@ class RestoAsistan
                         $sat = ['ad' => $r->ad, 'ciro' => round((float) $r->ciro), 'adisyon' => (int) $r->adisyon, 'kisi_basi' => $r->misafir > 0 ? round((float) $r->ciro / $r->misafir) : 0];
                         if ($ekUrun) {
                             $pe = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                                ->where('adisyonlar.acan_personel_id', $r->id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])
+                                ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.acan_personel_id', $r->id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])
                                 ->where('adisyon_kalemleri.durum', '!=', 'iptal')->whereIn('adisyon_kalemleri.urun_id', $ekUrun)->sum('adisyon_kalemleri.tutar');
                             $sat['ek_urun_pay'] = (float) $r->ciro > 0 ? round($pe / (float) $r->ciro * 100) : 0;
                         }
@@ -1052,7 +1085,7 @@ class RestoAsistan
                 // Ürün: en çok satan 5 + kârlılık uçları
                 try {
                     $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                        ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                        ->where('adisyonlar.sube_id', $this->sid())->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$h0, $now])->where('adisyon_kalemleri.durum', '!=', 'iptal')
                         ->groupBy('adisyon_kalemleri.urun_adi')->select('adisyon_kalemleri.urun_adi', DB::raw('SUM(adet) adet'))->orderByDesc('adet')->limit(5)->get();
                     $b['en_cok_satan'] = $top->map(fn ($x) => ['urun' => $x->urun_adi, 'adet' => (int) $x->adet])->all();
                 } catch (\Throwable $e) {
@@ -1073,7 +1106,7 @@ class RestoAsistan
                 // Finans (bu ay net)
                 try {
                     $ayBas = (clone $now)->startOfMonth();
-                    $gelir = (float) DB::table('odemeler')->whereBetween('created_at', [$ayBas, $now])->sum('tutar');
+                    $gelir = $this->odeme($ayBas, $now);
                     $gider = Schema::hasTable('giderler') ? (float) DB::table('giderler')->where('sube_id', $subeId)->where('tarih', '>=', $ayBas->toDateString())->sum('tutar') : 0;
                     $b['finans_bu_ay'] = ['gelir' => round($gelir), 'gider' => round($gider), 'net' => round($gelir - $gider)];
                 } catch (\Throwable $e) {

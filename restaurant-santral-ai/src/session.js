@@ -9,7 +9,8 @@ const { SttOturumu } = require('./stt');
 const { RtpOturumu } = require('./rtp');
 
 class CagriOturumu {
-  constructor({ kanalId, telefon, subeId, rtpPort, onAktar, onBitir, geriAramaOturum }) {
+  constructor({ kanalId, telefon, subeId, did, rtpPort, onAktar, onBitir, geriAramaOturum }) {
+    this.did = did || '';
     this.kanalId = kanalId;
     this.telefon = telefon || null;
     this.subeId = subeId || cfg.laravel.defaultSubeId;
@@ -47,8 +48,9 @@ class CagriOturumu {
 
   async basla() {
     try {
-      const d = await brain.baslat(this.subeId, this.telefon, 'santral', this.geriAramaOturum);
+      const d = await brain.baslat(this.subeId, this.telefon, 'santral', this.geriAramaOturum, this.did);
       this.oturumId = d.oturum_id;
+      if (d.sube_id) this.subeId = d.sube_id; // sunucunun DID ile cozdugu sube (aktarma vb. bununla)
       log.info(`Oturum #${this.oturumId} basladi (kanal ${this.kanalId}, tel ${this.telefon || '-'}, sube ${d.sube_id ?? this.subeId}, menu ${d.menu_adet ?? '?'} urun, musteri ${d.musteri || 'YENI'})`);
       if (d.menu_adet === 0) log.warn('DIKKAT: bu subede aktif urun YOK -> AI menuyu tanitamaz (DEFAULT_SUBE_ID dogru mu? urunler.aktif=1 mi?)');
       if (d.musteri) log.info(`musteri taninID: ${d.musteri}${d.son_siparis ? ' | gecen siparis: ' + d.son_siparis : ' | gecen siparis YOK'}`);

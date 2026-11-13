@@ -520,7 +520,8 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     {
         try {
             if (!Schema::hasTable('asistan_kalip')) return null;
-            $liste = DB::table('asistan_kalip')->where('aktif', 1)
+            if (function_exists('_kalipSubeEnsure')) _kalipSubeEnsure();
+            $liste = DB::table('asistan_kalip')->where('aktif', 1)->whereIn('sube_id', [0, (int) $this->subeId])
                 ->whereIn('kategori', ['sohbet', 'kimlik'])->select('id', 'tetikleyiciler', 'cevap')->get();
             if ($liste->isEmpty()) return null;
             $n = ' ' . $this->norm($soru) . ' ';
@@ -1426,7 +1427,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         // 2) YOKSA: populer (son 30 gun) yemekler + ana yemek onceligi
         if ($secili->isEmpty()) {
             $top = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                ->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', now()->subDays(30))->where('adisyon_kalemleri.durum', '!=', 'iptal')
+                ->where('adisyonlar.sube_id', $this->subeId)->where('adisyonlar.durum', 'odendi')->where('adisyonlar.kapanis', '>=', now()->subDays(30))->where('adisyon_kalemleri.durum', '!=', 'iptal')
                 ->select('urun_adi', DB::raw('SUM(adet) as adet'))->groupBy('urun_adi')->orderByDesc('adet')->limit(40)->pluck('urun_adi')->all();
             $sira = [];
             foreach ($top as $ix => $ad) $sira[$this->norm($ad)] = $ix;
@@ -1817,7 +1818,9 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if (Schema::hasTable('asistan_cozulmeyen')) return;
         Schema::create('asistan_cozulmeyen', function ($t) {
             $t->increments('id');
-            $t->string('soru_norm', 191)->unique();
+            $t->unsignedBigInteger('sube_id')->default(0)->index(); // restorana ait
+            $t->string('soru_norm', 191);
+            $t->unique(['sube_id', 'soru_norm']);
             $t->text('ham')->nullable();
             $t->unsignedInteger('adet')->default(1);
             $t->timestamp('son_tarih')->nullable();
@@ -1831,14 +1834,15 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         try {
             $ham = trim((string) $soru);
             if (mb_strlen($ham) < 2) return;
-            $norm = mb_substr(trim($this->normalize($ham)), 0, 191);
+            $norm = mb_substr(trim($this->norm($ham)), 0, 191); // eskiden olmayan normalize() çağrılıyordu → hiç kayıt düşmüyordu
             if ($norm === '') return;
             $this->cozulmeyenEnsure();
-            $row = DB::table('asistan_cozulmeyen')->where('soru_norm', $norm)->first();
+            if (function_exists('_kalipSubeEnsure')) _kalipSubeEnsure();
+            $row = DB::table('asistan_cozulmeyen')->where('sube_id', (int) $this->subeId)->where('soru_norm', $norm)->first();
             if ($row) {
                 DB::table('asistan_cozulmeyen')->where('id', $row->id)->update(['adet' => $row->adet + 1, 'son_tarih' => now(), 'ham' => $ham, 'updated_at' => now()]);
             } else {
-                DB::table('asistan_cozulmeyen')->insert(['soru_norm' => $norm, 'ham' => $ham, 'adet' => 1, 'son_tarih' => now(), 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('asistan_cozulmeyen')->insert(['sube_id' => (int) $this->subeId, 'soru_norm' => $norm, 'ham' => $ham, 'adet' => 1, 'son_tarih' => now(), 'created_at' => now(), 'updated_at' => now()]);
             }
         } catch (\Throwable $e) {}
     }
@@ -2112,7 +2116,8 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     {
         try {
             if (!Schema::hasTable('asistan_kalip')) return null;
-            $liste = DB::table('asistan_kalip')->where('aktif', 1)
+            if (function_exists('_kalipSubeEnsure')) _kalipSubeEnsure();
+            $liste = DB::table('asistan_kalip')->where('aktif', 1)->whereIn('sube_id', [0, (int) $this->subeId])
                 ->whereNotIn('kategori', ['kimlik', 'sohbet'])->select('id', 'tetikleyiciler', 'cevap')->get();
             if ($liste->isEmpty()) return null;
             $n = ' ' . $this->norm($soru) . ' ';

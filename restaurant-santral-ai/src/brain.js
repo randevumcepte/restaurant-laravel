@@ -25,8 +25,8 @@ function form(obj) {
 }
 
 // POST /api/santral/baslat -> {oturum_id, karsilama}. geriAramaOturum>0 ise: yarida kalan oturumla devam.
-async function baslat(subeId, telefon, hat, geriAramaOturum) {
-  const { data } = await http.post('/api/santral/baslat', form({ sube_id: subeId, telefon, hat, geri_arama_oturum: geriAramaOturum || 0 }));
+async function baslat(subeId, telefon, hat, geriAramaOturum, did) {
+  const { data } = await http.post('/api/santral/baslat', form({ sube_id: subeId, telefon, hat, did: did || '', geri_arama_oturum: geriAramaOturum || 0 }));
   return data;
 }
 

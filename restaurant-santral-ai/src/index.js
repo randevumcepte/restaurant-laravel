@@ -201,6 +201,9 @@ async function cagriBasla(channel, event, opts = {}) {
   let subeId = opts.subeId || cfg.laravel.defaultSubeId;
   const arg = (event.args || []).find((a) => /^SUBE=/i.test(a));
   if (arg) subeId = parseInt(arg.split('=')[1], 10) || subeId;
+  // Aranan numara (DID): sunucu bunu isletme_hatlari'ndan cozer -> yanlis SUBE ayari baska restorana yazamaz
+  const exten = channel.dialplan && channel.dialplan.exten ? String(channel.dialplan.exten) : '';
+  const did = /^\+?\d{4,}$/.test(exten) ? exten : '';
 
   const port = portAl();
   if (port === null) {
@@ -242,9 +245,10 @@ async function cagriBasla(channel, event, opts = {}) {
       kanalId: channel.id,
       telefon,
       subeId,
+      did,
       rtpPort: port,
       geriAramaOturum: opts.geriAramaOturum || 0, // >0: yarida kalan oturumla devam
-      onAktar: (kid) => insanaAktar(kid, subeId),
+      onAktar: (kid) => insanaAktar(kid, oturum.subeId || subeId, did),
       onBitir: (kid) => { client.Channel(kid).hangup().catch(() => {}); },
     });
 

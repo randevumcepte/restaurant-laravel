@@ -95,38 +95,41 @@ if (!function_exists('_adisyonToplamGuncelle')) {
 
 if (!function_exists('_copilotCevap')) {
     /** Kural-tabanli AI Copilot (LLM anahtari gerekmeden gercek veriden cevaplar) */
-    function _copilotCevap(string $soru): array
+    function _copilotCevap(string $soru, $sid = null): array
     {
+        // ŞUBE KAPSAMI: yalnız bu restoranın verisi (eskiden tüm restoranların cirosu toplanıyordu)
+        $sid = (int) ($sid ?: (function_exists('_aktifSubeId') ? _aktifSubeId() : 0));
+        $ode = fn () => DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $sid);
         $s = mb_strtolower($soru, 'UTF-8');
         $son30 = now()->subDays(30);
         $fmt = fn ($v) => number_format((float) $v, 0, ',', '.') . 'TL';
         $has = fn (array $ks) => (bool) array_filter($ks, fn ($k) => str_contains($s, $k));
 
         if ($has(['bugün', 'bugun'])) {
-            $c = DB::table('odemeler')->whereDate('created_at', today())->sum('tutar');
-            $n = DB::table('adisyonlar')->whereDate('acilis', today())->count();
+            $c = $ode()->whereDate('odemeler.created_at', today())->sum('odemeler.tutar');
+            $n = DB::table('adisyonlar')->where('sube_id', $sid)->whereDate('acilis', today())->count();
             return ['cevap' => "Bugün toplam ciro **{$fmt($c)}**, {$n} adisyon açıldı. Dün bu saatlerde daha yoğundu.", 'kaynak' => 'odemeler'];
         }
         if ($has(['dün', 'dun'])) {
-            $c = DB::table('odemeler')->whereDate('created_at', today()->subDay())->sum('tutar');
+            $c = $ode()->whereDate('odemeler.created_at', today()->subDay())->sum('odemeler.tutar');
             return ['cevap' => "Dün ciro **{$fmt($c)}** oldu.", 'kaynak' => 'odemeler'];
         }
         if ($has(['en çok satan', 'en cok satan', 'popüler', 'populer', 'çok satan'])) {
             $r = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                ->where('adisyonlar.kapanis', '>=', $son30)->select('urun_adi', DB::raw('SUM(adet) as a'))
+                ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.kapanis', '>=', $son30)->select('urun_adi', DB::raw('SUM(adet) as a'))
                 ->groupBy('urun_adi')->orderByDesc('a')->limit(5)->get();
             $l = $r->map(fn ($x) => "{$x->urun_adi} ({$x->a} adet)")->implode(', ');
             return ['cevap' => "Son 30 günün en çok satanları: {$l}.", 'kaynak' => 'adisyon_kalemleri'];
         }
         if ($has(['personel', 'garson', 'en iyi'])) {
             $r = DB::table('adisyonlar')->join('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
-                ->where('adisyonlar.kapanis', '>=', $son30)->select('personeller.ad', DB::raw('SUM(toplam) as c'))
+                ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.kapanis', '>=', $son30)->select('personeller.ad', DB::raw('SUM(toplam) as c'))
                 ->groupBy('personeller.id', 'personeller.ad')->orderByDesc('c')->limit(3)->get();
             $l = $r->map(fn ($x) => "{$x->ad} ({$fmt($x->c)})")->implode(', ');
             return ['cevap' => "Son 30 günün en iyi personelleri: {$l}.", 'kaynak' => 'adisyonlar'];
         }
         if ($has(['kritik', 'stok', 'biten', 'azalan'])) {
-            $r = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+            $r = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($sid) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $sid); })
                 ->select('malzemeler.ad', DB::raw('COALESCE(SUM(stok_hareketleri.miktar),0) as st'), 'malzemeler.kritik_stok')
                 ->groupBy('malzemeler.id', 'malzemeler.ad', 'malzemeler.kritik_stok')
                 ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->limit(6)->get();
@@ -134,12 +137,12 @@ if (!function_exists('_copilotCevap')) {
             return ['cevap' => $r->count() ? "Kritik seviyedeki malzemeler: {$l}. Sipariş vermeni öneririm." : "Şu an kritik stok yok, her şey yolunda.", 'kaynak' => 'stok_hareketleri'];
         }
         if ($has(['paket', 'kurye', 'teslimat'])) {
-            $aktif = DB::table('adisyonlar')->where('kanal', 'paket')->where('durum', 'acik')->count();
-            $yolda = DB::table('adisyonlar')->where('teslimat_durumu', 'yolda')->count();
+            $aktif = DB::table('adisyonlar')->where('sube_id', $sid)->where('kanal', 'paket')->where('durum', 'acik')->count();
+            $yolda = DB::table('adisyonlar')->where('sube_id', $sid)->where('teslimat_durumu', 'yolda')->count();
             return ['cevap' => "Şu an **{$aktif}** aktif paket sipariş var, **{$yolda}** tanesi kuryede yolda.", 'kaynak' => 'adisyonlar'];
         }
         if ($has(['ciro', 'kazanç', 'kazanc', 'satış', 'satis', 'ay'])) {
-            $c = DB::table('odemeler')->where('created_at', '>=', $son30)->sum('tutar');
+            $c = $ode()->where('odemeler.created_at', '>=', $son30)->sum('odemeler.tutar');
             return ['cevap' => "Son 30 günde toplam ciro **{$fmt($c)}**.", 'kaynak' => 'odemeler'];
         }
         return ['cevap' => "Şunları sorabilirsin: bugünkü ciro, en çok satan ürünler, en iyi personel, kritik stoklar, paket/kurye durumu, son 30 gün cirosu.", 'kaynak' => null];
@@ -4246,7 +4249,12 @@ Route::get('/copilot', function () {
 });
 
 Route::post('/copilot/sor', function (Request $r) {
-    return response()->json(_copilotCevap((string) $r->soru));
+    // Eskiden oturum kontrolü yoktu (herkes ciro sorabiliyordu): personel + Patron Asistan yetkisi şart, cevap kendi şubesinden
+    $p = function_exists('_posPersonel') ? _posPersonel() : null;
+    if (!$p) $p = _apiPersonel($r);
+    if (!$p) return response()->json(['cevap' => 'Oturum gerekli.', 'kaynak' => null], 401);
+    if (function_exists('_panelYetkiVar') && !_panelYetkiVar($p, 'gor_copilot')) return response()->json(['cevap' => 'Bu özellik için yetkiniz yok.', 'kaynak' => null], 403);
+    return response()->json(_copilotCevap((string) $r->soru, (int) $p->sube_id));
 });
 
 // ============================ QR MENU (musteri tarafi, public) ============================
@@ -5137,7 +5145,8 @@ Route::get('/fix-turkce', function () {
 
 // ============================ ASISTAN KALIP (soru-cevap) YONETIMI ============================
 // Tablo kur + baslangic kaliplari (bir kez).
-Route::get('/kalip-kur', function () {
+Route::get('/kalip-kur', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g; // kurulum ucu: yalnız Sistem Yönetimi
     if (!Schema::hasTable('asistan_kalip')) {
         Schema::create('asistan_kalip', function ($t) {
             $t->increments('id');
@@ -5169,6 +5178,7 @@ Route::get('/kalip-kur', function () {
 
 // Kalip ekle: ?tetik=... &cevap=... (&kategori=...)  (GET veya POST)
 Route::match(['get', 'post'], '/kalip-ekle', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g; // eskiden girişsiz yazılabiliyordu
     $tet = trim((string) $r->tetik);
     $cev = trim((string) $r->cevap);
     if ($tet === '' || $cev === '') return response('tetik ve cevap gerekli', 400);
@@ -5178,12 +5188,14 @@ Route::match(['get', 'post'], '/kalip-ekle', function (Request $r) {
     return "Kalıp eklendi (id=$id). Toplam: " . DB::table('asistan_kalip')->count();
 });
 
-Route::get('/kalip-liste', function () {
+Route::get('/kalip-liste', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     if (!Schema::hasTable('asistan_kalip')) return 'Tablo yok, /kalip-kur çalıştırın.';
     return DB::table('asistan_kalip')->orderBy('id')->get(['id', 'tetikleyiciler', 'cevap', 'kategori', 'aktif', 'kullanim_sayisi']);
 });
 
 Route::get('/kalip-sil', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g;
     DB::table('asistan_kalip')->where('id', (int) $r->id)->delete();
     \Cache::forget('resto_kalip_liste_v1');
     return 'Silindi (id=' . (int) $r->id . ').';
@@ -5205,12 +5217,38 @@ if (!function_exists('_asistanEgitimEnsure')) {
                 $t->unsignedInteger('adet')->default(1); $t->timestamp('son_tarih')->nullable(); $t->timestamps();
             });
         }
+        if (function_exists('_kalipSubeEnsure')) _kalipSubeEnsure();
+    }
+}
+// ŞUBE AYRIMI: kalıplar ve çözülemeyen sorular restorana ait (0 = tüm restoranlara açık genel kalıp).
+// Eskiden tek ortak havuzdu: bir restoranın yöneticisi herkesin müşteri AI cevabını değiştirebiliyordu.
+if (!function_exists('_kalipSubeEnsure')) {
+    function _kalipSubeEnsure()
+    {
+        if (cache()->get('kalip_sube_ok_v1')) return;
+        try {
+            $ana = (int) (DB::table('subeler')->min('id') ?: 0);
+            if (Schema::hasTable('asistan_kalip') && !Schema::hasColumn('asistan_kalip', 'sube_id')) {
+                Schema::table('asistan_kalip', function ($t) { $t->unsignedBigInteger('sube_id')->default(0)->index(); });
+                // Mevcutları ana işletmeye ver (davranışı değişmesin); yalnız genel selam/kimlik kalıpları herkese açık kalsın
+                DB::table('asistan_kalip')->where(function ($w) { $w->whereNull('kategori')->orWhereNotIn('kategori', ['kimlik', 'sohbet']); })->update(['sube_id' => $ana]);
+            }
+            if (Schema::hasTable('asistan_cozulmeyen') && !Schema::hasColumn('asistan_cozulmeyen', 'sube_id')) {
+                Schema::table('asistan_cozulmeyen', function ($t) { $t->unsignedBigInteger('sube_id')->default(0)->index(); });
+                DB::table('asistan_cozulmeyen')->update(['sube_id' => $ana]);
+                try { Schema::table('asistan_cozulmeyen', function ($t) { $t->dropUnique(['soru_norm']); }); } catch (\Throwable $e) {}
+                try { Schema::table('asistan_cozulmeyen', function ($t) { $t->unique(['sube_id', 'soru_norm']); }); } catch (\Throwable $e) {}
+            }
+            // Bayrak yalnız iki tablo da şube kolonuyla hazırsa: tablo sonradan (kolonsuz) oluşursa bir sonraki çağrı yine ekler
+            if (Schema::hasTable('asistan_kalip') && Schema::hasColumn('asistan_kalip', 'sube_id') && Schema::hasTable('asistan_cozulmeyen') && Schema::hasColumn('asistan_cozulmeyen', 'sube_id'))
+                cache()->put('kalip_sube_ok_v1', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
     }
 }
 Route::get('/asistan-egitim', function () {
     _asistanEgitimEnsure();
-    $kaliplar = DB::table('asistan_kalip')->orderByDesc('kullanim_sayisi')->orderByDesc('id')->get();
-    $cozulmeyenler = DB::table('asistan_cozulmeyen')->orderByDesc('adet')->orderByDesc('son_tarih')->limit(100)->get();
+    $kaliplar = DB::table('asistan_kalip')->where('sube_id', _aktifSubeId())->orderByDesc('kullanim_sayisi')->orderByDesc('id')->get();
+    $cozulmeyenler = DB::table('asistan_cozulmeyen')->where('sube_id', _aktifSubeId())->orderByDesc('adet')->orderByDesc('son_tarih')->limit(100)->get();
     $ozet = ['kalip' => $kaliplar->count(), 'bedava' => (int) $kaliplar->sum('kullanim_sayisi'), 'bekleyen' => $cozulmeyenler->count()];
     $wifiAd = Schema::hasColumn('subeler', 'wifi_ad') ? (string) DB::table('subeler')->where('id', _aktifSubeId())->value('wifi_ad') : '';
     $wifiSifre = Schema::hasColumn('subeler', 'wifi_sifre') ? (string) DB::table('subeler')->where('id', _aktifSubeId())->value('wifi_sifre') : '';
@@ -5235,17 +5273,18 @@ Route::post('/asistan-egitim/kalip-kaydet', function (Request $r) {
     if ($tet === '' || $cev === '') return ['ok' => 0, 'hata' => 'Tetikleyici ve cevap gerekli'];
     $veri = ['tetikleyiciler' => $tet, 'cevap' => $cev, 'kategori' => $r->kategori ?: 'genel', 'aktif' => $r->aktif ? 1 : 0, 'updated_at' => now()];
     if ($r->filled('id')) {
-        DB::table('asistan_kalip')->where('id', (int) $r->id)->update($veri);
+        DB::table('asistan_kalip')->where('id', (int) $r->id)->where('sube_id', _aktifSubeId())->update($veri);
     } else {
-        $veri['kullanim_sayisi'] = 0; $veri['created_at'] = now();
+        $veri['kullanim_sayisi'] = 0; $veri['created_at'] = now(); $veri['sube_id'] = _aktifSubeId();
         DB::table('asistan_kalip')->insert($veri);
     }
-    if ($r->filled('cozulmeyen_id')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->cozulmeyen_id)->delete();
+    if ($r->filled('cozulmeyen_id')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->cozulmeyen_id)->where('sube_id', _aktifSubeId())->delete();
     \Cache::forget('resto_kalip_liste_v1');
     return ['ok' => 1];
 });
 Route::post('/asistan-egitim/kalip-sil', function (Request $r) {
-    DB::table('asistan_kalip')->where('id', (int) $r->id)->delete();
+    _asistanEgitimEnsure();
+    DB::table('asistan_kalip')->where('id', (int) $r->id)->where('sube_id', _aktifSubeId())->delete();
     \Cache::forget('resto_kalip_liste_v1');
     return ['ok' => 1];
 });
@@ -5261,7 +5300,7 @@ Route::post('/asistan-egitim/toplu-ekle', function (Request $r) {
         $t = trim((string) ($o['tetikleyiciler'] ?? ($o['tetik'] ?? '')));
         $c = trim((string) ($o['cevap'] ?? ''));
         if ($t === '' || $c === '') continue;
-        DB::table('asistan_kalip')->insert(['tetikleyiciler' => mb_substr($t, 0, 500), 'cevap' => mb_substr($c, 0, 2000),
+        DB::table('asistan_kalip')->insert(['sube_id' => _aktifSubeId(), 'tetikleyiciler' => mb_substr($t, 0, 500), 'cevap' => mb_substr($c, 0, 2000),
             'kategori' => mb_substr((trim((string) ($o['kategori'] ?? 'genel')) ?: 'genel'), 0, 40), 'aktif' => 1, 'kullanim_sayisi' => 0, 'created_at' => $now, 'updated_at' => $now]);
         $n++;
     }
@@ -5269,7 +5308,8 @@ Route::post('/asistan-egitim/toplu-ekle', function (Request $r) {
     return ['ok' => 1, 'eklendi' => $n];
 });
 Route::post('/asistan-egitim/cozulmeyen-sil', function (Request $r) {
-    if (Schema::hasTable('asistan_cozulmeyen')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->id)->delete();
+    _asistanEgitimEnsure();
+    if (Schema::hasTable('asistan_cozulmeyen')) DB::table('asistan_cozulmeyen')->where('id', (int) $r->id)->where('sube_id', _aktifSubeId())->delete();
     return ['ok' => 1];
 });
 // PDF yukle -> Claude soru-cevap kalibi cikarir -> onizleme (session)
@@ -5296,7 +5336,7 @@ Route::post('/asistan-egitim/pdf-kaydet', function (Request $r) {
         $t = trim((string) ($tet[$i] ?? ''));
         $c = trim((string) ($cev[$i] ?? ''));
         if ($t === '' || $c === '') continue;
-        DB::table('asistan_kalip')->insert(['tetikleyiciler' => $t, 'cevap' => $c, 'kategori' => (trim((string) ($kat[$i] ?? '')) ?: 'pdf'), 'aktif' => 1, 'kullanim_sayisi' => 0, 'created_at' => $now, 'updated_at' => $now]);
+        DB::table('asistan_kalip')->insert(['sube_id' => _aktifSubeId(), 'tetikleyiciler' => $t, 'cevap' => $c, 'kategori' => (trim((string) ($kat[$i] ?? '')) ?: 'pdf'), 'aktif' => 1, 'kullanim_sayisi' => 0, 'created_at' => $now, 'updated_at' => $now]);
         $n++;
     }
     \Cache::forget('resto_kalip_liste_v1');
@@ -6955,11 +6995,16 @@ Route::post('/api/qr/urun-puan', function (Request $r) {
 
 // Musteri AI: ogrenilen cevaplar (Haiku onbellegi) — listele / sil / durum
 Route::get('/musteri-ai-ogrenilen', function (Request $r) {
+    // Eskiden girişsizdi ve tüm restoranları listeleyip silebiliyordu: Sistem Yönetimi her şubeyi, yönetici kendi şubesini görür
+    $adminMi = function_exists('_ryAdmin') && _ryAdmin();
+    $bp = function_exists('_posPersonel') ? _posPersonel() : null;
+    if (!$adminMi && !($bp && function_exists('_ekYetkiVar') && _ekYetkiVar($bp, 'yonetici'))) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    if (!$adminMi) $r->merge(['sube' => (int) $bp->sube_id]);
     $anahtarVar = (string) (config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY')) !== '';
     if (!Schema::hasTable('musteri_ai_ogrenilen')) {
         return response()->json(['anahtar_var' => $anahtarVar, 'bugun_uretilen' => 0, 'toplam' => 0, 'ogrenilenler' => []], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
-    if ($r->filled('sil')) { DB::table('musteri_ai_ogrenilen')->where('id', (int) $r->input('sil'))->delete(); }
+    if ($r->filled('sil')) { $sq = DB::table('musteri_ai_ogrenilen')->where('id', (int) $r->input('sil')); if (!$adminMi) $sq->where('sube_id', (int) $bp->sube_id); $sq->delete(); }
     $q = DB::table('musteri_ai_ogrenilen');
     if ($r->filled('sube')) $q->where('sube_id', (int) $r->input('sube'));
     $liste = $q->orderByDesc('kullanim')->orderByDesc('id')->limit(300)
@@ -6967,8 +7012,8 @@ Route::get('/musteri-ai-ogrenilen', function (Request $r) {
     return response()->json([
         'anahtar_var' => $anahtarVar,
         'gunluk_tavan' => (int) config('services.anthropic.sohbet_gunluk_limit', 80),
-        'bugun_uretilen' => DB::table('musteri_ai_ogrenilen')->whereDate('created_at', today())->count(),
-        'toplam' => DB::table('musteri_ai_ogrenilen')->count(),
+        'bugun_uretilen' => DB::table('musteri_ai_ogrenilen')->when($r->filled('sube'), fn ($x) => $x->where('sube_id', (int) $r->input('sube')))->whereDate('created_at', today())->count(),
+        'toplam' => DB::table('musteri_ai_ogrenilen')->when($r->filled('sube'), fn ($x) => $x->where('sube_id', (int) $r->input('sube')))->count(),
         'not' => 'Silmek icin: /musteri-ai-ogrenilen?sil=ID',
         'ogrenilenler' => $liste,
     ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -9011,6 +9056,7 @@ Route::get('/ses-test', function () {
 
 // Bu ayki Cloud TTS kullanimi — HER RESTORAN (sube) AYRI. Fatura kontrolu.
 Route::get('/tts-kullanim', function (Request $r) {
+    if ($g = _adminKapi($r)) return $g; // tüm restoranların kullanımını listeler
     $limit = (int) config('services.google_tts.aylik_limit', 900000);
     $ay = date('Ym');
     if (!Schema::hasTable('ayarlar')) return response()->json(['ay' => date('Y-m'), 'restoranlar' => [], 'not' => 'Henuz kullanim yok.'], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -10360,6 +10406,7 @@ if (!function_exists('_aiEylemVazgec')) {
         _aiEylemLogEnsure();
         $log = DB::table('ai_eylem_log')->where('id', (int) $log_id)->where('tip', 'onerildi')->first();
         if (!$log) return ['ok' => false, 'mesaj' => 'Öneri bulunamadı.'];
+        if ((int) $log->sube_id !== (int) ($bp->sube_id ?? 0)) return ['ok' => false, 'mesaj' => 'Öneri bulunamadı.']; // başka restoranın önerisi
         $zatenKarar = DB::table('ai_eylem_log')->where('ref_id', $log->id)->whereIn('tip', ['onaylandi', 'reddedildi', 'zamanasimi'])->exists();
         if ($zatenKarar) return ['ok' => false, 'mesaj' => 'Bu öneri zaten karara bağlanmış.'];
         _aiEylemKararKaydet($log, $bp, 'reddedildi');
@@ -11246,10 +11293,9 @@ Route::get('/api/patron-ai/tuketim', function (Request $r) {
 Route::get('/api/patron-ai/zincir-ozet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p || ($p->rol ?? '') !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
-    $subem = DB::table('subeler')->where('id', $p->sube_id)->first();
-    $q = DB::table('subeler');
-    $bundle = (Schema::hasColumn('subeler', 'app_bundle') && !empty($subem->app_bundle)) ? $subem->app_bundle : null;
-    if ($bundle) $q->where('app_bundle', $bundle); else $q->where('id', $p->sube_id);
+    // Çok şube görünümü = aynı PATRON GRUBU (Sistem Yönetimi > Şube Grupları). Eskiden marka (app_bundle) idi:
+    // aynı markalı farklı sahiplerin restoranları birbirinin cirosunu görürdü.
+    $q = DB::table('subeler')->whereIn('id', function_exists('_grupSubeleri') ? _grupSubeleri((int) ($p->ana_sube_id ?? $p->sube_id)) : [(int) $p->sube_id]);
     $liste = [];
     foreach ($q->orderBy('id')->get(['id', 'ad']) as $s) {
         $v = _patronAiBriefVeri($s->id);
@@ -13430,6 +13476,7 @@ Route::get('/acil-siparis-hazirla', function () {
     if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     if (function_exists('_restoSatinalmaEnsure')) _restoSatinalmaEnsure();
     $talepId = (int) request('talep');
+    if ($talepId && !DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->exists()) $talepId = 0; // başka restoranın talebi açılamaz
     $birim = DB::table('birimler')->pluck('kisaltma', 'id');
     $items = [];
     if ($talepId) {
@@ -13481,7 +13528,7 @@ Route::post('/acil-siparis-gec', function (Request $r) {
     foreach ($grup as $tid => $ls) {
         $ara = 0.0; $kdv = 0.0; $hazir = [];
         foreach ($ls as $l) { $net = $l['miktar'] * $l['birim_fiyat']; $ara += $net; $kdv += $net * 0.10; $hazir[] = $l + ['iskonto_yuzde' => 0, 'kdv_yuzde' => 10, 'satir_toplam' => round($net, 2)]; }
-        $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->count() + 1), 3, '0', STR_PAD_LEFT);
+        $sno = 'SA' . date('ymd') . '-' . str_pad((string) (DB::table('satinalma_siparisleri')->where('sube_id', $sid)->count() + 1), 3, '0', STR_PAD_LEFT);
         $spid = DB::table('satinalma_siparisleri')->insertGetId(['sube_id' => $sid, 'tedarikci_id' => $tid ?: null, 'siparis_no' => $sno, 'tarih' => date('Y-m-d'), 'durum' => 'siparis',
             'ara_toplam' => round($ara, 2), 'iskonto' => 0, 'kdv_toplam' => round($kdv, 2), 'genel_toplam' => round($ara + $kdv, 2), 'notlar' => 'Patron AI acil sipariş', 'olusturan_personel_id' => $bp->id, 'created_at' => now(), 'updated_at' => now()]);
         foreach ($hazir as $h) { $h['siparis_id'] = $spid; $h['created_at'] = now(); $h['updated_at'] = now(); DB::table('satinalma_siparis_kalemleri')->insert($h); }
@@ -13867,6 +13914,7 @@ Route::post('/api/patron-ai/talep-fiyat-sor', function (Request $r) {
     if (function_exists('_rfqEnsure')) _rfqEnsure();
     if (function_exists('_restoTedarikEnsure')) _restoTedarikEnsure();
     $talepId = (int) $r->input('talep');
+    if (!DB::table('satinalma_talepleri')->where('id', $talepId)->where('sube_id', $sid)->exists()) return response()->json(['ok' => 0, 'mesaj' => 'Talep bulunamadı.']);
     $mats = [];
     try { foreach (DB::table('talep_kalemleri')->where('talep_id', $talepId)->get() as $k) $mats[] = ['malzeme_id' => (int) $k->malzeme_id, 'ad' => $k->ad, 'miktar' => (float) $k->miktar, 'birim' => $k->birim]; } catch (\Throwable $e) {}
     if (!$mats) return response()->json(['ok' => 0, 'mesaj' => 'Talepte kalem bulunamadı.']);
@@ -23708,16 +23756,16 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
     // 1) Baglam (PII GONDERILMEZ - anonim)
     if ($kapsam === 'musteri') {
         $mid = (int) $r->id;
-        $m = DB::table('musteriler')->find($mid);
+        $m = DB::table('musteriler')->where('id', $mid)->where('sube_id', $p->sube_id)->first(); // başka restoranın müşterisi okunamaz
         if (!$m) return ['ok' => 0, 'hata' => 'Müşteri yok'];
-        $adet = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->count();
-        $harcama = (float) DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
-        $sonSiparis = DB::table('adisyonlar')->where('musteri_id', $mid)->where('durum', 'odendi')->max('kapanis');
+        $adet = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('musteri_id', $mid)->where('durum', 'odendi')->count();
+        $harcama = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('musteri_id', $mid)->where('durum', 'odendi')->sum('toplam');
+        $sonSiparis = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('musteri_id', $mid)->where('durum', 'odendi')->max('kapanis');
         $gunOnce = $sonSiparis ? (int) round(\Carbon\Carbon::parse($sonSiparis)->diffInDays(now())) : null;
         $yorumlar = Schema::hasTable('degerlendirmeler')
             ? DB::table('degerlendirmeler')->where('musteri_id', $mid)->orderByDesc('created_at')->limit(5)->get(['puan', 'yorum']) : collect();
         $favori = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.musteri_id', $mid)->groupBy('urun_adi')->orderByRaw('SUM(adet) desc')->limit(3)->pluck('urun_adi')->all();
+            ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.musteri_id', $mid)->groupBy('urun_adi')->orderByRaw('SUM(adet) desc')->limit(3)->pluck('urun_adi')->all();
         $baglam = [
             'tip' => 'sadik_musteri_analizi', 'siparis_sayisi' => $adet, 'toplam_harcama' => round($harcama),
             'son_siparis_gun_once' => $gunOnce, 'favori_urunler' => $favori,
@@ -23725,12 +23773,12 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
         ];
     } elseif ($kapsam === 'urun') {
         $uid = (int) $r->id;
-        $u = DB::table('urunler')->find($uid);
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $p->sube_id)->first(); // başka restoranın ürün maliyeti okunamaz
         if (!$u) return ['ok' => 0, 'hata' => 'Ürün yok'];
         $map = function_exists('_restoUrunMaliyetMap') ? _restoUrunMaliyetMap() : ['id' => [], 'ad' => []];
         $birim = (float) ($map['id'][$uid] ?? ($map['ad'][$u->ad] ?? 0));
         $st = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyon_kalemleri.urun_id', $uid)->where('adisyonlar.durum', 'odendi')->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyon_kalemleri.urun_id', $uid)->where('adisyonlar.durum', 'odendi')->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->whereBetween('adisyonlar.kapanis', [$from, $to])
             ->selectRaw('COALESCE(SUM(adet),0) adet, COALESCE(SUM(adisyon_kalemleri.tutar),0) ciro')->first();
         $kalemler = [];
@@ -23761,7 +23809,7 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
         $ikram = (float) DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'odendi')->whereBetween('kapanis', [$from, $to])->sum('ikram');
         $iptalAdet = DB::table('adisyonlar')->where('sube_id', $p->sube_id)->where('durum', 'iptal')->whereBetween('acilis', [$from, $to])->count();
         $topUrun = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-            ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
+            ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->where('adisyon_kalemleri.durum', '!=', 'iptal')
             ->groupBy('urun_adi')->orderByRaw('SUM(adisyon_kalemleri.tutar) desc')->limit(5)->pluck('urun_adi')->all();
         $baglam = [
             'tip' => 'isletme_ozeti', 'donem' => $period, 'ciro' => round($ciro), 'onceki_donem_ciro' => round($compCiro),
@@ -23778,7 +23826,7 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
             $t->timestamp('created_at')->useCurrent();
         });
     }
-    $anahtar = hash('sha256', json_encode($baglam));
+    $anahtar = hash('sha256', (int) $p->sube_id . '|' . json_encode($baglam)); // önbellek restorana özel
     $cache = DB::table('ai_onbellek')->where('anahtar', $anahtar)->first();
     if ($cache) return ['ok' => 1, 'kaynak' => 'onbellek', 'yorumlar' => json_decode($cache->cevap, true)];
 
@@ -23820,7 +23868,7 @@ Route::post('/api/patron/asistan-sor', function (Request $r) {
     $soru = trim((string) $r->soru);
     if ($soru === '') return ['ok' => 1, 'cevap' => 'Dinliyorum, bir şey sorabilirsiniz.', 'seslendir' => false, 'kart' => null, 'intent' => 'bos', 'kaynak' => 'bos'];
 
-    $a = new \App\Services\RestoAsistan();
+    $a = (new \App\Services\RestoAsistan())->sube($p->sube_id); // tüm cevaplar yalnız bu restoranın verisi
     $userId = (int) $p->id;
     $gecmis = $a->gecmisGetir($userId);
     $brief = $a->patronBrief($p->sube_id); // karakterin akil yurutecegi gercek veri
@@ -23908,7 +23956,7 @@ Route::get('/api/patron/asistan-gecmis', function (Request $r) {
 Route::get('/api/patron/asistan-tespitler', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p || !in_array($p->rol, ['sahip', 'mudur'])) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    $a = new \App\Services\RestoAsistan();
+    $a = (new \App\Services\RestoAsistan())->sube($p->sube_id);
     $veri = $a->tespitler($p->sube_id);
     return ['ok' => 1, 'selam' => $veri['selam'], 'tespitler' => $veri['tespitler']];
 });
@@ -31835,6 +31883,22 @@ if (!function_exists('_santralEnsure')) {
     }
 }
 
+// Aranan numara (DID) → hangi restoran (isletme_hatlari). Köprü did / aranan / exten parametresinden birini gönderir.
+// Aynı DID iki restoranda kayıtlıysa belirsiz sayılır (0) → köprünün sube_id'sine düşülür.
+if (!function_exists('_santralDidSube')) {
+    function _santralDidSube($r)
+    {
+        try {
+            $did = preg_replace('/\D/', '', (string) ($r->input('did') ?: $r->input('aranan') ?: $r->input('exten') ?: ''));
+            if (strlen($did) < 4 || !Schema::hasTable('isletme_hatlari')) return 0;
+            $son = substr($did, -10);
+            $subeler = DB::table('isletme_hatlari')->where('durum', 'aktif')->get(['sube_id', 'did'])
+                ->filter(fn ($h) => substr(preg_replace('/\D/', '', (string) $h->did), -10) === $son)->pluck('sube_id')->unique()->values();
+            return $subeler->count() === 1 ? (int) $subeler[0] : 0;
+        } catch (\Throwable $e) { return 0; }
+    }
+}
+
 // Cagri acildi -> oturum baslat + karsilama metni dondur
 // Santral beyin uçları: köprü X-Santral-Secret gönderir. env SANTRAL_SECRET tanımlıysa ZORUNLU doğrula
 // (maliyet + sahte sipariş/rezervasyon koruması). Boşsa (tanımsız) geriye uyum için serbest.
@@ -31852,16 +31916,19 @@ if (!function_exists('_santralAuthGuard')) {
 Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
     if ($rr = _santralAuthGuard($r)) return $rr;
     _santralEnsure();
-    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
-    // MENU BOS SUBE TUZAGI: istenen subede aktif urun yoksa, urunu olan subeye otomatik gec.
-    // (Tek-restoran kurulumu; yanlis DEFAULT_SUBE_ID yuzunden "menu elimde yok" olmasin.)
+    // ŞUBE: 1) aranan numara (DID) → isletme_hatlari  2) köprünün gönderdiği sube_id  3) yalnız bilgi yoksa varsayılan
+    $didSube = function_exists('_santralDidSube') ? _santralDidSube($r) : 0;
+    $acikSube = $didSube ?: (int) $r->input('sube_id');
+    $subeId = (int) ($acikSube ?: DB::table('subeler')->min('id') ?: 1);
+    // MENU BOS SUBE TUZAGI: yalnız şube bilgisi HİÇ gelmediyse çalışır. Şube belliyse asla başka restorana geçmez
+    // (eskiden geçiyordu → sipariş/rezervasyon yanlış restorana yazılabiliyordu).
     $santralUrunSay = function ($sid) {
         if (!Schema::hasTable('urunler')) return 0;
         $q = DB::table('urunler')->where('sube_id', $sid)->where('aktif', 1);
         if (Schema::hasColumn('urunler', 'tukendi')) $q->where('tukendi', 0);
         return (int) $q->count();
     };
-    if ($santralUrunSay($subeId) === 0) {
+    if (!$acikSube && $santralUrunSay($subeId) === 0) {
         $dolu = DB::table('urunler')->where('aktif', 1)
             ->select('sube_id', DB::raw('COUNT(*) as n'))->groupBy('sube_id')->orderByDesc('n')->first();
         if ($dolu && $dolu->sube_id) $subeId = (int) $dolu->sube_id;
@@ -31874,7 +31941,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
 
     if ($geriOturum > 0) {
         // GERI ARAMA MODU: onceki gorusmeyi yukle + dogal "yarida kaldi" karsilamasi + kaldigi yerden devam.
-        $onceki = DB::table('santral_oturumlari')->where('id', $geriOturum)->first();
+        $onceki = DB::table('santral_oturumlari')->where('id', $geriOturum)->where('sube_id', $subeId)->first();
         $oncekiG = $onceki ? (json_decode($onceki->gecmis ?: '[]', true) ?: []) : [];
         $isim = $as->taninanMusteri();
         $ad = ($isim && $isim !== '(isim yok)') ? ' ' . $isim : '';
@@ -31894,7 +31961,7 @@ Route::match(['get', 'post'], '/api/santral/baslat', function (Request $r) {
         // NORMAL gelen cagri. Musteri KENDI geri aradiysa bekleyen otomatik geri-aramayi iptal et.
         $tl = preg_replace('/\D/', '', $telefon);
         if (strlen($tl) >= 10) {
-            try { DB::table('santral_geri_arama')->where('telefon', $tl)->whereIn('durum', ['bekliyor', 'araniyor'])->update(['durum' => 'vazgecildi', 'son_deneme_at' => now()]); } catch (\Throwable $e) {}
+            try { DB::table('santral_geri_arama')->where('sube_id', $subeId)->where('telefon', $tl)->whereIn('durum', ['bekliyor', 'araniyor'])->update(['durum' => 'vazgecildi', 'son_deneme_at' => now()]); } catch (\Throwable $e) {}
         }
         $karsilama = $as->karsilama();
         $oid = DB::table('santral_oturumlari')->insertGetId([
@@ -32227,7 +32294,7 @@ if (!function_exists('_santralTerkTespit')) {
             foreach ($g as $m) if (($m['role'] ?? '') === 'user') $musteriTuru++;
             if ($musteriTuru < 1) return;
             // 4) bu telefon icin zaten aktif (bekliyor/araniyor) geri arama varsa tekrarlama.
-            $varMi = DB::table('santral_geri_arama')->where('telefon', $tel)->whereIn('durum', ['bekliyor', 'araniyor'])->exists();
+            $varMi = DB::table('santral_geri_arama')->where('sube_id', $o->sube_id)->where('telefon', $tel)->whereIn('durum', ['bekliyor', 'araniyor'])->exists();
             if ($varMi) return;
             DB::table('santral_geri_arama')->insert([
                 'oturum_id' => $o->id, 'sube_id' => $o->sube_id, 'telefon' => $tel,
@@ -32275,6 +32342,8 @@ Route::match(['get', 'post'], '/api/santral/test-temizle', function (Request $r)
     if ((string) $r->input('onay') !== 'HEPSINI-SIL') {
         return response()->json(['ok' => 0, 'hata' => 'Onay gerekli: ?onay=HEPSINI-SIL (GERI ALINAMAZ!)'], 200, [], JSON_UNESCAPED_UNICODE);
     }
+    // TÜM restoranların adisyon/müşteri/rezervasyonunu siler: birden fazla restoran varsa ASLA çalışmaz
+    if (DB::table('subeler')->count() > 1) return response()->json(['ok' => 0, 'hata' => 'Çok restoranlı sistemde toplu test silme kapalıdır (başka restoranların verisi silinirdi).'], 200, [], JSON_UNESCAPED_UNICODE);
     $tablolar = [
         'santral_oturumlari', 'santral_ses_kayit', 'santral_geri_arama', 'cagri_loglari',
         'rezervasyonlar', 'rezervasyon_kalemleri',
@@ -32394,7 +32463,8 @@ if (!function_exists('_santralHedefListesi')) {
 Route::match(['get', 'post'], '/api/santral/aktarma-hedef', function (Request $r) {
     if ($rr = _santralAuthGuard($r)) return $rr;
     _santralAyarEnsure();
-    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    $didSube = function_exists('_santralDidSube') ? _santralDidSube($r) : 0;
+    $subeId = (int) ($didSube ?: $r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
     $ay = DB::table('santral_ayarlari')->where('sube_id', $subeId)->first();
     $hedefler = _santralHedefListesi($ay);
     return response()->json([
@@ -32431,7 +32501,8 @@ Route::get('/santral-ayar', function () {
 // Panel: aktarma ayar kaydet
 Route::post('/santral-ayar-kaydet', function (Request $r) {
     _santralAyarEnsure();
-    $subeId = (int) ($r->input('sube_id') ?: DB::table('subeler')->min('id') ?: 1);
+    // Şube istekten alınmaz (başka restoranın aktarma hedefi ezilemesin); yalnız Sistem Yönetimi istediğini seçer
+    $subeId = (session('ry_admin_id') && (int) $r->input('sube_id')) ? (int) $r->input('sube_id') : (int) (_santralOturumSube() ?: _webSubeId());
 
     // hedefler: JSON string (panel JS uretir) -> normalize
     $ham = json_decode((string) $r->input('hedefler'), true);

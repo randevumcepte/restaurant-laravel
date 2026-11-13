@@ -73,9 +73,11 @@ class SantralAsistan
                     if (substr(preg_replace('/\D/', '', (string) $cand->telefon), -10) === $son10) { $m = $cand; break; }
                 }
             }
-            // 3) SUBE-BAGIMSIZ son care (tek restoran; siparis farkli sube_id'ye yazildiysa yine tani)
-            if (!$m) {
-                foreach (DB::table('musteriler')->whereNotNull('telefon')
+            // 3) Son çare: YALNIZ aynı patronun (grup) diğer şubelerinde ara. Eskiden tüm restoranlarda arıyordu →
+            //    başka işletmenin müşterisinin adı/adresi AI'ya ve ekrana gidiyordu. Grup yoksa yalnız bu şube (adım 1-2).
+            $kapsam = function_exists('_grupSubeleri') ? _grupSubeleri($this->subeId) : [(int) $this->subeId];
+            if (!$m && count($kapsam) > 1) {
+                foreach (DB::table('musteriler')->whereIn('sube_id', $kapsam)->whereNotNull('telefon')
                     ->orderByDesc('id')->limit(5000)->get(['id', 'ad', 'telefon', 'adres']) as $cand) {
                     if (substr(preg_replace('/\D/', '', (string) $cand->telefon), -10) === $son10) { $m = $cand; break; }
                 }
@@ -83,8 +85,8 @@ class SantralAsistan
             if (!$m) return;
             $this->musteri = $m;
             if (Schema::hasTable('adisyonlar') && Schema::hasTable('adisyon_kalemleri')) {
-                // son siparis: musteri_id yeterli (sube filtresi yok -> kacirmasin)
-                $sonAd = DB::table('adisyonlar')->where('musteri_id', $m->id)
+                // son siparis: bu müşterinin, aynı işletme (grup) içindeki son adisyonu
+                $sonAd = DB::table('adisyonlar')->where('musteri_id', $m->id)->whereIn('sube_id', $kapsam)
                     ->orderByDesc('id')->first(['id']);
                 if ($sonAd) {
                     $this->sonSiparis = DB::table('adisyon_kalemleri')->where('adisyon_id', $sonAd->id)
