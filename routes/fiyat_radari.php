@@ -969,7 +969,7 @@ Route::get('/fiyat-radari', function (Request $r) {
 
 if (!function_exists('_fr2IndirYanit')) {
     // Rapor dosyası (xlsx) ya da yazdırma görünümü (pdf) — web ve uygulamanın imzalı linki ortak kullanır
-    function _fr2IndirYanit($sid, array $f, $rapor, $format)
+    function _fr2IndirYanit($sid, array $f, $rapor, $format, $onizle = false)
     {
         $raporlar = _fr2Raporlar();
         if (!array_key_exists($rapor, $raporlar)) $rapor = 'tam';
@@ -984,8 +984,8 @@ if (!function_exists('_fr2IndirYanit')) {
             . ($tedAd ? ' · Tedarikçi: ' . $tedAd : '') . ' · Oluşturma: ' . now()->format('d.m.Y H:i');
         $baslik = $raporlar[$rapor][0];
         $dosya = 'Fiyat-Radari-' . \Illuminate\Support\Str::slug($baslik) . '-' . today()->format('Y-m-d');
-        if ($format === 'pdf') {
-            return response()->view('fiyat_radari_rapor', ['baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $ai, 'rapor' => $rapor, 'dosya' => $dosya, 'tema' => $tema, 'ikon' => $raporlar[$rapor][2], 'aciklama' => $raporlar[$rapor][1]]);
+        if ($format === 'pdf' || $format === 'html') {
+            return response()->view('fiyat_radari_rapor', ['onizle' => $onizle, 'baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $ai, 'rapor' => $rapor, 'dosya' => $dosya, 'tema' => $tema, 'ikon' => $raporlar[$rapor][2], 'aciklama' => $raporlar[$rapor][1]]);
         }
         $xlsx = _fr2Xlsx($sayfalar, $baslik, $alt, $tema);
         if ($xlsx !== null) return response($xlsx, 200, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.xlsx"']);
@@ -1043,7 +1043,7 @@ if (!function_exists('_fr2AiIslem')) {
 
 Route::get('/fiyat-radari/indir', function (Request $r) {
     if (!_fr2Erisim()) return redirect('/pos-giris');
-    return _fr2IndirYanit(_webSubeId(), _fr2Filtre($r), (string) $r->query('rapor'), (string) $r->query('format'));
+    return _fr2IndirYanit(_webSubeId(), _fr2Filtre($r), (string) $r->query('rapor'), (string) $r->query('format'), $r->boolean('onizle'));
 });
 
 Route::post('/fiyat-radari/ai', function (Request $r) {

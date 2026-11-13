@@ -199,7 +199,16 @@
             ['/efatura-gelen', 'move_to_inbox', 'Gelen e-Faturalar', '#0EA5E9'],
             ['/fatura-eslestir', 'fact_check', 'Fatura Eşleştir (3-way)', '#F59E0B'],
             ['/fatura-ocr', 'document_scanner', 'Fatura OCR (AI)', '#7C3AED'],
-            ['/satinalma-raporlar', 'insights', 'Raporlar & Analizler', '#4F46E5'],
+            ['/satinalma-raporlar/donemsel', 'event_note', 'Dönemsel Raporlar', '#4F46E5'],
+            ['/satinalma-raporlar/harcama', 'payments', 'Harcama & Fiyat', '#0891B2'],
+            ['/satinalma-raporlar/maliyet', 'savings', 'Maliyet & Bütçe', '#059669'],
+            ['/satinalma-raporlar/tedarikci', 'local_shipping', 'Tedarikçi Raporları', '#0284C7'],
+            ['/satinalma-raporlar/surec', 'timelapse', 'Süreç & Talep', '#7C3AED'],
+            ['/satinalma-raporlar/stok', 'inventory_2', 'Stok & Fire', '#D97706'],
+            ['/satinalma-raporlar/finans', 'account_balance', 'Finans & Denetim', '#BE123C'],
+            ['/satinalma-raporlar/sube', 'store', 'Çok Şube', '#0F766E'],
+            ['/satinalma-raporlar/radar', 'radar', 'Fiyat Radarı Raporları', '#DB2777'],
+            ['/satinalma-raporlar/ai', 'auto_awesome', 'AI Analiz', '#9333EA'],
             ['/fiyat-radari', 'radar', 'Fiyat Radarı · Gizli Zam', '#EC4899'],
             ['/hal-fiyatlari', 'storefront', 'Hal Fiyatları (sen vs hal)', '#059669'],
             ['/satinalma-analiz', 'leaderboard', 'Satınalma Analizi · Karne', '#4F46E5'],
@@ -487,7 +496,8 @@
         $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
         unset($gruplar['Brifing']);
         // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
-        $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
+        $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar/donemsel', '/satinalma-raporlar/harcama', '/satinalma-raporlar/maliyet', '/satinalma-raporlar/tedarikci', '/satinalma-raporlar/surec',
+            '/satinalma-raporlar/stok', '/satinalma-raporlar/finans', '/satinalma-raporlar/sube', '/satinalma-raporlar/radar', '/satinalma-raporlar/ai'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
             'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
             'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim']];
         $_saGrup = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
@@ -559,6 +569,7 @@
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
                     if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
+                    if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;

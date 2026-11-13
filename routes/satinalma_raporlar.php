@@ -217,9 +217,17 @@ if (!function_exists('_srKatalog')) {
     }
     function _srKategoriler()
     {
-        return ['donemsel' => ['Dönemsel Raporlar', 'event_note'], 'harcama' => ['Harcama & Fiyat', 'payments'], 'maliyet' => ['Maliyet & Bütçe', 'savings'],
-            'tedarikci' => ['Tedarikçi', 'local_shipping'], 'surec' => ['Süreç & Talep', 'timelapse'], 'stok' => ['Stok & Fire', 'inventory_2'],
-            'finans' => ['Finans & Denetim', 'account_balance'], 'sube' => ['Çok Şube', 'store'], 'radar' => ['Fiyat Radarı', 'radar'], 'ai' => ['AI Analiz', 'auto_awesome']];
+        // [ad, ikon, açıklama, renk] — sol menüde "Raporlar & Analizler" altında her biri ayrı sayfa (/satinalma-raporlar/{anahtar})
+        return ['donemsel' => ['Dönemsel Raporlar', 'event_note', 'Üst yönetime sunulan hazır raporlar: günlük bülten, haftalık rapor, aylık yönetim raporu.', '#4F46E5'],
+            'harcama' => ['Harcama & Fiyat', 'payments', 'Ne kadar, kimden, neye harcandı; fiyatı değişen kalemler ve tutar etkisi.', '#0891B2'],
+            'maliyet' => ['Maliyet & Bütçe', 'savings', 'İşletmenin kendi enflasyonu, zamların menü maliyetine etkisi ve bütçe gerçekleşmesi.', '#059669'],
+            'tedarikci' => ['Tedarikçi Raporları', 'local_shipping', 'Teslim performansı, red/eksik teslim, sipariş–fatura fiyat uyumu ve tedarikçi bağımlılığı.', '#0284C7'],
+            'surec' => ['Süreç & Talep', 'timelapse', 'Talepten teslime süreler, departman talepleri ve teklif (RFQ) analizi.', '#7C3AED'],
+            'stok' => ['Stok & Fire', 'inventory_2', 'SKT riski, fire/iade/sayım farkları ve stok devir hızı.', '#D97706'],
+            'finans' => ['Finans & Denetim', 'account_balance', 'Tedarikçi borç durumu ve siparişsiz yapılan alımlar.', '#BE123C'],
+            'sube' => ['Çok Şube', 'store', 'Aynı malzemenin şubeler arasındaki alış fiyatı farkı.', '#0F766E'],
+            'radar' => ['Fiyat Radarı Raporları', 'radar', 'Gizli zam, tedarikçi kıyası, hal karşılaştırması ve tedarikçi karnesi raporları.', '#DB2777'],
+            'ai' => ['AI Analiz', 'auto_awesome', 'Seçili dönem için yapay zekânın hazırladığı yönetici özeti; soru da sorabilirsiniz.', '#9333EA']];
     }
 }
 
@@ -896,13 +904,18 @@ if (!function_exists('_srErisim')) {
     }
 }
 
+// Eski tek sayfa adresi → ilk kategori (sorgu korunur)
 Route::get('/satinalma-raporlar', function (Request $r) {
+    $qs = $r->getQueryString();
+    return redirect('/satinalma-raporlar/donemsel' . ($qs ? '?' . $qs : ''));
+});
+Route::get('/satinalma-raporlar/{kat}', function (Request $r, $kat) {
     if (!_srErisim()) return redirect('/pos-giris');
     $sid = _webSubeId(); $dn = _srIstekDonem($r);
     $d = []; try { $d = _srVeriDurumu($sid); } catch (\Throwable $e) {}
-    return view('satinalma_raporlar', ['dn' => $dn, 'durum' => $d, 'katalog' => _srKatalog(), 'kategoriler' => _srKategoriler(), 'radar' => array_diff_key(_fr2Raporlar(), ['ai' => 1]),
+    return view('satinalma_raporlar', ['kat' => $kat, 'dn' => $dn, 'durum' => $d, 'katalog' => _srKatalog(), 'kategoriler' => _srKategoriler(), 'radar' => array_diff_key(_fr2Raporlar(), ['ai' => 1]),
         'ai' => cache()->get('sr_ai_son_' . $sid)]);
-});
+})->where('kat', 'donemsel|harcama|maliyet|tedarikci|surec|stok|finans|sube|radar|ai');
 Route::get('/satinalma-raporlar/indir', function (Request $r) {
     if (!_srErisim()) return redirect('/pos-giris');
     $kat = _srKatalog(); $rapor = (string) $r->query('rapor', 'aylik');

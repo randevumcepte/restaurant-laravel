@@ -1,88 +1,125 @@
+@php
+  // Kategori sayfası: sol menüde "Raporlar & Analizler" altındaki her kalem buraya {kat} ile gelir
+  [$katAd, $katIk, $katAcik, $katRenk] = $kategoriler[$kat];
+@endphp
 @extends('layout.app')
-@section('title', 'Raporlar & Analizler')
-@section('rk_ikon', 'insights')
-@section('baslik', 'Raporlar & Analizler')
-@section('rk_alt', 'Satın alma · günlük / haftalık / aylık yönetim raporları · analiz kütüphanesi · AI')
+@section('title', $katAd . ' · Raporlar & Analizler')
+@section('rk_ikon', $katIk)
+@section('baslik', $katAd)
+@section('rk_alt', 'Satın alma · Raporlar & Analizler')
 
 @section('content')
 @php
   $durum = $durum ?? []; $ai = $ai ?? null;
   $modAd = ['fatura' => 'Alış faturası', 'siparis' => 'Sipariş', 'malkabul' => 'Mal kabul', 'malkabul_sip' => 'Siparişe bağlı mal kabul', 'talep' => 'Satın alma talebi',
-    'rfq' => 'Teklif (RFQ)', 'recete' => 'Reçete', 'parti' => 'Lot / SKT', 'fire' => 'Fire / iade', 'tuketim' => 'Reçeteli tüketim', 'sayim' => 'Sayım', 'cari' => 'Tedarikçi cari', 'butce' => 'Bütçe'];
-  $modYol = ['fatura' => 'Mal Kabul / İrsaliye · Fatura OCR', 'siparis' => 'Sipariş İşlemleri', 'malkabul' => 'Mal Kabul / İrsaliye', 'malkabul_sip' => 'Mal Kabul\'de sipariş seçerek', 'talep' => 'Satın Alma Talepleri',
-    'rfq' => 'Talepten teklif isteği', 'recete' => 'Menü > Reçeteler', 'parti' => 'Mal Kabul\'de SKT girişi', 'fire' => 'Stok > fire / iade', 'tuketim' => 'Reçeteli satış', 'sayim' => 'Sayım (Envanter)', 'cari' => 'Tedarikçi carisi', 'butce' => 'Satınalma Bütçe'];
+    'rfq' => 'Teklif (RFQ)', 'recete' => 'Reçete', 'parti' => 'Lot / SKT', 'fire' => 'Fire / iade', 'tuketim' => 'Reçeteli tüketim', 'sayim' => 'Sayım', 'cari' => 'Tedarikçi cari', 'butce' => 'Bütçe', 'sube' => 'Birden çok şube'];
+  // Kullanılmayan modülün nereden girileceği (gri çip tıklanınca o ekran açılır)
+  $modLink = ['fatura' => ['/mal-kabul', 'Mal Kabul / İrsaliye'], 'siparis' => ['/satinalma-siparis', 'Sipariş İşlemleri'], 'malkabul' => ['/mal-kabul', 'Mal Kabul / İrsaliye'],
+    'malkabul_sip' => ['/mal-kabul', 'Mal Kabul\'de "Teslim bekleyen siparişler"den seçerek'], 'talep' => ['/satinalma-talep', 'Satın Alma Talepleri'], 'rfq' => ['/satinalma-talep', 'Talepten teklif isteyerek'],
+    'recete' => ['/recete', 'Reçeteler'], 'parti' => ['/mal-kabul', 'Mal Kabul\'de SKT girerek'], 'fire' => ['/stok', 'Stok > fire / iade'], 'tuketim' => ['/recete', 'Reçeteli satış'],
+    'sayim' => ['/sayim', 'Sayım (Envanter)'], 'cari' => ['/tedarikci', 'Tedarikçi carisi'], 'butce' => ['/satinalma-butce', 'Satınalma Bütçe'], 'sube' => [null, 'Tek şube']];
   $donemler = ['bugun' => 'Bugün', 'dun' => 'Dün', 'bu_hafta' => 'Bu hafta', 'gecen_hafta' => 'Geçen hafta', 'bu_ay' => 'Bu ay', 'gecen_ay' => 'Geçen ay', 'son30' => 'Son 30 gün', 'son90' => 'Son 90 gün', 'bu_yil' => 'Bu yıl'];
   $donemQs = http_build_query(array_filter(['donem' => $dn['tip'], 'bas' => $dn['tip'] === 'ozel' ? $dn['bas'] : null, 'bit' => $dn['tip'] === 'ozel' ? $dn['bit'] : null]));
-  $indir = fn($rapor, $fmt, $qs = null) => '/satinalma-raporlar/indir?rapor=' . $rapor . '&format=' . $fmt . '&' . ($qs ?? $donemQs);
-  // Fiyat Radarı raporları gün tabanlı → seçili döneme en yakın gün
-  $radarGun = collect([30, 60, 90, 120, 180, 365])->sortBy(fn($g) => abs($g - $dn['gun']))->first();
+  $periyot = ['gunluk' => ['dun' => 'Dün', 'bugun' => 'Bugün'], 'haftalik' => ['gecen_hafta' => 'Geçen hafta', 'bu_hafta' => 'Bu hafta'], 'aylik' => ['gecen_ay' => 'Geçen ay', 'bu_ay' => 'Bu ay']];
+  $radarGunler = [30, 60, 90, 180, 365];
+  $radarGun = in_array((int) request('gun'), $radarGunler, true) ? (int) request('gun') : 90;
   $veriRozet = function ($gerekli) use ($durum, $modAd) {
       $eksik = array_values(array_filter($gerekli, fn($m) => empty($durum[$m])));
       if (!$eksik) return ['Veri hazır', '#059669', 'check_circle', ''];
-      if (in_array('fatura', $eksik, true) || count($eksik) === count($gerekli)) return ['Veri yok', '#DC2626', 'error', 'Kullanılmayan: ' . implode(', ', array_map(fn($m) => $modAd[$m] ?? $m, $eksik))];
-      return ['Kısmi veri', '#D97706', 'warning', 'Kullanılmayan: ' . implode(', ', array_map(fn($m) => $modAd[$m] ?? $m, $eksik))];
+      $ad = implode(', ', array_map(fn($m) => $modAd[$m] ?? $m, $eksik));
+      if (in_array('fatura', $eksik, true) || count($eksik) === count($gerekli)) return ['Veri yok', '#DC2626', 'error', $ad];
+      return ['Kısmi veri', '#D97706', 'warning', $ad];
   };
-  $periyot = ['gunluk' => ['dun' => 'Dün', 'bugun' => 'Bugün'], 'haftalik' => ['gecen_hafta' => 'Geçen hafta', 'bu_hafta' => 'Bu hafta'], 'aylik' => ['gecen_ay' => 'Geçen ay', 'bu_ay' => 'Bu ay']];
-  $katSay = []; foreach ($katalog as $k => $r) $katSay[$r[0]] = ($katSay[$r[0]] ?? 0) + 1; $katSay['radar'] = count($radar); $katSay['ai'] = 1;
+  // Bu kategorinin raporları (sol liste + görüntüleyici)
+  $liste = [];
+  if ($kat === 'radar') {
+      $hazir = !empty($durum['fatura']);
+      foreach ($radar as $rk => [$ad, $acik, $ik, $renk])
+          $liste[] = ['k' => $rk, 'ad' => $ad, 'acik' => $acik, 'ik' => $ik, 'renk' => $renk, 'roz' => $hazir ? ['Veri hazır', '#059669', 'check_circle', ''] : ['Veri yok', '#DC2626', 'error', 'Alış faturası'],
+              'per' => null, 'url' => '/fiyat-radari/indir?rapor=' . $rk . '&gun=' . $radarGun];
+      $gerekliTum = ['fatura'];
+  } elseif ($kat !== 'ai') {
+      $gerekliTum = [];
+      foreach ($katalog as $rk => [$k, $ad, $acik, $ik, $renk, $gerekli, $vars]) {
+          if ($k !== $kat) continue;
+          $gerekliTum = array_merge($gerekliTum, $gerekli);
+          $liste[] = ['k' => $rk, 'ad' => $ad, 'acik' => $acik, 'ik' => $ik, 'renk' => $renk, 'roz' => $veriRozet($gerekli), 'per' => $periyot[$rk] ?? null,
+              'url' => '/satinalma-raporlar/indir?rapor=' . $rk];
+      }
+  } else $gerekliTum = ['fatura', 'siparis', 'malkabul_sip', 'talep', 'butce', 'fire', 'recete'];
+  $gerekliTum = array_values(array_unique($gerekliTum));
+  $sayfaDonemli = !in_array($kat, ['donemsel', 'radar'], true);
 @endphp
 
 <style>
-  .sr{display:grid;grid-template-columns:minmax(0,1fr)}
-  .sr-hero{position:relative;overflow:hidden;border-radius:20px;padding:22px 24px;color:#fff;margin-bottom:14px;background:radial-gradient(120% 140% at 0% 0%,#6366F1 0%,#4F46E5 35%,#4338CA 65%,#1E1B4B 100%);box-shadow:0 18px 40px -18px rgba(49,46,129,.55)}
-  .sr-hero::after{content:'';position:absolute;right:-70px;top:-70px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(14,165,233,.5),transparent 65%);pointer-events:none}
-  .sr-hero h2{margin:0;font-size:21px;font-weight:900;color:#fff;position:relative}
-  .sr-hero p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.85);max-width:780px;position:relative}
-  .sr-donem{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;align-items:center}
-  .sr-chip{display:inline-flex;align-items:center;padding:7px 12px;border-radius:99px;font-size:12.5px;font-weight:700;color:#fff;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.25);text-decoration:none;white-space:nowrap}
-  .sr-chip:hover{background:rgba(255,255,255,.22)}
-  .sr-chip.aktif{background:#fff;color:#4338CA}
-  .sr-ozel{display:inline-flex;gap:6px;align-items:center;padding:4px 6px 4px 12px;border-radius:99px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.25);font-size:12px;font-weight:700}
-  .sr-ozel input{background:rgba(255,255,255,.9);border:0;border-radius:8px;padding:4px 6px;font-size:12px;color:#1E293B}
-  .sr-ozel button{border:0;border-radius:99px;padding:6px 11px;font-weight:800;background:#fff;color:#4338CA;cursor:pointer;font-size:12px}
-  .sr-etiket{position:relative;margin-top:10px;font-size:12px;color:rgba(255,255,255,.85)}
-  .sr-etiket b{color:#fff}
-  .sr-mod{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:14px}
-  .sr-mod .bas{font-size:11.5px;font-weight:800;color:var(--sub);margin-right:4px}
-  .sr-m{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:99px;font-size:11.5px;font-weight:700;border:1px solid}
+  .sr{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;--kr:{{ $katRenk }}}
+  .sr [hidden]{display:none!important}
+  /* ---- başlık ---- */
+  .sr-bas{position:relative;overflow:hidden;border-radius:18px;padding:18px 20px;background:var(--card);border:1px solid var(--line);box-shadow:var(--golge)}
+  .sr-bas::before{content:'';position:absolute;inset:0;background:radial-gradient(90% 140% at 0% 0%,color-mix(in srgb,var(--kr) 16%,transparent),transparent 60%);pointer-events:none}
+  .sr-bas-ust{position:relative;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .sr-bas-ik{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 75%,#fff),var(--kr));box-shadow:0 10px 22px -10px var(--kr);flex:0 0 auto}
+  .sr-bas-ik .material-icons-outlined{font-size:26px}
+  .sr-bas h2{margin:0;font-size:19px;font-weight:900;color:var(--ink)}
+  .sr-bas p{margin:3px 0 0;font-size:12.5px;color:var(--sub2);max-width:720px}
+  .sr-yol{font-size:11px;font-weight:800;color:var(--sub);letter-spacing:.3px;text-transform:uppercase;margin-bottom:2px}
+  .sr-donem{position:relative;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+  .sr-donem .lbl,.sr-mod .lbl{font-size:11.5px;font-weight:800;color:var(--sub);margin-right:2px}
+  .sr-chip{display:inline-flex;align-items:center;padding:6px 11px;border-radius:99px;font-size:12px;font-weight:700;color:var(--sub2);background:var(--card2);border:1px solid var(--line);text-decoration:none;white-space:nowrap}
+  .sr-chip:hover{border-color:var(--kr);color:var(--kr)}
+  .sr-chip.aktif{background:var(--kr);border-color:var(--kr);color:#fff}
+  .sr-ozel{display:inline-flex;gap:5px;align-items:center;padding:3px 4px 3px 10px;border-radius:99px;background:var(--card2);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--sub2)}
+  .sr-ozel input{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:3px 5px;font-size:12px;color:var(--ink)}
+  .sr-ozel button{border:0;border-radius:99px;padding:5px 10px;font-weight:800;background:var(--kr);color:#fff;cursor:pointer;font-size:12px}
+  .sr-etiket{position:relative;margin-top:8px;font-size:11.5px;color:var(--sub)}
+  .sr-etiket b{color:var(--ink)}
+  /* ---- veri durumu ---- */
+  .sr-mod{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .sr-m{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:99px;font-size:11.5px;font-weight:700;border:1px solid;text-decoration:none}
   .sr-m .material-icons-outlined{font-size:14px}
   .sr-m.var{color:#047857;border-color:color-mix(in srgb,#059669 35%,transparent);background:color-mix(in srgb,#059669 8%,transparent)}
-  .sr-m.yok{color:var(--sub);border-color:var(--line);background:var(--card2)}
+  .sr-m.yok{color:var(--sub);border-color:var(--line);background:var(--card2);border-style:dashed}
+  a.sr-m.yok:hover{color:var(--kr);border-color:var(--kr)}
   body.koyu .sr-m.var{color:#34D399}
-  .sr-ana{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
-  @media(max-width:1000px){.sr-ana{grid-template-columns:minmax(0,1fr)}.sr-nav{position:static!important;display:flex!important;overflow-x:auto;gap:6px}.sr-nav a{flex:0 0 auto}}
-  .sr-nav{position:sticky;top:10px;display:flex;flex-direction:column;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px}
-  .sr-nav a{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;color:var(--sub2);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
-  .sr-nav a .material-icons-outlined{font-size:18px}
-  .sr-nav a .s{margin-left:auto;font-size:10.5px;padding:1px 7px;border-radius:99px;background:var(--card2);color:var(--sub)}
-  .sr-nav a:hover{background:var(--card2)}
-  .sr-nav a.aktif{background:linear-gradient(135deg,#6366F1,#4338CA);color:#fff}
-  .sr-nav a.aktif .s{background:rgba(255,255,255,.22);color:#fff}
-  .sr-ara{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--ink);margin-bottom:14px}
-  .sr-bol{margin-bottom:22px;scroll-margin-top:12px}
-  .sr-bol h3{margin:0 0 10px;font-size:15.5px;font-weight:900;color:var(--ink);display:flex;align-items:center;gap:8px}
-  .sr-bol h3 .material-icons-outlined{color:#6366F1}
-  .sr-kartlar{display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:12px}
-  .sr-k{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;display:flex;flex-direction:column;gap:9px;box-shadow:var(--golge);transition:transform .15s,box-shadow .15s}
-  .sr-k:hover{transform:translateY(-2px);box-shadow:0 14px 30px -16px rgba(49,46,129,.35)}
-  .sr-k .ust{display:flex;gap:10px;align-items:flex-start}
-  .sr-k .ik{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--c);flex:0 0 auto}
-  .sr-k .t{font-weight:900;font-size:14px;color:var(--ink);line-height:1.25}
-  .sr-k .d{font-size:12px;color:var(--sub);line-height:1.45;flex:1}
-  .sr-roz{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);border-radius:99px;padding:2px 8px;width:max-content}
+  /* ---- liste + görüntüleyici ---- */
+  .sr-ana{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start}
+  @media(max-width:1050px){.sr-ana{grid-template-columns:minmax(0,1fr)}}
+  .sr-liste{display:flex;flex-direction:column;gap:6px;position:sticky;top:10px}
+  @media(max-width:1050px){.sr-liste{position:static}}
+  .sr-r{display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;font:inherit;color:inherit}
+  .sr-r:hover{border-color:color-mix(in srgb,var(--c) 45%,transparent);transform:translateX(2px)}
+  .sr-r.aktif{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 16%,transparent),0 10px 24px -14px var(--c)}
+  .sr-r .ik{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:0 0 auto;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
+  .sr-r.aktif .ik{color:#fff;background:var(--c)}
+  .sr-r .ik .material-icons-outlined{font-size:20px}
+  .sr-r .t{font-weight:800;font-size:13.5px;color:var(--ink);line-height:1.25;display:flex;align-items:center;gap:6px}
+  .sr-r .d{font-size:11.5px;color:var(--sub);line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sr-nok{width:8px;height:8px;border-radius:50%;background:var(--n);flex:0 0 auto}
+  .sr-gor{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--golge);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+  .sr-gor-bas{display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .sr-gor-bas .ik{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--c);flex:0 0 auto}
+  .sr-gor-bas h3{margin:0;font-size:16px;font-weight:900;color:var(--ink)}
+  .sr-gor-bas .d{font-size:12px;color:var(--sub2);margin-top:2px;max-width:640px;line-height:1.45}
+  .sr-roz{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);border-radius:99px;padding:2px 8px;margin-top:6px}
   .sr-roz .material-icons-outlined{font-size:13px}
-  .sr-eksik{font-size:10.5px;color:var(--sub);margin-top:-4px}
-  .sr-per{display:flex;gap:4px}
-  .sr-per button{flex:1;border:1px solid var(--line);background:var(--card2);color:var(--sub2);border-radius:8px;padding:6px;font-size:11.5px;font-weight:800;cursor:pointer}
-  .sr-per button.aktif{background:var(--c);color:#fff;border-color:var(--c)}
-  .sr-bt{display:flex;gap:6px}
-  .sr-b{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 6px;border-radius:9px;font-size:12px;font-weight:800;text-decoration:none;border:1px solid;cursor:pointer;background:none}
-  .sr-b .material-icons-outlined{font-size:16px}
-  .sr-b.o{color:#4338CA;border-color:color-mix(in srgb,#4F46E5 40%,transparent);background:color-mix(in srgb,#4F46E5 7%,transparent)}
+  .sr-eksik{font-size:11px;color:var(--sub);margin-top:4px}
+  .sr-arac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .sr-per{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px}
+  .sr-per button{border:0;background:none;color:var(--sub2);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}
+  .sr-per button.aktif{background:var(--c);color:#fff}
+  .sr-b{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:800;text-decoration:none;border:1px solid;cursor:pointer;background:none;white-space:nowrap}
+  .sr-b .material-icons-outlined{font-size:17px}
   .sr-b.x{color:#15803D;border-color:color-mix(in srgb,#16A34A 40%,transparent);background:color-mix(in srgb,#16A34A 8%,transparent)}
   .sr-b.p{color:#BE123C;border-color:color-mix(in srgb,#E11D48 40%,transparent);background:color-mix(in srgb,#E11D48 7%,transparent)}
-  body.koyu .sr-b.o{color:#A5B4FC} body.koyu .sr-b.x{color:#4ADE80} body.koyu .sr-b.p{color:#FB7185}
-  .sr-not{font-size:11.5px;color:var(--sub);margin:-4px 0 10px}
-  .sr-ai{border-radius:18px;padding:18px;background:linear-gradient(135deg,color-mix(in srgb,#9333EA 14%,var(--card)),color-mix(in srgb,#EC4899 10%,var(--card)));border:1px solid color-mix(in srgb,#9333EA 30%,transparent)}
+  .sr-b.o{color:var(--sub2);border-color:var(--line);background:var(--card2)}
+  body.koyu .sr-b.x{color:#4ADE80} body.koyu .sr-b.p{color:#FB7185}
+  .sr-cer{position:relative;height:calc(100vh - 190px);min-height:560px;background:#F1F2F9}
+  .sr-cer iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
+  .sr-yuk{position:absolute;inset:0;display:grid;place-items:center;color:var(--sub);font-size:13px;font-weight:700;pointer-events:none;transition:opacity .2s}
+  .sr-yuk .material-icons-outlined{animation:srDon 1s linear infinite;font-size:28px;color:var(--kr)}
+  @keyframes srDon{to{transform:rotate(360deg)}}
+  /* ---- AI ---- */
+  .sr-ai{border-radius:18px;padding:18px;background:linear-gradient(135deg,color-mix(in srgb,#9333EA 12%,var(--card)),color-mix(in srgb,#EC4899 8%,var(--card)));border:1px solid color-mix(in srgb,#9333EA 30%,transparent)}
   .sr-ai-btn{display:inline-flex;align-items:center;gap:7px;padding:11px 18px;border-radius:12px;border:0;cursor:pointer;font-weight:900;font-size:13.5px;color:#fff;background:linear-gradient(135deg,#9333EA,#EC4899)}
   .sr-ai-btn[disabled]{opacity:.7;cursor:wait}
   .sr-ai-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
@@ -94,177 +131,162 @@
   .sr-sor{display:flex;gap:8px;margin-top:12px}
   .sr-sor input{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 13px;font-size:13px;color:var(--ink)}
   .sr-cevap{white-space:pre-wrap;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;font-size:13px;color:var(--ink);margin-top:10px;line-height:1.55}
-  .sr-modal{position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
-  .sr-modal.acik{display:flex}
-  .sr-modal .kutu{background:var(--card);border-radius:16px;width:min(1240px,100%);height:min(92vh,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 60px -20px rgba(0,0,0,.5)}
-  .sr-modal .bas{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
-  .sr-modal .bas b{flex:1;color:var(--ink);font-size:14px}
-  .sr-modal iframe{flex:1;border:0;width:100%;background:#F1F2F9}
-  .sr-kapat{border:0;background:var(--card2);border-radius:9px;padding:7px;cursor:pointer;color:var(--sub2);display:grid;place-items:center}
-  @keyframes srDon{to{transform:rotate(360deg)}}
 </style>
 
 <div class="sr">
-  {{-- ===== HERO + DÖNEM ===== --}}
-  <div class="sr-hero">
-    <h2>📊 Satın Alma Raporlar & Analizler</h2>
-    <p>Üst yönetime günlük, haftalık ve aylık raporlar; harcama, fiyat, maliyet, tedarikçi, süreç, stok ve finans analizleri. Raporlar <b>yorumsuz sistem verisidir</b>; boş kalan bölüm nedenini yazar. AI yorumu yalnız <b>AI Analiz</b> bölümündedir ve öyle etiketlenir.</p>
-    <div class="sr-donem">
-      @foreach ($donemler as $k => $ad)<a class="sr-chip {{ $dn['tip'] === $k ? 'aktif' : '' }}" href="?donem={{ $k }}" onclick="this.href += location.hash">{{ $ad }}</a>@endforeach
-      <form class="sr-ozel" method="GET" action="/satinalma-raporlar" onsubmit="this.action += location.hash">
-        <input type="hidden" name="donem" value="ozel"><span>Özel</span>
-        <input type="date" name="bas" value="{{ $dn['bas'] }}" max="{{ date('Y-m-d') }}"><span>–</span><input type="date" name="bit" value="{{ $dn['bit'] }}" max="{{ date('Y-m-d') }}">
-        <button type="submit">Uygula</button>
-      </form>
+  {{-- ===== BAŞLIK + DÖNEM ===== --}}
+  <div class="sr-bas">
+    <div class="sr-bas-ust">
+      <div class="sr-bas-ik"><span class="material-icons-outlined">{{ $katIk }}</span></div>
+      <div style="flex:1;min-width:220px">
+        <div class="sr-yol">Raporlar & Analizler</div>
+        <h2>{{ $katAd }}</h2>
+        <p>{{ $katAcik }}
+          @if ($kat === 'ai') Bu içerik <b>yapay zekâ tarafından hazırlanır</b> ve öyle etiketlenir.
+          @else Raporlar <b>yorumsuz sistem verisidir</b>; boş kalan bölüm nedenini yazar.@endif</p>
+      </div>
     </div>
-    <div class="sr-etiket">Seçili dönem: <b>{{ $dn['ad'] }}</b> · {{ $dn['etiket'] }} ({{ $dn['gun'] }} gün) · karşılaştırma: önceki {{ $dn['gun'] }} gün ({{ \Carbon\Carbon::parse($dn['obas'])->format('d.m.Y') }} – {{ \Carbon\Carbon::parse($dn['obit'])->format('d.m.Y') }})</div>
+    @if ($sayfaDonemli)
+      <div class="sr-donem">
+        <span class="lbl">Dönem:</span>
+        @foreach ($donemler as $k => $ad)<a class="sr-chip {{ $dn['tip'] === $k ? 'aktif' : '' }}" href="?donem={{ $k }}" onclick="this.href += location.hash">{{ $ad }}</a>@endforeach
+        <form class="sr-ozel" method="GET" onsubmit="this.action = location.pathname + location.hash">
+          <input type="hidden" name="donem" value="ozel"><span>Özel</span>
+          <input type="date" name="bas" value="{{ $dn['bas'] }}" max="{{ date('Y-m-d') }}"><span>–</span><input type="date" name="bit" value="{{ $dn['bit'] }}" max="{{ date('Y-m-d') }}">
+          <button type="submit">Uygula</button>
+        </form>
+      </div>
+      <div class="sr-etiket"><b>{{ $dn['ad'] }}</b> · {{ $dn['etiket'] }} ({{ $dn['gun'] }} gün) · kıyas: önceki dönem {{ \Carbon\Carbon::parse($dn['obas'])->format('d.m.Y') }} – {{ \Carbon\Carbon::parse($dn['obit'])->format('d.m.Y') }}</div>
+    @elseif ($kat === 'radar')
+      <div class="sr-donem">
+        <span class="lbl">Süre:</span>
+        @foreach ($radarGunler as $g)<a class="sr-chip {{ $radarGun === $g ? 'aktif' : '' }}" href="?gun={{ $g }}" onclick="this.href += location.hash">Son {{ $g }} gün</a>@endforeach
+        <a class="sr-chip" href="/fiyat-radari" style="margin-left:auto">Fiyat Radarı sayfası →</a>
+      </div>
+    @else
+      <div class="sr-etiket" style="margin-top:12px">Her rapor kendi dönemiyle çalışır: Günlük → dün / bugün · Haftalık → geçen / bu hafta · Aylık → geçen / bu ay. Dönemi raporun başlığından değiştirebilirsiniz.</div>
+    @endif
   </div>
 
-  {{-- ===== VERİ DURUMU ===== --}}
+  {{-- ===== VERİ DURUMU (yalnız bu kategorinin kullandığı modüller; gri olan tıklanınca giriş ekranı açılır) ===== --}}
+  @if ($gerekliTum)
   <div class="sr-mod">
-    <span class="bas">Kullanılan modüller (son 1 yıl):</span>
-    @foreach (['fatura', 'siparis', 'malkabul_sip', 'talep', 'rfq', 'recete', 'parti', 'fire', 'sayim', 'cari', 'butce'] as $m)
-      <span class="sr-m {{ !empty($durum[$m]) ? 'var' : 'yok' }}" title="{{ !empty($durum[$m]) ? ($durum[$m] . ' kayıt') : 'Kullanılmıyor — giriş: ' . ($modYol[$m] ?? '') }}"><span class="material-icons-outlined">{{ !empty($durum[$m]) ? 'check_circle' : 'radio_button_unchecked' }}</span>{{ $modAd[$m] }}</span>
+    <span class="lbl">Bu raporların kullandığı veri (son 1 yıl):</span>
+    @foreach ($gerekliTum as $m)
+      @if (!empty($durum[$m]))
+        <span class="sr-m var" title="{{ $durum[$m] }} kayıt"><span class="material-icons-outlined">check_circle</span>{{ $modAd[$m] ?? $m }}</span>
+      @else
+        @php [$mUrl, $mYol] = $modLink[$m] ?? [null, '']; @endphp
+        @if ($mUrl)<a class="sr-m yok" href="{{ $mUrl }}" title="Kayıt yok — girmek için: {{ $mYol }}"><span class="material-icons-outlined">add_circle_outline</span>{{ $modAd[$m] ?? $m }}</a>
+        @else<span class="sr-m yok" title="{{ $mYol }}"><span class="material-icons-outlined">radio_button_unchecked</span>{{ $modAd[$m] ?? $m }}</span>@endif
+      @endif
     @endforeach
   </div>
+  @endif
 
-  <div class="sr-ana">
-    <nav class="sr-nav" id="srNav">
-      @foreach ($kategoriler as $k => [$ad, $ik])
-        <a href="#k-{{ $k }}" data-k="{{ $k }}"><span class="material-icons-outlined">{{ $ik }}</span>{{ $ad }}<span class="s">{{ $katSay[$k] ?? 0 }}</span></a>
-      @endforeach
-    </nav>
-    <div style="min-width:0">
-      <input class="sr-ara" placeholder="Rapor ara… (ör. tedarikçi, bütçe, fire, teslim)" oninput="srAra(this.value)">
-
-      @foreach ($kategoriler as $kk => [$kad, $kik])
-        @continue(in_array($kk, ['radar', 'ai'], true))
-        <section class="sr-bol" id="k-{{ $kk }}">
-          <h3><span class="material-icons-outlined">{{ $kik }}</span>{{ $kad }}</h3>
-          @if ($kk === 'donemsel')<div class="sr-not">Yönetime sunulan hazır raporlar: her kart kendi dönemiyle çalışır (Günlük: dün/bugün · Haftalık: geçen/bu hafta · Aylık: geçen/bu ay).</div>
-          @else<div class="sr-not">Üstte seçili dönemle hazırlanır: <b>{{ $dn['etiket'] }}</b>.</div>@endif
-          <div class="sr-kartlar">
-            @foreach ($katalog as $rk => [$kat, $ad, $acik, $ik, $renk, $gerekli, $vars])
-              @continue($kat !== $kk)
-              @php [$rozet, $rRenk, $rIk, $rEksik] = $veriRozet($gerekli); @endphp
-              <div class="sr-k" style="--c:{{ $renk }}" data-ara="{{ mb_strtolower($ad . ' ' . $acik) }}" data-rapor="{{ $rk }}">
-                <div class="ust"><div class="ik"><span class="material-icons-outlined">{{ $ik }}</span></div><div class="t">{{ $ad }}</div></div>
-                <div class="d">{{ $acik }}</div>
-                <span class="sr-roz" style="--c:{{ $rRenk }}"><span class="material-icons-outlined">{{ $rIk }}</span>{{ $rozet }}</span>
-                @if ($rEksik)<div class="sr-eksik">{{ $rEksik }} — ilgili bölümler boş gelir, rapor nedenini yazar.</div>@endif
-                @if (isset($periyot[$rk]))
-                  <div class="sr-per" data-per>
-                    @foreach ($periyot[$rk] as $pk => $pad)<button type="button" class="{{ $loop->first ? 'aktif' : '' }}" data-donem="{{ $pk }}" onclick="srPer(this)">{{ $pad }}</button>@endforeach
-                  </div>
-                @endif
-                <div class="sr-bt">
-                  <button type="button" class="sr-b o" onclick="srAc('{{ $rk }}', this)"><span class="material-icons-outlined">visibility</span>Önizle</button>
-                  <a class="sr-b x" data-fmt="xlsx" href="{{ $indir($rk, 'xlsx', isset($periyot[$rk]) ? 'donem=' . array_key_first($periyot[$rk]) : null) }}"><span class="material-icons-outlined">table_view</span>Excel</a>
-                  <a class="sr-b p" data-fmt="pdf" target="_blank" href="{{ $indir($rk, 'pdf', isset($periyot[$rk]) ? 'donem=' . array_key_first($periyot[$rk]) : null) }}"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
-                </div>
-              </div>
-            @endforeach
-          </div>
-        </section>
-      @endforeach
-
-      {{-- ===== FİYAT RADARI RAPORLARI ===== --}}
-      <section class="sr-bol" id="k-radar">
-        <h3><span class="material-icons-outlined">radar</span>Fiyat Radarı</h3>
-        <div class="sr-not">Gizli zam, tedarikçi kıyası, hal, karne… Fiyat Radarı gün tabanlıdır: seçili döneme en yakın <b>son {{ $radarGun }} gün</b> ile hazırlanır. <a href="/fiyat-radari" style="color:#4F46E5;font-weight:800">Fiyat Radarı sayfası →</a></div>
-        <div class="sr-kartlar">
-          @foreach ($radar as $rk => [$ad, $acik, $ik, $renk])
-            <div class="sr-k" style="--c:{{ $renk }}" data-ara="{{ mb_strtolower($ad . ' ' . $acik) }}">
-              <div class="ust"><div class="ik"><span class="material-icons-outlined">{{ $ik }}</span></div><div class="t">{{ $ad }}</div></div>
-              <div class="d">{{ $acik }}</div>
-              <span class="sr-roz" style="--c:{{ !empty($durum['fatura']) ? '#059669' : '#DC2626' }}"><span class="material-icons-outlined">{{ !empty($durum['fatura']) ? 'check_circle' : 'error' }}</span>{{ !empty($durum['fatura']) ? 'Veri hazır' : 'Veri yok' }}</span>
-              <div class="sr-bt">
-                <a class="sr-b x" href="/fiyat-radari/indir?rapor={{ $rk }}&format=xlsx&gun={{ $radarGun }}"><span class="material-icons-outlined">table_view</span>Excel</a>
-                <a class="sr-b p" target="_blank" href="/fiyat-radari/indir?rapor={{ $rk }}&format=pdf&gun={{ $radarGun }}"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
-              </div>
-            </div>
-          @endforeach
+  @if ($kat === 'ai')
+    {{-- ===== AI ===== --}}
+    <div class="sr-ai">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px">
+          <div style="font-size:16px;font-weight:900;color:var(--ink)">✨ AI Yönetici Özeti — {{ $dn['ad'] }} ({{ $dn['etiket'] }})</div>
+          <div style="font-size:12.5px;color:var(--sub2);margin-top:3px">Seçili dönemin satın alma verisini (harcama, fiyat değişimleri, teslimat, talepler, stok, bütçe, fire, menü etkisi) okuyup üst yönetim için <b>özet, öne çıkanlar, riskler ve öneriler</b> yazar. Rapor dosyasında dayandığı rakamlar da yer alır.</div>
         </div>
-      </section>
-
-      {{-- ===== AI ===== --}}
-      <section class="sr-bol" id="k-ai">
-        <h3><span class="material-icons-outlined">auto_awesome</span>AI Analiz</h3>
-        <div class="sr-ai" data-ara="ai yapay zeka özet yönetici analiz soru">
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-            <div style="flex:1;min-width:260px">
-              <div style="font-size:16px;font-weight:900;color:var(--ink)">✨ AI Yönetici Özeti — {{ $dn['ad'] }} ({{ $dn['etiket'] }})</div>
-              <div style="font-size:12.5px;color:var(--sub2);margin-top:3px">Seçili dönemin satın alma verisini (harcama, fiyat değişimleri, teslimat, talepler, stok, bütçe, fire, menü etkisi) okuyup üst yönetim için <b>özet, öne çıkanlar, riskler ve öneriler</b> yazar. Bu içerik <b>yapay zekâ tarafından hazırlanır</b>; rapor dosyasında dayandığı rakamlar da yer alır.</div>
-            </div>
-            <button type="button" class="sr-ai-btn" id="srAiBtn" onclick="srAi(false)"><span class="material-icons-outlined">auto_awesome</span> Özet Hazırla</button>
-            <button type="button" class="sr-b o" style="flex:0 0 auto;padding:10px 12px" onclick="srAi(true)"><span class="material-icons-outlined">refresh</span>Yeniden</button>
-          </div>
-          <div class="sr-sor"><input id="srSoru" placeholder="Soru sor: ör. 'Bu ay en çok hangi tedarikçide harcama arttı?', 'Hangi siparişler gecikiyor?'" onkeydown="if(event.key==='Enter')srSor()">
-            <button type="button" class="sr-ai-btn" style="padding:10px 14px" onclick="srSor()"><span class="material-icons-outlined">send</span></button></div>
-          <div id="srCevap"></div>
-          <div id="srAiSonuc"></div>
-          <div class="sr-bt" id="srAiIndir" style="margin-top:12px;max-width:420px" @if (!$ai) hidden @endif>
-            <a class="sr-b x" href="{{ $indir('ai', 'xlsx') }}"><span class="material-icons-outlined">table_view</span>AI özeti Excel</a>
-            <a class="sr-b p" target="_blank" href="{{ $indir('ai', 'pdf') }}"><span class="material-icons-outlined">picture_as_pdf</span>AI özeti PDF</a>
-          </div>
-        </div>
-      </section>
+        <button type="button" class="sr-ai-btn" id="srAiBtn" onclick="srAi(false)"><span class="material-icons-outlined">auto_awesome</span> Özet Hazırla</button>
+        <button type="button" class="sr-b o" onclick="srAi(true)"><span class="material-icons-outlined">refresh</span>Yeniden</button>
+      </div>
+      <div class="sr-sor"><input id="srSoru" placeholder="Soru sor: ör. 'Bu ay en çok hangi tedarikçide harcama arttı?', 'Hangi siparişler gecikiyor?'" onkeydown="if(event.key==='Enter')srSor()">
+        <button type="button" class="sr-ai-btn" style="padding:10px 14px" onclick="srSor()"><span class="material-icons-outlined">send</span></button></div>
+      <div id="srCevap"></div>
+      <div id="srAiSonuc"></div>
+      <div id="srAiIndir" style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap" @if (!$ai) hidden @endif>
+        <a class="sr-b x" href="/satinalma-raporlar/indir?rapor=ai&format=xlsx&{{ $donemQs }}"><span class="material-icons-outlined">table_view</span>AI özeti Excel</a>
+        <a class="sr-b p" target="_blank" href="/satinalma-raporlar/indir?rapor=ai&format=pdf&{{ $donemQs }}"><span class="material-icons-outlined">picture_as_pdf</span>AI özeti PDF</a>
+      </div>
     </div>
-  </div>
-</div>
+  @else
+    {{-- ===== RAPOR LİSTESİ + GÖRÜNTÜLEYİCİ ===== --}}
+    <div class="sr-ana">
+      <div class="sr-liste" id="srListe">
+        @foreach ($liste as $r)
+          <button type="button" class="sr-r" style="--c:{{ $r['renk'] }}" data-k="{{ $r['k'] }}" onclick="srSec('{{ $r['k'] }}')">
+            <span class="ik"><span class="material-icons-outlined">{{ $r['ik'] }}</span></span>
+            <span style="min-width:0;flex:1">
+              <span class="t">{{ $r['ad'] }}<span class="sr-nok" style="--n:{{ $r['roz'][1] }}" title="{{ $r['roz'][0] }}"></span></span>
+              <span class="d">{{ $r['acik'] }}</span>
+            </span>
+          </button>
+        @endforeach
+      </div>
 
-{{-- ===== ÖNİZLEME ===== --}}
-<div class="sr-modal" id="srModal" onclick="if(event.target===this)srKapat()">
-  <div class="kutu">
-    <div class="bas"><b id="srModalBas">Önizleme</b>
-      <a class="sr-b x" id="srModalX" style="flex:0 0 auto;padding:7px 11px"><span class="material-icons-outlined">table_view</span>Excel</a>
-      <a class="sr-b p" id="srModalP" target="_blank" style="flex:0 0 auto;padding:7px 11px"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
-      <button type="button" class="sr-kapat" onclick="srKapat()"><span class="material-icons-outlined">close</span></button></div>
-    <iframe id="srFrame" title="Rapor önizleme"></iframe>
-  </div>
+      <div class="sr-gor" id="srGor">
+        <div class="sr-gor-bas">
+          <div class="ik" id="gIk"><span class="material-icons-outlined"></span></div>
+          <div style="flex:1;min-width:220px">
+            <h3 id="gAd"></h3>
+            <div class="d" id="gAcik"></div>
+            <span class="sr-roz" id="gRoz"><span class="material-icons-outlined"></span><b></b></span>
+            <div class="sr-eksik" id="gEksik"></div>
+          </div>
+          <div class="sr-arac">
+            <div class="sr-per" id="gPer" hidden></div>
+            <a class="sr-b x" id="gX"><span class="material-icons-outlined">table_view</span>Excel</a>
+            <a class="sr-b p" id="gP" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
+          </div>
+        </div>
+        <div class="sr-cer">
+          <div class="sr-yuk" id="gYuk"><div style="text-align:center"><span class="material-icons-outlined">autorenew</span><div>Rapor hazırlanıyor…</div></div></div>
+          <iframe id="gFrame" title="Rapor önizleme" onload="document.getElementById('gYuk').style.opacity = 0"></iframe>
+        </div>
+      </div>
+    </div>
+  @endif
 </div>
 
 <script>
-  var SR_QS = {!! json_encode($donemQs) !!};
+  var SR_QS = {!! json_encode($sayfaDonemli ? $donemQs : '') !!};
+  var SR_AI_QS = {!! json_encode($donemQs) !!};
+  var SR_LISTE = {!! json_encode((object) collect($liste)->keyBy('k')->all(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!};
   var SR_AI = {!! json_encode($ai, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!};
+  var srPerSec = {}; // dönemsel raporlarda rapor başına seçili dönem
   function srEsc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
-  function srNorm(s) { return (s || '').replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase(); }
-  function srAra(q) {
-    q = srNorm(q.trim());
-    document.querySelectorAll('[data-ara]').forEach(function (k) { k.style.display = !q || srNorm(k.dataset.ara).indexOf(q) > -1 ? '' : 'none'; });
-    document.querySelectorAll('.sr-bol').forEach(function (b) { var g = b.querySelectorAll('[data-ara]'), v = Array.prototype.some.call(g, function (k) { return k.style.display !== 'none'; }); b.style.display = v ? '' : 'none'; });
+
+  function srUrl(r, fmt) {
+    var qs = r.per ? 'donem=' + (srPerSec[r.k] || Object.keys(r.per)[0]) : SR_QS;
+    return r.url + '&format=' + fmt + (qs ? '&' + qs : '');
   }
-  // kartın dönemi (dönemsel raporlarda kartın kendi seçimi; diğerlerinde sayfa dönemi)
-  function srKartQs(kart) { var a = kart.querySelector('[data-per] .aktif'); return a ? 'donem=' + a.dataset.donem : SR_QS; }
-  function srPer(btn) {
-    var kart = btn.closest('.sr-k'); kart.querySelectorAll('[data-per] button').forEach(function (b) { b.classList.toggle('aktif', b === btn); });
-    var rk = kart.dataset.rapor;
-    kart.querySelectorAll('a[data-fmt]').forEach(function (a) { a.href = '/satinalma-raporlar/indir?rapor=' + rk + '&format=' + a.dataset.fmt + '&' + srKartQs(kart); });
+  function srSec(k, ilk) {
+    var r = SR_LISTE[k]; if (!r) return;
+    document.querySelectorAll('#srListe .sr-r').forEach(function (b) { b.classList.toggle('aktif', b.dataset.k === k); });
+    var g = document.getElementById('srGor'); g.style.setProperty('--c', r.renk);
+    document.querySelector('#gIk span').textContent = r.ik;
+    document.getElementById('gAd').textContent = r.ad;
+    document.getElementById('gAcik').textContent = r.acik;
+    var roz = document.getElementById('gRoz'); roz.style.setProperty('--c', r.roz[1]);
+    roz.querySelector('span').textContent = r.roz[2]; roz.querySelector('b').textContent = r.roz[0];
+    document.getElementById('gEksik').textContent = r.roz[3] ? 'Kullanılmayan: ' + r.roz[3] + ' — ilgili bölümler boş gelir, rapor nedenini yazar.' : '';
+    var per = document.getElementById('gPer');
+    if (r.per) {
+      var sec = srPerSec[k] || Object.keys(r.per)[0];
+      per.innerHTML = Object.keys(r.per).map(function (p) { return '<button type="button" class="' + (p === sec ? 'aktif' : '') + '" data-p="' + p + '">' + srEsc(r.per[p]) + '</button>'; }).join('');
+      per.querySelectorAll('button').forEach(function (b) { b.onclick = function () { srPerSec[k] = b.dataset.p; srSec(k); }; });
+      per.hidden = false;
+    } else per.hidden = true;
+    document.getElementById('gX').href = srUrl(r, 'xlsx');
+    document.getElementById('gP').href = srUrl(r, 'pdf');
+    document.getElementById('gYuk').style.opacity = 1;
+    document.getElementById('gFrame').src = srUrl(r, 'html') + '&onizle=1';
+    if (!ilk) { history.replaceState(null, '', '#' + k); if (window.innerWidth <= 1050) g.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
-  function srAc(rk, btn) {
-    var kart = btn.closest('.sr-k'), qs = srKartQs(kart), u = '/satinalma-raporlar/indir?rapor=' + rk + '&' + qs;
-    document.getElementById('srModalBas').textContent = kart.querySelector('.t').textContent;
-    document.getElementById('srModalX').href = u + '&format=xlsx';
-    document.getElementById('srModalP').href = u + '&format=pdf';
-    document.getElementById('srFrame').src = u + '&format=html&onizle=1';
-    document.getElementById('srModal').classList.add('acik');
-  }
-  function srKapat() { document.getElementById('srModal').classList.remove('acik'); document.getElementById('srFrame').src = 'about:blank'; }
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') srKapat(); });
-  // kategori menüsü: tıklanan / görünen bölümü vurgula
   (function () {
-    var linkler = document.querySelectorAll('#srNav a');
-    function isaretle(k) { linkler.forEach(function (a) { a.classList.toggle('aktif', a.dataset.k === k); }); }
-    if ('IntersectionObserver' in window) {
-      var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) isaretle(e.target.id.slice(2)); }); }, { rootMargin: '-20% 0px -70% 0px' });
-      document.querySelectorAll('.sr-bol').forEach(function (b) { io.observe(b); });
-    }
-    isaretle((location.hash || '#k-donemsel').slice(3));
+    if (!document.getElementById('srListe')) return;
+    var h = location.hash.slice(1), ilk = SR_LISTE[h] ? h : Object.keys(SR_LISTE)[0];
+    if (ilk) srSec(ilk, true);
   })();
 
   // ---- AI ----
   function srAiCiz(a) {
-    if (!a) return;
+    if (!a || !document.getElementById('srAiSonuc')) return;
     var bol = function (anah, bas, renk) {
       var l = a[anah] || []; if (!l.length) return '';
       return '<div class="sr-ai-k" style="--c:' + renk + '"><h5>' + bas + '</h5>' + l.map(function (x) { return '<div class="sr-ai-m"><b>' + srEsc(x.baslik) + '</b>' + srEsc(x.detay) + '</div>'; }).join('') + '</div>';
@@ -275,7 +297,7 @@
     document.getElementById('srAiIndir').hidden = false;
   }
   function srPost(g) {
-    return fetch('/satinalma-raporlar/ai?' + SR_QS, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }, body: JSON.stringify(g) }).then(function (r) { return r.json(); });
+    return fetch('/satinalma-raporlar/ai?' + SR_AI_QS, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }, body: JSON.stringify(g) }).then(function (r) { return r.json(); });
   }
   function srAi(yenile) {
     var b = document.getElementById('srAiBtn'); if (b.disabled) return; var eski = b.innerHTML;
