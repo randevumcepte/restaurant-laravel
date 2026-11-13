@@ -251,29 +251,32 @@ body.koyu .fap .dosya.yeni{background:#12302a;border-color:#065f46}
   .fap .iki,.fap .uc{grid-template-columns:minmax(0,1fr)}
 }
 
-/* ── Kurumsal renk katmanı: tek marka rengi (lacivert-indigo), beyaz kartlar, renk yalnız küçük vurgularda ── */
-#fa{--marka:#3730A3;--marka2:#4F46E5}
-#fa .hero{background:linear-gradient(115deg,#1E1B4B 0%,#312E81 55%,#3730A3 100%);border:0;box-shadow:0 10px 26px rgba(30,27,75,.22)}
-body.koyu #fa .hero{background:linear-gradient(115deg,#141233 0%,#24215f 60%,#2b2785 100%)}
-#fa .hero::after{content:'';position:absolute;right:-70px;top:-90px;width:240px;height:240px;border-radius:50%;border:38px solid rgba(255,255,255,.05);pointer-events:none}
+/* ── Renk katmanı: yumuşak indigo-mor (yan menüyle uyumlu), açık tonlu kartlar ── */
+#fa{--marka:#6366F1;--marka2:#8B5CF6}
+#fa .hero{background:linear-gradient(120deg,#6366F1 0%,#7C6CF4 55%,#8B5CF6 100%);border:0;box-shadow:0 10px 26px rgba(99,102,241,.22)}
+body.koyu #fa .hero{background:linear-gradient(120deg,#3f3f9e 0%,#4c3f9e 100%)}
+#fa .hero::after{content:'';position:absolute;right:-70px;top:-90px;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.08);pointer-events:none}
 #fa .hero > *{position:relative;z-index:1}
 #fa .hero h2{color:#fff}
-#fa .hero p{color:rgba(255,255,255,.78)}
-#fa .hero-ik{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);box-shadow:none}
-#fa .hero .ekle-btn:not(.ik){background:#fff;color:var(--marka);box-shadow:0 4px 12px rgba(0,0,0,.18)}
-#fa .hero .ekle-btn.ik,#fa .hero .salt-rozet{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.28);color:#fff}
-#fa .hero .ekle-btn.ik:hover{background:rgba(255,255,255,.16)}
+#fa .hero p{color:rgba(255,255,255,.88)}
+#fa .hero-ik{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);box-shadow:none}
+#fa .hero .ekle-btn:not(.ik){background:#fff;color:#4F46E5;box-shadow:0 4px 12px rgba(49,46,129,.18)}
+#fa .hero .ekle-btn.ik,#fa .hero .salt-rozet{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);color:#fff}
+#fa .hero .ekle-btn.ik:hover{background:rgba(255,255,255,.24)}
 
-#fa .adim .no{background:var(--marka) !important}
-#fa .adim{border-left:3px solid var(--marka)}
+#fa .adim{background:linear-gradient(135deg,#F5F5FF,var(--card) 70%);border-color:#E4E4FB}
+body.koyu #fa .adim{background:var(--card);border-color:var(--line)}
+#fa .adim .no{background:#EEF0FF !important;color:#5B5BD6}
+body.koyu #fa .adim .no{background:#26285a !important;color:#c7d2fe}
 
-#fa .k{border-top:3px solid var(--kr)}
-#fa .k .ki{background:color-mix(in srgb,var(--kr) 12%,transparent)}
+#fa .k{background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 6%,var(--card)),var(--card) 70%);border-color:color-mix(in srgb,var(--kr) 18%,var(--line))}
+#fa .k .ki{background:color-mix(in srgb,var(--kr) 13%,transparent)}
 
-#fa .sekme.on{background:var(--marka)}
-#fa .bos .ms.b{color:var(--marka);background:color-mix(in srgb,var(--marka2) 10%,transparent)}
+#fa .sekme.on{background:linear-gradient(135deg,var(--marka),var(--marka2))}
+#fa .bos .ms.b{color:var(--marka);background:#EEF0FF}
+body.koyu #fa .bos .ms.b{background:#26285a;color:#c7d2fe}
 #fa .bos h3{font-weight:900}
-#fa .ekle-btn{background:var(--marka);box-shadow:0 4px 12px rgba(55,48,163,.25)}
+#fa .ekle-btn{background:linear-gradient(135deg,var(--marka),var(--marka2));box-shadow:0 4px 12px rgba(99,102,241,.25)}
 /* .etk.soz etiketi sözleşme kartı (.soz) stilini almasın */
 #fa .etk.soz{display:inline-flex;flex-direction:row;gap:4px;padding:2px 8px;border-radius:20px;border:0;overflow:visible;position:static}
 #fa .etk.soz::before{display:none}

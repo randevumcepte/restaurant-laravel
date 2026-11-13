@@ -99,29 +99,30 @@ body.koyu #far .yes{color:#34d399}body.koyu #far .kir{color:#fb7185}
   #far .baski-bas{display:block !important}
 }
 #far .baski-bas{display:none;margin-bottom:12px}
-/* ── Kurumsal renk katmanı (Fiyat Anlaşmaları ile aynı): lacivert üst bant, beyaz kartlar ── */
-#far{--marka:#3730A3;--marka2:#4F46E5}
-#far .ust{background:linear-gradient(115deg,#1E1B4B 0%,#312E81 55%,#3730A3 100%);border-radius:18px;padding:14px 16px;box-shadow:0 10px 26px rgba(30,27,75,.2);margin-bottom:14px}
-body.koyu #far .ust{background:linear-gradient(115deg,#141233 0%,#24215f 60%,#2b2785 100%)}
-#far .ust .geri,#far .ust .hz,#far .ust .btn.ik{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.26);color:#fff}
-#far .ust .hz.on{background:#fff;border-color:#fff;color:var(--marka)}
-#far .ust .filtre input,#far .ust .filtre select{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.26);color:#fff;color-scheme:dark}
+/* ── Renk katmanı (Fiyat Anlaşmaları ile aynı): yumuşak indigo-mor üst bant, açık tonlu kartlar ── */
+#far{--marka:#6366F1;--marka2:#8B5CF6}
+#far .ust{background:linear-gradient(120deg,#6366F1 0%,#7C6CF4 55%,#8B5CF6 100%);border-radius:18px;padding:14px 16px;box-shadow:0 10px 26px rgba(99,102,241,.2);margin-bottom:14px}
+body.koyu #far .ust{background:linear-gradient(120deg,#3f3f9e 0%,#4c3f9e 100%)}
+#far .ust .geri,#far .ust .hz,#far .ust .btn.ik{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);color:#fff}
+#far .ust .hz.on{background:#fff;border-color:#fff;color:#4F46E5}
+#far .ust .filtre input,#far .ust .filtre select{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.32);color:#fff;color-scheme:dark}
 #far .ust .filtre select option{color:#1e293b;background:#fff}
-#far .ust .btn:not(.ik){background:#fff;color:var(--marka)}
-#far .btn{background:var(--marka)}
-#far .k{border-top:3px solid var(--kr)}
-#far .k .ki{background:color-mix(in srgb,var(--kr) 12%,transparent)}
-#far .sekme.on{background:var(--marka)}
-#far .kart{border-top:3px solid var(--marka)}
-#far .kb .ms{color:var(--marka);background:color-mix(in srgb,var(--marka2) 10%,transparent);border-radius:9px;padding:6px;font-size:18px}
-body.koyu #far .kb .ms{color:#a5b4fc}
-#far th{background:var(--card2);border-bottom:1px solid var(--line)}
+#far .ust .btn:not(.ik){background:#fff;color:#4F46E5}
+#far .btn{background:linear-gradient(135deg,var(--marka),var(--marka2))}
+#far .k{background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 6%,var(--card)),var(--card) 70%);border-color:color-mix(in srgb,var(--kr) 18%,var(--line))}
+#far .k .ki{background:color-mix(in srgb,var(--kr) 13%,transparent)}
+#far .sekme.on{background:linear-gradient(135deg,var(--marka),var(--marka2))}
+#far .kb .ms{color:#5B5BD6;background:#EEF0FF;border-radius:9px;padding:6px;font-size:18px}
+body.koyu #far .kb .ms{color:#c7d2fe;background:#26285a}
+#far th{background:#F5F5FF;border-bottom:1px solid #E4E4FB}
+body.koyu #far th{background:var(--card2);border-bottom-color:var(--line)}
 #far th:first-child{border-radius:8px 0 0 8px}#far th:last-child{border-radius:0 8px 8px 0}
-#far .bos .ms{color:var(--marka);background:color-mix(in srgb,var(--marka2) 9%,transparent);width:72px;height:72px;border-radius:20px;display:grid;place-items:center;margin:0 auto 10px}
-body.koyu #far .bos .ms{color:#a5b4fc}
-#far .sutun i{background:#059669}
+#far .bos .ms{color:#6366F1;background:#EEF0FF;width:72px;height:72px;border-radius:20px;display:grid;place-items:center;margin:0 auto 10px}
+body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
+#far .sutun i{background:#34D399}
+#far .sutun .alt-y i{background:#FB7185}
 #far .halka{background:conic-gradient(var(--marka) calc(var(--o) * 1%),var(--card2) 0)}
-@media print{ #far .ust{background:none;box-shadow:none;padding:0} #far .kart{border-top-color:#ddd} }
+@media print{ #far .ust{background:none;box-shadow:none;padding:0} }
 </style>
 @endpush
 
