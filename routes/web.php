@@ -6063,24 +6063,86 @@ Route::get('/fiyat-anlasmalari', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
-    $liste = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->limit(200)->get();
+    $liste = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->orderByDesc('aktif')->orderByDesc('id')->limit(300)->get();
     $tedAd = DB::table('tedarikciler')->pluck('ad', 'id');
     $malAd = DB::table('malzemeler')->pluck('ad', 'id');
     $tedarikciler = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad']);
-    $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad']);
-    return view('fiyat_anlasmalari', compact('liste', 'tedAd', 'malAd', 'tedarikciler', 'malzemeler'));
+    $malzemeler = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id']);
+    $birimKis = Schema::hasTable('birimler') ? DB::table('birimler')->pluck('kisaltma', 'id') : collect();
+    $birimler = Schema::hasTable('birimler') ? DB::table('birimler')->orderBy('id')->pluck('kisaltma')->filter()->unique()->values() : collect(['kg', 'lt', 'adet']);
+    $norm = fn ($b) => mb_strtolower(trim((string) $b), 'UTF-8');
+    // son 180 günün fatura kalemleri: uyum + piyasa kıyası + formda "son alış" ipucu
+    $kalemler = collect();
+    try {
+        if (Schema::hasTable('alis_fatura_kalemleri') && Schema::hasTable('alis_faturalari'))
+            $kalemler = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+                ->where('f.sube_id', $sid)->where('k.birim_fiyat', '>', 0)->whereDate('f.tarih', '>=', today()->subDays(180))
+                ->orderBy('f.tarih')->orderBy('k.id')->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar', 'f.tedarikci_id', 'f.tarih']);
+    } catch (\Throwable $e) {}
+    $bugun = today();
+    $kpi = ['aktif' => 0, 'yakinda' => 0, 'bitti' => 0, 'ihlal' => 0, 'fazla' => 0.0];
+    $kartlar = [];
+    foreach ($liste as $a) {
+        $bas = $a->baslangic ? \Carbon\Carbon::parse($a->baslangic) : null; $bit = $a->bitis ? \Carbon\Carbon::parse($a->bitis) : null;
+        $kalan = $bit ? (int) $bugun->diffInDays($bit, false) : null;
+        $durum = !$a->aktif ? 'durdu' : ($bit && $kalan < 0 ? 'bitti' : ($bas && $bas->gt($bugun) ? 'baslamadi' : ($bit && $kalan <= 15 ? 'yakinda' : 'aktif')));
+        $ilerleme = ($bas && $bit && $bit->gt($bas)) ? max(0, min(100, round($bas->diffInDays($bugun, false) / max(1, $bas->diffInDays($bit)) * 100))) : null;
+        // faturaya uyum: bu tedarikçiden bu malzeme, anlaşma döneminde, aynı birimle
+        $donem = $kalemler->filter(function ($k) use ($a, $bas, $bit, $birimKis, $norm) {
+            if ((int) $k->tedarikci_id !== (int) $a->tedarikci_id || (int) $k->malzeme_id !== (int) $a->malzeme_id) return false;
+            $t = substr((string) $k->tarih, 0, 10);
+            if ($bas && $t < $bas->toDateString()) return false;
+            if ($bit && $t > $bit->toDateString()) return false;
+            return !$a->birim || !$k->alis_birim_id || $norm($birimKis[$k->alis_birim_id] ?? '') === $norm($a->birim);
+        });
+        $af = (float) $a->birim_fiyat; $fazla = 0.0; $ihlalSay = 0;
+        foreach ($donem as $k) { if ((float) $k->birim_fiyat > $af * 1.005) { $fazla += ((float) $k->birim_fiyat - $af) * (float) $k->miktar; $ihlalSay++; } }
+        $son = $donem->last();
+        // piyasa: diğer tedarikçilerden son 90 gün, aynı birim, en düşük
+        $piyasa = $kalemler->filter(fn ($k) => (int) $k->malzeme_id === (int) $a->malzeme_id && (int) $k->tedarikci_id !== (int) $a->tedarikci_id
+            && substr((string) $k->tarih, 0, 10) >= $bugun->copy()->subDays(90)->toDateString()
+            && (!$a->birim || !$k->alis_birim_id || $norm($birimKis[$k->alis_birim_id] ?? '') === $norm($a->birim)))->min('birim_fiyat');
+        if (in_array($durum, ['aktif', 'yakinda', 'baslamadi'], true)) $kpi['aktif']++;
+        if ($durum === 'yakinda') $kpi['yakinda']++;
+        if ($durum === 'bitti') $kpi['bitti']++;
+        if ($ihlalSay) { $kpi['ihlal']++; $kpi['fazla'] += $fazla; }
+        $kartlar[] = ['id' => (int) $a->id, 'ted_id' => (int) $a->tedarikci_id, 'mal_id' => (int) $a->malzeme_id,
+            'ted' => $tedAd[$a->tedarikci_id] ?? '—', 'mal' => $malAd[$a->malzeme_id] ?? '—', 'fiyat' => $af, 'birim' => $a->birim,
+            'baslangic' => $a->baslangic, 'bitis' => $a->bitis, 'not' => $a->not, 'aktif' => (int) $a->aktif,
+            'durum' => $durum, 'kalan' => $kalan, 'ilerleme' => $ilerleme,
+            'fatura_say' => $donem->count(), 'ihlal_say' => $ihlalSay, 'fazla' => round($fazla, 2),
+            'son_fiyat' => $son ? (float) $son->birim_fiyat : null, 'son_tarih' => $son ? substr((string) $son->tarih, 0, 10) : null,
+            'piyasa' => $piyasa ? (float) $piyasa : null, 'piyasa_fark' => $piyasa && $piyasa > 0 ? round(($af - $piyasa) / $piyasa * 100) : null];
+    }
+    // sıralama: ihlal > yakında > aktif > başlamadı > bitti > durdu
+    $sira = ['yakinda' => 1, 'aktif' => 2, 'baslamadi' => 3, 'bitti' => 4, 'durdu' => 5];
+    usort($kartlar, fn ($x, $y) => [$y['ihlal_say'] > 0, -($sira[$x['durum']] ?? 9)] <=> [$x['ihlal_say'] > 0, -($sira[$y['durum']] ?? 9)]);
+    // form ipucu: tedarikçi+malzeme son alış, malzeme temel birimi
+    $ipucu = [];
+    foreach ($kalemler as $k) $ipucu[$k->tedarikci_id . '-' . $k->malzeme_id] = ['f' => (float) $k->birim_fiyat, 'b' => $birimKis[$k->alis_birim_id] ?? '', 't' => substr((string) $k->tarih, 0, 10)];
+    $malBirim = []; foreach ($malzemeler as $m) $malBirim[$m->id] = $birimKis[$m->temel_birim_id] ?? '';
+    return view('fiyat_anlasmalari', compact('kartlar', 'kpi', 'tedarikciler', 'malzemeler', 'birimler', 'ipucu', 'malBirim'));
 });
 Route::post('/fiyat-anlasmalari/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return back();
     _fiyatAnlasmaEnsure(); $sid = _webSubeId();
     $tid = (int) $r->input('tedarikci_id'); $mid = (int) $r->input('malzeme_id');
-    if (!$tid || !$mid) return back()->with('ok', 'Tedarikci ve malzeme sec.');
-    DB::table('fiyat_anlasmalari')->insert(['sube_id' => $sid, 'tedarikci_id' => $tid, 'malzeme_id' => $mid,
-        'birim_fiyat' => (float) str_replace(',', '.', (string) $r->input('birim_fiyat', 0)), 'birim' => trim((string) $r->input('birim')) ?: null,
-        'baslangic' => $r->input('baslangic') ?: null, 'bitis' => $r->input('bitis') ?: null, 'not' => trim((string) $r->input('not')) ?: null,
-        'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
-    return back()->with('ok', 'Fiyat anlasmasi eklendi.');
+    if (!$tid || !$mid) return back()->with('hata', 'Tedarikçi ve malzeme seçin.');
+    $fiyat = (float) str_replace(',', '.', (string) $r->input('birim_fiyat', 0));
+    if ($fiyat <= 0) return back()->with('hata', 'Anlaşma fiyatı girin.');
+    $bas = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('baslangic')) ? $r->input('baslangic') : null;
+    $bit = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $r->input('bitis')) ? $r->input('bitis') : null;
+    if ($bas && $bit && $bit < $bas) return back()->with('hata', 'Bitiş tarihi başlangıçtan önce olamaz.');
+    $veri = ['tedarikci_id' => $tid, 'malzeme_id' => $mid, 'birim_fiyat' => $fiyat, 'birim' => mb_substr(trim((string) $r->input('birim')), 0, 20) ?: null,
+        'baslangic' => $bas, 'bitis' => $bit, 'not' => trim((string) $r->input('not')) ?: null, 'updated_at' => now()];
+    $id = (int) $r->input('id');
+    if ($id && DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('id', $id)->exists()) {
+        DB::table('fiyat_anlasmalari')->where('id', $id)->update($veri);
+        return back()->with('ok', 'Anlaşma güncellendi.');
+    }
+    DB::table('fiyat_anlasmalari')->insert($veri + ['sube_id' => $sid, 'aktif' => 1, 'created_at' => now()]);
+    return back()->with('ok', 'Fiyat anlaşması eklendi. Bu tedarikçiye verilen siparişlerde bu fiyat kullanılacak.');
 });
 Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -6088,7 +6150,7 @@ Route::post('/fiyat-anlasmalari/durum', function (Request $r) {
     $sid = _webSubeId();
     $a = DB::table('fiyat_anlasmalari')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
     if ($a) { if ($r->input('sil')) DB::table('fiyat_anlasmalari')->where('id', $a->id)->delete(); else DB::table('fiyat_anlasmalari')->where('id', $a->id)->update(['aktif' => $a->aktif ? 0 : 1, 'updated_at' => now()]); }
-    return back()->with('ok', 'Guncellendi.');
+    return back()->with('ok', $r->input('sil') ? 'Anlaşma silindi.' : 'Anlaşma durumu güncellendi.');
 });
 
 // ============================================================================
@@ -13528,6 +13590,7 @@ Route::post('/acil-siparis-gec', function (Request $r) {
         if (!$mid || !$tid || $miktar <= 0) continue;
         $fiyat = 0.0; $birimId = null;
         try { $tm = DB::table('tedarikci_malzeme')->where('tedarikci_id', $tid)->where('malzeme_id', $mid)->first(); if ($tm) { $fiyat = (float) $tm->guncel_fiyat; $birimId = ((int) ($tm->alis_birim_id ?? 0)) ?: null; } } catch (\Throwable $e) {}
+        if (function_exists('_anlasmaliFiyat')) { $anl = _anlasmaliFiyat($tid, $mid, $sid); if ($anl) $fiyat = $anl; } // fiyat anlaşması varsa o geçerli
         if ($fiyat <= 0) { try { $fiyat = (float) DB::table('malzemeler')->where('id', $mid)->value('guncel_maliyet'); } catch (\Throwable $e) {} }
         if (!$birimId) { try { $birimId = (int) DB::table('malzemeler')->where('id', $mid)->value('temel_birim_id'); } catch (\Throwable $e) {} }
         $grup[$tid][] = ['malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'miktar' => $miktar, 'birim_fiyat' => $fiyat];
