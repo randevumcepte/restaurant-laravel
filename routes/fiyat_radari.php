@@ -118,10 +118,13 @@ if (!function_exists('_fr2Veri')) {
                 usort($tedler, fn ($a, $b) => $a['ort'] <=> $b['ort']);
                 $enUcuz = $tedler[0]; $enPahali = end($tedler);
                 $kayip = 0; foreach ($tedler as $t) $kayip += max(0, ($t['ort'] - $enUcuz['ort']) * $t['miktar']);
+                // İleriye dönük: şu anki (son alınan) tedarikçiden en ucuza geçilirse yıllık kazanç. Zaten en ucuzdansa 0 (geçmiş kayıp ayrı).
+                $sonTedAd = $tedIsim($son->tedarikci_id); $suAn = collect($tedler)->firstWhere('ted', $sonTedAd);
+                $ileri = $suAn && $sonTedAd !== $enUcuz['ted'] ? max(0, ($suAn['ort'] - $enUcuz['ort']) * $mik * $carpan) : 0;
                 $kars[] = ['id' => (int) $mid, 'ad' => $ad, 'birim' => $birim, 'tedler' => $tedler, 'en_ucuz_ted' => $enUcuz['ted'], 'en_ucuz' => $enUcuz['ort'],
-                    'en_pahali_ted' => $enPahali['ted'], 'en_pahali' => $enPahali['ort'], 'son_ted' => $tedIsim($son->tedarikci_id),
+                    'en_pahali_ted' => $enPahali['ted'], 'en_pahali' => $enPahali['ort'], 'son_ted' => $sonTedAd, 'su_an_ort' => $suAn['ort'] ?? null,
                     'fark' => $enUcuz['ort'] > 0 ? round(($enPahali['ort'] - $enUcuz['ort']) / $enUcuz['ort'] * 100, 1) : 0,
-                    'kayip' => round($kayip, 0), 'yillik_kayip' => round($kayip * $carpan, 0)];
+                    'kayip' => round($kayip, 0), 'yillik_kayip' => round($kayip * $carpan, 0), 'ileri_tasarruf' => round($ileri, 0)];
             }
         }
         usort($zamlar, fn ($a, $b) => $b['yillik_etki'] <=> $a['yillik_etki']);
@@ -182,7 +185,7 @@ if (!function_exists('_fr2Veri')) {
 
         $v['kpi'] = ['toplam' => round($toplam, 2), 'fatura' => count($fatSet), 'tedarikci' => count($tedSet), 'malzeme' => count($malz), 'kalem' => $lines->count(),
             'zam_say' => count($zamlar), 'zam_etki' => array_sum(array_column($zamlar, 'yillik_etki')),
-            'ted_kayip' => array_sum(array_column($kars, 'yillik_kayip')), 'hal_fazla' => (float) ($v['hal']['yillik_fazla'] ?? 0),
+            'ted_kayip' => array_sum(array_column($kars, 'yillik_kayip')), 'ted_ileri' => array_sum(array_column($kars, 'ileri_tasarruf')), 'hal_fazla' => (float) ($v['hal']['yillik_fazla'] ?? 0),
             'baslangic' => today()->subDays($gun)->toDateString(), 'bitis' => today()->toDateString()];
         return $v;
     }
@@ -345,13 +348,15 @@ if (!function_exists('_fr2RaporPano')) {
                 $p['kpi'] = [
                     ['Kıyaslanabilir malzeme', $n, 'sayi', '0284C7'], ['Şu an en ucuzdan alınan', $ucuz . ' / ' . $n, 'metin', '0369A1'],
                     ['Dönem kaybı', array_sum(array_column($kr, 'kayip')), 'tl', '0EA5E9'], ['Yıllık kayıp', array_sum(array_column($kr, 'yillik_kayip')), 'tl', '0284C7'],
-                    ['En büyük fiyat farkı', $byk ? $byk['ad'] . ' ' . $yz($byk['fark']) : '—', 'metin', '075985'], ['Katalog fırsatı', count($v['katalog']), 'sayi', '0E7490'],
+                    ['En büyük fiyat farkı', $byk ? $byk['ad'] . ' ' . $yz($byk['fark']) : '—', 'metin', '075985'], ['Şimdi en ucuza geçersen (yıllık)', $k['ted_ileri'] ?? 0, 'tl', '0E7490'],
                     ['Tedarikçi sayısı', $k['tedarikci'], 'sayi', '155E75'], ['Dönem', 'Son ' . $f['gun'] . ' gün', 'metin', '164E63'],
                 ];
                 $p['bloklar'] = [
-                    ['baslik' => 'Yıllık kayıp (ilk 10)', 'grafik' => 'bar', 'renk' => '0284C7', 'kol' => [['Malzeme', 'm'], ['Yıllık kayıp', 'tl'], ['En ucuz', 'm']], 'sat' => array_map(fn ($x) => [$x['ad'], $x['yillik_kayip'], $x['en_ucuz_ted']], array_slice($kr, 0, 10))],
-                    ['baslik' => 'Şu an en ucuzdan mı alınıyor?', 'grafik' => 'pie', 'renk' => '0EA5E9', 'kol' => [['Durum', 'm'], ['Malzeme', 's'], ['Yıllık kayıp', 'tl']],
-                        'sat' => array_values(array_filter([['Evet, en ucuzdan', $ucuz, 0], ['Hayır, başka tedarikçiden', $n - $ucuz, array_sum(array_map(fn ($x) => $x['son_ted'] !== $x['en_ucuz_ted'] ? $x['yillik_kayip'] : 0, $kr))]], fn ($r) => $r[1] > 0))],
+                    ['baslik' => 'Şimdi en ucuza geçersen — yıllık kazanç', 'grafik' => 'bar', 'renk' => '0E7490', 'kol' => [['Malzeme', 'm'], ['Yıllık kazanç', 'tl'], ['Geçilecek tedarikçi', 'm']],
+                        'sat' => array_map(fn ($x) => [$x['ad'], $x['ileri_tasarruf'], $x['en_ucuz_ted']], array_values(array_filter(collect($kr)->sortByDesc('ileri_tasarruf')->values()->all(), fn ($x) => $x['ileri_tasarruf'] > 0)))],
+                    ['baslik' => 'Geçmiş kayıp — yıllık (ilk 10)', 'grafik' => 'bar', 'renk' => '0284C7', 'kol' => [['Malzeme', 'm'], ['Geçmiş kayıp', 'tl'], ['En ucuz', 'm']], 'sat' => array_map(fn ($x) => [$x['ad'], $x['yillik_kayip'], $x['en_ucuz_ted']], array_slice($kr, 0, 10))],
+                    ['baslik' => 'Şu an en ucuzdan mı alınıyor?', 'grafik' => 'pie', 'renk' => '0EA5E9', 'kol' => [['Durum', 'm'], ['Malzeme', 's'], ['Şimdi geçersen (yıllık)', 'tl']],
+                        'sat' => array_values(array_filter([['Evet, en ucuzdan', $ucuz, 0], ['Hayır, başka tedarikçiden', $n - $ucuz, array_sum(array_column($kr, 'ileri_tasarruf'))]], fn ($r) => $r[1] > 0))],
                     ['baslik' => 'Tedarikçi fiyatları yan yana (ilk 8)', 'grafik' => 'tablo', 'pdf' => 'yanyana', 'renk' => '0EA5E9', 'kol' => [['Malzeme', 'm'], ['Fark %', 'y'], ['Tedarikçi', 's']],
                         'sat' => array_map(fn ($x) => [$x['ad'], $x['fark'], count($x['tedler'])], array_slice($kr, 0, 8)), 'ek' => array_map(fn ($x) => array_map(fn ($t) => [$t['ted'], $t['ort']], $x['tedler']), array_slice($kr, 0, 8))],
                 ];
@@ -424,7 +429,8 @@ if (!function_exists('_fr2RaporPano')) {
                 $p['bloklar'] = [
                     ['baslik' => 'AI’ın önerdiği tasarruflar', 'grafik' => 'bar', 'renk' => '9333EA', 'kol' => [['Öneri', 'm'], ['Yıllık tutar', 'tl'], ['', 'm']], 'sat' => array_map(fn ($x) => [$x['baslik'], $x['tutar'], ''], $fr)],
                     ['baslik' => 'Dayanak: gizli zamların yıllık etkisi', 'grafik' => 'bar', 'renk' => 'E11D48', 'kol' => [['Malzeme', 'm'], ['Yıllık etki', 'tl'], ['Artış %', 'y']], 'sat' => array_map(fn ($z) => [$z['ad'], $z['yillik_etki'], $z['yuzde']], array_slice($v['zamlar'], 0, 8))],
-                    ['baslik' => 'Dayanak: tedarikçi farkından yıllık kayıp', 'grafik' => 'bar', 'renk' => '0284C7', 'kol' => [['Malzeme', 'm'], ['Yıllık kayıp', 'tl'], ['En ucuz', 'm']], 'sat' => array_map(fn ($x) => [$x['ad'], $x['yillik_kayip'], $x['en_ucuz_ted']], array_slice($v['karsilastirma'], 0, 8))],
+                    ['baslik' => 'Dayanak: şimdi en ucuza geçersen (yıllık)', 'grafik' => 'bar', 'renk' => '0284C7', 'kol' => [['Malzeme', 'm'], ['Yıllık kazanç', 'tl'], ['En ucuz', 'm']],
+                        'sat' => array_map(fn ($x) => [$x['ad'], $x['ileri_tasarruf'], $x['en_ucuz_ted']], array_slice(array_values(array_filter(collect($v['karsilastirma'])->sortByDesc('ileri_tasarruf')->values()->all(), fn ($x) => $x['ileri_tasarruf'] > 0)), 0, 8))],
                 ];
                 break;
             default:
@@ -469,10 +475,10 @@ if (!function_exists('_fr2Sayfalar')) {
         $tsat = [];
         foreach ($v['karsilastirma'] as $k) foreach ($k['tedler'] as $i => $t)
             $tsat[] = [$k['ad'], $k['birim'], $t['ted'], $i === 0 ? 0.0 : ($k['en_ucuz'] > 0 ? round(($t['ort'] - $k['en_ucuz']) / $k['en_ucuz'] * 100, 1) : 0), $t['ted'] === $k['son_ted'] ? 'Evet' : '',
-                $t['ort'], $t['son'], $t['son_tarih'], $t['miktar'], $t['harcama'], $t['alis_say'], $i === 0 ? $k['kayip'] : null, $i === 0 ? $k['yillik_kayip'] : null];
-        $ted = ['ad' => 'Tedarikçi Karşılaştırma', 'not' => 'Gerçek alış faturalarından; her malzemede tedarikçiler ucuzdan pahalıya. "En ucuza göre %" = o tedarikçinin ortalamasının en ucuz ortalamaya farkı. Kayıp = her tedarikçiden alınan miktar en ucuz ortalamadan alınsaydı oluşacak fark.',
+                $t['ort'], $t['son'], $t['son_tarih'], $t['miktar'], $t['harcama'], $t['alis_say'], $i === 0 ? $k['kayip'] : null, $i === 0 ? $k['yillik_kayip'] : null, $i === 0 ? $k['ileri_tasarruf'] : null];
+        $ted = ['ad' => 'Tedarikçi Karşılaştırma', 'not' => 'Gerçek alış faturalarından; her malzemede tedarikçiler ucuzdan pahalıya. "En ucuza göre %" = o tedarikçinin ortalamasının en ucuz ortalamaya farkı. Geçmiş kayıp = her tedarikçiden alınan miktar en ucuz ortalamadan alınsaydı oluşacak fark (olmuş). Şimdi en ucuza geçersen = son alınan tedarikçinin ortalaması − en ucuz ortalama, yıllık miktarla; zaten en ucuzdan alınıyorsa 0.',
             'kol' => [['Malzeme', 'm', 24], ['Birim', 'm', 7], ['Tedarikçi', 'm', 24], ['En Ucuza Göre %', 'y', 12], ['Son Alınan', 'm', 10], ['Ort. Fiyat', 'tl', 12], ['Son Fiyat', 'tl', 12], ['Son Tarih', 't', 11],
-                ['Miktar', 's', 10], ['Harcama', 'tl', 14, 'top'], ['Alış', 's', 7], ['Dönem Kaybı', 'tl', 14, 'top bar'], ['Yıllık Kayıp', 'tl', 14, 'top bar']], 'sat' => $tsat];
+                ['Miktar', 's', 10], ['Harcama', 'tl', 14, 'top'], ['Alış', 's', 7], ['Dönem Kaybı', 'tl', 14, 'top bar'], ['Geçmiş Kayıp (yıllık)', 'tl', 14, 'top bar'], ['Şimdi En Ucuza Geçersen (yıllık)', 'tl', 16, 'top bar']], 'sat' => $tsat];
         $katS = ['ad' => 'Katalog Fiyatları', 'not' => 'Tedarikçi kartlarındaki güncel liste fiyatları (alış faturası değil).',
             'kol' => [['Malzeme', 'm', 24], ['En Ucuz Tedarikçi', 'm', 22], ['En Ucuz', 'tl', 12], ['En Pahalı Tedarikçi', 'm', 22], ['En Pahalı', 'tl', 12], ['Fark %', 'y', 10], ['Tedarikçi Sayısı', 's', 10]],
             'sat' => array_map(fn ($k) => [$k['ad'], $k['en_ucuz_ted'], $k['en_ucuz'], $k['en_pahali_ted'], $k['en_pahali'], $k['tasarruf'], $k['ted_say']], $v['katalog'])];
@@ -512,9 +518,9 @@ if (!function_exists('_fr2Sayfalar')) {
         if ($ai) {
             $uyari = 'Bu sayfa YAPAY ZEKÂ tarafından hazırlanmıştır (' . ($ai['_zaman'] ?? '') . ', son ' . ($ai['_donem'] ?? $v['filtre']['gun']) . ' günün verisi). Öneriler karar desteğidir; son karar satın almacınındır.';
             $bol = ['kritik' => 'Kritik bulgu', 'gecmis_hatalar' => 'Geçmiş hata', 'firsatlar' => 'Tasarruf fırsatı', 'gelecek' => 'Gelecek önerisi'];
-            $sat = [['Genel değerlendirme', 'Satın alma puanı ' . (int) ($ai['skor'] ?? 0) . '/100', $ai['ozet'] ?? '', null]];
-            foreach ($bol as $kk => $ad) foreach ((array) ($ai[$kk] ?? []) as $x) $sat[] = [$ad, $x['baslik'] ?? '', $x['detay'] ?? '', isset($x['tutar']) && is_numeric($x['tutar']) && $x['tutar'] > 0 ? (float) $x['tutar'] : null];
-            $aiS[] = ['ad' => 'AI Değerlendirme', 'ai' => 1, 'not' => $uyari, 'kol' => [['Bölüm', 'm', 18], ['Başlık', 'm', 34], ['AI Yorumu / Gerekçe', 'm', 80], ['Tahmini Yıllık Tutar', 'tl', 18, 'top bar']], 'sat' => $sat];
+            $sat = [['Genel değerlendirme', 'Satın alma puanı ' . (int) ($ai['skor'] ?? 0) . '/100', $ai['ozet'] ?? '', null, null]];
+            foreach ($bol as $kk => $ad) foreach ((array) ($ai[$kk] ?? []) as $x) { $tt = isset($x['tutar']) && is_numeric($x['tutar']) && $x['tutar'] > 0 ? (float) $x['tutar'] : null; $sat[] = [$ad, $x['baslik'] ?? '', $x['detay'] ?? '', $kk === 'firsatlar' ? null : $tt, $kk === 'firsatlar' ? $tt : null]; }
+            $aiS[] = ['ad' => 'AI Değerlendirme', 'ai' => 1, 'not' => $uyari, 'kol' => [['Bölüm', 'm', 18], ['Başlık', 'm', 34], ['AI Yorumu / Gerekçe', 'm', 80], ['Bulgu Etkisi (yıllık)', 'tl', 16], ['Önerilen Tasarruf (yıllık)', 'tl', 18, 'top bar']], 'sat' => $sat];
             $oncAd = ['yuksek' => 'YÜKSEK', 'orta' => 'ORTA', 'dusuk' => 'DÜŞÜK'];
             $aiS[] = ['ad' => 'Aksiyon Planı', 'ai' => 1, 'not' => $uyari . ' "Yapıldı mı?" sütunundan durum seç; takip listesi olarak kullan.',
                 'kol' => [['Öncelik', 'm', 11, 'onc'], ['Yapılacak (AI önerisi)', 'm', 80], ['Sorumlu', 'm', 16], ['Yapıldı mı?', 'm', 16, 'sec'], ['Not', 'm', 30]],
@@ -760,7 +766,7 @@ if (!function_exists('_fr2Xlsx')) {
             $sonN = $n;
         }
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;₺&quot;"/><numFmt numFmtId="165" formatCode="0.0&quot;%&quot;"/><numFmt numFmtId="166" formatCode="#,##0.###"/><numFmt numFmtId="167" formatCode="#,##0 &quot;₺&quot;"/></numFmts>'
+            . '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;₺&quot;"/><numFmt numFmtId="165" formatCode="&quot;%&quot;0.0;&quot;-%&quot;0.0"/><numFmt numFmtId="166" formatCode="#,##0.###"/><numFmt numFmtId="167" formatCode="#,##0 &quot;₺&quot;"/></numFmts>'
             . '<fonts count="' . count($fonts) . '">' . implode('', $fonts) . '</fonts><fills count="' . count($fills) . '">' . implode('', $fills) . '</fills>'
             . '<borders count="' . count($borders) . '">' . implode('', $borders) . '</borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="' . count($xfs) . '">' . implode('', $xfs) . '</cellXfs>'
             . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
@@ -792,12 +798,18 @@ if (!function_exists('_fr2AiBaglam')) {
             'donem_gun' => $v['filtre']['gun'], 'zam_esigi_yuzde' => $v['filtre']['esik'], 'bugun' => today()->toDateString(), 'kpi' => $v['kpi'],
             'gizli_zamlar' => $al($v['zamlar'], 15, ['ad', 'birim', 'ilk', 'ilk_tarih', 'ilk_ted', 'son', 'son_tarih', 'son_ted', 'yuzde', 'ayni_ted_yuzde', 'ted_degisti', 'en_dusuk', 'en_dusuk_ted', 'yillik_etki']),
             'malzeme_fiyatlari' => $al($v['malzemeler'], 25, ['ad', 'kategori', 'birim', 'alis_say', 'miktar', 'harcama', 'ort', 'min', 'min_ted', 'max', 'max_ted', 'son', 'son_ted', 'oynaklik', 'tasarruf']),
-            'tedarikci_karsilastirma' => array_map(fn ($k) => ['ad' => $k['ad'], 'birim' => $k['birim'], 'son_ted' => $k['son_ted'], 'fark_yuzde' => $k['fark'], 'kayip' => $k['kayip'], 'yillik_kayip' => $k['yillik_kayip'],
-                'tedarikciler' => array_map(fn ($t) => ['ted' => $t['ted'], 'ort' => $t['ort'], 'son' => $t['son'], 'miktar' => $t['miktar']], $k['tedler'])], array_slice($v['karsilastirma'], 0, 12)),
+            // Açık alan adları: AI hangi tedarikçinin ucuz/pahalı olduğunu ve şu an kimden alındığını karıştırıyordu
+            'tedarikci_karsilastirma' => array_map(fn ($k) => ['malzeme' => $k['ad'], 'birim' => $k['birim'],
+                'en_ucuz_tedarikci' => $k['en_ucuz_ted'], 'en_ucuz_ort_fiyat' => $k['en_ucuz'], 'en_pahali_tedarikci' => $k['en_pahali_ted'], 'en_pahali_ort_fiyat' => $k['en_pahali'],
+                'su_an_alinan_tedarikci' => $k['son_ted'], 'su_an_alinan_ort_fiyat' => $k['su_an_ort'], 'su_an_en_ucuzdan_mi' => $k['son_ted'] === $k['en_ucuz_ted'],
+                'ileriye_donuk_yillik_tasarruf' => $k['ileri_tasarruf'], 'gecmis_kayip_yillik' => $k['yillik_kayip'], 'en_ucuz_en_pahali_farki_yuzde' => $k['fark'],
+                'tedarikciler_ucuzdan_pahaliya' => array_map(fn ($t) => ['tedarikci' => $t['ted'], 'ort_fiyat' => $t['ort'], 'en_ucuza_gore_yuzde' => $k['en_ucuz'] > 0 ? round(($t['ort'] - $k['en_ucuz']) / $k['en_ucuz'] * 100, 1) : 0, 'miktar' => $t['miktar']], $k['tedler'])],
+                array_slice($v['karsilastirma'], 0, 12)),
             'katalog_firsat' => array_slice($v['katalog'], 0, 8),
             'tedarikci_karnesi' => array_slice($v['karne'], 0, 12),
             'hal_kiyasi' => array_map(fn ($h) => ['ad' => $h['ad'], 'tedarikci' => $h['tedarikci'] ?? '', 'hal_ort' => $h['hal_ort'], 'hal_min' => $h['hal_min'], 'hal_max' => $h['hal_max'],
-                'senin' => $h['uyumlu'] ? $h['fiyat_hal_birim'] : $h['son_fiyat'], 'birim_uyumlu' => $h['uyumlu'], 'fark' => $h['fark'], 'yillik_fazla' => $h['yillik']], array_slice($v['hal']['satirlar'] ?? [], 0, 15)),
+                'hal_birim' => $h['hal_birim'], 'senin' => $h['uyumlu'] ? $h['fiyat_hal_birim'] : $h['son_fiyat'], 'senin_birim' => $h['uyumlu'] ? $h['hal_birim'] : $h['birim'],
+                'birim_uyumlu' => $h['uyumlu'], 'fark_yuzde' => $h['fark'], 'yillik_fazla' => $h['yillik']], array_slice($v['hal']['satirlar'] ?? [], 0, 15)),
             'aylik_harcama' => $v['aylik'], 'kategori' => array_slice($v['kategori'], 0, 10),
         ];
     }
@@ -836,13 +848,13 @@ if (!function_exists('_fr2AiParcali')) {
             'a' => ['tanim' => 'Genel değerlendirme ve kritik bulgular', 'sema' => [
                 'ozet' => $str + ['description' => '3-4 cümle genel değerlendirme'],
                 'skor' => ['type' => 'integer', 'description' => '0-100 satın alma disiplini puanı'],
-                'kritik' => $madde(['tutar' => $sayi]) + ['description' => '3-4 en kritik bulgu'],
+                'kritik' => $madde(['tutar' => $sayi]) + ['description' => '3-4 en kritik bulgu; tutar yalnız kayıp/etki rakamı (harcama değil), yoksa null'],
             ]],
             'b' => ['tanim' => 'Geçmiş hatalar', 'sema' => [
                 'gecmis_hatalar' => $madde() + ['description' => '3-4 geçmiş hata: hangi malzeme, tedarikçi, tarih/fiyat, neden hata'],
             ]],
             'c' => ['tanim' => 'Tasarruf fırsatları ve gelecek önerileri', 'sema' => [
-                'firsatlar' => $madde(['tutar' => $sayi]) + ['description' => '3-4 tasarruf fırsatı; tutar = verideki hazır yıllık rakam (yillik_etki / yillik_kayip / tasarruf / yillik_fazla), yoksa null'],
+                'firsatlar' => $madde(['tutar' => $sayi]) + ['description' => '3-4 İLERİYE DÖNÜK tasarruf fırsatı (zaten en ucuzdan alınan malzeme olmaz); tutar = ileriye_donuk_yillik_tasarruf / yillik_etki / yillik_fazla, yoksa null'],
                 'gelecek' => $madde() + ['description' => '3 öneri: önümüzdeki 1-3 ay sezon/trend/stoklama/sözleşme'],
             ]],
             'd' => ['tanim' => 'Pazarlık argümanları ve yapılacaklar listesi', 'sema' => [
@@ -944,10 +956,15 @@ if (!function_exists('_fr2AiIslem')) {
         $baglam = _fr2AiBaglam($v);
         $sys = 'Sen deneyimli bir restoran satın alma ve maliyet danışmanısın. Türkçe, net, rakamlarla konuşursun; uydurma rakam vermezsin, yalnız verilen veriyi kullanırsın. '
             . 'Para birimi TL. Hal fiyatı toptan fiyattır; tedarikçinin halin %10-20 üstü normaldir. "ayni_ted_yuzde" aynı tedarikçinin kendi zammıdır, "ted_degisti" tedarikçi değişikliğini gösterir. '
-            . 'Birimi uyumsuz (birim_uyumlu=false) hal satırlarından fark çıkarma. '
+            . 'HAL: birim_uyumlu=false satırda fark hesaplama; hal fiyatını hal_birim, senin fiyatını senin_birim ile AYNEN yaz (birimi değiştirme/çevirme). '
+            // Gerçek raporda AI tedarikçi kıyasını ters okuyordu (pahalıyı "avantajlı", zaten en ucuzdan alınanı "fırsat" dedi)
+            . 'TEDARİKÇİ: hangi tedarikçinin ucuz/pahalı olduğunu YALNIZ tedarikci_karsilastirma alanlarından al (en_ucuz_tedarikci, en_ucuza_gore_yuzde=0 olan en ucuzdur; pozitif yüzde = o kadar PAHALI). '
+            . 'su_an_en_ucuzdan_mi=true ise o malzeme için "tedarikçi değiştir" fırsatı/aksiyonu YAZMA; gecmis_kayip_yillik o zaman yalnız geçmiş hata olarak anılabilir. '
             // Rakam tutarlılığı: AI kendi çarpma/toplama yapınca aynı kalem için farklı tutarlar çıkıyordu (ör. 878 ₺ / 1.756 ₺)
-            . 'TUTARLAR: yıllık etki/kayıp/tasarruf için KENDİN HESAPLAMA; yalnız verideki hazır alanları aynen kullan (gizli_zamlar.yillik_etki, tedarikci_karsilastirma.kayip ve kpi.ted_kayip, malzeme_fiyatlari.tasarruf, hal_kiyasi.yillik_fazla, kpi değerleri). '
+            . 'TUTARLAR: KENDİN HESAPLAMA, hazır alanı aynen kullan. firsatlar.tutar = ileriye_donuk_yillik_tasarruf (tedarikçi değişimi) ya da gizli_zamlar.yillik_etki (zam geri alınırsa) ya da hal_kiyasi.yillik_fazla. '
+            . 'kritik.tutar = yalnız bir KAYIP/ETKİ rakamı (yillik_etki, gecmis_kayip_yillik, yillik_fazla, kpi.zam_etki, kpi.ted_kayip); harcama, pay veya ciro rakamını ASLA tutar yapma (gerekirse null). '
             . 'Aynı kalemi farklı bölümlerde anarsan aynı rakamı yaz. Veride karşılığı olmayan yüzde/tutar uydurma; "tutar" alanını o zaman boş (null) bırak. '
+            . 'SAYI BİÇİMİ Türkçe: ondalık virgül, binlik nokta, yüzde işareti başta: 1.452,00 TL, 527,50 TL, %69,9. '
             . 'Bugün ' . today()->format('d.m.Y') . '. Bayram, sezon veya tarih iddiasında emin değilsen belirli tarih/ay verme, genel konuş.';
         if ($soru !== '') {
             $res = _fr2AiCagir($sys . ' Kullanıcının sorusunu veriye dayanarak kısa paragraflar ve gerekiyorsa madde işaretleriyle cevapla. Markdown başlık kullanma.',

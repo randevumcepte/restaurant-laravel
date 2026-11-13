@@ -11,13 +11,13 @@
   $hucre = function ($val, $tip) {
       if ($val === null || $val === '') return '';
       if ($tip === 'tl' && is_numeric($val)) return number_format((float) $val, 2, ',', '.') . ' ₺';
-      if ($tip === 'y' && is_numeric($val)) return '%' . number_format((float) $val, 1, ',', '.');
+      if ($tip === 'y' && is_numeric($val)) return ((float) $val < 0 ? '-%' : '%') . number_format(abs((float) $val), 1, ',', '.');
       if ($tip === 's' && is_numeric($val)) return rtrim(rtrim(number_format((float) $val, 3, ',', '.'), '0'), ',');
       if ($tip === 't' && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $val)) return \Carbon\Carbon::parse($val)->format('d.m.Y');
       return (string) $val;
   };
   $tl0 = fn($x) => number_format(round((float) $x), 0, ',', '.') . ' ₺';
-  $kpiDeg = fn($deg, $fmt) => $fmt === 'tl' ? $tl0($deg) : ($fmt === 'y' ? '%' . number_format((float) $deg, 1, ',', '.') : $deg);
+  $kpiDeg = fn($deg, $fmt) => $fmt === 'tl' ? $tl0($deg) : ($fmt === 'y' ? $hucre($deg, 'y') : $deg);
   $blokDeg = fn($val, $tip) => $tip === 'tl' ? $tl0($val) : $hucre($val, $tip);
   $palet = ['#7C3AED', '#F59E0B', '#0EA5E9', '#10B981', '#EC4899', '#4F46E5', '#F43F5E', '#64748B', '#14B8A6', '#A855F7'];
   $hexA = fn($hex, $a) => 'rgba(' . hexdec(substr(ltrim($hex, '#'), 0, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 2, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 4, 2)) . ',' . $a . ')';
@@ -93,6 +93,7 @@
   tr.grup td{background:#F8FAFC !important;font-weight:900;color:{{ $tema }};border-top:2px solid #E2E8F0}
   tr.ara td{font-weight:800;color:#475569;background:#fff !important}
   .r{text-align:right;white-space:nowrap}
+  th.r{white-space:normal}
   td.cb{position:relative}
   td.cb .cbi{position:absolute;left:0;top:3px;bottom:3px;border-radius:0 4px 4px 0;background:{{ $hexA($tema, .2) }}}
   td.cb span{position:relative}
