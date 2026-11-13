@@ -17,7 +17,7 @@
       return (string) $val;
   };
   $tl0 = fn($x) => number_format(round((float) $x), 0, ',', '.') . ' ₺';
-  $kpiDeg = fn($deg, $fmt) => $fmt === 'tl' ? $tl0($deg) : ($fmt === 'y' ? $hucre($deg, 'y') : $deg);
+  $kpiDeg = fn($deg, $fmt) => $fmt === 'tl' ? $tl0($deg) : ($fmt === 'y' ? $hucre($deg, 'y') : ($fmt === 'sayi' && is_numeric($deg) ? number_format((float) $deg, fmod((float) $deg, 1) ? 1 : 0, ',', '.') : $deg));
   $blokDeg = fn($val, $tip) => $tip === 'tl' ? $tl0($val) : $hucre($val, $tip);
   $palet = ['#7C3AED', '#F59E0B', '#0EA5E9', '#10B981', '#EC4899', '#4F46E5', '#F43F5E', '#64748B', '#14B8A6', '#A855F7'];
   $hexA = fn($hex, $a) => 'rgba(' . hexdec(substr(ltrim($hex, '#'), 0, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 2, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 4, 2)) . ',' . $a . ')';
@@ -118,16 +118,18 @@
       <h1>{{ $baslik }}</h1><p>{{ $alt }}</p>
       @if ($aiRapor)<span class="rozet">✨ Yapay zekâ tarafından hazırlanmıştır</span>@else<span class="rozet">Sistem verisi · yorum içermez</span>@endif
     </div>
-    <div class="mk"><b>ResteOS</b>Fiyat Radarı</div>
+    <div class="mk"><b>ResteOS</b>{{ $marka ?? 'Fiyat Radarı' }}</div>
   </div>
   @if (!empty($aciklama))<p class="aciklama">{{ $aciklama }}</p>@endif
   @if ($aiRapor)
     <div class="uyari"><span class="material-icons-outlined">auto_awesome</span><div>Bu rapordaki <b>yorum, değerlendirme ve öneriler yapay zekâya aittir</b>{{ !empty($ai['_zaman']) ? ' (' . $ai['_zaman'] . ')' : '' }}. Rakamlar sistemdeki alış faturalarından gelir ve raporun sonundaki <b>“Dayanak”</b> tablolarında doğrulanabilir. Öneriler karar desteğidir; son karar satın almacınındır.</div></div>
   @endif
+  @if (empty($onizle))
   <div class="arac">
     <button class="g" onclick="window.close()"><span class="material-icons-outlined" style="font-size:16px">close</span> Kapat</button>
     <button onclick="window.print()"><span class="material-icons-outlined" style="font-size:16px">picture_as_pdf</span> PDF olarak kaydet / Yazdır</button>
   </div>
+  @endif
 
   @foreach ($sayfalar as $s)
     @if (($s['tip'] ?? '') === 'pano')
@@ -137,7 +139,7 @@
           <div style="--c:#{{ $renk }}"><span>{{ $et }}</span><b class="{{ $fmt === 'metin' ? 'metin' : '' }}">{{ $kpiDeg($deg, $fmt) }}</b></div>
         @endforeach
       </div>
-      @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Rapor boş.</b> {{ $s['bos'] }}</div>@endif
+      @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Not:</b> {{ $s['bos'] }}</div>@endif
       <div class="grafikler">
         @foreach ($s['bloklar'] as $bl)
           @php $vt = $bl['kol'][1][1]; $mx = max(1, ...array_map(fn($r) => abs((float) $r[1]), $bl['sat'])); $ozel = $bl['pdf'] ?? null; @endphp
@@ -289,8 +291,8 @@
       </table>
     @endif
   @endforeach
-  <div class="alt">ResteOS · Fiyat Radarı · {{ $aiRapor ? 'Yapay zekâ analizi' : 'Sistem verisi (yorumsuz)' }} · {{ now()->format('d.m.Y H:i') }}</div>
+  <div class="alt">ResteOS · {{ $marka ?? 'Fiyat Radarı' }} · {{ $aiRapor ? 'Yapay zekâ analizi' : 'Sistem verisi (yorumsuz)' }} · {{ now()->format('d.m.Y H:i') }}</div>
 </div>
-<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 500); });</script>
+@if (empty($onizle))<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 500); });</script>@endif
 </body>
 </html>

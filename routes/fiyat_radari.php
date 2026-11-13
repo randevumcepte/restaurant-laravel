@@ -688,7 +688,7 @@ if (!function_exists('_fr2Xlsx')) {
                 }
                 $r += 1;
                 if (!empty($s['bos'])) {
-                    $rows .= '<row r="' . $r . '" ht="62" customHeight="1"><c r="B' . $r . '" t="inlineStr" s="' . $S['bos'] . '"><is><t xml:space="preserve">' . $x('Rapor boş. ' . $s['bos']) . '</t></is></c>';
+                    $rows .= '<row r="' . $r . '" ht="62" customHeight="1"><c r="B' . $r . '" t="inlineStr" s="' . $S['bos'] . '"><is><t xml:space="preserve">' . $x('Not: ' . $s['bos']) . '</t></is></c>';
                     for ($c = 2; $c <= 12; $c++) $rows .= '<c r="' . $harf($c) . $r . '" s="' . $S['bos'] . '"/>';
                     $rows .= '</row>'; $merge[] = 'B' . $r . ':M' . $r; $r += 2;
                 }
@@ -1098,3 +1098,6 @@ Route::get('/api/patron/fiyat-radari-v2/rapor-link', function (Request $r) {
 Route::get('/rapor-indir/fiyat-radari', function (Request $r) {
     return _fr2IndirYanit((int) $r->query('s'), _fr2Filtre($r), (string) $r->query('rapor'), (string) $r->query('format'));
 })->name('fr2.rapor')->middleware('signed:relative');
+
+// Satın Alma Raporlar & Analizler sayfası (ortak Excel/PDF motoru bu dosyada)
+require __DIR__ . '/satinalma_raporlar.php';
