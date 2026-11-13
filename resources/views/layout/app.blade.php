@@ -425,6 +425,17 @@
     if ($_kp && _mutfakAltIstasyonMu($_kp)) {
         foreach ($gruplar as $_ga => $_gi) $gruplar[$_ga] = array_values(array_filter($_gi, fn ($it) => !in_array($it[0], ['/uretim-plani', '/uretim-riski', '/parti-takip', '/sayim'], true)));
     }
+    // Şubeler Arası Transfer: yalnız transfer ortağı olan (gruplu / franchise) şubede; Satın Alma'da Gelen Teklifler'in altına (yetki aşağıda süzülür)
+    try {
+        if ($_kp && function_exists('_transferOrtaklari') && _transferOrtaklari((int) $_kp->sube_id)) {
+            $_trfIt = ['/sube-transfer', 'swap_horiz', 'Şubeler Arası Transfer', '#0891B2'];
+            $_trfG = isset($gruplar['Satın Alma']) ? 'Satın Alma' : 'Mutfak / BOH';
+            $_trfYeni = []; $_trfKondu = false;
+            foreach ($gruplar[$_trfG] ?? [] as $_it) { $_trfYeni[] = $_it; if ($_it[0] === '/gelen-teklifler') { $_trfYeni[] = $_trfIt; $_trfKondu = true; } }
+            if (!$_trfKondu) $_trfYeni[] = $_trfIt;
+            $gruplar[$_trfG] = $_trfYeni;
+        }
+    } catch (\Throwable $e) {}
 
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
@@ -707,6 +718,7 @@
             </div>
             <div class="sp"></div>
             @yield('rk_araclar')
+            @if ($_pp) @includeIf('layout._sube_secici') @endif
             @if ($_pp) @include('layout._bildirim_zil') @endif
             <button class="rk-tema" onclick="rkTema()" title="Gece / Gündüz"><span class="material-icons-outlined" id="rkTemaIk">dark_mode</span></button>
             @if ($_pp)

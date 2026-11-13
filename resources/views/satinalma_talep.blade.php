@@ -778,6 +778,7 @@ body.koyu #sta .st-ozel{background:#2a1d2a;border-color:#4a2a42;color:#f9a8d4}
     <div style="font-size:12px;font-weight:700;color:var(--sub,#64748b);letter-spacing:.3px;text-transform:uppercase;margin-bottom:8px" id="staKalemBaslik">Kalemler · Teklifler</div>
     <div id="staDetKalemler" style="margin-bottom:14px"></div>
     <div id="staDetAyrilan"></div>
+    <div id="staDetTransfer"></div>
 
     {{-- Dinamik aksiyon barı (role + duruma göre) --}}
     <div id="staDetAksiyon" style="margin-bottom:10px"></div>
@@ -911,11 +912,11 @@ let staRfq = [];
 let staTeslimOneri = {};
 const durumRenkler = {
     departman_onay:'#F59E0B', yeni:'#4F46E5', teklif:'#F59E0B', onayda:'#F59E0B',
-    onaylandi:'#10B981', siparis:'#0EA5E9', tamamlandi:'#10B981', reddedildi:'#F43F5E'
+    onaylandi:'#10B981', siparis:'#0EA5E9', tamamlandi:'#10B981', reddedildi:'#F43F5E', transfer:'#0891B2', iptal:'#64748B'
 };
 const durumMetinler = {
     departman_onay:'Şef / Sorumlu Onayında', yeni:'Yeni', teklif:'Teklif Bekleniyor', onayda:'Onayda',
-    onaylandi:'Onaylandı', siparis:'Siparişte', tamamlandi:'Tamamlandı', reddedildi:'Reddedildi'
+    onaylandi:'Onaylandı', siparis:'Siparişte', tamamlandi:'Tamamlandı', reddedildi:'Reddedildi', transfer:'Şubeden Transfer', iptal:'İptal (talebe döndü)'
 };
 
 let seciliAciliyet = 'normal';
@@ -1141,7 +1142,7 @@ window.staDetayAc = async function(id) {
         staKalemleriCiz(kalemler, t.durum);
         // Bu talepten daha önce onaya ayrılan ürünler → burada görünür, tekrar gönderilmez
         const ayr = res.ayrilan || [];
-        const ayrDur = {onayda:'⏳ Patron onayında', fiyat_onay:'⏳ Fiyat onayında', onaylandi:'✓ Onaylandı', siparis:'🚚 Sipariş verildi', tamamlandi:'✓ Teslim alındı', reddedildi:'✕ Reddedildi'};
+        const ayrDur = {onayda:'⏳ Patron onayında', fiyat_onay:'⏳ Fiyat onayında', onaylandi:'✓ Onaylandı', siparis:'🚚 Sipariş verildi', tamamlandi:'✓ Teslim alındı', reddedildi:'✕ Reddedildi', transfer:'🔄 Şubeden transfer', iptal:'↩ İptal (talebe döndü)'};
         document.getElementById('staDetAyrilan').innerHTML = ayr.length ? `<div style="margin-bottom:14px;border:1.5px solid rgba(16,185,129,.35);background:rgba(16,185,129,.07);border-radius:14px;padding:12px 14px">
             <div style="font-weight:800;font-size:13px;color:var(--ink);margin-bottom:6px">📤 Bu talepten onaya gidenler <span style="font-weight:600;color:var(--sub);font-size:11.5px">— bunlar bu talepten çıktı, tekrar gönderilmez</span></div>
             ${ayr.map(a => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">
@@ -1149,11 +1150,56 @@ window.staDetayAc = async function(id) {
                 <a href="javascript:void(0)" onclick="staDetayAc(${a.talep_id})" style="white-space:nowrap;font-weight:700;color:var(--mor1);text-decoration:none">Talep #${a.talep_id} · ${escHtml(ayrDur[a.durum] || a.durum)} →</a></div>`).join('')}
         </div>` : '';
         staAksiyonCiz(t.durum);
+        staTransferKutu(id);
 
     } catch(e) {
         toast('⚠ Bağlantı hatası', '#F43F5E');
         staDetKapat();
     }
+};
+
+/* ─── Şubeler arası transfer: kardeş şubede var mı? (routes/sube_transfer.php) ── */
+async function staTransferKutu(id) {
+    const kutu = document.getElementById('staDetTransfer');
+    if (!kutu) return;
+    kutu.innerHTML = '';
+    let j = null;
+    try { j = await api('/api/sube-transfer/talep?id=' + id); } catch (e) { return; }
+    if (!j || !j.ok || aktifTalepId !== id) return;
+    const trDur = {oneri:'⏳ Kabul bekliyor', istendi:'⏳ Gönderen onayında', hazirlaniyor:'📦 Hazırlanıyor', yolda:'🚚 Yolda', teslim:'✓ Teslim alındı', reddedildi:'✕ Reddedildi', iptal:'↩ İptal'};
+    let h = '';
+    if ((j.transferler || []).length) {
+        h += `<div style="margin-bottom:14px;border:1.5px solid rgba(8,145,178,.35);background:rgba(8,145,178,.07);border-radius:14px;padding:12px 14px">
+            <div style="font-weight:800;font-size:13px;color:var(--ink);margin-bottom:6px">🔄 Şubeler arası transfer <span style="font-weight:600;color:var(--sub);font-size:11.5px">— bu ürünler yeni sipariş yerine kardeş şubeden geliyor</span></div>
+            ${j.transferler.map(x => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line);font-size:12.5px">
+                <span><b>${escHtml(x.urunler.join(', ') || '—')}</b> ← ${escHtml(x.gonderen)}</span>
+                <a href="/sube-transfer?ac=${x.id}" style="white-space:nowrap;font-weight:700;color:#0891B2;text-decoration:none">${escHtml(x.no)} · ${escHtml(trDur[x.durum] || x.durum_ad)} →</a></div>`).join('')}
+        </div>`;
+    }
+    if (j.grup && (j.kalemler || []).length && ['yeni', 'teklif'].includes(j.durum) && j.yetkili) {
+        h += `<div style="margin-bottom:14px;border:1.5px solid rgba(124,58,237,.35);background:rgba(124,58,237,.06);border-radius:14px;padding:12px 14px">
+            <div style="font-weight:800;font-size:13px;color:var(--ink);margin-bottom:2px">🏪 Diğer şubelerde var — yeni sipariş gerekmeyebilir</div>
+            <div style="font-size:11.5px;color:var(--sub);margin-bottom:6px">Fazla stoğu olan ya da son kullanma tarihi yaklaşan şubeden isteyin; transferle karşılanan miktar bu talepten ayrılır, kalan için fiyat araştırması devam eder.</div>
+            ${j.kalemler.map(k => k.kaynaklar.map(s => {
+                const oneri = k.ihtiyac_temel != null ? Math.min(k.ihtiyac_temel, s.verilebilir) : s.verilebilir;
+                const inId = 'staTrf_' + k.kalem_id + '_' + s.sube_id;
+                return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;border-top:1px dashed var(--line);font-size:12.5px">
+                    <span style="flex:1;min-width:220px"><b>${escHtml(k.ad)}</b> (talep: ${k.miktar} ${escHtml(k.birim || '')}) → <b>${escHtml(s.sube_ad)}</b> ${(+s.verilebilir).toLocaleString('tr-TR')} ${escHtml(k.temel_birim)} verebilir${s.skt_risk > 0 ? ` <span style="color:#D97706">· ⚠️ SKT ${escHtml(s.en_yakin_skt || '')}</span>` : ''}</span>
+                    <input id="${inId}" type="number" step="any" min="0" value="${+(+oneri).toFixed(3)}" style="width:96px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);color:var(--ink)"> <span style="color:var(--sub)">${escHtml(k.temel_birim)}</span>
+                    <button type="button" onclick="staTransferIste(${id}, ${s.sube_id}, ${k.malzeme_id}, ${k.kalem_id}, '${inId}')" style="border:0;background:#7C3AED;color:#fff;border-radius:9px;padding:7px 12px;font-weight:700;cursor:pointer">Transferle karşıla</button></div>`;
+            }).join('')).join('')}
+        </div>`;
+    }
+    kutu.innerHTML = h;
+}
+window.staTransferIste = async function (talepId, sube, mid, kalemId, inId) {
+    const mik = parseFloat(String(document.getElementById(inId).value).replace(',', '.'));
+    if (!(mik > 0)) { toast('⚠ Miktar girin', '#F59E0B'); return; }
+    const r = await fetch('/sube-transfer/iste', { method: 'POST', headers: { 'X-CSRF-TOKEN': window.csrf || (document.querySelector('meta[name=csrf-token]') || {}).content, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gonderen_sube_id: sube, talep_id: talepId, kalemler: [{ malzeme_id: mid, miktar: mik, talep_kalem_id: kalemId }] }) });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    toast((j.ok ? '✓ ' : '⚠ ') + (j.mesaj || 'Hata'), j.ok ? '#10B981' : '#F43F5E');
+    if (j.ok) staDetayAc(talepId);
 };
 
 /* ─── Akış şeridi ──────────────────────────────────────── */

@@ -95,6 +95,10 @@ if (!function_exists('_bmKatalog')) {
             'fiyat_anlasma'       => ['Fiyat anlaşmasının süresi doluyor', ['satinalma'], 's', 0],
             'fiyat_zam'           => ['Malzemede ani fiyat artışı', ['satinalma', 'mutfak'], 's', 0],
             'sayim_fark'          => ['Sayımda yüksek fark çıktı', ['depo', 'satinalma', 'mutfak', 'finans'], 's', 0],
+            // ---- Şubeler arası transfer (routes/sube_transfer.php; alıcı = transfer yetkilisi) ----
+            'transfer_istek'      => ['Başka şubeden transfer isteği / önerisi geldi', ['satinalma', 'depo', 'mutfak', 'ust_yonetim'], 's', 0],
+            'transfer_durum'      => ['Transferim onaylandı / yolda / teslim alındı', ['satinalma', 'depo', 'mal_kabul', 'mutfak', 'ust_yonetim'], 's', 0],
+            'transfer_oneri'      => ['Kardeş şubede fazla / SKT riski olan ürün var', ['satinalma', 'depo', 'mutfak', 'ust_yonetim'], 's', 0],
             // ---- İK ----
             'ozluk_eksik'         => ['Özlük / maaş bilgisi eksik personel', ['ik'], 's', 0],
             'izin_bekliyor'       => ['Bekleyen izin / avans talepleri', ['ik'], 's', 0],
@@ -589,6 +593,8 @@ if (!function_exists('_bmMotor')) {
         if (function_exists('_waHatSaglik') && ($zorla || cache()->add('wa_saglik_' . $sid, 1, 180))) { try { $sonuc['wa'] = _waHatSaglik($sid); } catch (\Throwable $e) {} }
         // İzmir hal bülteni: tüm şubelere günde bir (yayınlanmadıysa saatte bir dener) — web.php _halOtoGuncelle
         if (function_exists('_halOtoGuncelle')) { try { $sonuc['hal'] = _halOtoGuncelle(); } catch (\Throwable $e) {} }
+        // Şubeler arası transfer: günde bir SKT riski / eksik-fazla eşleşmesi (grubu olmayan şubede anında çıkar)
+        if (function_exists('_trfMotor')) { try { _trfMotor($sid); } catch (\Throwable $e) {} }
         return $sonuc;
     }
 }

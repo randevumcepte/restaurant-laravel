@@ -5,6 +5,7 @@
 @section('rk_alt', 'Neyin azaldı, ne kadar almalısın — sistem senin yerine hesaplar')
 
 @section('content')
+@includeIf('partials.transfer_bant', ['trfMod' => 'oneri'])
 @php
   $oneriler = $oneriler ?? collect();
   $tl = fn($v) => number_format((float) $v, 2, ',', '.') . '₺';

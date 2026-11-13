@@ -38,6 +38,8 @@ if (!function_exists('_aktifSubeId')) {
         if ($imp && DB::table('subeler')->where('id', (int) $imp)->exists()) return (int) $imp;
         $pid = (int) session('pos_personel_id');
         if ($pid) {
+            // Grup patronu / erişim verilen personel üst menüden başka şubeye geçtiyse (routes/sube_transfer.php doğrular)
+            if (session('grup_sube_secim') && function_exists('_subeSecimId') && ($sec = _subeSecimId($pid))) return $sec;
             static $personelSube = [];
             if (!array_key_exists($pid, $personelSube)) {
                 $ps = (int) DB::table('personeller')->where('id', $pid)->where('aktif', 1)->value('sube_id');
@@ -406,7 +408,10 @@ if (!function_exists('_posPersonel')) {
     {
         $id = session('pos_personel_id');
         if (!$id) return null;
-        return DB::table('personeller')->where('id', $id)->where('aktif', 1)->first();
+        $p = DB::table('personeller')->where('id', $id)->where('aktif', 1)->first();
+        // Seçili şube (grup içi geçiş): sube_id seçilene döner, ana şube ana_sube_id'de. Seçim yoksa bire bir eski davranış.
+        if ($p && session('grup_sube_secim') && function_exists('_subeSecimUygula')) $p = _subeSecimUygula($p);
+        return $p;
     }
     function _posKapi()
     {
@@ -446,6 +451,7 @@ Route::post('/pos-giris', function (Request $r) {
     if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
     session(['pos_personel_id' => $p->id]);
     session()->forget('pos_kasa_id');
+    session()->forget('grup_sube_secim'); // önceki kişinin şube seçimi yeni girişe taşınmasın
     _personelLog($p, 'giris', 'Giriş yapıldı (Web)');
     // Satın almacı POS/kasa kullanmaz → kasa seçimini atla, kendi sayfasına düşür
     $posSuz = in_array(($p->rol ?? ''), ['satinalmaci']);
@@ -9279,6 +9285,7 @@ if (!function_exists('_panelSayfaKategori')) {
             '📦 Stok & Ürün' => [
                 'gor_stok' => 'Stok / Üretim Riski / SKT / Barkod / Kalite', 'gor_sayim' => 'Sayım (Envanter)', 'gor_satinalma' => 'Satın Alma İşlemleri (sipariş, mal kabul, fatura, tedarikçi, fiyat, bütçe)', 'gor_menu' => 'Menü Yönetimi',
                 'gor_talep' => 'Satın Alma Talebi (talep açma / departman onayı)',
+                'gor_transfer' => 'Şubeler Arası Transfer (istek, onay, sevk, teslim)',
             ],
             '👥 Personel & Müşteri' => [
                 'gor_personel' => 'Personel & Maaş', 'gor_puantaj' => 'Puantaj', 'gor_garson_perf' => 'Garson Performansı',
@@ -9337,6 +9344,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/eposta-hesaplari' => 'gor_satinalma',      // RFQ/sipariş maili hesapları (satın alma)
             '/gelen-teklifler' => 'gor_satinalma',       // AI'nın okuduğu fiyat teklifleri
             // '/wa-hatlar' HARİTASIZ: her personel kendi hattını bağlayabilsin (route içinde login + sahiplik kontrolü; menüde herkese-açık listede)
+            '/sube-transfer' => 'gor_transfer', // şubeler arası transfer (routes/sube_transfer.php; grubu olmayan şubede menüde gizli)
             '/satinalma-talep' => 'gor_talep', '/talep-onaylarim' => 'gor_talep', '/reddedilen-talepler' => 'gor_talep', '/recete' => 'gor_menu', '/uretim-plani' => 'gor_stok', '/happy-hour' => 'gor_menu', '/fix-menu' => 'gor_menu', // satın alma talep havuzu + onay/red + üretim planı = stok; reçeteler + happy hour = menü alanı
             '/itibar' => 'gor_dashboard', // İtibar/memnuniyet panosu (müşteri sayfaları /memnuniyet/{token} + /memnuniyet/kaydet PUBLIC=haritasız; /itibar-ayar POST inline sahip/müdür)
             '/kampanya' => 'gor_dashboard', '/social-media' => 'gor_dashboard', // AI pazarlama/kampanya paneli (gönder/ai-metin POST inline sahip/müdür)
@@ -16352,10 +16360,12 @@ Route::get('/hareketler', function (Request $r) {
     try {
         $malAd = DB::table('malzemeler')->pluck('ad', 'id');
         foreach (DB::table('stok_hareketleri')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $s) {
-            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer'][$s->tip] ?? $s->tip;
+            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer', 'transfer_giris' => 'Şubeden transfer girişi', 'transfer_cikis' => 'Şubeye transfer çıkışı'][$s->tip] ?? $s->tip;
             $mik = (float) $s->miktar;
-            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.'),
-                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $mik < 0 ? 'cikis' : 'giris', 'malzeme', $s->malzeme_id);
+            // Şubeler arası transfer para giriş/çıkışı değildir: yön 'transfer' → giriş/çıkış toplamlarına katılmaz; açıklamada nereden/nereye
+            $trf = in_array($s->tip, ['transfer_giris', 'transfer_cikis'], true);
+            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.') . ($trf && !empty($s->aciklama) ? ' · ' . $s->aciklama : ''),
+                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $trf ? 'transfer' : ($mik < 0 ? 'cikis' : 'giris'), 'malzeme', $s->malzeme_id);
         }
     } catch (\Throwable $e) {}
     try {
@@ -17310,9 +17320,24 @@ if (!function_exists('_tedarikciCari')) {
             if (!Schema::hasTable('cari_hesaplar') || !Schema::hasTable('tedarikciler')) return null;
             $ted = DB::table('tedarikciler')->where('id', $tedarikciId)->first();
             if (!$ted) return null;
-            if (!empty($ted->cari_id) && DB::table('cari_hesaplar')->where('id', $ted->cari_id)->exists()) return (int) $ted->cari_id;
-            $cid = DB::table('cari_hesaplar')->insertGetId(['sube_id' => $subeId, 'ad' => $ted->ad, 'tip' => 'tedarikci', 'telefon' => $ted->telefon ?? null, 'aktif' => 1, 'created_at' => now()]);
-            DB::table('tedarikciler')->where('id', $tedarikciId)->update(['cari_id' => $cid]);
+            // ŞUBE BAZLI cari: tedarikçi global, borcu her şubenin (firmanın) kendi carisinde. Eskiden tek cari_id'de birikiyordu.
+            $tedKol = cache()->remember('cari_hesaplar_tedkol', 3600, fn () => Schema::hasColumn('cari_hesaplar', 'tedarikci_id'));
+            if (!$tedKol) { try { Schema::table('cari_hesaplar', function ($t) { $t->unsignedBigInteger('tedarikci_id')->nullable()->index(); }); cache()->forget('cari_hesaplar_tedkol'); $tedKol = true; } catch (\Throwable $e) {} }
+            if (!empty($ted->cari_id)) {
+                $eski = DB::table('cari_hesaplar')->where('id', $ted->cari_id)->first(['id', 'sube_id']);
+                if ($eski && (int) $eski->sube_id === (int) $subeId) {
+                    if ($tedKol) DB::table('cari_hesaplar')->where('id', $eski->id)->whereNull('tedarikci_id')->update(['tedarikci_id' => $tedarikciId]);
+                    return (int) $eski->id;
+                }
+            }
+            if ($tedKol) {
+                $var = DB::table('cari_hesaplar')->where('sube_id', $subeId)->where('tip', 'tedarikci')->where('tedarikci_id', $tedarikciId)->value('id');
+                if ($var) return (int) $var;
+            }
+            $kayit = ['sube_id' => $subeId, 'ad' => $ted->ad, 'tip' => 'tedarikci', 'telefon' => $ted->telefon ?? null, 'aktif' => 1, 'created_at' => now()];
+            if ($tedKol) $kayit['tedarikci_id'] = $tedarikciId;
+            $cid = DB::table('cari_hesaplar')->insertGetId($kayit);
+            if (empty($ted->cari_id)) DB::table('tedarikciler')->where('id', $tedarikciId)->update(['cari_id' => $cid]);
             return (int) $cid;
         } catch (\Throwable $e) { return null; }
     }
@@ -23156,7 +23181,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     $iptalAdet = (clone $iptalQ)->count();
     $fire = 0.0;
     try {
-        $fire = (float) DB::table('stok_hareketleri')->where('tip', 'fire')
+        $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('tip', 'fire')
             ->whereBetween('created_at', [$from, $to])
             ->select(DB::raw('COALESCE(SUM(ABS(miktar) * birim_maliyet),0) as t'))->value('t');
     } catch (\Throwable $e) {
@@ -23239,7 +23264,7 @@ Route::get('/api/patron/ozet', function (Request $r) {
     }
     try {
         // Ucuz gate: kritik malzeme var mi? (yoksa agir risk hesabini hic calistirma)
-        $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', 'malzemeler.id', '=', 'stok_hareketleri.malzeme_id')
+        $kritik = DB::table('malzemeler')->leftJoin('stok_hareketleri', function ($j) use ($p) { $j->on('malzemeler.id', '=', 'stok_hareketleri.malzeme_id')->where('stok_hareketleri.sube_id', '=', $p->sube_id); })
             ->select('malzemeler.id')->groupBy('malzemeler.id', 'malzemeler.kritik_stok')
             ->havingRaw('COALESCE(SUM(stok_hareketleri.miktar),0) < malzemeler.kritik_stok')->get()->count();
         if ($kritik > 0) {
@@ -23490,20 +23515,20 @@ Route::get('/api/patron/detay', function (Request $r) {
         if (in_array($alt, ['iskonto', 'ikram', 'silinen'])) {
             $logTip = $alt === 'silinen' ? 'void' : ($alt === 'iskonto' ? 'indirim' : 'ikram');
             $kayitlar = DB::table('iptal_indirim_loglari')->leftJoin('personeller', 'iptal_indirim_loglari.personel_id', '=', 'personeller.id')
-                ->where('iptal_indirim_loglari.tip', $logTip)->whereBetween('iptal_indirim_loglari.created_at', [$from, $to])
+                ->where('iptal_indirim_loglari.sube_id', $p->sube_id)->where('iptal_indirim_loglari.tip', $logTip)->whereBetween('iptal_indirim_loglari.created_at', [$from, $to])
                 ->select('personeller.ad as garson', 'iptal_indirim_loglari.tutar', 'iptal_indirim_loglari.sebep',
                     'iptal_indirim_loglari.created_at', 'iptal_indirim_loglari.adisyon_id')
                 ->orderByDesc('iptal_indirim_loglari.created_at')->limit(60)->get();
         } elseif ($alt === 'iptal') {
             $kayitlar = DB::table('adisyonlar')->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
-                ->where('adisyonlar.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])
+                ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'iptal')->whereBetween('adisyonlar.acilis', [$from, $to])
                 ->select('personeller.ad as garson', 'adisyonlar.toplam as tutar',
                     DB::raw("'Adisyon iptal' as sebep"), 'adisyonlar.acilis as created_at', 'adisyonlar.id as adisyon_id')
                 ->orderByDesc('adisyonlar.acilis')->limit(60)->get();
         } elseif ($alt === 'fire') {
             $kayitlar = DB::table('stok_hareketleri')->join('malzemeler', 'stok_hareketleri.malzeme_id', '=', 'malzemeler.id')
                 ->leftJoin('personeller', 'stok_hareketleri.personel_id', '=', 'personeller.id')
-                ->where('stok_hareketleri.tip', 'fire')->whereBetween('stok_hareketleri.created_at', [$from, $to])
+                ->where('stok_hareketleri.sube_id', $p->sube_id)->where('stok_hareketleri.tip', 'fire')->whereBetween('stok_hareketleri.created_at', [$from, $to])
                 ->select('malzemeler.ad as garson', DB::raw('ABS(stok_hareketleri.miktar) * stok_hareketleri.birim_maliyet as tutar'),
                     'stok_hareketleri.aciklama as sebep', 'stok_hareketleri.created_at', DB::raw('NULL as adisyon_id'))
                 ->orderByDesc('stok_hareketleri.created_at')->limit(60)->get();
@@ -26525,6 +26550,8 @@ Route::post('/api/patron/malzeme-sil', function (Request $r) {
     if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $id = (int) $r->id;
     if (DB::table('recete_kalemleri')->where('malzeme_id', $id)->exists()) return ['ok' => 0, 'hata' => 'Bu malzeme bir reçetede kullanılıyor, önce reçeteden çıkarın.'];
+    // Malzeme kartı tüm şubelerde ortak: başka şubede hareketi/stoku varsa silmek onların kaydını bozar
+    if (DB::table('stok_hareketleri')->where('malzeme_id', $id)->where('sube_id', '!=', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bu malzeme başka bir şubede de kullanılıyor (stok/transfer kaydı var); silinemez.'];
     DB::table('stok_hareketleri')->where('malzeme_id', $id)->where('sube_id', $p->sube_id)->delete();
     DB::table('malzemeler')->where('id', $id)->delete();
     return ['ok' => 1];
@@ -26971,10 +26998,12 @@ Route::get('/api/patron/hareketler', function (Request $r) {
     try {
         $malAd = DB::table('malzemeler')->pluck('ad', 'id');
         foreach (DB::table('stok_hareketleri')->where('sube_id', $sube)->whereBetween('created_at', [$from, $to])->orderByDesc('id')->limit($limit)->get() as $s) {
-            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer'][$s->tip] ?? $s->tip;
+            $ad = ['alis' => 'Stok girişi (alış)', 'tuketim' => 'Satış tüketimi', 'fire' => 'Fire / zayi', 'sayim' => 'Sayım düzeltmesi', 'iade' => 'Manuel giriş', 'transfer' => 'Transfer', 'transfer_giris' => 'Şubeden transfer girişi', 'transfer_cikis' => 'Şubeye transfer çıkışı'][$s->tip] ?? $s->tip;
             $mik = (float) $s->miktar;
-            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.'),
-                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $mik < 0 ? 'cikis' : 'giris', 'malzeme', $s->malzeme_id);
+            // Şubeler arası transfer para giriş/çıkışı değildir: yön 'transfer' → giriş/çıkış toplamlarına katılmaz; açıklamada nereden/nereye
+            $trf = in_array($s->tip, ['transfer_giris', 'transfer_cikis'], true);
+            $ekle($s->created_at, 'stok', $ad, ($malAd[$s->malzeme_id] ?? '') . ' · ' . rtrim(rtrim(number_format($mik, 2, '.', ''), '0'), '.') . ($trf && !empty($s->aciklama) ? ' · ' . $s->aciklama : ''),
+                $s->personel_id, $s->birim_maliyet ? abs($mik) * (float) $s->birim_maliyet : null, $trf ? 'transfer' : ($mik < 0 ? 'cikis' : 'giris'), 'malzeme', $s->malzeme_id);
         }
     } catch (\Throwable $e) {}
     // 5) Kasa hareketleri
@@ -30820,16 +30849,20 @@ if (!function_exists('_muhasebeDonem')) {
 if (!function_exists('_muhasebeFisUret')) {
     // Donem icin cift tarafli DENGELI mahsup fisi satirlari uretir (CSV + REST ortak kullanir).
     // return: ['rows'=>[[tarih,fisNo,hesapKodu,hesapAdi,borc,alacak,aciklama],...], 'borc','alacak','fisNo','tarih']
-    function _muhasebeFisUret($from, $to, $hp, $kdvOran, $smmDahil = false)
+    function _muhasebeFisUret($from, $to, $hp, $kdvOran, $smmDahil = false, $subeIds = null)
     {
+        // KAPSAM: yalnız bu firmanın (aynı vergi no) şubeleri. Eskiden tüm şubelerin satış/alışı tek fişe karışıyordu.
+        if ($subeIds === null) $subeIds = function_exists('_firmaSubeIdleri') ? _firmaSubeIdleri(_aktifSubeId()) : [_aktifSubeId()];
+        $subeIds = array_values(array_unique(array_map('intval', (array) $subeIds)));
         $tarih = $to->format('d.m.Y');
         $fisNo = 'RST-' . $from->format('Ymd') . '-' . $to->format('Ymd');
         $kdvCarpan = 1 + ($kdvOran / 100);
         $rows = []; $borcT = 0.0; $alacakT = 0.0;
 
         // --- SATIS: Borc kasa/pos/banka/alici = brut; Alacak 600 matrah + 391 KDV ---
-        $odeme = DB::table('odemeler')->whereBetween('created_at', [$from, $to])
-            ->select('tip', DB::raw('SUM(tutar) as tutar'))->groupBy('tip')->get();
+        $odeme = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
+            ->whereIn('adisyonlar.sube_id', $subeIds)->whereBetween('odemeler.created_at', [$from, $to])
+            ->select('odemeler.tip', DB::raw('SUM(odemeler.tutar) as tutar'))->groupBy('odemeler.tip')->get();
         $satisMatrah = 0.0; $satisKdv = 0.0;
         foreach ($odeme as $o) {
             $brut = round((float) $o->tutar, 2);
@@ -30849,6 +30882,7 @@ if (!function_exists('_muhasebeFisUret')) {
 
         // --- ALIS: Borc 153 mal = brut; Alacak 320 tedarikci = brut ---
         $alis = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+            ->whereIn('alis_faturalari.sube_id', $subeIds)
             ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
             ->select('tedarikciler.ad as tedarikci', DB::raw('SUM(alis_faturalari.toplam) as toplam'), DB::raw('COUNT(*) as adet'))
             ->groupBy('tedarikciler.id', 'tedarikciler.ad')->get();
@@ -30861,11 +30895,35 @@ if (!function_exists('_muhasebeFisUret')) {
             $borcT += $brut; $alacakT += $brut;
         }
 
+        // --- GRUP İÇİ SATIŞ (şubeler arası transfer, farklı vergi no): Borc 120 alici / Alacak 600 + 391 ---
+        // Alan firmanın alışı otomatik alış faturasıyla yukarıdaki ALIS bölümüne zaten girer. İç transfer (aynı VKN) finansa yazılmaz.
+        try {
+            if (Schema::hasTable('sube_transferleri')) {
+                $gis = DB::table('sube_transferleri')->whereIn('gonderen_sube_id', $subeIds)->whereIn('tur', ['firmalar_arasi', 'franchise'])->where('durum', 'teslim')
+                    ->whereBetween('teslim_at', [$from, $to])->select('alan_sube_id', DB::raw('SUM(net_toplam) n'), DB::raw('SUM(kdv_toplam) k'), DB::raw('SUM(maliyet_toplam) m'), DB::raw('COUNT(*) c'))->groupBy('alan_sube_id')->get();
+                foreach ($gis as $g) {
+                    $n = round((float) $g->n, 2); $k = round((float) $g->k, 2);
+                    if ($n + $k <= 0) continue;
+                    $karsi = function_exists('_subeUnvan') ? _subeUnvan($g->alan_sube_id) : ('Sube #' . $g->alan_sube_id);
+                    $rows[] = [$tarih, $fisNo, $hp['alici'] ?? '120', 'Alicilar', $n + $k, 0.0, 'Grup ici satis: ' . $karsi . ' (' . (int) $g->c . ' transfer)'];
+                    $rows[] = [$tarih, $fisNo, $hp['satis'], 'Yurtici Satislar', 0.0, $n, 'Grup ici satis matrahi'];
+                    if ($k > 0) $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV', 0.0, $k, 'Grup ici satis KDV'];
+                    $borcT += $n + $k; $alacakT += $n + $k;
+                    $m = round((float) $g->m, 2);
+                    if ($smmDahil && $m > 0) { // satılan malın maliyeti (stoktan çıkan, maliyet bedeli)
+                        $rows[] = [$tarih, $fisNo, $hp['smm'] ?? '621', 'Satilan Malin Maliyeti', $m, 0.0, 'Grup ici satis maliyeti: ' . $karsi];
+                        $rows[] = [$tarih, $fisNo, $hp['mal'], 'Stok Cikis (grup ici)', 0.0, $m, 'Grup ici satis stok cikisi'];
+                        $borcT += $m; $alacakT += $m;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+
         // --- SMM (opsiyonel): satilan urunlerin recete maliyeti -> Borc 621 / Alacak 153 ---
         if ($smmDahil && function_exists('_restoUrunMaliyetMap')) {
             $maliyetMap = _restoUrunMaliyetMap();
             $satisSatir = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
-                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])
+                ->where('adisyonlar.durum', 'odendi')->whereBetween('adisyonlar.kapanis', [$from, $to])->whereIn('adisyonlar.sube_id', $subeIds)
                 ->where('adisyon_kalemleri.durum', '!=', 'iptal')
                 ->select('adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi',
                     DB::raw('SUM(adisyon_kalemleri.adet) as adet'), DB::raw('SUM(adisyon_kalemleri.tutar) as satis'))
@@ -31224,7 +31282,7 @@ if (!function_exists('_muhasebeAsistanEylemUygula')) {
                     [$ay, $bas, $bit] = _restoAyAralik(null);
                     $ayar = DB::table('muhasebe_ayarlari')->where('sube_id', $sid)->first();
                     $hp = _muhasebeVarsayilanHesapPlani(); if ($ayar && $ayar->hesap_plani) { $k = json_decode($ayar->hesap_plani, true); if (is_array($k)) $hp = array_merge($hp, $k); }
-                    $fis = _muhasebeFisUret($bas, $bit, $hp, (int) ($ayar->kdv_orani ?? 10), true);
+                    $fis = _muhasebeFisUret($bas, $bit, $hp, (int) ($ayar->kdv_orani ?? 10), true, function_exists('_firmaSubeIdleri') ? _firmaSubeIdleri($sid) : [$sid]);
                     $satir = count($fis['rows'] ?? []);
                     if ($satir <= 0) return ['ok' => true, 'mesaj' => "$ay döneminde aktarılacak hareket bulunamadı."];
                     return ['ok' => true, 'mesaj' => "$ay dönemi mahsup fişi hazır: $satir satır, borç=alacak=" . $tl($fis['borc'] ?? 0) . ". Muhasebe Entegrasyonu'ndan indir/gönder."];
@@ -31500,7 +31558,9 @@ Route::get('/muhasebe-entegrasyon/cari-ekstre', function (Request $r) {
     _muhasebeEntegrasyonKur();
     $sube = DB::table('subeler')->where('id', _aktifSubeId())->first();
     [$from, $to] = _muhasebeDonem($r);
+    $kapsam = function_exists('_firmaSubeIdleri') ? _firmaSubeIdleri($sube->id) : [$sube->id];
     $fatura = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->whereIn('alis_faturalari.sube_id', $kapsam)
         ->whereBetween('alis_faturalari.tarih', [$from->toDateString(), $to->toDateString()])
         ->select('tedarikciler.ad as tedarikci', 'alis_faturalari.tarih', 'alis_faturalari.toplam')
         ->orderBy('tedarikciler.ad')->orderBy('alis_faturalari.tarih')->get();
@@ -31545,13 +31605,17 @@ Route::post('/pos/fatura-olustur', function (Request $r) {
 // ============================ ERP / CARI - MUHASEBE ============================
 Route::get('/muhasebe', function () {
     $son30 = now()->subDays(30);
-    $gelir = (float) DB::table('odemeler')->where('created_at', '>=', $son30)->sum('tutar');
-    $gider = (float) DB::table('alis_faturalari')->where('tarih', '>=', $son30->toDateString())->sum('toplam');
+    // Şube kapsamı: eskiden tüm restoranların ciro/alışı burada toplanıyordu
+    $sid = _aktifSubeId();
+    $odSube = fn () => DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')->where('adisyonlar.sube_id', $sid);
+    $gelir = (float) $odSube()->where('odemeler.created_at', '>=', $son30)->sum('odemeler.tutar');
+    $gider = (float) DB::table('alis_faturalari')->where('sube_id', $sid)->where('tarih', '>=', $son30->toDateString())->sum('toplam');
     $tedarikciCari = DB::table('alis_faturalari')->leftJoin('tedarikciler', 'alis_faturalari.tedarikci_id', '=', 'tedarikciler.id')
+        ->where('alis_faturalari.sube_id', $sid)
         ->select('tedarikciler.ad', DB::raw('SUM(alis_faturalari.toplam) as borc'), DB::raw('COUNT(*) as fatura'))
         ->groupBy('tedarikciler.id', 'tedarikciler.ad')->orderByDesc('borc')->get();
-    $kasa = DB::table('odemeler')->where('created_at', '>=', $son30)
-        ->select('tip', DB::raw('SUM(tutar) as t'), DB::raw('COUNT(*) as adet'))->groupBy('tip')->orderByDesc('t')->get();
+    $kasa = $odSube()->where('odemeler.created_at', '>=', $son30)
+        ->select('odemeler.tip as tip', DB::raw('SUM(odemeler.tutar) as t'), DB::raw('COUNT(*) as adet'))->groupBy('odemeler.tip')->orderByDesc('t')->get();
     return view('muhasebe', compact('gelir', 'gider', 'tedarikciCari', 'kasa'));
 });
 
@@ -33761,5 +33825,7 @@ require __DIR__ . '/sync.php';
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
 require __DIR__ . '/fiyat_radari.php';
+// ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
+require __DIR__ . '/sube_transfer.php';
 
 

@@ -25,6 +25,7 @@
       <a href="/resteos-yonetim/restoranlar" class="{{ _ryAktif('resteos-yonetim/restoranlar') }}"><span class="ic">🏪</span> Restoranlar</a>
       <a href="/resteos-yonetim/restoran-ekle" class="{{ _ryAktif('resteos-yonetim/restoran-ekle') }}"><span class="ic">➕</span> Restoran Ekle</a>
       <a href="/resteos-yonetim/riskli" class="{{ _ryAktif('resteos-yonetim/riskli') }}"><span class="ic">⚠️</span> Riskli Restoranlar</a>
+      <a href="/resteos-yonetim/sube-gruplari" class="{{ _ryAktif('resteos-yonetim/sube-gruplari') }}"><span class="ic">🔗</span> Şube Grupları / Franchise</a>
 
       <div class="ry-grp">Destek & İletişim</div>
       <a href="/resteos-yonetim/ticket" class="{{ _ryAktif('resteos-yonetim/ticket') }}"><span class="ic">🎫</span> Destek Talepleri @if($acikTicket)<span class="ry-rozet">{{ $acikTicket }}</span>@endif</a>

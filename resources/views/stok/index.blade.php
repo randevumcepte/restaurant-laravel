@@ -759,7 +759,7 @@ function stkDetayAc(id) {
         if (!hareketler.length) {
             h += '<p style="color:var(--sub);font-size:13px">Hareket yok.</p>';
         } else {
-            var tipAd = {alis:'Alış', tuketim:'Satış tüketimi', fire:'Fire', sayim:'Sayım', iade:'Giriş', transfer:'Transfer'};
+            var tipAd = {alis:'Alış', tuketim:'Satış tüketimi', fire:'Fire', sayim:'Sayım', iade:'Giriş', transfer:'Transfer', transfer_giris:'🔄 Şubeden transfer', transfer_cikis:'🔄 Şubeye transfer'};
             hareketler.forEach(function(hv) {
                 var poz = parseFloat(hv.miktar) >= 0;
                 var ren = poz ? '#10B981' : '#F43F5E';

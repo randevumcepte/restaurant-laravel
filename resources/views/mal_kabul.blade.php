@@ -5,6 +5,7 @@
 @section('rk_alt', 'Gelen malı kontrol et → stok otomatik girer (lot/SKT ile)')
 
 @section('content')
+@includeIf('partials.transfer_bant', ['trfMod' => 'mal_kabul'])
 @php
   $kabuller = $kabuller ?? collect();
   $siparis = $siparis ?? null;
