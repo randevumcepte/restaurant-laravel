@@ -464,10 +464,12 @@ if (!function_exists('_bmOlayTara')) {
         } } catch (\Throwable $e) {}
         try { if ($t('hal_fiyatlari') && $c('hal_fiyatlari', 'urun_ad') && $c('hal_fiyatlari', 'ortalama')) {
             // Hal fiyatı: ürünün son kaydı bir öncekine göre %15+ arttıysa (son 24 saatte girilen kayıtlar)
+            $kullanilan = function_exists('_halEslesir') ? DB::table('malzemeler')->pluck('ad')->all() : null;
             foreach (DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('created_at', '>', $simdi->copy()->subDay())->where('ortalama', '>', 0)->get(['id', 'urun_ad', 'ortalama', 'tarih']) as $h) {
+                if ($kullanilan !== null && !collect($kullanilan)->contains(fn ($m) => _halEslesir($m, $h->urun_ad))) continue;
                 $onceki = (float) DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('urun_ad', $h->urun_ad)->where('id', '!=', $h->id)->where('tarih', '<', $h->tarih)->orderByDesc('tarih')->value('ortalama');
                 if ($onceki > 0 && (float) $h->ortalama >= $onceki * 1.15)
-                    $say += _bmTipeGonder($sid, 'fiyat_zam', '📈 ' . $h->urun_ad . ' %' . (int) round(((float) $h->ortalama / $onceki - 1) * 100) . ' zamlandı (hal)', number_format($onceki, 2, ',', '.') . ' → ' . number_format((float) $h->ortalama, 2, ',', '.') . ' ₺', '/hal-fiyatlari', 0, 'zam:' . $h->id);
+                    $say += _bmTipeGonder($sid, 'fiyat_zam', '📈 ' . (function_exists('_halAdGoster') ? _halAdGoster($h->urun_ad) : $h->urun_ad) . ' %' . (int) round(((float) $h->ortalama / $onceki - 1) * 100) . ' zamlandı (hal)', number_format($onceki, 2, ',', '.') . ' → ' . number_format((float) $h->ortalama, 2, ',', '.') . ' ₺', '/hal-fiyatlari', 0, 'zam:' . md5($h->urun_ad) . ':' . $h->tarih);
             }
         } } catch (\Throwable $e) {}
         // --- Ekip: gelmedi / geç kaldı / erken çıktı (vardiyaya göre), izin & avans talebi, yarın eksik, belge doluyor
@@ -585,6 +587,8 @@ if (!function_exists('_bmMotor')) {
         if ($zorla || cache()->add('bm_brif_' . $sid, 1, 900)) { try { $sonuc['brif'] = _bmBrifingTara($sid); } catch (\Throwable $e) {} }
         // WhatsApp hat bekçisi (web.php _waHatSaglik): kopan/çıkış yapan hattı 3 dk'da bir yakala
         if (function_exists('_waHatSaglik') && ($zorla || cache()->add('wa_saglik_' . $sid, 1, 180))) { try { $sonuc['wa'] = _waHatSaglik($sid); } catch (\Throwable $e) {} }
+        // İzmir hal bülteni: tüm şubelere günde bir (yayınlanmadıysa saatte bir dener) — web.php _halOtoGuncelle
+        if (function_exists('_halOtoGuncelle')) { try { $sonuc['hal'] = _halOtoGuncelle(); } catch (\Throwable $e) {} }
         return $sonuc;
     }
 }

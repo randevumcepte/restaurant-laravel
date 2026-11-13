@@ -19055,6 +19055,7 @@ Route::get('/fiyat-radari', function () {
             $d['firsatlar'] = $firsat->sortByDesc('tasarruf')->values();
         }
     } catch (\Throwable $e) {}
+    try { if (function_exists('_restoHalEnsure')) _restoHalEnsure(); $d['hal'] = _radarHalKiyas($sid); } catch (\Throwable $e) {}
     return view('fiyat_radari', $d);
 });
 
@@ -19195,16 +19196,19 @@ Route::get('/hal-fiyatlari', function () {
             foreach ($d['hal']->groupBy('urun_ad') as $ad => $grp) {
                 $halOrt = (float) ($grp->first()->ortalama ?? 0);
                 if ($halOrt <= 0) continue;
-                $eslesen = $malzemeler->first(function ($m) use ($ad) {
-                    $a = mb_strtolower($m->ad); $h = mb_strtolower($ad);
-                    return str_contains($a, $h) || str_contains($h, $a);
+                // kelime bazlı eşleşme ("Un" ≠ "KAVUN"): bir tarafın tüm kelimeleri diğerinde geçmeli
+                $kel = fn($x) => array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(strtr($x, ['İ' => 'i', 'I' => 'ı'])))));
+                $hk = $kel($ad);
+                $eslesen = $malzemeler->first(function ($m) use ($hk, $kel) {
+                    $mk = $kel($m->ad);
+                    return $mk && $hk && (!array_diff($mk, $hk) || !array_diff($hk, $mk));
                 });
                 if (!$eslesen) continue;
                 $sonFiyat = (float) DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
                     ->where('f.sube_id', $sid)->where('k.malzeme_id', $eslesen->id)->orderByDesc('f.tarih')->orderByDesc('k.id')->value('k.birim_fiyat');
                 if ($sonFiyat <= 0) continue;
                 $fark = $halOrt > 0 ? round(($sonFiyat - $halOrt) / $halOrt * 100, 0) : 0;
-                $kiyas->push((object) ['malzeme' => $eslesen->ad, 'hal_ad' => $ad, 'hal' => $halOrt, 'senin' => $sonFiyat, 'fark' => $fark, 'birim' => $grp->first()->birim]);
+                $kiyas->push((object) ['malzeme' => $eslesen->ad, 'hal_ad' => $ad, 'asgari' => $grp->first()->asgari, 'hal' => $halOrt, 'azami' => $grp->first()->azami, 'senin' => $sonFiyat, 'fark' => $fark, 'birim' => $grp->first()->birim]);
             }
             $d['kiyas'] = $kiyas->sortByDesc('fark')->values();
         }
@@ -19253,9 +19257,10 @@ if (!function_exists('_halCek')) {
             if (!$k) return ['ok' => 0, 'mesaj' => 'Kaynak tanımsız.'];
             $tarih = $tarih ?: now()->toDateString();
             $url = str_replace('{tarih}', $tarih, $k['url']);
-            $resp = \Illuminate\Support\Facades\Http::timeout(20)->acceptJson()->get($url);
-            if (!$resp->successful()) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına ulaşılamadı (' . $resp->status() . ').'];
-            $data = $resp->json();
+            static $hafiza = []; // aynı istekte tüm şubeler için API bir kez çağrılır
+            if (!isset($hafiza[$url])) { $resp = \Illuminate\Support\Facades\Http::timeout(20)->acceptJson()->get($url); $hafiza[$url] = $resp->successful() ? ['ok' => 1, 'json' => $resp->json()] : ['ok' => 0, 'kod' => $resp->status()]; }
+            if (empty($hafiza[$url]['ok'])) return ['ok' => 0, 'mesaj' => $k['ad'] . ' kaynağına ulaşılamadı (' . $hafiza[$url]['kod'] . ').'];
+            $data = $hafiza[$url]['json'];
             $rows = [];
             if (is_array($data)) $rows = isset($data[0]) ? $data : ($data['HalFiyatListesi'] ?? $data['halFiyatListesi'] ?? $data['data'] ?? $data['result'] ?? $data['value'] ?? $data['items'] ?? []);
             if (!is_array($rows) || !count($rows)) return ['ok' => 0, 'mesaj' => 'Veri boş geldi (API formatı farklı olabilir).'];
@@ -19283,6 +19288,102 @@ if (!function_exists('_halCek')) {
             }
             return $eklenen ? ['ok' => 1, 'mesaj' => $eklenen . ' ürün çekildi (' . $k['ad'] . ' · ' . $tarih . ').'] : ['ok' => 0, 'mesaj' => 'Eşleşen veri çıkmadı (bugün yayınlanmamış olabilir).'];
         } catch (\Throwable $e) { return ['ok' => 0, 'mesaj' => 'Bağlantı/format hatası (sunucu dış erişime kapalı olabilir).']; }
+    }
+}
+if (!function_exists('_halAdNorm')) {
+    // Hal/malzeme adını kıyas için sadeleştir: "SOĞAN  KURU" → "sogan kuru", "Kuru Soğan" → "kuru sogan"
+    function _halAdNorm($s)
+    {
+        $s = mb_strtolower(strtr((string) $s, ['İ' => 'i', 'I' => 'ı']), 'UTF-8');
+        $s = strtr($s, ['ı' => 'i', 'ş' => 's', 'ğ' => 'g', 'ü' => 'u', 'ö' => 'o', 'ç' => 'c', 'â' => 'a', 'î' => 'i', 'û' => 'u']);
+        $s = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $s);
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+}
+if (!function_exists('_halAdGoster')) {
+    function _halAdGoster($s)
+    {
+        $s = mb_strtolower(strtr(trim(preg_replace('/\s+/', ' ', (string) $s)), ['İ' => 'i', 'I' => 'ı']), 'UTF-8');
+        return preg_replace_callback('/(^|[\s(.\/-])(\p{L})/u', fn ($m) => $m[1] . (['i' => 'İ', 'ı' => 'I'][$m[2]] ?? mb_strtoupper($m[2], 'UTF-8')), $s);
+    }
+}
+if (!function_exists('_halEslesir')) {
+    // Kelime kümesi eşleşmesi (sıra önemsiz): "Domates" ⊂ "DOMATES SALKIM", "Kuru Soğan" = "SOĞAN KURU". "Su" → "SUSAM" eşleşmez.
+    function _halEslesir($malzemeAd, $halAd)
+    {
+        $m = array_filter(explode(' ', _halAdNorm($malzemeAd)), fn ($x) => mb_strlen($x) >= 2);
+        $h = array_filter(explode(' ', _halAdNorm($halAd)), fn ($x) => mb_strlen($x) >= 2);
+        if (!$m || !$h) return false;
+        if (count($m) === 1 && mb_strlen(reset($m)) < 3) return false;
+        return !array_diff($m, $h) || !array_diff($h, $m);
+    }
+}
+if (!function_exists('_halOtoGuncelle')) {
+    // İzmir hal bülteni: sayfa açılmasını beklemeden TÜM aktif şubelere günde bir kez. Bülten henüz yayınlanmadıysa saatte bir tekrar dener.
+    function _halOtoGuncelle($zorla = false)
+    {
+        $gun = today()->toDateString();
+        if (!$zorla && (cache()->get('hal_oto_' . $gun) || !cache()->add('hal_oto_deneme', 1, 3600))) return null;
+        if (function_exists('_restoHalEnsure')) _restoHalEnsure();
+        if (!Schema::hasTable('hal_fiyatlari') || !function_exists('_halCek')) return null;
+        $subeler = collect();
+        try { $subeler = Schema::hasColumn('subeler', 'aktif') ? DB::table('subeler')->where('aktif', 1)->pluck('id') : DB::table('subeler')->pluck('id'); } catch (\Throwable $e) {}
+        if (!$subeler->count()) { try { $subeler = DB::table('personeller')->where('aktif', 1)->distinct()->pluck('sube_id'); } catch (\Throwable $e) {} }
+        $sonuc = []; $hepsi = true;
+        foreach ($subeler as $sid) {
+            $sid = (int) $sid; if (!$sid) continue;
+            if (!$zorla && DB::table('hal_fiyatlari')->where('sube_id', $sid)->where('tarih', $gun)->where('kaynak', 'api')->exists()) continue;
+            $r = _halCek($sid, 'izmir');
+            $sonuc[$sid] = $r['mesaj'] ?? '';
+            if (!empty($r['ok'])) cache()->put('hal_cek_' . $sid . '_' . $gun, 1, now()->addHours(18));
+            else $hepsi = false;
+        }
+        if ($hepsi) cache()->put('hal_oto_' . $gun, 1, now()->addHours(30));
+        return $sonuc;
+    }
+}
+if (!function_exists('_radarHalKiyas')) {
+    // Fiyat Radarı: son alış fiyatın vs güncel İzmir hal fiyatı. Birim uyuşmazsa (çuval/kasa ↔ kg) fark hesaplanmaz, yalnız hal fiyatı gösterilir.
+    function _radarHalKiyas($sid)
+    {
+        $out = ['satirlar' => [], 'bulten' => null, 'urun_say' => 0, 'yillik_fazla' => 0];
+        if (!Schema::hasTable('hal_fiyatlari') || !Schema::hasTable('alis_fatura_kalemleri')) return $out;
+        $sonTarih = DB::table('hal_fiyatlari')->where('sube_id', (int) $sid)->where('ortalama', '>', 0)->max('tarih');
+        if (!$sonTarih && function_exists('_halCek')) { try { _halCek((int) $sid, 'izmir'); } catch (\Throwable $e) {} $sonTarih = DB::table('hal_fiyatlari')->where('sube_id', (int) $sid)->where('ortalama', '>', 0)->max('tarih'); }
+        if (!$sonTarih) return $out;
+        $hal = DB::table('hal_fiyatlari')->where('sube_id', (int) $sid)->where('tarih', $sonTarih)->where('ortalama', '>', 0)->get(['urun_ad', 'birim', 'asgari', 'azami', 'ortalama']);
+        $out['bulten'] = $sonTarih; $out['urun_say'] = $hal->count();
+        $malAd = DB::table('malzemeler')->pluck('ad', 'id'); $birimKis = DB::table('birimler')->pluck('kisaltma', 'id');
+        $lines = DB::table('alis_fatura_kalemleri as k')->join('alis_faturalari as f', 'k.fatura_id', '=', 'f.id')
+            ->where('f.sube_id', (int) $sid)->where('k.birim_fiyat', '>', 0)->whereDate('f.tarih', '>=', today()->subDays(120))
+            ->orderBy('f.tarih')->orderBy('k.id')->get(['k.malzeme_id', 'k.alis_birim_id', 'k.birim_fiyat', 'k.miktar', 'f.tarih']);
+        $grup = ['kg' => ['kg', 'kilogram', 'kilo'], 'adet' => ['adet', 'ad', 'tane', 'ade'], 'bag' => ['bag', 'demet']];
+        $grupBul = function ($b) use ($grup) { $b = _halAdNorm($b); foreach ($grup as $g => $l) if (in_array($b, $l, true)) return $g; return null; };
+        $fazla = 0;
+        foreach ($lines->groupBy('malzeme_id') as $mid => $g) {
+            $ad = $malAd[$mid] ?? null; if (!$ad) continue;
+            $cesit = $hal->filter(fn ($h) => _halEslesir($ad, $h->urun_ad))->values();
+            if (!$cesit->count()) continue;
+            $tam = $cesit->first(fn ($h) => _halAdNorm($h->urun_ad) === _halAdNorm($ad));
+            if ($tam) $cesit = collect([$tam]);
+            $ortlar = $cesit->pluck('ortalama')->map(fn ($x) => (float) $x)->sort()->values();
+            $halOrt = $ortlar[intdiv($ortlar->count(), 2)];
+            $halB = (string) ($cesit->first()->birim ?: 'KG');
+            $son = $g->last(); $benB = (string) ($birimKis[$son->alis_birim_id] ?? '');
+            $fiyat = (float) $son->birim_fiyat; $mikCarp = 1;
+            if (in_array(_halAdNorm($benB), ['g', 'gr', 'gram'], true)) { $fiyat *= 1000; $mikCarp = 0.001; $benG = 'kg'; } else $benG = $grupBul($benB);
+            $uyumlu = $benG && $benG === $grupBul($halB);
+            $fark = $uyumlu && $halOrt > 0 ? round(($fiyat - $halOrt) / $halOrt * 100, 0) : null;
+            $yillik = $uyumlu && $fiyat > $halOrt ? round(($fiyat - $halOrt) * (float) $g->sum('miktar') * $mikCarp * (365 / 120), 0) : 0;
+            if ($fark !== null && $fark > 15) $fazla += $yillik;
+            $out['satirlar'][] = ['ad' => $ad, 'birim' => $benB, 'son_fiyat' => (float) $son->birim_fiyat, 'son_tarih' => substr((string) $son->tarih, 0, 10),
+                'hal_ad' => $cesit->count() > 1 ? $cesit->count() . ' çeşit: ' . $cesit->pluck('urun_ad')->map(fn ($x) => _halAdGoster($x))->take(4)->implode(', ') : _halAdGoster($cesit->first()->urun_ad),
+                'hal_ort' => $halOrt, 'hal_min' => (float) $cesit->min('asgari'), 'hal_max' => (float) $cesit->max('azami'), 'hal_birim' => mb_strtolower($halB, 'UTF-8'),
+                'uyumlu' => $uyumlu, 'fiyat_hal_birim' => $uyumlu ? $fiyat : null, 'fark' => $fark, 'yillik' => $yillik];
+        }
+        usort($out['satirlar'], fn ($a, $b) => [$b['uyumlu'], $b['fark'] ?? -999] <=> [$a['uyumlu'], $a['fark'] ?? -999]);
+        $out['yillik_fazla'] = $fazla;
+        return $out;
     }
 }
 Route::post('/hal-fiyatlari/cek', function (Request $r) {
@@ -21363,6 +21464,7 @@ Route::get('/api/patron/fiyat-radari', function (Request $r) {
             $out['firsatlar'] = $firsat;
         }
     } catch (\Throwable $e) {}
+    try { if (function_exists('_restoHalEnsure')) _restoHalEnsure(); $out['hal'] = _radarHalKiyas($sid); } catch (\Throwable $e) {}
     return response()->json($out);
 });
 // ===== API (Flutter): Satınalma Analizi — tedarikçi karne + aylık harcama =====
