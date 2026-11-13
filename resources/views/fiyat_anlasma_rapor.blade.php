@@ -99,6 +99,29 @@ body.koyu #far .yes{color:#34d399}body.koyu #far .kir{color:#fb7185}
   #far .baski-bas{display:block !important}
 }
 #far .baski-bas{display:none;margin-bottom:12px}
+/* ── Kurumsal renk katmanı (Fiyat Anlaşmaları ile aynı): lacivert üst bant, beyaz kartlar ── */
+#far{--marka:#3730A3;--marka2:#4F46E5}
+#far .ust{background:linear-gradient(115deg,#1E1B4B 0%,#312E81 55%,#3730A3 100%);border-radius:18px;padding:14px 16px;box-shadow:0 10px 26px rgba(30,27,75,.2);margin-bottom:14px}
+body.koyu #far .ust{background:linear-gradient(115deg,#141233 0%,#24215f 60%,#2b2785 100%)}
+#far .ust .geri,#far .ust .hz,#far .ust .btn.ik{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.26);color:#fff}
+#far .ust .hz.on{background:#fff;border-color:#fff;color:var(--marka)}
+#far .ust .filtre input,#far .ust .filtre select{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.26);color:#fff;color-scheme:dark}
+#far .ust .filtre select option{color:#1e293b;background:#fff}
+#far .ust .btn:not(.ik){background:#fff;color:var(--marka)}
+#far .btn{background:var(--marka)}
+#far .k{border-top:3px solid var(--kr)}
+#far .k .ki{background:color-mix(in srgb,var(--kr) 12%,transparent)}
+#far .sekme.on{background:var(--marka)}
+#far .kart{border-top:3px solid var(--marka)}
+#far .kb .ms{color:var(--marka);background:color-mix(in srgb,var(--marka2) 10%,transparent);border-radius:9px;padding:6px;font-size:18px}
+body.koyu #far .kb .ms{color:#a5b4fc}
+#far th{background:var(--card2);border-bottom:1px solid var(--line)}
+#far th:first-child{border-radius:8px 0 0 8px}#far th:last-child{border-radius:0 8px 8px 0}
+#far .bos .ms{color:var(--marka);background:color-mix(in srgb,var(--marka2) 9%,transparent);width:72px;height:72px;border-radius:20px;display:grid;place-items:center;margin:0 auto 10px}
+body.koyu #far .bos .ms{color:#a5b4fc}
+#far .sutun i{background:#059669}
+#far .halka{background:conic-gradient(var(--marka) calc(var(--o) * 1%),var(--card2) 0)}
+@media print{ #far .ust{background:none;box-shadow:none;padding:0} #far .kart{border-top-color:#ddd} }
 </style>
 @endpush
 
