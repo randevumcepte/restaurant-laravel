@@ -206,146 +206,325 @@ if (!function_exists('_fr2Raporlar')) {
     }
 }
 
+if (!function_exists('_fr2Pano')) {
+    // Pano sayfası: büyük özet kartlar + grafik blokları (Excel'de gerçek grafik, PDF'te CSS çubuk)
+    function _fr2Pano(array $v, $ai = null)
+    {
+        $k = $v['kpi'] ?? [];
+        $kpi = [
+            ['Toplam alış', (float) ($k['toplam'] ?? 0), 'tl', '4F46E5'],
+            ['Gizli zam yıllık etkisi', (float) ($k['zam_etki'] ?? 0), 'tl', 'E11D48'],
+            ['En ucuzdan alsaydın (yıllık)', (float) ($k['ted_kayip'] ?? 0), 'tl', '0284C7'],
+            ['Hal üstü fazla ödeme (yıllık)', (float) ($k['hal_fazla'] ?? 0), 'tl', '059669'],
+            ['Toplam tasarruf potansiyeli', (float) (($k['zam_etki'] ?? 0) + ($k['ted_kayip'] ?? 0) + ($k['hal_fazla'] ?? 0)), 'tl', 'D97706'],
+            ['Fatura / alış satırı', ($k['fatura'] ?? 0) . ' / ' . ($k['kalem'] ?? 0), 'metin', '7C3AED'],
+            ['Tedarikçi / malzeme', ($k['tedarikci'] ?? 0) . ' / ' . ($k['malzeme'] ?? 0), 'metin', '0F766E'],
+            $ai ? ['AI satın alma puanı', (int) ($ai['skor'] ?? 0) . ' / 100', 'metin', '9333EA'] : ['Gizli zamlı malzeme', (int) ($k['zam_say'] ?? 0), 'sayi', 'BE123C'],
+        ];
+        $ayAd = ['01' => 'Oca', '02' => 'Şub', '03' => 'Mar', '04' => 'Nis', '05' => 'May', '06' => 'Haz', '07' => 'Tem', '08' => 'Ağu', '09' => 'Eyl', '10' => 'Eki', '11' => 'Kas', '12' => 'Ara'];
+        $toplam = max(0.01, (float) ($k['toplam'] ?? 0));
+        $karne = $v['karne'] ?? []; $tedSat = []; $diger = 0;
+        foreach ($karne as $i => $x) { if ($i < 6) $tedSat[] = [$x['ted'], $x['harcama'], round($x['harcama'] / $toplam * 100, 1)]; else $diger += $x['harcama']; }
+        if ($diger > 0) $tedSat[] = ['Diğer', round($diger, 2), round($diger / $toplam * 100, 1)];
+        $bloklar = [
+            ['baslik' => 'Aylık alış', 'grafik' => 'col', 'renk' => '8B5CF6', 'kol' => [['Ay', 'm'], ['Toplam alış', 'tl'], ['Alış satırı', 's']],
+                'sat' => array_map(function ($a) use ($ayAd, $v) {
+                    $say = count(array_filter($v['dokum'] ?? [], fn ($d) => substr($d['tarih'], 0, 7) === $a['ay']));
+                    return [($ayAd[substr($a['ay'], 5, 2)] ?? '') . ' ' . substr($a['ay'], 0, 4), $a['tutar'], $say];
+                }, $v['aylik'] ?? [])],
+            ['baslik' => 'Tedarikçi payı', 'grafik' => 'pie', 'renk' => 'F59E0B', 'kol' => [['Tedarikçi', 'm'], ['Harcama', 'tl'], ['Pay %', 'y']], 'sat' => $tedSat],
+            ['baslik' => 'En çok para giden 10 malzeme', 'grafik' => 'bar', 'renk' => '4F46E5', 'kol' => [['Malzeme', 'm'], ['Harcama', 'tl'], ['Son tedarikçi', 'm']],
+                'sat' => array_map(fn ($m) => [$m['ad'], $m['harcama'], $m['son_ted']], array_slice($v['malzemeler'] ?? [], 0, 10))],
+            ['baslik' => 'Gizli zamların yıllık etkisi (ilk 10)', 'grafik' => 'bar', 'renk' => 'E11D48', 'kol' => [['Malzeme', 'm'], ['Yıllık etki', 'tl'], ['Artış %', 'y']],
+                'sat' => array_map(fn ($z) => [$z['ad'], $z['yillik_etki'], $z['yuzde']], array_slice($v['zamlar'] ?? [], 0, 10))],
+            ['baslik' => 'En ucuz tedarikçiden alsaydın — yıllık kayıp (ilk 10)', 'grafik' => 'bar', 'renk' => '0284C7', 'kol' => [['Malzeme', 'm'], ['Yıllık kayıp', 'tl'], ['En ucuz', 'm']],
+                'sat' => array_map(fn ($x) => [$x['ad'], $x['yillik_kayip'], $x['en_ucuz_ted']], array_slice(array_values(array_filter($v['karsilastirma'] ?? [], fn ($x) => $x['yillik_kayip'] > 0)), 0, 10))],
+            ['baslik' => 'Kategori dağılımı', 'grafik' => 'pie', 'renk' => '0EA5E9', 'kol' => [['Kategori', 'm'], ['Harcama', 'tl'], ['Pay %', 'y']],
+                'sat' => array_map(fn ($x) => [$x['ad'], $x['tutar'], $x['pay']], array_slice($v['kategori'] ?? [], 0, 8))],
+        ];
+        return ['ad' => 'Pano', 'tip' => 'pano', 'kpi' => $kpi, 'bloklar' => array_values(array_filter($bloklar, fn ($b) => count($b['sat']) > 0))];
+    }
+}
+
 if (!function_exists('_fr2Sayfalar')) {
-    // Rapor → tablo sayfaları. Kolon tipi: m=metin, tl=para, y=yüzde, s=sayı, t=tarih
+    // Rapor → sayfalar. Kolon: [başlık, tip(m|tl|y|s|t), genişlik, bayraklar]
+    // bayraklar: top=toplam satırı, bar=veri çubuğu, isi=renk skalası (yüksek=kırmızı), isiy=ters (yüksek=yeşil), onc=öncelik rengi, sec=Evet/Hayır listesi
     function _fr2Sayfalar($rapor, array $v, $ai = null)
     {
         $tr = fn ($t) => $t ? \Carbon\Carbon::parse($t)->format('d.m.Y') : '';
-        $S = [];
-        $ozet = ['ad' => 'Özet', 'kol' => [['Gösterge', 'm', 38], ['Değer', 'm', 26]], 'sat' => [
-            ['Dönem', $tr($v['kpi']['baslangic'] ?? null) . ' – ' . $tr($v['kpi']['bitis'] ?? null)],
-            ['Toplam alış', number_format($v['kpi']['toplam'] ?? 0, 2, ',', '.') . ' ₺'],
-            ['Fatura / kalem', ($v['kpi']['fatura'] ?? 0) . ' / ' . ($v['kpi']['kalem'] ?? 0)],
-            ['Tedarikçi / malzeme', ($v['kpi']['tedarikci'] ?? 0) . ' / ' . ($v['kpi']['malzeme'] ?? 0)],
-            ['Gizli zam (eşik %' . $v['filtre']['esik'] . ')', ($v['kpi']['zam_say'] ?? 0) . ' malzeme · yıllık ~' . number_format($v['kpi']['zam_etki'] ?? 0, 0, ',', '.') . ' ₺'],
-            ['En ucuz tedarikçiden alsaydın (yıllık)', '~' . number_format($v['kpi']['ted_kayip'] ?? 0, 0, ',', '.') . ' ₺'],
-            ['Hal üstü fazla ödeme (yıllık)', '~' . number_format($v['kpi']['hal_fazla'] ?? 0, 0, ',', '.') . ' ₺'],
-        ]];
+        $pano = _fr2Pano($v, $rapor === 'ai' || $rapor === 'tam' ? $ai : null);
         $zam = ['ad' => 'Gizli Zamlar', 'not' => 'Kıyas: dönemdeki İLK alış → SON alış. "Aynı tedarikçide" = son tedarikçinin kendi ilk fiyatına göre zammı.',
             'kol' => [['Malzeme', 'm', 24], ['Birim', 'm', 7], ['İlk Alış Tarihi', 't', 12], ['İlk Tedarikçi', 'm', 22], ['İlk Fatura', 'm', 13], ['İlk Fiyat', 'tl', 12],
-                ['Son Alış Tarihi', 't', 12], ['Son Tedarikçi', 'm', 22], ['Son Fatura', 'm', 13], ['Son Fiyat', 'tl', 12], ['Artış %', 'y', 9], ['Aynı Tedarikçide %', 'y', 11],
-                ['Dönemin En Düşüğü', 'tl', 13], ['En Düşük Kimde', 'm', 22], ['Alış Sayısı', 's', 9], ['Yıllık Etki', 'tl', 13]],
+                ['Son Alış Tarihi', 't', 12], ['Son Tedarikçi', 'm', 22], ['Son Fatura', 'm', 13], ['Son Fiyat', 'tl', 12], ['Artış %', 'y', 9, 'isi'], ['Aynı Tedarikçide %', 'y', 11, 'isi'],
+                ['Dönemin En Düşüğü', 'tl', 13], ['En Düşük Kimde', 'm', 22], ['Alış Sayısı', 's', 9], ['Yıllık Etki', 'tl', 14, 'top bar']],
             'sat' => array_map(fn ($z) => [$z['ad'], $z['birim'], $z['ilk_tarih'], $z['ilk_ted'], $z['ilk_fatura'], $z['ilk'], $z['son_tarih'], $z['son_ted'], $z['son_fatura'], $z['son'],
                 $z['yuzde'], $z['ayni_ted_yuzde'], $z['en_dusuk'], $z['en_dusuk_ted'], $z['adet'], $z['yillik_etki']], $v['zamlar'])];
         $mlz = ['ad' => 'Malzeme Fiyatları', 'not' => 'Ortalama = miktar ağırlıklı (toplam tutar ÷ toplam miktar). Tasarruf payı = (ortalama − en düşük) × miktar.',
-            'kol' => [['Malzeme', 'm', 24], ['Kategori', 'm', 14], ['Birim', 'm', 7], ['Alış', 's', 7], ['Miktar', 's', 10], ['Harcama', 'tl', 14], ['Ort. Fiyat', 'tl', 12],
+            'kol' => [['Malzeme', 'm', 24], ['Kategori', 'm', 14], ['Birim', 'm', 7], ['Alış', 's', 7], ['Miktar', 's', 10], ['Harcama', 'tl', 15, 'top bar'], ['Ort. Fiyat', 'tl', 12],
                 ['En Düşük', 'tl', 12], ['En Düşük Kimden', 'm', 20], ['En Yüksek', 'tl', 12], ['En Yüksek Kimden', 'm', 20], ['Son Fiyat', 'tl', 12], ['Son Kimden', 'm', 20],
-                ['Son Tarih', 't', 11], ['Tedarikçi', 's', 9], ['Oynaklık %', 'y', 10], ['Tasarruf Payı', 'tl', 13]],
+                ['Son Tarih', 't', 11], ['Tedarikçi', 's', 9], ['Oynaklık %', 'y', 10, 'isi'], ['Tasarruf Payı', 'tl', 14, 'top bar']],
             'sat' => array_map(fn ($m) => [$m['ad'], $m['kategori'], $m['birim'], $m['alis_say'], $m['miktar'], $m['harcama'], $m['ort'], $m['min'], $m['min_ted'], $m['max'], $m['max_ted'],
                 $m['son'], $m['son_ted'], $m['son_tarih'], $m['ted_say'], $m['oynaklik'], $m['tasarruf']], $v['malzemeler'])];
         $tsat = [];
         foreach ($v['karsilastirma'] as $k) foreach ($k['tedler'] as $i => $t)
             $tsat[] = [$k['ad'], $k['birim'], $t['ted'], $i === 0 ? 'EN UCUZ' : '+' . number_format($k['en_ucuz'] > 0 ? ($t['ort'] - $k['en_ucuz']) / $k['en_ucuz'] * 100 : 0, 1, ',', '.') . '%',
-                $t['ort'], $t['son'], $t['son_tarih'], $t['miktar'], $t['harcama'], $t['alis_say'], $i === 0 ? $k['kayip'] : null];
+                $t['ort'], $t['son'], $t['son_tarih'], $t['miktar'], $t['harcama'], $t['alis_say'], $i === 0 ? $k['kayip'] : null, $i === 0 ? $k['yillik_kayip'] : null];
         $ted = ['ad' => 'Tedarikçi Karşılaştırma', 'not' => 'Gerçek alış faturalarından. Kayıp = her tedarikçiden aldığın miktarı en ucuz tedarikçinin ortalamasından alsaydın ödeyeceğin farkın toplamı.',
             'kol' => [['Malzeme', 'm', 24], ['Birim', 'm', 7], ['Tedarikçi', 'm', 24], ['En Ucuza Göre', 'm', 13], ['Ort. Fiyat', 'tl', 12], ['Son Fiyat', 'tl', 12], ['Son Tarih', 't', 11],
-                ['Miktar', 's', 10], ['Harcama', 'tl', 13], ['Alış', 's', 7], ['Malzeme Kaybı', 'tl', 13]], 'sat' => $tsat];
+                ['Miktar', 's', 10], ['Harcama', 'tl', 14, 'top'], ['Alış', 's', 7], ['Dönem Kaybı', 'tl', 14, 'top bar'], ['Yıllık Kayıp', 'tl', 14, 'top bar']], 'sat' => $tsat];
         $katS = ['ad' => 'Katalog Fırsatları', 'not' => 'Tedarikçi kartlarındaki güncel liste fiyatları (henüz alınmamış olabilir).',
-            'kol' => [['Malzeme', 'm', 24], ['En Ucuz Tedarikçi', 'm', 22], ['En Ucuz', 'tl', 12], ['En Pahalı Tedarikçi', 'm', 22], ['En Pahalı', 'tl', 12], ['Ucuzluk %', 'y', 10], ['Tedarikçi Sayısı', 's', 10]],
+            'kol' => [['Malzeme', 'm', 24], ['En Ucuz Tedarikçi', 'm', 22], ['En Ucuz', 'tl', 12], ['En Pahalı Tedarikçi', 'm', 22], ['En Pahalı', 'tl', 12], ['Ucuzluk %', 'y', 10, 'isiy'], ['Tedarikçi Sayısı', 's', 10]],
             'sat' => array_map(fn ($k) => [$k['ad'], $k['en_ucuz_ted'], $k['en_ucuz'], $k['en_pahali_ted'], $k['en_pahali'], $k['tasarruf'], $k['ted_say']], $v['katalog'])];
         $karne = ['ad' => 'Tedarikçi Karnesi', 'not' => 'Zamlı kalem = aynı tedarikçide fiyatı eşiğin üstünde artan malzeme. Pahalı kaldığı = başka tedarikçiden %5+ ucuz alınabilen malzeme.',
-            'kol' => [['Tedarikçi', 'm', 26], ['Harcama', 'tl', 14], ['Pay %', 'y', 8], ['Fatura', 's', 8], ['Kalem', 's', 8], ['Malzeme', 's', 9], ['Zamlı Kalem', 's', 10],
-                ['Ort. Zam %', 'y', 10], ['Pahalı Kaldığı', 's', 11], ['Son Alış', 't', 11]],
+            'kol' => [['Tedarikçi', 'm', 26], ['Harcama', 'tl', 15, 'top bar'], ['Pay %', 'y', 9, 'top'], ['Fatura', 's', 8, 'top'], ['Kalem', 's', 8, 'top'], ['Malzeme', 's', 9], ['Zamlı Kalem', 's', 11, 'top isi'],
+                ['Ort. Zam %', 'y', 10, 'isi'], ['Pahalı Kaldığı', 's', 12, 'top isi'], ['Son Alış', 't', 11]],
             'sat' => array_map(fn ($k) => [$k['ted'], $k['harcama'], $k['pay'], $k['fatura'], $k['kalem'], $k['malzeme'], $k['zamli'], $k['ort_zam'], $k['pahali'], $k['son_alis']], $v['karne'])];
         $hal = ['ad' => 'Hal Kıyası', 'not' => 'İzmir Büyükşehir hal bülteni' . (!empty($v['hal']['bulten']) ? ' (' . $tr($v['hal']['bulten']) . ')' : '') . '. Hal toptan fiyattır; %10–20 üstü normal. Fark yalnız birimler aynıysa hesaplanır.',
             'kol' => [['Malzeme', 'm', 22], ['Son Tedarikçi', 'm', 22], ['Haldeki Karşılığı', 'm', 28], ['Hal Asgari', 'tl', 11], ['Hal Ortalama', 'tl', 12], ['Hal Azami', 'tl', 11],
-                ['Hal Birimi', 'm', 8], ['Senin Son Alış', 'tl', 13], ['Senin Birimin', 'm', 9], ['Son Alış Tarihi', 't', 12], ['Fark %', 'y', 9], ['Yıllık Fazla', 'tl', 12]],
+                ['Hal Birimi', 'm', 8], ['Senin Son Alış', 'tl', 13], ['Senin Birimin', 'm', 9], ['Son Alış Tarihi', 't', 12], ['Fark %', 'y', 9, 'isi'], ['Yıllık Fazla', 'tl', 13, 'top bar']],
             'sat' => array_map(fn ($h) => [$h['ad'], $h['tedarikci'] ?? '', $h['hal_ad'], $h['hal_min'] ?: null, $h['hal_ort'], $h['hal_max'] ?: null, $h['hal_birim'],
                 $h['uyumlu'] ? $h['fiyat_hal_birim'] : $h['son_fiyat'], $h['uyumlu'] ? $h['hal_birim'] : $h['birim'], $h['son_tarih'], $h['fark'], $h['yillik'] ?: null], $v['hal']['satirlar'] ?? [])];
         $dokum = ['ad' => 'Alış Dökümü', 'not' => 'Değişim = aynı malzemenin bir önceki alışına göre birim fiyat farkı.',
             'kol' => [['Tarih', 't', 11], ['Malzeme', 'm', 24], ['Kategori', 'm', 14], ['Tedarikçi', 'm', 24], ['Fatura No', 'm', 14], ['Miktar', 's', 10], ['Birim', 'm', 7],
-                ['Birim Fiyat', 'tl', 12], ['Tutar', 'tl', 13], ['Önceki Alışa Göre %', 'y', 12]],
+                ['Birim Fiyat', 'tl', 12], ['Tutar', 'tl', 14, 'top bar'], ['Önceki Alışa Göre %', 'y', 12, 'isi']],
             'sat' => array_map(fn ($d) => [$d['tarih'], $d['malzeme'], $d['kategori'], $d['tedarikci'], $d['fatura_no'], $d['miktar'], $d['birim'], $d['birim_fiyat'], $d['tutar'], $d['degisim']], $v['dokum'])];
-        $aylik = ['ad' => 'Aylık Harcama', 'kol' => [['Ay', 'm', 12], ['Toplam Alış', 'tl', 16]], 'sat' => array_map(fn ($a) => [$a['ay'], $a['tutar']], $v['aylik'])];
-        $kategori = ['ad' => 'Kategori Dağılımı', 'kol' => [['Kategori', 'm', 24], ['Harcama', 'tl', 16], ['Pay %', 'y', 9]], 'sat' => array_map(fn ($k) => [$k['ad'], $k['tutar'], $k['pay']], $v['kategori'])];
+        $aylik = ['ad' => 'Aylık Harcama', 'kol' => [['Ay', 'm', 12], ['Toplam Alış', 'tl', 16, 'top bar']], 'sat' => array_map(fn ($a) => [$a['ay'], $a['tutar']], $v['aylik'])];
+        $kategori = ['ad' => 'Kategori Dağılımı', 'kol' => [['Kategori', 'm', 24], ['Harcama', 'tl', 16, 'top bar'], ['Pay %', 'y', 9, 'top']], 'sat' => array_map(fn ($k) => [$k['ad'], $k['tutar'], $k['pay']], $v['kategori'])];
         $aiS = [];
         if ($ai) {
-            $aiS[] = ['ad' => 'AI Özet', 'kol' => [['Bölüm', 'm', 22], ['İçerik', 'm', 110]], 'sat' => [['Genel değerlendirme', $ai['ozet'] ?? ''], ['Satın alma skoru', (string) ($ai['skor'] ?? '')], ['Analiz tarihi', $ai['_zaman'] ?? '']]];
-            $bol = ['kritik' => 'Kritik Bulgular', 'gecmis_hatalar' => 'Geçmiş Hatalar', 'firsatlar' => 'Tasarruf Fırsatları', 'gelecek' => 'Gelecek Önerileri', 'pazarlik' => 'Pazarlık Önerileri'];
+            $bol = ['kritik' => 'Kritik bulgu', 'gecmis_hatalar' => 'Geçmiş hata', 'firsatlar' => 'Tasarruf fırsatı', 'gelecek' => 'Gelecek önerisi'];
             $sat = [];
-            foreach ($bol as $k => $ad) foreach ((array) ($ai[$k] ?? []) as $x) $sat[] = [$ad, $x['baslik'] ?? ($x['tedarikci'] ?? ''), $x['detay'] ?? ($x['arguman'] ?? ''), isset($x['tutar']) && is_numeric($x['tutar']) ? (float) $x['tutar'] : null];
-            $aiS[] = ['ad' => 'AI Bulgular', 'kol' => [['Bölüm', 'm', 18], ['Başlık', 'm', 34], ['Detay', 'm', 90], ['Tutar', 'tl', 13]], 'sat' => $sat];
-            $aiS[] = ['ad' => 'AI Aksiyonlar', 'kol' => [['Öncelik', 'm', 10], ['Yapılacak', 'm', 90], ['Sorumlu', 'm', 18]],
-                'sat' => array_map(fn ($a) => [mb_strtoupper((string) ($a['oncelik'] ?? ''), 'UTF-8'), $a['is'] ?? '', $a['sorumlu'] ?? ''], (array) ($ai['aksiyonlar'] ?? []))];
+            foreach ($bol as $kk => $ad) foreach ((array) ($ai[$kk] ?? []) as $x) $sat[] = [$ad, $x['baslik'] ?? '', $x['detay'] ?? '', isset($x['tutar']) && is_numeric($x['tutar']) && $x['tutar'] > 0 ? (float) $x['tutar'] : null];
+            $aiS[] = ['ad' => 'AI Değerlendirme', 'ai' => 1, 'not' => 'Puan ' . (int) ($ai['skor'] ?? 0) . '/100 · ' . ($ai['_zaman'] ?? '') . ' · ' . ($ai['ozet'] ?? ''),
+                'kol' => [['Bölüm', 'm', 18], ['Başlık', 'm', 34], ['Detay', 'm', 80], ['Tahmini Yıllık Tutar', 'tl', 18, 'top bar']], 'sat' => $sat];
+            $oncAd = ['yuksek' => 'YÜKSEK', 'orta' => 'ORTA', 'dusuk' => 'DÜŞÜK'];
+            $aiS[] = ['ad' => 'Aksiyon Planı', 'ai' => 1, 'not' => '"Yapıldı mı?" sütunundan durum seç; takip listesi olarak kullan.',
+                'kol' => [['Öncelik', 'm', 11, 'onc'], ['Yapılacak', 'm', 80], ['Sorumlu', 'm', 16], ['Yapıldı mı?', 'm', 16, 'sec'], ['Not', 'm', 30]],
+                'sat' => array_map(fn ($a) => [$oncAd[$a['oncelik'] ?? ''] ?? mb_strtoupper((string) ($a['oncelik'] ?? ''), 'UTF-8'), $a['is'] ?? '', $a['sorumlu'] ?? '', '', ''], (array) ($ai['aksiyonlar'] ?? []))];
+            $kHar = []; foreach ($v['karne'] as $kr) $kHar[$kr['ted']] = $kr;
+            $aiS[] = ['ad' => 'Pazarlık Notları', 'ai' => 1, 'not' => 'Tedarikçiyle görüşmede kullanılacak argümanlar ve o tedarikçinin rakamları.',
+                'kol' => [['Tedarikçi', 'm', 24], ['Argüman', 'm', 80], ['Dönem Harcaması', 'tl', 16, 'top bar'], ['Pay %', 'y', 9], ['Zamlı Kalem', 's', 11, 'isi'], ['Pahalı Kaldığı', 's', 12, 'isi']],
+                'sat' => array_map(function ($p) use ($kHar) {
+                    $kr = $kHar[$p['tedarikci'] ?? ''] ?? null;
+                    return [$p['tedarikci'] ?? '', $p['arguman'] ?? '', $kr['harcama'] ?? null, $kr['pay'] ?? null, $kr['zamli'] ?? null, $kr['pahali'] ?? null];
+                }, (array) ($ai['pazarlik'] ?? []))];
         }
         switch ($rapor) {
-            case 'zam': return [$ozet, $zam];
-            case 'malzeme': return [$mlz];
-            case 'tedarikci': return [$ted, $katS];
-            case 'karne': return [$karne];
-            case 'hal': return [$hal];
-            case 'dokum': return [$dokum];
-            case 'aylik': return [$aylik, $kategori];
-            case 'ai': return $aiS ?: [['ad' => 'AI Analiz', 'kol' => [['Bilgi', 'm', 80]], 'sat' => [['Henüz AI analizi yapılmadı. Fiyat Radarı > AI Analiz sekmesinden "Analiz Et" de.']]]];
-            default: return array_merge([$ozet, $zam, $mlz, $ted, $katS, $karne, $hal, $aylik, $kategori, $dokum], $aiS);
+            case 'zam': return [$pano, $zam];
+            case 'malzeme': return [$pano, $mlz];
+            case 'tedarikci': return [$pano, $ted, $katS];
+            case 'karne': return [$pano, $karne];
+            case 'hal': return [$pano, $hal];
+            case 'dokum': return [$pano, $dokum];
+            case 'aylik': return [$pano, $aylik, $kategori];
+            case 'ai':
+                if (!$aiS) return [$pano, ['ad' => 'AI Analiz', 'kol' => [['Bilgi', 'm', 80]], 'sat' => [['Henüz AI analizi yapılmadı. Fiyat Radarı > AI Analiz sekmesinden "Analiz Et" de.']]]];
+                // AI yorumları + dayandığı rakamlar (kanıt tabloları)
+                return array_merge([$pano], $aiS, [$zam, $ted, $karne, $mlz, $hal]);
+            default: return array_merge([$pano], $aiS, [$zam, $mlz, $ted, $katS, $karne, $hal, $aylik, $kategori, $dokum]);
         }
     }
 }
 
 if (!function_exists('_fr2Xlsx')) {
-    // Basit ama gerçek .xlsx (ZipArchive): çok sayfa, başlık stili, ₺ ve % biçimi, sabit başlık satırı, filtre. ZipArchive yoksa null.
+    // Gerçek .xlsx (ZipArchive): Pano (özet kartlar + grafikler), veri çubukları, renk skalası, toplam satırı (SUBTOTAL), sabit başlık, filtre.
     function _fr2Xlsx(array $sayfalar, $baslik, $altBaslik)
     {
         if (!class_exists('ZipArchive')) return null;
         $x = fn ($s) => htmlspecialchars((string) $s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $harf = function ($n) { $s = ''; $n++; while ($n > 0) { $m = ($n - 1) % 26; $s = chr(65 + $m) . $s; $n = intdiv($n - 1, 26); } return $s; };
-        $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<numFmts count="3"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;₺&quot;"/><numFmt numFmtId="165" formatCode="0.0&quot;%&quot;"/><numFmt numFmtId="166" formatCode="#,##0.###"/></numFmts>'
-            . '<fonts count="4"><font><sz val="10"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="15"/><color rgb="FF4C1D95"/><name val="Calibri"/></font><font><i/><sz val="9"/><color rgb="FF64748B"/><name val="Calibri"/></font></fonts>'
-            . '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF6D28D9"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF5F3FF"/></patternFill></fill></fills>'
-            . '<borders count="2"><border/><border><bottom style="thin"><color rgb="FFE4E7F2"/></bottom></border></borders>'
-            . '<cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="8">'
-            . '<xf/>'
-            . '<xf fontId="1" fillId="2" applyFont="1" applyFill="1"><alignment vertical="center" wrapText="1"/></xf>'
-            . '<xf fontId="2" applyFont="1"/>'
-            . '<xf fontId="3" applyFont="1"/>'
-            . '<xf numFmtId="164" borderId="1" applyNumberFormat="1" applyBorder="1"/>'
-            . '<xf numFmtId="165" borderId="1" applyNumberFormat="1" applyBorder="1"/>'
-            . '<xf numFmtId="166" borderId="1" applyNumberFormat="1" applyBorder="1"/>'
-            . '<xf borderId="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>'
-            . '</cellXfs></styleSheet>';
+        // ---- stil kayıt defteri (tekilleştirilmiş) ----
+        $fonts = ['<font><sz val="10"/><name val="Calibri"/></font>']; $fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'];
+        $borders = ['<border/>', '<border><bottom style="thin"><color rgb="FFE4E7F2"/></bottom></border>', '<border><top style="medium"><color rgb="FF6D28D9"/></top></border>'];
+        $xfs = ['<xf/>']; $xfIdx = ['' => 0];
+        $kayit = function (array &$liste, $xml) { $i = array_search($xml, $liste, true); if ($i === false) { $liste[] = $xml; $i = count($liste) - 1; } return $i; };
+        // dikkat: arrow fn ($fonts'u kopyalar) değil, referanslı closure
+        $font = function ($sz, $renk = '1E293B', $b = false, $i = false) use (&$fonts, $kayit) { return $kayit($fonts, '<font>' . ($b ? '<b/>' : '') . ($i ? '<i/>' : '') . '<sz val="' . $sz . '"/><color rgb="FF' . $renk . '"/><name val="Calibri"/></font>'); };
+        $fill = function ($renk) use (&$fills, $kayit) { return $kayit($fills, '<fill><patternFill patternType="solid"><fgColor rgb="FF' . $renk . '"/></patternFill></fill>'); };
+        $xf = function ($fontId = 0, $fillId = 0, $numFmt = 0, $border = 0, $hiza = '') use (&$xfs, &$xfIdx) {
+            $anah = "$fontId|$fillId|$numFmt|$border|$hiza";
+            if (isset($xfIdx[$anah])) return $xfIdx[$anah];
+            $xfs[] = '<xf numFmtId="' . $numFmt . '" fontId="' . $fontId . '" fillId="' . $fillId . '" borderId="' . $border . '" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"' . ($hiza ? ' applyAlignment="1">' . $hiza . '</xf>' : '/>');
+            return $xfIdx[$anah] = count($xfs) - 1;
+        };
+        $sar = '<alignment vertical="top" wrapText="1"/>'; $orta = '<alignment horizontal="center" vertical="center" wrapText="1"/>';
+        $S = [
+            'baslik' => $xf($font(15, '4C1D95', true)), 'alt' => $xf($font(9, '64748B', false, true)),
+            'kolon' => $xf($font(10, 'FFFFFF', true), $fill('6D28D9'), 0, 0, '<alignment vertical="center" wrapText="1"/>'),
+            'tl' => $xf(0, 0, 164, 1), 'y' => $xf(0, 0, 165, 1), 's' => $xf(0, 0, 166, 1), 'm' => $xf(0, 0, 0, 1, $sar),
+            'top_m' => $xf($font(10, '4C1D95', true), $fill('F5F3FF'), 0, 2), 'top_tl' => $xf($font(10, '4C1D95', true), $fill('F5F3FF'), 164, 2),
+            'top_y' => $xf($font(10, '4C1D95', true), $fill('F5F3FF'), 165, 2), 'top_s' => $xf($font(10, '4C1D95', true), $fill('F5F3FF'), 166, 2),
+            'blok' => $xf($font(12, '4C1D95', true)),
+        ];
         $tmp = tempnam(sys_get_temp_dir(), 'frx');
         $z = new \ZipArchive();
         if ($z->open($tmp, \ZipArchive::OVERWRITE) !== true) return null;
-        $wb = ''; $rels = ''; $ct = ''; $kullanilan = [];
+        $wb = ''; $rels = ''; $ct = ''; $kullanilan = []; $cizimNo = 0; $grafikNo = 0;
+        $hucre = function ($ref, $val, $tip, $stil) use ($x) {
+            if ($val === null || $val === '') return '';
+            if (in_array($tip, ['tl', 'y', 's', 'n'], true) && is_numeric($val)) return '<c r="' . $ref . '" s="' . $stil . '"><v>' . (float) $val . '</v></c>';
+            if ($tip === 't' && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $val)) $val = \Carbon\Carbon::parse($val)->format('d.m.Y');
+            return '<c r="' . $ref . '" t="inlineStr" s="' . $stil . '"><is><t xml:space="preserve">' . htmlspecialchars((string) $val, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</t></is></c>';
+        };
+        // Grafik XML (sütun/çubuk/halka) — veriler Pano'daki hücrelere bağlı + önbellek değerleri
+        $grafikXml = function ($tip, $bas, $sayfa, $catRef, $valRef, array $cats, array $vals, $renk) use ($x) {
+            $n = count($cats);
+            $strC = '<c:strCache><c:ptCount val="' . $n . '"/>'; foreach ($cats as $i => $c) $strC .= '<c:pt idx="' . $i . '"><c:v>' . $x($c) . '</c:v></c:pt>'; $strC .= '</c:strCache>';
+            $numC = '<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="' . $n . '"/>'; foreach ($vals as $i => $vv) $numC .= '<c:pt idx="' . $i . '"><c:v>' . (float) $vv . '</c:v></c:pt>'; $numC .= '</c:numCache>';
+            $ref = fn ($r) => "'" . str_replace("'", "''", $sayfa) . "'!" . $r;
+            $catvals = '<c:cat><c:strRef><c:f>' . $x($ref($catRef)) . '</c:f>' . $strC . '</c:strRef></c:cat><c:val><c:numRef><c:f>' . $x($ref($valRef)) . '</c:f>' . $numC . '</c:numRef></c:val>';
+            $baslikXml = '<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1200" b="1"/></a:pPr><a:r><a:rPr lang="tr-TR" sz="1200" b="1"><a:solidFill><a:srgbClr val="4C1D95"/></a:solidFill></a:rPr><a:t>' . $x($bas) . '</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>';
+            $etiket = fn ($fmt, $yuzde) => '<c:dLbls><c:numFmt formatCode="' . $fmt . '" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="1"/></a:pPr><a:endParaRPr lang="tr-TR"/></a:p></c:txPr>'
+                . '<c:showLegendKey val="0"/><c:showVal val="' . ($yuzde ? 0 : 1) . '"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="' . ($yuzde ? 1 : 0) . '"/><c:showBubbleSize val="0"/></c:dLbls>';
+            if ($tip === 'pie') {
+                $palet = ['7C3AED', 'F59E0B', '0EA5E9', '10B981', 'EC4899', '4F46E5', 'F43F5E', '64748B', '14B8A6', 'A855F7'];
+                $dpt = ''; foreach ($cats as $i => $c) $dpt .= '<c:dPt><c:idx val="' . $i . '"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="' . $palet[$i % 10] . '"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr></c:dPt>';
+                $govde = '<c:doughnutChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>' . $x($bas) . '</c:v></c:tx>' . $dpt . $etiket('0%', true) . $catvals . '</c:ser><c:firstSliceAng val="0"/><c:holeSize val="55"/></c:doughnutChart>';
+                $alt = '<c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>';
+            } else {
+                $yatay = $tip === 'bar';
+                $govde = '<c:barChart><c:barDir val="' . ($yatay ? 'bar' : 'col') . '"/><c:grouping val="clustered"/><c:varyColors val="0"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>' . $x($bas) . '</c:v></c:tx>'
+                    . '<c:spPr><a:solidFill><a:srgbClr val="' . $renk . '"/></a:solidFill></c:spPr><c:invertIfNegative val="0"/>' . $etiket('#,##0', false) . $catvals . '</c:ser><c:gapWidth val="55"/><c:axId val="5001"/><c:axId val="5002"/></c:barChart>'
+                    . '<c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="' . ($yatay ? 'maxMin' : 'minMax') . '"/></c:scaling><c:delete val="0"/><c:axPos val="' . ($yatay ? 'l' : 'b') . '"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="tr-TR"/></a:p></c:txPr><c:crossAx val="5002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>'
+                    . '<c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="' . ($yatay ? 't' : 'l') . '"/><c:majorGridlines><c:spPr><a:ln><a:solidFill><a:srgbClr val="E4E7F2"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:numFmt formatCode="#,##0" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="800"/></a:pPr><a:endParaRPr lang="tr-TR"/></a:p></c:txPr><c:crossAx val="5001"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>';
+                $alt = '';
+            }
+            return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                . '<c:roundedCorners val="0"/><c:chart>' . $baslikXml . '<c:plotArea><c:layout/>' . $govde . '</c:plotArea>' . $alt . '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart>'
+                . '<c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="E4E7F2"/></a:solidFill></a:ln></c:spPr></c:chartSpace>';
+        };
         foreach (array_values($sayfalar) as $i => $s) {
             $n = $i + 1;
             $ad = mb_substr(preg_replace('/[\[\]\:\*\?\/\\\\]/u', ' ', $s['ad']), 0, 31);
             while (isset($kullanilan[$ad])) $ad = mb_substr($ad, 0, 28) . ' ' . $n;
             $kullanilan[$ad] = 1;
-            $kolSay = count($s['kol']);
-            $cols = '<cols>'; foreach ($s['kol'] as $c => $k) $cols .= '<col min="' . ($c + 1) . '" max="' . ($c + 1) . '" width="' . ($k[2] ?? 14) . '" customWidth="1"/>'; $cols .= '</cols>';
-            $rows = '<row r="1" ht="22" customHeight="1"><c r="A1" t="inlineStr" s="2"><is><t>' . $x($baslik . ' — ' . $s['ad']) . '</t></is></c></row>';
-            $rows .= '<row r="2"><c r="A2" t="inlineStr" s="3"><is><t>' . $x($altBaslik . (!empty($s['not']) ? ' · ' . $s['not'] : '')) . '</t></is></c></row>';
-            $rows .= '<row r="4" ht="28" customHeight="1">';
-            foreach ($s['kol'] as $c => $k) $rows .= '<c r="' . $harf($c) . '4" t="inlineStr" s="1"><is><t>' . $x($k[0]) . '</t></is></c>';
-            $rows .= '</row>';
-            $r = 5;
-            foreach ($s['sat'] as $sat) {
-                $rows .= '<row r="' . $r . '">';
-                foreach ($s['kol'] as $c => $k) {
-                    $val = $sat[$c] ?? null; $ref = $harf($c) . $r;
-                    if ($val === null || $val === '') continue;
-                    $tip = $k[1];
-                    if (in_array($tip, ['tl', 'y', 's'], true) && is_numeric($val)) {
-                        $rows .= '<c r="' . $ref . '" s="' . ($tip === 'tl' ? 4 : ($tip === 'y' ? 5 : 6)) . '"><v>' . (float) $val . '</v></c>';
-                    } else {
-                        if ($tip === 't' && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $val)) $val = \Carbon\Carbon::parse($val)->format('d.m.Y');
-                        $rows .= '<c r="' . $ref . '" t="inlineStr" s="7"><is><t xml:space="preserve">' . $x($val) . '</t></is></c>';
+            $rows = ''; $merge = []; $cf = ''; $dv = ''; $cols = ''; $cizim = ''; $sheetRels = ''; $pane = true; $filtre = ''; $pri = 1;
+            if (($s['tip'] ?? '') === 'pano') {
+                // ---------- PANO ----------
+                $pane = false;
+                $cols = '<cols><col min="1" max="1" width="2" customWidth="1"/><col min="2" max="13" width="12.5" customWidth="1"/></cols>';
+                $rows .= '<row r="1" ht="24" customHeight="1"><c r="B1" t="inlineStr" s="' . $S['baslik'] . '"><is><t>' . $x($baslik) . '</t></is></c></row>';
+                $rows .= '<row r="2"><c r="B2" t="inlineStr" s="' . $S['alt'] . '"><is><t>' . $x($altBaslik) . '</t></is></c></row>';
+                $r = 4;
+                foreach (array_chunk($s['kpi'], 4) as $grup) {
+                    $l1 = '<row r="' . $r . '" ht="18" customHeight="1">'; $l2 = '<row r="' . ($r + 1) . '" ht="22" customHeight="1">'; $l3 = '<row r="' . ($r + 2) . '" ht="16" customHeight="1">';
+                    foreach ($grup as $gi => [$et, $deg, $fmt, $renk]) {
+                        $c0 = 1 + $gi * 3; $a = $harf($c0); $b = $harf($c0 + 2);
+                        $fl = $fill($renk);
+                        $stL = $xf($font(9, 'FFFFFF', true), $fl, 0, 0, '<alignment horizontal="left" vertical="center" indent="1"/>');
+                        $stV = $xf($font(18, 'FFFFFF', true), $fl, $fmt === 'tl' ? 167 : 0, 0, '<alignment horizontal="left" vertical="center" indent="1"/>');
+                        $l1 .= '<c r="' . $a . $r . '" t="inlineStr" s="' . $stL . '"><is><t>' . $x($et) . '</t></is></c>';
+                        for ($c = $c0 + 1; $c <= $c0 + 2; $c++) $l1 .= '<c r="' . $harf($c) . $r . '" s="' . $stL . '"/>';
+                        $l2 .= ($fmt === 'metin' ? '<c r="' . $a . ($r + 1) . '" t="inlineStr" s="' . $stV . '"><is><t>' . $x($deg) . '</t></is></c>' : '<c r="' . $a . ($r + 1) . '" s="' . $stV . '"><v>' . (float) $deg . '</v></c>');
+                        for ($c = $c0 + 1; $c <= $c0 + 2; $c++) $l2 .= '<c r="' . $harf($c) . ($r + 1) . '" s="' . $stV . '"/>';
+                        for ($c = $c0; $c <= $c0 + 2; $c++) $l3 .= '<c r="' . $harf($c) . ($r + 2) . '" s="' . $stV . '"/>';
+                        $merge[] = $a . $r . ':' . $b . $r; $merge[] = $a . ($r + 1) . ':' . $b . ($r + 2);
+                    }
+                    $rows .= $l1 . '</row>' . $l2 . '</row>' . $l3 . '</row>';
+                    $r += 4;
+                }
+                $r += 1;
+                $anchors = ''; $drRels = '';
+                foreach ($s['bloklar'] as $bi => $bl) {
+                    $bas = $r; $adet = count($bl['sat']);
+                    $rows .= '<row r="' . $r . '" ht="20" customHeight="1"><c r="B' . $r . '" t="inlineStr" s="' . $S['blok'] . '"><is><t>' . $x($bl['baslik']) . '</t></is></c></row>';
+                    $r++;
+                    // tablo: B:C (ad, birleşik) · D (değer) · E (ek)
+                    $rows .= '<row r="' . $r . '">'; foreach ([['B', 0], ['D', 1], ['E', 2]] as [$ck, $ki]) { $rows .= '<c r="' . $ck . $r . '" t="inlineStr" s="' . $S['kolon'] . '"><is><t>' . $x($bl['kol'][$ki][0]) . '</t></is></c>'; if ($ck === 'B') $rows .= '<c r="C' . $r . '" s="' . $S['kolon'] . '"/>'; }
+                    $rows .= '</row>'; $merge[] = 'B' . $r . ':C' . $r; $r++;
+                    $ilk = $r; $cats = []; $vals = [];
+                    foreach ($bl['sat'] as $sat) {
+                        $rows .= '<row r="' . $r . '">' . $hucre('B' . $r, $sat[0], 'm', $S['m']) . '<c r="C' . $r . '" s="' . $S['m'] . '"/>' . $hucre('D' . $r, $sat[1], $bl['kol'][1][1], $S[$bl['kol'][1][1]] ?? $S['m'])
+                            . $hucre('E' . $r, $sat[2] ?? null, $bl['kol'][2][1], $S[$bl['kol'][2][1]] ?? $S['m']) . '</row>';
+                        $merge[] = 'B' . $r . ':C' . $r; $cats[] = (string) $sat[0]; $vals[] = (float) $sat[1]; $r++;
+                    }
+                    $son = $r - 1;
+                    $rows .= '<row r="' . $r . '"><c r="B' . $r . '" t="inlineStr" s="' . $S['top_m'] . '"><is><t>TOPLAM</t></is></c><c r="C' . $r . '" s="' . $S['top_m'] . '"/><c r="D' . $r . '" s="' . $S['top_tl'] . '"><f>SUM(D' . $ilk . ':D' . $son . ')</f></c><c r="E' . $r . '" s="' . $S['top_m'] . '"/></row>';
+                    $merge[] = 'B' . $r . ':C' . $r;
+                    $cf .= '<conditionalFormatting sqref="D' . $ilk . ':D' . $son . '"><cfRule type="dataBar" priority="' . ($pri++) . '"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF' . $bl['renk'] . '"/></dataBar></cfRule></conditionalFormatting>';
+                    // grafik: F..M sütunları, bloğun yanında
+                    $grafikNo++; $gid = $grafikNo;
+                    $z->addFromString('xl/charts/chart' . $gid . '.xml', $grafikXml($bl['grafik'], $bl['baslik'], $ad, '$B$' . $ilk . ':$B$' . $son, '$D$' . $ilk . ':$D$' . $son, $cats, $vals, $bl['renk']));
+                    $ct .= '<Override PartName="/xl/charts/chart' . $gid . '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>';
+                    $yuk = max(16, $adet + 4);
+                    $anchors .= '<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>6</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' . ($bas - 1) . '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'
+                        . '<xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' . ($bas - 1 + $yuk) . '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+                        . '<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="' . ($bi + 2) . '" name="Grafik ' . ($bi + 1) . '"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>'
+                        . '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId' . ($bi + 1) . '"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>';
+                    $drRels .= '<Relationship Id="rId' . ($bi + 1) . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart' . $gid . '.xml"/>';
+                    $r = max($r + 2, $bas + $yuk + 1);
+                }
+                if ($anchors) {
+                    $cizimNo++;
+                    $z->addFromString('xl/drawings/drawing' . $cizimNo . '.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' . $anchors . '</xdr:wsDr>');
+                    $z->addFromString('xl/drawings/_rels/drawing' . $cizimNo . '.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . $drRels . '</Relationships>');
+                    $ct .= '<Override PartName="/xl/drawings/drawing' . $cizimNo . '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
+                    $cizim = '<drawing r:id="rId1"/>';
+                    $sheetRels = '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing' . $cizimNo . '.xml"/>';
+                }
+            } else {
+                // ---------- TABLO SAYFASI ----------
+                $kolSay = count($s['kol']);
+                $cols = '<cols>'; foreach ($s['kol'] as $c => $k) $cols .= '<col min="' . ($c + 1) . '" max="' . ($c + 1) . '" width="' . ($k[2] ?? 14) . '" customWidth="1"/>'; $cols .= '</cols>';
+                $rows = '<row r="1" ht="22" customHeight="1"><c r="A1" t="inlineStr" s="' . $S['baslik'] . '"><is><t>' . $x($baslik . ' — ' . $s['ad']) . '</t></is></c></row>';
+                $rows .= '<row r="2"><c r="A2" t="inlineStr" s="' . $S['alt'] . '"><is><t>' . $x($altBaslik) . '</t></is></c></row>';
+                if (!empty($s['not'])) $rows .= '<row r="3"><c r="A3" t="inlineStr" s="' . $S['alt'] . '"><is><t>' . $x($s['not']) . '</t></is></c></row>';
+                $rows .= '<row r="4" ht="30" customHeight="1">';
+                foreach ($s['kol'] as $c => $k) $rows .= '<c r="' . $harf($c) . '4" t="inlineStr" s="' . $S['kolon'] . '"><is><t>' . $x($k[0]) . '</t></is></c>';
+                $rows .= '</row>';
+                $r = 5;
+                foreach ($s['sat'] as $sat) {
+                    $rows .= '<row r="' . $r . '">';
+                    foreach ($s['kol'] as $c => $k) $rows .= $hucre($harf($c) . $r, $sat[$c] ?? null, $k[1], $S[$k[1]] ?? $S['m']);
+                    $rows .= '</row>'; $r++;
+                }
+                $ilk = 5; $son = $r - 1; $veri = count($s['sat']) > 0;
+                if ($veri) {
+                    $filtre = '<autoFilter ref="A4:' . $harf($kolSay - 1) . $son . '"/>';
+                    $topVar = false; foreach ($s['kol'] as $k) if (str_contains($k[3] ?? '', 'top')) $topVar = true;
+                    if ($topVar) {
+                        $rows .= '<row r="' . ($r + 1) . '">';
+                        foreach ($s['kol'] as $c => $k) {
+                            $ref = $harf($c) . ($r + 1); $tip = $k[1];
+                            if ($c === 0) $rows .= '<c r="' . $ref . '" t="inlineStr" s="' . $S['top_m'] . '"><is><t>TOPLAM (filtreye göre)</t></is></c>';
+                            elseif (str_contains($k[3] ?? '', 'top')) $rows .= '<c r="' . $ref . '" s="' . ($S['top_' . $tip] ?? $S['top_s']) . '"><f>SUBTOTAL(9,' . $harf($c) . $ilk . ':' . $harf($c) . $son . ')</f></c>';
+                            else $rows .= '<c r="' . $ref . '" s="' . $S['top_m'] . '"/>';
+                        }
+                        $rows .= '</row>';
+                    }
+                    foreach ($s['kol'] as $c => $k) {
+                        $b = $k[3] ?? ''; $aralik = $harf($c) . $ilk . ':' . $harf($c) . $son;
+                        if (str_contains($b, 'bar')) $cf .= '<conditionalFormatting sqref="' . $aralik . '"><cfRule type="dataBar" priority="' . ($pri++) . '"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF8B5CF6"/></dataBar></cfRule></conditionalFormatting>';
+                        if (preg_match('/\bisiy?\b/', $b, $mm)) {
+                            [$dusuk, $yuksek] = $mm[0] === 'isiy' ? ['F8696B', '63BE7B'] : ['63BE7B', 'F8696B'];
+                            $cf .= '<conditionalFormatting sqref="' . $aralik . '"><cfRule type="colorScale" priority="' . ($pri++) . '"><colorScale><cfvo type="min"/><cfvo type="percentile" val="50"/><cfvo type="max"/><color rgb="FF' . $dusuk . '"/><color rgb="FFFFEB84"/><color rgb="FF' . $yuksek . '"/></colorScale></cfRule></conditionalFormatting>';
+                        }
+                        if (str_contains($b, 'onc')) foreach (['YÜKSEK' => 0, 'ORTA' => 1, 'DÜŞÜK' => 2] as $deg => $dx)
+                            $cf .= '<conditionalFormatting sqref="' . $aralik . '"><cfRule type="cellIs" dxfId="' . $dx . '" priority="' . ($pri++) . '" operator="equal"><formula>"' . $deg . '"</formula></cfRule></conditionalFormatting>';
+                        if (str_contains($b, 'sec')) $dv .= '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="' . $aralik . '"><formula1>"Evet,Hayır,Devam ediyor"</formula1></dataValidation>';
                     }
                 }
-                $rows .= '</row>'; $r++;
             }
-            $son = $harf($kolSay - 1) . max(4, $r - 1);
-            $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-                . '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-                . $cols . '<sheetData>' . $rows . '</sheetData>' . (count($s['sat']) ? '<autoFilter ref="A4:' . $son . '"/>' : '') . '</worksheet>';
+            $sv = '<sheetViews><sheetView workbookViewId="0"' . ($pane ? '' : ' showGridLines="0"') . ($i === 0 ? ' tabSelected="1"' : '') . '>' . ($pane ? '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>' : '') . '</sheetView></sheetViews>';
+            $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                . $sv . $cols . '<sheetData>' . $rows . '</sheetData>' . $filtre
+                . ($merge ? '<mergeCells count="' . count($merge) . '">' . implode('', array_map(fn ($m) => '<mergeCell ref="' . $m . '"/>', $merge)) . '</mergeCells>' : '')
+                . $cf . ($dv ? '<dataValidations count="' . substr_count($dv, '<dataValidation ') . '">' . $dv . '</dataValidations>' : '')
+                . '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToHeight="0"/>' . $cizim . '</worksheet>';
             $z->addFromString('xl/worksheets/sheet' . $n . '.xml', $sheet);
+            if ($sheetRels) $z->addFromString('xl/worksheets/_rels/sheet' . $n . '.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . $sheetRels . '</Relationships>');
             $wb .= '<sheet name="' . $x($ad) . '" sheetId="' . $n . '" r:id="rId' . $n . '"/>';
             $rels .= '<Relationship Id="rId' . $n . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $n . '.xml"/>';
             $ct .= '<Override PartName="/xl/worksheets/sheet' . $n . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
             $sonN = $n;
         }
+        $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<numFmts count="4"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;₺&quot;"/><numFmt numFmtId="165" formatCode="0.0&quot;%&quot;"/><numFmt numFmtId="166" formatCode="#,##0.###"/><numFmt numFmtId="167" formatCode="#,##0 &quot;₺&quot;"/></numFmts>'
+            . '<fonts count="' . count($fonts) . '">' . implode('', $fonts) . '</fonts><fills count="' . count($fills) . '">' . implode('', $fills) . '</fills>'
+            . '<borders count="' . count($borders) . '">' . implode('', $borders) . '</borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="' . count($xfs) . '">' . implode('', $xfs) . '</cellXfs>'
+            . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+            . '<dxfs count="3"><dxf><font><b/><color rgb="FF9F1239"/></font><fill><patternFill><bgColor rgb="FFFFE4E6"/></patternFill></fill></dxf><dxf><font><b/><color rgb="FF92400E"/></font><fill><patternFill><bgColor rgb="FFFEF3C7"/></patternFill></fill></dxf><dxf><font><color rgb="FF475569"/></font><fill><patternFill><bgColor rgb="FFF1F5F9"/></patternFill></fill></dxf></dxfs>'
+            . '</styleSheet>';
         $sonN = ($sonN ?? 0) + 1;
         $rels .= '<Relationship Id="rId' . $sonN . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
         $z->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -354,7 +533,7 @@ if (!function_exists('_fr2Xlsx')) {
             . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' . $ct . '</Types>');
         $z->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
-        $z->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' . $wb . '</sheets></workbook>');
+        $z->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' . $wb . '</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>');
         $z->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . $rels . '</Relationships>');
         $z->addFromString('xl/styles.xml', $styles);
         $z->close();
@@ -372,7 +551,7 @@ if (!function_exists('_fr2AiBaglam')) {
             'donem_gun' => $v['filtre']['gun'], 'zam_esigi_yuzde' => $v['filtre']['esik'], 'bugun' => today()->toDateString(), 'kpi' => $v['kpi'],
             'gizli_zamlar' => $al($v['zamlar'], 15, ['ad', 'birim', 'ilk', 'ilk_tarih', 'ilk_ted', 'son', 'son_tarih', 'son_ted', 'yuzde', 'ayni_ted_yuzde', 'ted_degisti', 'en_dusuk', 'en_dusuk_ted', 'yillik_etki']),
             'malzeme_fiyatlari' => $al($v['malzemeler'], 25, ['ad', 'kategori', 'birim', 'alis_say', 'miktar', 'harcama', 'ort', 'min', 'min_ted', 'max', 'max_ted', 'son', 'son_ted', 'oynaklik', 'tasarruf']),
-            'tedarikci_karsilastirma' => array_map(fn ($k) => ['ad' => $k['ad'], 'birim' => $k['birim'], 'son_ted' => $k['son_ted'], 'fark_yuzde' => $k['fark'], 'kayip' => $k['kayip'],
+            'tedarikci_karsilastirma' => array_map(fn ($k) => ['ad' => $k['ad'], 'birim' => $k['birim'], 'son_ted' => $k['son_ted'], 'fark_yuzde' => $k['fark'], 'kayip' => $k['kayip'], 'yillik_kayip' => $k['yillik_kayip'],
                 'tedarikciler' => array_map(fn ($t) => ['ted' => $t['ted'], 'ort' => $t['ort'], 'son' => $t['son'], 'miktar' => $t['miktar']], $k['tedler'])], array_slice($v['karsilastirma'], 0, 12)),
             'katalog_firsat' => array_slice($v['katalog'], 0, 8),
             'tedarikci_karnesi' => array_slice($v['karne'], 0, 12),
@@ -422,7 +601,7 @@ if (!function_exists('_fr2AiParcali')) {
                 'gecmis_hatalar' => $madde() + ['description' => '3-4 geçmiş hata: hangi malzeme, tedarikçi, tarih/fiyat, neden hata'],
             ]],
             'c' => ['tanim' => 'Tasarruf fırsatları ve gelecek önerileri', 'sema' => [
-                'firsatlar' => $madde(['tutar' => $sayi]) + ['description' => '3-4 tasarruf fırsatı, tutar = tahmini yıllık TL'],
+                'firsatlar' => $madde(['tutar' => $sayi]) + ['description' => '3-4 tasarruf fırsatı; tutar = verideki hazır yıllık rakam (yillik_etki / yillik_kayip / tasarruf / yillik_fazla), yoksa null'],
                 'gelecek' => $madde() + ['description' => '3 öneri: önümüzdeki 1-3 ay sezon/trend/stoklama/sözleşme'],
             ]],
             'd' => ['tanim' => 'Pazarlık argümanları ve yapılacaklar listesi', 'sema' => [
@@ -522,7 +701,11 @@ if (!function_exists('_fr2AiIslem')) {
         $baglam = _fr2AiBaglam($v);
         $sys = 'Sen deneyimli bir restoran satın alma ve maliyet danışmanısın. Türkçe, net, rakamlarla konuşursun; uydurma rakam vermezsin, yalnız verilen veriyi kullanırsın. '
             . 'Para birimi TL. Hal fiyatı toptan fiyattır; tedarikçinin halin %10-20 üstü normaldir. "ayni_ted_yuzde" aynı tedarikçinin kendi zammıdır, "ted_degisti" tedarikçi değişikliğini gösterir. '
-            . 'Birimi uyumsuz (birim_uyumlu=false) hal satırlarından fark çıkarma.';
+            . 'Birimi uyumsuz (birim_uyumlu=false) hal satırlarından fark çıkarma. '
+            // Rakam tutarlılığı: AI kendi çarpma/toplama yapınca aynı kalem için farklı tutarlar çıkıyordu (ör. 878 ₺ / 1.756 ₺)
+            . 'TUTARLAR: yıllık etki/kayıp/tasarruf için KENDİN HESAPLAMA; yalnız verideki hazır alanları aynen kullan (gizli_zamlar.yillik_etki, tedarikci_karsilastirma.kayip ve kpi.ted_kayip, malzeme_fiyatlari.tasarruf, hal_kiyasi.yillik_fazla, kpi değerleri). '
+            . 'Aynı kalemi farklı bölümlerde anarsan aynı rakamı yaz. Veride karşılığı olmayan yüzde/tutar uydurma; "tutar" alanını o zaman boş (null) bırak. '
+            . 'Bugün ' . today()->format('d.m.Y') . '. Bayram, sezon veya tarih iddiasında emin değilsen belirli tarih/ay verme, genel konuş.';
         if ($soru !== '') {
             $res = _fr2AiCagir($sys . ' Kullanıcının sorusunu veriye dayanarak kısa paragraflar ve gerekiyorsa madde işaretleriyle cevapla. Markdown başlık kullanma.',
                 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru, 1500);
