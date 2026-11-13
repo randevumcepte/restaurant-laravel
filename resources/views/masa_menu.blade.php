@@ -575,6 +575,9 @@
 
 <script>
 const MASA = @json($masa->id ?? 0);
+// QR anahtarı: masanın müşteri uçları bu anahtar olmadan çalışmaz (numara tahminiyle başka masaya sipariş atılamasın)
+const MASA_QR = {!! json_encode($masa->qr_token ?? '') !!};
+(function(){ const _f = window.fetch; window.fetch = function(u, o){ try { const yol = typeof u === 'string' ? u : ((u && u.url) || ''); if (MASA_QR && /^\/api\/(qr|odeme|tts)/.test(yol)) { o = o || {}; const h = new Headers(o.headers || {}); h.set('X-Masa-Qr', MASA_QR); o.headers = h; } } catch(e){} return _f.call(this, u, o); }; })();
 let ODEME_MODU = 'post_pay';   // post_pay=klasik | on_odeme=ön ödemeli (ödeme yapılmadan sipariş mutfağa gitmez) | acik_kart
 const SUBE_AD = @json($sube->ad ?? 'Restoran');
 let _data = [];            // kategoriler (Türkçe)

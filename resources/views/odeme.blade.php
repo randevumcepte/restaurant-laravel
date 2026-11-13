@@ -11,7 +11,7 @@
     try{
       var e = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]);
       var yenilendi = e ? (e.type === 'reload') : (performance.navigation && performance.navigation.type === 1);
-      if(yenilendi){ location.replace(@json(!empty($masaId) ? url('/masa/'.$masaId) : url('/'))); }
+      if(yenilendi){ location.replace(@json(!empty($masaId) ? url('/m/'.(\Illuminate\Support\Facades\DB::table('masalar')->where('id', $masaId)->value('qr_token') ?: '')) : url('/'))); }
     }catch(_){}
   })();
 </script>
@@ -78,7 +78,7 @@
     </div>
   </div>
 
-  @php $menuUrl = !empty($masaId) ? url('/masa/'.$masaId) : url('/'); @endphp
+  @php $menuUrl = !empty($masaId) ? url('/m/'.(\Illuminate\Support\Facades\DB::table('masalar')->where('id', $masaId)->value('qr_token') ?: '')) : url('/'); @endphp
   <nav class="altnav">
     <a href="{{ $menuUrl }}"><span>📋</span>Menü</a>
     <a href="{{ $menuUrl }}?sepet=1"><span>🧾</span>Siparişlerim</a>

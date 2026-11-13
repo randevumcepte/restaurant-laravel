@@ -461,8 +461,13 @@ Route::get('/pos-giris', function () {
 });
 Route::post('/pos-giris', function (Request $r) {
     $pin = (string) $r->input('pin');
-    $p = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->first() : null;
-    if (!$p) return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.');
+    $rlKey = 'posgiris:' . $r->ip();
+    if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($rlKey, 10)) return redirect('/pos-giris')->with('pos_hata', 'Çok fazla hatalı deneme. Birkaç dakika sonra tekrar deneyin.');
+    $adaylar = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->limit(2)->get() : collect();
+    if ($adaylar->count() > 1) return redirect('/pos-giris')->with('pos_hata', 'Bu PIN birden fazla işletmede kayıtlı. Yöneticinizden PIN değişikliği isteyin.');
+    $p = $adaylar->first();
+    if (!$p) { \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 300); return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.'); }
+    \Illuminate\Support\Facades\RateLimiter::clear($rlKey);
     session(['pos_personel_id' => $p->id]);
     session()->forget('pos_kasa_id');
     session()->forget('grup_sube_secim'); // önceki kişinin şube seçimi yeni girişe taşınmasın
@@ -1039,7 +1044,7 @@ Route::match(['get', 'post'], '/api/callerid/gelen', function (Request $r) {
     if (!$tel) return response()->json(['ok' => 0, 'hata' => 'telefon gerekli'], 422);
     $subeId = (int) ($r->input('sube') ?: $r->query('sube') ?: DB::table('subeler')->value('id'));
     $sonuc = _calleridGelen($subeId, $tel, $r->input('hat') ?: $r->query('hat'));
-    unset($sonuc['musteri']); // anahtarsız webhook: telefon numarasıyla müşteri kartı sorgulanamasın (ekran kartı /api/callerid-aktif'ten gelir)
+    unset($sonuc['musteri'], $sonuc['yeni_musteri']); // anahtarsız webhook: numaranın kayıtlı müşteri olup olmadığı da sızmasın
     return $sonuc;
 });
 
@@ -1213,7 +1218,8 @@ Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
     // Musteri upsert (telefondan)
     $norm = _telNorm($tel);
     $m = $norm ? DB::table('musteriler')->where('sube_id', $s->id)->where('telefon_norm', $norm)->first() : null;
-    if ($m) { DB::table('musteriler')->where('id', $m->id)->update(['ad' => $ad, 'adres' => $adres ?: $m->adres, 'updated_at' => now()]); $mid = $m->id; }
+    // kayıtlı müşterinin adı/adresi yalnız boşsa doldurulur (eskiden telefon numarasını bilen herkes ezebiliyordu)
+    if ($m) { DB::table('musteriler')->where('id', $m->id)->update(['ad' => trim((string) $m->ad) !== '' ? $m->ad : $ad, 'adres' => $m->adres ?: ($adres ?: null), 'updated_at' => now()]); $mid = $m->id; }
     else { $mid = DB::table('musteriler')->insertGetId(['sube_id' => $s->id, 'ad' => $ad, 'telefon' => $tel, 'telefon_norm' => $norm, 'adres' => $adres ?: null, 'created_at' => now(), 'updated_at' => now()]); }
     if ($mid && $r->filled('dogum_tarihi') && function_exists('_waDogumKaydet')) { try { _waDogumKaydet($mid, $r->input('dogum_tarihi')); } catch (\Throwable $e) {} }
     // Adisyon (kanal=paket, platform=app) -> mutfaga duser
@@ -1340,6 +1346,10 @@ Route::post('/api/m/otp-gonder', function (Request $r) {
     $tel = trim((string) $r->input('telefon'));
     $norm = _telNorm($tel);
     if (strlen($norm) < 10) return ['ok' => 0, 'hata' => 'Geçerli telefon girin'];
+    // Gönderim sınırı: numara başına 10 dk'da 3, IP başına 10 dk'da 10 (ücretli WhatsApp + spam)
+    $kTel = 'otp_g_t_' . $norm; $kIp = 'otp_g_i_' . $r->ip();
+    if ((int) cache()->get($kTel, 0) >= 3 || (int) cache()->get($kIp, 0) >= 10) return response()->json(['ok' => 0, 'hata' => 'Çok fazla kod istendi, 10 dakika sonra tekrar deneyin.'], 429);
+    cache()->put($kTel, (int) cache()->get($kTel, 0) + 1, now()->addMinutes(10)); cache()->put($kIp, (int) cache()->get($kIp, 0) + 1, now()->addMinutes(10));
     $subeId = _musteriSube($r);
     $kod = (string) random_int(100000, 999999);
     $m = DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first();
@@ -1349,9 +1359,11 @@ Route::post('/api/m/otp-gonder', function (Request $r) {
         'created_at' => now(), 'updated_at' => now()]);
     $gonderildi = false;
     try { if (function_exists('_restoWaGonder')) { _restoWaGonder($subeId, $tel, "ResteOS doğrulama kodunuz: $kod"); $gonderildi = true; } } catch (\Throwable $e) {}
-    $cevap = ['ok' => 1, 'gonderildi' => $gonderildi];
-    if (!$gonderildi || env('APP_DEBUG')) $cevap['dev_kod'] = $kod;
-    return $cevap;
+    // Kod ASLA isteyene dönmez (eskiden gönderim başarısız/APP_DEBUG ise dönüyordu → herkes başkasının hesabına girebiliyordu).
+    // Yalnız demo sunucusunda (RESTEOS_DEMO_UCLARI=1) test kolaylığı için döner.
+    if (filter_var(env('RESTEOS_DEMO_UCLARI', false), FILTER_VALIDATE_BOOLEAN)) return ['ok' => 1, 'gonderildi' => $gonderildi, 'dev_kod' => $kod];
+    if (!$gonderildi) return ['ok' => 0, 'hata' => 'Doğrulama kodu gönderilemedi. Lütfen işletmeyle iletişime geçin.'];
+    return ['ok' => 1, 'gonderildi' => true];
 });
 // OTP doğrula -> token + isim/soyisim
 Route::post('/api/m/otp-dogrula', function (Request $r) {
@@ -1360,8 +1372,14 @@ Route::post('/api/m/otp-dogrula', function (Request $r) {
     $subeId = _musteriSube($r);
     $m = DB::table('musteriler')->where('sube_id', $subeId)->where('telefon_norm', $norm)->first();
     if (!$m) return ['ok' => 0, 'hata' => 'Önce kod isteyin'];
-    if (($m->otp_kod ?? '') !== (string) $r->input('kod') || !$m->otp_bitis || now()->gt(\Carbon\Carbon::parse($m->otp_bitis)))
+    // Deneme sınırı: 5 yanlışta kod iptal (6 haneli kod tahminle bulunamasın)
+    $kDen = 'otp_d_' . $m->id;
+    if ((int) cache()->get($kDen, 0) >= 5) { DB::table('musteriler')->where('id', $m->id)->update(['otp_kod' => null, 'otp_bitis' => null]); cache()->forget($kDen); return ['ok' => 0, 'hata' => 'Çok fazla hatalı deneme. Yeni kod isteyin.']; }
+    if (empty($m->otp_kod) || !hash_equals((string) $m->otp_kod, (string) $r->input('kod')) || !$m->otp_bitis || now()->gt(\Carbon\Carbon::parse($m->otp_bitis))) {
+        cache()->put($kDen, (int) cache()->get($kDen, 0) + 1, now()->addMinutes(10));
         return ['ok' => 0, 'hata' => 'Kod hatalı veya süresi dolmuş'];
+    }
+    cache()->forget($kDen);
     $token = \Illuminate\Support\Str::random(60);
     $upd = ['api_token' => $token, 'otp_kod' => null, 'otp_bitis' => null, 'updated_at' => now()];
     if ($r->filled('ad')) $upd['ad'] = trim((string) $r->input('ad'));
@@ -2680,7 +2698,7 @@ if (!function_exists('_crmMusteri360')) {
             $out['son_gun'] = $son ? (int) \Carbon\Carbon::parse($son)->diffInDays(now()) : null;
             $out['ort_fis'] = (int) ($m->siparis_sayisi ?? 0) > 0 ? (int) round((float) ($m->toplam_harcama ?? 0) / (int) $m->siparis_sayisi) : 0;
             $out['durum'] = _crmDurum($m, $out['son_gun']);
-            $out['siparisler'] = DB::table('adisyonlar')->where('sube_id', $sid)->where('musteri_id', $m->id)->whereNotNull('kapanis')->orderByDesc('kapanis')->limit(10)->get(['id', 'toplam', 'kapanis', 'kisi_sayisi']);
+            $out['siparisler'] = DB::table('adisyonlar')->where('sube_id', $sid)->where('musteri_id', $m->id)->whereNotNull('kapanis')->orderByDesc('kapanis')->limit(10)->get(['id', 'toplam', 'kapanis', 'misafir_sayisi as kisi_sayisi']); // kolon misafir_sayisi (eskiden hata → Müşteri 360 boş)
             if (Schema::hasTable('adisyon_kalemleri')) $out['favori'] = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.musteri_id', $m->id)->whereNotNull('adisyon_kalemleri.urun_adi')->selectRaw('adisyon_kalemleri.urun_adi ad, SUM(adisyon_kalemleri.adet) a')->groupBy('adisyon_kalemleri.urun_adi')->orderByDesc('a')->limit(5)->pluck('ad')->all();
         } catch (\Throwable $e) {}
         return $out;
@@ -2934,7 +2952,7 @@ if (!function_exists('_satisAsistanOku')) {
             switch ($intent) {
                 case 'etkinlik_link': return ['cevap' => 'Yaklaşan grup/etkinlik rezervasyonlarını takvimde gör; hazırlık ve ön siparişleri planla.', 'link' => ['url' => '/etkinlik-takvim', 'lbl' => 'Etkinlik/Grup Takvimi']];
                 case 'depozito_link': return ['cevap' => 'No-show’u azaltmak için grup/etkinliklerde kapora al, takibini buradan yap.', 'link' => ['url' => '/depozito', 'lbl' => 'Depozito/Kapora']];
-                case 'bosgun_link': return ['cevap' => 'Boş günleri doldurmak için uygulamalı müşterilere güvenli kampanya gönderebilirsin (toplu WhatsApp yok).', 'link' => ['url' => '/kampanya', 'lbl' => 'Kampanya Stüdyosu']];
+                case 'bosgun_link': return ['cevap' => 'Boş günleri doldurmak için uygulamalı müşterilere güvenli kampanya gönderebilirsin (toplu WhatsApp yok).', 'link' => ['url' => '/kampanya-push', 'lbl' => 'Kampanya Stüdyosu']];
                 case 'doluluk':
                     $kisi = 0; $kap = 0;
                     try { if (Schema::hasTable('rezervasyonlar')) $kisi = (int) DB::table('rezervasyonlar')->where('sube_id', $sid)->whereDate('tarih', $ds)->whereNotIn('durum', ['iptal'])->sum('kisi'); } catch (\Throwable $e) {}
@@ -3142,7 +3160,7 @@ Route::get('/segmentler', function () {
     $pushliMusteri = 0; try { $pushliMusteri = (int) DB::table('cihaz_tokenlari')->where('sube_id', $sid)->where('kullanici_tipi', 'musteri')->distinct()->count('personel_id'); } catch (\Throwable $e) {}
     return view('segmentler', compact('segmentler', 'pushliMusteri'));
 });
-Route::get('/kampanya', function () {
+Route::get('/kampanya-push', function () { // eskiden /kampanya ile çakışıyordu (WhatsApp kampanya sayfası eziyordu)
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
@@ -3150,19 +3168,19 @@ Route::get('/kampanya', function () {
     $gecmis = collect(); try { _pazarlamaKur(); $gecmis = DB::table('kampanya_gonderim')->where('sube_id', $sid)->orderByDesc('id')->limit(10)->get(); } catch (\Throwable $e) {}
     return view('kampanya_studyo', compact('segmentler', 'gecmis'));
 });
-Route::post('/kampanya/gonder', function (Request $r) {
+Route::post('/kampanya-push/gonder', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!_pazarlamaGuard($bp)) return redirect('/pos-giris');
     _pazarlamaKur(); $sid = _webSubeId();
     $baslik = trim((string) $r->baslik); $metin = trim((string) $r->metin);
     $segment = in_array($r->segment, ['tumu', 'yeni', 'sadik', 'uyuyan', 'yuksek_puan']) ? $r->segment : 'tumu';
     $gorsel = trim((string) $r->gorsel) ?: null;
-    if ($baslik === '' || $metin === '') return redirect('/kampanya')->with('hata', 'Başlık ve mesaj gerekli.');
+    if ($baslik === '' || $metin === '') return redirect('/kampanya-push')->with('hata', 'Başlık ve mesaj gerekli.');
     $ids = _musteriSegmentIds($sid, $segment);
     $res = _musteriKampanyaPush($sid, $ids, $baslik, $metin, $gorsel, ['kampanya_segment' => $segment]);
     DB::table('kampanya_gonderim')->insert(['sube_id' => $sid, 'baslik' => $baslik, 'metin' => $metin, 'gorsel' => $gorsel, 'segment' => $segment, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]);
-    if (($res['hedef'] ?? 0) <= 0) return redirect('/kampanya')->with('hata', 'Bu segmentte uygulama indirmiş (push açık) müşteri bulunamadı.');
-    return redirect('/kampanya')->with('ok', ($res['gonderilen'] ?? 0) . ' müşteriye resimli bildirim gönderildi (' . $segment . ').');
+    if (($res['hedef'] ?? 0) <= 0) return redirect('/kampanya-push')->with('hata', 'Bu segmentte uygulama indirmiş (push açık) müşteri bulunamadı.');
+    return redirect('/kampanya-push')->with('ok', ($res['gonderilen'] ?? 0) . ' müşteriye resimli bildirim gönderildi (' . $segment . ').');
 });
 Route::get('/kampanya-rapor', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -3262,7 +3280,7 @@ if (!function_exists('_pazarlamaAsistanOku')) {
     {
         try {
             switch ($intent) {
-                case 'kampanya_link': return ['cevap' => 'Kampanya/reklam oluşturmak için Kampanya Stüdyosu’nu aç: başlık+mesaj+görsel seç, segmenti belirle, uygulamalı müşterilere güvenle gönder. (Toplu WhatsApp yok — ban riski.)', 'link' => ['url' => '/kampanya', 'lbl' => 'Kampanya Stüdyosu']];
+                case 'kampanya_link': return ['cevap' => 'Kampanya/reklam oluşturmak için Kampanya Stüdyosu’nu aç: başlık+mesaj+görsel seç, segmenti belirle, uygulamalı müşterilere güvenle gönder. (Toplu WhatsApp yok — ban riski.)', 'link' => ['url' => '/kampanya-push', 'lbl' => 'Kampanya Stüdyosu']];
                 case 'icerik_link': return ['cevap' => 'Haftalık Instagram/TikTok içerik takvimini AI üretsin (gün + fikir + caption + hashtag), sen kopyala-paylaş.', 'link' => ['url' => '/icerik-takvimi?uret=1', 'lbl' => 'İçerik Takvimi üret']];
                 case 'segment_link': $segs = _pazarlamaSegmentler($sid); $t = 'Müşteri segmentleri:'; foreach ($segs as $s) $t .= "\n• " . $s['ad'] . ': ' . $s['sayi']; return ['cevap' => $t, 'link' => ['url' => '/segmentler', 'lbl' => 'Segmentler']];
                 case 'rapor_link': return ['cevap' => 'Gönderdiğin kampanyaların ulaşım raporunu gör.', 'link' => ['url' => '/kampanya-rapor', 'lbl' => 'Kampanya Raporu']];
@@ -3941,7 +3959,7 @@ Route::post('/api/m/self-siparis', function (Request $r) {
         DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $s['u']->id, 'urun_adi' => $s['u']->ad, 'adet' => $s['adet'],
             'birim_fiyat' => (float) $s['u']->fiyat, 'tutar' => (float) $s['u']->fiyat * $s['adet'], 'durum' => 'gonderildi', 'gonderim_zamani' => now(), 'created_at' => now(), 'updated_at' => now()]);
     }
-    try { DB::table('odemeler')->insert(['adisyon_id' => $adId, 'tip' => ($kart > 0 ? 'online' : 'cuzdan'), 'tutar' => $toplam, 'created_at' => now(), 'updated_at' => now()]); } catch (\Throwable $e) {}
+    try { DB::table('odemeler')->insert(['adisyon_id' => $adId, 'tip' => ($kart > 0 ? 'online' : 'cuzdan'), 'tutar' => $toplam, 'created_at' => now()]); /* odemeler'de updated_at yok: eskiden insert düşüyor, ciroya yazılmıyordu */ } catch (\Throwable $e) {}
     try { DB::table('musteriler')->where('id', $m->id)->update(['puan' => DB::raw('puan + ' . (int) floor($toplam / 10)),
         'siparis_sayisi' => DB::raw('siparis_sayisi + 1'), 'toplam_harcama' => DB::raw('toplam_harcama + ' . $toplam)]); } catch (\Throwable $e) {}
     return ['ok' => 1, 'siparis_no' => $adId, 'takip_token' => $token, 'toplam' => $toplam,
@@ -5444,7 +5462,7 @@ if (!function_exists('resto_tema_uret')) {
 // QR MENU (mockup 'Lezzet Duragi' — birebir): telefon + tablet, gercek puan, sipariş
 Route::get('/masa/{id}', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
-    if (!$masa) abort(404);
+    if (!$masa || !_qrMasaGecerli(request(), $masa)) abort(404); // müşteri /m/{qr} ile gelir; numarayla yalnız personel önizler
     $sube = DB::table('subeler')->find($masa->sube_id);
     $temalar = resto_temalar();
     $stored = ($sube && isset($sube->tema)) ? $sube->tema : null;
@@ -5497,6 +5515,29 @@ if (!function_exists('_masaView')) {
     }
 }
 // QR hedefi: /m/{token} -> masadaki tam deneyim (AI + siparis + garson + hesap + odeme)
+// QR GÜVENLİĞİ: masa numarası tahmin edilebilir (1,2,3…). Müşteri işlemleri ancak masanın QR anahtarıyla (X-Masa-Qr
+// başlığı / ?qr=) ya da o restoranın giriş yapmış personeliyle yapılır. Eskiden numara sırayla denenip başka
+// restoranın mutfağına sahte sipariş atılabiliyor, açık hesabı görülebiliyordu.
+if (!function_exists('_qrMasaGecerli')) {
+    function _qrMasaGecerli($r, $masa)
+    {
+        if (!$masa) return false;
+        if (function_exists('_ryAdmin') && _ryAdmin()) return true;
+        $qr = (string) ($r->header('X-Masa-Qr') ?: $r->input('qr') ?: '');
+        if ($qr !== '' && !empty($masa->qr_token) && hash_equals((string) $masa->qr_token, $qr)) return true;
+        $p = null;
+        try { $p = _posPersonel() ?: ($r->bearerToken() ? _apiPersonel($r) : null); } catch (\Throwable $e) {}
+        return $p && (int) $p->sube_id === (int) $masa->sube_id;
+    }
+    function _qrKapi($r)
+    {
+        $id = (int) $r->input('masa');
+        if ($id <= 0) return null; // masasız istek: rota kendi hatasını verir
+        $masa = DB::table('masalar')->where('id', $id)->first();
+        if (!$masa) return null;
+        return _qrMasaGecerli($r, $masa) ? null : response()->json(['ok' => 0, 'hata' => 'Lütfen masadaki QR kodu yeniden okutun.'], 403);
+    }
+}
 Route::get('/m/{token}', function ($token) {
     _masaQrEnsure();
     $masa = DB::table('masalar')->where('qr_token', $token)->first();
@@ -6451,7 +6492,7 @@ Route::get('/menu-onizle', function (Request $r) {
 // Sesli asistan (sonra ana akisa baglanacak) — ayri linkte korunuyor
 Route::get('/masa/{id}/asistan', function ($id) {
     $masa = DB::table('masalar')->find((int) $id);
-    if (!$masa) abort(404);
+    if (!$masa || !_qrMasaGecerli(request(), $masa)) abort(404);
     $sube = DB::table('subeler')->find($masa->sube_id);
     return view('masa_asistan', ['masa' => $masa, 'sube' => $sube]);
 });
@@ -6889,6 +6930,7 @@ Route::get('/api/qr/menu-tam', function (Request $r) {
 
 // Garson/hesap cagrisi -> masa_cagrilari (KDS/patron tarafinda gorunebilir)
 Route::post('/api/qr/garson-cagir', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return ['ok' => 0];
     if (!Schema::hasTable('masa_cagrilari')) {
@@ -6915,6 +6957,7 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
 
 // QR: bu subenin masalari (musteri "geldigim masa" secsin diye)
 Route::get('/api/qr/masalar', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $masa = DB::table('masalar')->find((int) $r->masa);
     $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
     $liste = DB::table('masalar')->where('sube_id', $subeId)->orderBy('id')
@@ -6924,6 +6967,7 @@ Route::get('/api/qr/masalar', function (Request $r) {
 
 // QR: MASA TASIMA TALEBI — musteri "eski masamdan (kaynak) buraya (hedef=su anki QR masasi) tasi" der; garson/kasa onaylar.
 Route::post('/api/qr/tasima-talep', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $hedef = DB::table('masalar')->find((int) $r->masa);          // su an oturdugu (QR) = HEDEF
     $kaynak = DB::table('masalar')->find((int) $r->kaynak_masa);  // geldigi eski masa = KAYNAK (acik hesap burada)
     if (!$hedef || !$kaynak) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
@@ -7018,6 +7062,7 @@ Route::post('/api/patron/garson-cagri-hepsini-kapat', function (Request $r) {
 
 // QR MENU: musteri urune PUAN verir (gercek degerlendirme sistemi) -> urun_puanlari
 Route::post('/api/qr/urun-puan', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $masa = DB::table('masalar')->find((int) $r->masa);
     $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
     $urunId = (int) $r->urun_id;
@@ -7077,6 +7122,7 @@ Route::get('/musteri-ai-ogrenilen', function (Request $r) {
 
 // QR SIPARIS -> acik adisyon bul/olustur + kalem ekle (mutfaga gonderildi) + garson bildirimi
 Route::post('/api/qr/siparis-gonder', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
     _odemeSplitEnsure();
@@ -7131,6 +7177,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
 
 // QR masa: bu masanin GONDERILMIS siparisleri (acik adisyon) -> "Siparislerim"de gorunur (odemeye kadar birikir)
 Route::get('/api/qr/siparislerim', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0], 404);
     _odemeSplitEnsure();
@@ -7280,6 +7327,7 @@ Route::get('/demo-doldur', function (Request $r) {
 // QR masa: acik hesabi online odemeye baslat. kalemler=[id,...] verilirse SADECE o kalemler (kendi payi),
 // verilmezse TUM odenmemis kalemler (biri tum hesabi oder). Secilen kalemler rezerve edilir (ayni anda cifte odeme olmaz).
 Route::post('/api/qr/ode-baslat', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     if (function_exists('_odemeEnsure')) _odemeEnsure();
     _odemeSplitEnsure();
     $masa = DB::table('masalar')->find((int) $r->masa);
@@ -7324,6 +7372,7 @@ Route::post('/api/qr/ode-baslat', function (Request $r) {
 
 // QR masa: odeme oncesi indirim onizleme (online odemede uygulanacak indirimi + kupon gecerliligini gosterir)
 Route::post('/api/qr/indirim-onizle', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     _odemeSplitEnsure();
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return ['ok' => 0];
@@ -7344,6 +7393,7 @@ Route::post('/api/qr/indirim-onizle', function (Request $r) {
 // QR masa: KASADA/GARSONDA ODE — secili kalemleri (veya tum kalani) dondurup garsona tutarli cagri dusurur.
 // Garson gelince NAKIT VEYA KART ile tahsil eder (kasa-tahsil). 4 kisilik masada biri nakit digeri kart odeyebilir.
 Route::post('/api/qr/kasa-ode', function (Request $r) {
+    if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
     if (function_exists('_odemeEnsure')) _odemeEnsure();
     _odemeSplitEnsure();
     $masa = DB::table('masalar')->find((int) $r->masa);
@@ -7427,14 +7477,15 @@ Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     if (mb_strlen($metin) > 2000) $metin = mb_substr($metin, 0, 2000);
     // Hangi restoran/sube? -> her sube kendi aylik limitine sayilir (multi-tenant)
     $subeId = null;
-    if ($r->filled('masa')) { $m = DB::table('masalar')->find((int) $r->input('masa')); $subeId = $m ? $m->sube_id : null; }
-    elseif ($r->filled('sube')) { $subeId = (int) $r->input('sube'); }
+    // masa: yalnız QR anahtarıyla; sube: yalnız o restoranın personeli (eskiden herkes başka restoranın aylık kotasını harcayabiliyordu)
+    if ($r->filled('masa')) { $m = DB::table('masalar')->find((int) $r->input('masa')); $subeId = ($m && function_exists('_qrMasaGecerli') && _qrMasaGecerli($r, $m)) ? $m->sube_id : null; }
+    elseif ($r->filled('sube')) { $tp = null; try { $tp = _posPersonel() ?: ($r->bearerToken() ? _apiPersonel($r) : null); } catch (\Throwable $e) {} $subeId = ($tp && (int) $tp->sube_id === (int) $r->input('sube')) ? (int) $tp->sube_id : null; }
     $servis = new \App\Services\SeslendirmeServisi($subeId);
     $ses = $r->input('ses');
     // COK DILLI: dil verildiyse o dilin sesini sec (tr'de patronun sectigi kalici ses).
     $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
     if (!$ses && $dil && $dil !== 'tr') { $kd = _qrDilKodlari(); if (isset($kd[$dil])) $ses = $kd[$dil]['tts']; }
-    if (!$ses) $ses = resto_ayar_al('tts_ses', null); // patronun sectigi kalici ses (yoksa config varsayilani)
+    if (!$ses) $ses = ($subeId ? resto_ayar_al('tts_ses_' . $subeId, null) : null) ?: resto_ayar_al('tts_ses', null); // restoranın seçtiği ses (yoksa genel / config)
     $ad = $servis->uret($metin, $ses);
     if (!$ad) return response()->json(['basarili' => false, 'anahtar_var' => (string) config('services.google_tts.key', '') !== ''], 200);
     return response()->json(['basarili' => true, 'url' => url('/api/ses/' . $ad)]);
@@ -8202,8 +8253,12 @@ Route::post('/api/wa/gelen', function (Request $r) {
     $svcTok = (string) resto_ayar_al('wa_servis_token', '');
     $beklenen = $whSec !== '' ? $whSec : $svcTok;
     $gelenSec = (string) ($r->header('X-Webhook-Secret') ?: $r->header('X-Service-Token') ?: $r->input('token'));
-    if ($beklenen !== '' && $gelenSec !== $beklenen) {
+    if ($beklenen !== '' && !hash_equals($beklenen, $gelenSec)) {
         return response()->json(['ok' => 0, 'hata' => 'yetkisiz'], 403);
+    }
+    // Şifre hiç tanımlı değilse yalnız aynı sunucudaki köprüden kabul (eskiden herkes sahte gelen mesajla ücretli AI cevabı tetikleyebiliyordu)
+    if ($beklenen === '' && !in_array($r->ip(), ['127.0.0.1', '::1'], true)) {
+        return response()->json(['ok' => 0, 'hata' => 'yetkisiz (wa_webhook_secret tanımlayın)'], 403);
     }
     // Bridge TUM event'leri ayni URL'e POST eder (connected/qr.ready/message.sent/delivered/read...).
     // Sadece GELEN mesaji isle; digerlerini sessizce yoksay.
@@ -8270,7 +8325,7 @@ Route::post('/api/wa/gelen', function (Request $r) {
     try {
         $od = _waOturumAl($subeId, $from);
         if ($od && !empty($od->insan_devraldi)) {
-            $esikDk = (int) resto_ayar_al('wa_ai_sessizlik_esik_dk', 3);
+            $esikDk = (int) _subeAyarAl($subeId, 'wa_ai_sessizlik_esik_dk', 3, true);
             if ($esikDk < 1) $esikDk = 3;
             $sonInsan = isset($od->son_insan_mesaj_at) ? $od->son_insan_mesaj_at : null;
             // Ayni saat-dilimi referansi (now ile yazildi, now ile karsilastir -> tz kaymasi yok)
@@ -8301,7 +8356,7 @@ Route::post('/api/wa/gelen', function (Request $r) {
     $karsilama = $text === '';
     foreach ($anahtarlar as $k) { if (mb_strpos($t, $k) !== false) { $karsilama = true; break; } }
     if ($karsilama) {
-        $ozel = trim((string) resto_ayar_al('wa_karsilama', ''));
+        $ozel = trim((string) _subeAyarAl($subeId, 'wa_karsilama', '', true));
         $msg = $ozel !== ''
             ? $ozel . "\n\n📋 Menü ve sipariş: " . $siparisLink
             : "Merhaba! 👋 " . $s->ad . " sipariş hattına hoş geldiniz.\n\n"
@@ -8397,7 +8452,7 @@ if (!function_exists('_waKuponMetni')) {
         try {
             if (!Schema::hasTable('indirimler')) return '';
             $k = DB::table('indirimler')->where('sube_id', $subeId)->where('tip', $tip)->orderByDesc('aktif')->first();
-            if (!$k) $k = DB::table('indirimler')->where('tip', $tip)->orderByDesc('aktif')->first();
+            // (eskiden kendi kuponu yoksa BAŞKA restoranın kupon kodu gönderiliyordu — kaldırıldı)
             if (!$k) return '';
             $deger = (($k->deger_tipi ?? 'yuzde') === 'yuzde')
                 ? ('%' . (int) $k->deger)
@@ -8470,13 +8525,30 @@ if (!function_exists('_waAnketGonder')) {
     }
 }
 
+// ŞUBE AYARI: restorana özel anahtar "<anahtar>_<sube>". Eski tek (global) değer yalnız ana işletmeye (en küçük id)
+// ya da $herkese=true ise (platform varsayılanı) yedek olur. Eskiden konum/Instagram/Google yorum linki herkesindi.
+if (!function_exists('_subeAyarAl')) {
+    function _subeAyarAl($sid, $anahtar, $vars = '', $herkese = false)
+    {
+        $v = resto_ayar_al($anahtar . '_' . (int) $sid, null);
+        if ($v !== null && $v !== '') return $v;
+        static $ana = null;
+        if ($ana === null) $ana = (int) (DB::table('subeler')->min('id') ?: 0);
+        if ($herkese || (int) $sid === $ana) { $g = resto_ayar_al($anahtar, null); if ($g !== null && $g !== '') return $g; }
+        return $vars;
+    }
+    function _subeAyarYaz($sid, $anahtar, $deger)
+    {
+        resto_ayar_yaz($anahtar . '_' . (int) $sid, $deger);
+    }
+}
 // Anket sayfası (müşteri) — token'lı, giriş gerektirmez
 Route::get('/anket/{token}', function ($token) {
     if (function_exists('_waAnketTokenEnsure')) _waAnketTokenEnsure();
     $d = (Schema::hasTable('degerlendirmeler') && Schema::hasColumn('degerlendirmeler', 'token')) ? DB::table('degerlendirmeler')->where('token', $token)->first() : null;
     if (!$d) abort(404);
     $sube = DB::table('subeler')->find($d->sube_id);
-    $googleUrl = (string) resto_ayar_al('google_yorum_url', '');
+    $googleUrl = (string) (resto_ayar_al('google_yorum_link_' . (int) $d->sube_id, '') ?: _subeAyarAl($d->sube_id, 'google_yorum_url', '')); // restoranın panelden girdiği link
     return view('anket', ['d' => $d, 'sube' => $sube, 'token' => $token, 'dolduruldu' => (($d->durum ?? '') === 'dolduruldu' || (int) $d->puan > 0), 'googleUrl' => $googleUrl]);
 });
 Route::post('/anket/{token}', function (Request $r, $token) {
@@ -8493,7 +8565,7 @@ Route::post('/anket/{token}', function (Request $r, $token) {
         'durum' => 'dolduruldu',
     ]);
     // Yüksek puan -> Google yorumuna yönlendir (ayarlıysa)
-    $googleUrl = (string) resto_ayar_al('google_yorum_url', '');
+    $googleUrl = (string) (resto_ayar_al('google_yorum_link_' . (int) $d->sube_id, '') ?: _subeAyarAl($d->sube_id, 'google_yorum_url', '')); // restoranın panelden girdiği link
     return ['ok' => 1, 'google' => ($puan >= 4 && $googleUrl !== '') ? $googleUrl : null];
 });
 
@@ -8666,17 +8738,18 @@ Route::get('/whatsapp', function () {
     return view('whatsapp_panel', [
         'subeId' => _aktifSubeId(),
         'bg' => [
-            'konum' => (string) resto_ayar_al('wa_konum_linki', ''),
-            'igBaslik' => (string) (resto_ayar_al('wa_instagram_baslik', '') ?: 'Instagram'),
-            'igLink' => (string) resto_ayar_al('wa_instagram_linki', ''),
-            'webBaslik' => (string) (resto_ayar_al('wa_web_baslik', '') ?: 'Web Sitesi'),
-            'webLink' => (string) resto_ayar_al('wa_web_linki', ''),
+            'konum' => (string) _subeAyarAl(_aktifSubeId(), 'wa_konum_linki', ''),
+            'igBaslik' => (string) (_subeAyarAl(_aktifSubeId(), 'wa_instagram_baslik', '') ?: 'Instagram'),
+            'igLink' => (string) _subeAyarAl(_aktifSubeId(), 'wa_instagram_linki', ''),
+            'webBaslik' => (string) (_subeAyarAl(_aktifSubeId(), 'wa_web_baslik', '') ?: 'Web Sitesi'),
+            'webLink' => (string) _subeAyarAl(_aktifSubeId(), 'wa_web_linki', ''),
         ],
     ]);
 });
 
 Route::get('/wa-yonetim', function () {
-    $subeler = DB::table('subeler')->select('id', 'ad')->orderBy('id')->get();
+    // tüm restoran listesi yalnız Sistem Yönetimi'ne; restoran yöneticisi yalnız kendini görür
+    $subeler = DB::table('subeler')->select('id', 'ad')->when(!(function_exists('_ryAdmin') && _ryAdmin()), fn ($q) => $q->where('id', _aktifSubeId()))->orderBy('id')->get();
     return _waNoCache(response()->view('wa_yonetim', [
         'subeler' => $subeler,
         'sidecar' => (string) resto_ayar_al('wa_sidecar_url', ''),
@@ -8939,7 +9012,7 @@ Route::get('/api/wa/aliciler-data', function (Request $r) {
 // İşletme bağlantıları (konum/instagram/web) kaydet — mesaj ekranında kullanılır
 Route::post('/api/wa/baglantilar-kaydet', function (Request $r) {
     foreach (['wa_konum_linki' => 'konum_linki', 'wa_instagram_baslik' => 'instagram_baslik', 'wa_instagram_linki' => 'instagram_linki', 'wa_web_baslik' => 'web_baslik', 'wa_web_linki' => 'web_linki'] as $ayar => $inp) {
-        resto_ayar_yaz($ayar, mb_substr((string) $r->input($inp, ''), 0, 400));
+        _subeAyarYaz(_aktifSubeId(), $ayar, mb_substr((string) $r->input($inp, ''), 0, 400)); // yalnız bu restoran (eskiden herkesin linkini değiştiriyordu)
     }
     return response()->json(['ok' => 1]);
 });
@@ -9113,7 +9186,7 @@ Route::get('/tts-temizle', function (Request $r) {
 
 // Ses test sayfasi: her erkek sesi dinle, begendigini sec
 Route::get('/ses-test', function () {
-    $secili = resto_ayar_al('tts_ses', (string) config('services.google_tts.voice', 'tr-TR-Wavenet-D'));
+    $secili = resto_ayar_al('tts_ses_' . _aktifSubeId(), null) ?: resto_ayar_al('tts_ses', (string) config('services.google_tts.voice', 'tr-TR-Wavenet-D'));
     $anahtarVar = (string) config('services.google_tts.key', '') !== '';
     return view('ses_test', ['sesler' => resto_erkek_sesler(), 'secili' => $secili, 'anahtarVar' => $anahtarVar]);
 });
@@ -9157,10 +9230,13 @@ Route::get('/tts-kullanim', function (Request $r) {
 
 // Sesi sec (kalici) -> musteri asistani bundan sonra bu sesi kullanir
 Route::match(['get', 'post'], '/ses-sec', function (Request $r) {
+    // eskiden girişsizdi ve TÜM restoranların sesini değiştiriyordu: yönetici, yalnız kendi restoranı
+    $p = _posPersonel();
+    if (!$p || !_ekYetkiVar($p, 'yonetici')) return response()->json(['ok' => 0, 'mesaj' => 'Yetkisiz'], 403);
     $ses = (string) $r->input('ses', '');
     $gecerli = array_column(resto_erkek_sesler(), 'ses');
     if (!in_array($ses, $gecerli, true)) return response()->json(['ok' => 0, 'mesaj' => 'Geçersiz ses'], 422);
-    resto_ayar_yaz('tts_ses', $ses);
+    resto_ayar_yaz('tts_ses_' . (int) $p->sube_id, $ses);
     return response()->json(['ok' => 1, 'ses' => $ses]);
 });
 
@@ -9302,7 +9378,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/muhasebe' => 'gor_muhasebe', '/hareketler' => 'gor_hareketler', '/cari' => 'gor_cari',
             '/muhasebe-entegrasyon' => 'gor_muhasebe', '/muhasebe-sohbet' => 'gor_muhasebe', '/vergi-takvimi' => 'gor_muhasebe', '/kdv-ozet' => 'gor_muhasebe', '/kar-zarar' => 'gor_muhasebe',
             '/tekrarlayan-gider' => 'gor_muhasebe', '/banka' => 'gor_muhasebe', '/cek-senet' => 'gor_muhasebe', '/amortisman' => 'gor_muhasebe', '/online-komisyon' => 'gor_muhasebe', '/beyanname' => 'gor_muhasebe', '/bilanco' => 'gor_muhasebe', '/e-defter' => 'gor_muhasebe',
-            '/pazarlama-sohbet' => 'gor_app_yonetim', '/kampanya' => 'gor_app_yonetim', '/segmentler' => 'gor_app_yonetim', '/kampanya-rapor' => 'gor_app_yonetim', '/icerik-takvimi' => 'gor_app_yonetim',
+            '/pazarlama-sohbet' => 'gor_app_yonetim', '/kampanya' => 'gor_app_yonetim', '/kampanya-push' => 'gor_app_yonetim', '/segmentler' => 'gor_app_yonetim', '/kampanya-rapor' => 'gor_app_yonetim', '/icerik-takvimi' => 'gor_app_yonetim',
             '/satis-sohbet' => 'gor_rezervasyon', '/etkinlik-takvim' => 'gor_rezervasyon', '/depozito' => 'gor_rezervasyon',
             '/crm-sohbet' => 'gor_odul_dogrula', '/musteri-360' => 'gor_odul_dogrula', // CRM / Müşteri İlişkileri
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
@@ -13352,7 +13428,7 @@ Route::post('/ik-aday/ise-al', function (Request $r) {
         $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak', 'satinalmaci']) ? $r->rol : 'garson';
         $pin = preg_replace('/\D/', '', (string) $r->pin);
         if (strlen($pin) < 4) return redirect('/ik-aday')->with('hata', 'İşe almak için en az 4 haneli PIN gerekli.');
-        if (DB::table('personeller')->where('sube_id', $sid)->where('pin', $pin)->exists()) return redirect('/ik-aday')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
+        if (DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->exists()) return redirect('/ik-aday')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
         $veri = ['sube_id' => $sid, 'ad' => $a->ad, 'telefon' => $a->telefon, 'rol' => $rol, 'pin' => $pin, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
         if (Schema::hasColumn('personeller', 'ise_baslama')) $veri['ise_baslama'] = $r->filled('ise_baslama') ? $r->ise_baslama : now()->toDateString();
         $pid = DB::table('personeller')->insertGetId($veri);
@@ -14554,7 +14630,8 @@ if (!function_exists('_oauthAccessToken')) {
             if ($kod < 200 || $kod >= 300) return null;
             $d = json_decode((string) $res, true);
             if (empty($d['access_token'])) return null;
-            _baglantiKaydet($sid, $saglayici, $row->hesap_email, $d['access_token'], $d['refresh_token'] ?? null, $row->kapsam, $d['expires_in'] ?? 3600);
+            // departman bağlantısı kendi satırına yazılır (eskiden şube satırına yazılıyor, departman e-postası ~1 saat sonra kopuyordu)
+            _baglantiKaydet($sid, $saglayici, $row->hesap_email, $d['access_token'], $d['refresh_token'] ?? null, $row->kapsam, $d['expires_in'] ?? 3600, $depId);
             return $d['access_token'];
         } catch (\Throwable $e) { return null; }
     }
@@ -15992,7 +16069,10 @@ Route::post('/api/login', function (Request $r) {
         $markaSubeIds = DB::table('subeler')->where('app_bundle', $appBundle)->pluck('id')->all();
         if (!empty($markaSubeIds)) $q->whereIn('sube_id', $markaSubeIds);
     }
-    $p = $q->first();
+    $adaylar = $q->limit(2)->get();
+    // Aynı PIN birden fazla işletmede: kimseyi yanlış restorana sokma
+    if ($adaylar->count() > 1) return response()->json(['ok' => 0, 'hata' => 'Bu PIN birden fazla işletmede kayıtlı. Yöneticinizden PIN değişikliği isteyin.'], 409);
+    $p = $adaylar->first();
     if (!$p) {
         \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 600); // basarisiz -> 10 dk'lik pencerede say
         return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
@@ -16611,7 +16691,7 @@ Route::post('/personel/kaydet', function (Request $r) {
         if ($r->has('acil_tel') && Schema::hasColumn('personeller', 'acil_tel')) $veri['acil_tel'] = trim((string) $r->acil_tel) ?: null;
         if ($pin !== '') {
             if (strlen($pin) < 4) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'PIN en az 4 haneli olmalı.');
-            $cak = DB::table('personeller')->where('sube_id', $sid)->where('pin', $pin)->where('id', '!=', $pid)->exists();
+            $cak = DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->where('id', '!=', $pid)->exists(); // tüm sistemde benzersiz (giriş PIN'i şubeden bağımsız arar)
             if ($cak) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Bu PIN başka personelde kullanılıyor.');
             $veri['pin'] = $pin;
         }
@@ -17981,7 +18061,7 @@ Route::get('/satinalma-siparis-detay', function (Request $r) {
 
         $d['s'] = $s;
         $d['tedarikci'] = $s->tedarikci_id ? DB::table('tedarikciler')->where('id', $s->tedarikci_id)->first() : null;
-        $d['tedarikciler'] = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'eposta']);
+        $d['tedarikciler'] = DB::table('tedarikciler')->orderBy('ad')->get(['id', 'ad', 'telefon', 'email as eposta']); // kolon adı email (eskiden hata → sipariş detayı boş açılıyordu)
         $d['malzemeler'] = DB::table('malzemeler')->orderBy('ad')->get(['id', 'ad', 'temel_birim_id', 'kritik_stok', 'guncel_maliyet']);
         $d['birimler'] = DB::table('birimler')->get(['id', 'ad', 'kisaltma']);
         $birim = DB::table('birimler')->pluck('kisaltma', 'id');
@@ -18955,7 +19035,8 @@ if (!function_exists('_menuBadgeler')) {
             // ============ KASA & FİNANS ============
             try {
                 if (Schema::hasTable('cari_hesaplar')) {
-                    $ca = (int) DB::table('cari_hesaplar')->where('sube_id', $sid)->where('bakiye', '>', 0)->count();
+                    // bakiye kolonu yok: borç - tahsilat > 0 olan cariler (eskiden hata → rozet hiç çıkmıyordu)
+                    $ca = Schema::hasTable('cari_hareketler') ? DB::table('cari_hareketler')->where('sube_id', $sid)->selectRaw("cari_id, SUM(CASE WHEN tip = 'borc' THEN tutar ELSE -tutar END) AS b")->groupBy('cari_id')->get()->filter(fn ($x) => (float) $x->b > 0.009)->count() : 0;
                     $put('/cari', $ca);
                 }
             } catch (\Throwable $e) {}
@@ -18996,7 +19077,7 @@ if (!function_exists('_menuBadgeler')) {
             // ============ WHATSAPP ============
             try {
                 if (Schema::hasTable('wa_kontor_talepleri')) {
-                    $wa = (int) DB::table('wa_kontor_talepleri')->where('durum', 'bekliyor')->count();
+                    $wa = (int) DB::table('wa_kontor_talepleri')->where('sube_id', $sid)->where('durum', 'bekliyor')->count(); // yalnız bu restoran
                     $put('/whatsapp', $wa);
                 }
             } catch (\Throwable $e) {}
@@ -24423,7 +24504,7 @@ Route::post('/api/patron/personel-kaydet', function (Request $r) {
         // GUVENLIK: cok kisa PIN brute-force'a acik -> min 4 hane
         if (strlen($pin) < 4) return ['ok' => 0, 'hata' => 'PIN en az 4 haneli olmalı.'];
         // PIN benzersiz olmali (ayni sube)
-        $cak = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', $pin)->where('id', '!=', $pid)->exists();
+        $cak = DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->where('id', '!=', $pid)->exists(); // tüm sistemde benzersiz
         if ($cak) return ['ok' => 0, 'hata' => 'Bu PIN başka personelde kullanılıyor.'];
         $veri['pin'] = $pin;
     }
@@ -33254,7 +33335,7 @@ Route::get('/api/profil', function (Request $r) {
             $bugunStat['masa'] = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('acan_personel_id', $pid)->whereDate('acilis', $bugun)->count();
         }
         if (Schema::hasTable('odemeler')) {
-            $sum = DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)->whereDate('created_at', $bugun)->selectRaw('COALESCE(SUM(tutar),0) t, COALESCE(SUM(bahsis),0) b')->first();
+            $sum = DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))->where('personel_id', $pid)->whereDate('created_at', $bugun)->selectRaw('COALESCE(SUM(tutar),0) t, COALESCE(SUM(bahsis),0) b')->first();
             $bugunStat['ciro'] = (float) ($sum->t ?? 0);
             $bugunStat['bahsis'] = (float) ($sum->b ?? 0);
         }
@@ -33369,10 +33450,10 @@ Route::get('/api/profil', function (Request $r) {
             if ($buAyC >= 50) $rozetler[] = ['anahtar' => 'cagri_avcisi', 'ad' => 'Çağrı Avcısı', 'ikon' => '📢', 'renk' => '#8B5CF6'];
         }
         if (Schema::hasTable('odemeler')) {
-            $benim = (float) DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)
+            $benim = (float) DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))->where('personel_id', $pid)
                 ->where('created_at', '>=', now()->startOfWeek())->sum('tutar');
             if ($benim > 0) {
-                $enY = (float) DB::table('odemeler')->where('sube_id', $sid)
+                $enY = (float) DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))
                     ->where('created_at', '>=', now()->startOfWeek())
                     ->whereNotNull('personel_id')->groupBy('personel_id')->selectRaw('SUM(tutar) t')
                     ->orderByDesc('t')->limit(1)->value('t');
@@ -33448,7 +33529,7 @@ Route::post('/api/profil/pin-degistir', function (Request $r) {
     if (!preg_match('/^\d{4,8}$/', $yeni)) return ['ok' => 0, 'hata' => 'PIN 4-8 haneli rakam olmalı'];
     if ($eski !== (string) ($p->pin ?? '')) return ['ok' => 0, 'hata' => 'Mevcut PIN hatalı'];
     if ($yeni === $eski) return ['ok' => 0, 'hata' => 'Yeni PIN eskisiyle aynı olamaz'];
-    $cakisma = DB::table('personeller')->where('sube_id', $p->sube_id)->where('pin', $yeni)->where('id', '!=', $p->id)->exists();
+    $cakisma = DB::table('personeller')->where('pin', $yeni)->where('aktif', 1)->where('id', '!=', $p->id)->exists(); // tüm sistemde benzersiz
     if ($cakisma) return ['ok' => 0, 'hata' => 'Bu PIN başka personel tarafından kullanılıyor'];
     try {
         DB::table('personeller')->where('id', $p->id)->update(['pin' => $yeni]);
@@ -33606,7 +33687,7 @@ Route::get('/profilim', function () {
             $bugun['masa'] = (int) DB::table('adisyonlar')->where('sube_id', $sid)->where('acan_personel_id', $pid)->whereDate('acilis', $bugunTarih)->count();
         }
         if (Schema::hasTable('odemeler')) {
-            $sum = DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)->whereDate('created_at', $bugunTarih)->selectRaw('COALESCE(SUM(tutar),0) t, COALESCE(SUM(bahsis),0) b')->first();
+            $sum = DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))->where('personel_id', $pid)->whereDate('created_at', $bugunTarih)->selectRaw('COALESCE(SUM(tutar),0) t, COALESCE(SUM(bahsis),0) b')->first();
             $bugun['ciro'] = (float) ($sum->t ?? 0);
             $bugun['bahsis'] = (float) ($sum->b ?? 0);
         }
@@ -33656,10 +33737,10 @@ Route::get('/profilim', function () {
             if ($buAyC >= 50) $rozetler[] = ['ad' => 'Çağrı Avcısı', 'ikon' => '📢', 'renk' => '#8B5CF6'];
         }
         if (Schema::hasTable('odemeler')) {
-            $benim = (float) DB::table('odemeler')->where('sube_id', $sid)->where('personel_id', $pid)
+            $benim = (float) DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))->where('personel_id', $pid)
                 ->where('created_at', '>=', now()->startOfWeek())->sum('tutar');
             if ($benim > 0) {
-                $enY = (float) DB::table('odemeler')->where('sube_id', $sid)
+                $enY = (float) DB::table('odemeler')->whereIn('adisyon_id', DB::table('adisyonlar')->where('sube_id', $sid)->select('id'))
                     ->where('created_at', '>=', now()->startOfWeek())
                     ->whereNotNull('personel_id')->groupBy('personel_id')->selectRaw('SUM(tutar) t')
                     ->orderByDesc('t')->limit(1)->value('t');
@@ -33821,7 +33902,7 @@ Route::post('/profilim-pin-degistir', function (Request $r) {
     $per = DB::table('personeller')->where('id', $bp->id)->first();
     if (!$per || $eski !== (string) ($per->pin ?? '')) return redirect('/profilim')->with('hata', 'Mevcut PIN hatalı.');
     if ($yeni === $eski) return redirect('/profilim')->with('hata', 'Yeni PIN eskisiyle aynı olamaz.');
-    $cakisma = DB::table('personeller')->where('sube_id', $per->sube_id)->where('pin', $yeni)->where('id', '!=', $per->id)->exists();
+    $cakisma = DB::table('personeller')->where('pin', $yeni)->where('aktif', 1)->where('id', '!=', $per->id)->exists(); // tüm sistemde benzersiz
     if ($cakisma) return redirect('/profilim')->with('hata', 'Bu PIN başka personel tarafından kullanılıyor.');
     try { DB::table('personeller')->where('id', $per->id)->update(['pin' => $yeni]); _personelLog($per, 'guvenlik', 'PIN değiştirildi'); return redirect('/profilim')->with('ok', 'PIN değiştirildi.'); }
     catch (\Throwable $e) { return redirect('/profilim')->with('hata', 'Kaydedilemedi.'); }

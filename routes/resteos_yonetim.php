@@ -262,8 +262,11 @@ Route::get('/resteos-yonetim/giris', function () {
 Route::post('/resteos-yonetim/giris', function (Request $r) {
     _ryEnsure();
     $email = trim((string) $r->email);
+    $rlKey = 'rygiris:' . $r->ip();
+    if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($rlKey, 5)) return redirect('/resteos-yonetim/giris')->with('hata', 'Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin.');
     $u = DB::table('resteos_yoneticiler')->where('email', $email)->where('aktif', 1)->first();
     $ok = $u && Hash::check((string) $r->sifre, $u->sifre);
+    if (!$ok) \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 900); else \Illuminate\Support\Facades\RateLimiter::clear($rlKey);
     try {
         DB::table('resteos_giris_log')->insert(['email' => $email, 'basarili' => $ok ? 1 : 0, 'ip' => $r->ip(), 'created_at' => now()]);
     } catch (\Throwable $e) {}
@@ -271,12 +274,15 @@ Route::post('/resteos-yonetim/giris', function (Request $r) {
     session(['ry_admin_id' => $u->id]);
     DB::table('resteos_yoneticiler')->where('id', $u->id)->update(['son_giris' => now()]);
     _ryLog('giris', 'Panele giriş yaptı');
+    // Varsayılan şifre (resteos2026) ile girildiyse önce şifre değiştirilsin
+    if (Hash::check('resteos2026', $u->sifre)) return redirect('/resteos-yonetim/profil')->with('hata', 'Varsayılan şifreyle giriş yaptınız. Güvenliğiniz için şifrenizi HEMEN değiştirin.');
     return redirect('/resteos-yonetim');
 });
 
 Route::match(['get', 'post'], '/resteos-yonetim/cikis', function () {
     _ryLog('cikis', 'Çıkış yaptı');
     session()->forget('ry_admin_id');
+    session()->forget('ry_imp_sube'); // "restorana gir" seçimi sonraki girişe taşınmasın
     return redirect('/resteos-yonetim/giris');
 });
 

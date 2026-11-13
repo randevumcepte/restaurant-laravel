@@ -37,7 +37,7 @@
 
   <div class="ks-uyari"><span class="material-icons-outlined">verified_user</span><span><b>Güvenli gönderim:</b> Kampanya yalnızca <b>uygulamayı indiren (push açık)</b> müşterilere <b>resimli bildirim</b> olarak gider. Toplu WhatsApp YAPILMAZ (ban riski). Görsel vermek istersen bir <b>görsel linki (URL)</b> yapıştır — Instagram reklam görselini bir yere yükleyip linkini koyabilirsin.</span></div>
 
-  <form method="POST" action="/kampanya/gonder" onsubmit="return confirm('Seçili segmentteki müşterilere bildirim gönderilsin mi?')">
+  <form method="POST" action="/kampanya-push/gonder" onsubmit="return confirm('Seçili segmentteki müşterilere bildirim gönderilsin mi?')">
     @csrf
     <div class="ks-grid">
       <div class="ks-card ks-f">

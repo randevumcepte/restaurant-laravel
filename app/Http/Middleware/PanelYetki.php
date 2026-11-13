@@ -41,6 +41,8 @@ class PanelYetki
             }
         }
         if ($eslesen === null) return $next($request); // kapılı değil → serbest
+        // Kuryenin kişisel linki (/kurye/{token}) girişsiz çalışır; token rotada doğrulanır. Eskiden /kurye öneki yüzünden giriş istiyordu.
+        if ($eslesen === '/kurye' && preg_match('#^/kurye/[A-Za-z0-9]{12,}(/(konum|durum))?$#', $path)) return $next($request);
 
         if (function_exists('_panelYetkiEnsure')) { try { _panelYetkiEnsure(); } catch (\Throwable $e) {} }
 
@@ -106,7 +108,9 @@ class PanelYetki
             if ($api) return response()->json(['ok' => 0, 'hata' => 'Bu işlem için yetkiniz yok'], 403);
             return response(view('yetkisiz', ['sayfa' => $path]), 403);
         }
-        if ($request->has('sube')) { $request->query->set('sube', $p->sube_id); $request->request->set('sube', $p->sube_id); }
+        // Şube HER ZAMAN kişinin şubesine sabitlenir. Eskiden yalnız parametre geldiyse sabitleniyordu; gelmeyince uçlar
+        // ilk restorana düşüyordu (başka restoranın WhatsApp'ı/kurye adresleri/garson çağrıları açılabiliyordu).
+        $request->query->set('sube', $p->sube_id); $request->request->set('sube', $p->sube_id);
         return null;
     }
 
