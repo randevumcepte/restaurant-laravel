@@ -421,69 +421,130 @@ Route::get('/fiyat-radari', function (Request $r) {
     return view('fiyat_radari', $v);
 });
 
+if (!function_exists('_fr2IndirYanit')) {
+    // Rapor dosyası (xlsx) ya da yazdırma görünümü (pdf) — web ve uygulamanın imzalı linki ortak kullanır
+    function _fr2IndirYanit($sid, array $f, $rapor, $format)
+    {
+        $raporlar = _fr2Raporlar();
+        if (!array_key_exists($rapor, $raporlar)) $rapor = 'tam';
+        $v = _fr2Veri($sid, $f);
+        $ai = cache()->get('fr2_ai_son_' . $sid);
+        $sayfalar = _fr2Sayfalar($rapor, $v, $ai);
+        $subeAd = 'ResteOS'; try { $subeAd = DB::table('subeler')->where('id', $sid)->value('ad') ?: 'ResteOS'; } catch (\Throwable $e) {}
+        $tedAd = $f['ted'] ? (DB::table('tedarikciler')->where('id', $f['ted'])->value('ad') ?: '') : '';
+        $alt = $subeAd . ' · Son ' . $f['gun'] . ' gün (' . \Carbon\Carbon::parse($v['kpi']['baslangic'] ?? today())->format('d.m.Y') . ' – ' . today()->format('d.m.Y') . ')'
+            . ($tedAd ? ' · Tedarikçi: ' . $tedAd : '') . ' · Oluşturma: ' . now()->format('d.m.Y H:i');
+        $baslik = $raporlar[$rapor][0];
+        $dosya = 'Fiyat-Radari-' . \Illuminate\Support\Str::slug($baslik) . '-' . today()->format('Y-m-d');
+        if ($format === 'pdf') {
+            return response()->view('fiyat_radari_rapor', ['baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $rapor === 'ai' || $rapor === 'tam' ? $ai : null, 'rapor' => $rapor, 'dosya' => $dosya]);
+        }
+        $xlsx = _fr2Xlsx($sayfalar, $baslik, $alt);
+        if ($xlsx !== null) return response($xlsx, 200, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.xlsx"']);
+        // ZipArchive yoksa: ilk sayfa CSV (Excel açar)
+        $s = $sayfalar[0]; $out = "\xEF\xBB\xBF" . implode(';', array_column($s['kol'], 0)) . "\n";
+        foreach ($s['sat'] as $sat) $out .= implode(';', array_map(fn ($c) => '"' . str_replace('"', '""', is_float($c) ? number_format($c, 2, ',', '') : (string) $c) . '"', $sat)) . "\n";
+        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.csv"']);
+    }
+}
+
+if (!function_exists('_fr2AiIslem')) {
+    // AI analiz (soru boşsa tam analiz JSON, doluysa serbest cevap). Dönüş: ['ok'=>1,'analiz'|'cevap'] ya da ['ok'=>0,'hata']
+    function _fr2AiIslem($sid, array $f, $soru, $yenile)
+    {
+        $soru = trim(mb_substr((string) $soru, 0, 500));
+        $gunKey = 'fr2_ai_gun_' . $sid . '_' . date('Y-m-d');
+        if ((int) cache()->get($gunKey, 0) >= 40) return ['ok' => 0, 'hata' => 'Bugünkü AI analiz hakkı doldu (40). Yarın tekrar dene.'];
+        $v = _fr2Veri($sid, $f);
+        if (empty($v['kpi']['kalem'])) return ['ok' => 0, 'hata' => 'Bu dönemde alış faturası yok — analiz için önce alış girilmeli.'];
+        $baglam = _fr2AiBaglam($v);
+        $sys = 'Sen deneyimli bir restoran satın alma ve maliyet danışmanısın. Türkçe, net, rakamlarla konuşursun; uydurma rakam vermezsin, yalnız verilen veriyi kullanırsın. '
+            . 'Para birimi TL. Hal fiyatı toptan fiyattır; tedarikçinin halin %10-20 üstü normaldir. "ayni_ted_yuzde" aynı tedarikçinin kendi zammıdır, "ted_degisti" tedarikçi değişikliğini gösterir. '
+            . 'Birimi uyumsuz (birim_uyumlu=false) hal satırlarından fark çıkarma.';
+        if ($soru !== '') {
+            $res = _fr2AiCagir($sys . ' Kullanıcının sorusunu veriye dayanarak kısa paragraflar ve gerekiyorsa madde işaretleriyle cevapla. Markdown başlık kullanma.',
+                'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru, 1500);
+            if (!empty($res['hata'])) return ['ok' => 0, 'hata' => $res['hata']];
+            cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->endOfDay());
+            return ['ok' => 1, 'cevap' => $res['metin']];
+        }
+        $fp = md5(json_encode($baglam));
+        $onb = cache()->get('fr2_ai_' . $sid . '_' . $fp);
+        if ($onb && !$yenile) return ['ok' => 1, 'analiz' => $onb, 'onbellek' => 1];
+        $sema = '{"ozet":"3-5 cümle genel değerlendirme","skor":0-100 (satın alma disiplini puanı),'
+            . '"kritik":[{"baslik":"","detay":"","tutar":sayı veya null}],'
+            . '"gecmis_hatalar":[{"baslik":"","detay":"hangi malzeme, hangi tedarikçi, hangi tarih/fiyat — neden hata"}],'
+            . '"firsatlar":[{"baslik":"","detay":"","tutar":tahmini yıllık tasarruf sayı veya null}],'
+            . '"gelecek":[{"baslik":"","detay":"önümüzdeki 1-3 ay için öngörü/öneri: sezon, trend, stoklama, sözleşme"}],'
+            . '"pazarlik":[{"tedarikci":"","arguman":"o tedarikçiyle konuşurken kullanılacak somut rakamlı argüman"}],'
+            . '"aksiyonlar":[{"oncelik":"yuksek|orta|dusuk","is":"","sorumlu":"Satın almacı|Müdür|Şef|Patron"}]}';
+        $res = _fr2AiCagir($sys . ' SADECE geçerli JSON döndür, başka metin yazma. Şema: ' . $sema . ' Her listede 3-7 madde; somut malzeme/tedarikçi adı ve rakam kullan.',
+            'Son ' . $f['gun'] . ' günün satın alma verisi: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nBu veriyi analiz et: geçmiş hataları, tasarruf fırsatlarını, gelecek önerilerini, pazarlık argümanlarını ve aksiyon listesini çıkar.");
+        if (!empty($res['hata'])) return ['ok' => 0, 'hata' => $res['hata']];
+        $t = $res['metin']; $s = strpos($t, '{'); $e = strrpos($t, '}');
+        $j = ($s !== false && $e > $s) ? json_decode(substr($t, $s, $e - $s + 1), true) : null;
+        if (!is_array($j)) return ['ok' => 0, 'hata' => 'AI yanıtı çözümlenemedi, tekrar dene.'];
+        $j['_zaman'] = now()->format('d.m.Y H:i'); $j['_donem'] = $f['gun'];
+        cache()->put('fr2_ai_' . $sid . '_' . $fp, $j, now()->addHours(12));
+        cache()->put('fr2_ai_son_' . $sid, $j, now()->addDays(30));
+        cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->endOfDay());
+        return ['ok' => 1, 'analiz' => $j];
+    }
+}
+
 Route::get('/fiyat-radari/indir', function (Request $r) {
     if (!_fr2Erisim()) return redirect('/pos-giris');
-    $sid = _webSubeId(); $f = _fr2Filtre($r);
-    $raporlar = _fr2Raporlar();
-    $rapor = array_key_exists($r->query('rapor'), $raporlar) ? $r->query('rapor') : 'tam';
-    $v = _fr2Veri($sid, $f);
-    $ai = cache()->get('fr2_ai_son_' . $sid);
-    $sayfalar = _fr2Sayfalar($rapor, $v, $ai);
-    $subeAd = 'ResteOS'; try { $subeAd = DB::table('subeler')->where('id', $sid)->value('ad') ?: 'ResteOS'; } catch (\Throwable $e) {}
-    $tedAd = $f['ted'] ? (DB::table('tedarikciler')->where('id', $f['ted'])->value('ad') ?: '') : '';
-    $alt = $subeAd . ' · Son ' . $f['gun'] . ' gün (' . \Carbon\Carbon::parse($v['kpi']['baslangic'] ?? today())->format('d.m.Y') . ' – ' . today()->format('d.m.Y') . ')'
-        . ($tedAd ? ' · Tedarikçi: ' . $tedAd : '') . ' · Oluşturma: ' . now()->format('d.m.Y H:i');
-    $baslik = $raporlar[$rapor][0];
-    $dosya = 'Fiyat-Radari-' . \Illuminate\Support\Str::slug($baslik) . '-' . today()->format('Y-m-d');
-    if ($r->query('format') === 'pdf') {
-        return view('fiyat_radari_rapor', ['baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $rapor === 'ai' || $rapor === 'tam' ? $ai : null, 'rapor' => $rapor, 'dosya' => $dosya]);
-    }
-    $xlsx = _fr2Xlsx($sayfalar, $baslik, $alt);
-    if ($xlsx !== null) return response($xlsx, 200, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.xlsx"']);
-    // ZipArchive yoksa: ilk sayfa CSV (Excel açar)
-    $s = $sayfalar[0]; $out = "\xEF\xBB\xBF" . implode(';', array_column($s['kol'], 0)) . "\n";
-    foreach ($s['sat'] as $sat) $out .= implode(';', array_map(fn ($c) => '"' . str_replace('"', '""', is_float($c) ? number_format($c, 2, ',', '') : (string) $c) . '"', $sat)) . "\n";
-    return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.csv"']);
+    return _fr2IndirYanit(_webSubeId(), _fr2Filtre($r), (string) $r->query('rapor'), (string) $r->query('format'));
 });
 
 Route::post('/fiyat-radari/ai', function (Request $r) {
     if (!_fr2Erisim()) return response()->json(['ok' => 0, 'hata' => 'Yetkin yok.'], 403);
-    $sid = _webSubeId(); $f = _fr2Filtre($r);
-    $soru = trim(mb_substr((string) $r->input('soru', ''), 0, 500));
-    $gunKey = 'fr2_ai_gun_' . $sid . '_' . date('Y-m-d');
-    if ((int) cache()->get($gunKey, 0) >= 40) return response()->json(['ok' => 0, 'hata' => 'Bugünkü AI analiz hakkı doldu (40). Yarın tekrar dene.']);
-    $v = _fr2Veri($sid, $f);
-    if (empty($v['kpi']['kalem'])) return response()->json(['ok' => 0, 'hata' => 'Bu dönemde alış faturası yok — analiz için önce alış girilmeli.']);
-    $baglam = _fr2AiBaglam($v);
-    $sys = 'Sen deneyimli bir restoran satın alma ve maliyet danışmanısın. Türkçe, net, rakamlarla konuşursun; uydurma rakam vermezsin, yalnız verilen veriyi kullanırsın. '
-        . 'Para birimi TL. Hal fiyatı toptan fiyattır; tedarikçinin halin %10-20 üstü normaldir. "ayni_ted_yuzde" aynı tedarikçinin kendi zammıdır, "ted_degisti" tedarikçi değişikliğini gösterir. '
-        . 'Birimi uyumsuz (birim_uyumlu=false) hal satırlarından fark çıkarma.';
-    if ($soru !== '') {
-        $res = _fr2AiCagir($sys . ' Kullanıcının sorusunu veriye dayanarak kısa paragraflar ve gerekiyorsa madde işaretleriyle cevapla. Markdown başlık kullanma.',
-            'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru, 1500);
-        if (!empty($res['hata'])) return response()->json(['ok' => 0, 'hata' => $res['hata']]);
-        cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->endOfDay());
-        return response()->json(['ok' => 1, 'cevap' => $res['metin']]);
-    }
-    $fp = md5(json_encode($baglam));
-    $onb = cache()->get('fr2_ai_' . $sid . '_' . $fp);
-    if ($onb && !$r->boolean('yenile')) return response()->json(['ok' => 1, 'analiz' => $onb, 'onbellek' => 1]);
-    $sema = '{"ozet":"3-5 cümle genel değerlendirme","skor":0-100 (satın alma disiplini puanı),'
-        . '"kritik":[{"baslik":"","detay":"","tutar":sayı veya null}],'
-        . '"gecmis_hatalar":[{"baslik":"","detay":"hangi malzeme, hangi tedarikçi, hangi tarih/fiyat — neden hata"}],'
-        . '"firsatlar":[{"baslik":"","detay":"","tutar":tahmini yıllık tasarruf sayı veya null}],'
-        . '"gelecek":[{"baslik":"","detay":"önümüzdeki 1-3 ay için öngörü/öneri: sezon, trend, stoklama, sözleşme"}],'
-        . '"pazarlik":[{"tedarikci":"","arguman":"o tedarikçiyle konuşurken kullanılacak somut rakamlı argüman"}],'
-        . '"aksiyonlar":[{"oncelik":"yuksek|orta|dusuk","is":"","sorumlu":"Satın almacı|Müdür|Şef|Patron"}]}';
-    $res = _fr2AiCagir($sys . ' SADECE geçerli JSON döndür, başka metin yazma. Şema: ' . $sema . ' Her listede 3-7 madde; somut malzeme/tedarikçi adı ve rakam kullan.',
-        'Son ' . $f['gun'] . ' günün satın alma verisi: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nBu veriyi analiz et: geçmiş hataları, tasarruf fırsatlarını, gelecek önerilerini, pazarlık argümanlarını ve aksiyon listesini çıkar.");
-    if (!empty($res['hata'])) return response()->json(['ok' => 0, 'hata' => $res['hata']]);
-    $t = $res['metin']; $s = strpos($t, '{'); $e = strrpos($t, '}');
-    $j = ($s !== false && $e > $s) ? json_decode(substr($t, $s, $e - $s + 1), true) : null;
-    if (!is_array($j)) return response()->json(['ok' => 0, 'hata' => 'AI yanıtı çözümlenemedi, tekrar dene.']);
-    $j['_zaman'] = now()->format('d.m.Y H:i'); $j['_donem'] = $f['gun'];
-    cache()->put('fr2_ai_' . $sid . '_' . $fp, $j, now()->addHours(12));
-    cache()->put('fr2_ai_son_' . $sid, $j, now()->addDays(30));
-    cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->endOfDay());
-    return response()->json(['ok' => 1, 'analiz' => $j]);
+    return response()->json(_fr2AiIslem(_webSubeId(), _fr2Filtre($r), $r->input('soru', ''), $r->boolean('yenile')));
 });
+
+// ===== UYGULAMA (Flutter telefon + masaüstü) — web v2 ile aynı veri =====
+if (!function_exists('_fr2ApiPersonel')) {
+    // null = giriş yok, false = satın alma yetkisi yok
+    function _fr2ApiPersonel(Request $r)
+    {
+        $p = function_exists('_apiPersonel') ? _apiPersonel($r) : null;
+        if (!$p) return null;
+        if (function_exists('_satinalmaErisim') && !_satinalmaErisim($p)) return false;
+        return $p;
+    }
+}
+
+Route::get('/api/patron/fiyat-radari-v2', function (Request $r) {
+    $p = _fr2ApiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => $p === false ? 'Satın alma yetkin yok.' : 'Yetkisiz'], $p === false ? 403 : 401);
+    $f = _fr2Filtre($r);
+    try { $v = _fr2Veri((int) $p->sube_id, $f); } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Veri hazırlanamadı.']); }
+    $v['dokum_toplam'] = count($v['dokum']);
+    $v['dokum'] = array_slice($v['dokum'], 0, 300);
+    $gec = []; foreach ($v['gecmis'] as $mid => $g) $gec[(string) $mid] = array_slice(array_reverse($g), 0, 30);
+    $v['gecmis'] = (object) $gec;
+    $v['ai'] = cache()->get('fr2_ai_son_' . $p->sube_id);
+    $v['raporlar'] = array_map(fn ($k, $x) => ['anahtar' => $k, 'ad' => $x[0], 'aciklama' => $x[1], 'ikon' => $x[2], 'renk' => $x[3]], array_keys(_fr2Raporlar()), _fr2Raporlar());
+    $v['ok'] = 1;
+    return response()->json($v);
+});
+
+Route::post('/api/patron/fiyat-radari-v2/ai', function (Request $r) {
+    $p = _fr2ApiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => $p === false ? 'Satın alma yetkin yok.' : 'Yetkisiz'], $p === false ? 403 : 401);
+    return response()->json(_fr2AiIslem((int) $p->sube_id, _fr2Filtre($r), $r->input('soru', ''), $r->boolean('yenile')));
+});
+
+// Uygulama rapor indirme: harici tarayıcıda oturum yok → 15 dk geçerli imzalı link. İmza şube + filtreyi kilitler (değiştirilemez).
+Route::get('/api/patron/fiyat-radari-v2/rapor-link', function (Request $r) {
+    $p = _fr2ApiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0, 'hata' => $p === false ? 'Satın alma yetkin yok.' : 'Yetkisiz'], $p === false ? 403 : 401);
+    $f = _fr2Filtre($r);
+    $rapor = array_key_exists($r->query('rapor'), _fr2Raporlar()) ? $r->query('rapor') : 'tam';
+    $yol = \Illuminate\Support\Facades\URL::temporarySignedRoute('fr2.rapor', now()->addMinutes(15),
+        ['s' => (int) $p->sube_id, 'rapor' => $rapor, 'format' => $r->query('format') === 'pdf' ? 'pdf' : 'xlsx', 'gun' => $f['gun'], 'ted' => $f['ted'], 'esik' => $f['esik']], false);
+    return response()->json(['ok' => 1, 'yol' => $yol, 'url' => url($yol)]);
+});
+Route::get('/rapor-indir/fiyat-radari', function (Request $r) {
+    return _fr2IndirYanit((int) $r->query('s'), _fr2Filtre($r), (string) $r->query('rapor'), (string) $r->query('format'));
+})->name('fr2.rapor')->middleware('signed:relative');
