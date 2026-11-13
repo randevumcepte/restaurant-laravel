@@ -187,8 +187,8 @@
             ['/barkod', 'qr_code', 'Barkod', null],
         ],
         'Satın Alma' => [
-            ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
-            ['/satinalma-talep', 'assignment', 'Satın Alma Talebi Oluştur', '#7C3AED'],
+            ['/satinalma-talep', 'assignment', 'Satın Alma Talepleri', '#7C3AED'],
+            ['/gelen-teklifler', 'mark_email_read', 'Gelen Teklifler (AI)', '#10B981'],
             ['/talep-onaylarim', 'fact_check', 'Onay Bekleyen Talepler', '#F59E0B'],
             ['/reddedilen-talepler', 'block', 'Reddedilen Talepler', '#F43F5E'],
             // Üretim planı / özel gün listesini mutfak şefi hazırlar → Mutfak / BOH grubunda
@@ -212,7 +212,7 @@
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
             ['/eposta-hesaplari', 'alternate_email', 'E-posta Hesapları (RFQ)', '#7C3AED'],
-            ['/gelen-teklifler', 'mark_email_read', 'Gelen Teklifler (AI)', '#10B981'],
+            ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
         ],
         'İnsan Kaynakları' => [
             ['/personel', 'badge', 'Personel & Maaş', null],
