@@ -911,7 +911,8 @@ Route::get('/fiyat-radari', function (Request $r) {
     $v = ['filtre' => $f, 'kpi' => []];
     try { $v = _fr2Veri($sid, $f); } catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('fiyat radari: ' . $e->getMessage()); }
     $v['ai'] = cache()->get('fr2_ai_son_' . $sid);
-    $v['raporlar'] = _fr2Raporlar();
+    // Rapor Merkezi yalnız yorumsuz veri raporları; AI raporu AI Analiz sekmesinden indirilir
+    $v['raporlar'] = array_diff_key(_fr2Raporlar(), ['ai' => 1]);
     return view('fiyat_radari', $v);
 });
 
@@ -1021,7 +1022,7 @@ Route::get('/api/patron/fiyat-radari-v2', function (Request $r) {
     $gec = []; foreach ($v['gecmis'] as $mid => $g) $gec[(string) $mid] = array_slice(array_reverse($g), 0, 30);
     $v['gecmis'] = (object) $gec;
     $v['ai'] = cache()->get('fr2_ai_son_' . $p->sube_id);
-    $v['raporlar'] = array_map(fn ($k, $x) => ['anahtar' => $k, 'ad' => $x[0], 'aciklama' => $x[1], 'ikon' => $x[2], 'renk' => $x[3]], array_keys(_fr2Raporlar()), _fr2Raporlar());
+    $v['raporlar'] = array_map(fn ($k, $x) => ['anahtar' => $k, 'ad' => $x[0], 'aciklama' => $x[1], 'ikon' => $x[2], 'renk' => $x[3]], array_keys(array_diff_key(_fr2Raporlar(), ['ai' => 1])), array_diff_key(_fr2Raporlar(), ['ai' => 1]));
     $v['ok'] = 1;
     return response()->json($v);
 });
