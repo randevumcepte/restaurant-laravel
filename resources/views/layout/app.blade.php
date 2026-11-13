@@ -196,6 +196,7 @@
             ['/siparis-onerisi', 'auto_awesome', 'Otomatik Sipariş Önerisi', '#7C3AED'],
             ['/satinalma-siparis', 'shopping_cart_checkout', 'Sipariş İşlemleri', '#4F46E5'],
             ['/mal-kabul', 'inventory', 'Mal Kabul / İrsaliye', '#10B981'],
+            ['/efatura-gelen', 'move_to_inbox', 'Gelen e-Faturalar', '#0EA5E9'],
             ['/fatura-eslestir', 'fact_check', 'Fatura Eşleştir (3-way)', '#F59E0B'],
             ['/fatura-ocr', 'document_scanner', 'Fatura OCR (AI)', '#7C3AED'],
             ['/fiyat-radari', 'radar', 'Fiyat Radarı · Gizli Zam', '#EC4899'],
@@ -485,7 +486,7 @@
         $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
         unset($gruplar['Brifing']);
         // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
-        $_saBol = ['Fatura & Fiyat' => ['/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
+        $_saBol = ['Fatura & Fiyat' => ['/efatura-gelen', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
             'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
             'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim']];
         $_saGrup = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
