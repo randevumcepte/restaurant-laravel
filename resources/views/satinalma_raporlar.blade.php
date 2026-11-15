@@ -30,7 +30,7 @@
       if (in_array('fatura', $eksik, true) || count($eksik) === count($gerekli)) return ['Veri yok', '#DC2626', 'error', $ad];
       return ['Kısmi veri', '#D97706', 'warning', $ad];
   };
-  // Bu kategorinin raporları (sol liste + görüntüleyici)
+  // Bu kategorinin raporları (üst sekmeler + görüntüleyici)
   $liste = [];
   if ($kat === 'radar') {
       $hazir = !empty($durum['fatura']);
@@ -54,69 +54,67 @@
 <style>
   .sr{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;--kr:{{ $katRenk }}}
   .sr [hidden]{display:none!important}
-  /* ---- başlık ---- */
-  .sr-bas{position:relative;overflow:hidden;border-radius:18px;padding:18px 20px;background:var(--card);border:1px solid var(--line);box-shadow:var(--golge)}
-  .sr-bas::before{content:'';position:absolute;inset:0;background:radial-gradient(90% 140% at 0% 0%,color-mix(in srgb,var(--kr) 16%,transparent),transparent 60%);pointer-events:none}
-  .sr-bas-ust{position:relative;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-  .sr-bas-ik{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 75%,#fff),var(--kr));box-shadow:0 10px 22px -10px var(--kr);flex:0 0 auto}
-  .sr-bas-ik .material-icons-outlined{font-size:26px}
-  .sr-bas h2{margin:0;font-size:19px;font-weight:900;color:var(--ink)}
-  .sr-bas p{margin:3px 0 0;font-size:12.5px;color:var(--sub2);max-width:720px}
-  .sr-yol{font-size:11px;font-weight:800;color:var(--sub);letter-spacing:.3px;text-transform:uppercase;margin-bottom:2px}
-  .sr-donem{position:relative;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
-  .sr-donem .lbl,.sr-mod .lbl{font-size:11.5px;font-weight:800;color:var(--sub);margin-right:2px}
-  .sr-chip{display:inline-flex;align-items:center;padding:6px 11px;border-radius:99px;font-size:12px;font-weight:700;color:var(--sub2);background:var(--card2);border:1px solid var(--line);text-decoration:none;white-space:nowrap}
+  /* ---- rapor sekmeleri (üstte) ---- */
+  .sr-sek{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  @media(max-width:700px){.sr-sek{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:78%;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.sr-sek .sr-r{scroll-snap-align:start}}
+  .sr-r{position:relative;display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;font:inherit;color:inherit;overflow:hidden}
+  .sr-r::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--c);transform:scaleX(0);transform-origin:left;transition:transform .2s}
+  .sr-r:hover{border-color:color-mix(in srgb,var(--c) 45%,transparent);transform:translateY(-2px);box-shadow:0 12px 26px -18px var(--c)}
+  .sr-r.aktif{border-color:var(--c);background:linear-gradient(160deg,color-mix(in srgb,var(--c) 9%,var(--card)),var(--card) 70%);box-shadow:0 14px 30px -18px var(--c)}
+  .sr-r.aktif::after{transform:scaleX(1)}
+  .sr-r .ik{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);transition:background .15s,color .15s}
+  .sr-r.aktif .ik{color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 75%,#fff),var(--c))}
+  .sr-r .ik .material-icons-outlined{font-size:21px}
+  .sr-r .t{font-weight:800;font-size:13.5px;color:var(--ink);line-height:1.25;display:flex;align-items:center;gap:6px}
+  .sr-r .d{font-size:11.5px;color:var(--sub);line-height:1.4;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sr-nok{width:8px;height:8px;border-radius:50%;background:var(--n);flex:0 0 auto;box-shadow:0 0 0 3px color-mix(in srgb,var(--n) 18%,transparent)}
+  /* ---- görüntüleyici ---- */
+  .sr-gor{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--golge);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+  .sr-gor-bas{position:relative;display:flex;gap:14px;align-items:center;padding:16px 18px;flex-wrap:wrap}
+  .sr-gor-bas::before{content:'';position:absolute;inset:0;background:radial-gradient(70% 160% at 0% 0%,color-mix(in srgb,var(--c,var(--kr)) 13%,transparent),transparent 65%);pointer-events:none}
+  .sr-gor-bas > *{position:relative}
+  .sr-gor-bas .ik{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 72%,#fff),var(--c));box-shadow:0 10px 22px -12px var(--c);flex:0 0 auto}
+  .sr-gor-bas .ik .material-icons-outlined{font-size:24px}
+  .sr-gor-bas h3{margin:0;font-size:17px;font-weight:900;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sr-gor-bas .d{font-size:12.5px;color:var(--sub2);margin-top:3px;max-width:760px;line-height:1.45}
+  .sr-roz{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);border-radius:99px;padding:2px 8px}
+  .sr-roz .material-icons-outlined{font-size:13px}
+  .sr-eksik{font-size:11.5px;color:#B45309;margin-top:4px}
+  body.koyu .sr-eksik{color:#FBBF24}
+  .sr-arac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .sr-per{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:3px}
+  .sr-per button{border:0;background:none;color:var(--sub2);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:800;cursor:pointer}
+  .sr-per button.aktif{background:var(--c);color:#fff;box-shadow:0 4px 10px -4px var(--c)}
+  .sr-b{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:9px 14px;border-radius:11px;font-size:12.5px;font-weight:800;text-decoration:none;border:1px solid;cursor:pointer;background:none;white-space:nowrap}
+  .sr-b .material-icons-outlined{font-size:17px}
+  .sr-b.x{color:#fff;border-color:#16A34A;background:linear-gradient(135deg,#22C55E,#15803D)}
+  .sr-b.p{color:#fff;border-color:#E11D48;background:linear-gradient(135deg,#F43F5E,#BE123C)}
+  .sr-b.o{color:var(--sub2);border-color:var(--line);background:var(--card2)}
+  .sr-b.x:hover,.sr-b.p:hover{filter:brightness(1.07)}
+  /* ---- araç satırı: dönem + kullanılan veri ---- */
+  .sr-alt{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--card2)}
+  .sr-alt .grp{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .sr-alt .lbl{font-size:10.5px;font-weight:800;color:var(--sub);letter-spacing:.4px;text-transform:uppercase;margin-right:3px}
+  .sr-alt .ayr{width:1px;align-self:stretch;background:var(--line)}
+  .sr-chip{display:inline-flex;align-items:center;padding:5px 10px;border-radius:99px;font-size:12px;font-weight:700;color:var(--sub2);background:var(--card);border:1px solid var(--line);text-decoration:none;white-space:nowrap}
   .sr-chip:hover{border-color:var(--kr);color:var(--kr)}
   .sr-chip.aktif{background:var(--kr);border-color:var(--kr);color:#fff}
-  .sr-ozel{display:inline-flex;gap:5px;align-items:center;padding:3px 4px 3px 10px;border-radius:99px;background:var(--card2);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--sub2)}
-  .sr-ozel input{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:3px 5px;font-size:12px;color:var(--ink)}
+  .sr-ozel{display:inline-flex;gap:4px;align-items:center;padding:2px 3px 2px 9px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--sub2)}
+  .sr-ozel input{background:var(--card2);border:1px solid var(--line);border-radius:7px;padding:2px 4px;font-size:12px;color:var(--ink)}
   .sr-ozel button{border:0;border-radius:99px;padding:5px 10px;font-weight:800;background:var(--kr);color:#fff;cursor:pointer;font-size:12px}
-  .sr-etiket{position:relative;margin-top:8px;font-size:11.5px;color:var(--sub)}
+  .sr-etiket{font-size:11.5px;color:var(--sub)}
   .sr-etiket b{color:var(--ink)}
-  /* ---- veri durumu ---- */
-  .sr-mod{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .sr-m{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:99px;font-size:11.5px;font-weight:700;border:1px solid;text-decoration:none}
+  .sr-m{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11.5px;font-weight:700;border:1px solid;text-decoration:none}
   .sr-m .material-icons-outlined{font-size:14px}
   .sr-m.var{color:#047857;border-color:color-mix(in srgb,#059669 35%,transparent);background:color-mix(in srgb,#059669 8%,transparent)}
-  .sr-m.yok{color:var(--sub);border-color:var(--line);background:var(--card2);border-style:dashed}
+  .sr-m.yok{color:var(--sub);border-color:var(--line);background:var(--card);border-style:dashed}
   a.sr-m.yok:hover{color:var(--kr);border-color:var(--kr)}
   body.koyu .sr-m.var{color:#34D399}
-  /* ---- liste + görüntüleyici ---- */
-  .sr-ana{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start}
-  @media(max-width:1050px){.sr-ana{grid-template-columns:minmax(0,1fr)}}
-  .sr-liste{display:flex;flex-direction:column;gap:6px;position:sticky;top:10px}
-  @media(max-width:1050px){.sr-liste{position:static}}
-  .sr-r{display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;font:inherit;color:inherit}
-  .sr-r:hover{border-color:color-mix(in srgb,var(--c) 45%,transparent);transform:translateX(2px)}
-  .sr-r.aktif{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 16%,transparent),0 10px 24px -14px var(--c)}
-  .sr-r .ik{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:0 0 auto;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
-  .sr-r.aktif .ik{color:#fff;background:var(--c)}
-  .sr-r .ik .material-icons-outlined{font-size:20px}
-  .sr-r .t{font-weight:800;font-size:13.5px;color:var(--ink);line-height:1.25;display:flex;align-items:center;gap:6px}
-  .sr-r .d{font-size:11.5px;color:var(--sub);line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .sr-nok{width:8px;height:8px;border-radius:50%;background:var(--n);flex:0 0 auto}
-  .sr-gor{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--golge);overflow:hidden;display:flex;flex-direction:column;min-width:0}
-  .sr-gor-bas{display:flex;gap:12px;align-items:flex-start;padding:15px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .sr-gor-bas .ik{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--c);flex:0 0 auto}
-  .sr-gor-bas h3{margin:0;font-size:16px;font-weight:900;color:var(--ink)}
-  .sr-gor-bas .d{font-size:12px;color:var(--sub2);margin-top:2px;max-width:640px;line-height:1.45}
-  .sr-roz{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);border-radius:99px;padding:2px 8px;margin-top:6px}
-  .sr-roz .material-icons-outlined{font-size:13px}
-  .sr-eksik{font-size:11px;color:var(--sub);margin-top:4px}
-  .sr-arac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
-  .sr-per{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px}
-  .sr-per button{border:0;background:none;color:var(--sub2);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}
-  .sr-per button.aktif{background:var(--c);color:#fff}
-  .sr-b{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:800;text-decoration:none;border:1px solid;cursor:pointer;background:none;white-space:nowrap}
-  .sr-b .material-icons-outlined{font-size:17px}
-  .sr-b.x{color:#15803D;border-color:color-mix(in srgb,#16A34A 40%,transparent);background:color-mix(in srgb,#16A34A 8%,transparent)}
-  .sr-b.p{color:#BE123C;border-color:color-mix(in srgb,#E11D48 40%,transparent);background:color-mix(in srgb,#E11D48 7%,transparent)}
-  .sr-b.o{color:var(--sub2);border-color:var(--line);background:var(--card2)}
-  body.koyu .sr-b.x{color:#4ADE80} body.koyu .sr-b.p{color:#FB7185}
-  .sr-cer{position:relative;height:calc(100vh - 190px);min-height:560px;background:#F1F2F9}
-  .sr-cer iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
-  .sr-yuk{position:absolute;inset:0;display:grid;place-items:center;color:var(--sub);font-size:13px;font-weight:700;pointer-events:none;transition:opacity .2s}
-  .sr-yuk .material-icons-outlined{animation:srDon 1s linear infinite;font-size:28px;color:var(--kr)}
+  /* ---- önizleme: raporun tam boyu, iç kaydırma yok ---- */
+  .sr-cer{position:relative;min-height:520px;background:#F1F2F9}
+  .sr-cer iframe{display:block;width:100%;height:900px;border:0;background:transparent}
+  .sr-yuk{position:absolute;inset:0;display:grid;place-items:start center;padding-top:120px;color:var(--sub);font-size:13px;font-weight:700;pointer-events:none;transition:opacity .2s;background:color-mix(in srgb,#F1F2F9 70%,transparent)}
+  .sr-yuk .material-icons-outlined{animation:srDon 1s linear infinite;font-size:30px;color:var(--kr)}
   @keyframes srDon{to{transform:rotate(360deg)}}
   /* ---- AI ---- */
   .sr-ai{border-radius:18px;padding:18px;background:linear-gradient(135deg,color-mix(in srgb,#9333EA 12%,var(--card)),color-mix(in srgb,#EC4899 8%,var(--card)));border:1px solid color-mix(in srgb,#9333EA 30%,transparent)}
@@ -133,64 +131,35 @@
   .sr-cevap{white-space:pre-wrap;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;font-size:13px;color:var(--ink);margin-top:10px;line-height:1.55}
 </style>
 
+{{-- Dönem / süre seçimi (raporun araç satırında gösterilir) --}}
+@php ob_start(); @endphp
+@if ($sayfaDonemli)
+  <div class="grp"><span class="lbl">Dönem</span>
+    @foreach ($donemler as $k => $ad)<a class="sr-chip {{ $dn['tip'] === $k ? 'aktif' : '' }}" href="?donem={{ $k }}" onclick="this.href += location.hash">{{ $ad }}</a>@endforeach
+    <form class="sr-ozel" method="GET" onsubmit="this.action = location.pathname + location.hash">
+      <input type="hidden" name="donem" value="ozel"><span>Özel</span>
+      <input type="date" name="bas" value="{{ $dn['bas'] }}" max="{{ date('Y-m-d') }}"><span>–</span><input type="date" name="bit" value="{{ $dn['bit'] }}" max="{{ date('Y-m-d') }}">
+      <button type="submit">Uygula</button>
+    </form>
+    <span class="sr-etiket"><b>{{ $dn['etiket'] }}</b> · kıyas {{ \Carbon\Carbon::parse($dn['obas'])->format('d.m.Y') }} – {{ \Carbon\Carbon::parse($dn['obit'])->format('d.m.Y') }}</span>
+  </div>
+@elseif ($kat === 'radar')
+  <div class="grp"><span class="lbl">Süre</span>
+    @foreach ($radarGunler as $g)<a class="sr-chip {{ $radarGun === $g ? 'aktif' : '' }}" href="?gun={{ $g }}" onclick="this.href += location.hash">Son {{ $g }} gün</a>@endforeach
+    <a class="sr-chip" href="/fiyat-radari">Fiyat Radarı sayfası →</a>
+  </div>
+@endif
+@php $donemHtml = ob_get_clean(); @endphp
+
 <div class="sr">
-  {{-- ===== BAŞLIK + DÖNEM ===== --}}
-  <div class="sr-bas">
-    <div class="sr-bas-ust">
-      <div class="sr-bas-ik"><span class="material-icons-outlined">{{ $katIk }}</span></div>
-      <div style="flex:1;min-width:220px">
-        <div class="sr-yol">Raporlar & Analizler</div>
-        <h2>{{ $katAd }}</h2>
-        <p>{{ $katAcik }}
-          @if ($kat === 'ai') Bu içerik <b>yapay zekâ tarafından hazırlanır</b> ve öyle etiketlenir.
-          @else Raporlar <b>yorumsuz sistem verisidir</b>; boş kalan bölüm nedenini yazar.@endif</p>
-      </div>
-    </div>
-    @if ($sayfaDonemli)
-      <div class="sr-donem">
-        <span class="lbl">Dönem:</span>
-        @foreach ($donemler as $k => $ad)<a class="sr-chip {{ $dn['tip'] === $k ? 'aktif' : '' }}" href="?donem={{ $k }}" onclick="this.href += location.hash">{{ $ad }}</a>@endforeach
-        <form class="sr-ozel" method="GET" onsubmit="this.action = location.pathname + location.hash">
-          <input type="hidden" name="donem" value="ozel"><span>Özel</span>
-          <input type="date" name="bas" value="{{ $dn['bas'] }}" max="{{ date('Y-m-d') }}"><span>–</span><input type="date" name="bit" value="{{ $dn['bit'] }}" max="{{ date('Y-m-d') }}">
-          <button type="submit">Uygula</button>
-        </form>
-      </div>
-      <div class="sr-etiket"><b>{{ $dn['ad'] }}</b> · {{ $dn['etiket'] }} ({{ $dn['gun'] }} gün) · kıyas: önceki dönem {{ \Carbon\Carbon::parse($dn['obas'])->format('d.m.Y') }} – {{ \Carbon\Carbon::parse($dn['obit'])->format('d.m.Y') }}</div>
-    @elseif ($kat === 'radar')
-      <div class="sr-donem">
-        <span class="lbl">Süre:</span>
-        @foreach ($radarGunler as $g)<a class="sr-chip {{ $radarGun === $g ? 'aktif' : '' }}" href="?gun={{ $g }}" onclick="this.href += location.hash">Son {{ $g }} gün</a>@endforeach
-        <a class="sr-chip" href="/fiyat-radari" style="margin-left:auto">Fiyat Radarı sayfası →</a>
-      </div>
-    @else
-      <div class="sr-etiket" style="margin-top:12px">Her rapor kendi dönemiyle çalışır: Günlük → dün / bugün · Haftalık → geçen / bu hafta · Aylık → geçen / bu ay. Dönemi raporun başlığından değiştirebilirsiniz.</div>
-    @endif
-  </div>
-
-  {{-- ===== VERİ DURUMU (yalnız bu kategorinin kullandığı modüller; gri olan tıklanınca giriş ekranı açılır) ===== --}}
-  @if ($gerekliTum)
-  <div class="sr-mod">
-    <span class="lbl">Bu raporların kullandığı veri (son 1 yıl):</span>
-    @foreach ($gerekliTum as $m)
-      @if (!empty($durum[$m]))
-        <span class="sr-m var" title="{{ $durum[$m] }} kayıt"><span class="material-icons-outlined">check_circle</span>{{ $modAd[$m] ?? $m }}</span>
-      @else
-        @php [$mUrl, $mYol] = $modLink[$m] ?? [null, '']; @endphp
-        @if ($mUrl)<a class="sr-m yok" href="{{ $mUrl }}" title="Kayıt yok — girmek için: {{ $mYol }}"><span class="material-icons-outlined">add_circle_outline</span>{{ $modAd[$m] ?? $m }}</a>
-        @else<span class="sr-m yok" title="{{ $mYol }}"><span class="material-icons-outlined">radio_button_unchecked</span>{{ $modAd[$m] ?? $m }}</span>@endif
-      @endif
-    @endforeach
-  </div>
-  @endif
-
   @if ($kat === 'ai')
+    <div class="sr-gor"><div class="sr-alt" style="border:0">{!! $donemHtml !!}</div></div>
     {{-- ===== AI ===== --}}
     <div class="sr-ai">
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:260px">
           <div style="font-size:16px;font-weight:900;color:var(--ink)">✨ AI Yönetici Özeti — {{ $dn['ad'] }} ({{ $dn['etiket'] }})</div>
-          <div style="font-size:12.5px;color:var(--sub2);margin-top:3px">Seçili dönemin satın alma verisini (harcama, fiyat değişimleri, teslimat, talepler, stok, bütçe, fire, menü etkisi) okuyup üst yönetim için <b>özet, öne çıkanlar, riskler ve öneriler</b> yazar. Rapor dosyasında dayandığı rakamlar da yer alır.</div>
+          <div style="font-size:12.5px;color:var(--sub2);margin-top:3px">Seçili dönemin satın alma verisini (harcama, fiyat değişimleri, teslimat, talepler, stok, bütçe, fire, menü etkisi) okuyup üst yönetim için <b>özet, öne çıkanlar, riskler ve öneriler</b> yazar. Bu içerik <b>yapay zekâ tarafından hazırlanır</b>; rapor dosyasında dayandığı rakamlar da yer alır.</div>
         </div>
         <button type="button" class="sr-ai-btn" id="srAiBtn" onclick="srAi(false)"><span class="material-icons-outlined">auto_awesome</span> Özet Hazırla</button>
         <button type="button" class="sr-b o" onclick="srAi(true)"><span class="material-icons-outlined">refresh</span>Yeniden</button>
@@ -205,39 +174,54 @@
       </div>
     </div>
   @else
-    {{-- ===== RAPOR LİSTESİ + GÖRÜNTÜLEYİCİ ===== --}}
-    <div class="sr-ana">
-      <div class="sr-liste" id="srListe">
-        @foreach ($liste as $r)
-          <button type="button" class="sr-r" style="--c:{{ $r['renk'] }}" data-k="{{ $r['k'] }}" onclick="srSec('{{ $r['k'] }}')">
-            <span class="ik"><span class="material-icons-outlined">{{ $r['ik'] }}</span></span>
-            <span style="min-width:0;flex:1">
-              <span class="t">{{ $r['ad'] }}<span class="sr-nok" style="--n:{{ $r['roz'][1] }}" title="{{ $r['roz'][0] }}"></span></span>
-              <span class="d">{{ $r['acik'] }}</span>
-            </span>
-          </button>
-        @endforeach
-      </div>
+    {{-- ===== RAPOR SEKMELERİ ===== --}}
+    <div class="sr-sek" id="srListe">
+      @foreach ($liste as $r)
+        <button type="button" class="sr-r" style="--c:{{ $r['renk'] }}" data-k="{{ $r['k'] }}" onclick="srSec('{{ $r['k'] }}')">
+          <span class="ik"><span class="material-icons-outlined">{{ $r['ik'] }}</span></span>
+          <span style="min-width:0;flex:1">
+            <span class="t">{{ $r['ad'] }}<span class="sr-nok" style="--n:{{ $r['roz'][1] }}" title="{{ $r['roz'][0] }}"></span></span>
+            <span class="d">{{ $r['acik'] }}</span>
+          </span>
+        </button>
+      @endforeach
+    </div>
 
-      <div class="sr-gor" id="srGor">
-        <div class="sr-gor-bas">
-          <div class="ik" id="gIk"><span class="material-icons-outlined"></span></div>
-          <div style="flex:1;min-width:220px">
-            <h3 id="gAd"></h3>
-            <div class="d" id="gAcik"></div>
-            <span class="sr-roz" id="gRoz"><span class="material-icons-outlined"></span><b></b></span>
-            <div class="sr-eksik" id="gEksik"></div>
-          </div>
-          <div class="sr-arac">
-            <div class="sr-per" id="gPer" hidden></div>
-            <a class="sr-b x" id="gX"><span class="material-icons-outlined">table_view</span>Excel</a>
-            <a class="sr-b p" id="gP" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
-          </div>
+    {{-- ===== GÖRÜNTÜLEYİCİ ===== --}}
+    <div class="sr-gor" id="srGor">
+      <div class="sr-gor-bas">
+        <div class="ik" id="gIk"><span class="material-icons-outlined"></span></div>
+        <div style="flex:1;min-width:240px">
+          <h3><span id="gAd"></span><span class="sr-roz" id="gRoz"><span class="material-icons-outlined"></span><b></b></span></h3>
+          <div class="d" id="gAcik"></div>
+          <div class="sr-eksik" id="gEksik"></div>
         </div>
-        <div class="sr-cer">
-          <div class="sr-yuk" id="gYuk"><div style="text-align:center"><span class="material-icons-outlined">autorenew</span><div>Rapor hazırlanıyor…</div></div></div>
-          <iframe id="gFrame" title="Rapor önizleme" onload="document.getElementById('gYuk').style.opacity = 0"></iframe>
+        <div class="sr-arac">
+          <div class="sr-per" id="gPer" hidden></div>
+          <a class="sr-b x" id="gX"><span class="material-icons-outlined">table_view</span>Excel</a>
+          <a class="sr-b p" id="gP" target="_blank"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a>
         </div>
+      </div>
+      <div class="sr-alt">
+        {!! $donemHtml !!}
+        @if ($gerekliTum)
+          @if (trim($donemHtml) !== '')<span class="ayr"></span>@endif
+          <div class="grp"><span class="lbl">Kullanılan veri</span>
+            @foreach ($gerekliTum as $m)
+              @if (!empty($durum[$m]))
+                <span class="sr-m var" title="Son 1 yılda {{ $durum[$m] }} kayıt"><span class="material-icons-outlined">check_circle</span>{{ $modAd[$m] ?? $m }}</span>
+              @else
+                @php [$mUrl, $mYol] = $modLink[$m] ?? [null, '']; @endphp
+                @if ($mUrl)<a class="sr-m yok" href="{{ $mUrl }}" title="Son 1 yılda kayıt yok — girmek için: {{ $mYol }}"><span class="material-icons-outlined">add_circle_outline</span>{{ $modAd[$m] ?? $m }}</a>
+                @else<span class="sr-m yok" title="{{ $mYol }}"><span class="material-icons-outlined">radio_button_unchecked</span>{{ $modAd[$m] ?? $m }}</span>@endif
+              @endif
+            @endforeach
+          </div>
+        @endif
+      </div>
+      <div class="sr-cer">
+        <div class="sr-yuk" id="gYuk"><div style="text-align:center"><span class="material-icons-outlined">autorenew</span><div>Rapor hazırlanıyor…</div></div></div>
+        <iframe id="gFrame" title="Rapor önizleme" scrolling="no" onload="srBoy()"></iframe>
       </div>
     </div>
   @endif
@@ -255,6 +239,16 @@
     var qs = r.per ? 'donem=' + (srPerSec[r.k] || Object.keys(r.per)[0]) : SR_QS;
     return r.url + '&format=' + fmt + (qs ? '&' + qs : '');
   }
+  // Önizleme raporun tam boyunda: iç kaydırma çubuğu yok, sayfa kayar
+  function srBoy() {
+    var f = document.getElementById('gFrame'); if (!f || !f.src || f.src === 'about:blank') return;
+    try {
+      var doc = f.contentDocument; if (!doc || !doc.body) return;
+      f.style.height = Math.max(520, doc.documentElement.scrollHeight, doc.body.scrollHeight) + 'px';
+      document.getElementById('gYuk').style.opacity = 0;
+    } catch (e) { f.style.height = '1400px'; f.removeAttribute('scrolling'); document.getElementById('gYuk').style.opacity = 0; }
+  }
+  window.addEventListener('resize', function () { clearTimeout(window.srBoyT); window.srBoyT = setTimeout(srBoy, 150); });
   function srSec(k, ilk) {
     var r = SR_LISTE[k]; if (!r) return;
     document.querySelectorAll('#srListe .sr-r').forEach(function (b) { b.classList.toggle('aktif', b.dataset.k === k); });
