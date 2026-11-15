@@ -5912,7 +5912,8 @@ Route::get('/satinalma-onay-seviye', function () {
     $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'rol']);
     $adMap = $personeller->pluck('ad', 'id');
     $acik = _cokKademeliAcik($sid);
-    return view('onay_seviye', compact('seviyeler', 'personeller', 'adMap', 'acik'));
+    $limitVeri = function_exists('_saLimitSayfaVeri') ? _saLimitSayfaVeri($sid) : ['satinalmacilar' => collect(), 'departmanlar' => collect(), 'sonSiparisler' => collect()];
+    return view('onay_seviye', array_merge(compact('seviyeler', 'personeller', 'adMap', 'acik'), $limitVeri));
 });
 Route::post('/satinalma-onay-seviye/flag', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
@@ -33889,6 +33890,7 @@ require __DIR__ . '/sync.php';
 require __DIR__ . '/bildirim_merkezi.php';
 require __DIR__ . '/fiyat_radari.php';
 require __DIR__ . '/fiyat_anlasma.php';
+require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';

@@ -217,7 +217,7 @@
             ['/tedarikci-karne', 'grading', 'Tedarikçi Karnesi', '#0EA5E9'],
             ['/mustahsil', 'receipt_long', 'Müstahsil Makbuzu', '#0EA5E9'],
             ['/fiyat-anlasmalari', 'handshake', 'Fiyat Anlaşmaları', '#10B981'],
-            ['/satinalma-onay-seviye', 'approval', 'Onay Seviyeleri', '#8B5CF6'],
+            ['/satinalma-onay-seviye', 'approval', 'Onay Limitleri & Seviyeleri', '#8B5CF6'],
             ['/satinalma-butce', 'savings', 'Satınalma Bütçe', '#10B981'],
             ['/satinalma-asistan', 'smart_toy', 'Satınalma AI Asistanı', '#7C3AED'],
             ['/departman-brief?dep=satinalma', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],

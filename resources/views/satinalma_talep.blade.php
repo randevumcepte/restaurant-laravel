@@ -908,6 +908,7 @@ const staKopya = {!! json_encode($kopya ?? null, JSON_UNESCAPED_UNICODE | JSON_H
 let staTedarikciler = [];
 let staAktifKalemler = [];
 let staAktifDurum = null;
+let staAktifTalep = null;
 let staRfq = [];
 let staTeslimOneri = {};
 const durumRenkler = {
@@ -1135,6 +1136,7 @@ window.staDetayAc = async function(id) {
         staTedarikciler = res.tedarikciler || [];
         staAktifKalemler = kalemler;
         staAktifDurum = t.durum;
+        staAktifTalep = t;
         staRfq = res.rfq || [];
         staTeslimOneri = res.teslim_oneri || {};
 
@@ -1358,6 +1360,7 @@ function staAksiyonCiz(durum) {
         const notu = durum==='onayda' ? 'Patron onayı bekleniyor. Teklif/öneri hâlâ düzenlenebilir.' : 'Fiyat Araştır ile tüm tedarikçilere teklif iste → tedarikçi linkten fiyat+teslim girer → teklifler buraya düşer → ⭐ ile öner → Patrona Gönder.';
         html += `<div class="sta-aks-info">${notu}</div>`;
         if (durum !== 'onayda') {
+            html += `<div id="staLimitKutu"></div>`; // satın almacı limiti içindeyse "Limitimle Onayla" (sunucu hesaplar)
             html += `<button class="sta-aks-btn" style="background:#7C3AED" onclick="staFiyatArastir()"><span class="material-icons-outlined">request_quote</span>Fiyat Araştır (tüm tedarikçilere)</button>`;
             if (teklifSay > 0) {
                 html += `<button class="sta-aks-btn" style="background:#F59E0B" onclick="staPatronaGonder()"><span class="material-icons-outlined">send</span>Patrona Gönder (Onaya) · ${teklifSay} teklif</button>`;
@@ -1379,11 +1382,45 @@ function staAksiyonCiz(durum) {
         html += `<button class="sta-aks-btn" style="background:#0EA5E9" onclick="staPOOlustur()"><span class="material-icons-outlined">shopping_cart_checkout</span>Sipariş Oluştur (PO)</button>`;
     }
     if (durum === 'siparis') {
+        if (staAktifTalep && staAktifTalep.sa_onay_tipi === 'limit_ici') html += `<div class="sta-aks-info" style="border-left:3px solid #10B981">🟢 Satın almacı bu siparişi <b>kendi onay limiti içinde</b> onayladı; patrona bilgi gitti.</div>`;
         html += `<div class="sta-aks-info">✓ Sipariş tedarikçiye geçildi. Tedarikçi bağlantıdan siparişi ve teslim tarihini onaylar; mal gelince <b>Mal Kabul</b> yapılınca talep kendiliğinden tamamlanır. Siparişler: <a href="/satinalma-siparis" style="color:var(--mor1);font-weight:800">Sipariş İşlemleri</a></div>`;
         html += `<button class="sta-aks-btn" style="background:#10B981" onclick="staDurumGuncelle('tamamlandi')"><span class="material-icons-outlined">task_alt</span>Tamamlandı İşaretle</button>`;
     }
     box.innerHTML = html;
+    if (document.getElementById('staLimitKutu')) staLimitYukle();
 }
+
+/* ─── Satın almacı onay limiti: limit içindeyse patron beklenmeden sipariş (routes/satinalma_limit.php) ── */
+let staLimitBilgi = null, staLimitSira = 0;
+async function staLimitYukle() {
+    const sira = ++staLimitSira, id = aktifTalepId;
+    let j = null;
+    try { j = await api('/satinalma-talep/limit-bilgi?id=' + id); } catch (e) { return; }
+    const kutu = document.getElementById('staLimitKutu');
+    if (sira !== staLimitSira || !kutu || aktifTalepId !== id) return;
+    staLimitBilgi = j;
+    if (!j || !j.ok || !j.goster) { kutu.innerHTML = ''; return; }
+    const tl = x => Number(x || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺';
+    const ay = j.aylik ? ` · bu ay ${tl(j.kullanilan)} / ${tl(j.aylik)}` : '';
+    if (j.uygun) {
+        kutu.innerHTML = `<button class="sta-aks-btn" style="background:#10B981" onclick="staLimitOnay()"><span class="material-icons-outlined">verified</span>Limitimle Onayla ve Sipariş Geç · ${tl(j.tutar)}</button>
+            <div class="sta-aks-info" style="font-size:11.5px">🟢 Bu sipariş limitin içinde (limitin ${tl(j.limit)}${ay}). Patron onayı beklenmez, patrona bilgi gider.${j.kalan_kalem > 0 ? ` Fiyatı gelmeyen ${j.kalan_kalem} kalem talepte kalır.` : ''}</div>`;
+    } else {
+        kutu.innerHTML = `<div class="sta-aks-info" style="font-size:11.5px;border-left:3px solid #F59E0B">🔒 <b>Kendi limitinle onaylanamaz:</b> ${escHtml(j.neden || '')}<span style="opacity:.75"> (limitin ${tl(j.limit)}${ay})</span></div>`;
+    }
+}
+window.staLimitOnay = function() {
+    const j = staLimitBilgi;
+    if (!j || !j.uygun || !(j.tedarikciler || []).length) { toast('⚠ Limit bilgisi güncel değil, tekrar deneyin', '#F43F5E'); staLimitYukle(); return; }
+    staSiparisPenceresi('Limitimle Onayla ve Sipariş Geç', 'Toplam ' + Number(j.tutar).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺ — senin onay limitin içinde, patron onayı beklenmeden sipariş geçilecek (patrona bilgi gider). ⭐ seçilmeyen kalemde en ucuz teklif kullanılır. Her tedarikçi için teslim tarihini girin.', j.tedarikciler, async function(teslim) {
+        const res = await api('/satinalma-talep/limit-onay', { id: aktifTalepId, teslim });
+        if (res.ok) {
+            staSiparisSonucu(res);
+            if (res.kalan) toast(`${res.kalan} kalem talepte kaldı (fiyat bekliyor)`, '#F59E0B');
+            staDetListeYenile(res.kalan ? 'teklif' : 'siparis'); staDetayAc(aktifTalepId);
+        } else { toast('⚠ ' + (res.mesaj || 'Hata'), '#F43F5E'); staLimitYukle(); }
+    });
+};
 
 /* ─── Teklif ekle / sil ────────────────────────────────── */
 window.staTeklifEkle = async function(kalemId, btn) {
@@ -1415,7 +1452,7 @@ window.staOneriSec = async function(kalemId, tedId) {
     k.onerilen_tedarikci_id = yeni;
     staYerindeCiz(); // anında, scroll yerinde
     const res = await api('/satinalma-talep/oneri-kaydet', { talep_kalem_id: kalemId, onerilen_tedarikci_id: yeni });
-    if (res.ok) { toast(yeni ? '⭐ Önerin kaydedildi' : 'Öneri kaldırıldı', '#F59E0B'); }
+    if (res.ok) { toast(yeni ? '⭐ Önerin kaydedildi' : 'Öneri kaldırıldı', '#F59E0B'); if (document.getElementById('staLimitKutu')) staLimitYukle(); } // tutar değişti → limit yeniden
     else { toast('⚠ ' + (res.mesaj||'Hata'), '#F43F5E'); staDetayYenile(); }
 };
 window.staGerekceKaydet = async function(kalemId, metin) {
