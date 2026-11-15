@@ -6162,76 +6162,7 @@ Route::post('/mustahsil/sil', function (Request $r) {
 
 // FİYAT ANLAŞMALARI + ÇERÇEVE SÖZLEŞME + BELGE + RAPOR → routes/fiyat_anlasma.php (dosya sonunda require)
 
-// ============================================================================
-// DEMIRBAS (YALIN): ekipman kayit + bakim/ariza gecmisi + zimmet. Vergi amortismani DEGIL.
-// ============================================================================
-if (!function_exists('_demirbasEnsure')) {
-    function _demirbasEnsure()
-    {
-        if (cache()->get('demirbas_ensure_ok')) return;
-        try {
-            if (!Schema::hasTable('demirbaslar')) {
-                Schema::create('demirbaslar', function ($t) {
-                    $t->id(); $t->unsignedBigInteger('sube_id')->index();
-                    $t->string('ad', 150); $t->string('kod', 50)->nullable(); $t->string('kategori', 60)->nullable();
-                    $t->date('alis_tarih')->nullable(); $t->decimal('alis_bedel', 14, 2)->default(0);
-                    $t->string('lokasyon', 100)->nullable(); $t->unsignedBigInteger('zimmet_personel_id')->nullable();
-                    $t->string('durum', 20)->default('aktif'); $t->text('not')->nullable();
-                    $t->timestamps();
-                });
-            }
-            if (!Schema::hasTable('demirbas_bakim')) {
-                Schema::create('demirbas_bakim', function ($t) {
-                    $t->id(); $t->unsignedBigInteger('demirbas_id')->index();
-                    $t->date('tarih'); $t->string('tip', 20)->default('bakim'); // bakim/ariza
-                    $t->text('aciklama')->nullable(); $t->decimal('maliyet', 12, 2)->default(0);
-                    $t->timestamps();
-                });
-            }
-            cache()->put('demirbas_ensure_ok', 1, now()->addHours(12));
-        } catch (\Throwable $e) {}
-    }
-}
-Route::get('/demirbas', function () {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/pos-giris');
-    _demirbasEnsure(); $sid = _webSubeId();
-    $liste = DB::table('demirbaslar')->where('sube_id', $sid)->orderByDesc('id')->get();
-    $bakimlar = DB::table('demirbas_bakim')->whereIn('demirbas_id', $liste->pluck('id'))->orderByDesc('tarih')->get()->groupBy('demirbas_id');
-    $personeller = DB::table('personeller')->where('sube_id', $sid)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad']);
-    $persAd = $personeller->pluck('ad', 'id');
-    $toplamDeger = $liste->where('durum', '!=', 'hurda')->sum('alis_bedel');
-    return view('demirbas', compact('liste', 'bakimlar', 'personeller', 'persAd', 'toplamDeger'));
-});
-Route::post('/demirbas/ekle', function (Request $r) {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
-    _demirbasEnsure(); $sid = _webSubeId();
-    DB::table('demirbaslar')->insert(['sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Demirbas', 'kod' => trim((string) $r->input('kod')) ?: null,
-        'kategori' => trim((string) $r->input('kategori')) ?: null, 'alis_tarih' => $r->input('alis_tarih') ?: null,
-        'alis_bedel' => (float) str_replace(',', '.', (string) $r->input('alis_bedel', 0)), 'lokasyon' => trim((string) $r->input('lokasyon')) ?: null,
-        'zimmet_personel_id' => (int) $r->input('zimmet_personel_id') ?: null, 'durum' => 'aktif', 'not' => trim((string) $r->input('not')) ?: null,
-        'created_at' => now(), 'updated_at' => now()]);
-    return back()->with('ok', 'Demirbas eklendi.');
-});
-Route::post('/demirbas/bakim-ekle', function (Request $r) {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
-    _demirbasEnsure();
-    if (!DB::table('demirbaslar')->where('id', (int) $r->input('demirbas_id'))->where('sube_id', _webSubeId())->exists()) return back()->with('hata', 'Demirbaş bulunamadı.'); // başka restoranın demirbaşı
-    DB::table('demirbas_bakim')->insert(['demirbas_id' => (int) $r->input('demirbas_id'), 'tarih' => $r->input('tarih') ?: today()->toDateString(),
-        'tip' => $r->input('tip') === 'ariza' ? 'ariza' : 'bakim', 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
-        'maliyet' => (float) str_replace(',', '.', (string) $r->input('maliyet', 0)), 'created_at' => now(), 'updated_at' => now()]);
-    return back()->with('ok', 'Bakim/ariza kaydedildi.');
-});
-Route::post('/demirbas/durum', function (Request $r) {
-    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
-    $sid = _webSubeId(); $id = (int) $r->input('id');
-    if ($r->input('sil')) { if (DB::table('demirbaslar')->where('sube_id', $sid)->where('id', $id)->delete()) DB::table('demirbas_bakim')->where('demirbas_id', $id)->delete(); }
-    elseif ($r->filled('yeni_durum')) { DB::table('demirbaslar')->where('sube_id', $sid)->where('id', $id)->update(['durum' => (string) $r->input('yeni_durum'), 'updated_at' => now()]); }
-    return back()->with('ok', 'Guncellendi.');
-});
+// DEMİRBAŞ & ETİKET (barkod, etiket ZPL/TSPL, okut, zimmet, sayım) → routes/demirbas.php
 
 // ============================================================================
 // PERSONEL YEMEGI (Tabldot dilimi): calisan ne yedi -> maliyet takibi. Aylik ozet.
@@ -9345,6 +9276,7 @@ if (!function_exists('_panelSayfaKategori')) {
                 'gor_talep' => 'Satın Alma Talebi (talep açma / departman onayı)',
                 'gor_fiyat_anlasma' => 'Fiyat Anlaşmaları — görüntüle (sözleşme, belge, rapor)', 'gor_fiyat_anlasma_duzenle' => 'Fiyat Anlaşmaları — ekle / düzenle / sil',
                 'gor_transfer' => 'Şubeler Arası Transfer (istek, onay, sevk, teslim)',
+                'gor_demirbas' => 'Demirbaş & Etiket — görüntüle, okut, sayım, etiket bas', 'gor_demirbas_duzenle' => 'Demirbaş & Etiket — ekle / düzenle / zimmet / sil',
             ],
             '👥 Personel & Müşteri' => [
                 'gor_personel' => 'Personel & Maaş', 'gor_puantaj' => 'Puantaj', 'gor_garson_perf' => 'Garson Performansı',
@@ -9382,7 +9314,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satis-sohbet' => 'gor_rezervasyon', '/etkinlik-takvim' => 'gor_rezervasyon', '/depozito' => 'gor_rezervasyon',
             '/crm-sohbet' => 'gor_odul_dogrula', '/musteri-360' => 'gor_odul_dogrula', // CRM / Müşteri İlişkileri
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
-            '/stok' => 'gor_stok', '/sayim' => 'gor_sayim', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_satinalma', '/tedarikci-detay' => 'gor_satinalma', '/satinalma' => 'gor_satinalma', '/satinalma-siparis' => 'gor_satinalma', '/satinalma-siparis-detay' => 'gor_satinalma', '/mal-kabul' => 'gor_satinalma', '/mal-kabul-detay' => 'gor_satinalma', '/fatura-eslestir' => 'gor_satinalma', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_satinalma', '/fiyat-radari' => 'gor_satinalma', '/satinalma-raporlar' => 'gor_satinalma', '/hal-fiyatlari' => 'gor_satinalma', '/satinalma-analiz' => 'gor_satinalma', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_satinalma', '/satinalma-islemleri' => 'gor_satinalma',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_sayim', '/demirbas' => 'gor_demirbas', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_satinalma', '/tedarikci-detay' => 'gor_satinalma', '/satinalma' => 'gor_satinalma', '/satinalma-siparis' => 'gor_satinalma', '/satinalma-siparis-detay' => 'gor_satinalma', '/mal-kabul' => 'gor_satinalma', '/mal-kabul-detay' => 'gor_satinalma', '/fatura-eslestir' => 'gor_satinalma', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_satinalma', '/fiyat-radari' => 'gor_satinalma', '/satinalma-raporlar' => 'gor_satinalma', '/hal-fiyatlari' => 'gor_satinalma', '/satinalma-analiz' => 'gor_satinalma', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_satinalma', '/satinalma-islemleri' => 'gor_satinalma',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/garson-yonetimi' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_ai_asistan', '/ik-risk' => 'gor_personel', // İK ekranları gor_personel; İK AI asistanı PREMIUM = gor_ai_asistan
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
@@ -31970,6 +31902,8 @@ Route::get('/api/barkod/coz', function (Request $r) {
     $kod = trim((string) $r->query('kod', ''));
     if ($kod === '') return ['ok' => 0, 'hata' => 'Boş kod'];
     $b = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $kod)->first();
+    if (!$b && function_exists('_dmBul') && function_exists('_dmYetki') && _dmYetki($p)) { _demirbasEnsure(); $d = _dmBul($p->sube_id, $kod); if ($d) return ['ok' => 1, 'bulundu' => 1, 'tur' => 'demirbas', 'id' => (int) $d->id, 'ad' => $d->ad, 'lokasyon' => $d->lokasyon, 'durum' => $d->durum]; } // demirbaş etiketi
+
     if (!$b) return ['ok' => 0, 'bulundu' => 0, 'hata' => 'Bu barkod tanımlı değil', 'barkod' => $kod];
     if ($b->tur === 'urun') {
         $u = DB::table('urunler')->where('id', $b->hedef_id)->first(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'aktif']);
@@ -33955,6 +33889,7 @@ require __DIR__ . '/sync.php';
 require __DIR__ . '/bildirim_merkezi.php';
 require __DIR__ . '/fiyat_radari.php';
 require __DIR__ . '/fiyat_anlasma.php';
+require __DIR__ . '/demirbas.php';
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
 // ============================ GLOBAL KATALOG SAHİPLİĞİ (malzeme/tedarikçi/reçete şube görünürlüğü) ============================

@@ -220,7 +220,7 @@
 <div id="mkBarkodBilgi" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center;padding:18px">
   <div style="background:var(--card);max-width:430px;width:100%;border-radius:16px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
-      <span class="material-icons-outlined" style="color:var(--mor1);font-size:26px">barcode_reader</span>
+      <span class="material-icons-outlined" style="color:var(--mor1);font-size:26px">qr_code_scanner</span>
       <div style="font-weight:800;font-size:17px;color:var(--ink)">Barkod Okuyucu Gerekir</div>
     </div>
     <div style="font-size:13px;color:var(--sub);line-height:1.7">

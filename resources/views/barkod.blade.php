@@ -258,6 +258,11 @@ body.koyu #brkroot .brk-form-kart{box-shadow:0 2px 8px rgba(0,0,0,.2)}
               {{ $b->tur === 'urun' ? 'Ürün' : 'Malzeme' }}
             </span>
 
+            {{-- Etiket bas (Flutter: Icons.print) — adet sorulur, etiket sayfası açılır --}}
+            <a href="/barkod/etiket?ids={{ $b->id }}" class="brk-sil-btn" title="Etiket bas" style="color:var(--mor1);text-decoration:none" onclick="var a=prompt('Kaç etiket basılsın?','1'); if(a===null) return false; this.href='/barkod/etiket?ids={{ $b->id }}&adet='+(parseInt(a)||1);">
+              <span class="material-icons-outlined">print</span>
+            </a>
+
             {{-- Flutter IconButton(icon: Icons.delete_outline, color: kirmizi) — sil --}}
             <form method="POST" action="/barkod/sil" onsubmit="return rkOnayForm(this, 'Bu barkodu sil?', 'var(--kirmizi)', 'Sil');" style="margin:0;line-height:0;display:inline">
               @csrf

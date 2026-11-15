@@ -1453,7 +1453,7 @@ function rctEtiketYazdir(barkod, skt, miktar, birim, tarih) {
     const ad = document.getElementById('rctYmEdAd').value || 'Yarı Mamül';
     const sktTxt = skt ? String(skt).split('-').reverse().join('.') : '—';
     const tarihTxt = tarih ? String(tarih).split('-').reverse().join('.') : '';
-    const barImg = 'https://bwipjs-api.metafloor.com/?bcid=code128&text=' + encodeURIComponent(barkod) + '&scale=3&height=12&includetext&guardwhitespace';
+    const barImg = location.origin + '/etiket-barkod.svg?k=' + encodeURIComponent(barkod) + '&h=60&m=2&yazi=0'; // kendi sunucumuzdan (dış servise bağımlı değil)
     const w = window.open('', '_blank');
     if (!w) { rctToast('Yazdırma penceresi açılamadı (pop-up engelli olabilir)'); return; }
     w.document.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Etiket</title><style>'

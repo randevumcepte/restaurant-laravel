@@ -223,6 +223,7 @@
             ['/departman-brief?dep=satinalma', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
+            ['/demirbas', 'qr_code_2', 'Demirbaş & Etiket', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
             ['/eposta-hesaplari', 'alternate_email', 'E-posta Hesapları (RFQ)', '#7C3AED'],
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
@@ -283,7 +284,7 @@
         ['/z-raporu', 'summarize', 'Z Raporu', '#0EA5E9'],
         ['/tedarikci-yaslandirma', 'hourglass_bottom', 'Tedarikçi Yaşlandırma', '#F43F5E'],
         ['/amortisman', 'trending_down', 'Amortisman', '#64748B'],
-        ['/demirbas', 'chair', 'Demirbaş / Ekipman', '#64748B'],
+        ['/demirbas', 'qr_code_2', 'Demirbaş & Etiket', '#64748B'],
         ['/e-defter', 'menu_book', 'e-Defter (hazırlık)', '#7C3AED'],
         ['/muhasebe', 'book', 'Muhasebe Defteri', '#7C3AED'],
     ];
@@ -501,7 +502,7 @@
         $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar/donemsel', '/satinalma-raporlar/harcama', '/satinalma-raporlar/maliyet', '/satinalma-raporlar/tedarikci', '/satinalma-raporlar/surec',
             '/satinalma-raporlar/stok', '/satinalma-raporlar/finans', '/satinalma-raporlar/sube', '/satinalma-raporlar/radar', '/satinalma-raporlar/ai'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
             'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
-            'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim']];
+            'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/demirbas']];
         $_saGrup = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
         foreach ($_sa as $_it) { $_g = 'Satın Alma'; foreach ($_saBol as $_bg => $_bu) if (in_array($_it[0], $_bu, true)) { $_g = $_bg; break; } $_saGrup[$_g][] = $_it; }
         foreach ($_saGrup as $_bg => $_its) if ($_its) $_yeni[$_bg] = $_its;
@@ -570,7 +571,7 @@
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
-                    if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
+                    if ($it[0] === '/demirbas' && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
                     if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
                     if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
