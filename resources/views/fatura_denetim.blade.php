@@ -14,8 +14,9 @@
   $gruplar = $liste->groupBy(fn($d) => $d->satici_vkn ?: '—');
 @endphp
 <style>
-  .fd-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
-  @media (max-width:900px){.fd-kpi{grid-template-columns:repeat(2,1fr)}}
+  .fd-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+  @media (max-width:900px){.fd-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:700px){.fd-grup .rk-tablo table{min-width:620px}.fd-grup .rk-tablo td.sag{white-space:nowrap}.fd-kpi .d{font-size:18px}.fd-kpi .rk-card{padding:12px}.fd-cip{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.fd-cip a{white-space:nowrap;flex:none}}
   .fd-kpi .rk-card{padding:14px 16px}
   .fd-kpi .e{font-size:12px;color:var(--sub);font-weight:600}
   .fd-kpi .d{font-size:22px;font-weight:800;margin-top:4px}

@@ -17,8 +17,8 @@
   $kalemNet = $kalemler->sum('satir_tutar');
 @endphp
 <style>
-  .efd-ozet{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
-  @media (max-width:900px){.efd-ozet{grid-template-columns:repeat(2,1fr)}}
+  .efd-ozet{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  @media (max-width:900px){.efd-ozet{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .efd-ozet .rk-card{padding:12px}
   .efd-ozet .e{font-size:11px;color:var(--sub)} .efd-ozet .d{font-weight:800;font-size:15px;margin-top:3px}
   .efd-tablo td{vertical-align:top}

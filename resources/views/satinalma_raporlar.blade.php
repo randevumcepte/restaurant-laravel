@@ -55,7 +55,7 @@
   .sr{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;--kr:{{ $katRenk }}}
   .sr [hidden]{display:none!important}
   /* ---- rapor sekmeleri (üstte) ---- */
-  .sr-sek{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .sr-sek{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   @media(max-width:700px){.sr-sek{grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:78%;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.sr-sek .sr-r{scroll-snap-align:start}}
   .sr-r{position:relative;display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;font:inherit;color:inherit;overflow:hidden}
   .sr-r::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--c);transform:scaleX(0);transform-origin:left;transition:transform .2s}
@@ -244,7 +244,7 @@
     var f = document.getElementById('gFrame'); if (!f || !f.src || f.src === 'about:blank') return;
     try {
       var doc = f.contentDocument; if (!doc || !doc.body) return;
-      f.style.height = Math.max(520, doc.documentElement.scrollHeight, doc.body.scrollHeight) + 'px';
+      f.style.height = Math.max(520, Math.ceil(doc.body.getBoundingClientRect().height)) + 'px';
       document.getElementById('gYuk').style.opacity = 0;
     } catch (e) { f.style.height = '1400px'; f.removeAttribute('scrolling'); document.getElementById('gYuk').style.opacity = 0; }
   }

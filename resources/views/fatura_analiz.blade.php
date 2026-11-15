@@ -17,8 +17,9 @@
   .fa-sekme a{padding:8px 13px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none;display:inline-flex;gap:6px;align-items:center}
   .fa-sekme a.on{background:var(--mor1);border-color:var(--mor1);color:#fff}
   .fa-sekme .material-icons-outlined{font-size:16px}
-  .fa-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
-  @media (max-width:900px){.fa-kpi{grid-template-columns:repeat(2,1fr)}}
+  .fa-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+  @media (max-width:900px){.fa-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:700px){.rk-tablo table{min-width:640px}.rk-tablo td.sag{white-space:nowrap}.fa-kpi .d{font-size:18px}.fa-sekme{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.fa-sekme a{white-space:nowrap;flex:none}}
   .fa-kpi .rk-card{padding:14px 16px}.fa-kpi .e{font-size:12px;color:var(--sub);font-weight:600}.fa-kpi .d{font-size:21px;font-weight:800;margin-top:4px}
   .fa-not{font-size:12px;color:var(--sub);margin:-4px 0 12px}
   .fa-bos{text-align:center;padding:34px}

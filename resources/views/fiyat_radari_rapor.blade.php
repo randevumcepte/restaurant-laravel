@@ -107,10 +107,47 @@
   .skor{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}
   .skor div{width:50px;height:50px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:18px;font-weight:900}
   .alt{margin-top:18px;font-size:9.5px;color:#94A3B8;text-align:center}
-  @media print{body{background:#fff}.sayfa{padding:0;max-width:none}.arac{display:none}}
+  .tablo{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px}
+  /* panel içinde önizleme: tam genişlik, okunur yazı */
+  body.gomulu{font-size:12px}
+  body.gomulu .sayfa{max-width:none;padding:18px 20px}
+  body.gomulu table{font-size:12px}
+  body.gomulu th{font-size:10.5px}
+  body.gomulu table.genis{font-size:10.5px}
+  body.gomulu table.genis th{font-size:9px}
+  body.gomulu .gs,body.gomulu .seyir div,body.gomulu .aralik{font-size:11.5px}
+  body.gomulu .kpi span{font-size:11px}
+  body.gomulu .kpi b{font-size:20px}
+  @media screen and (max-width:1100px){
+    .karneler{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .seyir{grid-template-columns:minmax(0,1fr)}
+  }
+  @media screen and (max-width:860px){
+    .grafikler,.ai{grid-template-columns:minmax(0,1fr)}
+    .kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .tablo table{width:max(100%,640px)}
+    .tablo table.genis{width:max(100%,1280px)}
+  }
+  @media screen and (max-width:560px){
+    body.gomulu .sayfa,.sayfa{padding:10px}
+    .ust{flex-wrap:wrap;padding:16px;gap:12px}
+    .ust h1{font-size:17px}
+    .ust .mk{margin-left:0;text-align:left;width:100%}
+    .karneler{grid-template-columns:minmax(0,1fr)}
+    .kpi b{font-size:16px}
+    .gs{flex-wrap:wrap;gap:3px 8px;margin-bottom:9px}
+    .gs .n{width:100%}
+    .gs .v{width:auto;max-width:60%;text-align:right}
+    .seyir .n{width:40%}
+    .aralik{flex-wrap:wrap}.aralik .n{width:100%}.aralik .v{width:100%;text-align:left}
+    .ozet{flex-wrap:wrap}
+    .lejant{flex-wrap:wrap}
+    .arac{flex-wrap:wrap}
+  }
+  @media print{body{background:#fff}.sayfa{padding:0;max-width:none}.arac{display:none}.tablo{overflow:visible}}
 </style>
 </head>
-<body>
+<body class="{{ request()->boolean('onizle') ? 'gomulu' : '' }}">
 <div class="sayfa">
   <div class="ust">
     <div class="lg"><span class="material-icons-outlined">{{ $ikon ?? 'radar' }}</span></div>
@@ -254,7 +291,7 @@
         }
         $gTop = array_sum(array_map(fn($k) => $k[2] ?? 14, $s['kol'])); $grupTop = [];
       @endphp
-      <table class="{{ count($s['kol']) > 10 ? 'genis' : '' }}">
+      <div class="tablo"><table class="{{ count($s['kol']) > 10 ? 'genis' : '' }}">
         <colgroup>@foreach ($s['kol'] as $k)<col style="width:{{ round(($k[2] ?? 14) / $gTop * 100, 2) }}%">@endforeach</colgroup>
         <thead><tr>@foreach ($s['kol'] as $k)<th class="{{ in_array($k[1], ['tl', 'y', 's'], true) ? 'r' : '' }}">{{ $k[0] }}</th>@endforeach</tr></thead>
         <tbody>
@@ -288,7 +325,7 @@
             <tr class="top">@foreach ($s['kol'] as $i => $k)<td class="{{ isset($topK[$i]) ? 'r' : '' }}">{{ $i === 0 ? 'TOPLAM' : (isset($topK[$i]) ? $hucre($topK[$i], $k[1]) : '') }}</td>@endforeach</tr>
           @endif
         </tbody>
-      </table>
+      </table></div>
     @endif
   @endforeach
   <div class="alt">ResteOS · {{ $marka ?? 'Fiyat Radarı' }} · {{ $aiRapor ? 'Yapay zekâ analizi' : 'Sistem verisi (yorumsuz)' }} · {{ now()->format('d.m.Y H:i') }}</div>

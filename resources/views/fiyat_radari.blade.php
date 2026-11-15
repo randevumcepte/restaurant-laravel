@@ -79,8 +79,8 @@
   .fr-r{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);white-space:nowrap}
   .fr-bos{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:30px;text-align:center;color:var(--sub);font-size:13px}
   .fr-bos .material-icons-outlined{font-size:40px;display:block;margin-bottom:6px;color:var(--c,var(--yesil))}
-  .fr-grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
-  @media(max-width:1000px){.fr-grid2{grid-template-columns:1fr}}
+  .fr-grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px}
+  @media(max-width:1000px){.fr-grid2{grid-template-columns:minmax(0,1fr)}}
   .fr-kart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--golge)}
   .fr-kart h4{margin:0 0 12px;font-size:13.5px;font-weight:900;color:var(--ink);display:flex;align-items:center;gap:7px}
   .fr-kart h4 .material-icons-outlined{font-size:18px;color:var(--c,var(--fr-mor))}
