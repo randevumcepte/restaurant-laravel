@@ -712,9 +712,25 @@ function prFiltre(){
           </div>
           <div>
             <label class="rk-lbl">Durum</label>
-            <select name="aktif" id="f_aktif" class="rk-inp">
+            <select name="aktif" id="f_aktif" class="rk-inp" onchange="ayrilisGoster()">
               <option value="1">Aktif</option>
               <option value="0">Pasif</option>
+            </select>
+          </div>
+        </div>
+        {{-- Pasif = işten ayrıldı: tarih + sebep İK Raporları > Devir & Kıdem'e gider --}}
+        <div id="f_ayrilis" style="display:none;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="rk-lbl">Ayrılış tarihi</label>
+            <input type="date" name="ise_cikis" id="f_ise_cikis" class="rk-inp" max="{{ date('Y-m-d') }}">
+          </div>
+          <div>
+            <label class="rk-lbl">Ayrılış sebebi</label>
+            <select name="ayrilis_sebep" id="f_ayrilis_sebep" class="rk-inp">
+              <option value="">Seçin</option>
+              @foreach ((function_exists('_ikrAyrilisSebepleri') ? _ikrAyrilisSebepleri() : []) as $k => $ad)
+                <option value="{{ $k }}">{{ $ad }}</option>
+              @endforeach
             </select>
           </div>
         </div>
@@ -1093,8 +1109,17 @@ function personelAc(p) {
     document.getElementById('f_tc').value           = p ? (p.tc || '') : '';
     document.getElementById('f_acil_kisi').value    = p ? (p.acil_kisi || '') : '';
     document.getElementById('f_acil_tel').value     = p ? (p.acil_tel || '') : '';
+    document.getElementById('f_ise_cikis').value     = p ? ((p.ise_cikis || '').substr(0,10)) : '';
+    document.getElementById('f_ayrilis_sebep').value = p ? (p.ayrilis_sebep || '') : '';
     primTipiDegis();
+    ayrilisGoster();
     document.getElementById('personelModal').classList.add('acik');
+}
+// Pasif seçilince ayrılış tarihi (boşsa bugün) + sebep sorulur
+function ayrilisGoster() {
+    var pasif = document.getElementById('f_aktif').value === '0', t = document.getElementById('f_ise_cikis');
+    document.getElementById('f_ayrilis').style.display = pasif ? 'grid' : 'none';
+    if (pasif && !t.value) { var d = new Date(); t.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 }
 function personelKapat() { document.getElementById('personelModal').classList.remove('acik'); }
 

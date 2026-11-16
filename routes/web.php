@@ -9979,9 +9979,11 @@ if (!function_exists('_olcekMenuListesi')) {
             'Finans / Muhasebe' => ['/kasa', '/raporlar', '/gider', '/cari', '/z-raporu'],
             'Ayarlar & Entegrasyon' => $ayar,
         ];
-        if ($olcek === 'kucuk') return $kucuk;
+        // departman rapor modülleri (routes/dep_raporlar): küçük/orta ölçekte görünecek kategoriler modülün 'olcek' ayarından
+        $drEk = function (array $l, $o) { if (function_exists('_drOlcekMenu')) foreach (_drOlcekMenu($o) as $g => $u) $l[$g] = array_merge($l[$g] ?? [], $u); return $l; };
+        if ($olcek === 'kucuk') return $drEk($kucuk, 'kucuk');
         // Orta: Satın Alma + Rezervasyon Satış departmanları kurulu olduğu için o grupların tamamı zaten görünür
-        return array_merge($kucuk, [
+        return $drEk(array_merge($kucuk, [
             'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/patron-ai-sohbet', '/ajanda'],
             'Mutfak / BOH' => array_merge($kucuk['Mutfak / BOH'], ['/departman-asistan?dep=mutfak', '/uretim-riski', '/parti-takip', '/mutfak-defteri', '/rezervasyon']),
             'Mutfak Raporları' => array_merge($kucuk['Mutfak Raporları'], ['/mutfak-raporlar/hiz', '/mutfak-raporlar/menu', '/mutfak-raporlar/hijyen', '/mutfak-raporlar/iptal']),
@@ -9991,7 +9993,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'Finans / Muhasebe' => array_merge($kucuk['Finans / Muhasebe'], ['/finans', '/kar-zarar', '/banka', '/tekrarlayan-gider', '/online-komisyon']),
             'CRM / Müşteri İlişkileri' => ['/musteri-360', '/memnuniyet', '/sadakat', '/odul-dogrula'],
             'AI Santral' => ['/santral-kayitlar', '/cagrilar', '/cagri-ekran', '/santral-ayar', '/santral-egitim'],
-        ]);
+        ]), 'orta');
     }
 }
 if (!function_exists('_menuOlcekSuz')) {
@@ -13424,6 +13426,7 @@ Route::post('/ik-aday/guncelle', function (Request $r) {
         if ($r->has('durum') && array_key_exists($r->durum, _ikAdayDurumlar())) $upd['durum'] = $r->durum;
         if ($r->has('puan')) { $p = (int) $r->puan; $upd['puan'] = ($p >= 1 && $p <= 5) ? $p : null; }
         if ($r->has('notlar')) $upd['notlar'] = trim((string) $r->notlar) ?: null;
+        if (isset($upd['durum']) && $upd['durum'] !== $a->durum && function_exists('_ikrAdayDamga')) $upd = _ikrAdayDamga($upd); // aşama tarihi (İK işe alım süresi raporu)
         if ($upd) DB::table('ik_adaylar')->where('id', $a->id)->update($upd);
         return redirect('/ik-aday')->with('ok', 'Aday güncellendi.');
     } catch (\Throwable $e) { return redirect('/ik-aday')->with('hata', 'Güncellenemedi.'); }
@@ -13442,7 +13445,7 @@ Route::post('/ik-aday/ise-al', function (Request $r) {
         $veri = ['sube_id' => $sid, 'ad' => $a->ad, 'telefon' => $a->telefon, 'rol' => $rol, 'pin' => $pin, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()];
         if (Schema::hasColumn('personeller', 'ise_baslama')) $veri['ise_baslama'] = $r->filled('ise_baslama') ? $r->ise_baslama : now()->toDateString();
         $pid = DB::table('personeller')->insertGetId($veri);
-        DB::table('ik_adaylar')->where('id', $a->id)->update(['durum' => 'islendi', 'personel_id' => $pid]);
+        DB::table('ik_adaylar')->where('id', $a->id)->update(function_exists('_ikrAdayDamga') ? _ikrAdayDamga(['durum' => 'islendi', 'personel_id' => $pid]) : ['durum' => 'islendi', 'personel_id' => $pid]);
         return redirect('/ik-sicil?id=' . $pid)->with('ok', $a->ad . ' işe alındı ✓ Özlük bilgilerini tamamlayabilirsiniz.');
     } catch (\Throwable $e) { return redirect('/ik-aday')->with('hata', 'İşe alınamadı: ' . $e->getMessage()); }
 });
@@ -16639,7 +16642,7 @@ Route::get('/personel', function () {
     $benSahip = false;
     try { $bp = _posPersonel(); $benSahip = $bp && ($bp->rol ?? '') === 'sahip'; } catch (\Throwable $e) {}
     $kolonlar = ['id', 'ad', 'telefon', 'rol', 'pin', 'aktif', 'yetkiler', 'iskonto_limit', 'ikram_limit', 'kademe', 'sayfa_yetki'];
-    foreach (['departman_id', 'departman_unvan', 'departman_sorumlu', 'maas', 'maas_tipi', 'prim_tipi', 'prim_oran', 'iban', 'ise_baslama', 'dogum_tarihi', 'tc', 'acil_kisi', 'acil_tel'] as $dk) if (Schema::hasColumn('personeller', $dk)) $kolonlar[] = $dk;
+    foreach (['departman_id', 'departman_unvan', 'departman_sorumlu', 'maas', 'maas_tipi', 'prim_tipi', 'prim_oran', 'iban', 'ise_baslama', 'dogum_tarihi', 'tc', 'acil_kisi', 'acil_tel', 'ise_cikis', 'ayrilis_sebep'] as $dk) if (Schema::hasColumn('personeller', $dk)) $kolonlar[] = $dk;
     $personeller = DB::table('personeller')->where('sube_id', $sid)
         ->orderByRaw("FIELD(rol,'sahip','mudur','satinalmaci','kasa','garson','mutfak')")->orderBy('ad')
         ->get($kolonlar)
@@ -16662,7 +16665,7 @@ Route::get('/personel', function () {
                 'maas' => (float) ($x->maas ?? 0), 'maas_tipi' => $x->maas_tipi ?? 'aylik',
                 'prim_tipi' => $x->prim_tipi ?? 'yok', 'prim_oran' => (float) ($x->prim_oran ?? 0), 'iban' => $x->iban ?? '',
                 'ise_baslama' => $x->ise_baslama ?? '', 'dogum_tarihi' => $x->dogum_tarihi ?? '', 'tc' => $x->tc ?? '',
-                'acil_kisi' => $x->acil_kisi ?? '', 'acil_tel' => $x->acil_tel ?? ''];
+                'acil_kisi' => $x->acil_kisi ?? '', 'acil_tel' => $x->acil_tel ?? '', 'ise_cikis' => $x->ise_cikis ?? '', 'ayrilis_sebep' => $x->ayrilis_sebep ?? ''];
         })->toArray();
     $kademeSayfa = [];
     foreach (array_keys(_panelKademeler()) as $kd) $kademeSayfa[$kd] = _kademeSayfalar($kd);
@@ -16686,7 +16689,9 @@ Route::post('/personel/kaydet', function (Request $r) {
     try {
         $ad = trim((string) $r->ad); $pid = (int) $r->id;
         if ($pid > 0 && $ad === '' && $r->has('aktif') && !$r->filled('rol')) {
-            DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->update(['aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()]);
+            $_dv = ['aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
+            if (function_exists('_ikrAyrilisIsle')) $_dv = _ikrAyrilisIsle(DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->first(), $_dv, $r); // pasife alınca ayrılış tarihi/sebebi (İK devir raporu)
+            DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->update($_dv);
             return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('ok', 'Durum güncellendi.');
         }
         if ($ad === '') return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'İsim boş olamaz.');
@@ -16710,6 +16715,7 @@ Route::post('/personel/kaydet', function (Request $r) {
         if ($pid > 0) {
             $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $sid)->first();
             if (!$hedef) return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('hata', 'Personel bulunamadı.');
+            if (function_exists('_ikrAyrilisIsle')) $veri = _ikrAyrilisIsle($hedef, $veri, $r); // pasife alınca ayrılış tarihi/sebebi (İK devir raporu)
             DB::table('personeller')->where('id', $pid)->update($veri);
             return redirect($r->input('geri') === '/garson-yonetimi' ? '/garson-yonetimi' : '/personel')->with('ok', 'Personel güncellendi.');
         }
@@ -24669,6 +24675,7 @@ Route::post('/api/patron/personel-kaydet', function (Request $r) {
     if ($pid > 0) {
         $hedef = DB::table('personeller')->where('id', $pid)->where('sube_id', $p->sube_id)->first();
         if (!$hedef) return ['ok' => 0, 'hata' => 'Personel bulunamadı'];
+        if (function_exists('_ikrAyrilisIsle')) $veri = _ikrAyrilisIsle($hedef, $veri, $r); // pasife alınca ayrılış tarihi/sebebi (İK devir raporu)
         DB::table('personeller')->where('id', $pid)->update($veri);
         return ['ok' => 1, 'id' => $pid];
     }
@@ -34157,6 +34164,7 @@ require __DIR__ . '/stok_cikti.php';      // Stok / Malzeme listesi Excel + PDF
 require __DIR__ . '/grafik_kit.php';      // ortak sunucu-tarafı grafikler (public/grafik.css)
 require __DIR__ . '/fiyat_radari.php';
 require __DIR__ . '/mutfak_raporlar.php'; // Mutfak Raporlar & Analizler (satinalma_raporlar motoru üstüne)
+require __DIR__ . '/dep_raporlar.php'; // Departman raporları çatısı (İK, Finans, Pazarlama, ...): routes/dep_raporlar/<kod>.php
 require __DIR__ . '/fiyat_anlasma.php';
 require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';

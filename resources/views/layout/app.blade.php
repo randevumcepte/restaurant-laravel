@@ -416,6 +416,8 @@
         ['/santral-ayar', 'phone_forwarded', 'Aktarma & Teslimat Ayarları', '#F59E0B'],
         ['/santral-egitim', 'school', 'AI Santral Eğitimi', '#7C3AED'],
     ];
+    // ===== DEPARTMAN RAPORLARI (routes/dep_raporlar): her departmanın rapor kategorileri kendi menü grubunun sonunda (görünürlük _drErisim) =====
+    try { if (function_exists('_drModuller')) foreach (_drModuller() as $_drKod => $_drM) if (isset($gruplar[$_drM['grup']])) $gruplar[$_drM['grup']] = array_merge($gruplar[$_drM['grup']], _drMenu($_drKod)); } catch (\Throwable $e) {}
     // PATRON AI — sabah brifingi + Genel Müdür + ajanda (en üste). gor_copilot yetkisi olana görünür.
     $gruplar = ['Patron AI' => [
         ['/patron-ai', 'auto_awesome', 'Sabah Brifingi', '#7C3AED'],
@@ -431,14 +433,13 @@
         $gruplar['Patron AI'][] = ['/patron-ai-sohbet', 'smart_toy', $_gmRol === 'sahip' ? 'Patron AI Sohbet' : 'AI Sohbet', '#4F46E5']; // sayfa yalnız sahip/müdüre açılır; diğerlerinde haritada olmadığı için gizli
     } catch (\Throwable $e) {}
     // İŞLETME BÜYÜKLÜĞÜ: küçük/orta işletmede menü sadeleşir; kurulu olmayan alt departman hiçbir ölçekte görünmez.
-    $gruplar['Ayarlar & Entegrasyon'][] = ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', '#7C3AED'];
     $_olcekSor = false;
     try {
         if (function_exists('_menuOlcekSuz')) {
             $_osid = _webSubeId(); $_orol = optional(_posPersonel())->rol ?? '';
             $gruplar = _menuOlcekSuz($gruplar, $_osid, $_orol);
             $_od = _isletmeOlcek($_osid);
-            $_olcekSor = $_od['olcek'] && !$_od['secildi'] && in_array($_orol, ['sahip', 'mudur']);
+            // büyüklük artık ResteOS sistem panelinde seçiliyor: işletmeye "seçin" bandı gösterilmez
         }
     } catch (\Throwable $e) {}
     // Kasiyer yalnız Panel'i görür; kasa noktası ayarı hangi sayfaların açık olduğunu belirler
@@ -638,6 +639,7 @@
                     if ($it[0] === '/demirbas' && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
                     if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
                     if (str_starts_with($it[0], '/mutfak-raporlar/')) return function_exists('_mrErisim') && _mrErisim($_pp);
+                    if (function_exists('_drYolErisim') && ($_dr = _drYolErisim($it[0], $_pp)) !== null) return $_dr; // departman raporları: yönetici / departman sorumlusu
                     if ($it[0] === '/patron-ai?gm=1') return _panelYetkiVar($_pp, 'gor_copilot'); if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;

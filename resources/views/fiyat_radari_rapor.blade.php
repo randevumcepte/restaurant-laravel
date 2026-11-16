@@ -376,7 +376,7 @@
             $panoI = $i; $panoTek = $yarim % 2 === 1; $s2['_odunc'] = []; continue;
         }
         if (in_array($s2['tip'] ?? '', ['bosgrup'], true) || ($ai && !empty($s2['ai'])) || !count($s2['sat'] ?? [])) continue;
-        $s2['_oto'] = !empty($s2['grafiksiz']) ? [] : $otoGrafik($s2['kol'], array_values(array_filter($s2['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara']))));
+        $s2['_oto'] = (!empty($s2['grafiksiz']) || (isset($s2['_oto']) && $s2['_oto'] === [])) ? [] : $otoGrafik($s2['kol'], array_values(array_filter($s2['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara']))));
         // panodaki bir grafikle aynı kalemleri gösteren dağılım grafiği tekrar çizilmez
         $s2['_oto'] = array_values(array_filter($s2['_oto'], function ($g) use ($panoEt) {
             if ($g['tur'] === 'sutun') return true;
