@@ -5820,29 +5820,74 @@ if (!function_exists('_tedarikciYaslandirma')) {
         return $out;
     }
 }
+if (!function_exists('_tyPlanKural')) {
+    // Kural tabanlı ödeme planı (anında; AI gelmezse bu kalır). Adım: ad/tutar/zaman/neden/aksiyon.
+    function _tyPlanKural($y)
+    {
+        $adim = [];
+        foreach (array_slice($y['tedarikciler'] ?? [], 0, 4) as $s) {
+            $enGec = 0; foreach ($s['faturalar'] as $f) if ($f['gun'] < $enGec) $enGec = $f['gun'];
+            $nf = count($s['faturalar']);
+            if ($s['gecikmis'] > 0) {
+                $adim[] = ['tedarikci' => $s['ad'], 'tutar' => round($s['gecikmis']), 'zaman' => 'Hemen',
+                    'neden' => $nf . ' fatura, en eskisi ' . abs($enGec) . ' gündür gecikmiş.',
+                    'aksiyon' => 'Gecikmiş tutarı ödeyin; tamamı mümkün değilse tedarikçiyi arayıp ödeme tarihi verin.'];
+            } elseif ($s['hafta'] > 0) {
+                $adim[] = ['tedarikci' => $s['ad'], 'tutar' => round($s['hafta']), 'zaman' => 'Bu hafta',
+                    'neden' => 'Vadesi 7 gün içinde doluyor.', 'aksiyon' => 'Bu hafta için nakit ayırın.'];
+            } else {
+                $adim[] = ['tedarikci' => $s['ad'], 'tutar' => round($s['toplam']), 'zaman' => 'Vadesinde',
+                    'neden' => 'Vadesi henüz gelmedi.', 'aksiyon' => 'Vade gününü takvime alın.'];
+            }
+        }
+        $ozet = $y['gecikmis'] > 0
+            ? 'Toplam borcun ' . number_format($y['gecikmis'], 0, ',', '.') . ' ₺\'si gecikmiş. Önce en uzun süredir bekleyen tedarikçilerden başlayın.'
+            : ($y['hafta'] > 0 ? 'Gecikmiş borç yok. Bu hafta ' . number_format($y['hafta'], 0, ',', '.') . ' ₺ vade doluyor.' : 'Gecikmiş borç yok, yakın vadeli ödeme de yok.');
+        return ['ozet' => $ozet, 'adimlar' => $adim, 'ai' => false];
+    }
+}
 Route::get('/tedarikci-yaslandirma', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !_satinalmaErisim($bp)) return redirect('/pos-giris');
     $sid = _webSubeId();
     $y = _tedarikciYaslandirma($sid);
-    // AI nakit danışmanı (özet -> tavsiye); AI kapalı/veri yoksa kural
-    $tavsiye = null;
+    // AI burada ÇAĞRILMAZ (sayfayı ~10 sn bekletiyordu) → kural planı anında, AI planı /ai'den arka planda gelir.
+    $plan = $y['toplam'] > 0 ? _tyPlanKural($y) : null;
+    return view('tedarikci_yaslandirma', ['y' => $y, 'plan' => $plan, 'patronMu' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+});
+Route::get('/tedarikci-yaslandirma/ai', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !_satinalmaErisim($bp)) return response()->json(['ok' => false], 403);
+    $sid = _webSubeId();
+    $y = _tedarikciYaslandirma($sid);
+    if ($y['toplam'] <= 0 || !function_exists('_patronAiCagir')) return response()->json(['ok' => false]);
     try {
-        if ($y['toplam'] > 0 && function_exists('_patronAiCagir')) {
-            $enler = array_slice(array_map(fn ($s) => $s['ad'] . ' (gecikmiş ' . round($s['gecikmis']) . '₺, toplam ' . round($s['toplam']) . '₺)', $y['tedarikciler']), 0, 5);
-            $sys = 'Sen bir restoranın finans/nakit akışı danışmanısın. Tedarikçi borç yaşlandırma verisine bakıp KISA (en fazla 4 madde), somut, önceliklendirilmiş ödeme tavsiyesi ver (önce hangi tedarikçiye öde, neden). Türkçe, net, eyleme dönük. Rakamları kullan.';
-            $user = 'Toplam borç: ' . round($y['toplam']) . '₺. Gecikmiş: ' . round($y['gecikmis']) . '₺. Bu hafta vade: ' . round($y['hafta']) . '₺. 8-30 gün: ' . round($y['ay']) . '₺. En borçlular: ' . implode('; ', $enler);
-            $tavsiye = _patronAiCagir($sys, $user, 400, $bp, $sid);
+        $sat = [];
+        foreach (array_slice($y['tedarikciler'], 0, 8) as $s) {
+            $enGec = 0; foreach ($s['faturalar'] as $f) if ($f['gun'] < $enGec) $enGec = $f['gun'];
+            $sat[] = $s['ad'] . ': gecikmiş ' . round($s['gecikmis']) . ' TL (en eski ' . abs($enGec) . ' gün), bu hafta ' . round($s['hafta']) . ' TL, toplam ' . round($s['toplam']) . ' TL, ' . count($s['faturalar']) . ' fatura';
+        }
+        $sys = 'Bir restoranın nakit akışı danışmanısın. Tedarikçi borç verisine bakıp ödeme önceliği planı çıkar. '
+            . 'YALNIZCA geçerli JSON döndür, başka hiçbir metin, başlık ya da markdown yazma. Biçim: '
+            . '{"ozet":"en fazla 2 cümle genel durum","adimlar":[{"tedarikci":"ad","tutar":sayı,"zaman":"Hemen|Bu hafta|2 hafta içinde|Vadesinde","neden":"tek kısa cümle","aksiyon":"tek kısa cümle, somut tutar önerisiyle"}]}. '
+            . 'En fazla 4 adım, önem sırasına göre. Türkçe yaz, doğru büyük/küçük harf kullan, emoji kullanma. Uydurma bilgi (menü, müşteri kaybı vb.) ekleme; yalnızca verilen rakamlara dayan.';
+        $user = 'Toplam borç ' . round($y['toplam']) . ' TL. Gecikmiş ' . round($y['gecikmis']) . ' TL. Bu hafta vade ' . round($y['hafta']) . ' TL. 8-30 gün ' . round($y['ay']) . ' TL. 31+ gün ' . round($y['ileri']) . " TL.\nTedarikçiler:\n" . implode("\n", $sat);
+        $txt = _patronAiCagir($sys, $user, 900, $bp, $sid);
+        if ($txt) {
+            $a = strpos($txt, '{'); $b = strrpos($txt, '}');
+            $j = ($a !== false && $b > $a) ? json_decode(substr($txt, $a, $b - $a + 1), true) : null;
+            if (is_array($j) && !empty($j['adimlar']) && is_array($j['adimlar'])) {
+                $adim = [];
+                foreach (array_slice($j['adimlar'], 0, 4) as $d) {
+                    if (!is_array($d) || empty($d['tedarikci'])) continue;
+                    $adim[] = ['tedarikci' => (string) $d['tedarikci'], 'tutar' => (float) ($d['tutar'] ?? 0), 'zaman' => (string) ($d['zaman'] ?? ''),
+                        'neden' => (string) ($d['neden'] ?? ''), 'aksiyon' => (string) ($d['aksiyon'] ?? '')];
+                }
+                if ($adim) return response()->json(['ok' => true, 'ozet' => (string) ($j['ozet'] ?? ''), 'adimlar' => $adim]);
+            }
         }
     } catch (\Throwable $e) {}
-    if (!$tavsiye && $y['toplam'] > 0) {
-        $p = [];
-        if ($y['gecikmis'] > 0) $p[] = '🔴 ' . round($y['gecikmis']) . '₺ gecikmiş borç var — önce bunları kapat (en çok geciken tedarikçiden başla).';
-        if ($y['hafta'] > 0) $p[] = '🟠 Bu hafta ' . round($y['hafta']) . '₺ vade doluyor — nakit ayır.';
-        if (!empty($y['tedarikciler'][0])) $p[] = '⭐ En kritik: ' . $y['tedarikciler'][0]['ad'] . ' (' . round($y['tedarikciler'][0]['toplam']) . '₺).';
-        $tavsiye = $p ? implode("\n", $p) : null;
-    }
-    return view('tedarikci_yaslandirma', ['y' => $y, 'tavsiye' => $tavsiye, 'patronMu' => in_array(($bp->rol ?? ''), ['sahip', 'mudur'])]);
+    return response()->json(['ok' => false]);
 });
 Route::post('/tedarikci-yaslandirma/odendi', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
