@@ -491,8 +491,8 @@
     } catch (\Throwable $e) {}
 
     // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
-    $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar/donemsel', '/satinalma-raporlar/harcama', '/satinalma-raporlar/maliyet', '/satinalma-raporlar/tedarikci', '/satinalma-raporlar/surec',
-        '/satinalma-raporlar/stok', '/satinalma-raporlar/finans', '/satinalma-raporlar/sube', '/satinalma-raporlar/radar', '/satinalma-raporlar/ai'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
+    $_saBol = [ // satın alma raporları Satın Alma grubunun içinde kalır (satın almacının raporları)
+        'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
         'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
         'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/demirbas']];
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
@@ -507,7 +507,7 @@
                 unset($gruplar['Satın Alma']);
                 foreach ($_saP as $_bg => $_its) if ($_its) $gruplar[$_bg] = array_merge($gruplar[$_bg] ?? [], $_its);
             }
-            $_deptSira = ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
+            $_deptSira = ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
@@ -605,7 +605,7 @@
             @php
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
-                    'YÖNETİM' => ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
+                    'YÖNETİM' => ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
                     'MENÜ' => ['Menü & Ürünler'],
                     'OPERASYON' => ['Satış & Servis'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
