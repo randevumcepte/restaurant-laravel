@@ -13,6 +13,13 @@
         return false;                                                          // haritasız = kısıtlı role gizle
     }));
     $grupAktif = !empty($_kasiyerMenu) || collect($gorunur)->contains(fn ($it) => $aktifMi($it[0]));
+    // Başlık ikonu ve kapalı gruptaki bekleyen iş sayısı (grup kapalıyken başlıkta görünür)
+    $grpIkon = ['Panel' => 'dashboard', 'Satış & Servis' => 'point_of_sale', 'Departman Operasyon' => 'apartment', 'Menü & Ürünler' => 'restaurant_menu',
+        'Satın Alma' => 'shopping_cart', 'Fatura & Fiyat' => 'receipt_long', 'Tedarikçi & Analiz' => 'local_shipping', 'Stok & Üretim' => 'inventory_2',
+        'Raporlar & Analizler' => 'insights', 'İnsan Kaynakları' => 'badge', 'Finans / Muhasebe' => 'account_balance', 'Mutfak / BOH' => 'soup_kitchen',
+        'Pazarlama' => 'campaign', 'Rezervasyon Satış' => 'event_seat', 'AI Santral' => 'support_agent', 'CRM / Müşteri İlişkileri' => 'diversity_3',
+        'Kalite / HACCP' => 'verified', 'IT / Bilgi İşlem' => 'computer', 'Ajanda' => 'event_note', 'Patron AI' => 'auto_awesome', 'Ayarlar & Entegrasyon' => 'settings'][$grupAd] ?? 'folder_open';
+    $grpSay = 0; foreach ($gorunur as $_gi) $grpSay += (int) ($_menuBadge[$_gi[0]] ?? 0);
 @endphp
 @if ($grupAd === '__PIN__' && count($gorunur))
     <div class="rk-pin-pano">
@@ -27,7 +34,7 @@
     </div>
 @elseif (count($gorunur))
     @if (empty($basliksiz))
-    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)">{{ $grupAd }}<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)"><span class="material-icons-outlined rk-grp-ik">{{ $grpIkon }}</span><span class="rk-grp-ad">{{ $grupAd }}</span>@if ($grpSay > 0)<span class="rk-grp-say">{{ $_badgeMetin($grpSay) }}</span>@endif<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
     @endif
     <div class="rk-grp-body">
         @foreach ($gorunur as [$url, $ikon, $ad, $renk])

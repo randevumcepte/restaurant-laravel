@@ -93,6 +93,24 @@
     .rk-menu a{font-weight:400}
     .rk-menu a.aktif{font-weight:600}
     .rk-pin .pt{font-weight:500}
+    /* GRUP DÜZENİ: başlık = ikonlu, kalın düğme; açık grubun sayfaları girintili, ince kılavuz çizgili kutuda; tek vurgu = seçili sayfa.
+       Yalnız menü açıkken (masaüstü hover/genis, telefonda çekmece) geçerli; dar ikon menü eskisi gibi kalır. */
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp{justify-content:flex-start;gap:11px;margin:2px 8px;padding:10px 10px 10px 12px;border:0;border-radius:11px;font-size:14px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink);transition:background .12s,color .12s}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp::before{display:none}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp:hover{background:color-mix(in srgb,var(--mor1) 7%,transparent);color:var(--mor1)}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp:not(.kapali){background:color-mix(in srgb,var(--mor1) 6%,transparent);color:var(--mor1);border-radius:11px 11px 0 0;margin-bottom:0}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-cat-body .rk-grp{padding-left:12px}
+    .rk-grp-ik{font-size:20px;color:var(--sub);flex:none}
+    .rk-grp:hover .rk-grp-ik,.rk-grp:not(.kapali) .rk-grp-ik{color:var(--mor1)}
+    .rk-grp-ad{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rk-grp-say{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#EF4444;color:#fff;font-size:10.5px;font-weight:700;line-height:18px;text-align:center}
+    .rk-grp:not(.kapali) .rk-grp-say{display:none}
+    .rk-side:not(:hover):not(.genis):not(.acik) .rk-grp-ik,.rk-side:not(:hover):not(.genis):not(.acik) .rk-grp-say{display:none}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body{margin:0 8px 8px;padding:2px 0 6px 21px;border-radius:0 0 11px 11px;background:color-mix(in srgb,var(--mor1) 6%,transparent)}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a{padding:8px 10px 8px 14px;margin-right:4px;border-left:2px solid color-mix(in srgb,var(--mor1) 18%,var(--line));border-radius:0 9px 9px 0;font-size:13.5px;gap:10px}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a .material-icons-outlined{font-size:18px !important}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a.aktif{border-left-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 14%,var(--card))}
+    :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a.aktif::before{display:none}
     @media(min-width:641px){
         .rk-side:not(:hover):not(.genis) .rk-side-foot{padding:10px 8px}
         .rk-side:not(:hover):not(.genis) .rk-side-foot a{border-color:transparent;justify-content:center;padding-left:0;padding-right:0}
@@ -654,8 +672,10 @@
     {{-- Menu durumu icerik cizilmeden uygulanir: sayfa gecisinde menu kipirdamasin --}}
     <script>
     function rkGrpTog(el){
-        // Grup basligi tiklaninca AC/KAPA (akordiyon toggle)
-        el.classList.toggle('kapali');
+        // Grup basligi tiklaninca AC/KAPA; ayni anda tek grup acik (akordiyon)
+        var ac = el.classList.contains('kapali');
+        if(ac){ var m = el.closest('.rk-menu'); if(m) m.querySelectorAll('.rk-grp').forEach(function(g){ if(g !== el) g.classList.add('kapali'); }); }
+        el.classList.toggle('kapali', !ac);
     }
     function rkCatTog(el){
         // Ust baslik (kategori) tiklaninca AC/KAPA
@@ -675,6 +695,9 @@
             if(aktifGrp && aktifGrp.classList.contains('rk-grp')) aktifGrp.classList.remove('kapali'); // başlıksız grubun önceki kardeşi başka grup olabilir
             if(aktifKat) aktifKat.previousElementSibling.classList.remove('kapali');
         }
+        // Akordiyon: ayni sayfa iki grupta varsa ikisi de acik gelir; sonuncusu kalir (kasiyerde hepsi acik, dokunma)
+        var acikGrp = menu.querySelectorAll('.rk-grp:not(.kapali)');
+        if(acikGrp.length > 1 && acikGrp.length < menu.querySelectorAll('.rk-grp').length) for(var gi = 0; gi < acikGrp.length - 1; gi++) acikGrp[gi].classList.add('kapali');
 
         // Kaydirma konumu yalniz GENIS menu icin tutulur; dar menu (hepsi acik ikon listesi) bambaska yukseklikte
         var genisKonum = 0, t;
