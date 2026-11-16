@@ -604,6 +604,12 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
             <label>Miktar (temel birim)</label>
             <input type="number" id="stkHMiktar" placeholder="Miktar" step="0.001">
         </div>
+        <div class="stk-field" id="stkHSebepWrap" style="display:none">
+            <label>Fire sebebi</label>
+            <select id="stkHSebep" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:14px">
+                @foreach ((function_exists('_mrFireSebepleri') ? _mrFireSebepleri() : []) as $_fs)<option value="{{ $_fs }}">{{ $_fs }}</option>@endforeach
+            </select>
+        </div>
         <div class="stk-field">
             <label>Açıklama (opsiyonel)</label>
             <input type="text" id="stkHAciklama" placeholder="Açıklama">
@@ -950,6 +956,8 @@ function stkHareketAc(malzemeId, tip) {
     document.getElementById('stkHareketBaslik').textContent = _hareketBasliklar[tip] || 'Hareket';
     document.getElementById('stkHMiktar').value = '';
     document.getElementById('stkHAciklama').value = '';
+    var sw = document.getElementById('stkHSebepWrap'); // fire sebebi yalnız firede (mutfak fire raporu sebebe göre ayırır)
+    if (sw) { sw.style.display = (tip === 'fire' && document.getElementById('stkHSebep').options.length) ? '' : 'none'; document.getElementById('stkHSebep').selectedIndex = 0; }
     document.getElementById('stkHareketDialog').classList.add('acik');
     setTimeout(function(){ document.getElementById('stkHMiktar').focus(); }, 100);
 }
@@ -970,7 +978,8 @@ function stkHareketKaydet() {
         malzeme_id: _stkHareketMalzemeId,
         tip: _stkHareketTip,
         miktar: miktar,
-        aciklama: aciklama
+        aciklama: aciklama,
+        fire_sebep: _stkHareketTip === 'fire' && document.getElementById('stkHSebep') ? document.getElementById('stkHSebep').value : ''
     }).then(function(r) {
         if (r.ok === 1) {
             stkHareketKapat();
@@ -1003,7 +1012,7 @@ function stkMalzemeFormuAc(id) {
         }
     } else {
         document.getElementById('stkFAd').value      = '';
-        document.getElementById('stkFKat').value     = stkKategoriler.length ? stkKategoriler[0].id : '';
+        document.getElementById('stkFKat').value     = ''; // ilk kategoriyi hazır seçme: addan doğrusu seçilir ya da kullanıcı seçer
         document.getElementById('stkFBirim').value   = stkBirimler.length ? stkBirimler[0].id : '';
         document.getElementById('stkFKritik').value  = '';
         document.getElementById('stkFMaliyet').value = '';
@@ -1018,6 +1027,7 @@ function stkMalzemeFormuAc(id) {
 function stkFormKaydet() {
     var ad = document.getElementById('stkFAd').value.trim();
     if (!ad) { stkUyar('Ad boş olamaz'); return; }
+    if (!_stkFormId && !document.getElementById('stkFKat').value) { stkUyar('Kategori seçin'); stkKatKontrol(false); return; }
 
     var veri = {
         ad:             ad,
@@ -1124,6 +1134,13 @@ function stkKatEsle(beklenen) {
 function stkKatKontrol(adYazildi) {
     var kutu = document.getElementById('stkKatUyari'), sel = document.getElementById('stkFKat'); if (!kutu || !sel) return;
     var t = stkKatTahmin(document.getElementById('stkFAd').value), k = t ? stkKatEsle(t.kategori) : null;
+    if (t && !k && t.guc === 'guclu') {
+        // katalogdaki kategori işletmede yok: yanlış bir kategoriye düşmesin, tek tıkla açılsın
+        kutu.className = 'stk-aduyari u';
+        kutu.innerHTML = '<span class="material-icons-outlined">create_new_folder</span><span>Bu malzeme <b>' + _esc(t.kategori) + '</b> kategorisinde (' + _esc(t.kaynak) + '), işletmenizde bu kategori henüz yok. '
+            + '<button type="button" class="stk-kat-duzelt" onclick="stkKatKaydet(this.dataset.ad)" data-ad="' + _esc(t.kategori) + '">' + _esc(t.kategori) + ' kategorisini oluştur</button></span>';
+        kutu.hidden = false; return;
+    }
     if (!t || !k) { kutu.hidden = true; return; }
     if (!sel.value && adYazildi && t.guc === 'guclu') {
         sel.value = String(k.id);
@@ -1145,8 +1162,8 @@ function stkKatEkleAc() {
     setTimeout(function(){ document.getElementById('stkKatAd').focus(); }, 100);
 }
 
-function stkKatKaydet() {
-    var ad = document.getElementById('stkKatAd').value.trim();
+function stkKatKaydet(hazirAd) {
+    var ad = typeof hazirAd === 'string' ? hazirAd : document.getElementById('stkKatAd').value.trim();
     if (!ad) { stkUyar('Boş olamaz'); return; }
 
     var katVeri = { ad: ad };
@@ -1158,6 +1175,7 @@ function stkKatKaydet() {
                 // aynı kategori zaten var: yenisi açılmadı, mevcut seçildi
                 sel.value = String(r.id);
                 stkUyar('"' + r.ad + '" kategorisi zaten var, o seçildi');
+                stkKatKontrol(false);
                 return;
             }
             // Select'e yeni seçenek ekle ve seç
@@ -1165,6 +1183,7 @@ function stkKatKaydet() {
             sel.add(opt);
             stkKategoriler.push({id: r.id, ad: r.ad || ad});
             stkUyar('Kategori eklendi');
+            stkKatKontrol(false);
         } else if (r.benzer && r.benzer.length) {
             if (confirm('Çok benzer kategori var:\n\n• ' + r.benzer.join('\n• ') + '\n\n"' + ad + '" yine de ayrı kategori olarak eklensin mi?')) {
                 katVeri.onay = 1;

@@ -4090,7 +4090,7 @@ Route::get('/bar', function () {
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('id', $r->kalem_id)->update(['durum' => 'hazir', 'hazir_zamani' => now()]);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('id', $r->kalem_id)->update(function_exists('_mrKdsDamga') ? _mrKdsDamga(['durum' => 'hazir', 'hazir_zamani' => now()], _posPersonel()) : ['durum' => 'hazir', 'hazir_zamani' => now()]);
     return ['ok' => 1];
 });
 // Hazır olan kalemi servis edildi işaretle (mutfak/expo ekranından) → ekrandan düşer
@@ -4157,6 +4157,7 @@ Route::get('/menu', function () {
 Route::post('/menu/86', function (Request $r) {
     $u = DB::table('urunler')->find($r->urun_id);
     DB::table('urunler')->where('id', $r->urun_id)->update(['tukendi' => $u->tukendi ? 0 : 1]);
+    if ($u && function_exists('_mrTukendiLog')) _mrTukendiLog($u, !$u->tukendi, _posPersonel());
     return ['ok' => 1, 'tukendi' => $u->tukendi ? 0 : 1];
 });
 
@@ -9970,6 +9971,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
             'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/uretim-plani', '/satinalma-talep', '/recete', '/sayim'],
+            'Mutfak Raporları' => ['/mutfak-raporlar/donemsel', '/mutfak-raporlar/maliyet', '/mutfak-raporlar/fire', '/mutfak-raporlar/ai'], // küçük işletme: özet + food cost + fire + AI
             'Satış & Servis' => ['/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/indirimler'],
             'Satın Alma' => ['/stok', '/satinalma-talep', '/mal-kabul', '/tedarikci', '/efatura-gelen', '/fatura-denetim'],
@@ -9982,6 +9984,7 @@ if (!function_exists('_olcekMenuListesi')) {
         return array_merge($kucuk, [
             'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/patron-ai-sohbet', '/ajanda'],
             'Mutfak / BOH' => array_merge($kucuk['Mutfak / BOH'], ['/departman-asistan?dep=mutfak', '/uretim-riski', '/parti-takip', '/mutfak-defteri', '/rezervasyon']),
+            'Mutfak Raporları' => array_merge($kucuk['Mutfak Raporları'], ['/mutfak-raporlar/hiz', '/mutfak-raporlar/menu', '/mutfak-raporlar/hijyen', '/mutfak-raporlar/iptal']),
             'Satış & Servis' => ['/servis', '/karsilama', '/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/qr-menu-rengi', '/indirimler', '/happy-hour', '/fix-menu', '/barkod'],
             'İnsan Kaynakları' => array_merge($kucuk['İnsan Kaynakları'], ['/garson-performans', '/ik-vardiya', '/ik-izin']),
@@ -10361,7 +10364,7 @@ Route::get('/api/departman/panel', function (Request $r) {
         if ($var('gor_mutfak')) {
             $bekleyen = 0;
             try { $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')
-                ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
+                ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
             $kartlar[] = ['anahtar' => 'mutfak', 'baslik' => 'Hazırlanacak Kalem', 'deger' => $bekleyen, 'tip' => 'adet', 'ikon' => 'restaurant', 'renk' => '#F59E0B', 'yon' => '/mutfak'];
         }
         // Personel (İK)
@@ -11563,7 +11566,7 @@ if (!function_exists('_departmanRaporVeri')) {
                         $ozet = 'Bu istasyona menü kategorisi bağlanmamış — Departman Yönetimi\'nden bu departmanı düzenleyip ilgili kategorileri seç.';
                         break;
                     }
-                    $bq = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor']);
+                    $bq = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor']);
                     if ($urunFiltre !== null) $bq->whereIn('adisyon_kalemleri.urun_id', $urunFiltre);
                     $bekleyen = 0; try { $bekleyen = (int) $bq->count(); } catch (\Throwable $e) {}
                     $gq = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds);
@@ -12607,12 +12610,12 @@ if (!function_exists('_departmanAsistanOku')) {
                 switch ($intent) {
                     case 'mutfak_ozet':
                         $gonderilen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
-                        $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                        $bekleyen = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor'])->count();
                         $fire = (float) DB::table('stok_hareketleri')->where('sube_id', $sid)->where('tip', 'fire')->whereDate('created_at', $ds)->selectRaw('SUM(ABS(miktar)*COALESCE(birim_maliyet,0)) t')->value('t');
                         $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
                         return ['cevap' => "Bugün mutfak: {$gonderilen} ürün hazırlandı, şu an {$bekleyen} ürün bekliyor." . ($fire > 0 ? " Fire: " . $tl($fire) . "." : " Fire yok.") . ($krit > 0 ? " ⚠️ {$krit} malzeme kritik seviyede." : "")];
                     case 'bekleyen':
-                        $b = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                        $b = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor'])->count();
                         return ['cevap' => $b > 0 ? "Şu an {$b} ürün hazırlanmayı bekliyor." . ($b >= 15 ? " Kuyruk yoğun, hız gerekebilir." : "") : "Harika — bekleyen ürün yok, kuyruk temiz. ✓", 'link' => ['url' => '/mutfak', 'lbl' => 'Mutfak ekranını aç']];
                     case 'en_cok_satan':
                         $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->leftJoin('urunler', 'urunler.id', '=', 'adisyon_kalemleri.urun_id')
@@ -20442,7 +20445,7 @@ if (!function_exists('_departmanBriefVeri')) {
             $acikTalep = 0; $onayBekleyen = 0; $sktYaklasan = 0; $sktGecen = 0;
             try { if (Schema::hasTable('adisyon_kalemleri')) {
                 $hazir = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->sum('adisyon_kalemleri.adet');
-                $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count();
+                $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor'])->count();
                 $iptalKalem = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->whereDate('adisyonlar.created_at', $ds)->where('adisyon_kalemleri.durum', 'iptal')->count();
             } } catch (\Throwable $e) {}
             $krit = function_exists('_kritikStokListesi') ? count(_kritikStokListesi($sid)) : 0;
@@ -20839,7 +20842,7 @@ if (!function_exists('_departmanBriefVeri')) {
                 $kpis[] = ['ikon' => 'payments', 'tint' => 't-green', 'deger' => $tl($bugunCiro), 'label' => 'Bugün ciro', 'alt' => 'kapanan', 'w' => 2];
             }
             if ($hasP('gor_mutfak')) {
-                $bekle = 0; try { if (Schema::hasTable('adisyon_kalemleri')) $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
+                $bekle = 0; try { if (Schema::hasTable('adisyon_kalemleri')) $bekle = (int) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyonlar.id', '=', 'adisyon_kalemleri.adisyon_id')->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->whereIn('adisyon_kalemleri.durum', ['bekliyor', 'gonderildi', 'hazirlaniyor'])->count(); } catch (\Throwable $e) {}
                 $kpis[] = ['ikon' => 'soup_kitchen', 'tint' => $bekle > 5 ? 't-amber' : 't-green', 'deger' => $bekle, 'label' => 'Bekleyen ürün', 'alt' => 'mutfak', 'w' => 4];
                 $hizli[] = ['url' => '/mutfak', 'ikon' => 'soup_kitchen', 'lbl' => 'Mutfak Ekranı'];
             }
@@ -26855,9 +26858,9 @@ Route::post('/api/patron/stok-hareket', function (Request $r) {
     DB::table('stok_hareketleri')->insert([
         'sube_id' => $p->sube_id, 'malzeme_id' => $m->id, 'tip' => $tip === 'giris' ? 'iade' : ($tip === 'fire' ? 'fire' : 'sayim'),
         'miktar' => $imzali, 'birim_maliyet' => (float) $m->guncel_maliyet, 'kaynak_tip' => 'manuel',
-        'aciklama' => $r->aciklama ? (string) $r->aciklama : ($tip === 'fire' ? 'Fire' : ($tip === 'giris' ? 'Manuel giriş' : 'Sayım düzeltme')),
+        'aciklama' => $r->aciklama ? (string) $r->aciklama : ($tip === 'fire' ? ($r->fire_sebep ? (string) $r->fire_sebep : 'Fire') : ($tip === 'giris' ? 'Manuel giriş' : 'Sayım düzeltme')),
         'personel_id' => $p->id,
-    ]);
+    ] + ($tip === 'fire' && $r->fire_sebep && function_exists('_mrFireSebepleri') && in_array((string) $r->fire_sebep, _mrFireSebepleri(), true) && Schema::hasColumn('stok_hareketleri', 'fire_sebep') ? ['fire_sebep' => (string) $r->fire_sebep] : []));
     return ['ok' => 1];
 });
 
@@ -28884,17 +28887,19 @@ Route::post('/mutfak/basla', function (Request $r) {
     _kdsKolonEnsure();
     $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
+    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, _posPersonel()); // hazırlayan aşçı + istasyon (mutfak raporları)
     _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-hazir', function (Request $r) {
     $upd = ['durum' => 'hazir', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
+    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, _posPersonel());
     _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-servis', function (Request $r) {
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
     return ['ok' => 1];
 });
 
@@ -28905,6 +28910,7 @@ Route::post('/api/mutfak/basla', function (Request $r) {
     _kdsKolonEnsure();
     $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
+    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
     if ($r->adisyon_id) {
         _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
     } else {
@@ -28918,6 +28924,7 @@ Route::post('/api/mutfak/hazir', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0], 401);
     $upd = ['durum' => 'hazir', 'updated_at' => now()];
     if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
+    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
     if ($r->adisyon_id) {
         _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
     } else {
@@ -28988,9 +28995,9 @@ Route::post('/api/mutfak/servis', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
     if ($r->adisyon_id) {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
     } else {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(['durum' => 'servis', 'updated_at' => now()]);
+        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
     }
     return ['ok' => 1];
 });
@@ -29021,6 +29028,7 @@ Route::post('/api/mutfak/86', function (Request $r) {
     if (!$u || ($kapsam !== null && !in_array((int) $u->id, $kapsam, true))) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $yeni = $u->tukendi ? 0 : 1;
     DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
+    if (function_exists('_mrTukendiLog')) _mrTukendiLog($u, $yeni, $p ?? _posPersonel());
     return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
 });
 
@@ -29150,6 +29158,7 @@ Route::post('/mutfak/86-toggle', function (Request $r) {
     if (!$u || ($kapsam !== null && !in_array((int) $u->id, $kapsam, true))) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     $yeni = $u->tukendi ? 0 : 1;
     DB::table('urunler')->where('id', $u->id)->update(['tukendi' => $yeni, 'updated_at' => now()]);
+    if (function_exists('_mrTukendiLog')) _mrTukendiLog($u, $yeni, $p ?? _posPersonel());
     return ['ok' => 1, 'tukendi' => (bool) $yeni, 'mesaj' => $u->ad . ($yeni ? ' → tükendi (86) 🔴' : ' → tekrar satışta 🟢')];
 });
 
@@ -34143,6 +34152,7 @@ require __DIR__ . '/bildirim_merkezi.php';
 require __DIR__ . '/stok_cikti.php';      // Stok / Malzeme listesi Excel + PDF
 require __DIR__ . '/grafik_kit.php';      // ortak sunucu-tarafı grafikler (public/grafik.css)
 require __DIR__ . '/fiyat_radari.php';
+require __DIR__ . '/mutfak_raporlar.php'; // Mutfak Raporlar & Analizler (satinalma_raporlar motoru üstüne)
 require __DIR__ . '/fiyat_anlasma.php';
 require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';

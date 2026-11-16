@@ -383,6 +383,20 @@
         ['/mutfak-defteri', 'checklist', 'Kontrol Defteri (HACCP/Fire/Prep)', '#16A34A'],
         ['/rezervasyon', 'event_seat', 'Beklenen Kuver (Rezervasyon)', '#A855F7'],
     ];
+    // ===== MUTFAK RAPORLARI — şef / sous şef / müdür / patron (aşçı görmez: _mrErisim) =====
+    $gruplar['Mutfak Raporları'] = [
+        ['/mutfak-raporlar/donemsel', 'event_note', 'Dönemsel Raporlar', '#EA580C'],
+        ['/mutfak-raporlar/hiz', 'timer', 'Hız & Servis', '#DC2626'],
+        ['/mutfak-raporlar/maliyet', 'percent', 'Food Cost & Tüketim', '#059669'],
+        ['/mutfak-raporlar/menu', 'auto_graph', 'Menü Mühendisliği', '#7C3AED'],
+        ['/mutfak-raporlar/fire', 'delete_sweep', 'Fire & İsraf', '#C2410C'],
+        ['/mutfak-raporlar/uretim', 'blender', 'Üretim & Hazırlık', '#0891B2'],
+        ['/mutfak-raporlar/stok', 'kitchen', 'Stok & Sayım', '#2563EB'],
+        ['/mutfak-raporlar/hijyen', 'health_and_safety', 'Hijyen & Kontrol', '#16A34A'],
+        ['/mutfak-raporlar/iptal', 'cancel', 'İptal & İkram', '#BE123C'],
+        ['/mutfak-raporlar/ekip', 'groups', 'Ekip & Talepler', '#4F46E5'],
+        ['/mutfak-raporlar/ai', 'auto_awesome', 'Mutfak AI Analiz', '#9333EA'],
+    ];
     // ===== AI SANTRAL — telefonu açan asistan: kayıtlar, arayan tanıma, aktarma, eğitim (gor_santral) =====
     $gruplar['AI Santral'] = [
         ['/santral-kayitlar', 'call', 'Çağrı Kayıtları', '#4F46E5'],
@@ -493,7 +507,7 @@
                 unset($gruplar['Satın Alma']);
                 foreach ($_saP as $_bg => $_its) if ($_its) $gruplar[$_bg] = array_merge($gruplar[$_bg] ?? [], $_its);
             }
-            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
+            $_deptSira = ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
@@ -591,7 +605,7 @@
             @php
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
-                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
+                    'YÖNETİM' => ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
                     'MENÜ' => ['Menü & Ürünler'],
                     'OPERASYON' => ['Satış & Servis'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
@@ -609,6 +623,7 @@
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
                     if ($it[0] === '/demirbas' && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
                     if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
+                    if (str_starts_with($it[0], '/mutfak-raporlar/')) return function_exists('_mrErisim') && _mrErisim($_pp);
                     if ($it[0] === '/patron-ai?gm=1') return _panelYetkiVar($_pp, 'gor_copilot'); if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
