@@ -88,7 +88,9 @@ Route::get('/stok/malzeme/indir', function (Request $r) {
         return response()->view('fiyat_radari_rapor', ['baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => [], 'ai' => null, 'rapor' => 'stok', 'dosya' => $dosya,
             'tema' => '7C3AED', 'ikon' => 'inventory_2', 'aciklama' => 'Şubedeki tüm malzemelerin anlık stok seviyesi, kritik durumu ve stok değeri.', 'marka' => 'Stok Raporu', 'onizle' => $r->boolean('onizle'), 'aiEtiket' => false, 'gorsel' => '']);
     }
-    $x = _fr2Xlsx($sayfalar, $baslik, $alt, '7C3AED');
+    // Excel ilk sekmeyi açar: ürün listesi önde, özet (pano) en sonda
+    $xs = [$sayfalar[2], $sayfalar[1], array_merge($sayfalar[0], ['ad' => 'Özet'])];
+    $x = _fr2Xlsx($xs, $baslik, $alt, '7C3AED');
     if ($x === null) return response('Excel üretilemedi (sunucuda ZipArchive yok).', 500);
     return response($x, 200, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.xlsx"']);
 });
