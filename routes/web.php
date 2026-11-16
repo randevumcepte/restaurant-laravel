@@ -9353,7 +9353,7 @@ if (!function_exists('_panelSayfaKategori')) {
                 'gor_talep' => 'Satın Alma Talebi (talep açma / departman onayı)',
                 'gor_fiyat_anlasma' => 'Fiyat Anlaşmaları — görüntüle (sözleşme, belge, rapor)', 'gor_fiyat_anlasma_duzenle' => 'Fiyat Anlaşmaları — ekle / düzenle / sil',
                 'gor_transfer' => 'Şubeler Arası Transfer (istek, onay, sevk, teslim)',
-                'gor_demirbas' => 'Demirbaş & Etiket — görüntüle, okut, sayım, etiket bas', 'gor_demirbas_duzenle' => 'Demirbaş & Etiket — ekle / düzenle / zimmet / sil',
+                'gor_demirbas' => 'Barkod & Etiket (demirbaş dahil) — görüntüle, okut, sayım, etiket bas', 'gor_demirbas_duzenle' => 'Barkod & Etiket (demirbaş dahil) — ekle / düzenle / zimmet / sil',
                 'gor_malzeme_kart' => 'Malzeme Kartı — yeni malzeme ekle / düzenle (ad, birim, kategori, kritik seviye)',
             ],
             '👥 Personel & Müşteri' => [
@@ -9392,7 +9392,7 @@ if (!function_exists('_sayfaYetkiHaritasi')) {
             '/satis-sohbet' => 'gor_rezervasyon', '/etkinlik-takvim' => 'gor_rezervasyon', '/depozito' => 'gor_rezervasyon',
             '/crm-sohbet' => 'gor_odul_dogrula', '/musteri-360' => 'gor_odul_dogrula', // CRM / Müşteri İlişkileri
             '/ai-eylem-log' => 'gor_hareketler', // AI eylem gecmisi (sahip/mudur guard rotada da var)
-            '/stok' => 'gor_stok', '/sayim' => 'gor_sayim', '/demirbas' => 'gor_demirbas', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_satinalma', '/tedarikci-detay' => 'gor_satinalma', '/satinalma' => 'gor_satinalma', '/satinalma-siparis' => 'gor_satinalma', '/satinalma-siparis-detay' => 'gor_satinalma', '/mal-kabul' => 'gor_satinalma', '/mal-kabul-detay' => 'gor_satinalma', '/fatura-eslestir' => 'gor_satinalma', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_satinalma', '/fiyat-radari' => 'gor_satinalma', '/satinalma-raporlar' => 'gor_satinalma', '/hal-fiyatlari' => 'gor_satinalma', '/satinalma-analiz' => 'gor_satinalma', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_satinalma', '/satinalma-islemleri' => 'gor_satinalma',
+            '/stok' => 'gor_stok', '/sayim' => 'gor_sayim', '/demirbas' => 'gor_demirbas', '/barkod-etiket' => 'gor_demirbas', '/uretim-riski' => 'gor_stok', '/barkod' => 'gor_stok', '/tedarikci' => 'gor_satinalma', '/tedarikci-detay' => 'gor_satinalma', '/satinalma' => 'gor_satinalma', '/satinalma-siparis' => 'gor_satinalma', '/satinalma-siparis-detay' => 'gor_satinalma', '/mal-kabul' => 'gor_satinalma', '/mal-kabul-detay' => 'gor_satinalma', '/fatura-eslestir' => 'gor_satinalma', '/parti-takip' => 'gor_stok', '/siparis-onerisi' => 'gor_satinalma', '/fiyat-radari' => 'gor_satinalma', '/satinalma-raporlar' => 'gor_satinalma', '/hal-fiyatlari' => 'gor_satinalma', '/satinalma-analiz' => 'gor_satinalma', '/satinalma-asistan' => 'gor_ai_asistan', '/satinalma-brief' => 'gor_satinalma', '/satinalma-islemleri' => 'gor_satinalma',
             '/menu' => 'gor_menu', '/personel' => 'gor_personel', '/kasalar' => 'gor_personel', '/isletme-duzeni' => 'gor_personel', '/garson-yonetimi' => 'gor_personel', '/puantaj' => 'gor_puantaj', '/garson-performans' => 'gor_garson_perf',
             '/ik-ozet' => 'gor_personel', '/ik-izin' => 'gor_personel', '/ik-vardiya' => 'gor_personel', '/ik-sicil' => 'gor_personel', '/ik-belge-indir' => 'gor_personel', '/ik-aday' => 'gor_personel', '/ik-cv-indir' => 'gor_personel', '/ik-asistan' => 'gor_ai_asistan', '/ik-risk' => 'gor_personel', // İK ekranları gor_personel; İK AI asistanı PREMIUM = gor_ai_asistan
             '/masa-yonetim' => 'gor_masa_yonetim', '/salon-sema' => 'gor_salon_sema', '/rezervasyon' => 'gor_rezervasyon', '/garson-cagrilari' => 'gor_garson_cagri',
@@ -32182,6 +32182,12 @@ Route::get('/api/barkod/coz', function (Request $r) {
     $b = DB::table('barkodlar')->where('sube_id', $p->sube_id)->where('barkod', $kod)->first();
     if (!$b && function_exists('_dmBul') && function_exists('_dmYetki') && _dmYetki($p)) { _demirbasEnsure(); $d = _dmBul($p->sube_id, $kod); if ($d) return ['ok' => 1, 'bulundu' => 1, 'tur' => 'demirbas', 'id' => (int) $d->id, 'ad' => $d->ad, 'lokasyon' => $d->lokasyon, 'durum' => $d->durum]; } // demirbaş etiketi
 
+    if (!$b && function_exists('_emKasaBarkod')) { // terazi etiketi (2x önekli EAN-13) ya da Barkod & Etiket'teki ürün barkodu
+        $em = _emKasaBarkod($p->sube_id, $kod);
+        if ($em['ok'] && !empty($em['tarti'])) return ['ok' => 1, 'bulundu' => 1, 'tur' => 'tarti', 'id' => (int) $em['urun']->id, 'ad' => $em['ad_kalem'], 'fiyat' => (float) $em['tutar'], 'kg' => $em['kg'], 'kod' => $kod, 'hata' => 'Tartılı ürün etiketi için uygulamayı güncelleyin.'];
+        if ($em['ok']) $b = (object) ['tur' => 'urun', 'hedef_id' => $em['urun']->id];
+        elseif (!str_starts_with($em['hata'] ?? '', 'Bu barkod tanımlı değil')) return ['ok' => 0, 'bulundu' => 0, 'hata' => $em['hata'], 'barkod' => $kod];
+    }
     if (!$b) return ['ok' => 0, 'bulundu' => 0, 'hata' => 'Bu barkod tanımlı değil', 'barkod' => $kod];
     if ($b->tur === 'urun') {
         $u = DB::table('urunler')->where('id', $b->hedef_id)->first(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'aktif']);
@@ -34174,6 +34180,7 @@ require __DIR__ . '/dep_raporlar.php'; // Departman raporları çatısı (İK, F
 require __DIR__ . '/fiyat_anlasma.php';
 require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
+require __DIR__ . '/etiket_merkezi.php'; // Barkod & Etiket Merkezi (ürün etiketi, terazi, raf kartı)
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
 // ============================ GLOBAL KATALOG SAHİPLİĞİ (malzeme/tedarikçi/reçete şube görünürlüğü) ============================

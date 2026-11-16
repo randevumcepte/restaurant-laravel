@@ -179,9 +179,9 @@ body.koyu {
     {{-- Arama --}}
     <div style="padding:10px 14px;background:var(--kart);border-bottom:1px solid var(--cizgi);display:flex;align-items:center;gap:8px">
       <span class="material-icons-outlined" style="color:var(--sub2);font-size:20px">search</span>
-      <input id="posAraInput" type="text" placeholder="Ürün ara…" autocomplete="off" name="pos_urun_ara_{{ $adisyon->id }}"
+      <input id="posAraInput" type="text" placeholder="Ürün ara ya da barkod okut…" autocomplete="off" name="pos_urun_ara_{{ $adisyon->id }}"
              style="flex:1;border:none;background:transparent;color:var(--ink);font-size:14px;outline:none"
-             oninput="posAra(this.value)">
+             oninput="posAra(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();posBarkod(this);}">
     </div>
 
     {{-- Kategori çipleri --}}
@@ -632,6 +632,13 @@ function posAra(val){
 }
 
 // ---- Ürün ekle / gönder ----
+// Barkod okuyucu (klavye gibi yazar + Enter): ürün barkodu ya da terazi etiketi (gramajla) adisyona eklenir
+function posBarkod(inp){
+  var kod=(inp.value||'').trim(); if(!/^[!-~]{4,32}$/.test(kod)) return;
+  api('/pos/barkod-ekle', { adisyon_id: POS_ADISYON_ID, kod: kod }).then(function(r){
+    if(r && r.ok) location.reload(); else { alert((r && r.hata) || 'Barkod tanımlı değil'); inp.select(); }
+  });
+}
 function posEkle(urunId){
   api('/pos/kalem-ekle', { adisyon_id: POS_ADISYON_ID, urun_id: urunId }).then(function(r){
     if(r && r.hata) alert(r.hata); else location.reload();

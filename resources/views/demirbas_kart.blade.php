@@ -1,5 +1,5 @@
 @extends('layout.app')
-@section('rk_ikon', 'qr_code_2')
+@section('rk_ikon', 'qr_code')
 @section('baslik', $d->ad)
 @section('rk_alt', 'Demirbaş kartı · ' . $d->barkod)
 @section('title', $d->ad . ' — Demirbaş')
@@ -86,7 +86,7 @@
       @endif
     </div>
     <div class="kart" style="margin:0">
-      <div class="kb"><span class="ms">qr_code_2</span><h3>Etiket</h3></div>
+      <div class="kb"><span class="ms">qr_code</span><h3>Etiket</h3></div>
       <div class="etiket-on">
         <div class="u">DEMİRBAŞ</div>
         <div class="a">{{ $d->ad }}</div>

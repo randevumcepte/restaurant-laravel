@@ -252,7 +252,7 @@
             ['/departman-brief?dep=satinalma', 'wb_sunny', 'Satınalma Sabah Brifingi', '#7C3AED'],
             ['/uretim-riski', 'warning_amber', 'Üretim Riski', '#F59E0B'],
             ['/sayim', 'fact_check', 'Sayım (Envanter)', '#0EA5E9'],
-            ['/demirbas', 'qr_code_2', 'Demirbaş & Etiket', '#0EA5E9'],
+            ['/barkod-etiket', 'qr_code_scanner', 'Barkod & Etiket', '#0EA5E9'],
             ['/tedarikci', 'local_shipping', 'Tedarikçiler', null],
             ['/eposta-hesaplari', 'alternate_email', 'E-posta Hesapları (RFQ)', '#7C3AED'],
             ['/satinalma-islemleri', 'apps', 'Satın Alma İşlemleri', '#7C3AED'],
@@ -316,7 +316,7 @@
         ['/z-raporu', 'summarize', 'Z Raporu', '#0EA5E9'],
         ['/tedarikci-yaslandirma', 'hourglass_bottom', 'Tedarikçi Yaşlandırma', '#F43F5E'],
         ['/amortisman', 'trending_down', 'Amortisman', '#64748B'],
-        ['/demirbas', 'qr_code_2', 'Demirbaş & Etiket', '#64748B'],
+        ['/demirbas', 'inventory_2', 'Demirbaş', '#64748B'],
         ['/e-defter', 'menu_book', 'e-Defter (hazırlık)', '#7C3AED'],
         ['/muhasebe', 'book', 'Muhasebe Defteri', '#7C3AED'],
     ];
@@ -512,7 +512,7 @@
     $_saBol = [ // satın alma raporları Satın Alma grubunun içinde kalır (satın almacının raporları)
         'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
         'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
-        'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/demirbas']];
+        'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/barkod-etiket']];
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
@@ -639,7 +639,7 @@
                     if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp);
                     if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
-                    if ($it[0] === '/demirbas' && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
+                    if (in_array($it[0], ['/demirbas', '/barkod-etiket'], true) && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
                     if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
                     if (str_starts_with($it[0], '/mutfak-raporlar/')) return function_exists('_mrErisim') && _mrErisim($_pp);
                     if (function_exists('_drYolErisim') && ($_dr = _drYolErisim($it[0], $_pp)) !== null) return $_dr; // departman raporları: yönetici / departman sorumlusu

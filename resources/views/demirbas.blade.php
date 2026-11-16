@@ -1,8 +1,8 @@
 @extends('layout.app')
-@section('rk_ikon', 'qr_code_2')
-@section('baslik', 'Demirbaş & Etiket')
-@section('rk_alt', 'Ekipman ve demirbaş · barkod, etiket, zimmet, konum ve sayım')
-@section('title', 'Demirbaş & Etiket')
+@section('rk_ikon', 'qr_code')
+@section('baslik', 'Barkod & Etiket')
+@section('rk_alt', 'Demirbaş · ekipman barkodu, etiket, zimmet, konum ve sayım')
+@section('title', 'Demirbaş · Barkod & Etiket')
 
 @push('head')
 @include('demirbas_stil')
@@ -19,7 +19,7 @@
   @if (session('hata'))<div class="flash hata"><span class="ms">error</span>{{ session('hata') }}</div>@endif
 
   <div class="hero">
-    <div class="hero-ik"><span class="ms">qr_code_2</span></div>
+    <div class="hero-ik"><span class="ms">qr_code</span></div>
     <div class="yazi">
       <h2>Her ekipmanın bir etiketi, her etiketin bir geçmişi</h2>
       <p>Demirbaşı kaydet, sistem barkodunu verir. Etiketi bas, yapıştır. Okutunca kart açılır: kimde, nerede, ne zaman bakım gördü. Depoyu barkodla say, eksik olanı sistem söylesin.</p>
@@ -31,6 +31,8 @@
       <a class="b cam" href="/demirbas/excel"><span class="ms">download</span> Excel</a>
     </div>
   </div>
+
+  @include('etiket_sekmeler', ['aktif' => 'demirbas'])
 
   <form class="okut" id="dmOkutForm" onsubmit="return dmOkut(event)" autocomplete="off">
     <span class="ms i">qr_code_scanner</span>
@@ -92,7 +94,7 @@
   </div>
   @else
   <div class="bos">
-    <span class="ms b">qr_code_2</span>
+    <span class="ms b">qr_code</span>
     <h3>Henüz demirbaş yok</h3>
     <p>Fırın, buzdolabı, kasa, tablet, mobilya, depo rafı… Kaydettiğin her ekipmana sistem barkod verir; etiketini basıp yapıştırırsın, okutunca kartı açılır.</p>
     @if ($duzenler)<button class="b ana" type="button" onclick="dmYeni()"><span class="ms">add_box</span> İlk demirbaşı ekle</button>@endif
