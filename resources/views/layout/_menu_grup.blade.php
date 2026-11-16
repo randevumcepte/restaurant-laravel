@@ -35,7 +35,7 @@
     </div>
 @elseif (count($gorunur))
     @if (empty($basliksiz))
-    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)"><span class="material-icons-outlined rk-grp-ik">{{ $grpIkon }}</span><span class="rk-grp-ad">{{ $grupAd }}</span>@if ($grpSay > 0)<span class="rk-grp-say">{{ $_badgeMetin($grpSay) }}</span>@endif<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
+    <div class="rk-grp{{ $grupAktif ? '' : ' kapali' }}" data-grp="{{ $grupAd }}" onclick="rkGrpTog(this)"><span class="material-icons-outlined rk-grp-ik">{{ $grpIkon }}</span><span class="rk-grp-ad">{{ ['Departman Operasyon' => 'Operasyon'][$grupAd] ?? $grupAd }}</span>@if ($grpSay > 0)<span class="rk-grp-say">{{ $_badgeMetin($grpSay) }}</span>@endif<span class="material-icons-outlined rk-grp-ok">expand_more</span></div>
     @endif
     <div class="rk-grp-body">
         @foreach ($gorunur as [$url, $ikon, $ad, $renk])

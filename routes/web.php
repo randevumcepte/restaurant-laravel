@@ -490,7 +490,9 @@ Route::post('/pos-giris', function (Request $r) {
     $mutfakci = !$posSuz && !_panelYetkiVar($p, 'gor_pos') && _panelYetkiVar($p, 'gor_mutfak');
     // Departman çalışanı (yönetici/kasiyer değil) brifingi görebiliyorsa güne Sabah Brifingim ile başlar
     $brifingli = !$posSuz && !empty($p->departman_id) && !in_array($p->rol ?? '', ['sahip', 'mudur'], true) && !_kasiyerMi($p) && _brifingGorur($p);
-    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($brifingli ? '/departman-brief' : ($mutfakci ? '/mutfak' : '/pos'))));
+    // Patron güne Sabah Brifingi ile, genel müdür / brifing yetkili yönetici GM brifingiyle başlar (kasiyer hariç)
+    $patronBrif = ($posSuz || _kasiyerMi($p)) ? null : (($p->rol ?? '') === 'sahip' ? '/patron-ai' : ((($p->rol ?? '') === 'mudur' || _panelYetkiVar($p, 'gor_copilot')) ? '/patron-ai?gm=1' : null));
+    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($patronBrif ?: ($brifingli ? '/departman-brief' : ($mutfakci ? '/mutfak' : '/pos')))));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {

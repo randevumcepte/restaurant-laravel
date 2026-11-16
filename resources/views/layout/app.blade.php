@@ -592,10 +592,11 @@
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
                     'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
-                    'OPERASYON' => ['Satış & Servis', 'Menü & Ürünler'],
+                    'MENÜ' => ['Menü & Ürünler'],
+                    'OPERASYON' => ['Satış & Servis'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
                 ];
-                $_katIkon = ['YÖNETİM' => 'workspace_premium', 'OPERASYON' => 'tune', 'AYARLAR' => 'settings'];
+                $_katIkon = ['YÖNETİM' => 'workspace_premium', 'MENÜ' => 'restaurant_menu', 'OPERASYON' => 'tune', 'AYARLAR' => 'settings'];
                 $_grupKat = [];
                 foreach ($_kategoriler as $_kk => $_gs) foreach ($_gs as $_g) $_grupKat[$_g] = $_kk;
                 // Mutfak rolüne yetkisiz ekran gösteren istisna kalktı: her bağlantı kendi yetkisine bakar (aşçı satın almayı/sayımı görmez)
@@ -658,11 +659,11 @@
                         @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items])
                     @endforeach
                 @elseif (count($_catGruplar))
-                    <div class="rk-cat{{ ($_catAktif || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
+                    <div class="rk-cat{{ ($_catAktif || $_kasiyerMenu) ? '' : ' kapali' }}" data-cat="{{ $katAd }}" onclick="rkCatTog(this)"><span class="material-icons-outlined rk-cat-ik">{{ $_katIkon[$katAd] ?? 'folder' }}</span><span class="rk-cat-ad">{{ ['YÖNETİM' => 'DEPARTMANLAR'][$katAd] ?? $katAd }}</span><span class="material-icons-outlined rk-cat-ok">expand_more</span></div>
                     <div class="rk-cat-body">
                         @foreach ($_catGruplar as $grupAd => $items)
                             {{-- AYARLAR kategorisinin tek grubu başlıksız: sayfalar doğrudan kategorinin altında --}}
-                            @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => $grupAd === 'Ayarlar & Entegrasyon'])
+                            @include('layout._menu_grup', ['grupAd' => $grupAd, 'items' => $items, 'basliksiz' => in_array($grupAd, ['Ayarlar & Entegrasyon', 'Menü & Ürünler'], true)])
                         @endforeach
                     </div>
                 @endif
