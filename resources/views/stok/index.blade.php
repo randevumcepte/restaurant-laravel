@@ -142,13 +142,19 @@ body.koyu #stk #stkAra{background:var(--card2)}
 #stkAraBar .ara-ic{position:relative}
 #stkAraBar .ara-ic .material-icons-outlined{position:absolute;left:8px;top:50%;transform:translateY(-50%);
   font-size:16px;color:var(--sub,#64748b);pointer-events:none}
+/* ---- Kategori başlığı: kartların arasında kaybolmasın diye belirgin şerit ---- */
 
-/* ---- Bölüm başlığı (Flutter MBolumBaslik) ---- */
-#stk .stk-kat-baslik{display:flex;align-items:center;gap:8px;padding:12px 0 6px}
-#stk .stk-kat-baslik .cubuk{width:4px;height:18px;border-radius:3px;background:var(--mor1);flex-shrink:0}
-#stk .stk-kat-baslik .ad{color:var(--ink);font-size:15px;font-weight:700}
-#stk .stk-kat-baslik .sayi{background:rgba(124,58,237,.12);color:var(--mor1);border-radius:10px;
-  padding:1px 8px;font-size:11px;font-weight:700}
+#stk .stk-kat-baslik{display:flex;align-items:center;gap:10px;margin:26px 0 12px;padding:10px 14px;border-radius:12px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--mor1) 13%,var(--card)),color-mix(in srgb,var(--mor1) 3%,var(--card)) 70%);
+  border:1px solid color-mix(in srgb,var(--mor1) 22%,transparent);border-left:5px solid var(--mor1)}
+#stk #stkGenis > .stk-kat-baslik:first-child{margin-top:6px}
+#stk .stk-kat-baslik .cubuk{display:none}
+#stk .stk-kat-baslik .kik{font-size:20px;color:var(--mor1)}
+#stk .stk-kat-baslik .ad{color:var(--ink);font-size:16.5px;font-weight:800;letter-spacing:-.2px}
+#stk .stk-kat-baslik .sayi{background:var(--mor1);color:#fff;border-radius:99px;padding:2px 9px;font-size:11.5px;font-weight:800}
+#stk .stk-kat-baslik .ek{margin-left:auto;display:flex;gap:12px;font-size:12px;color:var(--sub);font-weight:700}
+#stk .stk-kat-baslik .ek .kr{color:#DC2626}
+@media(max-width:620px){#stk .stk-kat-baslik .ek{display:none}}
 
 /* ---- Malzeme kartı (mobil — Flutter _malzemeKart) ---- */
 #stk .stk-kart{display:flex;align-items:center;gap:10px;padding:13px;border-radius:14px;
@@ -416,10 +422,15 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
             {{-- -- Masaüstü ızgara (Flutter _masaustu → _mKart 4 sütun kategorili) -- --}}
             <div id="stkGenis" style="display:none">
                 @foreach ($gruplar as $katAd => $katRows)
+                @php $katKritik = $katRows->whereIn('durum', ['kirmizi', 'negatif'])->count(); @endphp
                 <div class="stk-kat-baslik">
-                    <div class="cubuk"></div>
+                    <span class="material-icons-outlined kik">category</span>
                     <span class="ad">{{ $katAd }}</span>
                     <span class="sayi">{{ $katRows->count() }}</span>
+                    <span class="ek">
+                        @if ($katKritik)<span class="kr">{{ $katKritik }} kritik</span>@endif
+                        <span>{{ $tl($katRows->sum('deger')) }}</span>
+                    </span>
                 </div>
                 <div class="stk-grid">
                     @foreach ($katRows as $m)
