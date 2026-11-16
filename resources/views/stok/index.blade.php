@@ -266,12 +266,15 @@ body.koyu .stk-modal{background:#0B1020}
 .stk-aduyari.u{background:#FEF3C7;color:#92400E;border:1px solid #FCD34D}
 .stk-aduyari.i{background:#E0F2FE;color:#075985;border:1px solid #7DD3FC}
 .stk-kat-duzelt{margin-left:6px;border:0;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:800;cursor:pointer;background:#fff;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.stk-oneri{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18);max-height:286px;overflow-y:auto;padding:4px}
+.stk-oneri{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18);max-height:340px;overflow-y:auto;padding:4px}
 .stk-oneri .o{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
 .stk-oneri .o:hover,.stk-oneri .o.on{background:color-mix(in srgb,var(--mor1) 10%,transparent)}
 .stk-oneri .a{flex:1;min-width:0;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stk-oneri .a b{color:var(--mor1)}
 .stk-oneri .k{font-size:11px;color:var(--sub);white-space:nowrap}
+.stk-oneri .g{position:sticky;top:-4px;z-index:1;margin:0 -4px;padding:7px 14px 5px;background:var(--card);border-bottom:1px solid var(--line);font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:var(--mor1);display:flex;justify-content:space-between}
+.stk-oneri .g span{color:var(--sub);font-weight:600;text-transform:none}
+.stk-oneri .ust{padding:6px 10px;font-size:11.5px;color:var(--sub)}
 .stk-oneri .var{font-size:10.5px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:99px;padding:1px 7px;white-space:nowrap}
 .stk-modal .det-ozet{color:var(--sub);font-size:13px;margin-bottom:12px}
 /* Eylem butonları (Flutter _kbtn) */
@@ -653,20 +656,49 @@ let STK_KATALOG = {}; // ad_lower -> {ad, kategori}
   const kucuk = s => (s || '').toLocaleLowerCase('tr');
   const mevcut = () => { const s = {}; (typeof stkVeriler !== 'undefined' ? stkVeriler : []).forEach(m => s[kucuk(m.ad)] = 1); return s; };
   function kapat(){ kutu.hidden = true; inp.setAttribute('aria-expanded', 'false'); secili = -1; }
+  function satir(u, i, q, var_){
+    const ad = _esc(u.ad), k = q ? kucuk(u.ad).indexOf(q) : -1;
+    const vurgulu = k >= 0 ? _esc(u.ad.slice(0, k)) + '<b>' + _esc(u.ad.slice(k, k + q.length)) + '</b>' + _esc(u.ad.slice(k + q.length)) : ad;
+    return '<div class="o" role="option" data-i="' + i + '"><span class="a">' + vurgulu + '</span>'
+      + (var_[kucuk(u.ad)] ? '<span class="var">zaten var</span>' : '') + (q ? '<span class="k">' + _esc(u.kategori || '') + '</span>' : '') + '</div>';
+  }
   function ciz(){
     const q = kucuk(inp.value.trim()), var_ = mevcut();
     const hepsi = Object.values(STK_KATALOG);
-    // önce baştan eşleşen, sonra içinde geçen; boşken ilk 8
-    liste = q ? hepsi.filter(u => kucuk(u.ad).startsWith(q)).concat(hepsi.filter(u => !kucuk(u.ad).startsWith(q) && kucuk(u.ad).includes(q))) : hepsi;
-    liste = liste.slice(0, 8);
-    if (!liste.length || (liste.length === 1 && kucuk(liste[0].ad) === q)) { kapat(); return; }
-    kutu.innerHTML = liste.map((u, i) => {
-      const ad = _esc(u.ad), k = kucuk(u.ad).indexOf(q);
-      const vurgulu = q && k >= 0 ? _esc(u.ad.slice(0, k)) + '<b>' + _esc(u.ad.slice(k, k + q.length)) + '</b>' + _esc(u.ad.slice(k + q.length)) : ad;
-      return '<div class="o' + (i === secili ? ' on' : '') + '" role="option" data-i="' + i + '"><span class="a">' + vurgulu + '</span>'
-        + (var_[kucuk(u.ad)] ? '<span class="var">zaten var</span>' : '') + '<span class="k">' + _esc(u.kategori || '') + '</span></div>';
-    }).join('');
+    if (q) {
+      // yazarken: önce baştan eşleşen, sonra içinde geçen (tümü)
+      liste = hepsi.filter(u => kucuk(u.ad).startsWith(q)).concat(hepsi.filter(u => !kucuk(u.ad).startsWith(q) && kucuk(u.ad).includes(q)));
+      if (!liste.length || (liste.length === 1 && kucuk(liste[0].ad) === q)) { kapat(); return; }
+      kutu.innerHTML = '<div class="ust">' + liste.length + ' eşleşme</div>' + liste.map((u, i) => satir(u, i, q, var_)).join('');
+    } else {
+      // boşken: TÜM katalog, kategori başlıklı; seçili kategori en üstte
+      const sel = document.getElementById('stkFKat'), seciliKat = sel && sel.value ? kucuk(sel.options[sel.selectedIndex].textContent.trim()) : '';
+      const gruplar = {};
+      hepsi.forEach(u => { (gruplar[u.kategori || 'Diğer'] = gruplar[u.kategori || 'Diğer'] || []).push(u); });
+      const adlar = Object.keys(gruplar).sort((a, b) => a.localeCompare(b, 'tr'));
+      const esit = adlar.findIndex(a => seciliKat && (kucuk(a) === seciliKat || stkKatEsleBasit(a, seciliKat)));
+      if (esit > 0) adlar.unshift(adlar.splice(esit, 1)[0]);
+      liste = []; let h = '<div class="ust">Hazır listede ' + hepsi.length + ' malzeme · yazarak arayın ya da kaydırıp seçin</div>';
+      adlar.forEach(a => {
+        const g = gruplar[a].sort((x, y) => x.ad.localeCompare(y.ad, 'tr'));
+        h += '<div class="g">' + _esc(a) + '<span>' + g.length + '</span></div>';
+        g.forEach(u => { h += satir(u, liste.length, '', var_); liste.push(u); });
+      });
+      if (!liste.length) { kapat(); return; }
+      kutu.innerHTML = h;
+    }
     kutu.hidden = false; inp.setAttribute('aria-expanded', 'true');
+  }
+  function isaretle(){
+    kutu.querySelectorAll('.o.on').forEach(o => o.classList.remove('on'));
+    const o = kutu.querySelector('.o[data-i="' + secili + '"]');
+    if (o) { o.classList.add('on'); o.scrollIntoView({ block: 'nearest' }); }
+  }
+  // kategori adları farklı yazılmış olabilir: "Et & Tavuk" ~ "Et Ürünleri"
+  function stkKatEsleBasit(a, b){
+    const kel = s => kucuk(s).split(/[^a-zçğıöşü0-9]+/).filter(k => k.length >= 2 && k !== 've');
+    const x = kel(a), y = kel(b);
+    return x.some(k => y.includes(k));
   }
   function sec(i){
     const u = liste[i]; if (!u) return;
@@ -679,8 +711,8 @@ let STK_KATALOG = {}; // ad_lower -> {ad, kategori}
   inp.addEventListener('blur', () => setTimeout(kapat, 120));
   inp.addEventListener('keydown', e => {
     if (kutu.hidden) return;
-    if (e.key === 'ArrowDown') { secili = Math.min(liste.length - 1, secili + 1); ciz(); e.preventDefault(); }
-    else if (e.key === 'ArrowUp') { secili = Math.max(0, secili - 1); ciz(); e.preventDefault(); }
+    if (e.key === 'ArrowDown') { secili = Math.min(liste.length - 1, secili + 1); isaretle(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { secili = Math.max(0, secili - 1); isaretle(); e.preventDefault(); }
     else if (e.key === 'Enter' && secili >= 0) { sec(secili); e.preventDefault(); }
     else if (e.key === 'Escape') { kapat(); e.stopPropagation(); }
   });
