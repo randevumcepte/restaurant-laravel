@@ -409,11 +409,32 @@ if (!function_exists('_srBolumler')) {
 // =====================================================================
 // RAPORLAR — her biri sayfalar dizisi döner (Pano + tablolar)
 // =====================================================================
+if (!function_exists('_srTrend')) {
+    // Harcama raporlarının panosuna seçilen dönemden bağımsız alış trendi: dönem boş olsa da bağlamı gösterir
+    function _srTrend($sid, $anahtar, array $dn)
+    {
+        $bit = \Carbon\Carbon::parse($dn['bit']);
+        [$kova, $adet, $ad] = ['gunluk' => ['gun', 30, 'Alış trendi · son 30 gün'], 'haftalik' => ['hafta', 12, 'Alış trendi · son 12 hafta']][$anahtar] ?? ['ay', 12, 'Alış trendi · son 12 ay'];
+        $bas = $kova === 'gun' ? $bit->copy()->subDays($adet - 1) : ($kova === 'hafta' ? $bit->copy()->startOfWeek()->subWeeks($adet - 1) : $bit->copy()->startOfMonth()->subMonths($adet - 1));
+        $kv = fn ($t) => $kova === 'gun' ? $t : ($kova === 'hafta' ? \Carbon\Carbon::parse($t)->startOfWeek()->toDateString() : substr($t, 0, 7));
+        $top = []; foreach (_srAlis($sid, $bas->toDateString(), $bit->toDateString()) as $x) { $k = $kv($x->tarih); $top[$k] = ($top[$k] ?? 0) + $x->tutar; }
+        if (!array_filter($top)) return null;
+        $ay = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']; $sat = []; $c = $bas->copy();
+        for ($i = 0; $i < $adet; $i++) {
+            $k = $kova === 'ay' ? $c->format('Y-m') : $c->toDateString();
+            $sat[] = [$kova === 'ay' ? $ay[(int) $c->format('n')] . ' ' . $c->format('y') : $c->format('d.m'), round($top[$k] ?? 0, 2), ''];
+            $kova === 'gun' ? $c->addDay() : ($kova === 'hafta' ? $c->addWeek() : $c->addMonth());
+        }
+        return _srBlok($ad, 'col', '7C3AED', [[$kova === 'ay' ? 'Ay' : ($kova === 'hafta' ? 'Hafta' : 'Gün'), 'm'], ['Alış', 'tl'], ['', 'm']], $sat);
+    }
+}
+
 if (!function_exists('_srRapor')) {
     function _srRapor($anahtar, $sid, array $dn)
     {
         $d = _srVeriDurumu($sid);
-        $pano = fn (array $kpi, array $bloklar, $bos = null) => ['ad' => 'Pano', 'tip' => 'pano', 'kpi' => $kpi, 'bloklar' => array_values(array_filter($bloklar, fn ($b) => count($b['sat']) > 0)), 'bos' => $bos];
+        $trend = in_array($anahtar, ['gunluk', 'haftalik', 'aylik', 'harcama'], true) ? _srTrend($sid, $anahtar, $dn) : null;
+        $pano = fn (array $kpi, array $bloklar, $bos = null) => ['ad' => 'Pano', 'tip' => 'pano', 'kpi' => $kpi, 'bloklar' => array_values(array_filter(array_merge($trend ? [$trend] : [], $bloklar), fn ($b) => count($b['sat']) > 0)), 'bos' => $bos];
         $l = _srAlis($sid, $dn['bas'], $dn['bit']); $lo = _srAlis($sid, $dn['obas'], $dn['obit']);
         $top = _srToplam($l); $otop = _srToplam($lo);
         $bosF = $l->isEmpty() ? _srBos('fatura', $dn) : null;

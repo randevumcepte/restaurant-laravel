@@ -21,6 +21,145 @@
   $blokDeg = fn($val, $tip) => $tip === 'tl' ? $tl0($val) : $hucre($val, $tip);
   $palet = ['#7C3AED', '#F59E0B', '#0EA5E9', '#10B981', '#EC4899', '#4F46E5', '#F43F5E', '#64748B', '#14B8A6', '#A855F7'];
   $hexA = fn($hex, $a) => 'rgba(' . hexdec(substr(ltrim($hex, '#'), 0, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 2, 2)) . ',' . hexdec(substr(ltrim($hex, '#'), 4, 2)) . ',' . $a . ')';
+
+  // ===== Grafikler (sunucuda çizilir: önizleme, PDF ve yazdırmada aynı görünür) =====
+  // Kategorik sıra sabit (renk körlüğü için doğrulandı); sıra dışı kalanlar "Diğer" griye düşer
+  $katRenk = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+  $kisa = function ($v, $tip) use ($hucre) {
+      $v = (float) $v; $a = abs($v);
+      if ($tip === 'y') return ($v < 0 ? '-%' : '%') . number_format($a, 1, ',', '.');
+      $s = $a >= 1e6 ? number_format($v / 1e6, 1, ',', '.') . ' mn' : ($a >= 1e4 ? number_format($v / 1e3, 1, ',', '.') . ' bin' : number_format($v, $a >= 100 || fmod($a, 1) == 0 ? 0 : 1, ',', '.'));
+      return $tip === 'tl' ? $s . ' ₺' : $s;
+  };
+  $tam = fn($v, $tip) => $tip === 'tl' ? number_format((float) $v, 2, ',', '.') . ' ₺' : ($tip === 'y' ? $hucre($v, 'y') : number_format((float) $v, fmod((float) $v, 1) ? 2 : 0, ',', '.'));
+  // Sütun grafiği (zaman serisi): y ekseni 3 kılavuz, en yüksek ve son değer etiketli, x etiketleri seyreltilir
+  $grSutun = function (array $et, array $dg, $tip, $renk) use ($kisa, $tam) {
+      $n = count($dg); $mx = max(0.0001, ...array_map('floatval', $dg)); $imx = array_search(max($dg), $dg);
+      $adim = $n > 16 ? (int) ceil($n / 8) : 1;
+      $h = '<div class="gc" style="--c:' . $renk . '"><div class="gc-alan">';
+      foreach ([1, 0.5, 0] as $o) $h .= '<div class="gc-cz" style="bottom:' . ($o * 100) . '%"><span>' . e($kisa($mx * $o, $tip)) . '</span></div>';
+      $h .= '<div class="gc-bars">';
+      foreach ($dg as $i => $v) {
+          $yk = $v > 0 ? max(1.5, round($v / $mx * 100, 2)) : 0;
+          $et_ = ($i === $imx || $i === $n - 1) && $v > 0 ? '<em style="bottom:calc(' . $yk . '% + 3px)' . ($i === $n - 1 && $n > 4 ? ';right:0' : '') . ($i === 0 && $n > 4 ? ';left:0' : '') . '">' . e($kisa($v, $tip)) . '</em>' : '';
+          $h .= '<div class="gc-b" data-tip="' . e($et[$i] . ': ' . $tam($v, $tip)) . '">' . $et_ . '<i style="height:' . $yk . '%"></i></div>';
+      }
+      $h .= '</div></div><div class="gc-x' . ($n > 6 && $adim === 1 ? ' sik' : '') . '">';
+      foreach ($et as $i => $l) $h .= '<span>' . (($i % $adim === 0 || $i === $n - 1) && ($i === $n - 1 || $n - 1 - $i >= $adim || $adim === 1) ? e($l) : '') . '</span>';
+      return $h . '</div></div>';
+  };
+  // Halka grafiği: en çok 7 dilim + Diğer; dilimler arasında 2px boşluk, yanında etiketli lejant
+  $grHalka = function (array $et, array $dg, $tip) use ($katRenk, $kisa, $tam) {
+      arsort($dg); $sira = array_keys($dg); $dl = [];
+      foreach ($sira as $j => $i) { if ($j < 7 || count($sira) === 8) $dl[] = [$et[$i], (float) $dg[$i]]; }
+      if (count($sira) > 8) $dl[] = ['Diğer (' . (count($sira) - 7) . ')', array_sum(array_map(fn($i) => (float) $dg[$i], array_slice($sira, 7)))];
+      $top = max(0.0001, array_sum(array_column($dl, 1))); $r = 54; $C = 2 * M_PI * $r; $bas = 0; $gap = count($dl) > 1 ? 2 : 0;
+      $svg = '<svg class="gh-svg" viewBox="0 0 140 140" width="140" height="140"><circle cx="70" cy="70" r="' . $r . '" fill="none" stroke="#EEF0F7" stroke-width="18"/>';
+      $lej = '';
+      foreach ($dl as $j => [$ad, $v]) {
+          $renk = str_starts_with($ad, 'Diğer (') ? '#94A3B8' : $katRenk[$j % 8]; $uz = $v / $top * $C;
+          if ($uz > $gap) $svg .= '<circle cx="70" cy="70" r="' . $r . '" fill="none" stroke="' . $renk . '" stroke-width="18" stroke-dasharray="' . round($uz - $gap, 2) . ' ' . round($C - $uz + $gap, 2) . '" stroke-dashoffset="' . round(-$bas, 2) . '" transform="rotate(-90 70 70)"><title>' . e($ad . ': ' . $tam($v, $tip)) . '</title></circle>';
+          $bas += $uz;
+          $lej .= '<div data-tip="' . e($ad . ': ' . $tam($v, $tip)) . '"><i style="background:' . $renk . '"></i><span class="a">' . e($ad) . '</span><b>' . e($kisa($v, $tip)) . '</b><span class="p">%' . number_format($v / $top * 100, 1, ',', '.') . '</span></div>';
+      }
+      $svg .= '<text x="70" y="66" text-anchor="middle" class="gh-t1">Toplam</text><text x="70" y="84" text-anchor="middle" class="gh-t2">' . e($kisa($top, $tip)) . '</text></svg>';
+      return '<div class="gh">' . $svg . '<div class="gh-lej">' . $lej . '</div></div>';
+  };
+  // Yatay çubuk: en çok 10 satır; yüzde değişimde sıfır ortada (artış kırmızı, düşüş mavi)
+  $grCubuk = function (array $et, array $dg, $tip, $renk) use ($kisa, $tam) {
+      $neg = min($dg) < 0; $mx = max(0.0001, ...array_map(fn($v) => abs((float) $v), $dg)); $h = '<div class="gb">';
+      foreach ($dg as $i => $v) {
+          $w = round(abs($v) / $mx * ($neg ? 50 : 100), 2);
+          $bar = $neg ? '<i style="' . ($v >= 0 ? 'left:50%' : 'right:50%') . ';width:' . $w . '%;background:' . ($v >= 0 ? '#e34948' : '#2a78d6') . '"></i><s></s>' : '<i style="left:0;width:' . max(1, $w) . '%;background:' . $renk . '"></i>';
+          $h .= '<div class="gb-s" data-tip="' . e($et[$i] . ': ' . $tam($v, $tip)) . '"><span class="n">' . e($et[$i]) . '</span><span class="t">' . $bar . '</span><b>' . e($kisa($v, $tip)) . '</b></div>';
+      }
+      return $h . '</div>';
+  };
+  // Tablodan otomatik grafik: ölçü = en anlamlı sayısal sütun; tarih sütunu → seyir; gruplanabilir metin sütunu → dağılım
+  $ayAd = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  $otoGrafik = function (array $kol, array $duz) use ($ayAd) {
+      $n = count($duz); if ($n < 2) return [];
+      $skor = []; $tarihK = null; $metinK = [];
+      foreach ($kol as $i => $k) {
+          $t = $k[1] ?? ''; $b = $k[3] ?? ''; $ad = mb_strtolower($k[0] ?? '');
+          if ($t === 't') { $tarihK ??= $i; continue; }
+          if (in_array($t, ['tl', 's', 'y'], true)) {
+              $sayi = array_filter($duz, fn($r) => is_numeric($r[$i] ?? null)); if (count($sayi) < 2) continue;
+              $p = ['tl' => 30, 's' => 10, 'y' => 10][$t] + (str_contains($b, 'top') || str_contains($b, 'bar') ? 10 : 0) + (preg_match('/tutar|harcama|toplam|etki|değer|deger|maliyet|bakiye|fark|alış|alis/u', $ad) ? 5 : 0) - (preg_match('/fiyat|oran|pay|gün|gun|adet|sayı|sayi/u', $ad) && $t !== 'y' ? 4 : 0);
+              $skor[$i] = $p + min(4, log10(1 + array_sum(array_map(fn($r) => abs((float) $r[$i]), $sayi))) / 3);
+              continue;
+          }
+          if (preg_match('/^(birim|kod|stok kodu|barkod|no|#|fatura no|sipariş|talep|ettn|vkn|açıklama|not|önceki → yeni|tarih)$|^önceki|fatura no|kodu$|vkn/u', $ad)) continue;
+          $d = count(array_unique(array_filter(array_map(fn($r) => trim((string) ($r[$i] ?? '')), $duz), 'strlen')));
+          if ($d >= 2) $metinK[$i] = $d;
+      }
+      $out = [];
+      $m = $skor ? array_search(max($skor), $skor) : null; $mt = $m !== null ? $kol[$m][1] : null; $mAd = $m !== null ? $kol[$m][0] : 'Kayıt sayısı';
+      // toplanabilir mi: tutar evet; gün, fiyat, seviye, endeks, oran hayır (gruplarken ortalama ya da kayıt sayısı)
+      $topBayrak = $m !== null && str_contains($kol[$m][3] ?? '', 'top');
+      $toplanir = $m !== null && ($topBayrak || ($mt === 'tl' && !preg_match('/fiyat/u', mb_strtolower($mAd))));
+      $topla = fn(array $gr) => $toplanir ? array_map('array_sum', $gr) : array_map(fn($l) => array_sum($l) / count($l), $gr);
+      // ilk metin sütunu ay/tarih adı taşıyorsa (Oca 2026, 2026-05…) satırlar zaten zaman sırasında: sütun grafiği
+      $ilkMetin = $metinK ? array_key_first($metinK) : null;
+      if ($m !== null && $tarihK === null && $ilkMetin !== null && $mt !== 'y') {
+          $etk = array_map(fn($r) => trim((string) ($r[$ilkMetin] ?? '')), $duz);
+          $zamanli = count(array_filter($etk, fn($x) => preg_match('/^((Oca|Şub|Mar|Nis|May|Haz|Tem|Ağu|Eyl|Eki|Kas|Ara)[a-zçğıöşü]*\.?\s*\d{2,4}|\d{4}-\d{2}(-\d{2})?|\d{1,2}\.\d{1,2}(\.\d{2,4})?|\d{4}\s*-?\s*\d{1,2}\.?\s*hafta)$/u', $x)));
+          if ($zamanli >= max(3, count($etk) * 0.8)) {
+              $dg = array_map(fn($r) => max(0, (float) ($r[$m] ?? 0)), $duz);
+              return [['tur' => 'sutun', 'baslik' => $mAd . ' · ' . mb_strtolower($kol[$ilkMetin][0]) . ' bazında seyir', 'et' => $etk, 'dg' => $dg, 'tip' => $mt]];
+          }
+      }
+      // 1) zaman seyri
+      if ($tarihK !== null && $mt !== 'y') {
+          $tar = array_filter(array_map(fn($r) => substr((string) ($r[$tarihK] ?? ''), 0, 10), $duz), fn($x) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $x));
+          if (count(array_unique($tar)) >= 3) {
+              $ilk = min($tar); $son = max($tar); $gun = (strtotime($son) - strtotime($ilk)) / 86400;
+              $kova = $gun > 120 ? 'ay' : ($gun > 45 ? 'hafta' : 'gun'); $gr = [];
+              foreach ($duz as $r) {
+                  $t = substr((string) ($r[$tarihK] ?? ''), 0, 10); if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $t)) continue;
+                  $key = $kova === 'ay' ? substr($t, 0, 7) : ($kova === 'hafta' ? date('Y-m-d', strtotime($t . ' monday this week')) : $t);
+                  $gr[$key][] = $m !== null ? (float) ($r[$m] ?? 0) : 1;
+              }
+              // boş günleri/haftaları/ayları sıfırla doldur: seyir kesintisiz okunsun
+              $dolu = []; $c = strtotime(min(array_keys($gr)) . ($kova === 'ay' ? '-01' : ''));
+              $bitK = max(array_keys($gr));
+              for ($g = 0; $g < 400; $g++) {
+                  $key = $kova === 'ay' ? date('Y-m', $c) : date('Y-m-d', $c); if ($key > $bitK) break;
+                  $dolu[$key] = isset($gr[$key]) ? ($m !== null ? $topla([$gr[$key]])[0] : count($gr[$key])) : 0;
+                  $c = strtotime($kova === 'ay' ? '+1 month' : ($kova === 'hafta' ? '+1 week' : '+1 day'), $c);
+              }
+              $et = array_map(fn($k) => $kova === 'ay' ? $ayAd[(int) substr($k, 5, 2)] . ' ' . substr($k, 2, 2) : date('d.m', strtotime($k)), array_keys($dolu));
+              $out[] = ['tur' => 'sutun', 'baslik' => $mAd . ' · ' . ['gun' => 'günlük', 'hafta' => 'haftalık', 'ay' => 'aylık'][$kova] . ' seyir', 'et' => $et, 'dg' => array_values($dolu), 'tip' => $m !== null ? $mt : 's'];
+          }
+      }
+      // 2) dağılım: tekrar eden değerli metin sütunu (tedarikçi, kategori, durum…) önce; yoksa ilk metin sütunu
+      if ($metinK) {
+          // anlamlı grup sütunu önce (tedarikçi, kategori, departman, durum…), sonra tekrar eden herhangi biri
+          $grupK = null; $aday = array_filter($metinK, fn($d) => $d <= min(12, $n - 1));
+          foreach ($aday as $i => $d) if (preg_match('/tedarik|kategori|departman|durum|şube|sube|neden|tür|tur|aciliyet|öncelik|oncelik|kaynak|tip|grup/u', mb_strtolower($kol[$i][0]))) { $grupK = $i; break; }
+          $grupK ??= array_key_first($aday);
+          $k = $grupK ?? array_key_first($metinK);
+          if ($grupK === null && ($m === null || $n < 3)) return $out;
+          // gruplarken toplanamayan ölçü (gün, fiyat…) yerine kayıt sayısı
+          $say = $m === null || ($grupK !== null && !$toplanir && $mt !== 'y');
+          $gr = []; foreach ($duz as $r) { $a = trim((string) ($r[$k] ?? '')); if ($a === '') $a = '—'; $gr[$a][] = $say ? 1 : (float) ($r[$m] ?? 0); }
+          $dg = $say ? array_map('count', $gr) : $topla($gr);
+          $tip = $say ? 's' : $mt;
+          if ($say) $mAd = 'Kayıt sayısı';
+          elseif ($grupK !== null && !$toplanir) $mAd = 'Ort. ' . mb_strtolower($mAd);
+          $pozitif = min($dg) >= 0;
+          if ($grupK !== null && $tip !== 'y' && $pozitif && count($dg) >= 2 && count($dg) <= 8) {
+              $out[] = ['tur' => 'halka', 'baslik' => $mAd . ' · ' . $kol[$k][0] . ' dağılımı', 'et' => array_keys($dg), 'dg' => array_values($dg), 'tip' => $tip];
+          } else {
+              uasort($dg, fn($a, $b) => abs($b) <=> abs($a));
+              $ust = array_slice($dg, 0, 10, true);
+              if ($tip !== 'y' && count($dg) > 10 && $pozitif) $ust['Diğer (' . (count($dg) - 10) . ')'] = array_sum(array_slice($dg, 10));
+              $out[] = ['tur' => 'cubuk', 'baslik' => $mAd . ' · ' . ($grupK !== null ? $kol[$k][0] . ' bazında' : 'en yüksek ' . min(10, count($dg)) . ' ' . mb_strtolower($kol[$k][0])), 'et' => array_map('strval', array_keys($ust)), 'dg' => array_values($ust), 'tip' => $tip];
+          }
+      }
+      return $out;
+  };
+  $grCiz = fn(array $g, $renk) => $g['tur'] === 'sutun' ? $grSutun($g['et'], $g['dg'], $g['tip'], $renk) : ($g['tur'] === 'halka' ? $grHalka($g['et'], $g['dg'], $g['tip']) : $grCubuk($g['et'], $g['dg'], $g['tip'], $renk));
 @endphp
 <style>
   @page{size:A4 landscape;margin:12mm 10mm}
@@ -43,14 +182,14 @@
   .kpi div{border-radius:12px;padding:11px 14px;color:#fff;background:var(--c)}
   .kpi span{font-size:10px;font-weight:700;opacity:.92}.kpi b{display:block;font-size:18px;font-weight:900;margin-top:3px;line-height:1.2}
   .kpi b.metin{font-size:14px}
-  .grafikler{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}
+  .grafikler{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:6px;align-items:start}
   .gk{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px 14px;page-break-inside:avoid}
   .gk.tam{grid-column:1 / -1}
   .gk h3{margin:0 0 9px;font-size:12px;color:{{ $tema }}}
   .gs{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:10.5px}
   .gs .n{width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
   .gs .t{flex:1;height:10px;border-radius:99px;background:#EEF0F7;overflow:hidden}.gs .t i{display:block;height:100%;border-radius:99px}
-  .gs .v{width:110px;text-align:right;font-weight:800;color:#334155}
+  .gs .v{width:auto;min-width:80px;max-width:46%;text-align:right;font-weight:800;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sutun{display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:6px}
   .sutun .b{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
   .sutun .c{width:100%;max-width:40px;border-radius:6px 6px 2px 2px;background:{{ $tema }}}
@@ -107,6 +246,37 @@
   .skor{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}
   .skor div{width:50px;height:50px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:18px;font-weight:900}
   .alt{margin-top:18px;font-size:9.5px;color:#94A3B8;text-align:center}
+  /* ---- grafikler ---- */
+  .gk h3 small{font-weight:600;color:#94A3B8;font-size:10px;margin-left:4px}
+  .gc{padding:4px 2px 0}
+  .gc-alan{position:relative;height:150px;margin:20px 0 0 52px}
+  .gc-cz{position:absolute;left:0;right:0;border-top:1px solid #EEF0F7}
+  .gc-cz span{position:absolute;right:calc(100% + 6px);top:-7px;font-size:9px;color:#94A3B8;white-space:nowrap}
+  .gc-bars{position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px}
+  .gc-b{position:relative;flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;min-width:0}
+  .gc-b i{display:block;width:100%;max-width:38px;border-radius:4px 4px 0 0;background:var(--c)}
+  .gc-b em{position:absolute;font-style:normal;font-size:9px;font-weight:800;color:#334155;white-space:nowrap}
+  .gc-b:hover i{filter:brightness(1.12)}
+  .gc-x{display:flex;gap:2px;margin:4px 0 0 52px;border-top:1px solid #CBD5E1;padding-top:3px}
+  .gc-x span{flex:1;min-width:0;text-align:center;font-size:9px;color:#64748B;white-space:nowrap;overflow:visible}
+  .gh{display:flex;gap:16px;align-items:center}
+  .gh-svg{flex:none}
+  .gh-t1{font-size:9px;fill:#94A3B8;font-weight:700}.gh-t2{font-size:12.5px;fill:#0F172A;font-weight:900}
+  .gh-lej{flex:1;min-width:0;display:grid;gap:4px}
+  .gh-lej div{display:flex;align-items:center;gap:7px;font-size:10.5px}
+  .gh-lej i{width:10px;height:10px;border-radius:3px;flex:none}
+  .gh-lej .a{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#334155}
+  .gh-lej b{color:#0F172A;white-space:nowrap}.gh-lej .p{width:42px;text-align:right;color:#64748B;font-weight:700}
+  .gb{display:grid;gap:5px}
+  .gb-s{display:flex;align-items:center;gap:8px;font-size:10.5px}
+  .gb-s .n{width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;color:#334155}
+  .gb-s .t{flex:1;position:relative;height:12px;border-radius:4px;background:#F1F3F9}
+  .gb-s .t i{position:absolute;top:0;bottom:0;border-radius:4px}
+  .gb-s .t s{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#94A3B8}
+  .gb-s b{width:84px;text-align:right;color:#0F172A;white-space:nowrap}
+  .gb-s:hover .t{background:#E8EBF5}
+  .ipucu{position:fixed;z-index:50;pointer-events:none;background:#0F172A;color:#fff;font-size:11px;font-weight:700;padding:5px 9px;border-radius:7px;box-shadow:0 6px 16px rgba(15,23,42,.25);white-space:nowrap;display:none}
+  .grafikler.tablo-ust{margin:6px 0 10px}
   .tablo{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px}
   /* panel içinde önizleme: tam genişlik, okunur yazı */
   body.gomulu{font-size:12px}
@@ -139,12 +309,17 @@
     .gs .n{width:100%}
     .gs .v{width:auto;max-width:60%;text-align:right}
     .seyir .n{width:40%}
+    .gc-alan,.gc-x{margin-left:44px}
+    .gc-x span{font-size:8px}
+    .gc-x.sik span:nth-child(even):not(:last-child),.gc-x.sik span:nth-last-child(2){visibility:hidden}
+    .gb-s .n{width:30%}.gb-s b{width:auto;min-width:58px}
+    .gh{flex-direction:column;align-items:stretch}.gh-svg{align-self:center}
     .aralik{flex-wrap:wrap}.aralik .n{width:100%}.aralik .v{width:100%;text-align:left}
     .ozet{flex-wrap:wrap}
     .lejant{flex-wrap:wrap}
     .arac{flex-wrap:wrap}
   }
-  @media print{body{background:#fff}.sayfa{padding:0;max-width:none}.arac{display:none}.tablo{overflow:visible}}
+  @media print{body{background:#fff}.sayfa{padding:0;max-width:none}.arac,.ipucu{display:none!important}.tablo{overflow:visible}.gk{break-inside:avoid}}
 </style>
 </head>
 <body class="{{ request()->boolean('onizle') ? 'gomulu' : '' }}">
@@ -178,7 +353,7 @@
       </div>
       @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Not:</b> {{ $s['bos'] }}</div>@endif
       <div class="grafikler">
-        @foreach ($s['bloklar'] as $bl)
+        @foreach (array_filter($s['bloklar'], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2) as $bl)
           @php $vt = $bl['kol'][1][1]; $mx = max(1, ...array_map(fn($r) => abs((float) $r[1]), $bl['sat'])); $ozel = $bl['pdf'] ?? null; @endphp
           <div class="gk {{ $ozel || $bl['grafik'] === 'col' && count($bl['sat']) > 8 ? 'tam' : '' }}">
             <h3>{{ $bl['baslik'] }}</h3>
@@ -229,15 +404,13 @@
                     <div class="sen" style="left:{{ $pos($h['sen']) }}%;background:{{ $r[2] > 20 ? '#E11D48' : $tema }}"></div></div>
                   <span class="v">{{ number_format($h['sen'], 2, ',', '.') }} ₺ / hal {{ number_format($h['ort'], 2, ',', '.') }} ₺ · <b>%{{ number_format($r[2], 0, ',', '.') }}</b></span></div>
               @endforeach
-            @elseif ($bl['grafik'] === 'col')
-              <div class="sutun">
-                @foreach ($bl['sat'] as $r)
-                  <div class="b"><div class="v">{{ $vt === 'tl' ? number_format($r[1] / 1000, 1, ',', '.') . 'k' : $hucre($r[1], $vt) }}</div><div class="c" style="height:{{ max(3, round(abs($r[1]) / $mx * 92)) }}px"></div><div class="e">{{ $r[0] }}</div></div>
-                @endforeach
-              </div>
+            @elseif ($bl['grafik'] === 'col' && min(array_map(fn($r) => (float) $r[1], $bl['sat'])) >= 0)
+              {!! $grSutun(array_map(fn($r) => (string) $r[0], $bl['sat']), array_map(fn($r) => (float) $r[1], $bl['sat']), $vt, '#' . ltrim($bl['renk'] ?? $tema, '#')) !!}
+            @elseif ($bl['grafik'] === 'pie' && count($bl['sat']) >= 2 && min(array_map(fn($r) => (float) $r[1], $bl['sat'])) >= 0)
+              {!! $grHalka(array_map(fn($r) => (string) $r[0], $bl['sat']), array_map(fn($r) => (float) $r[1], $bl['sat']), $vt) !!}
             @else
               @foreach ($bl['sat'] as $i => $r)
-                <div class="gs"><div class="n" title="{{ $r[0] }}">{{ $r[0] }}</div>
+                <div class="gs" data-tip="{{ $r[0] }}: {{ $blokDeg($r[1], $vt) }}{{ isset($r[2]) && $r[2] !== '' && $bl['kol'][2][0] !== '' ? ' · ' . $hucre($r[2], $bl['kol'][2][1]) : '' }}"><div class="n">{{ $r[0] }}</div>
                   <div class="t"><i style="width:{{ max(2, abs($r[1]) / $mx * 100) }}%;background:{{ $bl['grafik'] === 'pie' ? $palet[$i % 10] : '#' . $bl['renk'] }}"></i></div>
                   <div class="v">{{ $blokDeg($r[1], $vt) }}@if (isset($r[2]) && $r[2] !== '' && $bl['kol'][2][0] !== '') <span style="color:#94A3B8;font-weight:600">· {{ $hucre($r[2], $bl['kol'][2][1]) }}</span>@endif</div></div>
               @endforeach
@@ -290,7 +463,15 @@
           if (str_contains($b, 'mat')) foreach ($duz as $r) $matMx = max($matMx, (float) ($r[$i] ?? 0));
         }
         $gTop = array_sum(array_map(fn($k) => $k[2] ?? 14, $s['kol'])); $grupTop = [];
+        $oto = $otoGrafik($s['kol'], $duz);
       @endphp
+      @if ($oto)
+        <div class="grafikler tablo-ust">
+          @foreach ($oto as $g)
+            <div class="gk {{ count($oto) === 1 && $g['tur'] !== 'halka' ? 'tam' : '' }}"><h3>{{ $g['baslik'] }}</h3>{!! $grCiz($g, $tema) !!}</div>
+          @endforeach
+        </div>
+      @endif
       <div class="tablo"><table class="{{ count($s['kol']) > 10 ? 'genis' : '' }}">
         <colgroup>@foreach ($s['kol'] as $k)<col style="width:{{ round(($k[2] ?? 14) / $gTop * 100, 2) }}%">@endforeach</colgroup>
         <thead><tr>@foreach ($s['kol'] as $k)<th class="{{ in_array($k[1], ['tl', 'y', 's'], true) ? 'r' : '' }}">{{ $k[0] }}</th>@endforeach</tr></thead>
@@ -330,6 +511,21 @@
   @endforeach
   <div class="alt">ResteOS · {{ $marka ?? 'Fiyat Radarı' }} · {{ $aiRapor ? 'Yapay zekâ analizi' : 'Sistem verisi (yorumsuz)' }} · {{ now()->format('d.m.Y H:i') }}</div>
 </div>
+<div class="ipucu" id="ipucu"></div>
+<script>
+  // grafik ipucu: çubuğun/dilimin tam değeri
+  (function () {
+    var ip = document.getElementById('ipucu');
+    document.addEventListener('mousemove', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (!t) { ip.style.display = 'none'; return; }
+      ip.textContent = t.getAttribute('data-tip'); ip.style.display = 'block';
+      var x = e.clientX + 14, y = e.clientY - 34;
+      if (x + ip.offsetWidth > window.innerWidth - 8) x = e.clientX - ip.offsetWidth - 14;
+      ip.style.left = x + 'px'; ip.style.top = Math.max(4, y) + 'px';
+    });
+  })();
+</script>
 @if (empty($onizle))<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 500); });</script>@endif
 </body>
 </html>
