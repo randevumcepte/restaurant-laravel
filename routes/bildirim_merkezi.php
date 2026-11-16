@@ -571,7 +571,7 @@ if (!function_exists('_bmOlayTara')) {
 
         // --- IT / teknik: yeni arıza kaydı
         try { if ($t('it_kayitlari')) foreach (DB::table('it_kayitlari')->where('sube_id', $sid)->where('tip', 'ariza')->where('created_at', '>', $simdi->copy()->subHours(6))->get() as $ar)
-            $say += _bmTipeGonder($sid, 'ariza_acik', '🛠️ Arıza kaydı: ' . $ar->baslik, $ar->personel_ad ? 'Açan: ' . $ar->personel_ad : null, '/it-destek?tip=ariza', 1, 'ariza:' . ($ar->id ?? md5($ar->baslik . $ar->created_at)));
+            $say += _bmTipeGonder($sid, 'ariza_acik', '🛠️ Arıza kaydı: ' . $ar->baslik, $ar->personel_ad ? 'Açan: ' . $ar->personel_ad : null, '/it-kayit?tip=ariza', 1, 'ariza:' . ($ar->id ?? md5($ar->baslik . $ar->created_at)));
         } catch (\Throwable $e) {}
 
         return $say;

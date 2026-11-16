@@ -50,7 +50,7 @@
 
   <div class="itk-tabs">
     @foreach($tipler as $k=>$v)
-      <a class="itk-tab {{ $tip===$k?'on':'' }}" @if($tip===$k)style="background:{{ $alanlar[$k]['renk'] }}"@endif href="/it-destek?tip={{ $k }}"><span class="material-icons-outlined">{{ $alanlar[$k]['ikon'] }}</span>{{ $v }}</a>
+      <a class="itk-tab {{ $tip===$k?'on':'' }}" @if($tip===$k)style="background:{{ $alanlar[$k]['renk'] }}"@endif href="/it-kayit?tip={{ $k }}"><span class="material-icons-outlined">{{ $alanlar[$k]['ikon'] }}</span>{{ $v }}</a>
     @endforeach
   </div>
 

@@ -375,9 +375,9 @@
         ['/it-sohbet', 'smart_toy', 'IT AI (iş yapar)', '#6366F1'],
         ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'],
         ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'],
-        ['/it-destek?tip=ariza', 'build', 'Arıza / Destek Defteri', '#F97316'],
-        ['/it-destek?tip=lisans', 'verified', 'Lisans / SSL / Yedek', '#4F46E5'],
-        ['/it-destek?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
+        ['/it-kayit?tip=ariza', 'build', 'Arıza / Destek Defteri', '#F97316'],
+        ['/it-kayit?tip=lisans', 'verified', 'Lisans / SSL / Yedek', '#4F46E5'],
+        ['/it-kayit?tip=kvkk', 'policy', 'KVKK / Veri Güvenliği', '#14B8A6'],
     ];
     // ===== MUTFAK / BOH (Back of House) MERKEZİ — başlıklar =====
     $gruplar['Mutfak / BOH'] = [
