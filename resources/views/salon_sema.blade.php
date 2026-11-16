@@ -815,7 +815,7 @@ body.koyu #sema-kanvas{background:#0E1526}
     fetch(KAYDET_URL, {method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF}})
       .then(function(r){ return r.json().catch(function(){ return {ok:0}; }); })
       .then(function(res){
-        if (res && res.ok===1){ durumEl.textContent='Kaydedildi ✓'; durumEl.style.color='var(--yesil)'; }
+        if (res && res.ok===1){ if (Array.isArray(res.bolgeler)) { state.bolgeler = res.bolgeler; ciz(); } durumEl.textContent='Kaydedildi ✓'; durumEl.style.color='var(--yesil)'; }
         else { durumEl.textContent=(res&&res.hata)?res.hata:'Kaydedilemedi'; durumEl.style.color='var(--kirmizi)'; }
         setTimeout(function(){ durumEl.textContent=''; },3000);
       })

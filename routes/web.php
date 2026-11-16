@@ -17090,7 +17090,8 @@ Route::post('/isletme-duzeni/bolge-ekle', function (Request $r) {
         $sira = (int) (DB::table('bolgeler')->where('sube_id', $sid)->max('sira') ?? 0) + 1;
         $row = ['sube_id' => $sid, 'ad' => mb_substr($ad, 0, 60), 'sira' => $sira];
         if (Schema::hasColumn('bolgeler', 'created_at')) { $row['created_at'] = now(); $row['updated_at'] = now(); }
-        DB::table('bolgeler')->insert($row);
+        $yeniId = DB::table('bolgeler')->insertGetId($row);
+        try { (new \App\Services\SalonPlan($sid))->alanEklendi($yeniId); } catch (\Throwable $e) { report($e); }
         _duzenLog($sid, 'Bölge eklendi: ' . $ad);
         return redirect()->back()->with('ok', $ad . ' bölgesi eklendi.');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Bölge eklenemedi.'); }
@@ -17118,6 +17119,7 @@ Route::post('/isletme-duzeni/bolge-sil', function (Request $r) {
         if (DB::table('masalar')->where('sube_id', $sid)->where('bolge_id', $b->id)->where('arsiv', 0)->exists())
             return redirect()->back()->with('hata', 'Bu bölgede masa var. Önce masaları başka bölgeye taşıyın.');
         DB::table('bolgeler')->where('id', $b->id)->delete();
+        try { (new \App\Services\SalonPlan($sid))->alanSilindi($b->id, $b->ad); } catch (\Throwable $e) { report($e); }
         _duzenLog($sid, 'Bölge silindi: ' . $b->ad);
         return redirect()->back()->with('ok', $b->ad . ' bölgesi silindi.');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Silinemedi.'); }
@@ -22894,7 +22896,7 @@ Route::get('/salon-sema', function () {
         $row = DB::table('salon_sema')->where('sube_id', $sid)->first();
         $veri = ($row && $row->veri) ? json_decode($row->veri, true) : null;
         if (!is_array($veri)) $veri = null;
-        $masalar = DB::table('masalar')->where('sube_id', $sid)->orderBy('bolge_id')->orderBy('ad')->get(['id', 'ad', 'kapasite', 'sekil']);
+        $masalar = DB::table('masalar')->where('sube_id', $sid)->when(Schema::hasColumn('masalar', 'arsiv'), fn ($q) => $q->where('arsiv', 0))->orderBy('bolge_id')->orderBy('ad')->get(['id', 'ad', 'kapasite', 'sekil']);
     } catch (\Throwable $e) { $veri = null; $masalar = collect(); }
     return view('salon_sema', compact('veri', 'masalar'));
 });
@@ -22911,8 +22913,9 @@ Route::post('/salon-sema/kaydet', function (Request $r) {
         else DB::table('salon_sema')->insert(['sube_id' => $sid, 'veri' => $veriRaw, 'updated_at' => now()]);
         $mts = $veri['masalar'] ?? [];
         if (is_array($mts)) foreach ($mts as $mid => $m) { if (!is_array($m)) continue; DB::table('masalar')->where('id', (int) $mid)->where('sube_id', $sid)->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]); }
-        try { (new \App\Services\SalonPlan($sid))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
-        return response()->json(['ok' => 1]);
+        $bolgeler = $veri['bolgeler'] ?? [];
+        try { $bolgeler = (new \App\Services\SalonPlan($sid))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
+        return response()->json(['ok' => 1, 'bolgeler' => $bolgeler]);
     } catch (\Throwable $e) { return response()->json(['ok' => 0, 'hata' => 'Kaydedilemedi']); }
 });
 // Patron: garson karnesi (adisyon/ciro/kalem/servis/adim) + POS aktivite isi haritasi
@@ -23069,7 +23072,7 @@ Route::get('/api/patron/salon-sema', function (Request $r) {
     _salonSemaTablo();
     $row = DB::table('salon_sema')->where('sube_id', $p->sube_id)->first();
     $veri = $row && $row->veri ? json_decode($row->veri, true) : null;
-    $masalar = DB::table('masalar')->where('sube_id', $p->sube_id)->orderBy('bolge_id')->orderBy('ad')
+    $masalar = DB::table('masalar')->where('sube_id', $p->sube_id)->when(Schema::hasColumn('masalar', 'arsiv'), fn ($q) => $q->where('arsiv', 0))->orderBy('bolge_id')->orderBy('ad')
         ->get(['id', 'ad', 'bolge_id', 'kapasite', 'sekil', 'x', 'y']);
     $bolgeler = DB::table('bolgeler')->where('sube_id', $p->sube_id)->orderBy('sira')->get(['id', 'ad']);
     return ['ok' => 1, 'veri' => $veri, 'masalar' => $masalar, 'bolgeler' => $bolgeler];
@@ -23097,9 +23100,10 @@ Route::post('/api/patron/salon-sema-kaydet', function (Request $r) {
                     ->update(['x' => (int) ($m['x'] ?? 0), 'y' => (int) ($m['y'] ?? 0)]);
             }
         }
-        try { (new \App\Services\SalonPlan($p->sube_id))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
+        $bolgeler = $veri['bolgeler'] ?? [];
+        try { $bolgeler = (new \App\Services\SalonPlan($p->sube_id))->semadanSonra($eskiSema, $veri); } catch (\Throwable $e) { report($e); }
     } catch (\Throwable $e) { return ['ok' => 0, 'hata' => 'Kaydedilemedi']; }
-    return ['ok' => 1];
+    return ['ok' => 1, 'bolgeler' => $bolgeler];
 });
 
 // ---------------- SEF GARSON AI (garsonun gozu: satis uyarilari + oneri) ----------------

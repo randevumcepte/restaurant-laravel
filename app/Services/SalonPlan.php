@@ -217,14 +217,115 @@ class SalonPlan
         });
     }
 
-    /** Şema (web/Flutter) kaydedilince değişen alanın masa konumları plana da geçer. */
+    /**
+     * Şemadaki bölge dikdörtgenleri = İşletme Düzeni bölgeleri.
+     * Yeni çizilen bölge oluşturulur, adı değişen güncellenir, şemadan kaldırılan (masası yoksa) silinir;
+     * başka bir bölgenin içine taşınan masanın bölgesi değişir. Bağlanan bolge_id'ler şemaya yazılır.
+     */
+    protected function bolgeleriEsitle(array $eski, array &$yeni, array &$plan)
+    {
+        $db = $this->alanlar()->keyBy('id');
+        $yeni['bolgeler'] = array_values((array) ($yeni['bolgeler'] ?? []));
+        $semaDegisti = false;
+        $simdiki = [];
+        foreach ($yeni['bolgeler'] as $i => $b) {
+            if (!is_array($b)) continue;
+            $ad = mb_substr(trim((string) ($b['ad'] ?? '')), 0, 60);
+            $bid = (int) ($b['bolge_id'] ?? 0);
+            if ($bid && !isset($db[$bid])) { unset($yeni['bolgeler'][$i]['bolge_id']); $bid = 0; $semaDegisti = true; }
+            if (!$bid) {
+                // Kaydedip sayfayı yenilemeden yeniden adlandırılan bölge: eski kayıttaki aynı yerdeki dikdörtgenle eşleşir
+                foreach ((array) ($eski['bolgeler'] ?? []) as $e) {
+                    $eb = (int) ($e['bolge_id'] ?? 0);
+                    if (!$eb || isset($simdiki[$eb]) || !isset($db[$eb])) continue;
+                    $ayni = true;
+                    foreach (['kat', 'x', 'y', 'w', 'h'] as $k) if (abs((float) ($e[$k] ?? 0) - (float) ($b[$k] ?? 0)) > .5) { $ayni = false; break; }
+                    if ($ayni) { $bid = $eb; $yeni['bolgeler'][$i]['bolge_id'] = $bid; $semaDegisti = true; break; }
+                }
+            }
+            if (!$bid && $ad !== '') {
+                foreach ($db as $d) if (!isset($simdiki[$d->id]) && mb_strtolower(trim((string) $d->ad)) === mb_strtolower($ad)) { $bid = (int) $d->id; break; }
+                if (!$bid) {
+                    $row = ['sube_id' => $this->subeId, 'ad' => $ad, 'sira' => (int) (DB::table('bolgeler')->where('sube_id', $this->subeId)->max('sira') ?? 0) + 1];
+                    if (Schema::hasColumn('bolgeler', 'created_at')) { $row['created_at'] = now(); $row['updated_at'] = now(); }
+                    $bid = (int) DB::table('bolgeler')->insertGetId($row);
+                    $db[$bid] = (object) ['id' => $bid, 'ad' => $ad];
+                }
+                $yeni['bolgeler'][$i]['bolge_id'] = $bid; $semaDegisti = true;
+            }
+            if (!$bid) continue;
+            $simdiki[$bid] = $yeni['bolgeler'][$i];
+            if ($ad !== '' && $ad !== (string) $db[$bid]->ad) {
+                $upd = ['ad' => $ad];
+                if (Schema::hasColumn('bolgeler', 'updated_at')) $upd['updated_at'] = now();
+                DB::table('bolgeler')->where('id', $bid)->where('sube_id', $this->subeId)->update($upd);
+            }
+        }
+        // Şemadan kaldırılan bölge: masası yoksa silinir (İşletme Düzeni'ndeki silme kuralıyla aynı)
+        foreach ((array) ($eski['bolgeler'] ?? []) as $b) {
+            $bid = (int) ($b['bolge_id'] ?? 0);
+            if (!$bid || isset($simdiki[$bid]) || !isset($db[$bid])) continue;
+            $q = DB::table('masalar')->where('sube_id', $this->subeId)->where('bolge_id', $bid);
+            if (Schema::hasColumn('masalar', 'arsiv')) $q->where('arsiv', 0);
+            if ($q->exists()) continue;
+            DB::table('bolgeler')->where('id', $bid)->where('sube_id', $this->subeId)->delete();
+            if (Schema::hasTable('personel_atama')) DB::table('personel_atama')->where('sube_id', $this->subeId)->where('tip', 'bolge')->where('hedef_id', $bid)->delete();
+        }
+        // Masa başka bölgenin içine taşındıysa bölgesi değişir (kendi bölgesinde ya da hiçbir bölgede değilse dokunulmaz)
+        $mevcut = DB::table('masalar')->where('sube_id', $this->subeId)->pluck('bolge_id', 'id');
+        foreach ((array) ($yeni['masalar'] ?? []) as $mid => $y) {
+            $mid = (int) $mid;
+            if (!is_array($y) || !$mevcut->has($mid)) continue;
+            $x = (float) ($y['x'] ?? 0); $yy = (float) ($y['y'] ?? 0); $kat = (int) ($y['kat'] ?? 0);
+            $eskiB = (int) $mevcut[$mid];
+            if (isset($simdiki[$eskiB]) && (int) ($simdiki[$eskiB]['kat'] ?? 0) === $kat && $this->ic($simdiki[$eskiB], $x, $yy)) continue;
+            $hedef = 0; $enKucuk = INF;
+            foreach ($simdiki as $bid => $r) {
+                if ((int) ($r['kat'] ?? 0) !== $kat || !$this->ic($r, $x, $yy)) continue;
+                $alan = (float) $r['w'] * (float) $r['h'];
+                if ($alan < $enKucuk) { $enKucuk = $alan; $hedef = $bid; }
+            }
+            if (!$hedef || $hedef === $eskiB) continue;
+            DB::table('masalar')->where('id', $mid)->where('sube_id', $this->subeId)->update(['bolge_id' => $hedef]);
+            if (is_array($plan[$mid] ?? null)) $plan[$mid]['b'] = $hedef;
+        }
+        if ($semaDegisti) $this->semaYaz($yeni);
+    }
+
+    /** İşletme Düzeni'nde bölge eklenince şemada da yeri açılır. */
+    public function alanEklendi($bolgeId)
+    {
+        self::ensure();
+        $b = DB::table('bolgeler')->where('id', (int) $bolgeId)->where('sube_id', $this->subeId)->first(['id', 'ad']);
+        if (!$b) return;
+        $sema = $this->semaOku();
+        $this->dikdortgen($sema, $b, [], true);
+        $this->semaYaz($sema);
+    }
+
+    /** İşletme Düzeni'nde bölge silinince şemadaki dikdörtgeni de kalkar. */
+    public function alanSilindi($bolgeId, $ad)
+    {
+        self::ensure();
+        $sema = $this->semaOku();
+        if (empty($sema['bolgeler'])) return;
+        $adK = mb_strtolower(trim((string) $ad));
+        $once = count($sema['bolgeler']);
+        $sema['bolgeler'] = array_values(array_filter($sema['bolgeler'], fn ($b) => !((int) ($b['bolge_id'] ?? 0) === (int) $bolgeId
+            || (empty($b['bolge_id']) && mb_strtolower(trim((string) ($b['ad'] ?? ''))) === $adK))));
+        if (count($sema['bolgeler']) !== $once) $this->semaYaz($sema);
+    }
+
+    /** Şema (web/Flutter) kaydedilince bölgeler eşitlenir, değişen alanın masa konumları plana da geçer. */
     public function semadanSonra($eski, $yeni)
     {
         self::ensure();
         $eski = is_array($eski) ? $eski : []; $yeni = is_array($yeni) ? $yeni : [];
         $plan = $this->planOku();
+        $planIlk = $plan;
+        $this->bolgeleriEsitle($eski, $yeni, $plan);
         $gruplar = $this->masalarAlanda();
-        $degisti = false;
+        $degisti = $plan !== $planIlk;
         foreach ($this->alanlar() as $b) {
             $ids = ($gruplar[(int) $b->id] ?? collect())->pluck('id')->map(fn ($x) => (int) $x)->all();
             $e = $eski; $y = $yeni;
@@ -242,6 +343,7 @@ class SalonPlan
             }
         }
         if ($degisti) DB::table('isletme_plan')->updateOrInsert(['sube_id' => $this->subeId], ['veri' => json_encode($plan, JSON_UNESCAPED_UNICODE), 'updated_at' => now()]);
+        return $yeni['bolgeler'] ?? []; // istemci bolge_id'leri alır, sonraki kayıtta eşleşme kaybolmaz
     }
 
     /** Bölge yeniden adlandırılınca şemadaki etiketi de değişir. */
