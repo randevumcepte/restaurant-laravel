@@ -183,7 +183,7 @@
   .arac button.g{background:#fff;color:#334155;border:1px solid #E2E8F0}
   .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
   .kpi div{border-radius:12px;padding:11px 14px;color:#fff;background:var(--c)}
-  .kpi span{font-size:10px;font-weight:700;opacity:.92}.kpi b{display:block;font-size:18px;font-weight:900;margin-top:3px;line-height:1.2}
+  .kpi span{display:block;font-size:12.5px;font-weight:800;line-height:1.3;letter-spacing:.1px;text-shadow:0 1px 1px rgba(0,0,0,.18)}.kpi b{display:block;font-size:20px;font-weight:900;margin-top:4px;line-height:1.2}
   .kpi b.metin{font-size:14px}
   .grafikler{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:6px;align-items:stretch;grid-auto-flow:row dense}
   .gk{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px 14px;page-break-inside:avoid;display:flex;flex-direction:column;min-width:0}
@@ -297,8 +297,8 @@
   body.gomulu table.genis{font-size:10.5px}
   body.gomulu table.genis th{font-size:9px}
   body.gomulu .gs,body.gomulu .seyir div,body.gomulu .aralik{font-size:11.5px}
-  body.gomulu .kpi span{font-size:11px}
-  body.gomulu .kpi b{font-size:20px}
+  body.gomulu .kpi span{font-size:13px}
+  body.gomulu .kpi b{font-size:22px}
   @media screen and (max-width:1100px){
     .karneler{grid-template-columns:repeat(2,minmax(0,1fr))}
     .seyir{grid-template-columns:minmax(0,1fr)}

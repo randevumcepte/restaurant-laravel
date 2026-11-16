@@ -681,7 +681,7 @@ if (!function_exists('_mrRapor')) {
             // ---------------- MENÜ ----------------
             case 'menu_muh':
                 $mm = _mrMenuMuh($K()); $s = $mm['sinif'];
-                return [$pano([_srKpi('⭐ Yıldız', $s['Yıldız'] ?? 0, 'sayi', 'CA8A04'), _srKpi('🐴 İş Atı', $s['İş Atı'] ?? 0, 'sayi', '2563EB'), _srKpi('🧩 Bilmece', $s['Bilmece'] ?? 0, 'sayi', '7C3AED'), _srKpi('🐕 Zayıf', $s['Zayıf'] ?? 0, 'sayi', 'B91C1C'),
+                return [$pano([_srKpi('⭐ Yıldız', $s['Yıldız'] ?? 0, 'sayi', 'A16207'), _srKpi('🐴 İş Atı', $s['İş Atı'] ?? 0, 'sayi', '2563EB'), _srKpi('🧩 Bilmece', $s['Bilmece'] ?? 0, 'sayi', '7C3AED'), _srKpi('🐕 Zayıf', $s['Zayıf'] ?? 0, 'sayi', 'B91C1C'),
                         _srKpi('Popülerlik eşiği (satış payı)', $mm['esik_pop'] ?? '—', $mm['esik_pop'] === null ? 'metin' : 'y', '475569'), _srKpi('Kârlılık eşiği (katkı payı)', $mm['esik_cm'] ?? 'Veri yok', $mm['esik_cm'] === null ? 'metin' : 'tl', '475569')],
                         [_srBlok('Sınıflara göre ürün sayısı', 'pie', '7C3AED', [['Sınıf', 'm'], ['Ürün', 's'], ['', 'm']], array_map(fn ($a, $v) => [$a, $v, ''], array_keys($s), array_values($s))),
                          _srBlok('Toplam katkıya göre ürünler', 'bar', 'CA8A04', [['Ürün', 'm'], ['Toplam katkı', 'tl'], ['Sınıf', 'm']], array_map(fn ($x) => [$x[0], $x[7], $x[1]], array_slice(collect($mm['sat'])->sortByDesc(7)->values()->all(), 0, 12)))], !$mm['sat'] ? (!$d['recete'] ? _mrBos('recete_yok', $dn) : _mrBos('satis', $dn)) : null),
