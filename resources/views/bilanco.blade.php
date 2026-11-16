@@ -35,7 +35,7 @@
       <div class="bl-tr top"><span class="l">Toplam borç</span><span class="r">{{ $tl($topBorc) }}</span></div>
     </div>
   </div>
-  <div class="bl-oz"><span class="material-icons-outlined" style="font-size:30px">savings</span><div><div class="l">Net özkaynak (varlık − borç)</div><div class="b">{{ $tl($ozkaynak) }}</div></div></div>
+  <div class="bl-oz"><span class="material-icons-outlined" style="font-size:30px">account_balance</span><div><div class="l">Net özkaynak (varlık − borç)</div><div class="b">{{ $tl($ozkaynak) }}</div></div></div>
   <div class="bl-not"><span class="material-icons-outlined">info</span><span>Bu <b>basitleştirilmiş yönetim bilançosudur</b>, resmî bilanço değildir. Kasa nakdi, peşin giderler, amortisman birikmişi, SGK/vergi tahakkukları ve sermaye kalemleri tam yansımaz. Resmî bilanço için <b>mali müşavirinle</b> çalış. Banka <a href="/banka" style="color:var(--mor1);font-weight:700;text-decoration:none">Banka</a>, çek/senet <a href="/cek-senet" style="color:var(--mor1);font-weight:700;text-decoration:none">Çek-Senet</a> ekranlarından beslenir.</span></div>
 </div>
 </div>

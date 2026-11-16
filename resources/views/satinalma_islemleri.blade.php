@@ -38,7 +38,7 @@
         ['/fiyat-radari',    'radar',        'Fiyat Radarı · Gizli Zam',   'Sessiz fiyat artışlarını anında yakala',   '#EC4899'],
         ['/hal-fiyatlari',   'storefront',   'Hal Fiyatları (sen vs hal)', 'Hal rayici ile aldığın fiyatı karşılaştır', '#059669'],
         ['/satinalma-analiz','leaderboard',  'Satınalma Analizi · Karne',  'Kalem/tedarikçi/kategori performans karnesi','#4F46E5'],
-        ['/satinalma-butce', 'savings',      'Satınalma Bütçe',            'Aylık bütçe takibi, aşımları önce gör',    '#10B981'],
+        ['/satinalma-butce', 'account_balance_wallet',      'Satınalma Bütçe',            'Aylık bütçe takibi, aşımları önce gör',    '#10B981'],
       ],
     ],
     [

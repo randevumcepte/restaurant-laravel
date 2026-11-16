@@ -11,7 +11,7 @@
   $tl = fn($v) => $v === null ? '—' : number_format((float) $v, 2, ',', '.') . ' ₺';
   $yz = fn($v) => $v === null ? '—' : (($v > 0 ? '+' : '') . number_format((float) $v, 1, ',', '.') . '%');
   $sn = fn($v) => rtrim(rtrim(number_format((float) $v, 2, ',', '.'), '0'), ',');
-  $sekmeler = ['tasarruf' => ['Kaçan Tasarruf', 'savings'], 'enflasyon' => ['Zam ve Enflasyon', 'trending_up'], 'iz' => ['Ürün Fiyat İzi', 'timeline'], 'odeme' => ['Ödeme Takvimi', 'event']];
+  $sekmeler = ['tasarruf' => ['Kaçan Tasarruf', 'price_check'], 'enflasyon' => ['Zam ve Enflasyon', 'trending_up'], 'iz' => ['Ürün Fiyat İzi', 'timeline'], 'odeme' => ['Ödeme Takvimi', 'event']];
   $excel = '/fatura-analiz/' . $sekme . '?' . http_build_query(array_filter(['bas' => $bas, 'bit' => $bit, 'malzeme' => $sekme === 'iz' ? ($iz['mid'] ?? null) : null, 'format' => 'xlsx']));
 @endphp
 <style>

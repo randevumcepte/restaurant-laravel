@@ -143,7 +143,7 @@
           'inventory_2','shopping_cart','local_shipping','warehouse','receipt_long','fact_check','inventory',
           'restaurant','soup_kitchen','kitchen','outdoor_grill','set_meal','bakery_dining','lunch_dining','dinner_dining','icecream','blender','ac_unit',
           'local_bar','liquor','local_cafe','emoji_food_beverage','room_service','table_restaurant','restaurant_menu',
-          'point_of_sale','payments','account_balance','savings','account_balance_wallet',
+          'point_of_sale','payments','account_balance','request_quote','account_balance_wallet',
           'groups','badge','person','support_agent','handshake','campaign','verified',
           'cleaning_services','security','engineering','build','plumbing','computer','wifi',
           'delivery_dining','two_wheeler','store','apartment','menu_book','local_dining','egg','spa','health_and_safety',

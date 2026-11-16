@@ -1,5 +1,5 @@
 @extends('layout.app')
-@section('rk_ikon', 'savings')
+@section('rk_ikon', 'account_balance_wallet')
 @section('baslik', 'Satınalma Bütçe')
 @section('title', 'Satınalma Bütçe')
 
@@ -205,7 +205,7 @@ body.koyu #bt{
           <div class="v" style="color:{{ $c }}">{{ $tl($buHarcama) }}</div>
         </div>
         <div class="kpi k {{ $buKalan<0?'minus':'' }}">
-          <div class="ust2"><span class="lbl">{{ $buKalan<0?'Aşım':'Kalan' }}</span><div class="ikn"><span class="material-icons-outlined">{{ $buKalan<0?'warning':'savings' }}</span></div></div>
+          <div class="ust2"><span class="lbl">{{ $buKalan<0?'Aşım':'Kalan' }}</span><div class="ikn"><span class="material-icons-outlined">{{ $buKalan<0?'warning':'account_balance_wallet' }}</span></div></div>
           <div class="v" style="color:{{ $buKalan<0?'var(--kirmizi)':'var(--yesil)' }}">{{ $buY===null ? '—' : $tl(abs($buKalan)) }}</div>
         </div>
       </div>

@@ -199,7 +199,7 @@ if (!function_exists('_srKatalog')) {
             'degisim' => ['harcama', 'Fiyat Değişim Raporu', 'Dönemde alınan her kalemin bir önceki alışa göre fiyat değişimi (▲▼) ve tutar etkisi.', 'swap_vert', '#DC2626', ['fatura'], null],
             'endeks' => ['maliyet', 'Satın Alma Fiyat Endeksi', 'Sabit sepetin aylık maliyet değişimi (işletmenin kendi enflasyonu) ve endekse en çok etki eden malzemeler.', 'show_chart', '#BE185D', ['fatura'], null],
             'menu' => ['maliyet', 'Menüye Zam Etkisi', 'Malzeme fiyat değişimlerinin reçete üzerinden menü ürünlerinin maliyetine ve food cost oranına etkisi.', 'restaurant_menu', '#EA580C', ['fatura', 'recete'], null],
-            'butce' => ['maliyet', 'Bütçe Gerçekleşme', 'Aylık satın alma bütçesi ile sipariş ve fatura gerçekleşmesi, sapma ve içinde bulunulan ay için ay sonu tahmini.', 'savings', '#059669', ['butce'], null],
+            'butce' => ['maliyet', 'Bütçe Gerçekleşme', 'Aylık satın alma bütçesi ile sipariş ve fatura gerçekleşmesi, sapma ve içinde bulunulan ay için ay sonu tahmini.', 'account_balance_wallet', '#059669', ['butce'], null],
             'teslim' => ['tedarikci', 'Tedarikçi Teslim Performansı', 'Siparişte beklenen tarih ile mal kabul tarihi: zamanında teslim oranı, ortalama gecikme, eksik teslim — tedarikçi bazında.', 'local_shipping', '#0284C7', ['siparis', 'malkabul_sip'], null],
             'red' => ['tedarikci', 'Red / Eksik Teslim Analizi', 'Mal kabulde reddedilen ve eksik gelen ürünler: tedarikçi, malzeme ve sebep bazında oranlar.', 'report_problem', '#E11D48', ['malkabul'], null],
             'uyum' => ['tedarikci', 'Sipariş–Fatura Fiyat Uyumu', 'Siparişte anlaşılan birim fiyat ile faturada kesilen fiyatın kalem kalem kıyası (3-way match).', 'rule', '#7C2D12', ['siparis', 'malkabul_sip'], null],
@@ -220,7 +220,7 @@ if (!function_exists('_srKatalog')) {
         // [ad, ikon, açıklama, renk] — sol menüde "Raporlar & Analizler" altında her biri ayrı sayfa (/satinalma-raporlar/{anahtar})
         return ['donemsel' => ['Dönemsel Raporlar', 'event_note', 'Üst yönetime sunulan hazır raporlar: günlük bülten, haftalık rapor, aylık yönetim raporu.', '#4F46E5'],
             'harcama' => ['Harcama & Fiyat', 'payments', 'Ne kadar, kimden, neye harcandı; fiyatı değişen kalemler ve tutar etkisi.', '#0891B2'],
-            'maliyet' => ['Maliyet & Bütçe', 'savings', 'İşletmenin kendi enflasyonu, zamların menü maliyetine etkisi ve bütçe gerçekleşmesi.', '#059669'],
+            'maliyet' => ['Maliyet & Bütçe', 'request_quote', 'İşletmenin kendi enflasyonu, zamların menü maliyetine etkisi ve bütçe gerçekleşmesi.', '#059669'],
             'tedarikci' => ['Tedarikçi Raporları', 'local_shipping', 'Teslim performansı, red/eksik teslim, sipariş–fatura fiyat uyumu ve tedarikçi bağımlılığı.', '#0284C7'],
             'surec' => ['Süreç & Talep', 'timelapse', 'Talepten teslime süreler, departman talepleri ve teklif (RFQ) analizi.', '#7C3AED'],
             'stok' => ['Stok & Fire', 'inventory_2', 'SKT riski, fire/iade/sayım farkları ve stok devir hızı.', '#D97706'],

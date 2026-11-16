@@ -162,24 +162,24 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
   </div>
 
   <div class="kpi">
-    <div class="k" style="--kr:{{ $T['toplam'] >= 0 ? '#10B981' : '#F43F5E' }}"><span class="ki"><span class="ms">savings</span></span><div><div class="kd">{{ $tl0($T['toplam']) }}</div><div class="kl">Anlaşmaların net kazancı</div></div></div>
+    <div class="k" style="--kr:{{ $T['toplam'] >= 0 ? '#10B981' : '#F43F5E' }}"><span class="ki"><span class="ms">price_check</span></span><div><div class="kd">{{ $tl0($T['toplam']) }}</div><div class="kl">Anlaşmaların net kazancı</div></div></div>
     <div class="k" style="--kr:#F43F5E"><span class="ki"><span class="ms">report</span></span><div><div class="kd">{{ $tl0($F['toplam']) }}</div><div class="kl">Anlaşma üstü fazla ödeme ({{ $F['adet'] }} kalem)</div></div></div>
     <div class="k" style="--kr:#4F46E5"><span class="ki"><span class="ms">donut_large</span></span><div><div class="kd">%{{ $K['oran'] }}</div><div class="kl">Alımların anlaşmalı fiyatla yapılan kısmı</div></div></div>
     <div class="k" style="--kr:#F59E0B"><span class="ki"><span class="ms">event</span></span><div><div class="kd">{{ $yaklasan }}</div><div class="kl">90 gün içinde bitecek / fesih kararı</div></div></div>
   </div>
 
   <div class="sekmeler">
-    @foreach (['tasarruf' => ['savings', 'Tasarruf'], 'fazla' => ['report', 'Fazla Fatura'], 'taahhut' => ['flag', 'Taahhüt'], 'kapsama' => ['donut_large', 'Kapsama'], 'zarar' => ['trending_down', 'Zarara Döndü mü'], 'yenileme' => ['history', 'Yenileme Geçmişi'], 'tedarikci' => ['local_shipping', 'Tedarikçi Özeti'], 'takvim' => ['event', 'Yenileme Takvimi']] as $sk => [$si, $sa])
+    @foreach (['tasarruf' => ['price_check', 'Tasarruf'], 'fazla' => ['report', 'Fazla Fatura'], 'taahhut' => ['flag', 'Taahhüt'], 'kapsama' => ['donut_large', 'Kapsama'], 'zarar' => ['trending_down', 'Zarara Döndü mü'], 'yenileme' => ['history', 'Yenileme Geçmişi'], 'tedarikci' => ['local_shipping', 'Tedarikçi Özeti'], 'takvim' => ['event', 'Yenileme Takvimi']] as $sk => [$si, $sa])
       <button type="button" class="sekme{{ $loop->first ? ' on' : '' }}" data-s="{{ $sk }}" onclick="farSekme('{{ $sk }}')"><span class="ms">{{ $si }}</span>{{ $sa }}</button>
     @endforeach
   </div>
 
   {{-- 1. TASARRUF --}}
   <div class="panel on" id="far-tasarruf"><div class="kart">
-    <div class="kb"><span class="ms">savings</span><h3>Anlaşmalar ne kazandırdı?</h3><a class="btn ik yazdirma" href="{{ $indir('tasarruf') }}"><span class="ms">download</span> Excel</a></div>
+    <div class="kb"><span class="ms">price_check</span><h3>Anlaşmalar ne kazandırdı?</h3><a class="btn ik yazdirma" href="{{ $indir('tasarruf') }}"><span class="ms">download</span> Excel</a></div>
     <p class="acik">Anlaşmalı fiyatla alınan her kalem, aynı malzemenin <b>±30 gün içinde başka tedarikçilerden alınan ortalama fiyatı</b> ile kıyaslanır. O dönemde başka alış yoksa anlaşma öncesi son fiyat kullanılır. Eksi değer: anlaşma o ay piyasadan pahalıya geldi.</p>
     @if (!count($T['aylik']))
-      <div class="bos"><span class="ms">savings</span>Bu dönemde kıyaslanabilir anlaşmalı alış yok. Anlaşmalı malzemeyi başka tedarikçiden de aldıkça ya da anlaşma öncesi fiyat bilindikçe burası dolar.</div>
+      <div class="bos"><span class="ms">price_check</span>Bu dönemde kıyaslanabilir anlaşmalı alış yok. Anlaşmalı malzemeyi başka tedarikçiden de aldıkça ya da anlaşma öncesi fiyat bilindikçe burası dolar.</div>
     @else
       @php
         $maxP = max(1, max(array_map(fn ($v) => max(0, $v), $T['aylik']))); $maxN = max(0, max(array_map(fn ($v) => max(0, -$v), $T['aylik'])));

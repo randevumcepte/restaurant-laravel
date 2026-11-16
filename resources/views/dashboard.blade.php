@@ -287,7 +287,7 @@ $bugunYuzde = $dunCiro > 0 ? round(($bugunCiro - $dunCiro) / $dunCiro * 100, 1) 
   <div class="hizli-bilgi" id="hizliBilgi">
     <div class="bilgi-kart">
       <div class="bk-row">
-        <div class="bk-ikon" style="background:rgba(16,185,129,.14)"><span class="material-icons-outlined" style="color:#10B981">savings</span></div>
+        <div class="bk-ikon" style="background:rgba(16,185,129,.14)"><span class="material-icons-outlined" style="color:#10B981">paid</span></div>
         <div class="bk-label">Brüt Kâr</div>
       </div>
       <div class="bk-deger" id="brutKar">—</div>

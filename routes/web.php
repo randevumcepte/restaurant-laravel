@@ -19765,7 +19765,7 @@ Route::get('/satinalma-brief-arsiv', function () {
     if ($gecikenSip > 0) $oneriler[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'mtn' => "$gecikenSip sipariş gecikti — tedarikçileri ara.", 'link' => '/satinalma-siparis', 'buton' => 'Siparişleri Aç'];
     if ($yeniTalep > 0) $oneriler[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'mtn' => "$yeniTalep yeni talep var — fiyat araştır veya RFQ gönder.", 'link' => '/satinalma-talep', 'buton' => 'Talepleri Aç'];
     if ($teklifBekleyen > 0) $oneriler[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'mtn' => "$teklifBekleyen teklif geldi — en uygununu seçip onayla.", 'link' => '/gelen-teklifler', 'buton' => 'Teklifleri İncele'];
-    if ($butceYuzde !== null && $butceYuzde > 85) $oneriler[] = ['ikon' => 'savings', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'mtn' => "Bu ay bütçenin %{$butceYuzde}'i harcandı" . ($butceYuzde > 100 ? ' — aşım var!' : ' — dikkat.'), 'link' => '/satinalma-butce', 'buton' => 'Bütçeyi Aç'];
+    if ($butceYuzde !== null && $butceYuzde > 85) $oneriler[] = ['ikon' => 'account_balance_wallet', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'mtn' => "Bu ay bütçenin %{$butceYuzde}'i harcandı" . ($butceYuzde > 100 ? ' — aşım var!' : ' — dikkat.'), 'link' => '/satinalma-butce', 'buton' => 'Bütçeyi Aç'];
     if ($fiyatHareketleri->count() > 0) {
         $kirmiziSayi = $fiyatHareketleri->where('uyari', 'kirmizi')->count();
         if ($kirmiziSayi > 0) $oneriler[] = ['ikon' => 'trending_up', 'renk' => '#EC4899', 'mtn' => "Son 30 günde $kirmiziSayi üründe sert fiyat artışı — alternatif tedarikçi araştır.", 'link' => '/fiyat-radari', 'buton' => 'Fiyat Radarı'];
@@ -19830,7 +19830,7 @@ Route::get('/satinalma-brief-arsiv', function () {
         }
     } catch (\Throwable $e) {}
     if ($butceYuzde !== null && $butceYuzde > 85) {
-        $bugunYapilacak[] = ['ikon' => 'savings', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'oncelik' => $butceYuzde > 100 ? 'yuksek' : 'orta',
+        $bugunYapilacak[] = ['ikon' => 'account_balance_wallet', 'renk' => $butceYuzde > 100 ? '#F43F5E' : '#F59E0B', 'oncelik' => $butceYuzde > 100 ? 'yuksek' : 'orta',
             'baslik' => "Bütçe %{$butceYuzde} kullanılmış — kontrol et" . ($butceYuzde > 100 ? ' (AŞIM!)' : ''),
             'aciklama' => 'Harcama hızını gözden geçir, acil olmayan talepleri ertele',
             'tip' => 'link', 'url' => '/satinalma-butce'];
@@ -20221,15 +20221,15 @@ if (!function_exists('_departmanBriefVeri')) {
             $kpis[] = ['ikon' => 'local_shipping', 'tint' => $geciken > 0 ? 't-amber' : 't-green', 'deger' => $geciken, 'label' => 'Geciken sipariş', 'alt' => $geciken > 0 ? 'tedarikçi takibi' : 'gecikme yok'];
             $kpis[] = ['ikon' => 'request_quote', 'tint' => 't-mor', 'deger' => $teklif, 'label' => 'Gelen teklif', 'alt' => 'karar bekliyor'];
             $kpis[] = ['ikon' => 'assignment', 'tint' => 't-blue', 'deger' => $yeniTalep, 'label' => 'Yeni talep', 'alt' => 'inceleme bekliyor'];
-            $kpis[] = ['ikon' => 'savings', 'tint' => ($butceY !== null && $butceY > 100) ? 't-red' : 't-green', 'deger' => $tl($ayHarcama), 'label' => 'Bu ay harcama', 'alt' => $butceY !== null ? "bütçe %$butceY" : '(bütçe tanımsız)'];
+            $kpis[] = ['ikon' => 'account_balance_wallet', 'tint' => ($butceY !== null && $butceY > 100) ? 't-red' : 't-green', 'deger' => $tl($ayHarcama), 'label' => 'Bu ay harcama', 'alt' => $butceY !== null ? "bütçe %$butceY" : '(bütçe tanımsız)'];
             if ($krit > 0) { $isler[] = ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'grup' => 'SATIN ALMA', 'baslik' => "$krit malzeme kritik seviyede", 'aciklama' => 'Sipariş önerisini aç', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Sipariş Öner']]; $sinyal[] = "<b>$krit</b> kritik stok"; }
             if ($geciken > 0) { $isler[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'grup' => 'SATIN ALMA', 'baslik' => "$geciken sipariş gecikti", 'aciklama' => 'Tedarikçiyi ara', 'aksiyon' => ['url' => '/satinalma-siparis', 'lbl' => 'Gör']]; $sinyal[] = "<b>$geciken</b> geciken"; }
             if ($teklif > 0) { $isler[] = ['ikon' => 'mark_email_read', 'renk' => '#10B981', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$teklif teklif karşılaştır", 'aciklama' => 'En uygununu seç', 'aksiyon' => ['url' => '/gelen-teklifler', 'lbl' => 'İncele']]; $sinyal[] = "<b>$teklif</b> teklif"; }
             if ($yeniTalep > 0) { $isler[] = ['ikon' => 'assignment', 'renk' => '#7C3AED', 'grup' => 'SATIN ALMA', 'baslik' => "$yeniTalep yeni talebi incele", 'aciklama' => 'RFQ gönder / fiyat araştır', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'İncele']]; }
             if ($onaydaTalep > 0) { $isler[] = ['ikon' => 'fact_check', 'renk' => '#F59E0B', 'grup' => 'ONAY BEKLEYEN', 'baslik' => "$onaydaTalep talep onayda", 'aciklama' => 'Patron onayı bekliyor', 'aksiyon' => ['url' => '/satinalma-talep', 'lbl' => 'Gör']]; }
-            $hizli = [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'savings', 'lbl' => 'Bütçe']];
+            $hizli = [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'account_balance_wallet', 'lbl' => 'Bütçe']];
             $analiz[] = ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Stok Riski', 'alt' => 'kritik seviye', 'durum' => $krit > 3 ? 'risk' : ($krit > 0 ? 'dikkat' : 'iyi'), 'yorum' => $krit > 0 ? "$krit malzeme kritik seviyede — mutfak aksamadan sipariş et." : 'Kritik stok yok. 👍'];
-            $analiz[] = ['ikon' => 'savings', 'renk' => '#10B981', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => $butceY === null ? 'notr' : ($butceY > 100 ? 'risk' : ($butceY > 85 ? 'dikkat' : 'iyi')), 'yorum' => $butceY !== null ? ("Bu ay bütçenin %$butceY'i harcandı" . ($butceY > 100 ? ' — AŞIM var!' : '.')) : 'Bu ay için bütçe tanımlı değil.'];
+            $analiz[] = ['ikon' => 'account_balance_wallet', 'renk' => '#10B981', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => $butceY === null ? 'notr' : ($butceY > 100 ? 'risk' : ($butceY > 85 ? 'dikkat' : 'iyi')), 'yorum' => $butceY !== null ? ("Bu ay bütçenin %$butceY'i harcandı" . ($butceY > 100 ? ' — AŞIM var!' : '.')) : 'Bu ay için bütçe tanımlı değil.'];
             $analiz[] = ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'baslik' => 'Tedarik Hızı', 'alt' => 'geciken', 'durum' => $geciken > 2 ? 'risk' : ($geciken > 0 ? 'dikkat' : 'iyi'), 'yorum' => $geciken > 0 ? "$geciken sipariş teslim tarihini geçti — tedarikçileri sıkıştır." : 'Gecikmede sipariş yok.'];
         }
         // ================= FİNANS =================
@@ -20749,7 +20749,7 @@ if (!function_exists('_departmanBriefDemo')) {
                     ['ikon' => 'local_shipping', 'tint' => 't-amber', 'deger' => 3, 'label' => 'Geciken sipariş', 'alt' => 'tedarikçi takibi'],
                     ['ikon' => 'request_quote', 'tint' => 't-mor', 'deger' => 5, 'label' => 'Gelen teklif', 'alt' => 'karar bekliyor'],
                     ['ikon' => 'assignment', 'tint' => 't-blue', 'deger' => 6, 'label' => 'Yeni talep', 'alt' => 'inceleme bekliyor'],
-                    ['ikon' => 'savings', 'tint' => 't-amber', 'deger' => $tl(128500), 'label' => 'Bu ay harcama', 'alt' => 'bütçe %92'],
+                    ['ikon' => 'account_balance_wallet', 'tint' => 't-amber', 'deger' => $tl(128500), 'label' => 'Bu ay harcama', 'alt' => 'bütçe %92'],
                 ],
                 'isler' => [
                     ['ikon' => 'warning_amber', 'renk' => '#F43F5E', 'grup' => 'SATIN ALMA', 'baslik' => '7 malzeme kritik seviyede', 'aciklama' => 'Biber, Ayçiçek Yağı, Tuz, Domates Salçası…', 'aksiyon' => ['url' => '/siparis-onerisi', 'lbl' => 'Sipariş Öner']],
@@ -20759,10 +20759,10 @@ if (!function_exists('_departmanBriefDemo')) {
                 ],
                 'analiz' => [
                     ['ikon' => 'inventory_2', 'renk' => '#F43F5E', 'baslik' => 'Stok Riski', 'alt' => 'kritik seviye', 'durum' => 'risk', 'yorum' => '7 malzeme kritik seviyede — 3 tanesi bugün bitebilir. Mutfak aksamadan sipariş et.'],
-                    ['ikon' => 'savings', 'renk' => '#F59E0B', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => 'dikkat', 'yorum' => 'Bu ay bütçenin %92\'si harcandı. Ay bitmeden acil olmayan talepleri ertele.'],
+                    ['ikon' => 'account_balance_wallet', 'renk' => '#F59E0B', 'baslik' => 'Bütçe', 'alt' => 'bu ay', 'durum' => 'dikkat', 'yorum' => 'Bu ay bütçenin %92\'si harcandı. Ay bitmeden acil olmayan talepleri ertele.'],
                     ['ikon' => 'local_shipping', 'renk' => '#EA580C', 'baslik' => 'Tedarik Hızı', 'alt' => 'geciken', 'durum' => 'dikkat', 'yorum' => '3 sipariş teslim tarihini geçti. Anıl Market son 3 ayda 2. kez gecikti — alternatif değerlendir.'],
                 ],
-                'hizli' => [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'savings', 'lbl' => 'Bütçe']],
+                'hizli' => [['url' => '/satinalma-islemleri', 'ikon' => 'apps', 'lbl' => 'Satın Alma İşlemleri'], ['url' => '/stok', 'ikon' => 'inventory_2', 'lbl' => 'Stok'], ['url' => '/satinalma-siparis', 'ikon' => 'shopping_cart_checkout', 'lbl' => 'Siparişler'], ['url' => '/gelen-teklifler', 'ikon' => 'request_quote', 'lbl' => 'Gelen Teklifler'], ['url' => '/fiyat-radari', 'ikon' => 'radar', 'lbl' => 'Fiyat Radarı'], ['url' => '/satinalma-butce', 'ikon' => 'account_balance_wallet', 'lbl' => 'Bütçe']],
                 'aiOzet' => 'Bugünün gündemi: <b>7</b> kritik stok · <b>3</b> geciken · <b>5</b> teklif · bütçe <b>%92</b>.',
                 'dunYapilanlar' => [['ikon' => 'check', 'mtn' => '4 sipariş kesildi · toplam 42.300₺', 'link' => '/satinalma-siparis'], ['ikon' => 'check', 'mtn' => '3 mal kabul yapıldı', 'link' => '/mal-kabul-liste'], ['ikon' => 'check', 'mtn' => '2 fatura işlendi', 'link' => '/alis-fatura']],
             ]);

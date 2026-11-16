@@ -52,7 +52,7 @@
     mal_geldi:'move_to_inbox', sicaklik_limit:'device_thermostat', sicaklik_olcum:'thermostat', garson_cagri:'room_service', cagri_yanitsiz:'notifications_active', masa_uzun:'schedule', iskonto_ikram:'redeem', memnuniyet_dusuk:'sentiment_dissatisfied',
     yeni_rezervasyon:'event_available', rez_gelmedi:'hourglass_bottom', bekleme_uzun:'hourglass_top', vip_geliyor:'star', yeni_paket:'delivery_dining', paket_bekliyor:'takeout_dining', kurye_gecikti:'two_wheeler', tahsil_bekliyor:'payments',
     kasa_acik_kaldi:'point_of_sale', kasa_fark:'balance', talep_yeni:'assignment', ekip_talep_onay:'fact_check', talep_sonuc:'assignment_turned_in', teklif_geldi:'request_quote', siparis_gecikti:'local_shipping', teslimat_bugun:'local_shipping',
-    butce:'savings', fiyat_zam:'trending_up', ekip_gelmedi:'person_off', ekip_gec_kaldi:'alarm', ekip_erken_cikti:'logout', ekip_izin_talebi:'beach_access', ekip_avans_talebi:'payments', yarin_ekip_eksik:'event_note', ekip_belge_doluyor:'badge',
+    butce:'account_balance_wallet', fiyat_zam:'trending_up', ekip_gelmedi:'person_off', ekip_gec_kaldi:'alarm', ekip_erken_cikti:'logout', ekip_izin_talebi:'beach_access', ekip_avans_talebi:'payments', yarin_ekip_eksik:'event_note', ekip_belge_doluyor:'badge',
     gorev_atandi:'push_pin', gorev_gecikti:'assignment_late', ariza_acik:'build', cihaz_offline:'wifi_off', mali_fis_hata:'receipt_long', ajanda:'event_note', happy_hour:'local_bar'};
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function ciz(){

@@ -212,7 +212,7 @@ body.koyu #db{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#9
   {{-- Bütçe --}}
   @if ($ay_butce > 0)
   <div class="kart">
-    <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">savings</span></div><span class="kb-ad">Bu Ay Bütçe Kullanımı</span>
+    <div class="kart-baslik"><div class="kb-ikon" style="background:color-mix(in srgb,var(--yesil) 15%,transparent);color:var(--yesil)"><span class="material-icons-outlined">account_balance_wallet</span></div><span class="kb-ad">Bu Ay Bütçe Kullanımı</span>
       <span style="margin-left:auto;font-weight:800;color:{{ $butceC }}">%{{ $butceY }}@if($butceY>100) · aşım!@endif</span></div>
     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sub)"><span>Harcama: {{ $tl0($ay_harcama) }}</span><span>Bütçe: {{ $tl0($ay_butce) }}</span></div>
     <div class="butce-bar"><div style="width:{{ min(100,$butceY) }}%;background:{{ $butceC }}"></div></div>

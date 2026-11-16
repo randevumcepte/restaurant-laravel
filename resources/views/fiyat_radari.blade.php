@@ -161,7 +161,7 @@
   <div class="fr-k" style="--c:#F43F5E"><div class="ik"><span class="material-icons-outlined">trending_up</span></div><div class="l">Gizli zam yıllık etkisi</div><div class="d" style="color:#F43F5E">~{{ $tl0($kpi['zam_etki'] ?? 0) }}</div><div class="a">{{ $kpi['zam_say'] ?? 0 }} malzemede %{{ $filtre['esik'] }}+ artış</div></div>
   <div class="fr-k" style="--c:#0EA5E9"><div class="ik"><span class="material-icons-outlined">compare_arrows</span></div><div class="l">En ucuzdan alsaydın (yıllık)</div><div class="d" style="color:#0284C7">~{{ $tl0($kpi['ted_kayip'] ?? 0) }}</div><div class="a">{{ count($karsilastirma) }} malzemede tedarikçi farkı</div></div>
   <div class="fr-k" style="--c:#10B981"><div class="ik"><span class="material-icons-outlined">storefront</span></div><div class="l">Hal üstü fazla ödeme (yıllık)</div><div class="d" style="color:#059669">~{{ $tl0($kpi['hal_fazla'] ?? 0) }}</div><div class="a">{{ count($halSat) }} malzeme halde eşleşti</div></div>
-  <div class="fr-k" style="--c:#F59E0B"><div class="ik"><span class="material-icons-outlined">savings</span></div><div class="l">Toplam tasarruf potansiyeli</div><div class="d" style="color:#D97706">~{{ $tl0(($kpi['zam_etki'] ?? 0) + ($kpi['ted_kayip'] ?? 0) + ($kpi['hal_fazla'] ?? 0)) }}</div><div class="a">zam + tedarikçi + hal (kesişebilir)</div></div>
+  <div class="fr-k" style="--c:#F59E0B"><div class="ik"><span class="material-icons-outlined">price_check</span></div><div class="l">Toplam tasarruf potansiyeli</div><div class="d" style="color:#D97706">~{{ $tl0(($kpi['zam_etki'] ?? 0) + ($kpi['ted_kayip'] ?? 0) + ($kpi['hal_fazla'] ?? 0)) }}</div><div class="a">zam + tedarikçi + hal (kesişebilir)</div></div>
 </div>
 
 {{-- ===== SEKMELER ===== --}}
@@ -491,7 +491,7 @@
     h += '<div class="fr-ai-g">' +
       bolum('kritik', 'Kritik bulgular', 'report', '#F43F5E', md) +
       bolum('gecmis_hatalar', 'Geçmiş hatalar', 'history', '#F59E0B', md) +
-      bolum('firsatlar', 'Tasarruf fırsatları', 'savings', '#10B981', md) +
+      bolum('firsatlar', 'Tasarruf fırsatları', 'price_check', '#10B981', md) +
       bolum('gelecek', 'Gelecek önerileri', 'insights', '#4F46E5', md) +
       bolum('pazarlik', 'Pazarlık argümanları', 'handshake', '#0EA5E9', function (x) { return '<div class="fr-ai-m"><b>' + frEsc(x.tedarikci) + '</b>' + frEsc(x.arguman) + '</div>'; }) +
       bolum('aksiyonlar', 'Yapılacaklar', 'checklist', '#9333EA', function (x) {

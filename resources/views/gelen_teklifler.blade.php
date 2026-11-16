@@ -291,7 +291,7 @@ function kpiCiz(){
     tas += tasarruf(g);
   });
   const k = (ik, ad, v, c) => `<div style="--k:${c}"><small><span class="material-icons-outlined">${ik}</span>${ad}</small><b>${v}</b></div>`;
-  document.getElementById('gtKpi').innerHTML = k('pending_actions', 'Açık talep', akt.length, '#7C3AED') + k('hourglass_top', 'Yanıt bekleyen', bek, '#D97706') + k('sell', 'Gelen fiyat', fiyat, '#2563EB') + k('auto_awesome', 'AI\'ın okuduğu', ai, '#DB2777') + k('savings', 'En ucuzla kazanç', paraK(tas), '#059669');
+  document.getElementById('gtKpi').innerHTML = k('pending_actions', 'Açık talep', akt.length, '#7C3AED') + k('hourglass_top', 'Yanıt bekleyen', bek, '#D97706') + k('sell', 'Gelen fiyat', fiyat, '#2563EB') + k('auto_awesome', 'AI\'ın okuduğu', ai, '#DB2777') + k('price_check', 'En ucuzla kazanç', paraK(tas), '#059669');
 }
 
 function liHtml(g){
