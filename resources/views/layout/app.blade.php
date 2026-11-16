@@ -489,6 +489,9 @@
             $gruplar[$_trfG] = $_trfYeni;
         }
     } catch (\Throwable $e) {}
+    // Mutfak raporları ayrı grup değil, Mutfak / BOH grubunun sonunda (görünürlük yine _mrErisim: şef / sous şef / müdür / patron)
+    if (isset($gruplar['Mutfak / BOH'], $gruplar['Mutfak Raporları'])) $gruplar['Mutfak / BOH'] = array_merge($gruplar['Mutfak / BOH'], $gruplar['Mutfak Raporları']);
+    unset($gruplar['Mutfak Raporları']);
 
     // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
     $_saBol = [ // satın alma raporları Satın Alma grubunun içinde kalır (satın almacının raporları)
@@ -507,7 +510,7 @@
                 unset($gruplar['Satın Alma']);
                 foreach ($_saP as $_bg => $_its) if ($_its) $gruplar[$_bg] = array_merge($gruplar[$_bg] ?? [], $_its);
             }
-            $_deptSira = ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
+            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
@@ -605,7 +608,7 @@
             @php
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
-                    'YÖNETİM' => ['Mutfak / BOH', 'Mutfak Raporları', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
+                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem', 'Departman Operasyon'],
                     'MENÜ' => ['Menü & Ürünler'],
                     'OPERASYON' => ['Satış & Servis'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
