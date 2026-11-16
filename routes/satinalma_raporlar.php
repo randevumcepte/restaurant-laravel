@@ -1010,6 +1010,22 @@ if (!function_exists('_srErisim')) {
     }
 }
 
+// AI sayfasının üst şeridi: yapay zekâ çağırmadan gerçek rakamlar + bugünkü kalan AI hakkı
+if (!function_exists('_srAiNabiz')) {
+    function _srAiNabiz($sid, array $dn)
+    {
+        $kalan = max(0, 40 - (int) cache()->get('sr_ai_gun_' . $sid . '_' . date('Y-m-d'), 0));
+        try { $b = _srAiBaglam($sid, $dn); } catch (\Throwable $e) { return ['kalan' => $kalan, 'veri' => null]; }
+        $deg = $b['onceki_alis_toplam'] > 0 ? round(($b['alis_toplam'] - $b['onceki_alis_toplam']) / $b['onceki_alis_toplam'] * 100, 1) : null;
+        return ['kalan' => $kalan, 'veri' => [
+            'alis' => $b['alis_toplam'], 'onceki' => $b['onceki_alis_toplam'], 'degisim' => $deg, 'fatura' => $b['fatura_sayisi'],
+            'acik' => $b['acik_siparis'], 'geciken' => $b['geciken_siparis'], 'talep' => $b['onay_bekleyen_talep'],
+            'kritik' => count($b['kritik_stok']), 'skt' => count($b['skt_30_gun']), 'fire' => round($b['fire_iade_maliyeti'], 2),
+            'zam' => count(array_filter($b['fiyat_degisimleri'], fn ($x) => ($x['yuzde'] ?? 0) > 0)), 'zamaninda' => $b['teslim']['zamaninda_yuzde'],
+            'ted_ilk' => $b['tedarikci'] ? (string) key($b['tedarikci']) : null, 'kat_ilk' => $b['kategori'] ? (string) key($b['kategori']) : null]];
+    }
+}
+
 // Eski tek sayfa adresi → ilk kategori (sorgu korunur)
 Route::get('/satinalma-raporlar', function (Request $r) {
     $qs = $r->getQueryString();
@@ -1020,7 +1036,7 @@ Route::get('/satinalma-raporlar/{kat}', function (Request $r, $kat) {
     $sid = _webSubeId(); $dn = _srIstekDonem($r);
     $d = []; try { $d = _srVeriDurumu($sid); } catch (\Throwable $e) {}
     return view('satinalma_raporlar', ['kat' => $kat, 'dn' => $dn, 'durum' => $d, 'katalog' => _srKatalog(), 'kategoriler' => _srKategoriler(), 'radar' => array_diff_key(_fr2Raporlar(), ['ai' => 1]),
-        'ai' => cache()->get('sr_ai_son_' . $sid)]);
+        'ai' => cache()->get('sr_ai_son_' . $sid), 'aiNabiz' => $kat === 'ai' ? _srAiNabiz($sid, $dn) : null]);
 })->where('kat', 'donemsel|harcama|maliyet|tedarikci|surec|stok|finans|sube|radar|ai');
 Route::get('/satinalma-raporlar/indir', function (Request $r) {
     if (!_srErisim()) return redirect('/pos-giris');
