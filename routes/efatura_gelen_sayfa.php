@@ -29,6 +29,15 @@ if (!function_exists('_efgYonetici')) {
         return in_array(strtolower((string) ($bp->rol ?? '')), ['sahip', 'mudur', 'müdür'], true);
     }
 }
+if (!function_exists('_efgKartYetki')) {
+    // Faturadan yeni malzeme kartı açma: Stok sayfasındaki gibi 'Malzeme Kartı' yetkisi (sahip her zaman)
+    function _efgKartYetki()
+    {
+        $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+        if (!$bp) return true; // panel oturumu (sahip)
+        return function_exists('_malzemeKartYetki') ? _malzemeKartYetki($bp) : (($bp->rol ?? '') === 'sahip');
+    }
+}
 if (!function_exists('_efgPersonelId')) {
     function _efgPersonelId()
     {
@@ -68,6 +77,7 @@ Route::get('/efatura-gelen', function (Request $r) {
     $birimBek = $liste->count() ? DB::table('efatura_gelen_kalem')->whereIn('gelen_id', $liste->pluck('id'))->where('eslesme', 'birim')->selectRaw('gelen_id, COUNT(*) c')->groupBy('gelen_id')->pluck('c', 'gelen_id') : collect();
     $kalemSay = $liste->count() ? DB::table('efatura_gelen_kalem')->whereIn('gelen_id', $liste->pluck('id'))->selectRaw('gelen_id, COUNT(*) c')->groupBy('gelen_id')->pluck('c', 'gelen_id') : collect();
     return view('efatura_gelen', [
+        'kartYetki' => _efgKartYetki(),
         'b' => $b, 'liste' => $liste, 'say' => $say, 'durum' => $durum, 'eksik' => $eksik, 'birimBek' => $birimBek, 'kalemSay' => $kalemSay, 'ara' => $ara,
         'entegratorler' => _efgEntegratorler(), 'yonetici' => _efgYonetici(), 'stokModu' => _efgStokModu($sid),
         'anahtarVar' => (bool) _efgAnahtar($b), 'cronKey' => env('SANTRAL_SECRET') ? 1 : 0,
@@ -166,6 +176,7 @@ Route::get('/efatura-gelen/{id}', function ($id) {
     $cevapVerilir = $g->profil === 'TICARIFATURA' && !$g->cevap && $b && $b->entegrator && ($s = _efgSurucu($b->entegrator)) && isset($s['cevap'])
         && $g->tarih && \Carbon\Carbon::parse($g->tarih)->gte(today()->subDays(8)) && str_starts_with((string) $g->kaynak, 'api:');
     return view('efatura_gelen_detay', [
+        'kartYetki' => _efgKartYetki(),
         'g' => $g, 'kalemler' => $kalemler, 'malzemeler' => $malzemeler, 'birimler' => $birimler,
         'tedarikci' => $g->tedarikci_id ? DB::table('tedarikciler')->where('id', $g->tedarikci_id)->first() : null,
         'alis' => $g->alis_fatura_id ? DB::table('alis_faturalari')->where('id', $g->alis_fatura_id)->first() : null,
@@ -183,6 +194,9 @@ Route::post('/efatura-gelen/{id}/eslestir', function (Request $r, $id) {
     if ($g->durum === 'aktarildi') return redirect('/efatura-gelen/' . $g->id)->with('hata', 'Bu fatura zaten aktarıldı.');
     $gorunur = _efgMalzemeler($sid)->pluck('temel_birim_id', 'id');
     $girdi = (array) $r->input('kalem', []);
+    // yeni malzeme kartı açmak 'Malzeme Kartı' yetkisi ister; yetkisiz kişi mevcut malzemeyle eşleştirebilir
+    if (!_efgKartYetki() && collect($girdi)->contains(fn ($v) => is_array($v) && ($v['malzeme'] ?? '') === 'yeni'))
+        return redirect('/efatura-gelen/' . $g->id)->with('hata', 'Yeni malzeme kartı açma yetkiniz yok. Mevcut bir malzeme seçin ya da işletme sahibinden "Malzeme Kartı" yetkisi isteyin.');
     try {
         DB::transaction(function () use ($g, $girdi, $sid, $gorunur) {
             foreach (DB::table('efatura_gelen_kalem')->where('gelen_id', $g->id)->get() as $k) {
@@ -236,7 +250,7 @@ Route::post('/efatura-gelen/{id}/eslestir', function (Request $r, $id) {
 // İlk kurulum (geçmiş faturalar): eşleşmeyen tüm kalemleri yeni malzeme kartı olarak aç (aynı ürün tek kart) → hafıza → hepsini aktar
 // Yalnız sahip/müdür; yalnız toplamı tutan bekleyen faturalar
 Route::post('/efatura-gelen/toplu-yeni', function () {
-    if (!_efgErisim() || !_efgYonetici()) return redirect('/efatura-gelen')->with('hata', 'Toplu işlemi yalnız işletme sahibi ya da müdür yapabilir.');
+    if (!_efgErisim() || !_efgKartYetki()) return redirect('/efatura-gelen')->with('hata', 'Toplu kartlama yeni malzeme kartı açar: "Malzeme Kartı" yetkisi gerekir (işletme sahibi Yetkiler ekranından açar).');
     _efgEnsure();
     $sid = _webSubeId();
     @set_time_limit(170);

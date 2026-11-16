@@ -101,7 +101,7 @@
   <a href="/fatura-denetim"><span class="material-icons-outlined" style="font-size:15px;vertical-align:-3px">fact_check</span> Denetim</a>
 </div>
 
-@if ($yonetici && (int) ($say['bekliyor'] ?? 0) >= 3)
+@if (($kartYetki ?? false) && (int) ($say['bekliyor'] ?? 0) >= 3)
   <div class="rk-card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px">
     <span class="material-icons-outlined" style="color:var(--amber)">bolt</span>
     <div style="flex:1;min-width:240px;font-size:12.5px"><b>İlk kurulum mu?</b> Geçmiş faturaları tek tek eşleştirmek yerine, eşleşmeyen tüm ürünleri <b>yeni malzeme kartı</b> olarak açıp hepsini aktarabilirsiniz. Aynı ürün tek kart olur; sonradan gelen faturalar bu kartlarla otomatik eşleşir.</div>

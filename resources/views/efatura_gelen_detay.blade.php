@@ -74,7 +74,7 @@
           @if ($acik)
             <select name="kalem[{{ $k->id }}][malzeme]" class="rk-inp" onchange="efdSecim(this, {{ $k->id }})">
               <option value="">— Eşleştirilmedi —</option>
-              <option value="yeni">＋ Yeni malzeme oluştur</option>
+              @if ($kartYetki ?? false)<option value="yeni">＋ Yeni malzeme oluştur</option>@endif
               @foreach ($malzemeler as $m)<option value="{{ $m->id }}" data-temel="{{ $m->temel_birim_id }}" @selected((int) $secili === (int) $m->id)>{{ $m->ad }}</option>@endforeach
             </select>
             <input type="text" name="kalem[{{ $k->id }}][yeni_ad]" id="efdYeni{{ $k->id }}" class="rk-inp" value="{{ $k->ad }}" placeholder="Yeni malzeme adı" style="display:none;margin-top:5px">
