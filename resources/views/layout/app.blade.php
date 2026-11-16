@@ -651,6 +651,8 @@
                 $_satinalmaciMenu = $_pp && in_array($_pp->rol ?? '', ['satinalmaci', 'satinalma'], true);
                 $_katsiz = $_satinalmaciMenu || ($_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true));
                 if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM'; } // satın alma grupları en üstte; raporlar Finans'ın altında
+                // Patron / müdür: Satış & Servis ayrı OPERASYON başlığında değil, DEPARTMANLAR'ın içinde (en sonda)
+                if ($_pp && in_array($_pp->rol ?? '', ['sahip', 'mudur'], true)) { $_kategoriler['YÖNETİM'][] = 'Satış & Servis'; unset($_kategoriler['OPERASYON']); $_grupKat['Satış & Servis'] = 'YÖNETİM'; }
                 $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
             @endphp
             @if ($_duzMenu)
