@@ -10242,6 +10242,7 @@ Route::get('/mutfak-altdep-kur', function () {
 });
 // İŞLETME BÜYÜKLÜĞÜ: seçim ekranı (sadece sahip/müdür)
 Route::get('/isletme-olcegi', function () {
+    return redirect('/isletme-duzeni')->with('ok', 'İşletme büyüklüğü paketinize göre ResteOS tarafından belirlenir. Değişiklik için bizimle iletişime geçin.');
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
     if (!in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/dashboard')->with('hata', 'Yalnızca sahip/müdür.');
@@ -10252,6 +10253,7 @@ Route::get('/isletme-olcegi', function () {
     ]]);
 });
 Route::post('/isletme-olcegi', function (Request $r) {
+    return redirect('/isletme-duzeni')->with('hata', 'İşletme büyüklüğü ResteOS sistem panelinden belirlenir.'); // eski işletme-tarafı kayıt kapalı (aşağısı _isletmeOlcekUygula'da)
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return redirect('/isletme-olcegi')->with('hata', 'Yalnızca sahip/müdür.');
     $olcek = (string) $r->input('olcek');

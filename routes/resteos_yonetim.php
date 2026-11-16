@@ -456,6 +456,35 @@ Route::post('/resteos-yonetim/restoran/{id}/lisans-aktif', function (Request $r,
     return back()->with('ok', 'Lisans aktifleştirildi (' . $tur . ', ' . $ay . ' ay).');
 });
 
+// İşletme büyüklüğü (paket): sistem panelinde restoran başına belirlenir; menü sadeliği + hazır departmanlar buna göre
+if (!function_exists('_isletmeOlcekUygula')) {
+    function _isletmeOlcekUygula($sid, $olcek)
+    {
+        _isletmeOlcekEnsure();
+        $kodlar = _olcekDepartmanlari($olcek);
+        $yeni = _departmanSablonKur($sid, $kodlar);
+        // Küçülürken: listede olmayan hazır departmanlardan personeli OLMAYANLAR pasife alınır (silinmez); personeli olan dokunulmaz.
+        $kalan = [];
+        foreach (DB::table('departmanlar')->where('sube_id', $sid)->where('aktif', 1)->whereIn('kod', array_diff(array_keys(_departmanSablonlari()), $kodlar))->get(['id', 'ad']) as $d) {
+            if (DB::table('personeller')->where('sube_id', $sid)->where('departman_id', $d->id)->where('aktif', 1)->exists()) { $kalan[] = $d->ad; continue; }
+            DB::table('departmanlar')->where('id', $d->id)->update(['aktif' => 0, 'updated_at' => now()]);
+        }
+        DB::table('subeler')->where('id', $sid)->update(['olcek' => $olcek, 'olcek_secildi' => 1]);
+        $mesaj = 'İşletme büyüklüğü kaydedildi' . ($yeni ? ", $yeni departman kuruldu" : '') . '.';
+        if ($kalan) $mesaj .= ' Personeli olduğu için açık kalanlar: ' . implode(', ', $kalan) . '.';
+        return $mesaj;
+    }
+}
+Route::post('/resteos-yonetim/restoran/{id}/olcek', function (Request $r, $id) {
+    if ($x = _ryKapi()) return $x;
+    $olcek = (string) $r->input('olcek');
+    if (!in_array($olcek, ['kucuk', 'orta', 'buyuk'], true)) return back()->with('hata', 'Bir büyüklük seçin.');
+    if (!DB::table('subeler')->where('id', $id)->exists()) return back()->with('hata', 'Restoran bulunamadı.');
+    try { $mesaj = _isletmeOlcekUygula((int) $id, $olcek); } catch (\Throwable $e) { return back()->with('hata', 'Kaydedilemedi.'); }
+    _ryLog('isletme_olcek', 'İşletme büyüklüğü: ' . $olcek, $id);
+    return back()->with('ok', $mesaj);
+});
+
 Route::post('/resteos-yonetim/restoran/{id}/not', function (Request $r, $id) {
     if ($x = _ryKapi()) return $x;
     if (trim((string) $r->icerik) !== '') {

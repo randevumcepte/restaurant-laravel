@@ -68,6 +68,28 @@
       @endif
     </div>
 
+    @php
+      $olcekDurum = function_exists('_isletmeOlcek') ? _isletmeOlcek($sube->id) : ['olcek' => null, 'secildi' => false];
+      $olcekSec = $olcekDurum['olcek'] ?? 'buyuk';
+    @endphp
+    <div class="ry-card">
+      <h3>📐 İşletme Büyüklüğü (Paket)</h3>
+      <p class="ry-mut" style="margin-bottom:10px">Restoranın menü sadeliğini ve kurulacak hazır departmanları belirler. İşletme tarafında değiştirilemez.
+        @if(!$olcekDurum['olcek'])<br><b>Henüz seçilmedi</b>: tüm menü açık (büyük gibi davranır).@endif</p>
+      <form method="post" action="/resteos-yonetim/restoran/{{ $sube->id }}/olcek" onsubmit="return rkOnayForm(this, 'İşletme büyüklüğü değiştirilsin mi? Menü ve hazır departmanlar buna göre güncellenir.', 'var(--mor1)', 'Kaydet')">
+        @csrf
+        <div class="ry-flex" style="flex-wrap:wrap;gap:8px">
+          @foreach(['kucuk' => ['Küçük', 'Kafe / tek salon · mutfak, servis, kasa'], 'orta' => ['Orta', '+ bar, satın alma, satış'], 'buyuk' => ['Büyük', 'Otel / çok departman · tüm modüller']] as $k => [$ad, $acik])
+            <label style="flex:1;min-width:150px;display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border:1px solid {{ $olcekSec === $k ? 'var(--mor1, #7C3AED)' : 'rgba(127,127,127,.25)' }};border-radius:10px;cursor:pointer">
+              <input type="radio" name="olcek" value="{{ $k }}" {{ $olcekSec === $k ? 'checked' : '' }} style="margin-top:3px">
+              <span><b>{{ $ad }}</b>@if($olcekDurum['olcek'] === $k) <span class="ry-badge yesil" style="margin-left:4px">Şu an</span>@endif<br><span class="ry-mut" style="font-size:12px">{{ $acik }}</span></span>
+            </label>
+          @endforeach
+        </div>
+        <button class="ry-btn ry-btn-primary ry-btn-sm" type="submit" style="margin-top:10px">Büyüklüğü Kaydet</button>
+      </form>
+    </div>
+
     <div class="ry-card">
       <h3>❤️ Sağlık Skoru</h3>
       <div class="ry-between" style="margin-bottom:10px">

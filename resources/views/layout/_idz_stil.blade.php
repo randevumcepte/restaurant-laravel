@@ -297,5 +297,18 @@ body.koyu .idz-dunya{filter:brightness(.86)}
 .idz-hizli button[style*="--r"] .material-icons-outlined{color:#fff;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:11px;font-size:21px;background:linear-gradient(135deg,color-mix(in srgb,var(--r) 75%,#fff),var(--r));box-shadow:0 5px 12px color-mix(in srgb,var(--r) 30%,transparent)}
 .idz-hizli button[style*="--r"]:hover{border-color:var(--r);box-shadow:0 8px 18px color-mix(in srgb,var(--r) 24%,transparent)}
 body.koyu .idz-stat[style*="--r"] .d{color:color-mix(in srgb,var(--r) 60%,#fff)}
+.idz-ayar[style*="--r"]{background:linear-gradient(135deg,color-mix(in srgb,var(--r) 9%,var(--card)),var(--card));border-color:color-mix(in srgb,var(--r) 24%,var(--line))}
+.idz-ayar[style*="--r"]>.material-icons-outlined:first-child{flex:none;width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:22px;color:#fff;background:linear-gradient(135deg,color-mix(in srgb,var(--r) 75%,#fff),var(--r));box-shadow:0 5px 12px color-mix(in srgb,var(--r) 28%,transparent)}
+.idz-ayar[style*="--r"]:hover{border-color:var(--r);box-shadow:0 8px 18px color-mix(in srgb,var(--r) 22%,transparent)}
+.idz-ayar>span:nth-child(2){flex:1;min-width:0}
+.idz-ayar .idz-ayar-ok{flex:none;font-size:20px;color:var(--sub)}
+.idz-gomulu{padding:0;overflow:hidden}
+.idz-gomulu[hidden],#idzAyarListe[hidden]{display:none}
+.idz-gomulu-bas{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.idz-gomulu-bas b{font-size:15px}
+.idz-gomulu-yuk{display:flex;align-items:center;justify-content:center;gap:8px;padding:40px;color:var(--sub);font-size:13px}
+.idz-gomulu-yuk[hidden]{display:none}
+#idzAyarCerceve{display:block;width:100%;height:calc(100vh - 300px);min-height:620px;border:0;background:var(--bg)}
+@media(max-width:760px){#idzAyarCerceve{height:calc(100vh - 170px);min-height:480px}.idz-gomulu-bas{padding:10px}}
 @media(prefers-reduced-motion:reduce){.idz-btn.bekliyor{animation:none}.idz *{transition:none!important}}
 </style>

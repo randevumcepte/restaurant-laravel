@@ -366,20 +366,30 @@
 
 {{-- ============ GENEL AYARLAR ============ --}}
 <section class="idz-panel" data-panel="genel">
-  <div class="idz-kart">
+  {{-- Kartlar sayfadan çıkmadan burada açılır (gömülü); üstteki çubukla Genel Ayarlar'a dönülür --}}
+  <div class="idz-kart" id="idzAyarListe">
     <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">settings</span><h3>Genel Ayarlar</h3></div>
     <div class="idz-ayar-grid">
       @foreach ([
-        ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al'],
-        ['/salon-sema', 'grid_on', 'Salon Şeması', 'Kat ve parsel krokisi, Masa Planı ile eşitlenir'],
-        ['/isletme-konum', 'my_location', 'İşletme Konum', 'Harita konumu ve teslimat'],
-        ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', 'Menünün sadeliğini belirler'],
-        ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', 'Mutfak ve kasa yazıcıları'],
-        ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', 'Tablet ve kasa cihazları'],
-      ] as [$u, $ik, $t, $al])
-        <a class="idz-ayar" href="{{ $u }}"><span class="material-icons-outlined">{{ $ik }}</span><span><b>{{ $t }}</b><small>{{ $al }}</small></span></a>
+        ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al', '#7C3AED'],
+        ['/salon-sema', 'grid_on', 'Salon Şeması', 'Kat ve parsel krokisi, Masa Planı ile eşitlenir', '#059669'],
+        ['/isletme-konum', 'my_location', 'İşletme Konum', 'Harita konumu ve teslimat', '#D97706'],
+        ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', 'Mutfak ve kasa yazıcıları', '#2563EB'],
+        ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', 'Tablet ve kasa cihazları', '#0891B2'],
+      ] as [$u, $ik, $t, $al, $rk])
+        <a class="idz-ayar" href="{{ $u }}" data-ayar="{{ $u }}" style="--r:{{ $rk }}" onclick="return idzAyarAc(this)"><span class="material-icons-outlined">{{ $ik }}</span><span><b>{{ $t }}</b><small>{{ $al }}</small></span><span class="material-icons-outlined idz-ayar-ok">chevron_right</span></a>
       @endforeach
     </div>
+  </div>
+  <div class="idz-kart idz-gomulu" id="idzAyarGomulu" hidden>
+    <div class="idz-gomulu-bas">
+      <button type="button" class="idz-btn" onclick="idzAyarKapat()"><span class="material-icons-outlined">arrow_back</span>Genel Ayarlar</button>
+      <span class="material-icons-outlined idz-mor" id="idzAyarIkon">settings</span><b id="idzAyarBaslik"></b>
+      <span class="idz-esnek"></span>
+      <a class="idz-btn ikon" id="idzAyarYeniSekme" href="#" target="_blank" rel="noopener" title="Yeni sekmede aç" aria-label="Yeni sekmede aç"><span class="material-icons-outlined">open_in_new</span></a>
+    </div>
+    <div class="idz-gomulu-yuk" id="idzAyarYuk"><span class="material-icons-outlined">hourglass_top</span>Yükleniyor…</div>
+    <iframe id="idzAyarCerceve" title="Ayar sayfası"></iframe>
   </div>
 </section>
 
@@ -612,6 +622,44 @@ function idzSekme(ad){
 }
 document.querySelectorAll('.idz-sekme').forEach(function(b){ b.addEventListener('click', function(){ idzSekme(b.getAttribute('data-sekme')); }); });
 
+// ---- Genel Ayarlar: kartın sayfası İşletme Düzeni içinde (iframe) açılır; menü/üst çubuk gizlenir ----
+var IDZ_GOMULU_CSS = '.rk-side,.rk-side-backdrop,.rk-hamburger,.rk-geri,.rk-tema,.rk-profil,.rk-ss,.bz{display:none!important}'
+  + '.rk-main,.rk-side~.rk-main,.rk-side:hover~.rk-main{margin-left:0!important}.rk-header .ikon{display:none!important}';
+function idzAyarAc(a){
+  var u = a.getAttribute('data-ayar'); if(!u) return true;
+  var f = document.getElementById('idzAyarCerceve');
+  document.getElementById('idzAyarBaslik').textContent = a.querySelector('b').textContent;
+  document.getElementById('idzAyarIkon').textContent = a.querySelector('.material-icons-outlined').textContent;
+  document.getElementById('idzAyarYeniSekme').href = u;
+  document.getElementById('idzAyarListe').hidden = true;
+  document.getElementById('idzAyarGomulu').hidden = false;
+  document.getElementById('idzAyarYuk').hidden = false;
+  f.style.visibility = 'hidden';
+  f.src = u;
+  try{ sessionStorage.setItem('idz_ayar', u); }catch(e){}
+  return false;
+}
+function idzAyarKapat(){
+  document.getElementById('idzAyarCerceve').src = 'about:blank';
+  document.getElementById('idzAyarGomulu').hidden = true;
+  document.getElementById('idzAyarListe').hidden = false;
+  try{ sessionStorage.removeItem('idz_ayar'); }catch(e){}
+}
+document.getElementById('idzAyarCerceve').addEventListener('load', function(){
+  var f = this, d; try{ d = f.contentDocument; }catch(e){ return; }
+  if(!d || !d.location || d.location.href === 'about:blank') return;
+  var yol = d.location.pathname;
+  // Sayfa İşletme Düzeni'ne geri yönlendirdiyse iç içe açma: listeye dön
+  if(yol === '/isletme-duzeni'){ idzAyarKapat(); return; }
+  // Oturum düştüyse giriş sayfasını tüm pencerede aç
+  if(/giris$/.test(yol)){ location.href = yol; return; }
+  var st = d.createElement('style'); st.textContent = IDZ_GOMULU_CSS; (d.head || d.documentElement).appendChild(st);
+  if(document.body.classList.contains('koyu') && d.body) d.body.classList.add('koyu');
+  document.getElementById('idzAyarYuk').hidden = true;
+  f.style.visibility = '';
+});
+(function(){ var u; try{ u = sessionStorage.getItem('idz_ayar'); }catch(e){}
+  if(u){ var a = document.querySelector('.idz-ayar[data-ayar="'+u+'"]'); if(a && document.querySelector('.idz-panel[data-panel="genel"].aktif')) idzAyarAc(a); } })();
 // ===== MASA PLANI =====
 var idzAktif = IDZ.alanlar.length ? IDZ.alanlar[0].id : 0;
 var idzOlcek = 1, idzVurgu = null, idzDuzen = false, idzSecili = null, idzHizala = true, idzGecmis = [], idzIlk = null, idzKirli = {};
