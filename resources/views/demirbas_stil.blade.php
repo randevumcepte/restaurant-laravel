@@ -73,8 +73,8 @@ body.koyu #dm .av{background:#26285a;color:#c7d2fe}
 #dm .ib .ms{font-size:18px}
 #dm .ib:hover{background:var(--card2);color:var(--ink)}
 #dm .bos{background:var(--card);border:1.5px dashed var(--line);border-radius:18px;padding:34px 20px;text-align:center}
-#dm .bos .ms.b{font-size:44px;color:var(--marka);background:#EEF0FF;border-radius:20px;padding:14px}
-body.koyu #dm .bos .ms.b{background:#26285a;color:#c7d2fe}
+#dm .bos .ms.bik{font-size:44px;color:var(--marka);background:#EEF0FF;border-radius:20px;padding:14px}
+body.koyu #dm .bos .ms.bik{background:#26285a;color:#c7d2fe}
 #dm .bos h3{margin:14px 0 6px;font-size:16px;color:var(--ink);font-weight:900}
 #dm .bos p{margin:0 auto 16px;font-size:13px;color:var(--sub);max-width:540px;line-height:1.55}
 #dm .sonucyok{display:none;text-align:center;color:var(--sub);padding:24px;font-size:13px;background:var(--card);border:1px dashed var(--line);border-radius:15px}

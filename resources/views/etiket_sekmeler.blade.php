@@ -4,7 +4,8 @@
     ['raf', '/barkod-etiket/raf', 'style', 'Raf Kartı'], ['barkod', '/barkod-etiket/barkod', 'qr_code', 'Barkod Oluştur'], ['demirbas', '/demirbas', 'handyman', 'Demirbaş'], ['ayar', '/barkod-etiket/ayarlar', 'settings', 'Ayarlar']];
 @endphp
 <style>
-#dm .em-sek{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px 0 4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:15px}
+#dm .em-sek{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px 0 4px;padding:4px;background:linear-gradient(135deg,#EDE9FE,#E0E7FF 50%,#FCE7F3);border:1px solid #DDD6FE;border-radius:15px}
+body.koyu #dm .em-sek{background:var(--card);border-color:var(--line)}
 #dm .em-sek::-webkit-scrollbar{display:none}
 #dm .em-sek a{flex:none;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:11px;font-size:13px;font-weight:700;color:var(--sub);text-decoration:none;white-space:nowrap}
 #dm .em-sek a .ms{font-size:18px}

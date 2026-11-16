@@ -94,7 +94,7 @@
   </div>
   @else
   <div class="bos">
-    <span class="ms b">qr_code</span>
+    <span class="ms bik">qr_code</span>
     <h3>Henüz demirbaş yok</h3>
     <p>Fırın, buzdolabı, kasa, tablet, mobilya, depo rafı… Kaydettiğin her ekipmana sistem barkod verir; etiketini basıp yapıştırırsın, okutunca kartı açılır.</p>
     @if ($duzenler)<button class="b ana" type="button" onclick="dmYeni()"><span class="ms">add_box</span> İlk demirbaşı ekle</button>@endif

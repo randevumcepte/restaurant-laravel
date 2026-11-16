@@ -81,3 +81,26 @@ body.koyu #dm .hazir button{color:#c7d2fe;border-color:#4c4fa0}
 }
 @media (max-width:520px){ #dm .pano{padding:12px 12px 90px} }
 </style>
+<style>
+/* Renk katmanı: sayfa zemini, adım kartları, boş durum, kartlar, ürün satırı şeridi */
+#dm{background:radial-gradient(1200px 420px at 15% -80px,rgba(99,102,241,.13),transparent 70%),radial-gradient(900px 380px at 100% 0,rgba(236,72,153,.08),transparent 70%),linear-gradient(180deg,#EEF0FF 0,#F4F5FB 420px)}
+body.koyu #dm{background:radial-gradient(1200px 420px at 15% -80px,rgba(99,102,241,.18),transparent 70%),var(--bg)}
+#dm nav.em-sek{background:linear-gradient(135deg,#EDE9FE,#E0E7FF 50%,#FCE7F3);border-color:#DDD6FE}
+body.koyu #dm nav.em-sek{background:var(--card);border-color:var(--line)}
+#dm .adim{--ac:#6366F1;background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 11%,#fff),#fff 75%);border-color:color-mix(in srgb,var(--ac) 25%,#fff)}
+#dm .adim:nth-child(2){--ac:#10B981}
+#dm .adim:nth-child(3){--ac:#F59E0B}
+#dm .adim .no{background:var(--ac);color:#fff;box-shadow:0 4px 10px color-mix(in srgb,var(--ac) 35%,transparent)}
+body.koyu #dm .adim{background:var(--card);border-color:color-mix(in srgb,var(--ac) 35%,var(--line))}
+#dm .bos{background:linear-gradient(135deg,#EEF2FF 0%,#FDF2F8 55%,#FFFBEB 100%);border:1.5px dashed #C7D2FE}
+body.koyu #dm .bos{background:var(--card);border-color:var(--line)}
+#dm .bos .ms.bik{background:linear-gradient(135deg,#6366F1,#EC4899);color:#fff;box-shadow:0 10px 24px rgba(99,102,241,.3)}
+#dm .kart{background:linear-gradient(180deg,color-mix(in srgb,#6366F1 4%,var(--card)) 0,var(--card) 110px);border-color:color-mix(in srgb,#6366F1 14%,var(--line))}
+#dm .em-sat{border-left:4px solid var(--sc,#6366F1);background:linear-gradient(90deg,color-mix(in srgb,var(--sc,#6366F1) 5%,var(--card)) 0,var(--card) 260px)}
+#dm .okut{border-color:#C7D2FE;background:linear-gradient(90deg,#F5F3FF,var(--card) 40%)}
+body.koyu #dm .okut{background:var(--card);border-color:var(--line)}
+#dm .k{background:linear-gradient(135deg,color-mix(in srgb,var(--kr) 15%,#fff),#fff 85%);border-color:color-mix(in srgb,var(--kr) 30%,#fff)}
+#dm .k .kd{color:var(--kr)}
+#dm .k .ki{background:var(--kr);color:#fff;box-shadow:0 4px 12px color-mix(in srgb,var(--kr) 35%,transparent)}
+body.koyu #dm .k{background:var(--card);border-color:color-mix(in srgb,var(--kr) 35%,var(--line))}
+</style>

@@ -52,7 +52,7 @@
         <div class="adim"><span class="no">3</span><div><b>Bas, okut, sat</b><span class="t">Etikette üretim, SKT ve parti otomatik gelir. Menüye bağlı ürünün barkodu kasada okutulunca satışa düşer.</span></div></div>
       </div>
       <div class="bos">
-        <span class="ms b">local_offer</span>
+        <span class="ms bik">local_offer</span>
         <h3>Henüz etiketli ürün yok</h3>
         <p>Kasap köftesi, şarküteri peyniri, kendi ürettiğin şişelenmiş ürün… Ürünü bir kez tanımla; etiketi, raf kartı ve barkodu buradan basılır.</p>
         @if ($duzenler)<button class="b ana" type="button" onclick="emYeni()"><span class="ms">add_box</span> İlk ürünü ekle</button>@endif
@@ -73,7 +73,7 @@
       </div>
       <div class="liste" id="emListe">
         @foreach ($liste as $u)
-          <div class="em-sat {{ $u->aktif ? '' : 'pasif' }}" data-tur="{{ implode(',', $u->tur_liste) }}" data-ara="{{ mb_strtolower($u->ad . ' ' . $u->barkod . ' ' . ($u->plu ? 'plu' . $u->plu . ' ' . $u->plu : '') . ' ' . $u->kategori . ' ' . $u->menu_ad) }}">
+          <div class="em-sat {{ $u->aktif ? '' : 'pasif' }}" style="--sc:{{ $turRenk[$u->tur_liste[0] ?? 'paket'] ?? '#6366F1' }}" data-tur="{{ implode(',', $u->tur_liste) }}" data-ara="{{ mb_strtolower($u->ad . ' ' . $u->barkod . ' ' . ($u->plu ? 'plu' . $u->plu . ' ' . $u->plu : '') . ' ' . $u->kategori . ' ' . $u->menu_ad) }}">
             <div class="kim">
               <span class="av" style="{{ $u->urun_id ? '' : 'background:#FEF3C7;color:#B45309' }}"><span class="ms">{{ in_array('tarti', $u->tur_liste, true) ? 'scale' : ($u->urun_id ? 'restaurant_menu' : 'local_shipping') }}</span></span>
               <div style="min-width:0">
@@ -392,7 +392,7 @@
     @php $bekleyen = $raflar->where('raf_bekliyor', true); @endphp
     <div class="bilgi" style="margin-top:12px"><span class="ms">gavel</span><div><b>Fiyat Etiketi Yönetmeliği:</b> rafta satış fiyatı (tüm vergiler dahil), birim fiyatı (kg/lt), üretim yeri ve tarih görünmelidir. İndirimde eski fiyat olarak son 30 günün en düşük fiyatı yazılır; sistem bunu fiyat geçmişinden kendisi hesaplar. Yerli üretim ürünlerde "Yerli Üretim" ibaresi basılır.</div></div>
     @if ($raflar->isEmpty())
-      <div class="bos"><span class="ms b">style</span><h3>Raf kartı seçili ürün yok</h3><p>Ürün eklerken "Raf kartı" türünü seç; fiyatı değiştiğinde kartı yeniden basman gerektiğini sistem burada hatırlatır.</p><a class="b ana" href="/barkod-etiket"><span class="ms">inventory</span> Ürünlere git</a></div>
+      <div class="bos"><span class="ms bik">style</span><h3>Raf kartı seçili ürün yok</h3><p>Ürün eklerken "Raf kartı" türünü seç; fiyatı değiştiğinde kartı yeniden basman gerektiğini sistem burada hatırlatır.</p><a class="b ana" href="/barkod-etiket"><span class="ms">inventory</span> Ürünlere git</a></div>
     @else
     <form method="GET" action="/barkod-etiket/raf-yazdir" class="em-iz" id="rafForm" onsubmit="return rafGonder()">
       <div class="kart">
