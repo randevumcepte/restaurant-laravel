@@ -5,6 +5,7 @@
 @section('title', 'Anlaşma Raporları')
 
 @push('head')
+<link rel="stylesheet" href="/grafik.css?v=2">
 <style>
 #far{--mor:#7C3AED;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;
   --card:#fff;--card2:#f1f5f9;--bg:#f6f7fb;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e5e7eb}
@@ -99,6 +100,7 @@ body.koyu #far .yes{color:#34d399}body.koyu #far .kir{color:#fb7185}
   #far .baski-bas{display:block !important}
 }
 #far .baski-bas{display:none;margin-bottom:12px}
+#far .gr-izgara{margin:4px 0 14px}
 /* ── Renk katmanı (Fiyat Anlaşmaları ile aynı): yumuşak indigo-mor üst bant, açık tonlu kartlar ── */
 #far{--marka:#6366F1;--marka2:#8B5CF6}
 #far .ust{background:linear-gradient(120deg,#6366F1 0%,#7C6CF4 55%,#8B5CF6 100%);border-radius:18px;padding:14px 16px;box-shadow:0 10px 26px rgba(99,102,241,.2);margin-bottom:14px}
@@ -127,6 +129,7 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
 @endpush
 
 @section('content')
+{!! _grJs() !!}
 @php
   $tl = fn ($v) => number_format((float) $v, 2, ',', '.') . ' ₺';
   $tl0 = fn ($v) => number_format(round((float) $v), 0, ',', '.') . ' ₺';
@@ -191,6 +194,22 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
         @endforeach
       </div>
       <div class="aylar">@foreach ($T['aylik'] as $ay => $v)<span>{{ $ayAd($ay) }}</span>@endforeach</div>
+      @php
+        $gKaz = collect($T['satir'])->filter(fn ($s) => $s['tasarruf'] >= 0.5)->sortByDesc('tasarruf')->take(10)->values()->all();
+        $gKay = collect($T['satir'])->filter(fn ($s) => $s['tasarruf'] <= -0.5)->sortBy('tasarruf')->take(10)->values()->all();
+      @endphp
+      @if (count($gKaz) >= 2 || $gKay)
+        <div class="gr-izgara" style="margin-top:14px">
+          @if ($gKaz)
+          <div class="gr-kart{{ $gKay ? '' : ' tam' }}"><h4>En çok kazandıran anlaşmalar</h4><p class="gr-ac">Dönemde piyasaya (ya da anlaşma öncesi fiyata) göre cepte kalan tutar, anlaşma başına.</p>
+            {!! _grCubuk(array_map(fn ($s) => $s['mal'] . ' · ' . $s['ted'], $gKaz), array_map(fn ($s) => round($s['tasarruf'], 2), $gKaz), 'tl', 'var(--k3)', array_map(fn ($s) => 'kıyas: ' . $s['kaynak'], $gKaz)) !!}</div>
+          @endif
+          @if ($gKay)
+          <div class="gr-kart{{ $gKaz ? '' : ' tam' }}"><h4>Piyasadan pahalı kalan anlaşmalar</h4><p class="gr-ac">Anlaşmalı fiyatın kıyas fiyatının üstünde kaldığı alışlarda fazladan ödenen tutar.</p>
+            {!! _grCubuk(array_map(fn ($s) => $s['mal'] . ' · ' . $s['ted'], $gKay), array_map(fn ($s) => round(-$s['tasarruf'], 2), $gKay), 'tl', 'var(--k8)', array_map(fn ($s) => 'kıyas: ' . $s['kaynak'], $gKay)) !!}</div>
+          @endif
+        </div>
+      @endif
       @if ($T['kayip'] > 0)<p class="not-k">Brüt kazanç {{ $tl0($T['toplam'] + $T['kayip']) }}, anlaşmanın piyasadan pahalı kaldığı alışlarda kayıp {{ $tl0($T['kayip']) }}.</p>@endif
       <div class="tablo" style="margin-top:14px"><table>
         <thead><tr><th>Malzeme</th><th>Tedarikçi</th><th class="s">Anlaşma</th><th class="s">Kıyas fiyatı</th><th>Kıyas</th><th class="s">Alınan</th><th class="s">Kazanç</th></tr></thead>
@@ -209,6 +228,21 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
   <div class="panel" id="far-fazla"><div class="kart">
     <div class="kb"><span class="ms">report</span><h3>Anlaşma üstü kesilen faturalar</h3><a class="btn ik yazdirma" href="{{ $indir('fazla') }}"><span class="ms">download</span> Excel</a></div>
     <p class="acik">Tedarikçi, anlaşma döneminde anlaşmalı fiyatın üstünde fatura kestiyse burada çıkar. Listeyi tedarikçiye gönderip <b>iade ya da sonraki faturadan mahsup</b> iste.</p>
+    @php
+      $gFzMal = []; foreach ($F['ted'] as $t) foreach ($t['satir'] as $s) $gFzMal[$s['mal']] = ($gFzMal[$s['mal']] ?? 0) + $s['fazla']; arsort($gFzMal); $gFzMal = array_slice($gFzMal, 0, 10, true);
+    @endphp
+    @if (count($F['ted']) >= 2 || count($gFzMal) >= 2)
+      <div class="gr-izgara">
+        @if (count($F['ted']) >= 2)
+        <div class="gr-kart{{ count($gFzMal) >= 2 ? '' : ' tam' }}"><h4>Tedarikçiye göre fazla ödeme</h4><p class="gr-ac">Anlaşmalı fiyatın üstünde kesilen faturalardaki toplam fark; iade/mahsup istenecek tutar.</p>
+          {!! _grCubuk(array_column($F['ted'], 'ted'), array_map(fn ($t) => round($t['toplam'], 2), $F['ted']), 'tl', 'var(--k8)', array_map(fn ($t) => count($t['satir']) . ' kalem', $F['ted'])) !!}</div>
+        @endif
+        @if (count($gFzMal) >= 2)
+        <div class="gr-kart{{ count($F['ted']) >= 2 ? '' : ' tam' }}"><h4>Malzemeye göre fazla ödeme</h4><p class="gr-ac">Anlaşma üstü faturanın en çok hangi malzemelerde kesildiği.</p>
+          {!! _grCubuk(array_keys($gFzMal), array_map(fn ($v) => round($v, 2), array_values($gFzMal)), 'tl', 'var(--k2)') !!}</div>
+        @endif
+      </div>
+    @endif
     @forelse ($F['ted'] as $t)
       @php
         $wa = "Merhaba, " . $trh($bas) . " – " . $trh($bit) . " döneminde anlaşmalı fiyatın üstünde kesilen faturalar:\n";
@@ -239,6 +273,14 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
       <div class="bos"><span class="ms">flag</span>Taahhüt girilmiş anlaşma yok. Sözleşmede ya da tekli fiyatta "aylık taahhüt" alanını doldurursan burada takip edilir.</div>
     @else
       @php $tumAy = collect($rapor['taahhut'])->flatMap(fn ($t) => array_keys($t['aylar']))->unique()->sort()->values(); @endphp
+      @php
+        $gTh = collect($rapor['taahhut'])->map(fn ($t) => ['ad' => $t['mal'] . ' · ' . $t['ted'], 'ort' => round(collect($t['aylar'])->avg('oran'), 1), 'ay' => count($t['aylar']),
+          'alt' => collect($t['aylar'])->filter(fn ($v) => $v['oran'] < 80)->count()])->sortBy('ort')->take(12)->values()->all();
+      @endphp
+      @if (count($gTh) >= 2)
+        <div class="gr-izgara"><div class="gr-kart tam"><h4>Ortalama taahhüt gerçekleşmesi</h4><p class="gr-ac">Her anlaşmada aylık alımın taahhüde oranı, dönem ortalaması (en düşükten). %100 = taahhüt tam tutuldu.</p>
+          {!! _grCubuk(array_column($gTh, 'ad'), array_column($gTh, 'ort'), 'y', 'var(--k7)', array_map(fn ($x) => $x['ay'] . ' ay · ' . $x['alt'] . ' ay %80 altı', $gTh)) !!}</div></div>
+      @endif
       <div class="tablo"><table>
         <thead><tr><th>Malzeme</th><th>Tedarikçi</th><th class="s">Taahhüt/ay</th>@foreach ($tumAy as $ay)<th class="s">{{ $ayAd($ay) }}</th>@endforeach</tr></thead>
         <tbody>@foreach ($rapor['taahhut'] as $t)
@@ -263,6 +305,10 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
     @if (!count($K['oneri']))
       <div class="bos"><span class="ms">verified</span>Anlaşmasız alım yok ya da bu dönemde fatura girilmemiş.</div>
     @else
+      @if (count($K['oneri']) >= 2)
+        <div class="gr-izgara"><div class="gr-kart tam"><h4>Anlaşmasız en büyük harcamalar</h4><p class="gr-ac">Anlaşması olmayan malzemelere dönemde ödenen tutar; ipucunda fiyat oynaklığı. Uzun ve oynak olan, anlaşma için ilk aday.</p>
+          {!! _grCubuk(array_column($K['oneri'], 'mal'), array_column($K['oneri'], 'harcama'), 'tl', 'var(--k4)', array_map(fn ($s) => $s['alis'] . ' alış · ' . $s['ted_say'] . ' tedarikçi · oynaklık %' . $s['oynaklik'], $K['oneri'])) !!}</div></div>
+      @endif
       <div class="tablo"><table>
         <thead><tr><th>Malzeme</th><th class="s">Harcama</th><th class="s">Alış</th><th class="s">Tedarikçi</th><th class="s">Fiyat aralığı</th><th class="s">Oynaklık</th><th></th></tr></thead>
         <tbody>@foreach ($K['oneri'] as $s)
@@ -282,6 +328,11 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
     @if (!count($rapor['zarar']))
       <div class="bos"><span class="ms">balance</span>Kıyas yapılacak veri yok: yürürlükteki anlaşmalı malzemeler son 30 günde başka tedarikçiden alınmamış, halde de karşılığı yok.</div>
     @else
+      @php $gZr = collect($rapor['zarar'])->filter(fn ($s) => $s['piyasa_fark'] !== null)->sortByDesc('piyasa_fark')->take(12)->values()->all(); @endphp
+      @if (count($gZr) >= 2)
+        <div class="gr-izgara"><div class="gr-kart tam"><h4>Anlaşma fiyatı piyasaya göre</h4><p class="gr-ac">Anlaşma fiyatının son 30 günde başka tedarikçiden alınan en düşük fiyattan farkı. Artı (kırmızı) = anlaşma pahalı, eksi (mavi) = anlaşma ucuz.</p>
+          {!! _grCubuk(array_map(fn ($s) => $s['mal'] . ' · ' . $s['ted'], $gZr), array_map(fn ($s) => (float) $s['piyasa_fark'], $gZr), 'y', 'var(--k8)', array_map(fn ($s) => 'piyasa: ' . ($s['piyasa_ted'] ?? '—') . ($s['zarar'] ? ' · yeniden pazarlık' : ''), $gZr)) !!}</div></div>
+      @endif
       <div class="tablo"><table>
         <thead><tr><th>Malzeme</th><th>Tedarikçi</th><th class="s">Anlaşma</th><th class="s">Piyasa (en düşük)</th><th class="s">Fark</th><th class="s">Hal ort.</th><th class="s">Fark</th><th>Durum</th></tr></thead>
         <tbody>@foreach ($rapor['zarar'] as $s)
@@ -303,6 +354,11 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
     @if (!count($rapor['yenileme']['satir']))
       <div class="bos"><span class="ms">history</span>Henüz yenilenmiş anlaşma yok. Aynı tedarikçi ve malzeme için ikinci anlaşma girildiğinde fiyat değişimi burada izlenir.</div>
     @else
+      @php $gYn = collect($rapor['yenileme']['satir'])->filter(fn ($s) => $s['toplam'] !== null)->sortByDesc('toplam')->take(12)->values()->all(); @endphp
+      @if (count($gYn) >= 2)
+        <div class="gr-izgara"><div class="gr-kart tam"><h4>Yenilemelerde toplam fiyat değişimi</h4><p class="gr-ac">İlk anlaşmadan son anlaşmaya fiyatın yüzde değişimi. Artı (kırmızı) = zam alındı, eksi (mavi) = indirim alındı.</p>
+          {!! _grCubuk(array_map(fn ($s) => $s['mal'] . ' · ' . $s['ted'], $gYn), array_map(fn ($s) => (float) $s['toplam'], $gYn), 'y', 'var(--k2)', array_map(fn ($s) => count($s['adimlar']) . ' anlaşma', $gYn)) !!}</div></div>
+      @endif
       @if (count($rapor['yenileme']['ted']))
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           @foreach ($rapor['yenileme']['ted'] as $t)<span class="roz {{ $t['ort'] > 15 ? 'k' : ($t['ort'] > 0 ? 'a' : 'y') }}" style="font-size:12px;padding:5px 11px">{{ $t['ted'] }}: yenilemede ort. {{ $t['ort'] > 0 ? '+' : '' }}{{ number_format($t['ort'], 1, ',', '.') }}% ({{ $t['say'] }})</span>@endforeach
@@ -326,6 +382,22 @@ body.koyu #far .bos .ms{color:#c7d2fe;background:#26285a}
     @if (!count($rapor['tedarikci']))
       <div class="bos"><span class="ms">local_shipping</span>Anlaşmalı tedarikçi yok.</div>
     @else
+      @php
+        $gUy = collect($rapor['tedarikci'])->filter(fn ($s) => $s['uyum'] !== null)->sortBy('uyum')->take(12)->values()->all();
+        $gTs2 = collect($rapor['tedarikci'])->filter(fn ($s) => $s['teslim'] !== null)->sortBy('teslim')->take(12)->values()->all();
+      @endphp
+      @if (count($gUy) >= 2 || count($gTs2) >= 2)
+        <div class="gr-izgara">
+          @if (count($gUy) >= 2)
+          <div class="gr-kart{{ count($gTs2) >= 2 ? '' : ' tam' }}"><h4>Fatura uyumu</h4><p class="gr-ac">Anlaşmalı kalemlerin yüzde kaçı anlaşma fiyatından (ya da altından) faturalandı; en düşük başta.</p>
+            {!! _grCubuk(array_column($gUy, 'ted'), array_map(fn ($s) => (float) $s['uyum'], $gUy), 'y', 'var(--k1)', array_map(fn ($s) => $s['uyumlu'] . '/' . $s['fatura'] . ' kalem uyumlu', $gUy)) !!}</div>
+          @endif
+          @if (count($gTs2) >= 2)
+          <div class="gr-kart{{ count($gUy) >= 2 ? '' : ' tam' }}"><h4>Zamanında teslim</h4><p class="gr-ac">Dönemdeki siparişlerin yüzde kaçı söz verilen tarihte ya da önce teslim alındı; en düşük başta.</p>
+            {!! _grCubuk(array_column($gTs2, 'ted'), array_map(fn ($s) => (float) $s['teslim'], $gTs2), 'y', 'var(--k3)') !!}</div>
+          @endif
+        </div>
+      @endif
       <div class="tablo"><table>
         <thead><tr><th>Tedarikçi</th><th class="s">Yürürlükte</th><th class="s">Anlaşmalı fatura</th><th class="s">Fatura uyumu</th><th class="s">Kazanç</th><th class="s">Fazla kesilen</th><th class="s">Zamanında teslim</th></tr></thead>
         <tbody>@foreach ($rapor['tedarikci'] as $s)

@@ -13,6 +13,7 @@ body.koyu{
 .gr-alan{position:relative;margin:20px 0 0 54px}
 .gr-cz{position:absolute;left:0;right:0;border-top:1px solid var(--gr-izg)}
 .gr-cz span{position:absolute;right:calc(100% + 7px);top:-7px;font-size:9.5px;color:var(--gr-mut);white-space:nowrap}
+.gr-cz.gr-sifir{border-top:1.5px solid var(--gr-ekseni)}
 .gr-x{display:flex;gap:2px;margin:4px 0 0 54px;border-top:1px solid var(--gr-ekseni);padding-top:4px}
 .gr-x span{flex:1;min-width:0;text-align:center;font-size:9.5px;color:var(--gr-sub);white-space:nowrap}
 .gr-lej{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--gr-sub);font-weight:600}
@@ -44,7 +45,7 @@ body.koyu{
 .gr-hsvg{flex:none}
 .gr-dilim{transition:stroke-width .15s}.gr-dilim:hover{stroke-width:22px}
 .gr-ht1{font-size:9px;fill:var(--gr-mut);font-weight:700}.gr-ht2{font-size:13px;fill:var(--gr-ink);font-weight:900}
-.gr-hlej{flex:1;min-width:0;display:grid;gap:5px}
+.gr-hlej{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:5px}
 .gr-hlej div{display:flex;align-items:center;gap:7px;font-size:11px}
 .gr-hlej i{width:10px;height:10px;border-radius:3px;flex:none}
 .gr-hlej .a{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--gr-sub)}

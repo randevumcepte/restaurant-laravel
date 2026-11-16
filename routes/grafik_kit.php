@@ -95,25 +95,38 @@ if (!function_exists('_grCizgi')) {
         static $no = 0; $no++;
         $n = count($et); if ($n < 2 || !$seriler) return '';
         $hepsi = []; foreach ($seriler as $s) foreach ($s['dg'] as $v) if ($v !== null) $hepsi[] = (float) $v;
-        $ust = _grUst(max(0, ...$hepsi));
-        $x = fn($i) => round($i / ($n - 1) * 1000, 2); $y = fn($v) => round(100 - (float) $v / $ust * 100, 3);
+        // eksen: negatif değer varsa alt sınır sıfırın altına iner (sıfır çizgisi ayrıca çizilir)
+        $ust = _grUst(max(0, ...$hepsi)); $mn = min(0, ...$hepsi); $alt = $mn < 0 ? -_grUst(-$mn) : 0; $ara = $ust - $alt;
+        $x = fn($i) => round($i / ($n - 1) * 1000, 2); $y = fn($v) => round(100 - ((float) $v - $alt) / $ara * 100, 3);
+        $yuzde = fn($v) => round(((float) $v - $alt) / $ara * 100, 3);
         $h = '<div class="gr-cizgi">';
         if (count($seriler) > 1) {
             $h .= '<div class="gr-lej">';
             foreach ($seriler as $j => $s) $h .= '<span><i class="' . (!empty($s['kesik']) ? 'kesik' : '') . '" style="background:' . ($s['renk'] ?? _grK($j)) . '"></i>' . _grE($s['ad']) . '</span>';
             $h .= '</div>';
         }
-        $h .= '<div class="gr-alan" style="height:' . $yuk . 'px">' . _grIzgara($ust, $tip);
+        $izg = '';
+        if ($alt < 0) {
+            foreach ([$ust, ($ust + $alt) / 2, $alt] as $dv) $izg .= '<div class="gr-cz" style="bottom:' . $yuzde($dv) . '%"><span>' . _grE(_grKisa($dv, $tip)) . '</span></div>';
+            $izg .= '<div class="gr-cz gr-sifir" style="bottom:' . $yuzde(0) . '%"><span>0</span></div>';
+        } else $izg = _grIzgara($ust, $tip);
+        $h .= '<div class="gr-alan" style="height:' . $yuk . 'px">' . $izg;
         $svg = '<svg class="gr-svg" viewBox="0 0 1000 100" preserveAspectRatio="none"><defs>';
         foreach ($seriler as $j => $s) $svg .= '<linearGradient id="grg' . $no . '_' . $j . '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' . ($s['renk'] ?? _grK($j)) . '" stop-opacity=".28"/><stop offset="1" stop-color="' . ($s['renk'] ?? _grK($j)) . '" stop-opacity="0"/></linearGradient>';
-        $svg .= '</defs>'; $nok = '';
+        $svg .= '</defs>'; $nok = ''; $etiket = []; $taban = $y(max(0, $alt));
         foreach ($seriler as $j => $s) {
             $renk = $s['renk'] ?? _grK($j); $p = []; $son = null;
             foreach ($s['dg'] as $i => $v) { if ($v === null) continue; $p[] = $x($i) . ',' . $y($v); $son = [$i, $v]; }
             if (count($p) < 2) continue;
-            if (!empty($s['alan'])) $svg .= '<path d="M' . explode(',', $p[0])[0] . ',100 L' . implode(' L', $p) . ' L' . explode(',', end($p))[0] . ',100 Z" fill="url(#grg' . $no . '_' . $j . ')" class="gr-dolgu"/>';
+            if (!empty($s['alan'])) $svg .= '<path d="M' . explode(',', $p[0])[0] . ',' . $taban . ' L' . implode(' L', $p) . ' L' . explode(',', end($p))[0] . ',' . $taban . ' Z" fill="url(#grg' . $no . '_' . $j . ')" class="gr-dolgu"/>';
             $svg .= '<path d="M' . implode(' L', $p) . '" fill="none" stroke="' . $renk . '" stroke-width="' . (!empty($s['kesik']) ? 1.6 : 2.2) . '" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"' . (!empty($s['kesik']) ? ' stroke-dasharray="5 4"' : ' class="gr-cyol"') . '/>';
-            if ($son) $nok .= '<span class="gr-nok" style="left:' . ($son[0] / ($n - 1) * 100) . '%;bottom:' . ((float) $son[1] / $ust * 100) . '%;background:' . $renk . '"></span><em class="gr-sondeg" style="bottom:calc(' . ((float) $son[1] / $ust * 100) . '% + 6px)">' . _grE(_grKisa($son[1], $tip)) . '</em>';
+            if ($son) { $nok .= '<span class="gr-nok" style="left:' . ($son[0] / ($n - 1) * 100) . '%;bottom:' . $yuzde($son[1]) . '%;background:' . $renk . '"></span>'; $etiket[] = [$yuzde($son[1]), _grKisa($son[1], $tip)]; }
+        }
+        // son değer etiketleri birbirine çok yakınsa üst üste binmesin: en az ~11px aralık
+        usort($etiket, fn($a, $b) => $b[0] <=> $a[0]); $min = 11 / $yuk * 100; $onceki = null;
+        foreach ($etiket as [$b, $yazi]) {
+            $b = $onceki !== null ? min($b, $onceki - $min) : $b; $onceki = $b;
+            $nok .= '<em class="gr-sondeg" style="bottom:calc(' . round($b, 3) . '% + 6px)">' . _grE($yazi) . '</em>';
         }
         $h .= $svg . '</svg>' . $nok . '<div class="gr-hov">';
         for ($i = 0; $i < $n; $i++) {

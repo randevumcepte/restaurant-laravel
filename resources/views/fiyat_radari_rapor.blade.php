@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ $dosya }}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-<link rel="stylesheet" href="/grafik.css?v=1">
+<link rel="stylesheet" href="/grafik.css?v=2">
 @php
   $tema = '#' . ltrim($tema ?? '7C3AED', '#');
   $aiRapor = ($rapor ?? '') === 'ai';

@@ -4,7 +4,9 @@
 @section('baslik', 'Fatura Analizleri')
 @section('rk_alt', 'Kaçan tasarruf · zamlar ve enflasyon · ürün fiyat izi · ödeme takvimi — alış faturalarından, ücretsiz')
 
+@push('head')<link rel="stylesheet" href="/grafik.css?v=2">@endpush
 @section('content')
+{!! _grJs() !!}
 @php
   $tl = fn($v) => $v === null ? '—' : number_format((float) $v, 2, ',', '.') . ' ₺';
   $yz = fn($v) => $v === null ? '—' : (($v > 0 ? '+' : '') . number_format((float) $v, 1, ',', '.') . '%');
@@ -23,6 +25,8 @@
   .fa-kpi .rk-card{padding:14px 16px}.fa-kpi .e{font-size:12px;color:var(--sub);font-weight:600}.fa-kpi .d{font-size:21px;font-weight:800;margin-top:4px}
   .fa-not{font-size:12px;color:var(--sub);margin:-4px 0 12px}
   .fa-bos{text-align:center;padding:34px}
+  .fa-grafik{margin-bottom:14px}
+  .fa-grafik .gr-hlej{grid-template-columns:minmax(0,1fr)} /* uzun tedarikçi adı lejantı taşırmasın */
 </style>
 
 @if (session('ok'))<div class="rk-flash ok">{{ session('ok') }}</div>@endif
@@ -59,6 +63,38 @@
   @if (!$t)
     <div class="rk-card fa-bos rk-sub">Bu dönemde alış faturası yok. Alış faturaları elle girildikçe ya da <a href="/efatura-gelen">Gelen e-Faturalar</a>'dan aktarıldıkça dolar.</div>
   @else
+  @php
+    // tedarikçi farkı varsa onu, yoksa (ürünler tek tedarikçiden alınmışsa) fiyat farkını çiz
+    $gMod = array_sum(array_column($t, 'kac_ted')) > 0 ? 'ted' : 'fiyat';
+    $gAlan = $gMod === 'ted' ? 'kac_ted' : 'kac_fiyat';
+    $gUrun = collect($t)->filter(fn($x) => $x[$gAlan] > 0)->sortByDesc($gAlan)->take(10)->values()->all();
+    $gTed = []; $gAy = [];
+    foreach ($t as $x) { foreach ($x[$gAlan . '_ted'] ?? [] as $a => $v) $gTed[$a] = ($gTed[$a] ?? 0) + $v; foreach ($x[$gAlan . '_ay'] ?? [] as $a => $v) $gAy[$a] = ($gAy[$a] ?? 0) + $v; }
+    arsort($gTed);
+    $gAyAd = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+    // dönemdeki tüm ayları göster (kaçan olmayan ay 0)
+    $gAyTum = []; $c = \Carbon\Carbon::parse($bas)->startOfMonth(); while ($c <= \Carbon\Carbon::parse($bit) && count($gAyTum) < 36) { $gAyTum[$c->format('Y-m')] = round($gAy[$c->format('Y-m')] ?? 0, 2); $c->addMonth(); }
+    $gAyVar = count($gAyTum) >= 2 && array_sum($gAyTum) > 0;
+    $gNe = $gMod === 'ted' ? 'o ay en ucuz ortalamayı veren tedarikçiden alınsaydı' : 'o ay ödenen en düşük fiyattan alınsaydı';
+  @endphp
+  @if ($gUrun || count($gTed) >= 2 || $gAyVar)
+  <div class="gr-izgara fa-grafik">
+    @if ($gMod === 'fiyat' && $gUrun)<p class="gr-ac" style="grid-column:1/-1;margin:0">Bu dönemde aynı ürün aynı ay birden çok tedarikçiden alınmadığı için tedarikçi farkı yok; grafikler <b>fiyat farkını</b> gösteriyor.</p>@endif
+    @if ($gUrun)
+    <div class="gr-kart{{ count($gTed) >= 2 ? '' : ' tam' }}"><h4>{{ $gMod === 'ted' ? 'Kaçan tasarruf' : 'Fiyat farkı' }} — ilk {{ count($gUrun) }} ürün</h4><p class="gr-ac">Ürün başına, {{ $gNe }} cepte kalacak tutar.</p>
+      {!! _grCubuk(array_column($gUrun, 'ad'), array_column($gUrun, $gAlan), 'tl', $gMod === 'ted' ? 'var(--k8)' : 'var(--k4)', array_map(fn($x) => $x['ted_say'] . ' tedarikçi · ' . ($gMod === 'ted' ? 'en ucuz: ' . ($x['en_iyi_ted'] ?? '—') : 'en düşük: ' . $x['min_ted']), $gUrun)) !!}</div>
+    @endif
+    @if (count($gTed) >= 2)
+    <div class="gr-kart{{ $gUrun ? '' : ' tam' }}"><h4>{{ $gMod === 'ted' ? 'Pahalı alınan tedarikçiler' : 'Fiyat farkı — tedarikçiye göre' }}</h4><p class="gr-ac">{{ $gMod === 'ted' ? 'Kaçan tasarrufun hangi tedarikçinin faturalarında oluştuğu (aynı ay daha ucuz alternatif varken).' : 'Aynı ay daha düşük fiyat ödenmişken pahalıya alınan faturaların tedarikçisi.' }}</p>
+      @if (count($gTed) <= 8) {!! _grHalka(array_keys($gTed), array_values($gTed), 'tl', 'Fark') !!}
+      @else {!! _grCubuk(array_keys(array_slice($gTed, 0, 10, true)), array_values(array_slice($gTed, 0, 10, true)), 'tl', 'var(--k2)') !!} @endif</div>
+    @endif
+    @if ($gAyVar)
+    <div class="gr-kart tam"><h4>Aylık {{ $gMod === 'ted' ? 'kaçan tasarruf' : 'fiyat farkı' }}</h4><p class="gr-ac">Her ay fazladan ödenen tutar; {{ $gNe }} bu para cepte kalırdı.</p>
+      {!! _grSutun(array_map(fn($a) => $gAyAd[(int) substr($a, 5, 2)] . ' ' . substr($a, 2, 2), array_keys($gAyTum)), array_values($gAyTum), 'tl', $gMod === 'ted' ? 'var(--k8)' : 'var(--k4)', 150) !!}</div>
+    @endif
+  </div>
+  @endif
   <div class="rk-tablo"><table>
     <thead><tr><th>Ürün</th><th class="sag">Alım</th><th class="sag">Tutar</th><th class="sag">Ort. fiyat</th><th>En ucuz tedarikçi</th><th class="sag">En düşük ödenen</th><th class="sag">Tedarikçi farkı</th><th class="sag">Fiyat farkı</th></tr></thead>
     <tbody>@foreach (array_slice($t, 0, 300) as $x)
@@ -87,6 +123,23 @@
   @if (!$e['urun'])
     <div class="rk-card fa-bos rk-sub">Kıyas için bir ürünün aynı tedarikçiden en az iki farklı ayda alınmış olması gerekir. Dönemi genişletin ya da alış faturaları biriktikçe tekrar bakın.</div>
   @else
+  @php
+    $gEn = $e['endeks'] ?? ['ay' => []];
+    $gTufeVar = count(array_filter($gEn['tufe'] ?? [], fn($v) => $v !== null)) >= 2;
+    $gZamli = collect($e['urun'])->sortByDesc('zam')->filter(fn($x) => $x['zam'] > 0)->take(10)->values()->all();
+  @endphp
+  @if (count($gEn['ay']) >= 2 || $gZamli)
+  <div class="gr-izgara fa-grafik">
+    @if (count($gEn['ay']) >= 2)
+    <div class="gr-kart{{ $gZamli ? '' : ' tam' }}"><h4>Birikimli zam ve TÜFE</h4><p class="gr-ac">Alış fiyatlarınızın dönem başından bu yana harcama ağırlıklı birikimli artışı; kesikli çizgi aynı aylardaki birikimli TÜFE. @if (!$gTufeVar)<b>TÜFE girilmediği için yalnız alış zammı çizildi</b>; yukarıdan aylık TÜFE girin.@endif</p>
+      {!! _grCizgi($gEn['ay'], array_values(array_filter([['ad' => 'Alış fiyatı zammı', 'dg' => $gEn['zam'], 'renk' => 'var(--k8)', 'alan' => true], $gTufeVar ? ['ad' => 'TÜFE', 'dg' => $gEn['tufe'], 'renk' => 'var(--k1)', 'kesik' => true] : null])), 'y') !!}</div>
+    @endif
+    @if ($gZamli)
+    <div class="gr-kart{{ count($gEn['ay']) >= 2 ? '' : ' tam' }}"><h4>En çok zamlanan ürünler</h4><p class="gr-ac">İlk ve son alış ayı arasındaki fiyat artışı (aynı tedarikçiden).</p>
+      {!! _grCubuk(array_column($gZamli, 'ad'), array_column($gZamli, 'zam'), 'y', 'var(--k2)', array_map(fn($x) => $x['ted'] . ($x['fark'] !== null ? ' · TÜFE farkı ' . ($x['fark'] > 0 ? '+' : '') . number_format($x['fark'], 1, ',', '.') . ' puan' : ''), $gZamli)) !!}</div>
+    @endif
+  </div>
+  @endif
   <div class="rk-bolum" style="margin:6px 0"><span class="cubuk" style="background:var(--mor1)"></span><span class="b">Tedarikçiler</span></div>
   <div class="rk-tablo" style="margin-bottom:16px"><table>
     <thead><tr><th>Tedarikçi</th><th class="sag">Ürün</th><th class="sag">Tutar</th><th class="sag">Ort. zam</th><th class="sag">TÜFE</th><th class="sag">Fark</th><th class="sag">Enflasyon üstü ürün</th></tr></thead>
@@ -158,6 +211,23 @@
   @if (!$o['fatura'])
     <div class="rk-card fa-bos rk-sub">Açık fatura yok.</div>
   @else
+  @php
+    // haftalık yük: _fanOdeme'nin hafta anahtarları aynen yeniden kurulur, boş haftalar 0 (zaman ekseni kesintisiz)
+    $gHEt = []; $gHDg = []; $gBugun = today();
+    if ($gec > 0) { $gHEt[] = 'Gecikmiş'; $gHDg[] = round($gec, 2); }
+    for ($h = 0; $h <= 11; $h++) { $hb = $gBugun->copy()->addDays($h * 7); $gk = sprintf('%d|%s – %s', $h + 1, $hb->format('d.m'), $hb->copy()->addDays(6)->format('d.m')); $gHEt[] = $hb->format('d.m'); $gHDg[] = round($o['hafta'][$gk]['tutar'] ?? 0, 2); }
+    if (($o['hafta']['99|12 hafta sonrası']['tutar'] ?? 0) > 0) { $gHEt[] = '12+ hf'; $gHDg[] = round($o['hafta']['99|12 hafta sonrası']['tutar'], 2); }
+    $gOTed = []; foreach ($o['fatura'] as $x) $gOTed[$x['ted']] = ($gOTed[$x['ted']] ?? 0) + $x['kalan']; arsort($gOTed);
+  @endphp
+  <div class="gr-izgara fa-grafik">
+    <div class="gr-kart{{ count($gOTed) >= 2 ? '' : ' tam' }}"><h4>Haftalık ödeme yükü</h4><p class="gr-ac">Vadesine göre her hafta ödenmesi gereken açık fatura tutarı (sütun altı: haftanın ilk günü).</p>
+      {!! _grSutun($gHEt, $gHDg, 'tl', 'var(--k1)', 160) !!}</div>
+    @if (count($gOTed) >= 2)
+    <div class="gr-kart"><h4>Kime ne kadar borç var</h4><p class="gr-ac">Açık faturaların kalan tutarı, tedarikçiye göre.</p>
+      @if (count($gOTed) <= 8) {!! _grHalka(array_keys($gOTed), array_values($gOTed), 'tl', 'Açık') !!}
+      @else {!! _grCubuk(array_keys(array_slice($gOTed, 0, 10, true)), array_values(array_slice($gOTed, 0, 10, true)), 'tl', 'var(--k1)') !!} @endif</div>
+    @endif
+  </div>
   <div class="rk-tablo" style="margin-bottom:16px"><table>
     <thead><tr><th>Hafta</th><th class="sag">Fatura</th><th class="sag">Tutar</th><th>Tedarikçiler</th></tr></thead>
     <tbody>@foreach ($o['hafta'] as $k => $x)

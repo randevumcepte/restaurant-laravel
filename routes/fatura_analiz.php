@@ -102,17 +102,23 @@ if (!function_exists('_fanTasarruf')) {
             $enIyiTed = $tedOrt->count() >= 2 ? $tedOrt->sort()->keys()->first() : null; $enIyi = $enIyiTed !== null ? $tedOrt[$enIyiTed] : null;
             $minP = $l->min('pt');
             // Kıyas AYNI AY içinde: yıllık en düşük fiyatla kıyas enflasyonu "kaçan tasarruf" gibi gösterirdi
-            $kacTed = 0.0; $kacFiyat = 0.0;
-            foreach ($l->groupBy(fn ($k) => substr((string) $k->tarih, 0, 7)) as $ay) {
+            $kacTed = 0.0; $kacFiyat = 0.0; $kacTid = []; $kacAy = []; $kfTid = []; $kfAy = []; // grafik için: kaçan tedarikçi farkı, pahalı alınan tedarikçiye ve aya göre
+            foreach ($l->groupBy(fn ($k) => substr((string) $k->tarih, 0, 7)) as $ayK => $ay) {
                 $ayMin = $ay->min('pt'); $kacFiyat += $ay->sum(fn ($k) => max(0, $k->pt - $ayMin) * $k->qt);
+                foreach ($ay as $k) { $f = max(0, $k->pt - $ayMin) * $k->qt; if ($f <= 0) continue; $kfTid[(int) $k->tedarikci_id] = ($kfTid[(int) $k->tedarikci_id] ?? 0) + $f; $kfAy[$ayK] = ($kfAy[$ayK] ?? 0) + $f; }
                 $ayTed = $ay->groupBy('tedarikci_id')->map(fn ($x) => $x->sum('qt') > 0 ? $x->sum('tutar') / $x->sum('qt') : null)->filter();
-                if ($ayTed->count() >= 2) { $iyi = $ayTed->min(); $kacTed += $ay->sum(fn ($k) => max(0, $k->pt - $iyi) * $k->qt); }
+                if ($ayTed->count() >= 2) {
+                    $iyi = $ayTed->min(); $kacTed += $ay->sum(fn ($k) => max(0, $k->pt - $iyi) * $k->qt);
+                    foreach ($ay as $k) { $f = max(0, $k->pt - $iyi) * $k->qt; if ($f <= 0) continue; $kacTid[(int) $k->tedarikci_id] = ($kacTid[(int) $k->tedarikci_id] ?? 0) + $f; $kacAy[$ayK] = ($kacAy[$ayK] ?? 0) + $f; }
+                }
             }
+            $kacTedAd = []; foreach ($kacTid as $tid => $f) $kacTedAd[$ted[$tid] ?? '—'] = round(($kacTedAd[$ted[$tid] ?? '—'] ?? 0) + $f, 2);
+            $kfTedAd = []; foreach ($kfTid as $tid => $f) $kfTedAd[$ted[$tid] ?? '—'] = round(($kfTedAd[$ted[$tid] ?? '—'] ?? 0) + $f, 2);
             $ortP = $l->sum('qt') > 0 ? $l->sum('tutar') / $l->sum('qt') : 0;
             $minK = $l->sortBy('pt')->first();
             $o[] = ['ad' => $m->ad, 'birim' => $bAd, 'alim' => $l->count(), 'ted_say' => $tedOrt->count(), 'miktar' => $l->sum('qt'), 'tutar' => $l->sum('tutar'), 'ort' => $ortP,
                 'en_iyi_ted' => $enIyiTed !== null ? ($ted[$enIyiTed] ?? '—') : null, 'en_iyi' => $enIyi, 'min' => $minP, 'min_ted' => $ted[$minK->tedarikci_id] ?? '—', 'min_tarih' => $minK->tarih,
-                'kac_ted' => round($kacTed, 2), 'kac_fiyat' => round($kacFiyat, 2), 'mid' => $m->id];
+                'kac_ted' => round($kacTed, 2), 'kac_fiyat' => round($kacFiyat, 2), 'mid' => $m->id, 'kac_ted_ted' => $kacTedAd, 'kac_ted_ay' => $kacAy, 'kac_fiyat_ted' => $kfTedAd, 'kac_fiyat_ay' => $kfAy];
         }
         usort($o, fn ($a, $b) => [$b['kac_ted'], $b['kac_fiyat']] <=> [$a['kac_ted'], $a['kac_fiyat']]);
         return $o;
@@ -134,7 +140,7 @@ if (!function_exists('_fanEnflasyon')) {
             while ($c <= $son) { $ay = $c->format('Y-m'); if (!isset($tufe[$ay])) return null; $x *= 1 + $tufe[$ay] / 100; $c->addMonth(); }
             return ($x - 1) * 100;
         };
-        $urun = []; $eksikTufe = false; $suphe = [];
+        $urun = []; $eksikTufe = false; $suphe = []; $seriler = [];
         foreach ($s->groupBy(fn ($k) => $k->anahtar . '#' . $k->tedarikci_id) as $l) {
             $aylar = $l->groupBy(fn ($k) => substr((string) $k->tarih, 0, 7))->map(fn ($x) => $x->sum('qt') > 0 ? $x->sum('tutar') / $x->sum('qt') : null)->filter()->sortKeys();
             if ($aylar->count() < 2) continue;
@@ -143,6 +149,7 @@ if (!function_exists('_fanEnflasyon')) {
             // 3 katından fazla oynayan fiyat zam değil, ambalaj/birim karışıklığı: kıyasa katılmaz, ayrıca listelenir
             if ($pb > $pa * 3 || $pb < $pa / 3) { $suphe[] = $m->ad . ' (' . number_format($pa, 2, ',', '.') . ' → ' . number_format($pb, 2, ',', '.') . ' ₺)'; continue; }
             $zam = ($pb - $pa) / $pa * 100; $t = $birikim($a, $b);
+            $seriler[] = ['aylar' => $aylar->all(), 'w' => (float) $l->sum('tutar')];
             if ($t === null) $eksikTufe = true;
             $urun[] = ['ad' => $m->ad, 'ted' => $ted[$l->first()->tedarikci_id] ?? '—', 'tid' => $l->first()->tedarikci_id, 'ilk_ay' => $a, 'son_ay' => $b, 'ilk' => $pa, 'son' => $pb,
                 'zam' => round($zam, 2), 'tufe' => $t !== null ? round($t, 2) : null, 'fark' => $t !== null ? round($zam - $t, 2) : null, 'tutar' => $l->sum('tutar'),
@@ -156,7 +163,37 @@ if (!function_exists('_fanEnflasyon')) {
             return ['ted' => $l->first()['ted'], 'urun' => $l->count(), 'tutar' => $l->sum('tutar'), 'zam' => round($zam, 2), 'tufe' => $tufe !== null ? round($tufe, 2) : null,
                 'fark' => $tufe !== null ? round($zam - $tufe, 2) : null, 'ustu' => $l->filter(fn ($x) => $x['fark'] !== null && $x['fark'] > 0)->count()];
         })->sortByDesc(fn ($x) => $x['fark'] ?? -999)->values()->all();
-        return ['urun' => $urun, 'tedarikci' => $tedarikci, 'tufe' => $tufe, 'eksik' => $eksikTufe, 'suphe' => $suphe];
+        return ['urun' => $urun, 'tedarikci' => $tedarikci, 'tufe' => $tufe, 'eksik' => $eksikTufe, 'suphe' => $suphe, 'endeks' => _fanZamEndeksi($seriler, $tufe, $bas, $bit)];
+    }
+}
+
+// Aylık birikimli zam endeksi (grafik için): ürün×tedarikçi serilerinin ay-ay fiyat değişimi, harcama ağırlıklı
+// ortalanıp zincirlenir; alınmayan ayda son fiyat geçerli sayılır. TÜFE aynı başlangıç ayından birikir (eksik ayda kesilir).
+if (!function_exists('_fanZamEndeksi')) {
+    function _fanZamEndeksi(array $seriler, $tufe, $bas, $bit)
+    {
+        $aylar = []; $c = \Carbon\Carbon::parse($bas)->startOfMonth(); $son = \Carbon\Carbon::parse($bit)->startOfMonth();
+        while ($c->lte($son) && count($aylar) < 36) { $aylar[] = $c->format('Y-m'); $c->addMonth(); }
+        $n = count($aylar); $fiyat = [];
+        foreach ($seriler as $j => $s) {
+            $ilk = array_key_first($s['aylar']); $sonAy = array_key_last($s['aylar']); $p = null;
+            foreach ($aylar as $i => $ay) { if ($ay < $ilk || $ay > $sonAy) continue; if (isset($s['aylar'][$ay])) $p = (float) $s['aylar'][$ay]; if ($p > 0) $fiyat[$j][$i] = $p; }
+        }
+        $basI = null; foreach ($aylar as $i => $_) { foreach ($fiyat as $f) if (isset($f[$i])) { $basI = $i; break 2; } }
+        if ($basI === null) return ['ay' => [], 'zam' => [], 'tufe' => []];
+        $adlar = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+        $et = []; $zam = []; $tf = []; $z = 1.0; $t = 1.0;
+        for ($i = $basI; $i < $n; $i++) {
+            if ($i > $basI) {
+                $sw = 0.0; $sd = 0.0;
+                foreach ($fiyat as $j => $f) if (isset($f[$i], $f[$i - 1])) { $sw += $seriler[$j]['w']; $sd += $seriler[$j]['w'] * ($f[$i] / $f[$i - 1] - 1); }
+                if ($sw > 0) $z *= 1 + $sd / $sw;
+                $t = ($t !== null && isset($tufe[$aylar[$i]])) ? $t * (1 + $tufe[$aylar[$i]] / 100) : null;
+            }
+            $et[] = $adlar[(int) substr($aylar[$i], 5, 2)] . ' ' . substr($aylar[$i], 2, 2);
+            $zam[] = round(($z - 1) * 100, 2); $tf[] = $t !== null ? round(($t - 1) * 100, 2) : null;
+        }
+        return ['ay' => $et, 'zam' => $zam, 'tufe' => $tf];
     }
 }
 
@@ -205,7 +242,7 @@ if (!function_exists('_fanOdeme')) {
         foreach ($acik as $a) {
             $v = \Carbon\Carbon::parse($a['vade']);
             if ($v->lt($bugun)) $k = '0|Gecikmiş';
-            else { $h = (int) floor($bugun->diffInDays($v) / 7); $bas = $bugun->copy()->addDays($h * 7); $k = $h > 11 ? '9|12 hafta sonrası' : sprintf('%d|%s – %s', $h + 1, $bas->format('d.m'), $bas->copy()->addDays(6)->format('d.m')); }
+            else { $h = (int) floor($bugun->diffInDays($v) / 7); $bas = $bugun->copy()->addDays($h * 7); $k = $h > 11 ? '99|12 hafta sonrası' : sprintf('%d|%s – %s', $h + 1, $bas->format('d.m'), $bas->copy()->addDays(6)->format('d.m')); }
             $hafta[$k]['tutar'] = ($hafta[$k]['tutar'] ?? 0) + $a['kalan']; $hafta[$k]['adet'] = ($hafta[$k]['adet'] ?? 0) + 1;
             $hafta[$k]['ted'][$a['ted']] = ($hafta[$k]['ted'][$a['ted']] ?? 0) + $a['kalan'];
         }
