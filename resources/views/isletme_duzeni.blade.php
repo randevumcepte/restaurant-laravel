@@ -366,9 +366,9 @@
 
 {{-- ============ GENEL AYARLAR ============ --}}
 <section class="idz-panel" data-panel="genel">
-  {{-- Kartlar sayfadan çıkmadan burada açılır (gömülü); üstteki çubukla Genel Ayarlar'a dönülür --}}
+  {{-- Kartlar sayfadan çıkmadan burada açılır (gömülü); kart sırası üstte kalır, seçili kart vurgulanır --}}
   <div class="idz-kart" id="idzAyarListe">
-    <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">settings</span><h3>Genel Ayarlar</h3></div>
+    <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">settings</span><h3>Genel Ayarlar</h3><span class="idz-esnek"></span><a class="idz-btn ikon" id="idzAyarYeniSekme" href="#" target="_blank" rel="noopener" title="Açık sayfayı yeni sekmede aç" aria-label="Yeni sekmede aç" hidden><span class="material-icons-outlined">open_in_new</span></a></div>
     <div class="idz-ayar-grid">
       @foreach ([
         ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al', '#7C3AED'],
@@ -382,12 +382,6 @@
     </div>
   </div>
   <div class="idz-kart idz-gomulu" id="idzAyarGomulu" hidden>
-    <div class="idz-gomulu-bas">
-      <button type="button" class="idz-btn" onclick="idzAyarKapat()"><span class="material-icons-outlined">arrow_back</span>Genel Ayarlar</button>
-      <span class="material-icons-outlined idz-mor" id="idzAyarIkon">settings</span><b id="idzAyarBaslik"></b>
-      <span class="idz-esnek"></span>
-      <a class="idz-btn ikon" id="idzAyarYeniSekme" href="#" target="_blank" rel="noopener" title="Yeni sekmede aç" aria-label="Yeni sekmede aç"><span class="material-icons-outlined">open_in_new</span></a>
-    </div>
     <div class="idz-gomulu-yuk" id="idzAyarYuk"><span class="material-icons-outlined">hourglass_top</span>Yükleniyor…</div>
     <iframe id="idzAyarCerceve" title="Ayar sayfası"></iframe>
   </div>
@@ -624,14 +618,15 @@ document.querySelectorAll('.idz-sekme').forEach(function(b){ b.addEventListener(
 
 // ---- Genel Ayarlar: kartın sayfası İşletme Düzeni içinde (iframe) açılır; menü/üst çubuk gizlenir ----
 var IDZ_GOMULU_CSS = '.rk-side,.rk-side-backdrop,.rk-hamburger,.rk-geri,.rk-tema,.rk-profil,.rk-ss,.bz{display:none!important}'
-  + '.rk-main,.rk-side~.rk-main,.rk-side:hover~.rk-main{margin-left:0!important}.rk-header .ikon{display:none!important}';
+  + 'html body .rk-main.rk-main.rk-main{margin-left:0!important}.rk-header>.ikon,.rk-header>.ikon+div{display:none!important}'
+  + '.rk-header{min-height:0!important;padding-top:10px!important;padding-bottom:10px!important}'; // başlık üstteki kartta zaten seçili
 function idzAyarAc(a){
   var u = a.getAttribute('data-ayar'); if(!u) return true;
-  var f = document.getElementById('idzAyarCerceve');
-  document.getElementById('idzAyarBaslik').textContent = a.querySelector('b').textContent;
-  document.getElementById('idzAyarIkon').textContent = a.querySelector('.material-icons-outlined').textContent;
-  document.getElementById('idzAyarYeniSekme').href = u;
-  document.getElementById('idzAyarListe').hidden = true;
+  var f = document.getElementById('idzAyarCerceve'), yeni = document.getElementById('idzAyarYeniSekme');
+  if(a.classList.contains('secili')){ idzAyarKapat(); return false; } // seçili karta tekrar tıklayınca kapanır
+  document.querySelectorAll('.idz-ayar').forEach(function(x){ x.classList.toggle('secili', x === a); });
+  document.querySelector('.idz-ayar-grid').classList.add('kompakt');
+  yeni.href = u; yeni.hidden = false;
   document.getElementById('idzAyarGomulu').hidden = false;
   document.getElementById('idzAyarYuk').hidden = false;
   f.style.visibility = 'hidden';
@@ -642,7 +637,9 @@ function idzAyarAc(a){
 function idzAyarKapat(){
   document.getElementById('idzAyarCerceve').src = 'about:blank';
   document.getElementById('idzAyarGomulu').hidden = true;
-  document.getElementById('idzAyarListe').hidden = false;
+  document.querySelectorAll('.idz-ayar.secili').forEach(function(x){ x.classList.remove('secili'); });
+  document.querySelector('.idz-ayar-grid').classList.remove('kompakt');
+  document.getElementById('idzAyarYeniSekme').hidden = true;
   try{ sessionStorage.removeItem('idz_ayar'); }catch(e){}
 }
 document.getElementById('idzAyarCerceve').addEventListener('load', function(){
