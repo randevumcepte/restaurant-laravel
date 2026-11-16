@@ -111,6 +111,17 @@
     :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a .material-icons-outlined{font-size:18px !important}
     :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a.aktif{border-left-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 14%,var(--card))}
     :is(.rk-side:hover,.rk-side.genis,.rk-side.acik) .rk-grp + .rk-grp-body a.aktif::before{display:none}
+    /* Grup içi "Raporlar" alt başlığı (tıklayınca açılır) */
+    .rk-alt{display:flex;align-items:center;gap:10px;margin:6px 4px 2px 0;padding:8px 10px 8px 14px;border-radius:9px;border:1px dashed color-mix(in srgb,var(--mor1) 30%,var(--line));font-size:13.5px;font-weight:600;color:var(--mor1);cursor:pointer;user-select:none}
+    .rk-alt:hover{background:color-mix(in srgb,var(--mor1) 10%,transparent)}
+    .rk-alt .material-icons-outlined{font-size:18px;flex:none}
+    .rk-alt-ad{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rk-alt-say{flex:none;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--mor1) 14%,transparent)}
+    .rk-alt .rk-alt-ok{transition:transform .15s}
+    .rk-alt.kapali .rk-alt-ok{transform:rotate(-90deg)}
+    .rk-alt.kapali + .rk-alt-body{display:none}
+    .rk-alt-body{margin:2px 0 4px 12px}
+    .rk-side:not(:hover):not(.genis):not(.acik) .rk-alt{display:none}
     @media(min-width:641px){
         .rk-side:not(:hover):not(.genis) .rk-side-foot{padding:10px 8px}
         .rk-side:not(:hover):not(.genis) .rk-side-foot a{border-color:transparent;justify-content:center;padding-left:0;padding-right:0}
