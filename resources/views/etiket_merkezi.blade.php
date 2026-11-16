@@ -120,9 +120,9 @@
           </select>
           <label>Etiket şekli</label>
           <div class="modlar">
-            <label><input type="radio" name="mod" value="tam" {{ old('mod', 'tam') === 'tam' ? 'checked' : '' }}><span>Tam etiket</span><small>Ad, net miktar, fiyat, tarih, parti ve barkod. Boş ambalaja yapıştırılır.</small></label>
-            <label><input type="radio" name="mod" value="kucuk" {{ old('mod') === 'kucuk' ? 'checked' : '' }}><span>Küçük tarih etiketi</span><small>Yalnız üretim, SKT, parti. Matbaada basılmış etiketin üstüne yapıştırılır.</small></label>
-            <label><input type="radio" name="mod" value="sablon" id="emModSablon" {{ old('mod') === 'sablon' ? 'checked' : '' }}><span>Kendi tasarımım</span><small>Yüklediğin tasarımın üstüne tarih/parti/barkod basılır.</small></label>
+            <label><input type="radio" name="mod" value="tam" {{ old('mod', request('mod', 'tam')) === 'tam' ? 'checked' : '' }}><span>Tam etiket</span><small>Ad, net miktar, fiyat, tarih, parti ve barkod. Boş ambalaja yapıştırılır.</small></label>
+            <label><input type="radio" name="mod" value="kucuk" {{ old('mod', request('mod')) === 'kucuk' ? 'checked' : '' }}><span>Küçük tarih etiketi</span><small>Yalnız üretim, SKT, parti. Matbaada basılmış etiketin üstüne yapıştırılır.</small></label>
+            <label><input type="radio" name="mod" value="sablon" id="emModSablon" {{ old('mod', request('mod')) === 'sablon' ? 'checked' : '' }}><span>Kendi tasarımım</span><small>Yüklediğin tasarımın üstüne tarih/parti/barkod basılır. <em id="emSbNot" style="font-style:normal;color:#D97706">Bu ürüne tasarım bağlı değil — <a href="#sablon" style="color:#6366F1">nasıl?</a></em></small></label>
           </div>
           <div class="dort">
             <div><label>Üretim tarihi</label><input type="date" name="uretim" id="emUretim" value="{{ old('uretim', date('Y-m-d')) }}" onchange="emBasGuncelle()"></div>
@@ -141,8 +141,20 @@
 
       <div class="kart" id="sablon">
         <div class="kb"><span class="ms">palette</span><h3>Kendi etiket tasarımın</h3></div>
-        <p class="alt-yazi">Ajansın ya da grafikerin hazırladığı etiketi resim olarak (PNG/JPG) yükle. Değişen bilgileri (SKT, parti, barkod, fiyat) tasarımın üstünde istediğin yere sürükle. Sonra ürün kartında bu tasarımı seç; "Kendi tasarımım" ile basılır.</p>
+        <p class="alt-yazi"><b>Ne işe yarar?</b> Ürünün renkli, logolu etiketi zaten varsa (grafikere yaptırdıysan) sistem o etiketi aynen kullanır. Her basımda yalnız değişen bilgileri — <b>SKT, parti no, üretim tarihi, barkod</b> — tasarımdaki boş yerlere kendisi yazar. Tasarımı biz çizmiyoruz; sen resmini yüklüyorsun.</p>
+        <div class="sb-tanit">
+          <img src="/img/etiket-ornek-nar.svg" alt="Örnek etiket tasarımı">
+          <div>
+            <b>İlk kez mi kullanıyorsun?</b>
+            <span>Hazır örnek tasarımla 1 dakikada dene: kutular yerleşmiş gelir, sürükleyip görebilirsin.</span>
+            <div class="dugmeler" style="margin-top:8px">
+              @if ($duzenler)<form method="POST" action="/barkod-etiket/sablon-ornek">@csrf<button class="b ana" type="submit"><span class="ms">auto_awesome</span> Örnek tasarımla dene</button></form>@endif
+              <a class="b ik" href="#rehber" onclick="var d=document.getElementById('rehberAc'); if(d) d.open=true"><span class="ms">menu_book</span> Adım adım anlatım</a>
+            </div>
+          </div>
+        </div>
         @if ($sablonlar->count())
+          <label style="display:block;font-size:11.5px;font-weight:700;color:var(--sub);margin:14px 0 6px">Tasarımların (düzenlemek için tıkla)</label>
           <div class="sablon-l" style="margin-bottom:12px">
             @foreach ($sablonlar as $s)
               <a href="/barkod-etiket/urun-etiketi?sablon={{ $s->id }}#sablon" class="{{ isset($sablonDuz) && $sablonDuz && $sablonDuz->id === $s->id ? 'on' : '' }}">
@@ -152,15 +164,17 @@
           </div>
         @endif
         @if ($duzenler)
-        <form class="fm" method="POST" action="/barkod-etiket/sablon" enctype="multipart/form-data">
+        <form class="fm sb-yukle" method="POST" action="/barkod-etiket/sablon" enctype="multipart/form-data">
           @csrf
+          <div class="sb-yukle-bas"><span class="ms">upload_file</span> Kendi tasarımını yükle</div>
           <div class="uc">
             <div><label>Tasarım adı</label><input name="ad" placeholder="örn. Nar Ekşisi 500 ml" required></div>
-            <div><label>En (mm)</label><input name="gen_mm" inputmode="decimal" value="58"></div>
-            <div><label>Boy (mm)</label><input name="yuk_mm" inputmode="decimal" value="40"></div>
+            <div><label>Etiketin eni (mm)</label><input name="gen_mm" inputmode="decimal" value="58"></div>
+            <div><label>Etiketin boyu (mm)</label><input name="yuk_mm" inputmode="decimal" value="40"></div>
           </div>
+          <div class="ipucu">En/boy: etiketin <b>gerçek ölçüsü</b>. Bilmiyorsan etiketi cetvelle ölç (örn. 58 × 40 mm).</div>
           <label>Tasarım resmi (PNG / JPG, en çok 4 MB)</label><input type="file" name="arka" accept="image/png,image/jpeg,image/webp" required>
-          <div class="ipucu">Tasarımda tarih, parti ve barkod için boş yer bırakılmış olmalı. Elinde yalnız PDF varsa "resim olarak dışa aktar" ile PNG yap.</div>
+          <div class="ipucu">Tasarımda SKT, parti ve barkod için <b>beyaz boş yer</b> bırakılmış olmalı. Grafiker PDF verdiyse "PNG olarak dışa aktar" demesi yeterli.</div>
           <div class="dugmeler"><button class="b ik" type="submit"><span class="ms">upload</span> Tasarımı yükle</button></div>
         </form>
         @endif
@@ -169,11 +183,17 @@
 
     @if (isset($sablonDuz) && $sablonDuz)
       @php $sbAl = json_decode((string) $sablonDuz->alanlar, true) ?: []; @endphp
-      <div class="kart">
+      <div class="kart" id="sbDuzen">
         <div class="kb"><span class="ms">open_with</span><h3>{{ $sablonDuz->ad }} — alanları yerleştir</h3>
           @if ($duzenler)<form method="POST" action="/barkod-etiket/sablon-sil" onsubmit="return confirm('Tasarım silinsin mi? Bu tasarımı kullanan ürünler tam etikete döner.')">@csrf<input type="hidden" name="id" value="{{ $sablonDuz->id }}"><button class="b tehlike" type="submit" style="padding:8px 12px"><span class="ms">delete</span> Sil</button></form>@endif
         </div>
-        <p class="alt-yazi">Kutuları sürükle, sağ alt köşeden boyutlandır. Bir kutuya tıklayınca yazı boyu ve hizası aşağıda değişir. Örnek değerler gösterilir; basarken gerçek değerler gelir.</p>
+        <div class="sb-nasil">
+          <div><i>1</i><b>Sürükle</b><span>Kesik çizgili kutuyu (SKT, Parti, Barkod) farenle tutup tasarımdaki <u>beyaz boş yere</u> taşı.</span></div>
+          <div><i>2</i><b>Boyutlandır</b><span>Kutunun sağ alt köşesindeki <span class="sb-nokta"></span> mor noktadan çekerek büyüt/küçült.</span></div>
+          <div><i>3</i><b>Yazıyı ayarla</b><span>Kutuya tıkla; aşağıdan yazı boyu, kalın, hiza. Fiyat, içindekiler gibi yeni alan da ekleyebilirsin.</span></div>
+          <div><i>4</i><b>Kaydet ve bağla</b><span>"Yerleşimi kaydet", sonra en alttan tasarımı ürüne bağla ve bas.</span></div>
+        </div>
+        <p class="alt-yazi" style="margin-top:10px">Kutularda <b>örnek değerler</b> görünür (bugünün tarihi, 261117-01 gibi). Basarken her seferinde gerçek üretim tarihi, SKT ve parti numarası yazılır.</p>
         <div id="sbAlan" class="sb-alan" style="background-image:url('{{ $sablonDuz->arka }}')"></div>
         @if ($duzenler)
         <div class="fm" style="margin-top:14px">
@@ -195,6 +215,23 @@
             </div>
             <div class="dugmeler"><button class="b ana" type="submit"><span class="ms">save</span> Yerleşimi kaydet</button></div>
           </form>
+          @php $bagliUrunler = $liste->where('sablon_id', $sablonDuz->id); @endphp
+          <div class="sb-bagla">
+            <div class="sb-yukle-bas"><span class="ms">link</span> Bu tasarımı ürüne bağla</div>
+            @if ($bagliUrunler->count())
+              <div class="ipucu" style="margin:0 0 8px">Şu an bağlı: @foreach ($bagliUrunler as $bu)<a href="/barkod-etiket/urun-etiketi?id={{ $bu->id }}&mod=sablon#emBasForm" class="tz" style="--tr:#10B981;text-decoration:none">{{ $bu->ad }} → bas</a> @endforeach</div>
+            @endif
+            @if ($paketler->isEmpty())
+              <div class="ipucu">Bağlanacak ürün yok. Önce <a href="/barkod-etiket" style="color:#6366F1;font-weight:700">Ürünler</a> sekmesinde "Paketli ürün etiketi" seçili bir ürün ekle.</div>
+            @else
+            <form method="POST" action="/barkod-etiket/sablon-bagla" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              @csrf <input type="hidden" name="sablon_id" value="{{ $sablonDuz->id }}">
+              <select name="eu_id" style="flex:1;min-width:220px">@foreach ($paketler as $u)<option value="{{ $u->id }}">{{ $u->ad }}{{ $u->sablon_id && (int) $u->sablon_id !== (int) $sablonDuz->id ? ' (başka tasarım bağlı)' : '' }}</option>@endforeach</select>
+              <button class="b ana" type="submit"><span class="ms">link</span> Bağla ve basmaya geç</button>
+            </form>
+            <div class="ipucu">Bağladıktan sonra yukarıdaki "Paketli ürün etiketi bas" kısmında <b>Kendi tasarımım</b> seçili gelir; üretim tarihi ve adedi girip basarsın.</div>
+            @endif
+          </div>
         </div>
         @endif
       </div>
@@ -212,7 +249,8 @@
           d.style.left=f.x+'%'; d.style.top=f.y+'%'; d.style.width=f.w+'%'; d.style.height=f.h+'%';
           d.style.fontSize=(f.fs*0.3528*olc)+'px'; d.style.fontWeight=f.b?'700':'400'; d.style.justifyContent=f.hz==='c'?'center':(f.hz==='r'?'flex-end':'flex-start');
           var t=document.createElement('span'); t.className='et-ad'; t.style.textAlign=f.hz==='c'?'center':(f.hz==='r'?'right':'left');
-          t.textContent = f.k==='serbest' ? (f.t||'Serbest yazı') : (SB.ornek[f.k]||SB.ad[f.k]); d.appendChild(t);
+          if (f.k==='barkod') { var im=document.createElement('img'); im.src='/etiket-ean13.svg?k=8691234567890&h=50'; im.style.cssText='height:100%;max-width:100%;margin:0 auto;display:block;pointer-events:none'; d.appendChild(im); }
+          else { t.textContent = f.k==='serbest' ? (f.t||'Serbest yazı') : (SB.ornek[f.k]||SB.ad[f.k]); d.appendChild(t); }
           if (SB.duz) { var h=document.createElement('span'); h.className='tut'; d.appendChild(h); sbSurukle(d,h,i); }
           a.appendChild(d);
         });
@@ -238,6 +276,59 @@
       window.addEventListener('resize', sbCiz); document.addEventListener('DOMContentLoaded', sbCiz); if (document.readyState!=='loading') sbCiz();
       </script>
     @endif
+
+    @php $ornekKod = '8691234567890'; $ornekBug = date('d.m.Y'); $ornekSkt = date('d.m.Y', strtotime('+1 year')); $ornekParti = date('ymd') . '-01'; @endphp
+    <div class="kart rehber" id="rehber">
+      <details id="rehberAc" {{ $sablonlar->isEmpty() ? 'open' : '' }}>
+        <summary><span class="ms">menu_book</span><h3>Kendi tasarımınla etiket basmak — adım adım</h3><span class="ac-kapa">Aç / kapat</span></summary>
+        <p class="alt-yazi" style="margin-top:10px">Örnek: Ev yapımı nar ekşisi satıyorsun, grafikerin sana renkli bir etiket çizdi. Her üretimde etikete <b>o günün tarihi, son tüketim tarihi ve parti numarası</b> yazılması lazım. Elle yazmak yerine sistem bunları tasarımın üstüne basar. 5 adım:</p>
+        <div class="rh-adimlar">
+          <div class="rh-adim" style="--rc:#6366F1">
+            <div class="rh-no">1</div><b>Tasarımı hazırlat</b>
+            <div class="rh-resim"><img src="/img/etiket-ornek-nar.svg" alt="">
+              <span class="rh-ok" style="left:4%;top:63%;width:45%;height:33%">boş bırak</span><span class="rh-ok" style="left:52%;top:63%;width:45%;height:33%">boş bırak</span></div>
+            <span>Grafikere etiketi çizdir; <b>tarih/parti ve barkod için beyaz boş yer</b> bırakmasını söyle. Dosyayı <b>PNG veya JPG</b> olarak al.</span>
+          </div>
+          <div class="rh-adim" style="--rc:#EC4899">
+            <div class="rh-no">2</div><b>Sisteme yükle</b>
+            <div class="rh-form">
+              <div><small>Tasarım adı</small><i>Nar Ekşisi 500 ml</i></div>
+              <div class="iki"><div><small>En (mm)</small><i>58</i></div><div><small>Boy (mm)</small><i>40</i></div></div>
+              <div><small>Tasarım resmi</small><i class="dosya"><span class="ms">image</span> nar-etiket.png</i></div>
+              <em><span class="ms">upload</span> Tasarımı yükle</em>
+            </div>
+            <span>Yukarıdaki <b>"Kendi tasarımını yükle"</b> formuna adını, <b>etiketin gerçek ölçüsünü</b> (cetvelle ölç) ve resmi gir.</span>
+          </div>
+          <div class="rh-adim" style="--rc:#10B981">
+            <div class="rh-no">3</div><b>Kutuları yerleştir</b>
+            <div class="rh-resim"><img src="/img/etiket-ornek-nar.svg" alt="">
+              <span class="rh-kutu" style="left:5.5%;top:66%;width:43%;height:10%">SKT: {{ $ornekSkt }}</span><span class="rh-kutu" style="left:5.5%;top:78%;width:43%;height:9%">Parti: {{ $ornekParti }}</span>
+              <span class="rh-kutu" style="left:53.5%;top:66%;width:42%;height:28%">▌▌▍▌▍▍▌▌▍▌▍▌</span><span class="ms rh-imlec">near_me</span></div>
+            <span>Yükleyince tasarım büyük açılır. <b>SKT, Parti, Barkod</b> kutularını farenle boş yerlere sürükle, köşeden boyutlandır, <b>"Yerleşimi kaydet"</b>.</span>
+          </div>
+          <div class="rh-adim" style="--rc:#0EA5E9">
+            <div class="rh-no">4</div><b>Ürüne bağla</b>
+            <div class="rh-form">
+              <div><small>Bu tasarımı ürüne bağla</small><i>Ev Yapımı Nar Ekşisi <span class="ms" style="float:right;font-size:15px">expand_more</span></i></div>
+              <em><span class="ms">link</span> Bağla ve basmaya geç</em>
+              <div style="margin-top:6px"><small>ya da Ürünler → düzenle → "Kendi tasarımı"</small></div>
+            </div>
+            <span>Hangi ürünün etiketi olduğunu seç. Bir tasarım birden çok ürüne bağlanabilir.</span>
+          </div>
+          <div class="rh-adim" style="--rc:#F59E0B">
+            <div class="rh-no">5</div><b>Bas</b>
+            <div class="rh-resim"><img src="/img/etiket-ornek-nar.svg" alt="">
+              <span class="rh-dolu" style="left:6%;top:66%;font-weight:700">SKT: {{ $ornekSkt }}</span><span class="rh-dolu" style="left:6%;top:77%">Üretim: {{ $ornekBug }}</span><span class="rh-dolu" style="left:6%;top:86%">Parti: {{ $ornekParti }}</span>
+              <img class="rh-bk" src="/etiket-ean13.svg?k={{ $ornekKod }}&h=50" alt="" style="left:55%;top:66%;width:38%;height:27%"></div>
+            <span><b>Paketli ürün etiketi bas</b> → ürünü seç → <b>Kendi tasarımım</b> → üretim tarihi + adet → yazdır. SKT ve parti kendiliğinden yazılır.</span>
+          </div>
+        </div>
+        <div class="em-iz esit" style="margin-top:14px">
+          <div class="bilgi"><span class="ms">print</span><div><b>Hangi yazıcıyla basılır?</b> Tasarım renkli olduğu için <b>renkli yazıcı</b> gerekir: renkli etiket yazıcısı (ör. Epson ColorWorks) ya da normal renkli yazıcı + <b>A4 yapışkan etiket yaprağı</b>. Zebra/TSC gibi termal etiket yazıcıları renk basmaz; onlarla <b>"Küçük tarih etiketi"</b> seçeneğini kullan (matbaada basılmış etiketin üstüne yalnız SKT/parti basar).</div></div>
+          <div class="bilgi uyari"><span class="ms">help</span><div><b>Sık sorulanlar</b><br>• <b>Tasarımım yok:</b> bu bölümü kullanmak zorunda değilsin; "Tam etiket" sistemin hazır siyah-beyaz etiketidir.<br>• <b>Etiketlerim matbaada basılı:</b> "Küçük tarih etiketi" ile yalnız tarih/parti basıp üstüne yapıştır.<br>• <b>Kutu yazıya sığmıyor:</b> kutuyu köşeden büyüt ya da yazı boyunu küçült.<br>• <b>Ölçü yanlış çıktı:</b> tasarımı aç, en/boy (mm) değerini düzelt, kaydet.</div></div>
+        </div>
+      </details>
+    </div>
 
     <div class="kart">
       <div class="kb"><span class="ms">history</span><h3>Basım geçmişi (parti kayıtları)</h3></div>
@@ -524,7 +615,7 @@
 <script>
 function emBasGuncelle(){
   var s=document.getElementById('emBasUrun'); if(!s) return; var o=s.options[s.selectedIndex], omur=parseInt(o.dataset.omur)||0, u=document.getElementById('emUretim').value, ip=document.getElementById('emSktIpucu');
-  var sb=document.getElementById('emModSablon'); if(sb){ sb.disabled = o.dataset.sablon!=='1'; if(sb.disabled && sb.checked) document.querySelector('#emBasForm input[name=mod][value=tam]').checked=true; }
+  var sb=document.getElementById('emModSablon'); if(sb){ sb.disabled = o.dataset.sablon!=='1'; var sn=document.getElementById('emSbNot'); if(sn) sn.style.display=sb.disabled?'':'none'; if(sb.disabled && sb.checked) document.querySelector('#emBasForm input[name=mod][value=tam]').checked=true; }
   if(omur && u){ var d=new Date(u+'T12:00:00'); d.setDate(d.getDate()+omur); var z=d.toISOString().slice(0,10); document.getElementById('emSkt').placeholder=z; ip.textContent='SKT boş kalırsa '+z.split('-').reverse().join('.')+' basılır (raf ömrü '+omur+' gün).'; }
   else ip.textContent = omur ? '' : 'Bu üründe raf ömrü tanımlı değil; SKT basılacaksa elle gir ya da ürün kartına raf ömrü ekle.';
 }

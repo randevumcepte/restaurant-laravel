@@ -697,7 +697,28 @@ Route::post('/barkod-etiket/sablon', function (Request $r) use ($emKapi) {
     }
     if ($esk) DB::table('etiket_sablonlar')->where('id', $esk->id)->update($veri);
     else $id = DB::table('etiket_sablonlar')->insertGetId($veri + ['sube_id' => $sid, 'created_at' => now()]);
-    return redirect('/barkod-etiket/urun-etiketi?sablon=' . $id . '#sablon')->with('ok', $esk ? 'Tasarım kaydedildi.' : 'Tasarım yüklendi. Şimdi alanları etiketin üstünde sürükleyip yerleştir.');
+    return redirect('/barkod-etiket/urun-etiketi?sablon=' . $id . '#sbDuzen')->with('ok', $esk ? 'Yerleşim kaydedildi. Sıradaki adım: aşağıdaki "Bu tasarımı ürüne bağla" bölümünden ürünü seç.' : 'Tasarım yüklendi. Şimdi SKT, parti ve barkod kutularını tasarımdaki boş yerlere sürükle, sonra "Yerleşimi kaydet".');
+});
+// Hazır örnek tasarım (Nar Ekşisi 58×40): kutular boş yerlere yerleştirilmiş gelir; denemek ve öğrenmek için
+Route::post('/barkod-etiket/sablon-ornek', function () use ($emKapi) {
+    [$p, $y] = $emKapi(); if ($y !== 'duzenle') return back()->with('hata', 'Yetkin yok.');
+    _emEnsure(); $sid = _webSubeId();
+    $alan = fn ($k, $x, $yy, $w, $h, $fs, $b, $hz) => ['k' => $k, 'x' => $x, 'y' => $yy, 'w' => $w, 'h' => $h, 'fs' => $fs, 'b' => $b, 'hz' => $hz, 't' => ''];
+    $id = DB::table('etiket_sablonlar')->insertGetId(['sube_id' => $sid, 'ad' => 'Örnek: Nar Ekşisi 500 ml', 'gen_mm' => 58, 'yuk_mm' => 40, 'arka' => '/img/etiket-ornek-nar.svg',
+        'alanlar' => json_encode([$alan('skt', 5.5, 65.5, 43, 10, 7.5, 1, 'l'), $alan('uretim', 5.5, 76.5, 43, 8.5, 6, 0, 'l'), $alan('parti', 5.5, 85.5, 43, 8.5, 6, 0, 'l'),
+            $alan('barkod', 53.5, 65, 42, 30, 7, 0, 'c')], JSON_UNESCAPED_UNICODE), 'created_at' => now(), 'updated_at' => now()]);
+    return redirect('/barkod-etiket/urun-etiketi?sablon=' . $id . '#sbDuzen')->with('ok', 'Örnek tasarım eklendi. Kutuları sürükleyip dene; beğenirsen aşağıdan bir ürüne bağlayıp bas. İstemezsen "Sil" ile kaldırabilirsin.');
+});
+// Tasarımı ürüne bağla (ürün kartına gitmeden)
+Route::post('/barkod-etiket/sablon-bagla', function (Request $r) use ($emKapi) {
+    [$p, $y] = $emKapi(); if ($y !== 'duzenle') return back()->with('hata', 'Yetkin yok.');
+    _emEnsure(); $sid = _webSubeId();
+    $s = DB::table('etiket_sablonlar')->where('sube_id', $sid)->where('id', (int) $r->input('sablon_id'))->first();
+    $u = _emBul($sid, (int) $r->input('eu_id'));
+    if (!$s || !$u) return back()->with('hata', 'Tasarım ya da ürün bulunamadı.');
+    if (!in_array('paket', explode(',', (string) $u->turler), true)) return back()->with('hata', $u->ad . ' için "Paketli ürün etiketi" seçili değil; ürün kartından aç.');
+    DB::table('etiket_urunler')->where('id', $u->id)->update(['sablon_id' => $s->id, 'updated_at' => now()]);
+    return redirect('/barkod-etiket/urun-etiketi?id=' . $u->id . '&mod=sablon#emBasForm')->with('ok', '"' . $s->ad . '" tasarımı ' . $u->ad . ' ürününe bağlandı. Son adım: "Kendi tasarımım" seçili olarak etiketi bas.');
 });
 Route::post('/barkod-etiket/sablon-sil', function (Request $r) use ($emKapi) {
     [$p, $y] = $emKapi(); if ($y !== 'duzenle') return back()->with('hata', 'Yetkin yok.');

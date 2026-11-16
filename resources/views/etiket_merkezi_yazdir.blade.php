@@ -102,6 +102,7 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;background:#eef0
   <div class="not">Yazdırma penceresinde: yazıcı olarak
     @if ($a4) <b>normal yazıcıyı</b> seç, kâğıt <b>A4</b>, <b>Kenar boşlukları: Yok</b>, <b>Ölçek: %100</b>. Kesik çizgilerden kes. @else <b>etiket yazıcını</b> seç, <b>Kenar boşlukları: Yok</b>, <b>Ölçek: %100</b>; yazıcı sürücüsünde kâğıt boyutu {{ rtrim(rtrim(number_format($w, 1, ',', ''), '0'), ',') }}×{{ rtrim(rtrim(number_format($h, 1, ',', ''), '0'), ',') }} mm olmalı. @endif
     Üst bilgi/alt bilgi kapalı.</div>
+  @if ($tip === 'paket' && empty($etiketler[0]['barkod']) && ($etiketler[0]['mod'] ?? '') !== 'kucuk')<div class="not" style="color:#B45309;font-weight:700">⚠ Bu ürünün barkodu yok, barkod alanı boş basılır. Ürünler → ürünü düzenle → Barkod alanına resmi (869…) barkodu yaz ya da "mağaza içi barkod üret"i işaretle.</div>@endif
 </div>
 <div class="sayfa {{ $a4 ? 'a4' : '' }}">
 @foreach ($hepsi as $e)
