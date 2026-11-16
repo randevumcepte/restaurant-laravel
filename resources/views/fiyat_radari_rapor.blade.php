@@ -237,6 +237,12 @@
   td.cb .cbi{position:absolute;left:0;top:3px;bottom:3px;border-radius:0 4px 4px 0;background:{{ $hexA($tema, .2) }}}
   td.cb span{position:relative}
   .onc{display:inline-block;padding:2px 7px;border-radius:99px;font-weight:900;font-size:9.5px}
+  .bosgrup{margin:16px 0 4px;padding:10px 14px;border:1px dashed #CBD5E1;border-radius:12px;background:#F8FAFC;color:#475569;font-size:11px;line-height:1.5}
+  .bg-bas{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .bg-bas .material-icons-outlined{font-size:17px;color:#94A3B8}
+  .bg-bas b{color:#334155;font-size:11.5px;margin-right:2px}
+  .bg-cip{padding:2px 9px;border-radius:99px;background:#fff;border:1px solid #E2E8F0;font-weight:700;color:#475569;font-size:10.5px}
+  .bg-neden{margin-top:5px;color:#64748B}.bg-neden b{color:#475569}
   .bos{padding:13px 16px;color:#92400E;background:#FFFBEB;border:1px dashed #FCD34D;border-radius:10px;font-size:11.5px;line-height:1.55}
   .ai{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .ai .k{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px;border-top:3px solid var(--c);page-break-inside:avoid}
@@ -343,7 +349,30 @@
   </div>
   @endif
 
-  @foreach ($sayfalar as $s)
+  @php
+    // Art arda gelen boş tablo bölümleri tek kısa kartta birleşir; panodaki notla aynı neden tekrar yazılmaz
+    $panoBos = collect($sayfalar)->firstWhere('tip', 'pano')['bos'] ?? null; $sayfalar2 = [];
+    foreach ($sayfalar as $s) {
+        $bosMu = ($s['tip'] ?? '') !== 'pano' && !($ai && !empty($s['ai'])) && !count($s['sat'] ?? []);
+        if (!$bosMu) { $sayfalar2[] = $s; continue; }
+        $neden = $s['bos'] ?? 'Seçili dönem ve filtrelerle eşleşen kayıt yok.';
+        $son = count($sayfalar2) - 1;
+        if ($son >= 0 && ($sayfalar2[$son]['tip'] ?? '') === 'bosgrup') { $sayfalar2[$son]['adlar'][] = $s['ad']; $sayfalar2[$son]['nedenler'][$neden][] = $s['ad']; }
+        else $sayfalar2[] = ['tip' => 'bosgrup', 'adlar' => [$s['ad']], 'nedenler' => [$neden => [$s['ad']]]];
+    }
+  @endphp
+  @foreach ($sayfalar2 as $s)
+    @if (($s['tip'] ?? '') === 'bosgrup')
+      <div class="bosgrup">
+        <div class="bg-bas"><span class="material-icons-outlined">inventory_2</span><b>{{ count($s['adlar']) === 1 ? 'Veri yok' : count($s['adlar']) . ' bölümde veri yok' }}</b>
+          @foreach ($s['adlar'] as $ad)<span class="bg-cip">{{ $ad }}</span>@endforeach</div>
+        @foreach ($s['nedenler'] as $neden => $kimler)
+          @if ($neden !== $panoBos)<div class="bg-neden">@if (count($s['nedenler']) > 1)<b>{{ implode(', ', $kimler) }}:</b> @endif{{ $neden }}</div>@endif
+        @endforeach
+        @if (isset($s['nedenler'][$panoBos]) && count($s['nedenler']) === 1)<div class="bg-neden">Nedeni yukarıdaki notta.</div>@endif
+      </div>
+      @continue
+    @endif
     @if (($s['tip'] ?? '') === 'pano')
       {{-- ===== PANO: rapora özel kartlar + grafikler ===== --}}
       <div class="kpi">
