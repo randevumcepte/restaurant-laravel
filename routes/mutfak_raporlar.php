@@ -244,7 +244,7 @@ if (!function_exists('_mrKatalog')) {
             'foodcost' => ['maliyet', 'Ürün Food Cost', 'Satılan her ürünün reçete maliyeti, satış tutarı, food cost oranı ve katkı payı; reçetesiz satılan ürünler.', 'percent', '#059669', ['satis', 'recete'], null],
             'avt' => ['maliyet', 'Teorik ve Gerçek Tüketim', 'Reçeteye göre harcanması gereken (teorik) ile fire ve sayım farkı eklenmiş gerçek tüketim; malzeme bazında fark.', 'compare_arrows', '#047857', ['tuketim'], null],
             'zam' => ['maliyet', 'Menüye Zam Etkisi', 'Malzeme alış fiyatı değişimlerinin reçete üzerinden ürün maliyetine ve food cost oranına etkisi.', 'trending_up', '#0F766E', ['fatura', 'recete'], null],
-            'menu_muh' => ['menu', 'Menü Mühendisliği', 'Her ürün çok satıyor mu ve tabak başına çok kazandırıyor mu diye 4 gruba ayrılır; her gruba göre ne yapılacağı yazar.', 'auto_graph', '#7C3AED', ['satis', 'recete'], null],
+            'menu_muh' => ['menu', 'Menü Mühendisliği', '⭐ En İyi Ürünler: çok satıyor ve çok kazandırıyor. 💰 Zam Adayları: çok satıyor ama az kazandırıyor. 📣 Öne Çıkarılacaklar: az satıyor ama çok kazandırıyor. ❌ Çıkarma Adayları: hem az satıyor hem az kazandırıyor.', 'auto_graph', '#7C3AED', ['satis', 'recete'], null],
             'satis' => ['menu', 'Ürün Satışları', 'Ürün başına satılan porsiyon ve tutar, önceki döneme göre değişim, saat dağılımı.', 'restaurant_menu', '#6D28D9', ['satis'], null],
             'fire' => ['fire', 'Fire & İsraf Analizi', 'Fire maliyeti; sebebe, malzemeye, kaynağa ve güne göre; alışa ve kuvere oranı.', 'delete_sweep', '#C2410C', ['fire'], null],
             'skt_kayip' => ['fire', 'SKT Kaybı & Riski', 'Son kullanma tarihi geçmiş ya da 7 gün içinde dolacak stoktaki partiler ve değeri; SKT nedeniyle atılan fire.', 'event_busy', '#B91C1C', ['parti'], null],
@@ -369,7 +369,7 @@ if (!function_exists('_mrUrunSure')) {
         return ['var' => $var, 'yok' => $yok, 'fc' => $ts > 0 ? round($tmm / $ts * 100, 1) : null, 'satis' => $ts, 'maliyet' => $tmm, 'yok_tutar' => array_sum(array_column($yok, 2))];
     }
     // Menü mühendisliği (Kasavana-Smith): popüler = satış payı ≥ %70 × (1 / ürün sayısı); kârlı = katkı payı ≥ ağırlıklı ortalama katkı payı
-    function _mrSinifAd() { return ['Yıldız' => '⭐ Çok satıyor · çok kazandırıyor', 'İş Atı' => '📈 Çok satıyor · az kazandırıyor', 'Bilmece' => '💎 Az satıyor · çok kazandırıyor', 'Zayıf' => '⚠️ Az satıyor · az kazandırıyor']; }
+    function _mrSinifAd() { return ['Yıldız' => '⭐ En İyi Ürünler', 'İş Atı' => '💰 Zam Adayları', 'Bilmece' => '📣 Öne Çıkarılacaklar', 'Zayıf' => '❌ Çıkarma Adayları']; }
     function _mrMenuMuh(array $k)
     {
         $fc = _mrFoodCost($k); $l = $fc['var']; $n = count($l); if (!$n) return ['sat' => [], 'esik_pop' => null, 'esik_cm' => null, 'sinif' => []];
@@ -683,13 +683,13 @@ if (!function_exists('_mrRapor')) {
             // ---------------- MENÜ ----------------
             case 'menu_muh':
                 $mm = _mrMenuMuh($K()); $s = $mm['sinif'];
-                return [$pano([_srKpi('⭐ Çok satıyor · çok kazandırıyor', $s['Yıldız'] ?? 0, 'sayi', 'A16207'), _srKpi('📈 Çok satıyor · az kazandırıyor', $s['İş Atı'] ?? 0, 'sayi', '2563EB'), _srKpi('💎 Az satıyor · çok kazandırıyor', $s['Bilmece'] ?? 0, 'sayi', '7C3AED'), _srKpi('⚠️ Az satıyor · az kazandırıyor', $s['Zayıf'] ?? 0, 'sayi', 'B91C1C'),
+                return [$pano([_srKpi('⭐ En İyi Ürünler', $s['Yıldız'] ?? 0, 'sayi', 'A16207'), _srKpi('💰 Zam Adayları', $s['İş Atı'] ?? 0, 'sayi', '2563EB'), _srKpi('📣 Öne Çıkarılacaklar', $s['Bilmece'] ?? 0, 'sayi', '7C3AED'), _srKpi('❌ Çıkarma Adayları', $s['Zayıf'] ?? 0, 'sayi', 'B91C1C'),
                         _srKpi('"Çok satıyor" sınırı (satış payı)', $mm['esik_pop'] ?? '—', $mm['esik_pop'] === null ? 'metin' : 'y', '475569'), _srKpi('"Çok kazandırıyor" sınırı (tabak başı kazanç)', $mm['esik_cm'] ?? 'Veri yok', $mm['esik_cm'] === null ? 'metin' : 'tl', '475569')],
                         [_srBlok('Gruplara göre ürün sayısı', 'pie', '7C3AED', [['Grup', 'm'], ['Ürün', 's'], ['', 'm']], array_map(fn ($a, $v) => [_mrSinifAd()[$a], $v, ''], array_keys($s), array_values($s))),
                          _srBlok('Toplam katkıya göre ürünler', 'bar', 'CA8A04', [['Ürün', 'm'], ['Toplam katkı', 'tl'], ['Grup', 'm']], array_map(fn ($x) => [$x[0], $x[7], $x[1]], array_slice(collect($mm['sat'])->sortByDesc(7)->values()->all(), 0, 12)))], !$mm['sat'] ? (!$d['recete'] ? _mrBos('recete_yok', $dn) : _mrBos('satis', $dn)) : null),
                     _mrMenuSayfa($mm, $dn, $d),
-                    ['_oto' => []] + _srSayfa('Gruplar Ne Demek?', 'Her ürün iki soruya göre gruplanır: çok satıyor mu (satış payı) ve tabak başına çok kazandırıyor mu (katkı payı). Sınırlar senin menünün ortalamasına göre hesaplanır.', [['Grup', 'm', 30], ['Satış', 'm', 9], ['Tabak Başı Kazanç', 'm', 14], ['Ne yapılır', 'm', 60]], [['⭐ Çok satıyor · çok kazandırıyor', 'Çok', 'Yüksek', 'Menünün en iyi ürünü. Kaliteyi ve porsiyonu koru, en görünür yerde tut.'], ['📈 Çok satıyor · az kazandırıyor', 'Çok', 'Düşük', 'Sevilen ama az kazandıran. Küçük fiyat artışı, porsiyon/malzeme maliyetini düşür, yanına kârlı ürün eşleştir.'],
-                        ['💎 Az satıyor · çok kazandırıyor', 'Az', 'Yüksek', 'Kazandıran ama az satan. Menüde öne çıkar, garsona önerdir, sunumunu/adını güçlendir.'], ['⚠️ Az satıyor · az kazandırıyor', 'Az', 'Düşük', 'Menüden çıkarmayı ya da yeniden tasarlamayı düşün (müşteri için zorunlu bir ürün değilse).']], null),
+                    ['_oto' => []] + _srSayfa('Gruplar Ne Demek?', 'Her ürün iki soruya göre gruplanır: çok satıyor mu (satış payı) ve tabak başına çok kazandırıyor mu (katkı payı). Sınırlar senin menünün ortalamasına göre hesaplanır.', [['Grup', 'm', 30], ['Satış', 'm', 9], ['Tabak Başı Kazanç', 'm', 14], ['Ne yapılır', 'm', 60]], [['⭐ En İyi Ürünler', 'Çok', 'Yüksek', 'Menünün en iyi ürünü. Kaliteyi ve porsiyonu koru, en görünür yerde tut.'], ['💰 Zam Adayları', 'Çok', 'Düşük', 'Sevilen ama az kazandıran. Küçük fiyat artışı, porsiyon/malzeme maliyetini düşür, yanına kârlı ürün eşleştir.'],
+                        ['📣 Öne Çıkarılacaklar', 'Az', 'Yüksek', 'Kazandıran ama az satan. Menüde öne çıkar, garsona önerdir, sunumunu/adını güçlendir.'], ['❌ Çıkarma Adayları', 'Az', 'Düşük', 'Menüden çıkarmayı ya da yeniden tasarlamayı düşün (müşteri için zorunlu bir ürün değilse).']], null),
                     _srSayfa('Reçetesiz (Sınıflanamayan) Ürünler', 'Maliyeti bilinmediği için matrise girmeyen ürünler.', [['Ürün', 'm', 30], ['Adet', 's', 9, 'top'], ['Satış', 'tl', 13, 'top bar']], $mm['yok'] ?? [], 'Reçetesiz satılan ürün yok.')];
             case 'satis':
                 $k = _mrSatis($K()); $ko = _mrSatis($KO()); $g = collect($k)->groupBy('ad'); $go = collect($ko)->groupBy('ad'); $top = max(0.01, array_sum(array_column($k, 'tutar')));
@@ -915,7 +915,7 @@ if (!function_exists('_mrAiOzet')) {
         if (!$key) return ['ok' => 0, 'hata' => 'AI anahtarı tanımlı değil.'];
         $sys = 'Sen bir restoranın mutfağını şef ve üst yönetim için analiz eden deneyimli bir mutfak operasyon danışmanısın. Türkçe, kısa ve rakamlı yaz; yalnız verilen veriyi kullan, rakam uydurma, kendin toplama/çarpma yapma. '
             . 'Süreler dakika (dk), para TL; sayıları Türkçe biçimde yaz (1.452,00 TL, %12,5). "kullanilan_moduller" 0 olan modülden sonuç çıkarma (örn. kds 0 ise hız yorumu yapma, "veri yok" de). '
-            . 'Teorik food cost reçete maliyeti ÷ satıştır; tüketim farkı (gerçek − teorik) fire ve sayım kaybından gelir. Menü grupları: "Çok satıyor · çok kazandırıyor", "Çok satıyor · az kazandırıyor", "Az satıyor · çok kazandırıyor", "Az satıyor · az kazandırıyor" (bu adlarla yaz; Yıldız/İş Atı gibi İngilizce kökenli adlar kullanma). Bugün ' . today()->format('d.m.Y') . '.';
+            . 'Teorik food cost reçete maliyeti ÷ satıştır; tüketim farkı (gerçek − teorik) fire ve sayım kaybından gelir. Menü grupları: "En İyi Ürünler", "Zam Adayları", "Öne Çıkarılacaklar", "Çıkarma Adayları" (bu adlarla yaz; Yıldız/İş Atı gibi İngilizce kökenli adlar kullanma). Bugün ' . today()->format('d.m.Y') . '.';
         if (trim((string) $soru) !== '') {
             $r = function_exists('_fr2AiCagir') ? _fr2AiCagir($sys . ' Soruyu veriye dayanarak kısa paragraflar ve madde işaretleriyle cevapla. Markdown başlık kullanma.', 'Veri: ' . json_encode($b, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . mb_substr((string) $soru, 0, 500), 1200) : ['hata' => 'AI servisi yok.'];
             if (!empty($r['hata'])) return ['ok' => 0, 'hata' => $r['hata']];
