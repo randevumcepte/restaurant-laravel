@@ -282,5 +282,20 @@ body.koyu .idz-dunya{filter:brightness(.86)}
   .idz-bkartlar,.gata-list{grid-template-columns:minmax(0,1fr)}
   .gata-row{flex-wrap:wrap}
 }
+/* Renkli sekmeler / özet kartları / hızlı işlemler: her öğe kendi --r rengiyle */
+.idz-sekme[style*="--r"]{background:linear-gradient(135deg,color-mix(in srgb,var(--r) 9%,var(--card)),var(--card));border-color:color-mix(in srgb,var(--r) 28%,var(--line))}
+.idz-sekme[style*="--r"] .material-icons-outlined{color:var(--r)}
+.idz-sekme[style*="--r"]:hover{box-shadow:0 6px 16px color-mix(in srgb,var(--r) 22%,transparent)}
+.idz-sekme[style*="--r"].aktif{background:linear-gradient(135deg,color-mix(in srgb,var(--r) 78%,#fff),var(--r));border-color:transparent;color:#fff;box-shadow:0 8px 20px color-mix(in srgb,var(--r) 35%,transparent)}
+.idz-sekme[style*="--r"].aktif .material-icons-outlined{color:#fff}
+.idz-stat[style*="--r"]{position:relative;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--r) 14%,var(--card)) 0%,var(--card) 70%);border-color:color-mix(in srgb,var(--r) 30%,var(--line))}
+.idz-stat[style*="--r"]::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:var(--r)}
+.idz-stat[style*="--r"]::after{content:"";position:absolute;right:-26px;bottom:-34px;width:96px;height:96px;border-radius:50%;background:color-mix(in srgb,var(--r) 10%,transparent);pointer-events:none}
+.idz-stat[style*="--r"] .idz-stat-ikon{background:linear-gradient(135deg,color-mix(in srgb,var(--r) 75%,#fff),var(--r));color:#fff;box-shadow:0 6px 14px color-mix(in srgb,var(--r) 32%,transparent)}
+.idz-stat[style*="--r"] .d{color:var(--r)}
+.idz-hizli button[style*="--r"]{background:linear-gradient(160deg,color-mix(in srgb,var(--r) 12%,var(--card)),var(--card));border-color:color-mix(in srgb,var(--r) 26%,var(--line))}
+.idz-hizli button[style*="--r"] .material-icons-outlined{color:#fff;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:11px;font-size:21px;background:linear-gradient(135deg,color-mix(in srgb,var(--r) 75%,#fff),var(--r));box-shadow:0 5px 12px color-mix(in srgb,var(--r) 30%,transparent)}
+.idz-hizli button[style*="--r"]:hover{border-color:var(--r);box-shadow:0 8px 18px color-mix(in srgb,var(--r) 24%,transparent)}
+body.koyu .idz-stat[style*="--r"] .d{color:color-mix(in srgb,var(--r) 60%,#fff)}
 @media(prefers-reduced-motion:reduce){.idz-btn.bekliyor{animation:none}.idz *{transition:none!important}}
 </style>

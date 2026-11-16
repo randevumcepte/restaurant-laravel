@@ -66,32 +66,32 @@
 
 {{-- Sekmeler --}}
 <div class="idz-sekmeler" role="tablist">
-  <button type="button" class="idz-sekme aktif" data-sekme="plan" role="tab"><span class="material-icons-outlined">table_restaurant</span>Masa Planı</button>
-  <button type="button" class="idz-sekme" data-sekme="garson" role="tab"><span class="material-icons-outlined">groups</span>Garson Yönetimi</button>
-  <button type="button" class="idz-sekme" data-sekme="kasa" role="tab"><span class="material-icons-outlined">point_of_sale</span>Kasa Yönetimi</button>
-  <button type="button" class="idz-sekme" data-sekme="bolge" role="tab"><span class="material-icons-outlined">person_pin_circle</span>Bölge Ayarları</button>
-  <button type="button" class="idz-sekme" data-sekme="yetki" role="tab"><span class="material-icons-outlined">verified_user</span>Yetki &amp; Roller</button>
-  <button type="button" class="idz-sekme" data-sekme="genel" role="tab"><span class="material-icons-outlined">settings</span>Genel Ayarlar</button>
+  <button type="button" class="idz-sekme aktif" data-sekme="plan" role="tab" style="--r:#7C3AED"><span class="material-icons-outlined">table_restaurant</span>Masa Planı</button>
+  <button type="button" class="idz-sekme" data-sekme="garson" role="tab" style="--r:#059669"><span class="material-icons-outlined">groups</span>Garson Yönetimi</button>
+  <button type="button" class="idz-sekme" data-sekme="kasa" role="tab" style="--r:#2563EB"><span class="material-icons-outlined">point_of_sale</span>Kasa Yönetimi</button>
+  <button type="button" class="idz-sekme" data-sekme="bolge" role="tab" style="--r:#D97706"><span class="material-icons-outlined">person_pin_circle</span>Bölge Ayarları</button>
+  <button type="button" class="idz-sekme" data-sekme="yetki" role="tab" style="--r:#DB2777"><span class="material-icons-outlined">verified_user</span>Yetki &amp; Roller</button>
+  <button type="button" class="idz-sekme" data-sekme="genel" role="tab" style="--r:#0891B2"><span class="material-icons-outlined">settings</span>Genel Ayarlar</button>
 </div>
 
 {{-- Özet kartları --}}
 <div class="idz-ozet">
-  <div class="idz-stat">
-    <span class="idz-stat-ikon" style="--r:#7C3AED"><span class="material-icons-outlined">chair</span></span>
+  <div class="idz-stat" style="--r:#7C3AED">
+    <span class="idz-stat-ikon"><span class="material-icons-outlined">chair</span></span>
     <div><div class="e">Toplam Masa</div><div class="d">{{ $masalar->count() }}</div></div>
     @if (($yeniMasa ?? 0) > 0)<span class="idz-trend" title="Son 7 günde eklenen"><span class="material-icons-outlined">arrow_upward</span>{{ $yeniMasa }}</span>@endif
   </div>
-  <div class="idz-stat">
-    <span class="idz-stat-ikon" style="--r:#10B981"><span class="material-icons-outlined">chair</span></span>
+  <div class="idz-stat" style="--r:#059669">
+    <span class="idz-stat-ikon"><span class="material-icons-outlined">chair</span></span>
     <div><div class="e">Boş Masa</div><div class="d">{{ $bosSay }}</div></div>
     @if ($masalar->count())<span class="idz-trend" title="Boş masa oranı">%{{ round($bosSay * 100 / $masalar->count()) }}</span>@endif
   </div>
-  <div class="idz-stat">
-    <span class="idz-stat-ikon" style="--r:#7C3AED"><span class="material-icons-outlined">groups</span></span>
+  <div class="idz-stat" style="--r:#D97706">
+    <span class="idz-stat-ikon"><span class="material-icons-outlined">groups</span></span>
     <div><div class="e">Aktif Garson</div><div class="d">{{ $garsonSay }}</div></div>
   </div>
-  <div class="idz-stat">
-    <span class="idz-stat-ikon" style="--r:#2563EB"><span class="material-icons-outlined">point_of_sale</span></span>
+  <div class="idz-stat" style="--r:#2563EB">
+    <span class="idz-stat-ikon"><span class="material-icons-outlined">point_of_sale</span></span>
     <div><div class="e">Kasa Sayısı</div><div class="d">{{ $kasalar->count() }}</div></div>
   </div>
   <div class="idz-afis">
@@ -189,12 +189,12 @@
         <div class="idz-kart">
           <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">bolt</span><h3>Hızlı İşlemler</h3></div>
           <div class="idz-hizli">
-            <button type="button" onclick="idzModal('idzMasaEkle')"><span class="material-icons-outlined">table_restaurant</span>Masa Ekle</button>
-            <button type="button" onclick="gySekme('garsonlar')"><span class="material-icons-outlined">groups</span>Garson Ata</button>
-            <button type="button" onclick="idzSekme('kasa');idzOdak('idzKasaAd')"><span class="material-icons-outlined">point_of_sale</span>Kasa Ekle</button>
-            <button type="button" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">location_on</span>Bölge Oluştur</button>
-            <button type="button" onclick="idzTasiAc()"><span class="material-icons-outlined">swap_horiz</span>Masa Taşı</button>
-            <button type="button" onclick="idzSekme('genel')"><span class="material-icons-outlined">settings</span>Ayarlar</button>
+            <button type="button" style="--r:#7C3AED" onclick="idzModal('idzMasaEkle')"><span class="material-icons-outlined">table_restaurant</span>Masa Ekle</button>
+            <button type="button" style="--r:#059669" onclick="gySekme('garsonlar')"><span class="material-icons-outlined">groups</span>Garson Ata</button>
+            <button type="button" style="--r:#2563EB" onclick="idzSekme('kasa');idzOdak('idzKasaAd')"><span class="material-icons-outlined">point_of_sale</span>Kasa Ekle</button>
+            <button type="button" style="--r:#D97706" onclick="idzModal('idzBolgeEkle')"><span class="material-icons-outlined">location_on</span>Bölge Oluştur</button>
+            <button type="button" style="--r:#DB2777" onclick="idzTasiAc()"><span class="material-icons-outlined">swap_horiz</span>Masa Taşı</button>
+            <button type="button" style="--r:#0891B2" onclick="idzSekme('genel')"><span class="material-icons-outlined">settings</span>Ayarlar</button>
           </div>
         </div>
       </div>
