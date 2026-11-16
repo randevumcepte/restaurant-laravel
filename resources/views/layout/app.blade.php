@@ -470,11 +470,22 @@
         }
     } catch (\Throwable $e) {}
 
+    // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
+    $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar/donemsel', '/satinalma-raporlar/harcama', '/satinalma-raporlar/maliyet', '/satinalma-raporlar/tedarikci', '/satinalma-raporlar/surec',
+        '/satinalma-raporlar/stok', '/satinalma-raporlar/finans', '/satinalma-raporlar/sube', '/satinalma-raporlar/radar', '/satinalma-raporlar/ai'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
+        'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
+        'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/demirbas']];
     // ===== YÖNETİM — her departman KENDİ akordiyon grubu olarak en üste alınır (başlığa tıkla → sayfaları açılır; ilk sırada brifing). Sadece sahip/müdür için öne çıkar. =====
     try {
         $_yp = function_exists('_posPersonel') ? _posPersonel() : null;
         if ($_yp && in_array(($_yp->rol ?? ''), ['sahip', 'mudur'])) {
-            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
+            if (!empty($gruplar['Satın Alma'])) { // satın almacı menüsüyle aynı bölme: Satın Alma / Fatura & Fiyat / Tedarikçi & Analiz / Stok & Üretim / Raporlar & Analizler
+                $_saP = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
+                foreach ($gruplar['Satın Alma'] as $_it) { $_g = 'Satın Alma'; foreach ($_saBol as $_bg => $_bu) if (in_array(strtok($_it[0], '?'), $_bu, true)) { $_g = $_bg; break; } $_saP[$_g][] = $_it; }
+                unset($gruplar['Satın Alma']);
+                foreach ($_saP as $_bg => $_its) if ($_its) $gruplar[$_bg] = array_merge($gruplar[$_bg] ?? [], $_its);
+            }
+            $_deptSira = ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'];
             $_patronAi = ['Patron AI' => $gruplar['Patron AI'] ?? []];
             unset($gruplar['Patron AI']);
             $_dept = [];
@@ -516,11 +527,7 @@
         unset($gruplar['Satın Alma'], $gruplar['Mutfak / BOH'], $gruplar['Kalite / HACCP']); // kalite mutfağın işi; satın almanın kontrolü Mal Kabul'de
         $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
         unset($gruplar['Brifing']);
-        // İşe göre 4 kısa grup: günlük akış / fatura-fiyat / tedarikçi-analiz / stok-üretim (listede olmayan günlük akışa)
-        $_saBol = ['Raporlar & Analizler' => ['/satinalma-raporlar/donemsel', '/satinalma-raporlar/harcama', '/satinalma-raporlar/maliyet', '/satinalma-raporlar/tedarikci', '/satinalma-raporlar/surec',
-            '/satinalma-raporlar/stok', '/satinalma-raporlar/finans', '/satinalma-raporlar/sube', '/satinalma-raporlar/radar', '/satinalma-raporlar/ai'], 'Fatura & Fiyat' => ['/efatura-gelen', '/fatura-denetim', '/fatura-analiz', '/fatura-eslestir', '/fatura-ocr', '/fiyat-radari', '/hal-fiyatlari', '/fiyat-anlasmalari', '/mustahsil'],
-            'Tedarikçi & Analiz' => ['/tedarikci', '/tedarikci-karne', '/satinalma-analiz', '/satinalma-butce', '/satinalma-onay-seviye', '/eposta-hesaplari'],
-            'Stok & Üretim' => ['/uretim-plani', '/uretim-riski', '/sayim', '/demirbas']];
+        // Satın alma sayfaları işe göre gruplara bölünür ($_saBol yukarıda; listede olmayan günlük akışa)
         $_saGrup = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
         foreach ($_sa as $_it) { $_g = 'Satın Alma'; foreach ($_saBol as $_bg => $_bu) if (in_array($_it[0], $_bu, true)) { $_g = $_bg; break; } $_saGrup[$_g][] = $_it; }
         foreach ($_saGrup as $_bg => $_its) if ($_its) $_yeni[$_bg] = $_its;
@@ -574,7 +581,7 @@
             @php
                 // ÜST BAŞLIK (kategori) yapısı — gruplar bölümlere ayrılır; kategorisiz gruplar (Patron AI, __PIN__) en üstte standalone kalır
                 $_kategoriler = [
-                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Satın Alma', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
+                    'YÖNETİM' => ['Mutfak / BOH', 'İnsan Kaynakları', 'Finans / Muhasebe', 'Raporlar & Analizler', 'Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim', 'Pazarlama', 'Rezervasyon Satış', 'AI Santral', 'CRM / Müşteri İlişkileri', 'Kalite / HACCP', 'IT / Bilgi İşlem'],
                     'OPERASYON' => ['Satış & Servis', 'Departman Operasyon', 'Menü & Ürünler'],
                     'AYARLAR' => ['Ayarlar & Entegrasyon'],
                 ];
@@ -603,8 +610,7 @@
                 // Departman çalışanı (yönetici/satın almacı değil): kategori başlıkları (YÖNETİM, OPERASYON) gösterilmez
                 $_satinalmaciMenu = $_pp && in_array($_pp->rol ?? '', ['satinalmaci', 'satinalma'], true);
                 $_katsiz = $_satinalmaciMenu || ($_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true));
-                if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM';
-                    $_fi = array_search('Finans / Muhasebe', $_kategoriler['YÖNETİM'], true); array_splice($_kategoriler['YÖNETİM'], $_fi === false ? count($_kategoriler['YÖNETİM']) : $_fi + 1, 0, ['Raporlar & Analizler']); $_grupKat['Raporlar & Analizler'] = 'YÖNETİM'; } // satın alma grupları en üstte; raporlar Finans'ın altında
+                if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM'; } // satın alma grupları en üstte; raporlar Finans'ın altında
                 $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
             @endphp
             @if ($_duzMenu)
