@@ -264,11 +264,14 @@
         ],
         'Ayarlar & Entegrasyon' => [
             ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
+            ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', '#7C3AED'], // İşletme Düzeni > Genel Ayarlar kartları menüde de
             ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
             ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
             ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],
             ['/wa-hatlar', 'forum', 'WhatsApp Hatları (çoklu no)', '#25D366'],
             ['/isletme-konum', 'my_location', 'İşletme Konum', null],
+            ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'],
+            ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'],
             ['/yasal-bilgiler', 'gavel', 'Yasal Bilgiler & Sözleşmeler', '#7C3AED'],
             ['/sebep-yonetimi', 'rule_folder', 'İptal / İkram Sebepleri', null],
             ['/hareketler', 'history', 'Hareketler (Log)', '#7C3AED'],

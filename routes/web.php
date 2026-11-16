@@ -9965,7 +9965,7 @@ if (!function_exists('_olcekMenuListesi')) {
     function _olcekMenuListesi($olcek)
     {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
-        $ayar = ['/isletme-duzeni', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
+        $ayar = ['/isletme-duzeni', '/masa-yonetim', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
             'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/patron-ai-sohbet', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
@@ -10015,8 +10015,8 @@ if (!function_exists('_menuOlcekSuz')) {
             }));
             if (!$gruplar[$g]) unset($gruplar[$g]);
         }
-        // IT grubu gizliyse yazıcı/cihaz ayarları Ayarlar'a geçer (kurulum için şart)
-        if ($izin !== null && !isset($gruplar['IT / Bilgi İşlem']) && isset($gruplar['Ayarlar & Entegrasyon'])) {
+        // IT grubu gizliyse yazıcı/cihaz ayarları Ayarlar'a geçer (kurulum için şart) — artık Ayarlar'da zaten varsa ekleme
+        if ($izin !== null && !isset($gruplar['IT / Bilgi İşlem']) && isset($gruplar['Ayarlar & Entegrasyon']) && !in_array('/yazici-ayarlari', array_column($gruplar['Ayarlar & Entegrasyon'], 0), true)) {
             $gruplar['Ayarlar & Entegrasyon'][] = ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', '#475569'];
             $gruplar['Ayarlar & Entegrasyon'][] = ['/bagli-cihazlar', 'devices', 'Bağlı Cihazlar', '#0EA5E9'];
         }
