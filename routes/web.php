@@ -459,6 +459,32 @@ Route::get('/pos-giris', function () {
         . csrf_field()
         . '<button style="width:100%;padding:13px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:11px;font-size:16px;font-weight:700;cursor:pointer">Giriş Yap</button></form></div></html>');
 });
+if (!function_exists('_girisAnaSayfa')) {
+    // Brifingi olmayan/göremeyen personelin girişte açılacak sayfası: önce kendi departmanının ekranı, sonra yetkili olduğu ilk menü sayfası (yetkisiz sayfaya düşmesin)
+    function _girisAnaSayfa($p, $mutfakci = false)
+    {
+        $h = function_exists('_sayfaYetkiHaritasi') ? _sayfaYetkiHaritasi() : [];
+        $mutfakGrubu = ['/mutfak'];
+        $aday = ([
+            'ust_yonetim' => ['/dashboard'], 'operasyon' => ['/dashboard', '/pos'], 'servis' => ['/pos'], 'karsilama' => ['/karsilama', '/rezervasyon'],
+            'bar' => ['/bar', '/pos'], 'kasa' => ['/kasa', '/pos'], 'mutfak' => $mutfakGrubu, 'soguk_mutfak' => $mutfakGrubu, 'pastane' => $mutfakGrubu, 'kasap' => $mutfakGrubu,
+            'bulasik' => ['/bulasik', '/mutfak'], 'satinalma' => ['/stok', '/satinalma-talep'], 'depo' => ['/stok', '/sayim'], 'mal_kabul' => ['/mal-kabul', '/stok'],
+            'ik' => ['/personel'], 'finans' => ['/finans', '/kasa'], 'pazarlama' => ['/kampanya'], 'satis_etkinlik' => ['/rezervasyon'], 'crm' => ['/musteri-360'],
+            'it' => ['/bagli-cihazlar'], 'paket_kurye' => ['/paket'], 'teknik' => ['/teknik'], 'temizlik' => ['/temizlik'], 'guvenlik' => ['/guvenlik'], 'kalite' => ['/kalite'],
+        ][function_exists('_personelDepartmanKodu') ? _personelDepartmanKodu($p) : ''] ?? []);
+        $aday = array_merge($aday, $mutfakci ? ['/mutfak'] : [], ['/pos'], array_keys($h));
+        foreach ($aday as $u) {
+            if (!isset($h[$u]) || str_contains($u, '{') || str_contains($u, '?')) continue;
+            try {
+                if (!_panelYetkiVar($p, $h[$u])) continue;
+                if (function_exists('_kasiyerSayfaIzinli') && !_kasiyerSayfaIzinli($p, $u)) continue;
+                if ($u === '/bulasik' && function_exists('_bulasikGorur') && !_bulasikGorur($p)) continue;
+            } catch (\Throwable $e) { continue; }
+            return $u;
+        }
+        return '/profilim';
+    }
+}
 Route::post('/pos-giris', function (Request $r) {
     $pin = (string) $r->input('pin');
     $rlKey = 'posgiris:' . $r->ip();
@@ -492,7 +518,7 @@ Route::post('/pos-giris', function (Request $r) {
     $brifingli = !$posSuz && !empty($p->departman_id) && !in_array($p->rol ?? '', ['sahip', 'mudur'], true) && !_kasiyerMi($p) && _brifingGorur($p);
     // Patron güne Sabah Brifingi ile, genel müdür / brifing yetkili yönetici GM brifingiyle başlar (kasiyer hariç)
     $patronBrif = ($posSuz || _kasiyerMi($p)) ? null : (($p->rol ?? '') === 'sahip' ? '/patron-ai' : ((($p->rol ?? '') === 'mudur' || _panelYetkiVar($p, 'gor_copilot')) ? '/patron-ai?gm=1' : null));
-    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($patronBrif ?: ($brifingli ? '/departman-brief' : ($mutfakci ? '/mutfak' : '/pos')))));
+    return redirect($hedef ?: ($posSuz ? '/departman-brief?dep=satinalma' : ($patronBrif ?: ($brifingli ? '/departman-brief' : (_kasiyerMi($p) ? '/pos' : _girisAnaSayfa($p, $mutfakci))))));
 });
 // ÇOKLU KASA: giriş sonrası hangi kasada çalışılacağını seçtir (birden fazla & personele atanmamışsa)
 Route::get('/pos-kasa-sec', function () {
