@@ -3206,7 +3206,8 @@ Route::post('/kampanya-push/gonder', function (Request $r) {
     if ($baslik === '' || $metin === '') return redirect('/kampanya-push')->with('hata', 'Başlık ve mesaj gerekli.');
     $ids = _musteriSegmentIds($sid, $segment);
     $res = _musteriKampanyaPush($sid, $ids, $baslik, $metin, $gorsel, ['kampanya_segment' => $segment]);
-    DB::table('kampanya_gonderim')->insert(['sube_id' => $sid, 'baslik' => $baslik, 'metin' => $metin, 'gorsel' => $gorsel, 'segment' => $segment, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]);
+    $gid = DB::table('kampanya_gonderim')->insertGetId(['sube_id' => $sid, 'baslik' => $baslik, 'metin' => $metin, 'gorsel' => $gorsel, 'segment' => $segment, 'hedef' => (int) ($res['hedef'] ?? 0), 'gonderilen' => (int) ($res['gonderilen'] ?? 0), 'kanal' => 'push', 'gonderen_id' => $bp->id ?? null, 'created_at' => now(), 'updated_at' => now()]);
+    if (function_exists('_pzrAliciKaydet')) _pzrAliciKaydet($sid, 'push', $gid, $ids); // kampanya alıcıları (pazarlama raporu: dönüşüm)
     if (($res['hedef'] ?? 0) <= 0) return redirect('/kampanya-push')->with('hata', 'Bu segmentte uygulama indirmiş (push açık) müşteri bulunamadı.');
     return redirect('/kampanya-push')->with('ok', ($res['gonderilen'] ?? 0) . ' müşteriye resimli bildirim gönderildi (' . $segment . ').');
 });
@@ -5802,17 +5803,18 @@ Route::post('/kampanya/gonder', function (Request $r) {
     if ($mesaj === '') return response()->json(['ok' => 0, 'hata' => 'Mesaj boş.']);
     $kol = ['m.id', 'm.ad', 'm.telefon']; if (Schema::hasColumn('musteriler', 'telefon_norm')) $kol[] = 'm.telefon_norm';
     $musteriler = _kampanyaSorgu($sid, $segment)->limit(500)->get($kol);
-    $gonderilen = 0; $atlanan = 0;
+    $gonderilen = 0; $atlanan = 0; $okIds = [];
     foreach ($musteriler as $m) {
         $tel = (!empty($m->telefon_norm) ? $m->telefon_norm : _waTelNorm($m->telefon));
         if (!$tel) { $atlanan++; continue; }
         $kisisel = str_replace('{ad}', ($m->ad ?: 'değerli müşterimiz'), $mesaj);
         $ok = false; try { $ok = _restoWaGonder($sid, $tel, $kisisel); } catch (\Throwable $e) {}
-        if ($ok) $gonderilen++; else $atlanan++;
+        if ($ok) { $gonderilen++; $okIds[] = (int) $m->id; } else $atlanan++;
     }
-    DB::table('kampanya_gonderimleri')->insert(['sube_id' => $sid, 'segment' => $segment, 'mesaj' => mb_substr($mesaj, 0, 500),
+    $gid = DB::table('kampanya_gonderimleri')->insertGetId(['sube_id' => $sid, 'segment' => $segment, 'mesaj' => mb_substr($mesaj, 0, 500),
         'hedef' => $musteriler->count(), 'gonderilen' => $gonderilen, 'atlanan' => $atlanan,
         'gonderen_id' => $bp->id ?? null, 'gonderen_ad' => $bp->ad ?? '', 'created_at' => now(), 'updated_at' => now()]);
+    if (function_exists('_pzrAliciKaydet')) _pzrAliciKaydet($sid, 'wa', $gid, $okIds); // kampanya alıcıları (pazarlama raporu: dönüşüm)
     return response()->json(['ok' => 1, 'gonderilen' => $gonderilen, 'atlanan' => $atlanan, 'hedef' => $musteriler->count()]);
 });
 
