@@ -38,6 +38,19 @@ if (!function_exists('_efgKartYetki')) {
         return function_exists('_malzemeKartYetki') ? _malzemeKartYetki($bp) : (($bp->rol ?? '') === 'sahip');
     }
 }
+if (!function_exists('_efgAyniMalzeme')) {
+    // Faturadan kart açarken aynı adlı malzeme (Türkçe karakter/büyük-küçük/boşluk farkı dahil) varsa onun id'si;
+    // $ekleId verilirse bu istekte açılan kart da listeye eklenir (aynı ad ikinci faturada tekrar açılmasın)
+    function _efgAyniMalzeme($sid, $ad, $ekleId = null)
+    {
+        static $ek = [];
+        if ($ekleId) { $ek[$sid][$ekleId] = $ad; return $ekleId; }
+        if (!function_exists('_adBenzerleri')) return null;
+        $adlar = _efgMalzemeler($sid)->pluck('ad', 'id')->all() + ($ek[$sid] ?? []);
+        $bz = _adBenzerleri($ad, $adlar);
+        return $bz['ayni'] ? (int) array_key_first($bz['ayni']) : null;
+    }
+}
 if (!function_exists('_efgPersonelId')) {
     function _efgPersonelId()
     {
@@ -206,9 +219,13 @@ Route::post('/efatura-gelen/{id}/eslestir', function (Request $r, $id) {
                 if ($sec === 'yeni') {
                     $kol = ['ad' => mb_substr(trim((string) ($v['yeni_ad'] ?? '')) ?: $k->ad, 0, 190), 'temel_birim_id' => $birimId, 'stok_takipli' => 1, 'kritik_stok' => 0, 'guncel_maliyet' => $k->birim_fiyat, 'created_at' => now(), 'updated_at' => now()];
                     if (Schema::hasColumn('malzemeler', 'sube_id')) $kol['sube_id'] = $sid;
-                    $mid = (int) DB::table('malzemeler')->insertGetId($kol);
-                    if (function_exists('_katalogSahiplen')) _katalogSahiplen('malzeme', $mid, $sid);
-                    $gorunur[$mid] = $birimId;
+                    if ($var = _efgAyniMalzeme($sid, $kol['ad'])) { $mid = $var; } // aynı adlı kart varsa ikincisi açılmaz
+                    else {
+                        $mid = (int) DB::table('malzemeler')->insertGetId($kol);
+                        if (function_exists('_katalogSahiplen')) _katalogSahiplen('malzeme', $mid, $sid);
+                        _efgAyniMalzeme($sid, $kol['ad'], $mid);
+                        $gorunur[$mid] = $birimId;
+                    }
                 } else {
                     $mid = (int) $sec;
                     if (!isset($gorunur[$mid])) continue; // başka işletmenin malzemesi seçilemez
@@ -266,9 +283,16 @@ Route::post('/efatura-gelen/toplu-yeni', function () {
             else {
                 $kol = ['ad' => mb_substr($k->ad, 0, 190), 'temel_birim_id' => $k->alis_birim_id, 'stok_takipli' => 1, 'kritik_stok' => 0, 'guncel_maliyet' => $k->birim_fiyat, 'created_at' => now(), 'updated_at' => now()];
                 if (Schema::hasColumn('malzemeler', 'sube_id')) $kol['sube_id'] = $sid;
-                $mid = (int) DB::table('malzemeler')->insertGetId($kol);
-                if (function_exists('_katalogSahiplen')) _katalogSahiplen('malzeme', $mid, $sid);
-                $birimId = $k->alis_birim_id; $kaynak = 'elle'; $yeniKart++;
+                $birimId = $k->alis_birim_id;
+                if ($var = _efgAyniMalzeme($sid, $kol['ad'])) {
+                    // aynı adlı kart zaten var: ona bağla; birimi farklı ve çevrimi yoksa 'birim' olarak bekler
+                    $mid = $var; $kaynak = _efgCevrimVar($mid, $birimId) ? 'elle' : 'birim';
+                } else {
+                    $mid = (int) DB::table('malzemeler')->insertGetId($kol);
+                    if (function_exists('_katalogSahiplen')) _katalogSahiplen('malzeme', $mid, $sid);
+                    _efgAyniMalzeme($sid, $kol['ad'], $mid);
+                    $kaynak = 'elle'; $yeniKart++;
+                }
                 _efgHafizaYaz($sid, $g->satici_vkn, $k, $mid, $birimId);
             }
             DB::table('efatura_gelen_kalem')->where('id', $k->id)->update(['malzeme_id' => $mid, 'alis_birim_id' => $birimId, 'eslesme' => $kaynak]);

@@ -19209,13 +19209,72 @@ if (!function_exists('_restoHalEnsure')) {
         } catch (\Throwable $e) {}
     }
 }
-// Ürün adı normalize (eşleşme/tekille): küçük harf + Türkçe sade + tek boşluk.
+// Türkçe doğru küçük harf: mb_strtolower 'İ'yi "i̇" (noktalı birleşik), 'I'yı 'i' yapıyordu → "sebze"/"Sebze", "i̇thal" çiftleri
+if (!function_exists('_trKucuk')) {
+    function _trKucuk($s)
+    {
+        $s = str_replace(['İ', 'I'], ['i', 'ı'], trim((string) $s));
+        $s = str_replace("\u{0307}", '', mb_strtolower($s, 'UTF-8'));
+        return preg_replace('/\s+/u', ' ', $s);
+    }
+    // Görünen kategori/ad biçimi: her kelimenin ilk harfi Türkçe kurala göre büyük ("ithal" → "İthal")
+    function _trBaslik($s)
+    {
+        return implode(' ', array_map(function ($k) {
+            if ($k === '') return $k; $ilk = mb_substr($k, 0, 1); $ilk = $ilk === 'i' ? 'İ' : ($ilk === 'ı' ? 'I' : mb_strtoupper($ilk, 'UTF-8'));
+            return $ilk . mb_substr($k, 1);
+        }, explode(' ', _trKucuk($s))));
+    }
+    // Karşılaştırma anahtarı: Türkçe harfler sadeleşir, boşluk/işaret düşer → "Domates Salçası" = "domates  salcasi" = "DOMATES-SALÇASI"
+    function _adAnahtar($s)
+    {
+        $s = strtr(_trKucuk($s), ['ç' => 'c', 'ğ' => 'g', 'ı' => 'i', 'ö' => 'o', 'ş' => 's', 'ü' => 'u', 'â' => 'a', 'î' => 'i', 'û' => 'u']);
+        return preg_replace('/[^a-z0-9]/', '', $s);
+    }
+    // $ad için aynı ($ayni) ve yazım hatası olabilecek kadar benzer ($benzer) kayıtlar. $adlar: [id => ad]
+    // Benzer: anahtar ≥ 4 harf; 4-7 harfte 1, 8+ harfte 2 düzenleme farkı (harf yer değiştirmesi "kıyam/kıyma" = 2); içindeki sayılar farklıysa benzer sayılmaz (200 ml ≠ 300 ml)
+    function _adBenzerleri($ad, $adlar, $haricId = null)
+    {
+        $a = _adAnahtar($ad); $ayni = []; $benzer = []; if ($a === '') return ['ayni' => [], 'benzer' => []];
+        preg_match_all('/\d+/', $a, $sa); $sa = $sa[0];
+        foreach ($adlar as $id => $digerAd) {
+            if ($haricId && (int) $id === (int) $haricId) continue;
+            $b = _adAnahtar($digerAd); if ($b === '') continue;
+            if ($a === $b) { $ayni[$id] = $digerAd; continue; }
+            preg_match_all('/\d+/', $b, $sb); if ($sa !== $sb[0]) continue;
+            $uz = max(strlen($a), strlen($b)); if ($uz < 4 || abs(strlen($a) - strlen($b)) > 2) continue;
+            $mesafe = levenshtein($a, $b);
+            if ($mesafe <= ($uz >= 8 ? 2 : 1) || ($uz >= 8 && similar_text($a, $b) * 2 / (strlen($a) + strlen($b)) >= 0.92)) $benzer[$id] = $digerAd;
+        }
+        return ['ayni' => $ayni, 'benzer' => array_slice($benzer, 0, 5, true)];
+    }
+}
+// Ürün adı normalize (eşleşme/tekille): Türkçe doğru küçük harf + tek boşluk.
 if (!function_exists('_urunNorm')) {
     function _urunNorm($s)
     {
-        $s = mb_strtolower(trim((string) $s), 'UTF-8');
-        $s = preg_replace('/\s+/', ' ', $s);
-        return mb_substr($s, 0, 80);
+        return mb_substr(_trKucuk($s), 0, 80);
+    }
+}
+// Katalog temizliği (bir kez): ad_norm Türkçe kuralla yeniden, kategori tek yazım ("sebze" → "Sebze", "i̇thal" → "İthal"), çift adlar silinir
+if (!function_exists('_urunKatalogTemizle')) {
+    function _urunKatalogTemizle()
+    {
+        if (cache()->get('urun_katalog_temiz_v1') || !Schema::hasTable('urun_katalogu')) return;
+        try {
+            DB::transaction(function () {
+                $gor = []; $tipler = [];
+                foreach (DB::table('urun_katalogu')->orderBy('id')->get() as $r) {
+                    $n = _urunNorm($r->ad); $k = _adAnahtar($r->ad);
+                    if ($k === '' || isset($gor[$k])) { DB::table('urun_katalogu')->where('id', $r->id)->delete(); continue; }
+                    $gor[$k] = 1;
+                    $tip = $r->tip !== null && $r->tip !== '' ? ($tipler[_adAnahtar($r->tip)] ??= _trBaslik($r->tip)) : $r->tip;
+                    if ($n !== $r->ad_norm) DB::table('urun_katalogu')->where('ad_norm', $n)->where('id', '!=', $r->id)->delete(); // aynı ada düşen sonraki kayıt = çift
+                    if ($n !== $r->ad_norm || $tip !== $r->tip) DB::table('urun_katalogu')->where('id', $r->id)->update(['ad_norm' => $n, 'tip' => $tip]);
+                }
+            });
+            cache()->forever('urun_katalog_temiz_v1', 1);
+        } catch (\Throwable $e) {}
     }
 }
 // SİSTEM GENELİ küratörlü ürün master listesi — tüm restoran kategorileri (idempotent, toplu insert).
@@ -19270,7 +19329,7 @@ if (!function_exists('_urunKatalogEkle')) {
             DB::table('urun_katalogu')->insert([
                 'ad' => mb_convert_case(mb_substr($ad, 0, 80), MB_CASE_TITLE, 'UTF-8'),
                 'ad_norm' => $norm, 'birim' => $birim ? mb_substr($birim, 0, 12) : null,
-                'tip' => $tip ? mb_substr((string) $tip, 0, 24) : null, 'aktif' => 1,
+                'tip' => $tip ? mb_substr(_trBaslik($tip), 0, 24) : null, 'aktif' => 1,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         } catch (\Throwable $e) {}
@@ -19404,7 +19463,7 @@ if (!function_exists('_halCek')) {
                 $yeni[] = ['sube_id' => $sid, 'urun_ad' => mb_substr((string) $ad, 0, 80), 'birim' => mb_substr((string) $birim, 0, 12),
                     'asgari' => $asg ?: null, 'azami' => $azm ?: null, 'ortalama' => $ort ?: null, 'tarih' => $tarih, 'kaynak' => 'api', 'created_at' => now(), 'updated_at' => now()];
                 $tip = $al($r, ['MalTipAdi', 'malTipAdi', 'tip', 'Tip', 'kategori']);
-                $katalog[] = [$ad, $tip ? mb_strtolower((string) $tip, 'UTF-8') : null, $birim];
+                $katalog[] = [$ad, $tip ? _trBaslik($tip) : null, $birim]; // "SEBZE"/"İTHAL" → "Sebze"/"İthal" (katalogdaki yazımla aynı)
             }
             $eklenen = count($yeni);
             if ($eklenen) {
@@ -19562,6 +19621,7 @@ if (!function_exists('_urunKatalogListe')) {
         try {
             if (function_exists('_restoHalEnsure')) _restoHalEnsure(); // tabloyu kur + seed et
             if (!Schema::hasTable('urun_katalogu')) return ['ok' => 1, 'urunler' => []];
+            _urunKatalogTemizle();
             $rows = DB::table('urun_katalogu')->where('aktif', 1)->orderBy('tip')->orderBy('ad')->get(['ad', 'tip', 'birim']);
             return ['ok' => 1, 'urunler' => $rows->map(fn ($x) => ['ad' => $x->ad, 'kategori' => $x->tip, 'birim' => $x->birim])->all()];
         } catch (\Throwable $e) { return ['ok' => 1, 'urunler' => []]; }
@@ -26589,6 +26649,15 @@ Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
     _restoStokSeedEnsure();
     $ad = trim((string) $r->ad);
     if ($ad === '') return ['ok' => 0, 'hata' => 'Malzeme adı boş olamaz'];
+    $ad = preg_replace('/\s+/u', ' ', $ad) ?? $ad;
+    // Çift kayıt koruması: aynı ad (büyük/küçük harf, Türkçe karakter, boşluk farkı dahil) engellenir;
+    // yazım hatası olabilecek kadar benzer ad varsa kullanıcı onaylamadan (onay=1) kaydedilmez
+    if (function_exists('_adBenzerleri')) {
+        $gorunen = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $p->sube_id, 'malzemeler.id')->pluck('malzemeler.ad', 'malzemeler.id');
+        $bz = _adBenzerleri($ad, $gorunen, (int) $r->id);
+        if ($bz['ayni']) return ['ok' => 0, 'ayni' => array_values($bz['ayni']), 'hata' => 'Bu malzeme zaten var: "' . reset($bz['ayni']) . '". Aynı malzemeyi ikinci kez açmak stok ve maliyeti ikiye böler; mevcut kartı kullanın.'];
+        if ($bz['benzer'] && !$r->boolean('onay')) return ['ok' => 0, 'benzer' => array_values($bz['benzer']), 'hata' => 'Çok benzer malzeme var: ' . implode(', ', array_map(fn ($x) => '"' . $x . '"', $bz['benzer'])) . '. Yazım hatası olabilir.'];
+    }
     $temel = (int) $r->temel_birim_id ?: DB::table('birimler')->min('id');
     $veri = ['ad' => $ad, 'kategori_id' => (int) $r->kategori_id ?: null, 'temel_birim_id' => $temel,
         'kritik_stok' => max(0, (float) $r->kritik_stok), 'stok_takipli' => $r->stok_takipli === '0' ? 0 : 1, 'updated_at' => now()];
@@ -26643,8 +26712,15 @@ Route::post('/api/patron/malzeme-kategori-ekle', function (Request $r) {
     if (!_malzemeKartYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $ad = trim((string) $r->ad);
     if ($ad === '') return ['ok' => 0, 'hata' => 'Boş olamaz'];
+    $ad = preg_replace('/\s+/u', ' ', $ad) ?? $ad;
+    // aynı kategori varsa yenisi açılmaz, mevcut döner; benzer varsa onay ister
+    if (function_exists('_adBenzerleri')) {
+        $bz = _adBenzerleri($ad, DB::table('malzeme_kategorileri')->pluck('ad', 'id'));
+        if ($bz['ayni']) return ['ok' => 1, 'id' => (int) array_key_first($bz['ayni']), 'ad' => reset($bz['ayni']), 'mevcut' => 1];
+        if ($bz['benzer'] && !$r->boolean('onay')) return ['ok' => 0, 'benzer' => array_values($bz['benzer']), 'hata' => 'Çok benzer kategori var: ' . implode(', ', array_map(fn ($x) => '"' . $x . '"', $bz['benzer'])) . '.'];
+    }
     $id = DB::table('malzeme_kategorileri')->insertGetId(['ad' => $ad]);
-    return ['ok' => 1, 'id' => $id];
+    return ['ok' => 1, 'id' => $id, 'ad' => $ad];
 });
 
 // Manuel stok hareketi: giris | fire | duzeltme

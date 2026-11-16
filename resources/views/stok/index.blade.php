@@ -259,6 +259,11 @@ body.koyu .stk-modal{background:#0B1020}
 .stk-modal .stk-mod-baslik{color:var(--ink);font-size:18px;font-weight:800;margin-bottom:16px}
 /* Detay bilgi satırı */
 /* Malzeme adı önerileri: alanın hemen altında, modalın içinde */
+.stk-aduyari{display:flex;gap:7px;align-items:flex-start;margin-top:6px;padding:8px 10px;border-radius:10px;font-size:12.5px;line-height:1.45}
+.stk-aduyari[hidden]{display:none}
+.stk-aduyari .material-icons-outlined{font-size:17px;flex:none;margin-top:1px}
+.stk-aduyari.k{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5}
+.stk-aduyari.u{background:#FEF3C7;color:#92400E;border:1px solid #FCD34D}
 .stk-oneri{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18);max-height:286px;overflow-y:auto;padding:4px}
 .stk-oneri .o{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
 .stk-oneri .o:hover,.stk-oneri .o.on{background:color-mix(in srgb,var(--mor1) 10%,transparent)}
@@ -528,6 +533,7 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
             <label>Malzeme adı <span style="font-weight:400;opacity:.7;font-size:11px">— yazmaya başla, listeden seç</span></label>
             <input type="text" id="stkFAd" placeholder="Malzeme adı (hazır listeden seç ya da yaz)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="stkOneri">
             <div class="stk-oneri" id="stkOneri" role="listbox" hidden></div>
+            <div class="stk-aduyari" id="stkAdUyari" hidden></div>
         </div>
         <div class="stk-row">
             <div class="stk-field">
@@ -970,6 +976,7 @@ function stkMalzemeFormuAc(id) {
         document.getElementById('stkFBaslangic').value = '';
         document.getElementById('stkFBarkod').value = '';
     }
+    stkAdKontrol();
     stkModAc('stkFormModal');
 }
 
@@ -992,16 +999,51 @@ function stkFormKaydet() {
         veri.barkod = document.getElementById('stkFBarkod').value.trim();
     }
 
-    stkApi('/api/patron/malzeme-kaydet', veri).then(function(r) {
+    stkApi('/api/patron/malzeme-kaydet', veri).then(function stkKaydetSonuc(r) {
         if (r.ok === 1) {
             stkModKapat('stkFormModal');
             stkUyar(_stkFormId ? 'Güncellendi' : 'Malzeme + stok + barkod eklendi');
             setTimeout(function(){ window.location.reload(); }, 700);
+        } else if (r.benzer && r.benzer.length) {
+            // yazım hatası şüphesi: kullanıcı onaylarsa yine de kaydedilir
+            if (confirm('Çok benzer malzeme zaten var:\n\n• ' + r.benzer.join('\n• ') + '\n\nYazım hatası olabilir. Mevcut kartı kullanmak için İptal deyin.\n"' + veri.ad + '" yine de ayrı bir malzeme olarak eklensin mi?')) {
+                veri.onay = 1;
+                stkApi('/api/patron/malzeme-kaydet', veri).then(stkKaydetSonuc).catch(function(){ stkUyar('Bağlantı hatası'); });
+            }
         } else {
             stkUyar(r.hata || 'Kaydedilemedi');
         }
     }).catch(function(){ stkUyar('Bağlantı hatası'); });
 }
+// Ad yazılırken anında kontrol: aynı ad (Türkçe karakter/büyük-küçük/boşluk farkı dahil) ya da 1-2 harf farkla benzer ad
+function _stkAnahtar(s) {
+    s = String(s || '').replace(/İ/g, 'i').replace(/I/g, 'ı').toLocaleLowerCase('tr').replace(/̇/g, '');
+    return s.replace(/[çğıöşüâîû]/g, function(c){ return {'ç':'c','ğ':'g','ı':'i','ö':'o','ş':'s','ü':'u','â':'a','î':'i','û':'u'}[c]; }).replace(/[^a-z0-9]/g, '');
+}
+function _stkMesafe(a, b) {
+    var d = []; for (var i = 0; i <= a.length; i++) { d[i] = [i]; } for (var j = 1; j <= b.length; j++) d[0][j] = j;
+    for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+    return d[a.length][b.length];
+}
+function stkAdKontrol() {
+    var inp = document.getElementById('stkFAd'), kutu = document.getElementById('stkAdUyari'); if (!inp || !kutu) return;
+    var a = _stkAnahtar(inp.value), ayni = [], benzer = [];
+    if (a.length >= 2) {
+        var sa = (a.match(/\d+/g) || []).join(',');
+        stkVeriler.forEach(function(m) {
+            if (_stkFormId && m.id === _stkFormId) return;
+            var b = _stkAnahtar(m.ad); if (!b) return;
+            if (a === b) { ayni.push(m.ad); return; }
+            if ((b.match(/\d+/g) || []).join(',') !== sa) return;
+            var uz = Math.max(a.length, b.length); if (uz < 4 || Math.abs(a.length - b.length) > 2) return;
+            if (_stkMesafe(a, b) <= (uz >= 8 ? 2 : 1)) benzer.push(m.ad);
+        });
+    }
+    if (ayni.length) { kutu.className = 'stk-aduyari k'; kutu.innerHTML = '<span class="material-icons-outlined">block</span><span>Bu malzeme zaten var: <b>' + _esc(ayni[0]) + '</b>. Aynı kartı ikinci kez açamazsınız.</span>'; kutu.hidden = false; }
+    else if (benzer.length) { kutu.className = 'stk-aduyari u'; kutu.innerHTML = '<span class="material-icons-outlined">spellcheck</span><span>Benzer malzeme var: <b>' + benzer.slice(0, 3).map(_esc).join('</b>, <b>') + '</b>. Bunu mu demek istediniz?</span>'; kutu.hidden = false; }
+    else kutu.hidden = true;
+}
+document.addEventListener('input', function(e){ if (e.target && e.target.id === 'stkFAd') stkAdKontrol(); });
 
 // ── KATEGORİ EKLE DIALOG (Flutter _kategoriEkle) ──────────────────
 function stkKatEkleAc() {
@@ -1014,15 +1056,27 @@ function stkKatKaydet() {
     var ad = document.getElementById('stkKatAd').value.trim();
     if (!ad) { stkUyar('Boş olamaz'); return; }
 
-    stkApi('/api/patron/malzeme-kategori-ekle', { ad: ad }).then(function(r) {
+    var katVeri = { ad: ad };
+    stkApi('/api/patron/malzeme-kategori-ekle', katVeri).then(function stkKatSonuc(r) {
         if (r.ok === 1) {
             document.getElementById('stkKatDialog').classList.remove('acik');
-            // Select'e yeni seçenek ekle ve seç
             var sel = document.getElementById('stkFKat');
-            var opt = new Option(ad, r.id, true, true);
+            if (r.mevcut) {
+                // aynı kategori zaten var: yenisi açılmadı, mevcut seçildi
+                sel.value = String(r.id);
+                stkUyar('"' + r.ad + '" kategorisi zaten var, o seçildi');
+                return;
+            }
+            // Select'e yeni seçenek ekle ve seç
+            var opt = new Option(r.ad || ad, r.id, true, true);
             sel.add(opt);
-            stkKategoriler.push({id: r.id, ad: ad});
+            stkKategoriler.push({id: r.id, ad: r.ad || ad});
             stkUyar('Kategori eklendi');
+        } else if (r.benzer && r.benzer.length) {
+            if (confirm('Çok benzer kategori var:\n\n• ' + r.benzer.join('\n• ') + '\n\n"' + ad + '" yine de ayrı kategori olarak eklensin mi?')) {
+                katVeri.onay = 1;
+                stkApi('/api/patron/malzeme-kategori-ekle', katVeri).then(stkKatSonuc).catch(function(){ stkUyar('Bağlantı hatası'); });
+            }
         } else {
             stkUyar(r.hata || 'Eklenemedi');
         }
