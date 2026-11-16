@@ -194,6 +194,22 @@ body.koyu #stk #stkAra{background:var(--card2)}
 #stk .stk-mkart .hover-aks button{width:30px;height:30px;border-radius:8px;border:none;background:var(--card2);color:var(--mor1);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:background .13s}
 #stk .stk-mkart .hover-aks button:hover{background:var(--mor1);color:#fff}
 #stk .stk-mkart .hover-aks button .material-icons-outlined{font-size:16px}
+#stk .stk-mkart .hover-aks a{width:30px;height:30px;border-radius:8px;background:var(--card2);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.08);text-decoration:none;transition:background .13s,color .13s}
+#stk .stk-mkart .hover-aks a .material-icons-outlined{font-size:16px}
+#stk .stk-mkart .hover-aks a.cx{color:#15803D}#stk .stk-mkart .hover-aks a.cx:hover{background:#16A34A;color:#fff}
+#stk .stk-mkart .hover-aks a.cp{color:#BE123C}#stk .stk-mkart .hover-aks a.cp:hover{background:#E11D48;color:#fff}
+/* Detay: hareket dönemi + çıktı */
+.stk-modal .stk-hb{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.stk-modal .stk-hb h4{margin:0!important}
+.stk-modal .stk-hcikti{display:flex;gap:6px}
+.stk-modal .stk-hcikti a{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9px;font-size:12px;font-weight:800;color:#fff;text-decoration:none}
+.stk-modal .stk-hcikti a .material-icons-outlined{font-size:15px}
+.stk-modal .stk-hcikti a.x{background:linear-gradient(135deg,#22C55E,#15803D)}.stk-modal .stk-hcikti a.p{background:linear-gradient(135deg,#F43F5E,#BE123C)}
+.stk-modal .stk-donem{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.stk-modal .stk-donem button{border:1px solid var(--line);background:var(--card2);color:var(--sub);border-radius:99px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.stk-modal .stk-donem button.on{background:var(--mor1);border-color:var(--mor1);color:#fff}
+.stk-modal .stk-hozet{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--sub);padding:8px 10px;border-radius:10px;background:var(--card2);margin-bottom:8px}
+.stk-modal .stk-hozet b{color:var(--ink)}
 @media(hover:none){#stk .stk-mkart .hover-aks{display:none}} /* dokunmatikte gizle */
 
 /* ---- Rozet (Flutter MRozet) ---- */
@@ -400,12 +416,14 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                     @php $renk = $durumRenk[$m->durum]; @endphp
                     <div class="stk-mkart d-{{ $m->durum }}" data-ad="{{ strtolower($m->ad) }}" data-dur="{{ $m->durum }}" data-takip="{{ $m->stok_takipli }}" onclick="stkDetayAc({{ $m->id }})">
                         <div class="serit" style="background:{{ $renk }}"></div>
-                        @if ($duzenleyebilir)
                         <div class="hover-aks">
+                            <a href="/stok/malzeme/hareket-indir?format=xlsx&id={{ $m->id }}&gun=90" onclick="event.stopPropagation()" class="cx" title="Son 90 gün hareketleri · Excel"><span class="material-icons-outlined">table_view</span></a>
+                            <a href="/stok/malzeme/hareket-indir?format=pdf&id={{ $m->id }}&gun=90" target="_blank" onclick="event.stopPropagation()" class="cp" title="Son 90 gün hareketleri · PDF"><span class="material-icons-outlined">picture_as_pdf</span></a>
+                            @if ($duzenleyebilir)
                             <button onclick="event.stopPropagation();stkHareketAc({{ $m->id }},'giris')" title="Stok Girişi"><span class="material-icons-outlined">add</span></button>
                             <button onclick="event.stopPropagation();stkHareketAc({{ $m->id }},'duzeltme')" title="Sayım Düzelt"><span class="material-icons-outlined">tune</span></button>
+                            @endif
                         </div>
-                        @endif
                         <div class="ic">
                             <div class="satir-ust">
                                 <span class="mkad" title="{{ $m->ad }}">{{ $m->ad }}</span>
@@ -739,11 +757,13 @@ function stkFiltre(q) {
 }
 
 // ── DETAY MODAL (Flutter _detay → DraggableScrollableSheet) ──────────────────
-function stkDetayAc(id) {
+var stkDetayGun = 90; // hareket dönemi (gün; 0 = tüm geçmiş) — pencere açık kaldıkça hatırlanır
+function stkDetayAc(id, gun) {
+    if (gun !== undefined) stkDetayGun = gun;
     document.getElementById('stkDetayBody').innerHTML = '<div class="stk-yukl"><span class="spin"></span>Yükleniyor…</div>';
     stkModAc('stkDetayModal');
 
-    stkApi('/api/patron/malzeme-detay?id=' + id).then(function(d) {
+    stkApi('/api/patron/malzeme-detay?id=' + id + '&gun=' + stkDetayGun).then(function(d) {
         if (!d || d.ok !== 1) {
             document.getElementById('stkDetayBody').innerHTML = '<p style="color:var(--kirmizi)">Detay alınamadı.</p>';
             return;
@@ -765,11 +785,23 @@ function stkDetayAc(id) {
             h += '<button onclick="stkDetayDuzenle('+id+')" style="width:100%;margin-bottom:8px;padding:11px;border:1.5px solid var(--mor1);background:transparent;border-radius:12px;color:var(--mor1);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="material-icons-outlined" style="font-size:17px">edit</span>Malzemeyi Düzenle</button>';
         }
 
-        // Son hareketler
+        // Hareketler: dönem seçimi + dönem özeti + çıktı
         var hareketler = d.hareketler || [];
-        h += '<div class="stk-hareketler"><h4>Son Hareketler</h4>';
+        var donemAd = stkDetayGun > 0 ? ('son ' + ({30:'30 gün',90:'90 gün',180:'6 ay',365:'1 yıl'}[stkDetayGun] || stkDetayGun + ' gün')) : 'tüm geçmiş';
+        h += '<div class="stk-hareketler"><div class="stk-hb"><h4>Hareketler · ' + donemAd + '</h4>';
+        h += '<div class="stk-hcikti"><a class="x" href="/stok/malzeme/hareket-indir?format=xlsx&id=' + id + '&gun=' + stkDetayGun + '" title="Bu dönemin hareketleri, bakiyeli Excel"><span class="material-icons-outlined">table_view</span>Excel</a>'
+           + '<a class="p" target="_blank" href="/stok/malzeme/hareket-indir?format=pdf&id=' + id + '&gun=' + stkDetayGun + '" title="Bu dönemin hareketleri, A4 PDF"><span class="material-icons-outlined">picture_as_pdf</span>PDF</a></div></div>';
+        h += '<div class="stk-donem">' + [[30,'30 gün'],[90,'90 gün'],[180,'6 ay'],[365,'1 yıl'],[0,'Tümü']].map(function(g) {
+            return '<button class="' + (g[0] === stkDetayGun ? 'on' : '') + '" onclick="stkDetayAc(' + id + ',' + g[0] + ')">' + g[1] + '</button>';
+        }).join('') + '</div>';
+        if (d.ozet) {
+            h += '<div class="stk-hozet"><span>Giriş <b style="color:#10B981">+' + _stkMik(d.ozet.giris) + ' ' + _esc(d.birim) + '</b></span>'
+               + '<span>Çıkış <b style="color:#F43F5E">−' + _stkMik(d.ozet.cikis) + ' ' + _esc(d.birim) + '</b></span>'
+               + (d.ozet.fire > 0 ? '<span>Fire <b>' + _stkMik(d.ozet.fire) + ' ' + _esc(d.birim) + '</b></span>' : '')
+               + '<span>' + d.ozet.adet + ' hareket' + (d.ozet.kesik ? ' (ekranda ilk 1000; tamamı çıktıda)' : '') + '</span></div>';
+        }
         if (!hareketler.length) {
-            h += '<p style="color:var(--sub);font-size:13px">Hareket yok.</p>';
+            h += '<p style="color:var(--sub);font-size:13px">Bu dönemde hareket yok' + (stkDetayGun > 0 ? ' — daha uzun bir dönem seçin.' : '.') + '</p>';
         } else {
             var tipAd = {alis:'Alış', tuketim:'Satış tüketimi', fire:'Fire', sayim:'Sayım', iade:'Giriş', transfer:'Transfer', transfer_giris:'🔄 Şubeden transfer', transfer_cikis:'🔄 Şubeye transfer'};
             hareketler.forEach(function(hv) {

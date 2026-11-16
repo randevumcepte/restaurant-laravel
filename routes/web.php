@@ -26562,11 +26562,19 @@ Route::get('/api/patron/malzeme-detay', function (Request $r) {
     if (!$m) return ['ok' => 0, 'hata' => 'Malzeme bulunamadı'];
     $birim = DB::table('birimler')->where('id', $m->temel_birim_id)->value('kisaltma');
     $mevcut = (float) DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id)->sum('miktar');
-    $hareketler = DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id)
-        ->orderByDesc('id')->limit(40)->get(['id', 'tip', 'miktar', 'birim_maliyet', 'aciklama', 'created_at'])
+    // ?gun=N (0 = tümü) verilirse dönem filtresi + dönem özeti (web paneli); verilmezse eski davranış: son 40 hareket (Flutter)
+    $donemli = $r->has('gun'); $gun = max(0, (int) $r->gun);
+    $q = DB::table('stok_hareketleri')->where('sube_id', $p->sube_id)->where('malzeme_id', $m->id);
+    if ($donemli && $gun > 0) $q->where('created_at', '>=', now()->subDays($gun)->startOfDay());
+    $hareketler = $q->orderByDesc('id')->limit($donemli ? 1000 : 40)->get(['id', 'tip', 'miktar', 'birim_maliyet', 'aciklama', 'created_at'])
         ->map(fn ($x) => ['id' => (int) $x->id, 'tip' => $x->tip, 'miktar' => (float) $x->miktar, 'birim_maliyet' => (float) $x->birim_maliyet, 'aciklama' => $x->aciklama, 'tarih' => substr((string) $x->created_at, 0, 16)]);
+    $ozet = null;
+    if ($donemli) {
+        $ozet = ['giris' => 0.0, 'cikis' => 0.0, 'fire' => 0.0, 'adet' => $hareketler->count(), 'kesik' => $hareketler->count() >= 1000];
+        foreach ($hareketler as $h) { if ($h['miktar'] >= 0) $ozet['giris'] += $h['miktar']; else $ozet['cikis'] += -$h['miktar']; if ($h['tip'] === 'fire') $ozet['fire'] += abs($h['miktar']); }
+    }
     return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'ad' => $m->ad, 'birim' => $birim,
-        'guncel_maliyet' => (float) $m->guncel_maliyet, 'mevcut' => round($mevcut, 3), 'deger' => round($mevcut * (float) $m->guncel_maliyet, 2), 'hareketler' => $hareketler];
+        'guncel_maliyet' => (float) $m->guncel_maliyet, 'mevcut' => round($mevcut, 3), 'deger' => round($mevcut * (float) $m->guncel_maliyet, 2), 'hareketler' => $hareketler, 'ozet' => $ozet];
 });
 
 Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
