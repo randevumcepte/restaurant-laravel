@@ -141,7 +141,7 @@ if (!function_exists('_grHalka')) {
     // Halka: en çok 7 dilim + Diğer, lejantta isim + değer + yüzde
     function _grHalka(array $et, array $dg, $tip = 'tl', $orta = 'Toplam')
     {
-        $c = array_combine(array_map('strval', $et), array_map('floatval', $dg)); arsort($c);
+        $c = array_filter(array_combine(array_map('strval', $et), array_map('floatval', $dg)), fn($v) => $v > 0); arsort($c);
         $dl = []; $i = 0; $diger = 0; $dsay = 0;
         foreach ($c as $ad => $v) { if ($i < 7 || count($c) === 8) $dl[] = [$ad, $v, _grK($i)]; else { $diger += $v; $dsay++; } $i++; }
         if ($dsay) $dl[] = ['Diğer (' . $dsay . ')', $diger, 'var(--gr-diger)'];

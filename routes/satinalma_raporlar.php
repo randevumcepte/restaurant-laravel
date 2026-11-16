@@ -443,7 +443,7 @@ if (!function_exists('_srGorsel')) {
             $bit = substr((string) min($bit, substr((string) $bit2, 0, 10)), 0, 10); $bas = date('Y-m-d', strtotime($bit . ' -89 day'));
             $l = _srAlis($sid, $bas, $bit); $obas = $obit = null;
             if ($l->isEmpty()) return '';
-            $not = 'Seçili dönemde alış yok; görseller son alışın olduğu 90 günü (' . date('d.m.Y', strtotime($bas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ') gösteriyor.';
+            $not = 'Seçili dönemde hiç alış faturası yok. Bu yüzden aşağıdaki grafikler seçili dönemi DEĞİL, en son alış yapılan 90 günü (' . date('d.m.Y', strtotime($bas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ') gösteriyor. Seçili dönemin rakamları için yukarıdaki kartlara ve aşağıdaki tablolara bakın.';
         }
         $L = $gunSay($bas, $bit);
         if (!$obas) { $obit = date('Y-m-d', strtotime($bas . ' -1 day')); $obas = date('Y-m-d', strtotime($obit . ' -' . ($L - 1) . ' day')); }
@@ -461,7 +461,7 @@ if (!function_exists('_srGorsel')) {
         }
         $top = $l->sum('tutar'); $otop = $lo->sum('tutar'); $fat = $l->pluck('fatura_id')->unique()->count(); $ofat = $lo->pluck('fatura_id')->unique()->count();
         $ted = $l->pluck('tedarikci_id')->unique()->count(); $mal = $l->pluck('malzeme_id')->unique()->count();
-        $h = '<section class="gorsel"><h2>Görsel Özet</h2>' . ($not ? '<p class="not">' . _grE($not) . '</p>' : '<p class="not">' . date('d.m.Y', strtotime($bas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ' alış faturalarından; kıyas: önceki eşit uzunlukta dönem.</p>');
+        $h = '<section class="gorsel"><h2>Görsel Özet</h2>' . ($not ? '<div class="gr-uyari"><span class="material-icons-outlined">history</span><div><b>Dikkat: farklı dönem gösteriliyor.</b> ' . _grE($not) . '</div></div>' : '<p class="not">' . date('d.m.Y', strtotime($bas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ' alış faturalarından; kıyas: önceki eşit uzunlukta dönem.</p>');
         $h .= '<div class="gr-kpis">'
             . _grKpi('Alış toplamı', _grKisa($top), $yuz($top, $otop), array_values($spT), 'asagi', 'var(--k1)')
             . _grKpi('Fatura', (string) $fat, $yuz($fat, $ofat), array_values($spF), 'yukari', 'var(--k7)', $kova > 1 ? 'haftalık adet' : 'günlük adet')
@@ -469,7 +469,7 @@ if (!function_exists('_srGorsel')) {
             . _grKpi('Tedarikçi / malzeme', $ted . ' / ' . $mal, null, [], 'yukari', 'var(--k2)', 'dönemde alım yapılan')
             . '</div><div class="gr-izgara" style="margin-top:12px">';
         // 1) kümülatif: bu dönem vs önceki dönem
-        $h .= '<div class="gr-kart tam"><h4>Kümülatif alış · bu dönem ve önceki dönem</h4><p class="gr-ac">Dönem başından itibaren biriken harcama. Kesikli çizgi önceki dönemin aynı günü; çizgi üstte kalıyorsa daha çok harcanıyor.</p>'
+        $h .= '<div class="gr-kart tam"><h4>Kümülatif alış · ' . date('d.m', strtotime($bas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ' ve önceki dönem</h4><p class="gr-ac">Dönem başından itibaren biriken harcama. Kesikli çizgi önceki dönemin aynı günü; çizgi üstte kalıyorsa daha çok harcanıyor.</p>'
             . _grCizgi($et, [['ad' => 'Bu dönem', 'dg' => $kum, 'renk' => 'var(--k1)', 'alan' => true], ['ad' => 'Önceki dönem', 'dg' => $okum, 'renk' => 'var(--gr-mut)', 'kesik' => true]], 'tl', 210) . '</div>';
         // 2) son 6 ay tedarikçi yığını + 3) son 13 hafta ısı haritası (seçili dönemden bağımsız bağlam)
         $altiBas = date('Y-m-01', strtotime(substr($bit, 0, 7) . '-01 -5 month'));
@@ -485,24 +485,29 @@ if (!function_exists('_srGorsel')) {
             if ($x->tarih >= $isiBas) $isiGun[$x->tarih] = ($isiGun[$x->tarih] ?? 0) + $x->tutar;
         }
         $ayAd = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-        $h .= '<div class="gr-kart"><h4>Son 6 ay · tedarikçilere göre alış</h4><p class="gr-ac">Her ayın harcaması tedarikçi tedarikçi; en büyük 5 tedarikçi ayrı, kalanı "Diğer".</p>'
+        $kart = [];
+        $kart['yigin'] = '<div class="gr-kart"><h4>6 ay · tedarikçilere göre alış (' . $ayAd[(int) substr($aylar[0], 5, 2)] . ' – ' . $ayAd[(int) substr($aylar[5], 5, 2)] . ' ' . substr($aylar[5], 0, 4) . ')</h4><p class="gr-ac">Her ayın harcaması tedarikçi tedarikçi; en büyük 5 tedarikçi ayrı, kalanı "Diğer".</p>'
             . _grYigin(array_map(fn($a) => $ayAd[(int) substr($a, 5, 2)] . ' ' . substr($a, 2, 2), $aylar), array_values($ser)) . '</div>';
-        $h .= '<div class="gr-kart"><h4>Alış takvimi · son 13 hafta</h4><p class="gr-ac">Her kare bir gün; renk koyulaştıkça o gün daha çok alış yapılmış. Hangi günlerde yoğun alım yapıldığını gösterir.</p>'
+        $kart['isi'] = '<div class="gr-kart"><h4>Alış takvimi · 13 hafta (' . date('d.m', strtotime($isiBas)) . ' – ' . date('d.m.Y', strtotime($bit)) . ')</h4><p class="gr-ac">Her kare bir gün; renk koyulaştıkça o gün daha çok alış yapılmış. Hangi günlerde yoğun alım yapıldığını gösterir.</p>'
             . _grIsi($isiGun, $isiBas, $bit) . '</div>';
         // 4) ABC eğrisi + 5) kutu haritası (seçili dönem, malzeme)
         $malT = []; $malTed = [];
         foreach ($l as $x) { $malT[$x->malzeme_id] = ($malT[$x->malzeme_id] ?? 0) + $x->tutar; $malTed[$x->malzeme_id][$x->tedarikci_id] = ($malTed[$x->malzeme_id][$x->tedarikci_id] ?? 0) + $x->tutar; }
         arsort($malT);
-        if (count($malT) >= 3) $h .= '<div class="gr-kart"><h4>ABC analizi · harcamanın yoğunlaştığı kalemler</h4><p class="gr-ac">Eğri, kalemleri pahalıdan ucuza dizince harcamanın nasıl biriktiğini gösterir. A grubu pazarlıkta önceliklidir.</p>' . _grPareto(array_values($malT)) . '</div>';
+        if (count($malT) >= 3) $kart['abc'] = '<div class="gr-kart"><h4>ABC analizi · harcamanın yoğunlaştığı kalemler</h4><p class="gr-ac">Eğri, kalemleri pahalıdan ucuza dizince harcamanın nasıl biriktiğini gösterir. A grubu pazarlıkta önceliklidir.</p>' . _grPareto(array_values($malT)) . '</div>';
         $og = []; foreach (array_slice($malT, 0, 18, true) as $mid => $v) { arsort($malTed[$mid]); $og[] = ['ad' => _srMalz($mid), 'deger' => $v, 'grup' => _srTed(array_key_first($malTed[$mid]))]; }
-        if (count($og) >= 2) $h .= '<div class="gr-kart"><h4>Harcama haritası · en büyük 18 malzeme</h4><p class="gr-ac">Kutu büyüklüğü harcama payı, renk asıl tedarikçi.</p>' . _grAgac($og, 'tl', 240) . '</div>';
+        if (count($og) >= 2) $kart['agac'] = '<div class="gr-kart"><h4>Harcama haritası · en büyük 18 malzeme</h4><p class="gr-ac">Kutu büyüklüğü harcama payı, renk asıl tedarikçi.</p>' . _grAgac($og, 'tl', 240) . '</div>';
         // 6) bütçe göstergesi (bitişin olduğu ay)
         $ym = substr($bit, 0, 7); $bu = function_exists('_srButceAy') ? _srButceAy($sid, $ym) : ['butce' => 0];
         if (($bu['butce'] ?? 0) > 0) {
-            $h .= '<div class="gr-kart"><h4>Bütçe · ' . $ayAd[(int) substr($ym, 5, 2)] . ' ' . substr($ym, 0, 4) . '</h4><p class="gr-ac">Siparişlerin aylık bütçeye oranı (%80 üstü sınıra yakın, %100 üstü aşıldı).</p>'
+            $kart['ibre'] = '<div class="gr-kart"><h4>Bütçe · ' . $ayAd[(int) substr($ym, 5, 2)] . ' ' . substr($ym, 0, 4) . '</h4><p class="gr-ac">Siparişlerin aylık bütçeye oranı (%80 üstü sınıra yakın, %100 üstü aşıldı).</p>'
                 . _grIbre($bu['siparis'] / $bu['butce'] * 100, 'Sipariş <b>' . _grE(_grKisa($bu['siparis'])) . '</b> · bütçe <b>' . _grE(_grKisa($bu['butce'])) . '</b> · fatura <b>' . _grE(_grKisa($bu['fatura'] ?? 0)) . '</b>') . '</div>';
         }
-        return $h . '</div></section>';
+        // sabit çiftler: yan yana kartlar eşit boyda; tek kalan tam genişlik
+        $sira = isset($kart['ibre']) ? ['yigin', 'agac', 'isi', 'ibre', 'abc'] : ['yigin', 'agac', 'abc', 'isi'];
+        $k = array_values(array_filter(array_map(fn ($a) => $kart[$a] ?? null, $sira)));
+        if (count($k) % 2 === 1) $k[count($k) - 1] = preg_replace('/^<div class="gr-kart">/', '<div class="gr-kart tam">', $k[count($k) - 1]);
+        return $h . implode('', $k) . '</div></section>';
     }
 }
 
@@ -621,7 +626,9 @@ if (!function_exists('_srRapor')) {
                          _srBlok('En büyük düşüşler (%)', 'bar', '059669', [['Malzeme', 'm'], ['Düşüş %', 'y'], ['Tedarikçi', 'm']], array_map(fn ($x) => [$x['malzeme'] . ' · ' . \Carbon\Carbon::parse($x['tarih'])->format('d.m'), abs($x['yuzde']), $x['ted']], array_slice(array_filter(collect($deg)->sortBy('yuzde')->values()->all(), fn ($x) => $x['yuzde'] < 0), 0, 12)))],
                         $bosF ?? (!$deg ? _srBos('degisim', $dn) : null)), _srDegisimSayfa($deg, $dn)];
             case 'endeks':
-                $ay = max(3, min(24, (int) ceil($dn['gun'] / 30))); $e = _srEndeks($sid, $ay, $dn['bit']); $son = end($e['aylar']) ?: null; $ilk = $e['aylar'][0] ?? null;
+                $ay = max(3, min(24, (int) ceil($dn['gun'] / 30))); $e = _srEndeks($sid, $ay, $dn['bit']);
+                // kısa pencerede (son 3 ay) iki ay verisi yoksa endeks boş kalmasın: 12, sonra 24 aya genişlet
+                if (count($e['aylar']) < 2) foreach ([12, 24] as $ay2) { if ($ay2 <= $ay) continue; $e = _srEndeks($sid, $ay2, $dn['bit']); if (count($e['aylar']) >= 2) break; } $son = end($e['aylar']) ?: null; $ilk = $e['aylar'][0] ?? null;
                 return [$pano([_srKpi('Son ay endeksi (ilk ay = 100)', $son ? round($son['endeks'], 1) : 'Veri yok', $son ? 'sayi' : 'metin', 'BE185D'), _srKpi('Son ay değişimi', $son['degisim'] ?? 0, 'y', '9D174D'),
                         _srKpi('Sepetteki malzeme', count($e['sepet']), 'sayi', '831843'), _srKpi('Dönem', ($ilk ? _fr2AyAd($ilk['ay']) : '—') . ' – ' . ($son ? _fr2AyAd($son['ay']) : '—'), 'metin', '831843')],
                         [_srBlok('Fiyat endeksi', 'col', 'BE185D', [['Ay', 'm'], ['Endeks', 's'], ['Aylık değişim %', 'y']], array_map(fn ($a) => [_fr2AyAd($a['ay']), round($a['endeks'], 1), $a['degisim']], $e['aylar'])),

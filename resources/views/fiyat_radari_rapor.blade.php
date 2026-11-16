@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ $dosya }}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
-<link rel="stylesheet" href="/grafik.css?v=2">
+<link rel="stylesheet" href="/grafik.css?v=4">
 @php
   $tema = '#' . ltrim($tema ?? '7C3AED', '#');
   $aiRapor = ($rapor ?? '') === 'ai';
@@ -185,8 +185,10 @@
   .kpi div{border-radius:12px;padding:11px 14px;color:#fff;background:var(--c)}
   .kpi span{font-size:10px;font-weight:700;opacity:.92}.kpi b{display:block;font-size:18px;font-weight:900;margin-top:3px;line-height:1.2}
   .kpi b.metin{font-size:14px}
-  .grafikler{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:6px;align-items:start}
-  .gk{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px 14px;page-break-inside:avoid}
+  .grafikler{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:6px;align-items:stretch;grid-auto-flow:row dense}
+  .gk{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px 14px;page-break-inside:avoid;display:flex;flex-direction:column;min-width:0}
+  .gk-ic{flex:1;display:flex;flex-direction:column;justify-content:center;min-width:0}
+  .gk.tam .gr-hlej{max-width:620px}
   .gk.tam{grid-column:1 / -1}
   .gk h3{margin:0 0 9px;font-size:12px;color:{{ $tema }}}
   .gs{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:10.5px}
@@ -363,6 +365,42 @@
         if ($son >= 0 && ($sayfalar2[$son]['tip'] ?? '') === 'bosgrup') { $sayfalar2[$son]['adlar'][] = $s['ad']; $sayfalar2[$son]['nedenler'][$neden][] = $s['ad']; }
         else $sayfalar2[] = ['tip' => 'bosgrup', 'adlar' => [$s['ad']], 'nedenler' => [$neden => [$s['ad']]]];
     }
+    // Tablo grafikleri önceden hesaplanır. Panoda yarım genişlikte tek sayıda grafik kalıyorsa, boşluğa
+    // hemen alttaki bölümün ilk grafiği alınır (iki kart yan yana; bölüm adı başlıkta yazar).
+    $panoI = null; $panoTek = false; $panoEt = [];
+    foreach ($sayfalar2 as $s2) if (($s2['tip'] ?? '') === 'pano') foreach ($s2['bloklar'] ?? [] as $b) $panoEt[] = array_map(fn($r) => mb_strtolower((string) $r[0]), $b['sat']);
+    foreach ($sayfalar2 as $i => &$s2) {
+        if (($s2['tip'] ?? '') === 'pano') {
+            $gor = array_filter($s2['bloklar'] ?? [], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2);
+            $yarim = count(array_filter($gor, fn($b) => !(!empty($b['pdf']) || ($b['grafik'] === 'col' && count($b['sat']) > 8))));
+            $panoI = $i; $panoTek = $yarim % 2 === 1; $s2['_odunc'] = []; continue;
+        }
+        if (in_array($s2['tip'] ?? '', ['bosgrup'], true) || ($ai && !empty($s2['ai'])) || !count($s2['sat'] ?? [])) continue;
+        $s2['_oto'] = $otoGrafik($s2['kol'], array_values(array_filter($s2['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara']))));
+        // panodaki bir grafikle aynı kalemleri gösteren dağılım grafiği tekrar çizilmez
+        $s2['_oto'] = array_values(array_filter($s2['_oto'], function ($g) use ($panoEt) {
+            if ($g['tur'] === 'sutun') return true;
+            $a = array_map('mb_strtolower', array_map('strval', $g['et']));
+            foreach ($panoEt as $b) { $ort = count(array_intersect($a, $b)); if ($ort > 0 && $ort / max(1, count(array_unique(array_merge($a, $b)))) >= 0.7) return false; }
+            return true;
+        }));
+        if ($panoI !== null && $panoTek && $s2['_oto']) {
+            $g = array_shift($s2['_oto']); $g['baslik'] = $s2['ad'] . ' · ' . $g['baslik'];
+            $sayfalar2[$panoI]['_odunc'][] = $g; $panoTek = false;
+        }
+        $panoI = null;
+    }
+    unset($s2);
+    // Hâlâ tek sayıda yarım kart kalıyorsa sonuncusu tam genişliğe yayılır (sağda boşluk kalmasın)
+    foreach ($sayfalar2 as &$s2) {
+        if (($s2['tip'] ?? '') !== 'pano') continue;
+        $gor = array_filter($s2['bloklar'] ?? [], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2);
+        $yarimK = array_keys(array_filter($gor, fn($b) => !(!empty($b['pdf']) || ($b['grafik'] === 'col' && count($b['sat']) > 8))));
+        if ((count($yarimK) + count($s2['_odunc'] ?? [])) % 2 === 1) {
+            if (!empty($s2['_odunc'])) $s2['_odunc'][count($s2['_odunc']) - 1]['_tam'] = true; else $s2['_tamBlok'] = end($yarimK);
+        }
+    }
+    unset($s2);
   @endphp
   @foreach ($sayfalar2 as $s)
     @if (($s['tip'] ?? '') === 'bosgrup')
@@ -370,9 +408,8 @@
         <div class="bg-bas"><span class="material-icons-outlined">inventory_2</span><b>{{ count($s['adlar']) === 1 ? 'Veri yok' : count($s['adlar']) . ' bölümde veri yok' }}</b>
           @foreach ($s['adlar'] as $ad)<span class="bg-cip">{{ $ad }}</span>@endforeach</div>
         @foreach ($s['nedenler'] as $neden => $kimler)
-          @if ($neden !== $panoBos)<div class="bg-neden">@if (count($s['nedenler']) > 1)<b>{{ implode(', ', $kimler) }}:</b> @endif{{ $neden }}</div>@endif
+          <div class="bg-neden">@if (count($s['nedenler']) > 1)<b>{{ implode(', ', $kimler) }}:</b> @endif{{ $neden }}</div>
         @endforeach
-        @if (isset($s['nedenler'][$panoBos]) && count($s['nedenler']) === 1)<div class="bg-neden">Nedeni yukarıdaki notta.</div>@endif
       </div>
       @continue
     @endif
@@ -386,10 +423,10 @@
       @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Not:</b> {{ $s['bos'] }}</div>@endif
       {!! $gorsel ?? '' !!}
       <div class="grafikler">
-        @foreach (array_filter($s['bloklar'], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2) as $bl)
+        @foreach (array_filter($s['bloklar'], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2) as $bk => $bl)
           @php $vt = $bl['kol'][1][1]; $mx = max(1, ...array_map(fn($r) => abs((float) $r[1]), $bl['sat'])); $ozel = $bl['pdf'] ?? null; @endphp
-          <div class="gk {{ $ozel || $bl['grafik'] === 'col' && count($bl['sat']) > 8 ? 'tam' : '' }}">
-            <h3>{{ $bl['baslik'] }}</h3>
+          <div class="gk {{ $ozel || $bl['grafik'] === 'col' && count($bl['sat']) > 8 || ($s['_tamBlok'] ?? null) === $bk ? 'tam' : '' }}">
+            <h3>{{ $bl['baslik'] }}</h3><div class="gk-ic">
             @if ($ozel === 'seyir')
               {{-- alış alış fiyat çizgisi (sparkline) --}}
               <div class="seyir">
@@ -448,7 +485,10 @@
                   <div class="v">{{ $blokDeg($r[1], $vt) }}@if (isset($r[2]) && $r[2] !== '' && $bl['kol'][2][0] !== '') <span style="color:#94A3B8;font-weight:600">· {{ $hucre($r[2], $bl['kol'][2][1]) }}</span>@endif</div></div>
               @endforeach
             @endif
-          </div>
+          </div></div>
+        @endforeach
+        @foreach ($s['_odunc'] ?? [] as $g)
+          <div class="gk {{ ($g['_tam'] ?? false) ? 'tam' : '' }}"><h3>{{ $g['baslik'] }}</h3><div class="gk-ic">{!! $grCiz($g, $tema) !!}</div></div>
         @endforeach
       </div>
 
@@ -496,12 +536,12 @@
           if (str_contains($b, 'mat')) foreach ($duz as $r) $matMx = max($matMx, (float) ($r[$i] ?? 0));
         }
         $gTop = array_sum(array_map(fn($k) => $k[2] ?? 14, $s['kol'])); $grupTop = [];
-        $oto = $otoGrafik($s['kol'], $duz);
+        $oto = $s['_oto'] ?? $otoGrafik($s['kol'], $duz);
       @endphp
       @if ($oto)
         <div class="grafikler tablo-ust">
           @foreach ($oto as $g)
-            <div class="gk {{ count($oto) === 1 && $g['tur'] !== 'halka' ? 'tam' : '' }}"><h3>{{ $g['baslik'] }}</h3>{!! $grCiz($g, $tema) !!}</div>
+            <div class="gk {{ count($oto) === 1 ? 'tam' : '' }}"><h3>{{ $g['baslik'] }}</h3><div class="gk-ic">{!! $grCiz($g, $tema) !!}</div></div>
           @endforeach
         </div>
       @endif

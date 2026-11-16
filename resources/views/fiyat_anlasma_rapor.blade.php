@@ -5,7 +5,7 @@
 @section('title', 'Anlaşma Raporları')
 
 @push('head')
-<link rel="stylesheet" href="/grafik.css?v=2">
+<link rel="stylesheet" href="/grafik.css?v=4">
 <style>
 #far{--mor:#7C3AED;--mavi:#4F46E5;--yesil:#10B981;--kirmizi:#F43F5E;--amber:#F59E0B;
   --card:#fff;--card2:#f1f5f9;--bg:#f6f7fb;--ink:#1e293b;--sub:#64748b;--sub2:#94a3b8;--line:#e5e7eb}

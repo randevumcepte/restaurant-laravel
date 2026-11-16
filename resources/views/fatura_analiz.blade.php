@@ -4,7 +4,7 @@
 @section('baslik', 'Fatura Analizleri')
 @section('rk_alt', 'Kaçan tasarruf · zamlar ve enflasyon · ürün fiyat izi · ödeme takvimi — alış faturalarından, ücretsiz')
 
-@push('head')<link rel="stylesheet" href="/grafik.css?v=2">@endpush
+@push('head')<link rel="stylesheet" href="/grafik.css?v=4">@endpush
 @section('content')
 {!! _grJs() !!}
 @php
