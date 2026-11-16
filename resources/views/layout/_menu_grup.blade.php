@@ -41,7 +41,7 @@
     @endif
     @php
         // Rapor sayfaları (satın alma / mutfak) grubun içinde tıklanınca açılan "Raporlar" alt başlığında toplanır; işlem sayfalarıyla karışmasın
-        $_rprMi = fn ($u) => str_starts_with($u, '/satinalma-raporlar/') || str_starts_with($u, '/mutfak-raporlar/');
+        $_rprMi = fn ($u) => str_starts_with($u, '/satinalma-raporlar/') || str_starts_with($u, '/mutfak-raporlar/') || (function_exists('_drYolMu') && _drYolMu($u)); // + departman raporları (İK, Finans, ...)
         $_rpr = array_values(array_filter($gorunur, fn ($it) => $_rprMi($it[0])));
         $_rprAktif = collect($_rpr)->contains(fn ($it) => $aktifMi($it[0]));
         $_rprKondu = false;

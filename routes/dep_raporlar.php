@@ -54,6 +54,8 @@ if (!function_exists('_drKaydet')) {
         $izin = $p ? ($m['katIzin'])($p) : null;
         return $izin === null ? $k : array_intersect_key($k, array_flip($izin));
     }
+    // Menü: bu adres bir departman rapor sayfası mı (grubun içinde "Raporlar" alt başlığında toplanır)
+    function _drYolMu($url) { foreach (_drModuller() as $m) if (str_starts_with($url, $m['yol'] . '/')) return true; return false; }
     // Menüye eklenecek kalemler: kişinin görebildiği her kategori bir link (son kalem AI)
     function _drMenu($kod)
     {
