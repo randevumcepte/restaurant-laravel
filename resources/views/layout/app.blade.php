@@ -603,7 +603,8 @@
                 // Departman çalışanı (yönetici/satın almacı değil): kategori başlıkları (YÖNETİM, OPERASYON) gösterilmez
                 $_satinalmaciMenu = $_pp && in_array($_pp->rol ?? '', ['satinalmaci', 'satinalma'], true);
                 $_katsiz = $_satinalmaciMenu || ($_pp && !empty($_pp->departman_id) && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && !in_array($_kadM, ['sahip', 'supervizor', 'satinalma'], true));
-                if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM'; } // satın alma grupları en üstte
+                if ($_satinalmaciMenu) { $_kategoriler['YÖNETİM'] = array_values(array_unique(array_merge(['Satın Alma', 'Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'], $_kategoriler['YÖNETİM']))); foreach (['Fatura & Fiyat', 'Tedarikçi & Analiz', 'Stok & Üretim'] as $_g) $_grupKat[$_g] = 'YÖNETİM';
+                    $_fi = array_search('Finans / Muhasebe', $_kategoriler['YÖNETİM'], true); array_splice($_kategoriler['YÖNETİM'], $_fi === false ? count($_kategoriler['YÖNETİM']) : $_fi + 1, 0, ['Raporlar & Analizler']); $_grupKat['Raporlar & Analizler'] = 'YÖNETİM'; } // satın alma grupları en üstte; raporlar Finans'ın altında
                 $_duzMenu = $_pp && !$_kasiyerMenu && !in_array($_pp->rol ?? '', ['sahip', 'mudur'], true) && in_array($_kadM, ['personel', 'mutfak'], true) && empty($_pp->departman_sorumlu);
             @endphp
             @if ($_duzMenu)
