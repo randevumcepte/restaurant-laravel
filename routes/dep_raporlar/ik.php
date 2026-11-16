@@ -549,7 +549,7 @@ if (!function_exists('_ikrRapor')) {
     {
         _ikrEnsure();
         $d = _ikrVeriDurumu($sid); $bas = $dn['bas']; $bit = $dn['bit'];
-        $pano = fn (array $kpi, array $bloklar, $bos = null) => ['ad' => 'Pano', 'tip' => 'pano', 'kpi' => $kpi, 'bloklar' => array_values(array_filter($bloklar, fn ($b) => count($b['sat']) > 0)), 'bos' => $bos];
+        $pano = fn (array $kpi, array $bloklar, $bos = null) => ['ad' => 'Pano', 'tip' => 'pano', 'kpi' => $kpi, 'bloklar' => array_values(array_filter($bloklar, fn ($b) => count($b['sat']) > 0 && array_sum(array_map(fn ($r) => abs((float) ($r[1] ?? 0)), $b['sat'])) > 0)), 'bos' => $bos]; // hepsi 0 olan grafik çizilmez
         $yuzde = fn ($a, $b) => _srYuzde($a, $b);
         $kpiY = fn ($ad, $v, $renk) => _srKpi($ad, $v ?? 'Veri yok', $v === null ? 'metin' : 'y', $renk);
         $kpiTl = fn ($ad, $v, $renk) => _srKpi($ad, $v ?? 'Veri yok', $v === null ? 'metin' : 'tl', $renk);

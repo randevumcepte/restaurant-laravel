@@ -172,8 +172,8 @@
   .ust{border-radius:16px;padding:20px 24px;color:#fff;background:linear-gradient(120deg,{{ $tema }} 0%,{{ $tema }} 35%,#1E1B4B 100%);display:flex;gap:16px;align-items:center}
   .ust .lg{width:48px;height:48px;border-radius:13px;background:rgba(255,255,255,.18);display:grid;place-items:center}
   .ust .lg .material-icons-outlined{font-size:28px;color:#fff}
-  .ust h1{margin:0;font-size:21px;font-weight:900}.ust p{margin:3px 0 0;font-size:11.5px;color:rgba(255,255,255,.88)}
-  .ust .rozet{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:800;background:rgba(255,255,255,.2);color:#fff}
+  .ust h1{margin:0;font-size:21px;font-weight:900}.ust p{margin:3px 0 0;font-size:12px;color:#fff}
+  .ust .rozet{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:700;background:rgba(255,255,255,.2);color:#fff}
   .ust .mk{margin-left:auto;text-align:right;font-size:10.5px;color:rgba(255,255,255,.8)}.ust .mk b{display:block;font-size:14px;color:#fff}
   .aciklama{margin:12px 2px 0;font-size:11.5px;color:#475569}
   .uyari{margin-top:12px;border-radius:12px;padding:11px 14px;background:#FAF5FF;border:1px solid #E9D5FF;color:#6B21A8;font-size:11.5px;display:flex;gap:9px;align-items:flex-start}
@@ -183,7 +183,7 @@
   .arac button.g{background:#fff;color:#334155;border:1px solid #E2E8F0}
   .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
   .kpi div{border-radius:12px;padding:11px 14px;color:#fff;background:var(--c)}
-  .kpi span{display:block;font-size:12.5px;font-weight:800;line-height:1.3;letter-spacing:.1px;text-shadow:0 1px 1px rgba(0,0,0,.18)}.kpi b{display:block;font-size:20px;font-weight:900;margin-top:4px;line-height:1.2}
+  .kpi span{display:block;font-size:13px;font-weight:700;line-height:1.3;letter-spacing:.1px;}.kpi b{display:block;font-size:20px;font-weight:900;margin-top:4px;line-height:1.2}
   .kpi b.metin{font-size:14px}
   .grafikler{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:6px;align-items:stretch;grid-auto-flow:row dense}
   .gk{background:#fff;border:1px solid #E4E7F2;border-radius:12px;padding:12px 14px;page-break-inside:avoid;display:flex;flex-direction:column;min-width:0}
@@ -194,24 +194,24 @@
   .gs{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:10.5px}
   .gs .n{width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
   .gs .t{flex:1;height:10px;border-radius:99px;background:#EEF0F7;overflow:hidden}.gs .t i{display:block;height:100%;border-radius:99px}
-  .gs .v{width:auto;min-width:80px;max-width:46%;text-align:right;font-weight:800;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gs .v{width:auto;min-width:80px;max-width:46%;text-align:right;font-weight:700;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sutun{display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:6px}
   .sutun .b{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
   .sutun .c{width:100%;max-width:40px;border-radius:6px 6px 2px 2px;background:{{ $tema }}}
-  .sutun .v{font-size:9px;font-weight:800;color:#475569}.sutun .e{font-size:9px;color:#64748B;font-weight:700;white-space:nowrap}
+  .sutun .v{font-size:10px;font-weight:700;color:#475569}.sutun .e{font-size:9px;color:#64748B;font-weight:700;white-space:nowrap}
   .seyir{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
   .seyir div{display:flex;align-items:center;gap:8px;font-size:10.5px}
   .seyir .n{width:30%;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .seyir .y{width:56px;text-align:right;font-weight:800}
-  .yy{margin-bottom:9px}.yy .n{font-weight:800;font-size:11px;margin-bottom:3px}
+  .seyir .y{width:56px;text-align:right;font-weight:700}
+  .yy{margin-bottom:9px}.yy .n{font-weight:700;font-size:11px;margin-bottom:3px}
   .yy .s{display:flex;align-items:center;gap:8px;font-size:10px;margin-bottom:2px}
   .yy .s .t{width:30%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .yy .s .cb{flex:1;height:9px;border-radius:99px;background:#EEF0F7;overflow:hidden}.yy .s .cb i{display:block;height:100%;border-radius:99px}
-  .yy .s .v{width:80px;text-align:right;font-weight:800}
+  .yy .s .v{width:80px;text-align:right;font-weight:700}
   .karneler{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   .kk{border:1px solid #E4E7F2;border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center}
   .kk .harf{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;color:#fff;font-size:22px;font-weight:900;flex:0 0 auto}
-  .kk .b{font-weight:900;font-size:12px}.kk .d{font-size:10px;color:#64748B;margin-top:2px;line-height:1.5}
+  .kk .b{font-weight:700;font-size:12px}.kk .d{font-size:10px;color:#64748B;margin-top:2px;line-height:1.5}
   .aralik{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:10.5px}
   .aralik .n{width:22%;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .aralik .ser{flex:1;position:relative;height:18px}
@@ -235,13 +235,13 @@
   table.genis td{padding:5px 4px;word-break:break-word}
   tr.top td{background:{{ $hexA($tema, .08) }};font-weight:900;border-top:2px solid {{ $tema }}}
   tr.grup td{background:#F8FAFC !important;font-weight:900;color:{{ $tema }};border-top:2px solid #E2E8F0}
-  tr.ara td{font-weight:800;color:#475569;background:#fff !important}
+  tr.ara td{font-weight:700;color:#475569;background:#fff !important}
   .r{text-align:right;white-space:nowrap}
   th.r{white-space:normal}
   td.cb{position:relative}
   td.cb .cbi{position:absolute;left:0;top:3px;bottom:3px;border-radius:0 4px 4px 0;background:{{ $hexA($tema, .2) }}}
   td.cb span{position:relative}
-  .onc{display:inline-block;padding:2px 7px;border-radius:99px;font-weight:900;font-size:9.5px}
+  .onc{display:inline-block;padding:2px 7px;border-radius:99px;font-weight:700;font-size:10.5px}
   .bosgrup{margin:16px 0 4px;padding:10px 14px;border:1px dashed #CBD5E1;border-radius:12px;background:#F8FAFC;color:#475569;font-size:11px;line-height:1.5}
   .bg-bas{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
   .bg-bas .material-icons-outlined{font-size:17px;color:#94A3B8}
@@ -266,13 +266,13 @@
   .gc-bars{position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px}
   .gc-b{position:relative;flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;min-width:0}
   .gc-b i{display:block;width:100%;max-width:38px;border-radius:4px 4px 0 0;background:var(--c)}
-  .gc-b em{position:absolute;font-style:normal;font-size:9px;font-weight:800;color:#334155;white-space:nowrap}
+  .gc-b em{position:absolute;font-style:normal;font-size:10px;font-weight:700;color:#334155;white-space:nowrap}
   .gc-b:hover i{filter:brightness(1.12)}
   .gc-x{display:flex;gap:2px;margin:4px 0 0 52px;border-top:1px solid #CBD5E1;padding-top:3px}
   .gc-x span{flex:1;min-width:0;text-align:center;font-size:9px;color:#64748B;white-space:nowrap;overflow:visible}
   .gh{display:flex;gap:16px;align-items:center}
   .gh-svg{flex:none}
-  .gh-t1{font-size:9px;fill:#94A3B8;font-weight:700}.gh-t2{font-size:12.5px;fill:#0F172A;font-weight:900}
+  .gh-t1{font-size:9px;fill:#94A3B8;font-weight:700}.gh-t2{font-size:12.5px;fill:#0F172A;font-weight:700}
   .gh-lej{flex:1;min-width:0;display:grid;gap:4px}
   .gh-lej div{display:flex;align-items:center;gap:7px;font-size:10.5px}
   .gh-lej i{width:10px;height:10px;border-radius:3px;flex:none}
