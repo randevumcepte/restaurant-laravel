@@ -33888,6 +33888,7 @@ require __DIR__ . '/sync.php';
 
 // ============================ BİLDİRİM MERKEZİ (zil + kişiye özel departman bildirimleri) ============================
 require __DIR__ . '/bildirim_merkezi.php';
+require __DIR__ . '/grafik_kit.php';      // ortak sunucu-tarafı grafikler (public/grafik.css)
 require __DIR__ . '/fiyat_radari.php';
 require __DIR__ . '/fiyat_anlasma.php';
 require __DIR__ . '/satinalma_limit.php';

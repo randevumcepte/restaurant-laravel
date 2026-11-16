@@ -985,7 +985,8 @@ if (!function_exists('_fr2IndirYanit')) {
         $baslik = $raporlar[$rapor][0];
         $dosya = 'Fiyat-Radari-' . \Illuminate\Support\Str::slug($baslik) . '-' . today()->format('Y-m-d');
         if ($format === 'pdf' || $format === 'html') {
-            return response()->view('fiyat_radari_rapor', ['onizle' => $onizle, 'baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $ai, 'rapor' => $rapor, 'dosya' => $dosya, 'tema' => $tema, 'ikon' => $raporlar[$rapor][2], 'aciklama' => $raporlar[$rapor][1]]);
+            return response()->view('fiyat_radari_rapor', ['onizle' => $onizle, 'baslik' => $baslik, 'alt' => $alt, 'sayfalar' => $sayfalar, 'v' => $v, 'ai' => $ai, 'rapor' => $rapor, 'dosya' => $dosya, 'tema' => $tema, 'ikon' => $raporlar[$rapor][2], 'aciklama' => $raporlar[$rapor][1],
+                'gorsel' => in_array($rapor, ['tam', 'ozet'], true) && function_exists('_srGorsel') ? _srGorsel($sid, today()->subDays(max(1, (int) ($f['gun'] ?? 90)) - 1)->toDateString(), today()->toDateString()) : '']);
         }
         $xlsx = _fr2Xlsx($sayfalar, $baslik, $alt, $tema);
         if ($xlsx !== null) return response($xlsx, 200, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition' => 'attachment; filename="' . $dosya . '.xlsx"']);

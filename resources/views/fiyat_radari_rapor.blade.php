@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ $dosya }}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
+<link rel="stylesheet" href="/grafik.css?v=1">
 @php
   $tema = '#' . ltrim($tema ?? '7C3AED', '#');
   $aiRapor = ($rapor ?? '') === 'ai';
@@ -159,6 +160,8 @@
       }
       return $out;
   };
+  // ortak kitle aynı görünüm (animasyon, koyu tema, PDF)
+  if (function_exists('_grSutun')) { $grSutun = fn($et, $dg, $tip, $renk) => _grSutun($et, $dg, $tip, $renk); $grHalka = fn($et, $dg, $tip) => _grHalka($et, $dg, $tip); $grCubuk = fn($et, $dg, $tip, $renk) => _grCubuk($et, $dg, $tip, $renk); }
   $grCiz = fn(array $g, $renk) => $g['tur'] === 'sutun' ? $grSutun($g['et'], $g['dg'], $g['tip'], $renk) : ($g['tur'] === 'halka' ? $grHalka($g['et'], $g['dg'], $g['tip']) : $grCubuk($g['et'], $g['dg'], $g['tip'], $renk));
 @endphp
 <style>
@@ -281,7 +284,7 @@
   .gb-s .t s{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#94A3B8}
   .gb-s b{width:84px;text-align:right;color:#0F172A;white-space:nowrap}
   .gb-s:hover .t{background:#E8EBF5}
-  .ipucu{position:fixed;z-index:50;pointer-events:none;background:#0F172A;color:#fff;font-size:11px;font-weight:700;padding:5px 9px;border-radius:7px;box-shadow:0 6px 16px rgba(15,23,42,.25);white-space:nowrap;display:none}
+  .ipucu{position:fixed;z-index:50;pointer-events:none;background:#0F172A;color:#fff;font-size:11px;font-weight:700;padding:5px 9px;border-radius:7px;box-shadow:0 6px 16px rgba(15,23,42,.25);white-space:pre-line;max-width:320px;line-height:1.45;display:none}
   .grafikler.tablo-ust{margin:6px 0 10px}
   .tablo{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px}
   /* panel içinde önizleme: tam genişlik, okunur yazı */
@@ -381,6 +384,7 @@
         @endforeach
       </div>
       @if (!empty($s['bos']))<div class="bos" style="margin-bottom:14px"><b>Not:</b> {{ $s['bos'] }}</div>@endif
+      {!! $gorsel ?? '' !!}
       <div class="grafikler">
         @foreach (array_filter($s['bloklar'], fn($b) => !empty($b['pdf']) || count($b['sat']) >= 2) as $bl)
           @php $vt = $bl['kol'][1][1]; $mx = max(1, ...array_map(fn($r) => abs((float) $r[1]), $bl['sat'])); $ozel = $bl['pdf'] ?? null; @endphp
