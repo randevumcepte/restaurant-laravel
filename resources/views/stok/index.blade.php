@@ -72,6 +72,8 @@
     try { if (function_exists('_posPersonel')) $_pp = _posPersonel(); } catch (\Throwable $e) {}
     $webToken = $_pp ? (DB::table('personeller')->where('id', $_pp->id)->value('api_token') ?: '') : '';
     $duzenleyebilir = $_pp && in_array($_pp->rol ?? '', ['sahip', 'mudur']);
+    // Malzeme kartı ekle/düzenle ayrı yetki (sahip + 'Malzeme Kartı' kutusu); stok giriş/fire/düzelt yukarıdaki kuralda kalır
+    $kartYetki = $_pp && function_exists('_malzemeKartYetki') && _malzemeKartYetki($_pp);
 
     // Yardımcı: Flutter _mik (tam sayıysa ondalıksız, değilse 2 hane)
     $mik = function ($v) {
@@ -331,7 +333,7 @@ body.koyu #stkToast{background:#e2e8f0;color:#1e293b}
         <span class="material-icons-outlined">search</span>
         <input type="text" id="stkAraGenis" placeholder="Malzeme ara" oninput="stkFiltre(this.value)">
     </div>
-    @if ($duzenleyebilir)
+    @if ($kartYetki)
     <button onclick="stkMalzemeFormuAc(null)"
         style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--mor1,#7C3AED);border:none;
                border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">
@@ -482,7 +484,7 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
 </div>{{-- #stk --}}
 
 {{-- ===== FAB (Flutter FloatingActionButton.extended) ===== --}}
-@if ($duzenleyebilir)
+@if ($kartYetki)
 <button id="stkFab" onclick="stkMalzemeFormuAc(null)">
     <span class="material-icons-outlined" style="font-size:20px">add</span>Malzeme
 </button>
@@ -628,6 +630,7 @@ document.addEventListener('input', function(e){
   }
 });
 let stkDuzenleyebilir = {{ $duzenleyebilir ? 'true' : 'false' }};
+let stkKartYetki = {{ $kartYetki ? 'true' : 'false' }};
 
 // Server-render edilen veri (JS'de detay/hareket/formlarda kullanmak için)
 let stkVeriler = {!! json_encode($rows->values()->map(fn($m) => [
@@ -704,7 +707,7 @@ function stkResponsive() {
     var altBaslik = document.querySelector('.rk-header .alt');
     if (g) g.style.display  = genis ? '' : 'none';
     if (m) m.style.display  = genis ? 'none' : '';
-    if (fab) fab.style.display   = genis ? 'none' : (stkDuzenleyebilir ? '' : 'none');
+    if (fab) fab.style.display   = genis ? 'none' : (stkKartYetki ? '' : 'none');
     if (araBar) araBar.style.display  = genis ? 'flex' : 'none';
     if (araWrap) araWrap.style.display = genis ? 'none' : '';
 }
@@ -781,7 +784,9 @@ function stkDetayAc(id, gun) {
             h += _stkEylemBtn('Fire',   'delete_outline',  '#F43F5E', 'fire',      id);
             h += _stkEylemBtn('Düzelt', 'tune',            '#4F46E5', 'duzeltme',  id);
             h += '</div>';
-            // Düzenle butonu
+        }
+        if (stkKartYetki) {
+            // Düzenle butonu (malzeme kartı yetkisi)
             h += '<button onclick="stkDetayDuzenle('+id+')" style="width:100%;margin-bottom:8px;padding:11px;border:1.5px solid var(--mor1);background:transparent;border-radius:12px;color:var(--mor1);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="material-icons-outlined" style="font-size:17px">edit</span>Malzemeyi Düzenle</button>';
         }
 

@@ -9323,6 +9323,7 @@ if (!function_exists('_panelSayfaKategori')) {
                 'gor_fiyat_anlasma' => 'Fiyat Anlaşmaları — görüntüle (sözleşme, belge, rapor)', 'gor_fiyat_anlasma_duzenle' => 'Fiyat Anlaşmaları — ekle / düzenle / sil',
                 'gor_transfer' => 'Şubeler Arası Transfer (istek, onay, sevk, teslim)',
                 'gor_demirbas' => 'Demirbaş & Etiket — görüntüle, okut, sayım, etiket bas', 'gor_demirbas_duzenle' => 'Demirbaş & Etiket — ekle / düzenle / zimmet / sil',
+                'gor_malzeme_kart' => 'Malzeme Kartı — yeni malzeme ekle / düzenle (ad, birim, kategori, kritik seviye)',
             ],
             '👥 Personel & Müşteri' => [
                 'gor_personel' => 'Personel & Maaş', 'gor_puantaj' => 'Puantaj', 'gor_garson_perf' => 'Garson Performansı',
@@ -9409,7 +9410,7 @@ if (!function_exists('_kademeSayfalar')) {
         $tum = _panelSayfaKeys();
         switch ($kademe) {
             case 'sahip': return $tum;
-            case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar', 'gor_ai_asistan'])); // ödeme/kaçak + AI asistan (premium, patron elle verir) hariç her şey
+            case 'supervizor': return array_values(array_diff($tum, ['gor_odeme_ayar', 'gor_ai_asistan', 'gor_malzeme_kart'])); // ödeme/kaçak + AI asistan (premium, patron elle verir) hariç her şey
             case 'kasa': return ['gor_pos', 'gor_dashboard', 'gor_kasa', 'gor_z_raporu', 'gor_odul_dogrula', 'gor_garson_cagri', 'gor_rezervasyon', 'gor_cari', 'gor_paket', 'gor_mutfak', 'gor_masa_yonetim'];
             case 'satinalma': return ['gor_stok', 'gor_satinalma', 'gor_sayim', 'gor_cari', 'gor_talep', 'gor_fiyat_anlasma', 'gor_fiyat_anlasma_duzenle']; // ciro/kâr içeren dashboard/raporlar YOK; satın alma özeti ayrı sayfa
             case 'mutfak': return ['gor_mutfak', 'gor_garson_cagri'];
@@ -26573,14 +26574,18 @@ Route::get('/api/patron/malzeme-detay', function (Request $r) {
         $ozet = ['giris' => 0.0, 'cikis' => 0.0, 'fire' => 0.0, 'adet' => $hareketler->count(), 'kesik' => $hareketler->count() >= 1000];
         foreach ($hareketler as $h) { if ($h['miktar'] >= 0) $ozet['giris'] += $h['miktar']; else $ozet['cikis'] += -$h['miktar']; if ($h['tip'] === 'fire') $ozet['fire'] += abs($h['miktar']); }
     }
-    return ['ok' => 1, 'duzenleyebilir' => $p->rol === 'sahip', 'ad' => $m->ad, 'birim' => $birim,
+    return ['ok' => 1, 'duzenleyebilir' => _malzemeKartYetki($p), 'ad' => $m->ad, 'birim' => $birim,
         'guncel_maliyet' => (float) $m->guncel_maliyet, 'mevcut' => round($mevcut, 3), 'deger' => round($mevcut * (float) $m->guncel_maliyet, 2), 'hareketler' => $hareketler, 'ozet' => $ozet];
 });
 
+// Malzeme kartı ekle/düzenle: sahip her zaman; diğerleri yalnız yetki ekranındaki 'Malzeme Kartı' kutusuyla (varsayılan kapalı, müdür dahil)
+if (!function_exists('_malzemeKartYetki')) {
+    function _malzemeKartYetki($p) { return $p && (($p->rol ?? '') === 'sahip' || _panelYetkiVar($p, 'gor_malzeme_kart')); }
+}
 Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
-    if ($p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Bunu sadece işletme sahibi yapabilir.'], 403);
+    if (!_malzemeKartYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Malzeme kartı ekleme/düzenleme yetkiniz yok. İşletme sahibi Yetkiler ekranından "Malzeme Kartı" kutusunu açabilir.'], 403);
     _restoStokSeedEnsure();
     $ad = trim((string) $r->ad);
     if ($ad === '') return ['ok' => 0, 'hata' => 'Malzeme adı boş olamaz'];
@@ -26635,7 +26640,7 @@ Route::post('/api/patron/malzeme-sil', function (Request $r) {
 
 Route::post('/api/patron/malzeme-kategori-ekle', function (Request $r) {
     $p = _apiPersonel($r);
-    if (!$p || $p->rol !== 'sahip') return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    if (!_malzemeKartYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
     $ad = trim((string) $r->ad);
     if ($ad === '') return ['ok' => 0, 'hata' => 'Boş olamaz'];
     $id = DB::table('malzeme_kategorileri')->insertGetId(['ad' => $ad]);
