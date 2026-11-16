@@ -108,6 +108,67 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
 #ty .bos .ms{width:58px;height:58px;border-radius:18px;background:rgba(16,185,129,.12);color:var(--yesil);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
 #ty .bos .ms .material-icons-outlined{font-size:30px}
 #ty .bos b{color:var(--ink);font-size:14.5px;display:block;margin-bottom:4px}
+
+/* ── Renk katmanı: lila zemin, tonlu kartlar ── */
+#ty{background:linear-gradient(180deg,#EEF0FF 0%,#F5F3FF 45%,#F8FAFC 100%);border-radius:18px}
+body.koyu #ty{background:var(--bg)}
+#ty .kpi{background:linear-gradient(135deg,color-mix(in srgb,var(--c) 11%,var(--card)) 0%,var(--card) 75%);border:1px solid color-mix(in srgb,var(--c) 18%,transparent)}
+#ty .kpi .deg{color:color-mix(in srgb,var(--c) 70%,var(--ink))}
+#ty .kpi .ki{position:absolute;right:12px;top:12px;width:32px;height:32px;border-radius:10px;background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);display:flex;align-items:center;justify-content:center}
+#ty .kpi .ki .material-icons-outlined{font-size:18px}
+#ty .kart{border:1px solid #E7E8FB}
+body.koyu #ty .kart{border-color:var(--line)}
+#ty .kart > .kb{margin:-18px -18px 14px;padding:13px 18px;border-radius:16px 16px 0 0;background:linear-gradient(90deg,#F1F0FF,#F8F7FF 70%,transparent);border-bottom:1px solid #ECEBFC}
+body.koyu #ty .kart > .kb{background:rgba(99,102,241,.10);border-color:var(--line)}
+#ty .kb .material-icons-outlined:first-child{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--marka),var(--marka2));color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+#ty .kb .rozet .material-icons-outlined:first-child{width:auto;height:auto;background:none;color:inherit;font-size:13px}
+#ty .ozet{background:linear-gradient(135deg,#EEF0FF,#F5F0FF);border:1px solid #E0E1FC}
+body.koyu #ty .ozet{background:rgba(99,102,241,.12);border-color:var(--line)}
+#ty .adim{border-top:0;margin-top:9px;padding:13px;border-radius:13px;background:color-mix(in srgb,var(--zc,#6366F1) 5%,var(--card));border:1px solid color-mix(in srgb,var(--zc,#6366F1) 16%,transparent);border-left:4px solid var(--zc,#6366F1)}
+#ty .adim .no{background:var(--zc,#6366F1)}
+#ty .adim .tut{color:color-mix(in srgb,var(--zc,#6366F1) 75%,var(--ink))}
+#ty tbody tr:nth-child(even) td{background:#FAFAFF}
+body.koyu #ty tbody tr:nth-child(even) td{background:transparent}
+#ty td.top{color:#4F46E5}
+
+/* ── Responsive ── */
+.rk-main,.rk-body{min-width:0}
+#ty{overflow-x:hidden}
+@media(max-width:700px){
+  #ty .pano{padding:12px 12px 32px}
+  #ty .hero{padding:16px;gap:12px}
+  #ty .hero .ik{width:40px;height:40px}
+  #ty .hero h1{font-size:17px}
+  #ty .hero .sag{margin-left:0;text-align:left;width:100%;background:rgba(255,255,255,.14);border-radius:12px;padding:10px 12px}
+  #ty .hero .sag .v{font-size:22px}
+  #ty .ust{gap:9px}
+  #ty .kpi{padding:12px}
+  #ty .kpi .deg{font-size:17px}
+  #ty .kpi .ki{display:none}
+  #ty .ust .kpi:first-child{grid-column:1 / -1}
+  #ty .kart{padding:14px}
+  #ty .kart > .kb{margin:-14px -14px 12px;padding:11px 14px;flex-wrap:wrap}
+  #ty .kb .rozet{margin-left:0}
+  #ty .adim{gap:10px;padding:11px}
+  #ty .adim .tut{margin-left:0;width:100%}
+  #ty .lej .s .t{min-width:80px}
+  /* tablo → kart */
+  #ty .tsar{overflow:visible}
+  #ty table,#ty tbody{display:block;width:100%;min-width:0}
+  #ty .ust > *,#ty .izgara > *,#ty .hero > div{min-width:0}
+  #ty .hero > div:nth-child(2){flex:1 1 200px}
+  #ty thead{display:none}
+  #ty tbody tr{display:block;border:1px solid #E7E8FB;border-radius:13px;margin-bottom:10px;padding:10px 12px;background:var(--card)}
+  #ty tbody tr:nth-child(even) td,#ty tbody tr:hover td{background:transparent}
+  #ty td{display:flex;justify-content:space-between;align-items:center;gap:10px;border:0;padding:5px 0;text-align:right}
+  #ty td::before{content:attr(data-l);color:var(--sub);font-size:11px;font-weight:700;text-transform:uppercase}
+  #ty td:first-child{display:block;font-size:14px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:4px}
+  #ty td:first-child::before,#ty td:last-child::before{display:none}
+  #ty td.tire{display:none}
+  #ty td:last-child{justify-content:flex-end;padding-top:8px}
+  #ty .fat{flex-wrap:wrap;gap:6px 10px}
+  #ty .fat .no{flex-basis:100%}
+}
 </style>
 @endpush
 
@@ -117,10 +178,10 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
   $T = max(1, (float) $y['toplam']);
   $yz = fn($v) => $y['toplam'] > 0 ? '%' . number_format(((float) $v / $T) * 100, 0) : '';
   $dilim = [
-    ['Gecikmiş', $y['gecikmis'], '#F43F5E', 'Vadesi geçmiş'],
-    ['Bu hafta', $y['hafta'], '#F59E0B', '0–7 gün içinde'],
-    ['8–30 gün', $y['ay'], '#3B82F6', 'Bu ay içinde'],
-    ['31+ gün', $y['ileri'], '#10B981', 'Vadesi uzak'],
+    ['Gecikmiş', $y['gecikmis'], '#F43F5E', 'Vadesi geçmiş', 'error_outline'],
+    ['Bu hafta', $y['hafta'], '#F59E0B', '0–7 gün içinde', 'schedule'],
+    ['8–30 gün', $y['ay'], '#3B82F6', 'Bu ay içinde', 'date_range'],
+    ['31+ gün', $y['ileri'], '#10B981', 'Vadesi uzak', 'event_available'],
   ];
   $faturaSay = array_sum(array_map(fn($s) => count($s['faturalar']), $y['tedarikciler'] ?? []));
   $zRenk = ['Hemen' => '#F43F5E', 'Bu hafta' => '#D97706', '2 hafta içinde' => '#3B82F6', 'Vadesinde' => '#10B981'];
@@ -139,9 +200,9 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
   </div>
 
   <div class="ust">
-    <div class="kpi" style="--c:var(--marka)"><div class="lbl"><i></i>Toplam Borç</div><div class="deg">{{ $tl($y['toplam']) }}</div><div class="alt">{{ $faturaSay }} açık fatura</div></div>
+    <div class="kpi" style="--c:#6366F1"><span class="ki"><span class="material-icons-outlined">account_balance_wallet</span></span><div class="lbl"><i></i>Toplam Borç</div><div class="deg">{{ $tl($y['toplam']) }}</div><div class="alt">{{ $faturaSay }} açık fatura</div></div>
     @foreach($dilim as $d)
-      <div class="kpi" style="--c:{{ $d[2] }}"><div class="lbl"><i></i>{{ $d[0] }}</div><div class="deg">{{ $tl($d[1]) }}</div><div class="alt">{{ $d[3] }}@if($y['toplam']>0) · {{ $yz($d[1]) }}@endif</div></div>
+      <div class="kpi" style="--c:{{ $d[2] }}"><span class="ki"><span class="material-icons-outlined">{{ $d[4] }}</span></span><div class="lbl"><i></i>{{ $d[0] }}</div><div class="deg">{{ $tl($d[1]) }}</div><div class="alt">{{ $d[3] }}@if($y['toplam']>0) · {{ $yz($d[1]) }}@endif</div></div>
     @endforeach
   </div>
 
@@ -153,7 +214,7 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
       <div id="tyPlanGovde">
         <div class="ozet"><span class="material-icons-outlined">lightbulb</span><div>{{ $plan['ozet'] }}</div></div>
         @foreach($plan['adimlar'] as $i => $a)
-          <div class="adim">
+          <div class="adim" style="--zc:{{ $zRenk[$a['zaman']] ?? '#6366F1' }}">
             <div class="no">{{ $i + 1 }}</div>
             <div class="gv">
               <div class="ust2"><span class="ad">{{ $a['tedarikci'] }}</span><span class="zaman" style="--zc:{{ $zRenk[$a['zaman']] ?? '#6366F1' }}">{{ $a['zaman'] }}</span><span class="tut">{{ $tl($a['tutar']) }}</span></div>
@@ -220,11 +281,11 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
                 @endforeach
               </details>
             </td>
-            <td class="{{ $s['gecikmis']>0?'gec':'tire' }}">{{ $s['gecikmis']>0?$tl($s['gecikmis']):'–' }}</td>
-            <td class="{{ $s['hafta']>0?'haf':'tire' }}">{{ $s['hafta']>0?$tl($s['hafta']):'–' }}</td>
-            <td class="{{ $s['ay']>0?'':'tire' }}">{{ $s['ay']>0?$tl($s['ay']):'–' }}</td>
-            <td class="{{ $s['ileri']>0?'':'tire' }}">{{ $s['ileri']>0?$tl($s['ileri']):'–' }}</td>
-            <td class="top">{{ $tl($s['toplam']) }}</td>
+            <td data-l="Gecikmiş" class="{{ $s['gecikmis']>0?'gec':'tire' }}">{{ $s['gecikmis']>0?$tl($s['gecikmis']):'–' }}</td>
+            <td data-l="Bu hafta" class="{{ $s['hafta']>0?'haf':'tire' }}">{{ $s['hafta']>0?$tl($s['hafta']):'–' }}</td>
+            <td data-l="8–30 gün" class="{{ $s['ay']>0?'':'tire' }}">{{ $s['ay']>0?$tl($s['ay']):'–' }}</td>
+            <td data-l="31+ gün" class="{{ $s['ileri']>0?'':'tire' }}">{{ $s['ileri']>0?$tl($s['ileri']):'–' }}</td>
+            <td data-l="Toplam" class="top">{{ $tl($s['toplam']) }}</td>
             <td>@if($patronMu)<form method="POST" action="/tedarikci-yaslandirma/odendi" onsubmit="return confirm({{ json_encode($s['ad'] . ' için tüm açık faturalar ödendi olarak işaretlensin mi?', JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) }})" style="margin:0">@csrf<input type="hidden" name="tedarikci_id" value="{{ $s['id'] }}"><button class="btnm" type="submit"><span class="material-icons-outlined">done_all</span> Tümü ödendi</button></form>@endif</td>
           </tr>
           @endforeach
@@ -250,7 +311,7 @@ body.koyu #ty .kb .rozet{background:rgba(99,102,241,.18);color:#A5B4FC}
       if (!d || !d.ok || !d.adimlar || !d.adimlar.length) { yukl.innerHTML = hata; return; }
       var h = d.ozet ? '<div class="ozet"><span class="material-icons-outlined">lightbulb</span><div>' + es(d.ozet) + '</div></div>' : '';
       d.adimlar.forEach(function (a, i) {
-        h += '<div class="adim"><div class="no">' + (i + 1) + '</div><div class="gv">'
+        h += '<div class="adim" style="--zc:' + (renk[a.zaman] || '#6366F1') + '"><div class="no">' + (i + 1) + '</div><div class="gv">'
           + '<div class="ust2"><span class="ad">' + es(a.tedarikci) + '</span>'
           + (a.zaman ? '<span class="zaman" style="--zc:' + (renk[a.zaman] || '#6366F1') + '">' + es(a.zaman) + '</span>' : '')
           + (a.tutar ? '<span class="tut">' + tl(a.tutar) + '</span>' : '') + '</div>'
