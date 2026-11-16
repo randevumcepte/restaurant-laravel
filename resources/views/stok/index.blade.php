@@ -298,6 +298,18 @@ body.koyu #stkToast{background:#e2e8f0;color:#1e293b}
 @endpush
 
 @section('rk_araclar')
+<div class="stk-cikti">
+    <a href="/stok/malzeme/indir?format=xlsx" class="stk-cb x" title="Tüm malzemeler: kategori kategori, ara toplamlı Excel"><span class="material-icons-outlined">table_view</span><span class="y">Excel</span></a>
+    <a href="/stok/malzeme/indir?format=pdf" target="_blank" class="stk-cb p" title="A4 yatay, yazdırmaya hazır PDF"><span class="material-icons-outlined">picture_as_pdf</span><span class="y">PDF</span></a>
+</div>
+<style>
+.stk-cikti{display:flex;gap:6px;align-items:center;margin-right:6px}
+.stk-cb{display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:10px;font-size:13px;font-weight:800;text-decoration:none;color:#fff;white-space:nowrap}
+.stk-cb .material-icons-outlined{font-size:17px}
+.stk-cb.x{background:linear-gradient(135deg,#22C55E,#15803D)}.stk-cb.p{background:linear-gradient(135deg,#F43F5E,#BE123C)}
+.stk-cb:hover{filter:brightness(1.08)}
+@media(max-width:620px){.stk-cb{padding:8px 9px}.stk-cb .y{display:none}}
+</style>
 <div id="stkAraBar" style="display:none">
     <div class="ara-ic">
         <span class="material-icons-outlined">search</span>

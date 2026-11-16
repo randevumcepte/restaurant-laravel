@@ -376,7 +376,7 @@
             $panoI = $i; $panoTek = $yarim % 2 === 1; $s2['_odunc'] = []; continue;
         }
         if (in_array($s2['tip'] ?? '', ['bosgrup'], true) || ($ai && !empty($s2['ai'])) || !count($s2['sat'] ?? [])) continue;
-        $s2['_oto'] = $otoGrafik($s2['kol'], array_values(array_filter($s2['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara']))));
+        $s2['_oto'] = !empty($s2['grafiksiz']) ? [] : $otoGrafik($s2['kol'], array_values(array_filter($s2['sat'], fn($r) => !isset($r['_baslik']) && !isset($r['_ara']))));
         // panodaki bir grafikle aynı kalemleri gösteren dağılım grafiği tekrar çizilmez
         $s2['_oto'] = array_values(array_filter($s2['_oto'], function ($g) use ($panoEt) {
             if ($g['tur'] === 'sutun') return true;
@@ -568,7 +568,7 @@
               @elseif (preg_match('/esik:([\d.]+)/', $b, $mm))
                 <td class="{{ $sag ? 'r' : '' }}" style="{{ is_numeric($val) && $val >= (float) $mm[1] ? 'font-weight:900;color:#BE123C' : '' }}">{{ $hucre($val, $k[1]) }}</td>
               @elseif (str_contains($b, 'onc'))
-                @php $oc = ['YÜKSEK' => ['#FFE4E6', '#9F1239'], 'ORTA' => ['#FEF3C7', '#92400E'], 'DÜŞÜK' => ['#F1F5F9', '#475569']][$val] ?? ['#F1F5F9', '#475569']; @endphp
+                @php $oc = ['YÜKSEK' => ['#FFE4E6', '#9F1239'], 'ORTA' => ['#FEF3C7', '#92400E'], 'DÜŞÜK' => ['#F1F5F9', '#475569'], 'KRİTİK' => ['#FEE2E2', '#B91C1C'], 'AZ' => ['#FFEDD5', '#C2410C'], 'YETERLİ' => ['#DCFCE7', '#15803D'], 'VERİ HATASI' => ['#7F1D1D', '#FFFFFF']][$val] ?? ['#F1F5F9', '#475569']; @endphp
                 <td><span class="onc" style="background:{{ $oc[0] }};color:{{ $oc[1] }}">{{ $val }}</span></td>
               @else
                 <td class="{{ $sag ? 'r' : '' }}">{{ $hucre($val, $k[1]) }}</td>
