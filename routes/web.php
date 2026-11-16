@@ -9938,7 +9938,7 @@ if (!function_exists('_olcekMenuListesi')) {
         if (!in_array($olcek, ['kucuk', 'orta'], true)) return null;
         $ayar = ['/isletme-duzeni', '/salon-sema', '/odeme-ayar', '/whatsapp', '/wa-hatlar', '/isletme-konum', '/yasal-bilgiler', '/sebep-yonetimi', '/hareketler', '/bildirim-ayar', '/isletme-olcegi', '/yazici-ayarlari', '/bagli-cihazlar'];
         $kucuk = [
-            'Patron AI' => ['/patron-ai', '/ajanda'],
+            'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/patron-ai-sohbet', '/ajanda'],
             'Ajanda' => ['/ajanda'], // kişisel ajanda her ölçekte görünür
             'Panel' => ['/departman-brief', '/dashboard', '/pos', '/mutfak', '/rezervasyon', '/paket'],
             'Mutfak / BOH' => ['/departman-brief?dep=mutfak', '/mutfak', '/uretim-plani', '/satinalma-talep', '/recete', '/sayim'],
@@ -9952,7 +9952,7 @@ if (!function_exists('_olcekMenuListesi')) {
         if ($olcek === 'kucuk') return $kucuk;
         // Orta: Satın Alma + Rezervasyon Satış departmanları kurulu olduğu için o grupların tamamı zaten görünür
         return array_merge($kucuk, [
-            'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/ajanda'],
+            'Patron AI' => ['/patron-ai', '/patron-ai?gm=1', '/patron-ai-sohbet', '/ajanda'],
             'Mutfak / BOH' => array_merge($kucuk['Mutfak / BOH'], ['/departman-asistan?dep=mutfak', '/uretim-riski', '/parti-takip', '/mutfak-defteri', '/rezervasyon']),
             'Satış & Servis' => ['/servis', '/karsilama', '/garson-cagrilari'],
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/qr-menu-rengi', '/indirimler', '/happy-hour', '/fix-menu', '/barkod'],

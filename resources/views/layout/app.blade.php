@@ -403,6 +403,7 @@
     try {
         $_gmRol = optional(_posPersonel())->rol ?? '';
         $gruplar['Patron AI'] = $_gmRol === 'sahip' ? [$gruplar['Patron AI'][0]] : [['/patron-ai?gm=1', 'auto_awesome', 'Sabah Brifingi', '#7C3AED']];
+        $gruplar['Patron AI'][] = ['/patron-ai-sohbet', 'smart_toy', $_gmRol === 'sahip' ? 'Patron AI Sohbet' : 'AI Sohbet', '#4F46E5']; // sayfa yalnız sahip/müdüre açılır; diğerlerinde haritada olmadığı için gizli
     } catch (\Throwable $e) {}
     // İŞLETME BÜYÜKLÜĞÜ: küçük/orta işletmede menü sadeleşir; kurulu olmayan alt departman hiçbir ölçekte görünmez.
     $gruplar['Ayarlar & Entegrasyon'][] = ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', '#7C3AED'];
@@ -487,6 +488,8 @@
             if (!empty($gruplar['Satın Alma'])) { // satın almacı menüsüyle aynı bölme: Satın Alma / Fatura & Fiyat / Tedarikçi & Analiz / Stok & Üretim / Raporlar & Analizler
                 $_saP = ['Satın Alma' => []] + array_fill_keys(array_keys($_saBol), []);
                 foreach ($gruplar['Satın Alma'] as $_it) { $_g = 'Satın Alma'; foreach ($_saBol as $_bg => $_bu) if (in_array(strtok($_it[0], '?'), $_bu, true)) { $_g = $_bg; break; } $_saP[$_g][] = $_it; }
+                $_saSira = ['/departman-brief?dep=satinalma' => 0, '/satinalma-asistan' => 1];
+                usort($_saP['Satın Alma'], fn ($a, $b) => ($_saSira[$a[0]] ?? 2) <=> ($_saSira[$b[0]] ?? 2)); // brifing → AI → diğerleri (sıra korunur)
                 unset($gruplar['Satın Alma']);
                 foreach ($_saP as $_bg => $_its) if ($_its) $gruplar[$_bg] = array_merge($gruplar[$_bg] ?? [], $_its);
             }
@@ -526,8 +529,9 @@
         // Tek "Satın Alma" grubu: Stok + AI başta, brifing üstteki Sabah Brifingim'de (yoksa grubun başında); Mutfak / BOH satın almacıda yok
         $_bas = [];
         if ($_ozetI && !isset($gruplar['Brifing'])) $_bas[] = $_ozetI;
+        if ($_aiI && !isset($gruplar['Brifing'])) $_bas[] = $_aiI;
+        if ($_aiI && isset($gruplar['Brifing'])) $gruplar['Brifing'][] = $_aiI; // brifing → AI (diğer departmanlar gibi)
         if ($_stokI) $_bas[] = $_stokI;
-        if ($_aiI)   $_bas[] = $_aiI;
         $_sa = array_merge($_bas, $gruplar['Satın Alma'] ?? []);
         unset($gruplar['Satın Alma'], $gruplar['Mutfak / BOH'], $gruplar['Kalite / HACCP']); // kalite mutfağın işi; satın almanın kontrolü Mal Kabul'de
         $_yeni = isset($gruplar['Brifing']) ? ['Brifing' => $gruplar['Brifing']] : [];
