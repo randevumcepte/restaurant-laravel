@@ -492,7 +492,7 @@ Route::post('/pos-giris', function (Request $r) {
     $adaylar = $pin !== '' ? DB::table('personeller')->where('pin', $pin)->where('aktif', 1)->limit(2)->get() : collect();
     if ($adaylar->count() > 1) return redirect('/pos-giris')->with('pos_hata', 'Bu PIN birden fazla işletmede kayıtlı. Yöneticinizden PIN değişikliği isteyin.');
     $p = $adaylar->first();
-    if (!$p) { \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 300); return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.'); }
+    if (!$p) { \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 300); if (function_exists('_itrGirisHata')) _itrGirisHata('Web'); return redirect('/pos-giris')->with('pos_hata', 'PIN hatalı.'); } // hatalı deneme IT raporuna
     \Illuminate\Support\Facades\RateLimiter::clear($rlKey);
     session(['pos_personel_id' => $p->id]);
     session()->forget('pos_kasa_id');
@@ -2620,7 +2620,7 @@ Route::post('/it-destek/durum', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!_itGuard($bp)) return redirect('/pos-giris');
     _itKayitEnsure(); $sid = _webSubeId(); $tip = (string) $r->input('tip');
-    try { DB::table('it_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->update(['durum' => 'kapandi']); } catch (\Throwable $e) {}
+    try { DB::table('it_kayitlari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->update(function_exists('_itrKapanisDamga') ? _itrKapanisDamga(['durum' => 'kapandi']) : ['durum' => 'kapandi']); } catch (\Throwable $e) {} // kapanış zamanı (IT raporu: çözüm süresi)
     return redirect('/it-destek?tip=' . ($tip ?: 'ariza'))->with('ok', 'Kayıt kapatıldı.');
 });
 Route::post('/it-destek/sil', function (Request $r) {
@@ -16094,6 +16094,7 @@ Route::post('/api/login', function (Request $r) {
     $p = $adaylar->first();
     if (!$p) {
         \Illuminate\Support\Facades\RateLimiter::hit($rlKey, 600); // basarisiz -> 10 dk'lik pencerede say
+        if (function_exists('_itrGirisHata')) _itrGirisHata('Uygulama'); // hatalı deneme IT raporuna
         return response()->json(['ok' => 0, 'hata' => 'PIN hatalı'], 401);
     }
     \Illuminate\Support\Facades\RateLimiter::clear($rlKey); // basarili -> sayaci temizle
