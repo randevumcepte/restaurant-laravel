@@ -9,7 +9,7 @@
   --card:#fff;--card2:#F5F5FF;--bg:#F8FAFC;--ink:#1E293B;--sub:#64748B;--sub2:#94A3B8;--line:#E2E8F0}
 body.koyu #ty{--card:#161d2e;--card2:#1b2235;--bg:#0f1623;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650}
 #ty{background:var(--bg);min-height:calc(100vh - 60px)}#ty *{box-sizing:border-box}
-#ty .pano{max-width:1240px;margin:0 auto;padding:20px 20px 44px}
+#ty .pano{max-width:none;margin:0;padding:20px 22px 44px}
 #ty .flash{border-radius:12px;padding:11px 15px;margin-bottom:14px;font-weight:600;font-size:13.5px;background:rgba(16,185,129,.14);color:#0b805e}
 
 /* üst bant */
