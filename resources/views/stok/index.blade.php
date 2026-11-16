@@ -252,6 +252,14 @@ body.koyu .stk-modal{background:#0B1020}
 .stk-modal .stk-mod-cizgi{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
 .stk-modal .stk-mod-baslik{color:var(--ink);font-size:18px;font-weight:800;margin-bottom:16px}
 /* Detay bilgi satırı */
+/* Malzeme adı önerileri: alanın hemen altında, modalın içinde */
+.stk-oneri{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18);max-height:286px;overflow-y:auto;padding:4px}
+.stk-oneri .o{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
+.stk-oneri .o:hover,.stk-oneri .o.on{background:color-mix(in srgb,var(--mor1) 10%,transparent)}
+.stk-oneri .a{flex:1;min-width:0;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stk-oneri .a b{color:var(--mor1)}
+.stk-oneri .k{font-size:11px;color:var(--sub);white-space:nowrap}
+.stk-oneri .var{font-size:10.5px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:99px;padding:1px 7px;white-space:nowrap}
 .stk-modal .det-ozet{color:var(--sub);font-size:13px;margin-bottom:12px}
 /* Eylem butonları (Flutter _kbtn) */
 .stk-modal .stk-btnler{display:flex;gap:8px;margin-bottom:12px}
@@ -505,10 +513,10 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
     <div class="stk-modal">
         <div class="stk-mod-cizgi"></div>
         <div class="stk-mod-baslik" id="stkFormBaslik">Yeni Malzeme</div>
-        <div class="stk-field">
+        <div class="stk-field" style="position:relative">
             <label>Malzeme adı <span style="font-weight:400;opacity:.7;font-size:11px">— yazmaya başla, listeden seç</span></label>
-            <input type="text" id="stkFAd" placeholder="Malzeme adı (hazır listeden seç ya da yaz)" list="stkUrunKatalog" autocomplete="off">
-            <datalist id="stkUrunKatalog"></datalist>
+            <input type="text" id="stkFAd" placeholder="Malzeme adı (hazır listeden seç ya da yaz)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="stkOneri">
+            <div class="stk-oneri" id="stkOneri" role="listbox" hidden></div>
         </div>
         <div class="stk-row">
             <div class="stk-field">
@@ -609,15 +617,54 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
 // ──────────────────────────────────────────────
 const STK_TOKEN = '{{ $webToken }}'; // personel api_token (Bearer)
 
-// SİSTEM GENELİ ürün kataloğu -> malzeme adı için hazır öneri (datalist)
+// SİSTEM GENELİ ürün kataloğu -> malzeme adı için hazır öneri (alanın altında açılan liste;
+// tarayıcının datalist kutusu modalın dışına/ekranın kenarına taşıyordu)
 let STK_KATALOG = {}; // ad_lower -> {ad, kategori}
 (function stkKatalogYukle(){
   fetch('/urun-katalog').then(r=>r.json()).then(j=>{
     if(!j || !j.urunler) return;
-    const dl=document.getElementById('stkUrunKatalog'); if(!dl) return;
-    dl.innerHTML = j.urunler.map(u=>`<option value="${(u.ad||'').replace(/"/g,'&quot;')}">${u.kategori||''}</option>`).join('');
     j.urunler.forEach(u=>{ if(u.ad) STK_KATALOG[u.ad.toLocaleLowerCase('tr')]={ad:u.ad,kategori:u.kategori}; });
   }).catch(()=>{});
+})();
+(function stkOneriKur(){
+  const inp = document.getElementById('stkFAd'), kutu = document.getElementById('stkOneri');
+  if (!inp || !kutu) return;
+  let secili = -1, liste = [];
+  const kucuk = s => (s || '').toLocaleLowerCase('tr');
+  const mevcut = () => { const s = {}; (typeof stkVeriler !== 'undefined' ? stkVeriler : []).forEach(m => s[kucuk(m.ad)] = 1); return s; };
+  function kapat(){ kutu.hidden = true; inp.setAttribute('aria-expanded', 'false'); secili = -1; }
+  function ciz(){
+    const q = kucuk(inp.value.trim()), var_ = mevcut();
+    const hepsi = Object.values(STK_KATALOG);
+    // önce baştan eşleşen, sonra içinde geçen; boşken ilk 8
+    liste = q ? hepsi.filter(u => kucuk(u.ad).startsWith(q)).concat(hepsi.filter(u => !kucuk(u.ad).startsWith(q) && kucuk(u.ad).includes(q))) : hepsi;
+    liste = liste.slice(0, 8);
+    if (!liste.length || (liste.length === 1 && kucuk(liste[0].ad) === q)) { kapat(); return; }
+    kutu.innerHTML = liste.map((u, i) => {
+      const ad = _esc(u.ad), k = kucuk(u.ad).indexOf(q);
+      const vurgulu = q && k >= 0 ? _esc(u.ad.slice(0, k)) + '<b>' + _esc(u.ad.slice(k, k + q.length)) + '</b>' + _esc(u.ad.slice(k + q.length)) : ad;
+      return '<div class="o' + (i === secili ? ' on' : '') + '" role="option" data-i="' + i + '"><span class="a">' + vurgulu + '</span>'
+        + (var_[kucuk(u.ad)] ? '<span class="var">zaten var</span>' : '') + '<span class="k">' + _esc(u.kategori || '') + '</span></div>';
+    }).join('');
+    kutu.hidden = false; inp.setAttribute('aria-expanded', 'true');
+  }
+  function sec(i){
+    const u = liste[i]; if (!u) return;
+    inp.value = u.ad; kapat();
+    inp.dispatchEvent(new Event('input', { bubbles: true })); // kategoriyi otomatik seçen dinleyici çalışsın
+    kapat();
+  }
+  inp.addEventListener('input', () => { secili = -1; ciz(); });
+  inp.addEventListener('focus', ciz);
+  inp.addEventListener('blur', () => setTimeout(kapat, 120));
+  inp.addEventListener('keydown', e => {
+    if (kutu.hidden) return;
+    if (e.key === 'ArrowDown') { secili = Math.min(liste.length - 1, secili + 1); ciz(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { secili = Math.max(0, secili - 1); ciz(); e.preventDefault(); }
+    else if (e.key === 'Enter' && secili >= 0) { sec(secili); e.preventDefault(); }
+    else if (e.key === 'Escape') { kapat(); e.stopPropagation(); }
+  });
+  kutu.addEventListener('mousedown', e => { const o = e.target.closest('.o'); if (o) { e.preventDefault(); sec(+o.dataset.i); } });
 })();
 // Katalogdan ad seçilince, o ürünün kategorisini de otomatik seç (kategori adı eşleşirse)
 document.addEventListener('input', function(e){
