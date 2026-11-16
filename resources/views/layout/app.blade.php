@@ -399,6 +399,11 @@
         // Herkese açık kişisel ajanda — her personel kendi randevu/hatırlatıcısını girer (veri personel_id bazlı)
         ['/ajanda', 'event_note', 'Ajanda & Hatırlatıcı', '#4F46E5'],
     ]] + $gruplar;
+    // Patron ile Genel Müdür brifingi aynı ekran: patron yalnız kendi Sabah Brifingi'ni, diğer yöneticiler (genel müdür) GM brifingini görür
+    try {
+        $_gmRol = optional(_posPersonel())->rol ?? '';
+        $gruplar['Patron AI'] = $_gmRol === 'sahip' ? [$gruplar['Patron AI'][0]] : [['/patron-ai?gm=1', 'auto_awesome', 'Sabah Brifingi', '#7C3AED']];
+    } catch (\Throwable $e) {}
     // İŞLETME BÜYÜKLÜĞÜ: küçük/orta işletmede menü sadeleşir; kurulu olmayan alt departman hiçbir ölçekte görünmez.
     $gruplar['Ayarlar & Entegrasyon'][] = ['/isletme-olcegi', 'tune', 'İşletme Büyüklüğü', '#7C3AED'];
     $_olcekSor = false;
@@ -548,6 +553,7 @@
     elseif ($_refYol !== $path) session()->forget('profil_geri_yol');
     $_profilGeri = session('profil_geri_yol') === $path;
     $aktifMi = function ($url) use ($path, $_reqUri) {
+        if ($url === '/patron-ai?gm=1') return $path === '/patron-ai' && request()->boolean('gm'); // GM brifingi sabah/akşam sekmesinde de seçili
         if (strpos($url, '?') !== false) return $_reqUri === $url;                 // sorgulu link: tam eşleşme
         if ($url === '/') return $path === '/';
         if ($url === '/patron-ai' && request()->boolean('gm')) return false;        // GM modunda düz patron-ai seçili sayılmaz
@@ -598,7 +604,7 @@
                     if ($it[0] === '/talep-onaylarim') return _talepUstYonetimMu($_pp); // sorumlu onayları Satın Alma Talepleri sayfasında yönetir
                     if ($it[0] === '/demirbas' && function_exists('_dmYetki')) return (bool) _dmYetki($_pp); if ($it[0] === '/fiyat-anlasmalari' && function_exists('_faYetki')) return (bool) _faYetki($_pp); // görüntüle/düzenle yetkisi ya da sorumlu salt okur
                     if (str_starts_with($it[0], '/satinalma-raporlar/')) return _panelYetkiVar($_pp, 'gor_satinalma');
-                    if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
+                    if ($it[0] === '/patron-ai?gm=1') return _panelYetkiVar($_pp, 'gor_copilot'); if (in_array($it[0], ['/bildirim-ayar', '/profilim', '/ajanda'])) return true;
                     if (isset($_harita[$it[0]])) return _panelYetkiVar($_pp, $_harita[$it[0]]);
                     return false;
                 };

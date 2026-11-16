@@ -281,10 +281,10 @@
     </div>
     <div class="pai-hero-sag">
       <div class="pai-seg">
-        <a href="/patron-ai?tip=sabah{{ $demo?'&demo=1':'' }}" class="pai-tab {{ $tip==='sabah'?'aktif':'' }}">☀️ Sabah</a>
-        <a href="/patron-ai?tip=aksam{{ $demo?'&demo=1':'' }}" class="pai-tab {{ $tip==='aksam'?'aktif':'' }}">🌙 Akşam</a>
+        <a href="/patron-ai?tip=sabah{{ $demo?'&demo=1':'' }}{{ !empty($gm)?'&gm=1':'' }}" class="pai-tab {{ $tip==='sabah'?'aktif':'' }}">☀️ Sabah</a>
+        <a href="/patron-ai?tip=aksam{{ $demo?'&demo=1':'' }}{{ !empty($gm)?'&gm=1':'' }}" class="pai-tab {{ $tip==='aksam'?'aktif':'' }}">🌙 Akşam</a>
       </div>
-      <a href="/patron-ai?tip={{ $tip }}&force=1{{ $demo?'&demo=1':'' }}" class="pai-ref" title="Yenile"><span class="material-icons-outlined" style="font-size:19px">refresh</span></a>
+      <a href="/patron-ai?tip={{ $tip }}&force=1{{ $demo?'&demo=1':'' }}{{ !empty($gm)?'&gm=1':'' }}" class="pai-ref" title="Yenile"><span class="material-icons-outlined" style="font-size:19px">refresh</span></a>
     </div>
   </div>
 
