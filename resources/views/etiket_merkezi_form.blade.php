@@ -13,7 +13,7 @@
     @csrf <input type="hidden" name="id" id="emId">
     <div class="bas"><span class="ms">local_offer</span><h3 id="emBaslik">Yeni Ürün</h3><button type="button" class="kapat" onclick="emKapat()"><span class="ms">close</span></button></div>
     <div class="gov">
-      <div class="bolum"><span class="ms">inventory</span> Ürün</div>
+      <div class="bolum" style="--bc:#6366F1"><span class="ms">inventory</span> Ürün</div>
       <label>Menüdeki bir ürüne bağla (kasada satılacaksa)</label>
       <select name="urun_id" id="emUrunId" onchange="emMenuSec()">
         <option value="">— Menüde değil (yalnız etiket: markete giden ürün vb.) —</option>
@@ -25,14 +25,14 @@
         <div><label>Kategori</label><input name="kategori" id="emKategori" maxlength="60" placeholder="Kasap, şarküteri, konserve…"></div>
       </div>
 
-      <div class="bolum"><span class="ms">local_offer</span> Etiket türü</div>
+      <div class="bolum" style="--bc:#EC4899"><span class="ms">local_offer</span> Etiket türü</div>
       <div class="secenek" style="flex-direction:row;flex-wrap:wrap">
         @foreach (_emTurler() as $k => $a)
-          <label style="flex:1;min-width:150px"><input type="checkbox" name="turler[]" value="{{ $k }}" class="emTur" onchange="emTurDegisti()"><span>{{ $a }}</span></label>
+          <label style="flex:1;min-width:150px;--tc:{{ ['paket' => '#6366F1', 'tarti' => '#10B981', 'raf' => '#F59E0B'][$k] }}"><input type="checkbox" name="turler[]" value="{{ $k }}" class="emTur" onchange="emTurDegisti()"><span>{{ $a }}</span></label>
         @endforeach
       </div>
 
-      <div class="bolum"><span class="ms">payments</span> Fiyat</div>
+      <div class="bolum" style="--bc:#10B981"><span class="ms">payments</span> Fiyat</div>
       <div class="uc">
         <div><label>Fiyat neye göre?</label><select name="birim" id="emBirim" onchange="emTurDegisti()">@foreach (_emBirimler() as $k => $a)<option value="{{ $k }}">{{ $a }}</option>@endforeach</select></div>
         <div><label id="emFiyatEt">Satış fiyatı (₺, KDV dahil)</label><input name="fiyat" id="emFiyat" inputmode="decimal" placeholder="Menüden gelir"></div>
@@ -44,7 +44,7 @@
       </div>
       <div class="ipucu">Raf kartında birim fiyat (1 kg / 1 lt) net miktardan otomatik hesaplanır. İndirimde eski fiyat olarak son 30 günün en düşük fiyatı basılır.</div>
 
-      <div class="bolum"><span class="ms">qr_code</span> Barkod</div>
+      <div class="bolum" style="--bc:#0EA5E9"><span class="ms">qr_code</span> Barkod</div>
       <div class="iz">
         <div><label>Barkod</label><input name="barkod" id="emBarkod" maxlength="32" placeholder="869… resmi barkodu okut ya da boş bırak"></div>
         <div id="emPluKutu"><label>PLU (terazideki ürün no)</label><input name="plu" id="emPlu" type="number" min="1" placeholder="Boş = sıradaki numara"></div>
@@ -52,7 +52,7 @@
       <label style="display:flex;gap:8px;align-items:center" id="emIcUretKutu"><input type="checkbox" name="barkod_islem" value="ic_uret" id="emIcUret" style="width:18px;height:18px;accent-color:#6366F1"> Barkodu yok — mağaza içi barkod (2 ile başlayan) üret</label>
       <div class="ipucu">Markete giden ürünün GS1 Türkiye'den alınmış <b>869</b> barkodunu yaz. Mağaza içi barkod yalnız senin kasanda geçerlidir. Tartılı ürünün barkodunu terazi basar; burada yalnız PLU gerekir.</div>
 
-      <div class="bolum"><span class="ms">event</span> Tarih, içerik, üretici</div>
+      <div class="bolum" style="--bc:#F59E0B"><span class="ms">event</span> Tarih, içerik, üretici</div>
       <div class="uc">
         <div><label>Raf ömrü (gün)</label><input name="raf_omru_gun" id="emOmur" type="number" min="1" max="3650" placeholder="SKT = üretim + bu gün"></div>
         <div id="emDaraKutu"><label>Dara (g)</label><input name="dara_g" id="emDara" inputmode="decimal" placeholder="Kap/ambalaj ağırlığı"></div>

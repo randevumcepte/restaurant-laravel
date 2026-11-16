@@ -104,3 +104,23 @@ body.koyu #dm .okut{background:var(--card);border-color:var(--line)}
 #dm .k .ki{background:var(--kr);color:#fff;box-shadow:0 4px 12px color-mix(in srgb,var(--kr) 35%,transparent)}
 body.koyu #dm .k{background:var(--card);border-color:color-mix(in srgb,var(--kr) 35%,var(--line))}
 </style>
+<style>
+/* Ürün formu penceresi: hafif renk */
+#emPop .dmp{background:linear-gradient(180deg,#FBFAFF 0,#fff 260px)}
+#emPop .dmp .bas{background:linear-gradient(120deg,#EEF2FF,#F5F3FF 55%,#FDF2F8);border-bottom:1px solid #E0E7FF;padding-bottom:14px;margin-bottom:6px}
+#emPop .dmp .bas>.ms{background:linear-gradient(135deg,#6366F1,#8B5CF6);color:#fff;border-radius:11px;padding:7px;font-size:19px;box-shadow:0 4px 12px rgba(99,102,241,.3)}
+#emPop .dmp .kapat{background:#fff;color:#6366F1}
+#emPop .dmp .bolum{--bc:#6366F1;color:var(--bc);background:linear-gradient(90deg,color-mix(in srgb,var(--bc) 11%,#fff),transparent 80%);border-left:3px solid var(--bc);border-radius:9px;padding:7px 10px;margin:18px 0 4px}
+#emPop .dmp input:not([type=checkbox]):not([type=radio]),#emPop .dmp select,#emPop .dmp textarea{background:#FAFAFF;border-color:#E0E7FF}
+#emPop .dmp input:focus,#emPop .dmp select:focus,#emPop .dmp textarea:focus{background:#fff}
+#emPop .dmp .ipucu{color:#6B7280}
+#emPop .dmp .secenek label{--tc:#6366F1}
+#emPop .dmp .secenek label:has(input:checked){border-color:var(--tc);background:color-mix(in srgb,var(--tc) 10%,#fff);color:color-mix(in srgb,var(--tc) 75%,#000)}
+#emPop .dmp .secenek input{accent-color:var(--tc)}
+#emPop .dmp .alt{background:linear-gradient(90deg,#F5F3FF,#fff 60%);border-top-color:#E0E7FF}
+body.koyu #emPop .dmp,body.koyu #emPop .dmp .bas,body.koyu #emPop .dmp .alt{background:var(--card)}
+body.koyu #emPop .dmp .kapat{background:var(--card2)}
+body.koyu #emPop .dmp .bolum{background:linear-gradient(90deg,color-mix(in srgb,var(--bc) 18%,transparent),transparent 80%)}
+body.koyu #emPop .dmp input:not([type=checkbox]):not([type=radio]),body.koyu #emPop .dmp select,body.koyu #emPop .dmp textarea{background:var(--card2);border-color:var(--line)}
+body.koyu #emPop .dmp .secenek label:has(input:checked){background:color-mix(in srgb,var(--tc) 18%,var(--card));color:var(--ink)}
+</style>
