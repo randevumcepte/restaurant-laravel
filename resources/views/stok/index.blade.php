@@ -264,6 +264,8 @@ body.koyu .stk-modal{background:#0B1020}
 .stk-aduyari .material-icons-outlined{font-size:17px;flex:none;margin-top:1px}
 .stk-aduyari.k{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5}
 .stk-aduyari.u{background:#FEF3C7;color:#92400E;border:1px solid #FCD34D}
+.stk-aduyari.i{background:#E0F2FE;color:#075985;border:1px solid #7DD3FC}
+.stk-kat-duzelt{margin-left:6px;border:0;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:800;cursor:pointer;background:#fff;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .stk-oneri{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18);max-height:286px;overflow-y:auto;padding:4px}
 .stk-oneri .o{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
 .stk-oneri .o:hover,.stk-oneri .o.on{background:color-mix(in srgb,var(--mor1) 10%,transparent)}
@@ -553,6 +555,7 @@ Toplam değer {{ $tl($toplamDeger) }}{{ $kritikSayi > 0 ? '  ·  ' . $kritikSayi
                 </button>
             </div>
         </div>
+        <div class="stk-aduyari" id="stkKatUyari" hidden style="margin:-4px 0 10px"></div>
         <div class="stk-field">
             <label>Temel / Stok Birimi</label>
             <select id="stkFBirim">
@@ -976,7 +979,7 @@ function stkMalzemeFormuAc(id) {
         document.getElementById('stkFBaslangic').value = '';
         document.getElementById('stkFBarkod').value = '';
     }
-    stkAdKontrol();
+    stkAdKontrol(); stkKatKontrol(false);
     stkModAc('stkFormModal');
 }
 
@@ -1004,6 +1007,17 @@ function stkFormKaydet() {
             stkModKapat('stkFormModal');
             stkUyar(_stkFormId ? 'Güncellendi' : 'Malzeme + stok + barkod eklendi');
             setTimeout(function(){ window.location.reload(); }, 700);
+        } else if (r.kategori_uyari) {
+            // kategori şüphesi: Tamam = önerilen kategoriyle kaydet, İptal = seçtiğim kategoriyle kaydet sorusu
+            var u = r.kategori_uyari;
+            if (confirm('"' + veri.ad + '" genelde "' + u.beklenen + '" kategorisindedir (' + u.kaynak + ').\n' + (u.secilen ? 'Seçtiğiniz: "' + u.secilen + '"' : 'Kategori seçmediniz.') + '\n\nTamam: "' + u.beklenen + '" kategorisine kaydet\nİptal: seçimimi değiştirmeden düşüneyim')) {
+                veri.kategori_id = u.beklenen_id; veri.onay_kategori = 1;
+                document.getElementById('stkFKat').value = String(u.beklenen_id);
+                stkApi('/api/patron/malzeme-kaydet', veri).then(stkKaydetSonuc).catch(function(){ stkUyar('Bağlantı hatası'); });
+            } else if (u.secilen && confirm('"' + veri.ad + '" yine de "' + u.secilen + '" kategorisine kaydedilsin mi?')) {
+                veri.onay_kategori = 1;
+                stkApi('/api/patron/malzeme-kaydet', veri).then(stkKaydetSonuc).catch(function(){ stkUyar('Bağlantı hatası'); });
+            }
         } else if (r.benzer && r.benzer.length) {
             // yazım hatası şüphesi: kullanıcı onaylarsa yine de kaydedilir
             if (confirm('Çok benzer malzeme zaten var:\n\n• ' + r.benzer.join('\n• ') + '\n\nYazım hatası olabilir. Mevcut kartı kullanmak için İptal deyin.\n"' + veri.ad + '" yine de ayrı bir malzeme olarak eklensin mi?')) {
@@ -1043,7 +1057,54 @@ function stkAdKontrol() {
     else if (benzer.length) { kutu.className = 'stk-aduyari u'; kutu.innerHTML = '<span class="material-icons-outlined">spellcheck</span><span>Benzer malzeme var: <b>' + benzer.slice(0, 3).map(_esc).join('</b>, <b>') + '</b>. Bunu mu demek istediniz?</span>'; kutu.hidden = false; }
     else kutu.hidden = true;
 }
-document.addEventListener('input', function(e){ if (e.target && e.target.id === 'stkFAd') stkAdKontrol(); });
+document.addEventListener('input', function(e){ if (e.target && e.target.id === 'stkFAd') { stkAdKontrol(); stkKatKontrol(true); } });
+document.addEventListener('change', function(e){ if (e.target && e.target.id === 'stkFKat') stkKatKontrol(false); });
+
+// ── Kategori kontrolü: addan beklenen kategori (sunucudaki _malzemeKatTahmin ile aynı kural) ──
+function _stkKelimeler(s, min) {
+    s = String(s || '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/İ/g, 'i').replace(/I/g, 'ı').toLocaleLowerCase('tr').replace(/̇/g, '')
+        .replace(/[çğıöşü]/g, function(c){ return {'ç':'c','ğ':'g','ı':'i','ö':'o','ş':'s','ü':'u'}[c]; });
+    return s.split(/\s+/).filter(function(k){ return k.length >= (min || 3) && !/^\d/.test(k); });
+}
+function stkKatTahmin(ad) {
+    var a = _stkAnahtar(ad); if (a.length < 3) return null;
+    var isl = stkVeriler.filter(function(m){ return m.kategori_id && (!_stkFormId || m.id !== _stkFormId); });
+    for (var i = 0; i < isl.length; i++) if (_stkAnahtar(isl[i].ad) === a) return { kategori: isl[i].kategori, guc: 'guclu', kaynak: 'işletmenizdeki aynı adlı malzeme' };
+    var kat = Object.values(STK_KATALOG);
+    for (i = 0; i < kat.length; i++) if (kat[i].kategori && _stkAnahtar(kat[i].ad) === a) return { kategori: kat[i].kategori, guc: 'guclu', kaynak: 'ürün kataloğu' };
+    var benim = _stkKelimeler(ad); if (!benim.length) return null;
+    var oy = {}, top = 0;
+    isl.map(function(m){ return [m.ad, m.kategori]; }).concat(kat.filter(function(u){ return u.kategori; }).map(function(u){ return [u.ad, u.kategori]; })).forEach(function(x) {
+        var k = _stkKelimeler(x[0]); if (benim.some(function(w){ return k.indexOf(w) >= 0; })) { oy[x[1]] = (oy[x[1]] || 0) + 1; top++; }
+    });
+    var ilk = Object.keys(oy).sort(function(p, q){ return oy[q] - oy[p]; })[0];
+    return ilk && oy[ilk] >= 2 && oy[ilk] / top >= 0.6 ? { kategori: ilk, guc: 'zayif', kaynak: 'benzer adlı ürünler' } : null;
+}
+function stkKatEsle(beklenen) {
+    var a = _stkAnahtar(beklenen), bk = _stkKelimeler(beklenen, 2), enIyi = null, skor = 0;
+    for (var i = 0; i < stkKategoriler.length; i++) {
+        var k = stkKategoriler[i]; if (_stkAnahtar(k.ad) === a) return k;
+        var s = _stkKelimeler(k.ad, 2).filter(function(w){ return bk.indexOf(w) >= 0; }).length; if (s > skor) { skor = s; enIyi = k; }
+    }
+    return skor > 0 ? enIyi : null;
+}
+// adYazildi: ad değişince kategori boşsa öneri otomatik seçilir; seçili kategori tahminle çelişirse uyarı + tek tıkla düzeltme
+function stkKatKontrol(adYazildi) {
+    var kutu = document.getElementById('stkKatUyari'), sel = document.getElementById('stkFKat'); if (!kutu || !sel) return;
+    var t = stkKatTahmin(document.getElementById('stkFAd').value), k = t ? stkKatEsle(t.kategori) : null;
+    if (!t || !k) { kutu.hidden = true; return; }
+    if (!sel.value && adYazildi && t.guc === 'guclu') {
+        sel.value = String(k.id);
+        kutu.className = 'stk-aduyari i'; kutu.innerHTML = '<span class="material-icons-outlined">auto_fix_high</span><span>Kategori <b>' + _esc(k.ad) + '</b> olarak seçildi (' + _esc(t.kaynak) + ').</span>'; kutu.hidden = false; return;
+    }
+    if (String(sel.value) === String(k.id)) { kutu.hidden = true; return; }
+    var secilen = sel.value ? sel.options[sel.selectedIndex].text : '';
+    kutu.className = 'stk-aduyari ' + (t.guc === 'guclu' ? 'k' : 'u');
+    kutu.innerHTML = '<span class="material-icons-outlined">' + (t.guc === 'guclu' ? 'report' : 'help_outline') + '</span><span>'
+        + (secilen ? 'Seçilen kategori <b>' + _esc(secilen) + '</b>, ama bu malzeme genelde <b>' + _esc(k.ad) + '</b> kategorisinde' : 'Kategori seçilmedi; önerilen: <b>' + _esc(k.ad) + '</b>')
+        + ' <span style="opacity:.75">(' + _esc(t.kaynak) + ')</span>. <button type="button" class="stk-kat-duzelt" onclick="document.getElementById(\'stkFKat\').value=\'' + k.id + '\';stkKatKontrol(false)">' + _esc(k.ad) + ' seç</button></span>';
+    kutu.hidden = false;
+}
 
 // ── KATEGORİ EKLE DIALOG (Flutter _kategoriEkle) ──────────────────
 function stkKatEkleAc() {

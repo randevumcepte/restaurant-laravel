@@ -19249,11 +19249,89 @@ if (!function_exists('_trKucuk')) {
         return ['ayni' => $ayni, 'benzer' => array_slice($benzer, 0, 5, true)];
     }
 }
+// Malzeme adından beklenen kategori: 1) işletmenin aynı adlı malzemesi 2) ortak katalogda aynı ad (güçlü)
+// 3) kelime oylaması: aynı kelimeyi taşıyan katalog/işletme malzemelerinin kategorisi, oyların %60+'ı ve en az 2 oy (zayıf)
+// Dönüş: ['kategori' => ad, 'guc' => 'guclu'|'zayif', 'kaynak' => metin] | null
+if (!function_exists('_malzemeKatTahmin')) {
+    function _adKelimeler($s, $min = 3)
+    {
+        $s = strtr(_trKucuk(preg_replace('/[^\p{L}\p{N}\s]/u', ' ', (string) $s) ?? ''), ['ç' => 'c', 'ğ' => 'g', 'ı' => 'i', 'ö' => 'o', 'ş' => 's', 'ü' => 'u']);
+        return array_values(array_unique(array_filter(preg_split('/\s+/', $s), fn ($k) => strlen($k) >= $min && !preg_match('/^\d/', $k))));
+    }
+    function _malzemeKatTahmin($sid, $ad)
+    {
+        $a = _adAnahtar($ad); if (strlen($a) < 3) return null;
+        $isl = [];
+        try {
+            $isl = _katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')
+                ->join('malzeme_kategorileri as mk', 'mk.id', '=', 'malzemeler.kategori_id')->get(['malzemeler.ad', 'mk.ad as kat'])->all();
+        } catch (\Throwable $e) {}
+        $kat = Schema::hasTable('urun_katalogu') ? DB::table('urun_katalogu')->where('aktif', 1)->whereNotNull('tip')->get(['ad', 'tip as kat'])->all() : [];
+        foreach ($isl as $m) if (_adAnahtar($m->ad) === $a) return ['kategori' => $m->kat, 'guc' => 'guclu', 'kaynak' => 'işletmenizdeki aynı adlı malzeme'];
+        foreach ($kat as $m) if (_adAnahtar($m->ad) === $a) return ['kategori' => $m->kat, 'guc' => 'guclu', 'kaynak' => 'ürün kataloğu'];
+        $benim = _adKelimeler($ad); if (!$benim) return null;
+        $oy = [];
+        foreach (array_merge($isl, $kat) as $m) if (array_intersect($benim, _adKelimeler($m->ad))) $oy[$m->kat] = ($oy[$m->kat] ?? 0) + 1;
+        if (!$oy) return null;
+        arsort($oy); $top = array_sum($oy); $ilk = array_key_first($oy);
+        return $oy[$ilk] >= 2 && $oy[$ilk] / $top >= 0.6 ? ['kategori' => $ilk, 'guc' => 'zayif', 'kaynak' => 'benzer adlı ürünler'] : null;
+    }
+    // Beklenen kategori adını işletmenin kategorilerinden birine eşle:
+    // 1) aynı ad 2) kelime örtüşmesi, 2 harfli kelimeler dahil ("Et & Tavuk" ↔ "Et Ürünleri", "Sebze & Meyve" ↔ "Sebze")
+    // 3) adlar hiç örtüşmüyorsa işletmenin alışkanlığı: katalogda bu kategoride olan malzemelerini hangi kategoriye koymuş
+    //    (en az 3 örnek + %60 çoğunluk; bilerek onaylanmış tek tük istisnalar kuralı bozmasın)
+    function _katEsle($beklenen, $kategoriler, $sid = null)
+    {
+        $a = _adAnahtar($beklenen);
+        foreach ($kategoriler as $id => $ad) if (_adAnahtar($ad) === $a) return (int) $id;
+        $enIyi = null; $skor = 0; $bk = _adKelimeler($beklenen, 2);
+        foreach ($kategoriler as $id => $ad) { $s = count(array_intersect($bk, _adKelimeler($ad, 2))); if ($s > $skor) { $skor = $s; $enIyi = (int) $id; } }
+        if ($skor > 0) return $enIyi;
+        if ($sid && Schema::hasTable('urun_katalogu')) {
+            try {
+                $katTip = []; foreach (DB::table('urun_katalogu')->where('aktif', 1)->whereNotNull('tip')->get(['ad', 'tip']) as $u) $katTip[_adAnahtar($u->ad)] = $u->tip;
+                $oy = [];
+                foreach (_katalogFiltre(DB::table('malzemeler'), 'malzeme', $sid, 'malzemeler.id')->whereNotNull('malzemeler.kategori_id')->get(['malzemeler.ad', 'malzemeler.kategori_id']) as $m)
+                    if (($katTip[_adAnahtar($m->ad)] ?? null) === $beklenen) $oy[(int) $m->kategori_id] = ($oy[(int) $m->kategori_id] ?? 0) + 1;
+                if ($oy) { arsort($oy); $ilk = array_key_first($oy); if (isset($kategoriler[$ilk]) && $oy[$ilk] >= 3 && $oy[$ilk] / array_sum($oy) >= 0.6) return (int) $ilk; }
+            } catch (\Throwable $e) {}
+        }
+        return null;
+    }
+}
 // Ürün adı normalize (eşleşme/tekille): Türkçe doğru küçük harf + tek boşluk.
 if (!function_exists('_urunNorm')) {
     function _urunNorm($s)
     {
         return mb_substr(_trKucuk($s), 0, 80);
+    }
+}
+// Geniş katalog (routes/urun_katalog_veri.php, ~2.150 ad / 24 kategori, varsayılan birimli) — bir kez yüklenir:
+// eksik adlar eklenir, aynı adın kategori/birimi dosyadakiyle güncellenir; dosyada olmayan (hal'den gelen) kayıtlara dokunulmaz
+if (!function_exists('_urunKatalogGenislet')) {
+    function _urunKatalogGenislet()
+    {
+        $dosya = __DIR__ . '/urun_katalog_veri.php';
+        if (cache()->get('urun_katalog_genis_v1') || !is_file($dosya) || !Schema::hasTable('urun_katalogu')) return;
+        try {
+            $veri = require $dosya; $simdi = now();
+            DB::transaction(function () use ($veri, $simdi) {
+                $var = []; foreach (DB::table('urun_katalogu')->get(['id', 'ad', 'tip', 'birim']) as $r) $var[_adAnahtar($r->ad)] = $r;
+                $ekle = [];
+                foreach ($veri as $kat => $liste) foreach ($liste as [$ad, $birim]) {
+                    $k = _adAnahtar($ad); if ($k === '') continue;
+                    if (isset($var[$k])) {
+                        $r = $var[$k];
+                        if (is_object($r) && ($r->tip !== $kat || $r->birim !== $birim)) DB::table('urun_katalogu')->where('id', $r->id)->update(['tip' => $kat, 'birim' => $birim, 'aktif' => 1, 'updated_at' => $simdi]);
+                        continue;
+                    }
+                    $var[$k] = true;
+                    $ekle[] = ['ad' => mb_substr($ad, 0, 80), 'ad_norm' => _urunNorm($ad), 'birim' => $birim, 'tip' => mb_substr($kat, 0, 40), 'aktif' => 1, 'created_at' => $simdi, 'updated_at' => $simdi];
+                }
+                foreach (array_chunk($ekle, 200) as $c) DB::table('urun_katalogu')->insertOrIgnore($c);
+            });
+            cache()->forever('urun_katalog_genis_v1', 1);
+        } catch (\Throwable $e) {}
     }
 }
 // Katalog temizliği (bir kez): ad_norm Türkçe kuralla yeniden, kategori tek yazım ("sebze" → "Sebze", "i̇thal" → "İthal"), çift adlar silinir
@@ -19292,7 +19370,7 @@ if (!function_exists('_urunKatalogSeedSistem')) {
                 'Un & Unlu Mamül' => ['Ekmek', 'Tam Buğday Ekmeği', 'Lavaş', 'Pide', 'Bazlama', 'Tortilla', 'Hamburger Ekmeği', 'Sandviç Ekmeği', 'Tost Ekmeği', 'Yufka', 'Milföy Hamuru', 'Baklava Yufkası', 'Kadayıf', 'Mantı', 'Pizza Hamuru'],
                 'Sebze' => ['Domates', 'Salatalık', 'Sivri Biber', 'Çarliston Biber', 'Dolmalık Biber', 'Kapya Biber', 'Patlıcan', 'Kabak', 'Soğan', 'Kuru Soğan', 'Taze Soğan', 'Sarımsak', 'Patates', 'Havuç', 'Marul', 'Kıvırcık', 'Göbek Marul', 'Roka', 'Maydanoz', 'Dereotu', 'Nane', 'Ispanak', 'Pazı', 'Lahana', 'Kırmızı Lahana', 'Brokoli', 'Karnabahar', 'Pırasa', 'Kereviz', 'Turp', 'Mantar', 'Mısır', 'Bezelye', 'Taze Fasulye', 'Bamya', 'Enginar', 'Limon', 'Avokado'],
                 'Meyve' => ['Elma', 'Armut', 'Muz', 'Portakal', 'Mandalina', 'Greyfurt', 'Çilek', 'Üzüm', 'Karpuz', 'Kavun', 'Şeftali', 'Kayısı', 'Erik', 'Kiraz', 'Vişne', 'İncir', 'Nar', 'Ananas', 'Kivi', 'Mango'],
-                'İçecek' => ['Su', 'Damacana Su', 'Soda', 'Meyveli Soda', 'Maden Suyu', 'Kola', 'Kola (Şekersiz)', 'Gazoz', 'Fanta', 'Sprite', 'Meyve Suyu', 'Vişne Suyu', 'Şeftali Suyu', 'Portakal Suyu', 'Limonata', 'Ice Tea', 'Çay', 'Yeşil Çay', 'Bitki Çayı', 'Türk Kahvesi', 'Filtre Kahve', 'Espresso Çekirdek', 'Granül Kahve', 'Sıcak Çikolata', 'Enerji İçeceği', 'Bira', 'Rakı', 'Şarap (Kırmızı)', 'Şarap (Beyaz)', 'Votka', 'Viski'],
+                'İçecek' => ['Su', 'Damacana Su', 'Soda', 'Meyveli Soda', 'Maden Suyu', 'Kola', 'Kola (Şekersiz)', 'Gazoz', 'Meyve Suyu', 'Vişne Suyu', 'Şeftali Suyu', 'Portakal Suyu', 'Limonata', 'Ice Tea', 'Çay', 'Yeşil Çay', 'Bitki Çayı', 'Türk Kahvesi', 'Filtre Kahve', 'Espresso Çekirdek', 'Granül Kahve', 'Sıcak Çikolata', 'Enerji İçeceği', 'Bira', 'Rakı', 'Şarap (Kırmızı)', 'Şarap (Beyaz)', 'Votka', 'Viski'],
                 'Baharat & Sos' => ['Karabiber', 'Kırmızı Pul Biber', 'Toz Kırmızı Biber', 'Kimyon', 'Nane (Kuru)', 'Kekik', 'Sumak', 'Tarçın', 'Köri', 'Zerdeçal', 'Zencefil', 'Yenibahar', 'Defne Yaprağı', 'Susam', 'Çörekotu', 'Vanilya', 'Kabartma Tozu', 'Karbonat', 'Maya', 'Ketçap', 'Mayonez', 'Hardal', 'Acı Sos', 'BBQ Sos', 'Soya Sosu', 'Sirke', 'Elma Sirkesi', 'Nar Ekşisi', 'Limon Sosu', 'Salça (Domates)', 'Salça (Biber)'],
                 'Konserve & Hazır' => ['Domates Konservesi', 'Doğranmış Domates', 'Mısır Konservesi', 'Bezelye Konservesi', 'Barbunya Konservesi', 'Ton Balığı Konservesi', 'Zeytin (Siyah)', 'Zeytin (Yeşil)', 'Turşu', 'Közlenmiş Biber', 'Hazır Çorba', 'Bulyon', 'Et Suyu', 'Tavuk Suyu'],
                 'Dondurulmuş' => ['Parmak Patates', 'Elma Dilim Patates', 'Dondurulmuş Sebze', 'Dondurulmuş Bezelye', 'Dondurulmuş Pizza', 'Nugget', 'Dondurulmuş Hamur', 'Dondurma'],
@@ -19622,6 +19700,7 @@ if (!function_exists('_urunKatalogListe')) {
             if (function_exists('_restoHalEnsure')) _restoHalEnsure(); // tabloyu kur + seed et
             if (!Schema::hasTable('urun_katalogu')) return ['ok' => 1, 'urunler' => []];
             _urunKatalogTemizle();
+            _urunKatalogGenislet();
             $rows = DB::table('urun_katalogu')->where('aktif', 1)->orderBy('tip')->orderBy('ad')->get(['ad', 'tip', 'birim']);
             return ['ok' => 1, 'urunler' => $rows->map(fn ($x) => ['ad' => $x->ad, 'kategori' => $x->tip, 'birim' => $x->birim])->all()];
         } catch (\Throwable $e) { return ['ok' => 1, 'urunler' => []]; }
@@ -26657,6 +26736,17 @@ Route::post('/api/patron/malzeme-kaydet', function (Request $r) {
         $bz = _adBenzerleri($ad, $gorunen, (int) $r->id);
         if ($bz['ayni']) return ['ok' => 0, 'ayni' => array_values($bz['ayni']), 'hata' => 'Bu malzeme zaten var: "' . reset($bz['ayni']) . '". Aynı malzemeyi ikinci kez açmak stok ve maliyeti ikiye böler; mevcut kartı kullanın.'];
         if ($bz['benzer'] && !$r->boolean('onay')) return ['ok' => 0, 'benzer' => array_values($bz['benzer']), 'hata' => 'Çok benzer malzeme var: ' . implode(', ', array_map(fn ($x) => '"' . $x . '"', $bz['benzer'])) . '. Yazım hatası olabilir.'];
+    }
+    // Kategori kontrolü: addan beklenen kategori seçilenden farklıysa (ya da boşsa) onay (onay_kategori=1) istenir
+    if (function_exists('_malzemeKatTahmin') && !$r->boolean('onay_kategori')) {
+        $t = _malzemeKatTahmin($p->sube_id, $ad);
+        if ($t && $t['guc'] === 'guclu') { // zayıf tahmin (kelime oylaması) yalnız formda uyarı olur, kaydı durdurmaz
+            $katlar = DB::table('malzeme_kategorileri')->pluck('ad', 'id');
+            $beklenenId = _katEsle($t['kategori'], $katlar, $p->sube_id); $secili = (int) $r->kategori_id;
+            if ($beklenenId && $beklenenId !== $secili)
+                return ['ok' => 0, 'kategori_uyari' => ['beklenen' => $katlar[$beklenenId], 'beklenen_id' => $beklenenId, 'secilen' => $secili ? ($katlar[$secili] ?? '') : '', 'kaynak' => $t['kaynak']],
+                    'hata' => '"' . $ad . '" genelde "' . $katlar[$beklenenId] . '" kategorisindedir (' . $t['kaynak'] . '); ' . ($secili ? 'seçilen: "' . ($katlar[$secili] ?? '') . '".' : 'kategori seçilmedi.')];
+        }
     }
     $temel = (int) $r->temel_birim_id ?: DB::table('birimler')->min('id');
     $veri = ['ad' => $ad, 'kategori_id' => (int) $r->kategori_id ?: null, 'temel_birim_id' => $temel,
