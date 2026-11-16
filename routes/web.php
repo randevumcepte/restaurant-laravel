@@ -16619,7 +16619,7 @@ Route::post('/rezervasyon/durum', function (\Illuminate\Http\Request $r) {
     try {
         $rez = DB::table('rezervasyonlar')->where('id', (int) $r->input('id'))->where('sube_id', $sube)->first();
         if (!$rez) return $don()->with('rez_hata', 'Rezervasyon bulunamadı.');
-        DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => $durum]);
+        DB::table('rezervasyonlar')->where('id', $rez->id)->update(function_exists('_rzrDurumDamga') ? _rzrDurumDamga(['durum' => $durum]) : ['durum' => $durum]); // durum zamanı (rezervasyon raporu: son dakika iptali)
         if (!empty($rez->masa_id)) {
             $m = DB::table('masalar')->where('id', $rez->masa_id)->first();
             if ($m) {
@@ -29598,7 +29598,7 @@ Route::post('/api/patron/rezervasyon-oturt', function (Request $r) {
             'ara_toplam' => DB::raw('ara_toplam + ' . $ekTutar), 'toplam' => DB::raw('toplam + ' . $ekTutar), 'updated_at' => now(),
         ]);
     }
-    DB::table('rezervasyonlar')->where('id', $rez->id)->update(['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]);
+    DB::table('rezervasyonlar')->where('id', $rez->id)->update(function_exists('_rzrDurumDamga') ? _rzrDurumDamga(['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]) : ['durum' => 'geldi', 'adisyon_id' => $adId, 'masa_id' => $masaId]);
     return ['ok' => 1, 'adisyon_id' => $adId, 'kalem' => $eklenen,
         'mesaj' => $masa->ad . ' açıldı' . ($eklenen ? ", $eklenen ön sipariş mutfağa gönderildi." : '.')];
 });
@@ -30031,7 +30031,7 @@ Route::post('/api/patron/rezervasyon-durum', function (Request $r) {
         $upd['masa_id'] = ($masaId && DB::table('masalar')->where('id', $masaId)->where('sube_id', $p->sube_id)->exists()) ? $masaId : null;
     }
     if (empty($upd)) return ['ok' => 0, 'hata' => 'Geçersiz işlem'];
-    DB::table('rezervasyonlar')->where('id', $rez->id)->update($upd);
+    DB::table('rezervasyonlar')->where('id', $rez->id)->update(function_exists('_rzrDurumDamga') ? _rzrDurumDamga($upd) : $upd);
     // Masa durumu senkron: onaylandi+masa -> rezerve; iptal/gelmedi -> masa bos (rezerve idiyse)
     if (!empty($rez->masa_id) || !empty($upd['masa_id'])) {
         $masaId = $upd['masa_id'] ?? $rez->masa_id;
@@ -32437,7 +32437,8 @@ Route::match(['get', 'post'], '/api/santral/konus', function (Request $r) {
     $gecmis = json_decode($o->gecmis ?: '[]', true) ?: [];
     // haricRezId: bu cagride olusturulan rezervasyon mevcut-rez sayilmasin (musteriye "zaten var" demesin)
     $as = new \App\Services\SantralAsistan($o->sube_id, $o->telefon, (int) ($o->rezervasyon_id ?? 0));
-    $res = $as->konus($metin, $gecmis);
+    $_snrT0 = microtime(true); $res = $as->konus($metin, $gecmis);
+    if (function_exists('_snrCevapLog')) _snrCevapLog($o, $res, $as->teshis, $metin, (int) round((microtime(true) - $_snrT0) * 1000)); // cevap kaynağı + hız (santral raporu)
 
     // gecmise ekle
     $gecmis[] = ['role' => 'user', 'content' => trim($metin)];
