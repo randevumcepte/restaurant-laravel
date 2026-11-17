@@ -94,9 +94,9 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;background:#eef0
 </style></head>
 <body>
 <div class="arac">
-  <a href="{{ $geri }}">← Geri</a>
+  @if (!request()->boolean('gomulu'))<a href="{{ $geri }}">← Geri</a>@endif
   <b style="margin:0 4px">{{ $baslik }} · {{ count($hepsi) }} etiket</b>
-  <button class="ana" onclick="window.print()">🖨 Yazdır</button>
+  @if (!request()->boolean('gomulu'))<button class="ana" onclick="window.print()">🖨 Yazdır</button>@endif
   @if ($zplUrl)<a href="{{ $zplUrl }}{{ str_contains($zplUrl, '?') ? '&' : '?' }}format={{ $diger }}" title="Etiket yazıcısına doğrudan gönderilecek komut dosyası">{{ strtoupper($diger) }} dosyası indir</a>@endif
   @if ($tip === 'raf')<span id="rafDurum"></span>@endif
   <div class="not">Yazdırma penceresinde: yazıcı olarak
@@ -196,7 +196,7 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;background:#eef0
       .then(function(){ var d=document.getElementById('rafDurum'); if(d){ d.className='tamam'; d.textContent='✓ Basıldı olarak işaretlendi; "yenilenecek" listesinden düştü.'; } }).catch(function(){}); }
   @endif
   // Otomatik açılan yazdırma penceresi kapanınca (Yazdır ya da İptal) geldiği sayfaya döner; ?kal=1 = önizleme, otomatik yazdırma yok
-  var kal=/[?&]kal=1/.test(location.search), oto=false;
+  var kal=/[?&](kal|gomulu)=1/.test(location.search), oto=false;
   window.addEventListener('afterprint', function(){ var p=isaretle(); if(!oto) return; oto=false;
     Promise.resolve(p).catch(function(){}).then(function(){ location.replace({!! json_encode($geri) !!}); }); });
   function bas(){ if(kal) return; oto=true; window.print(); }

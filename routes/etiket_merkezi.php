@@ -565,9 +565,11 @@ Route::get('/barkod-etiket/plu.csv', function () use ($emKapi) {
 
 // Basım: kayıt aç → yazdırma sayfası (ürün etiketi + tartı). Etiket basmak "görüntüle" yetkisiyle de olur (sahada personel basar).
 Route::post('/barkod-etiket/bas', function (Request $r) use ($emKapi) {
-    [$p, $y] = $emKapi(); if (!$y) return back()->with('hata', 'Yetkin yok.');
+    [$p, $y] = $emKapi(); $js = $r->expectsJson();
+    if (!$y) return $js ? response()->json(['ok' => false, 'msg' => 'Yetkin yok.'], 403) : back()->with('hata', 'Yetkin yok.');
     [$ok, $msg, $id] = _emBasimAc(_webSubeId(), $p, $r->all());
-    if (!$ok) return back()->withInput()->with('hata', $msg);
+    if (!$ok) return $js ? response()->json(['ok' => false, 'msg' => $msg], 422) : back()->withInput()->with('hata', $msg);
+    if ($js) return response()->json(['ok' => true, 'url' => '/barkod-etiket/yazdir/' . $id]); // sayfa içi popup basım
     return redirect('/barkod-etiket/yazdir/' . $id . ($r->input('format') ? '?format=' . urlencode($r->input('format')) : ''));
 });
 Route::get('/barkod-etiket/yazdir/{id}', function (Request $r, $id) use ($emKapi, $emRed) {

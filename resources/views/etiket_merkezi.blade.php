@@ -660,6 +660,7 @@
 @if ($duzenler && $sekme === 'urunler')
   @include('etiket_merkezi_form')
 @endif
+@include('etiket_yazdir_pop')
 
 @if ($sekme === 'urun')
 <script>
