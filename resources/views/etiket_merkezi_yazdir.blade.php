@@ -187,17 +187,22 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;background:#eef0
 @if ($kodTip === 'qr')<script src="/js/qrcode-gen.js?v=3"></script>@endif
 <script>
 (function(){
+  var isaretle=function(){ return null; };
   document.querySelectorAll('[data-qr]').forEach(function(b){ try{ var q=qrcode(0,'M'); q.addData(unescape(encodeURIComponent(b.dataset.qr))); q.make(); b.innerHTML=q.createSvgTag(2,0); }catch(e){ b.textContent='QR çizilemedi (metin çok uzun)'; } });
   @if ($tip === 'raf' && !empty($rafIds))
-  var isaretlendi=false;
-  function isaretle(){ if(isaretlendi) return; isaretlendi=true;
-    fetch('/barkod-etiket/raf-basildi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRF-TOKEN':document.querySelector('meta[name=csrf-token]').content},body:'ids={{ $rafIds }}'})
+  var isaretlendi=null;
+  isaretle=function(){ if(isaretlendi) return isaretlendi;
+    return isaretlendi=fetch('/barkod-etiket/raf-basildi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRF-TOKEN':document.querySelector('meta[name=csrf-token]').content},body:'ids={{ $rafIds }}'})
       .then(function(){ var d=document.getElementById('rafDurum'); if(d){ d.className='tamam'; d.textContent='✓ Basıldı olarak işaretlendi; "yenilenecek" listesinden düştü.'; } }).catch(function(){}); }
-  window.addEventListener('afterprint', isaretle);
   @endif
+  // Otomatik açılan yazdırma penceresi kapanınca (Yazdır ya da İptal) geldiği sayfaya döner; ?kal=1 = önizleme, otomatik yazdırma yok
+  var kal=/[?&]kal=1/.test(location.search), oto=false;
+  window.addEventListener('afterprint', function(){ var p=isaretle(); if(!oto) return; oto=false;
+    Promise.resolve(p).catch(function(){}).then(function(){ location.replace({!! json_encode($geri) !!}); }); });
+  function bas(){ if(kal) return; oto=true; window.print(); }
   var img=[].slice.call(document.images), kalan=img.length;
-  function bitti(){ if(--kalan<=0) setTimeout(function(){ window.print(); },300); }
-  if(!kalan){ setTimeout(function(){ window.print(); },300); return; }
+  function bitti(){ if(--kalan<=0) setTimeout(bas,300); }
+  if(!kalan){ setTimeout(bas,300); return; }
   img.forEach(function(i){ if(i.complete) bitti(); else { i.onload=bitti; i.onerror=bitti; } });
 })();
 </script>

@@ -390,7 +390,7 @@
           @foreach ($basimlar as $b)
             <tr><td>{{ date('d.m.Y H:i', strtotime($b->created_at)) }}</td><td><b>{{ $kisaAd($b->eu_id) }}</b></td><td class="mono">{{ $b->parti_no }}</td>
               <td>{{ $b->uretim_tarih ? date('d.m.Y', strtotime($b->uretim_tarih)) : '—' }}</td><td>{{ $b->skt ? date('d.m.Y', strtotime($b->skt)) : '—' }}</td><td>{{ $b->adet }}</td>
-              <td>{{ $persAd[$b->personel_id] ?? '—' }}</td><td><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}" title="Aynı partiyi tekrar bas"><span class="ms">print</span></a></td></tr>
+              <td>{{ $persAd[$b->personel_id] ?? '—' }}</td><td><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}?kal=1" title="Önizle / ZPL-TSPL dosyası indir"><span class="ms">visibility</span></a><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}" title="Aynı partiyi tekrar bas"><span class="ms">print</span></a></td></tr>
           @endforeach
         </table></div>
       @endif
@@ -505,7 +505,7 @@
           @foreach ($basimlar as $b)
             <tr><td>{{ date('d.m.Y H:i', strtotime($b->created_at)) }}</td><td><b>{{ $kisaAd($b->eu_id) }}</b></td><td>{{ rtrim(rtrim(number_format((float) $b->miktar, 3, ',', '.'), '0'), ',') }} kg</td>
               <td>{{ $tl($b->tutar) }} ₺</td><td class="mono">{{ $b->barkod }}</td><td>{{ $persAd[$b->personel_id] ?? '—' }}</td>
-              <td><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}" title="Tekrar bas"><span class="ms">print</span></a></td></tr>
+              <td><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}?kal=1" title="Önizle / ZPL-TSPL dosyası indir"><span class="ms">visibility</span></a><a class="ib" href="/barkod-etiket/yazdir/{{ $b->id }}" title="Tekrar bas"><span class="ms">print</span></a></td></tr>
           @endforeach
         </table></div>
       @endif
