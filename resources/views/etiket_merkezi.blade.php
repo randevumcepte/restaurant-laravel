@@ -193,7 +193,46 @@
           <div><i>3</i><b>Yazıyı ayarla</b><span>Kutuya tıkla; aşağıdan yazı boyu, kalın, hiza. Fiyat, içindekiler gibi yeni alan da ekleyebilirsin.</span></div>
           <div><i>4</i><b>Kaydet ve bağla</b><span>"Yerleşimi kaydet", sonra en alttan tasarımı ürüne bağla ve bas.</span></div>
         </div>
-        <p class="alt-yazi" style="margin-top:10px">Kutularda <b>örnek değerler</b> görünür (bugünün tarihi, 261117-01 gibi). Basarken her seferinde gerçek üretim tarihi, SKT ve parti numarası yazılır.</p>
+        @php
+          // Önizleme: tasarıma bağlı (yoksa herhangi bir paket) ürünün GERÇEK bilgileriyle — bugün basılsaydı ne çıkardı
+          $onizSira = $paketler->sortByDesc(fn ($u) => (int) ((int) $u->sablon_id === (int) $sablonDuz->id))->values();
+          $oniz = $onizSira->mapWithKeys(fn ($u) => [$u->id => [
+            'ad' => $u->ad, 'fiyat' => _emTl($u->fb['gecerli']) . ' ₺', 'birim_fiyat' => $u->fb['birim_fiyat'] ? '1 ' . $u->fb['birim_ad'] . ': ' . _emTl($u->fb['birim_fiyat']) . ' ₺' : '',
+            'net' => ($n = _emNetMetin($u)) ? 'Net: ' . $n : '', 'uretim' => 'ÜT: ' . date('d.m.Y'),
+            'skt' => $u->raf_omru_gun ? 'SKT: ' . date('d.m.Y', strtotime('+' . (int) $u->raf_omru_gun . ' days')) : 'SKT: (raf ömrü yok)',
+            'parti' => 'Parti: ' . _emPartiNo(_webSubeId(), $u->id, date('Y-m-d')), 'barkod_url' => $u->barkod ? _emBarkodUrl($u->barkod, 50) : '',
+            'icindekiler' => $u->icindekiler ? 'İçindekiler: ' . $u->icindekiler : '', 'alerjen' => (string) $u->alerjen, 'saklama' => (string) $u->saklama,
+            'uretici' => (string) ($u->uretici ?: $ayar['uretici_varsayilan']), 'uretim_yeri' => $u->uretim_yeri ? 'Üretim yeri: ' . $u->uretim_yeri : '',
+            'omur' => (int) $u->raf_omru_gun, 'barkod' => (string) $u->barkod]]);
+          $onizIlk = $onizSira->first();
+        @endphp
+        <div class="sb-oniz">
+          <div class="sb-oniz-ust">
+            <span class="ms">visibility</span>
+            @if ($onizIlk)
+              <label for="sbOnizSec">Önizlenen ürün</label>
+              <select id="sbOnizSec" onchange="sbOnizDegis(this.value)">
+                @foreach ($onizSira as $u)<option value="{{ $u->id }}">{{ $u->ad }}{{ (int) $u->sablon_id === (int) $sablonDuz->id ? ' (bu tasarıma bağlı)' : '' }}</option>@endforeach
+                <option value="0">— Genel örnek değerler —</option>
+              </select>
+              <span class="sb-oniz-not" id="sbOnizNot"></span>
+            @else
+              <span class="sb-oniz-not">Kutularda <b>örnek değerler</b> var. Paketli ürün ekleyince o ürünün gerçek SKT'si ve barkoduyla önizlenir.</span>
+            @endif
+          </div>
+          <details class="sb-kaynak">
+            <summary><span class="ms">help_outline</span> Bu kutuların değeri nereden gelir?</summary>
+            <table>
+              <tr><th>Kutu</th><th>Değer nereden gelir</th><th>Ne zaman</th></tr>
+              <tr><td><b>Barkod</b></td><td>Ürünler → ürün kartı → <b>Barkod</b> (869… resmi ya da mağaza içi)</td><td>Ürünü tanımlarken bir kez</td></tr>
+              <tr><td><b>SKT</b></td><td>Basarken girilen <b>üretim tarihi + ürün kartındaki "Raf ömrü (gün)"</b>. Basarken elle de değiştirilebilir</td><td>Her basımda otomatik</td></tr>
+              <tr><td><b>Üretim (ÜT)</b></td><td>Basma formundaki <b>Üretim tarihi</b></td><td>Her basımda</td></tr>
+              <tr><td><b>Parti</b></td><td>Sistem verir: tarih + o günün sırası (261117-<b>01</b>, -<b>02</b>…)</td><td>Her basımda otomatik</td></tr>
+              <tr><td>Fiyat, net, içindekiler, üretici…</td><td>Ürün kartından</td><td>Ürünü tanımlarken bir kez</td></tr>
+            </table>
+            <div class="ipucu">Bu ekran değerleri <b>oluşturmaz</b>; yalnız etiketin <b>neresine</b> yazılacağını belirler. Gerçek değerler "Paketli ürün etiketi bas" ile basarken dolar.</div>
+          </details>
+        </div>
         <div id="sbAlan" class="sb-alan" style="background-image:url('{{ $sablonDuz->arka }}')"></div>
         @if ($duzenler)
         <div class="fm" style="margin-top:14px">
@@ -239,7 +278,16 @@
       var SB = { alanlar: {!! json_encode($sbAl, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!}, gen: {{ (float) $sablonDuz->gen_mm }}, yuk: {{ (float) $sablonDuz->yuk_mm }}, sec: -1, duz: {{ $duzenler ? 'true' : 'false' }},
         ad: {!! json_encode(_emSablonAlanlar(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!},
         ornek: { ad: 'Ürün Adı', fiyat: '129,90 ₺', birim_fiyat: '1 kg: 259,80 ₺', net: '500 g', uretim: 'ÜT: {{ date('d.m.Y') }}', skt: 'SKT: {{ date('d.m.Y', strtotime('+30 days')) }}',
-          parti: 'Parti: {{ date('ymd') }}-01', barkod: '▌▌▍▌▍▍▌▌▍▌▍▌', icindekiler: 'İçindekiler: …', alerjen: 'Alerjen: …', saklama: 'Serin yerde saklayın', uretici: 'Üretici firma, adres', uretim_yeri: 'Üretim yeri: …' } };
+          parti: 'Parti: {{ date('ymd') }}-01', barkod_url: '/etiket-ean13.svg?k=8691234567890&h=50', icindekiler: 'İçindekiler: …', alerjen: 'Alerjen: …', saklama: 'Serin yerde saklayın', uretici: 'Üretici firma, adres', uretim_yeri: 'Üretim yeri: …' },
+        urunler: {!! json_encode($oniz, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!}, genel: null };
+      SB.genel = SB.ornek;
+      function sbOnizDegis(id){
+        var u = SB.urunler[id], n = document.getElementById('sbOnizNot');
+        SB.ornek = u || SB.genel;
+        if (n) n.innerHTML = !u ? 'Genel örnek değerler gösteriliyor.'
+          : 'Bugün basılsaydı: <b>' + SB.ornek.skt.replace('SKT: ','SKT ') + '</b>' + (u.omur ? ' (bugün + ' + u.omur + ' gün raf ömrü)' : '') + ' · barkod: <b>' + (u.barkod || 'yok — ürün kartından gir') + '</b>';
+        sbCiz();
+      }
       function sbPx(){ var a=document.getElementById('sbAlan'); return a.clientWidth / SB.gen; }
       function sbCiz(){
         var a=document.getElementById('sbAlan'), w=Math.min(a.parentNode.clientWidth-4, 640), olc=w/SB.gen;
@@ -249,8 +297,9 @@
           d.style.left=f.x+'%'; d.style.top=f.y+'%'; d.style.width=f.w+'%'; d.style.height=f.h+'%';
           d.style.fontSize=(f.fs*0.3528*olc)+'px'; d.style.fontWeight=f.b?'700':'400'; d.style.justifyContent=f.hz==='c'?'center':(f.hz==='r'?'flex-end':'flex-start');
           var t=document.createElement('span'); t.className='et-ad'; t.style.textAlign=f.hz==='c'?'center':(f.hz==='r'?'right':'left');
-          if (f.k==='barkod') { var im=document.createElement('img'); im.src='/etiket-ean13.svg?k=8691234567890&h=50'; im.style.cssText='height:100%;max-width:100%;margin:0 auto;display:block;pointer-events:none'; d.appendChild(im); }
-          else { t.textContent = f.k==='serbest' ? (f.t||'Serbest yazı') : (SB.ornek[f.k]||SB.ad[f.k]); d.appendChild(t); }
+          if (f.k==='barkod' && SB.ornek.barkod_url) { var im=document.createElement('img'); im.src=SB.ornek.barkod_url; im.style.cssText='height:100%;max-width:100%;margin:0 auto;display:block;pointer-events:none'; d.appendChild(im); }
+          else if (f.k==='barkod') { t.textContent='Barkod yok — ürün kartından gir'; t.style.color='#B45309'; t.style.fontSize='11px'; t.style.whiteSpace='normal'; d.appendChild(t); }
+          else { t.textContent = f.k==='serbest' ? (f.t||'Serbest yazı') : (SB.ornek[f.k]||('(' + SB.ad[f.k] + ' — ürün kartında boş)')); d.appendChild(t); }
           if (SB.duz) { var h=document.createElement('span'); h.className='tut'; d.appendChild(h); sbSurukle(d,h,i); }
           a.appendChild(d);
         });
@@ -273,7 +322,8 @@
       function sbOz(){ var f=SB.alanlar[SB.sec]; if(!f) return; f.fs=parseFloat(document.getElementById('sbFs').value)||8; f.hz=document.getElementById('sbHz').value; f.b=document.getElementById('sbB').checked?1:0; f.t=document.getElementById('sbT').value; sbCiz(); }
       function sbEkle(){ var k=document.getElementById('sbYeniK').value; SB.alanlar.push({k:k,x:5,y:5,w:k==='barkod'?45:50,h:k==='barkod'?28:10,fs:k==='ad'?10:7,b:k==='ad'?1:0,hz:k==='barkod'?'c':'l',t:''}); SB.sec=SB.alanlar.length-1; sbCiz(); }
       function sbSil(){ if(SB.sec<0) return; SB.alanlar.splice(SB.sec,1); SB.sec=-1; sbCiz(); }
-      window.addEventListener('resize', sbCiz); document.addEventListener('DOMContentLoaded', sbCiz); if (document.readyState!=='loading') sbCiz();
+      function sbBasla(){ var s=document.getElementById('sbOnizSec'); if (s) sbOnizDegis(s.value); else sbCiz(); }
+      window.addEventListener('resize', sbCiz); if (document.readyState!=='loading') sbBasla(); else document.addEventListener('DOMContentLoaded', sbBasla);
       </script>
     @endif
 
