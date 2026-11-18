@@ -370,6 +370,21 @@
     background:linear-gradient(135deg,#2a1731,#160a1a); color:#fff; border:1px solid rgba(255,255,255,.14); box-shadow:0 12px 30px rgba(0,0,0,.5);
     opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #asbar.acik{ opacity:1; transform:translateX(-50%) translateY(0); }
+  /* Yazarak AI sohbeti (mikrofonsuz / sessiz ortam) */
+  #aiYaz{ position:fixed; left:50%; transform:translateX(-50%); bottom:calc(88px + env(safe-area-inset-bottom)); z-index:93; width:min(480px,calc(100% - 24px));
+    display:none; flex-direction:column; max-height:52vh; background:linear-gradient(180deg,var(--card),var(--card2)); border:1px solid var(--cizgi); border-radius:18px; box-shadow:0 18px 44px rgba(0,0,0,.45); overflow:hidden; }
+  #aiYaz.acik{ display:flex; }
+  #aiYaz .yb{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--cizgi); font-weight:800; font-size:14px; }
+  #aiYaz .yb button{ margin-left:auto; background:transparent; border:0; color:inherit; font-size:18px; cursor:pointer; }
+  #aiYaz .yl{ flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+  #aiYaz .ym{ max-width:86%; padding:9px 12px; border-radius:14px; font-size:13.5px; line-height:1.45; white-space:pre-wrap; }
+  #aiYaz .ym.ai{ align-self:flex-start; background:rgba(139,59,234,.16); border:1px solid rgba(139,59,234,.3); }
+  #aiYaz .ym.ben{ align-self:flex-end; background:linear-gradient(135deg,var(--gold),var(--gold2)); color:var(--gold-ink); }
+  #aiYaz form{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--cizgi); }
+  #aiYaz input{ flex:1; padding:11px 12px; border-radius:12px; border:1px solid var(--cizgi); background:transparent; color:inherit; font-size:14px; }
+  #aiYaz form button{ padding:0 16px; border-radius:12px; border:0; background:linear-gradient(135deg,#8B3BEA,#6D28D9); color:#fff; font-weight:800; cursor:pointer; }
+  .aiKarsi{ display:flex; gap:8px; margin:12px 0 4px; flex-wrap:wrap; }
+  .aiKarsi button{ flex:1; min-width:140px; padding:11px 12px; border-radius:14px; border:1px solid rgba(139,59,234,.45); background:rgba(139,59,234,.14); color:inherit; font-weight:800; font-size:13px; cursor:pointer; }
   @media(min-width:920px){ #asbar{ bottom:26px; } }
   /* Global dil seçici dropdown */
   #dilMenu{ position:fixed; top:54px; right:12px; z-index:100; display:none; flex-direction:column; gap:2px; padding:6px;
@@ -393,6 +408,7 @@
   <div class="hg">
     <h1>Hoş geldiniz! 👋</h1>
     <p>Lezzet dolu bir deneyime hazır mısınız?</p>
+    <div class="aiKarsi"><button type="button" onclick="asistanAc()">🎤 Asistanla konuşarak sipariş ver</button><button type="button" onclick="aiYazAc()">⌨️ Yazarak sor / sipariş ver</button></div>
     <form class="ara" onsubmit="araGonder(event)">
       <input id="ara" placeholder="Ne yemek istersiniz?" autocomplete="off">
       <button type="submit" aria-label="Ara">🔍</button>
@@ -550,8 +566,8 @@
         <button onclick="kuponUygula()" style="padding:0 16px;border-radius:12px;border:1px solid var(--gold);background:transparent;color:var(--gold);font-weight:700;cursor:pointer">Uygula</button>
       </div>
       <div id="oy-kupon-msg" style="font-size:12px;display:none;margin-top:-4px"></div>
-      <button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b);text-align:left;line-height:1.3" onclick="odemeYap('online')"><span id="oy-online-bas">💳 Kartla Online Öde</span><br><i id="oy-online-alt" style="font-weight:500;font-size:12px;opacity:.9">Kendi telefonundan, güvenli ödeme</i></button>
-      <button class="gonder" style="background:transparent;border:1px solid var(--gold);color:var(--gold);text-align:left;line-height:1.3" onclick="odemeYap('kasa')">🧾 Garsona / Kasada Öde<br><i style="font-weight:500;font-size:12px;opacity:.85">Nakit ya da kart — garson gelip alır</i></button>
+      <button id="oy-online-btn" class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b);text-align:left;line-height:1.3" onclick="odemeYap('online')"><span id="oy-online-bas">💳 Kartla Online Öde</span><br><i id="oy-online-alt" style="font-weight:500;font-size:12px;opacity:.9">Kendi telefonundan, güvenli ödeme</i></button>
+      <button id="oy-kasa-btn" class="gonder" style="background:transparent;border:1px solid var(--gold);color:var(--gold);text-align:left;line-height:1.3" onclick="odemeYap('kasa')">🧾 Garsona / Kasada Öde<br><i style="font-weight:500;font-size:12px;opacity:.85">Nakit ya da kart — garson gelip alır</i></button>
     </div>
   </div>
 </div>
@@ -569,6 +585,11 @@
 <!-- ==================== AI ASISTAN: SADECE alt robot ikonu (iframe/panel YOK, orta bos) ==================== -->
 <button id="aiFab" onclick="asistanAc()" aria-label="Yapay Zekâ Asistan"><svg class="micico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2z"/></svg></button>
 <div id="asbar"><span id="asbar-t">🎤 Konuşmak için mikrofona dokunun</span></div>
+<div id="aiYaz" role="dialog" aria-label="Asistana yaz">
+  <div class="yb">🤖 Masa asistanı<button type="button" onclick="aiYazKapat()" aria-label="Kapat">✕</button></div>
+  <div class="yl" id="aiYazLog"></div>
+  <form onsubmit="aiYazGonder(event)"><input id="aiYazInp" placeholder="Örn: 2 adana 1 ayran / ne önerirsin?" autocomplete="off"><button type="submit">Gönder</button></form>
+</div>
 
 <div id="dilMenu"></div>
 <div id="toast"></div>
@@ -578,6 +599,8 @@ const MASA = @json($masa->id ?? 0);
 // QR anahtarı: masanın müşteri uçları bu anahtar olmadan çalışmaz (numara tahminiyle başka masaya sipariş atılamasın)
 const MASA_QR = {!! json_encode($masa->qr_token ?? '') !!};
 (function(){ const _f = window.fetch; window.fetch = function(u, o){ try { const yol = typeof u === 'string' ? u : ((u && u.url) || ''); if (MASA_QR && /^\/api\/(qr|odeme|tts)/.test(yol)) { o = o || {}; const h = new Headers(o.headers || {}); h.set('X-Masa-Qr', MASA_QR); o.headers = h; } } catch(e){} return _f.call(this, u, o); }; })();
+let ODEME_YOL = {online:false, kasa:true};   // işletmenin açtığı ödeme yolları (online yalnız sağlayıcı bağlıysa)
+function odemeButonlari(){ const o=document.getElementById('oy-online-btn'), k=document.getElementById('oy-kasa-btn'); if(o) o.style.display=ODEME_YOL.online?'':'none'; if(k) k.style.display=ODEME_YOL.kasa?'':'none'; const ku=document.getElementById('oy-kupon-inp'); if(ku&&ku.parentNode) ku.parentNode.style.display=ODEME_YOL.online?'flex':'none'; }
 let ODEME_MODU = 'post_pay';   // post_pay=klasik | on_odeme=ön ödemeli (ödeme yapılmadan sipariş mutfağa gitmez) | acik_kart
 const SUBE_AD = @json($sube->ad ?? 'Restoran');
 let _data = [];            // kategoriler (Türkçe)
@@ -592,7 +615,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 
 /* ---- veri ---- */
 async function yukle(){
-  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; if(j.odeme_modu) ODEME_MODU=j.odeme_modu; tasindiRozet(j.tasindi_kaynak); }
+  try{ const r=await fetch('/api/qr/menu-tam?masa='+MASA); const j=await r.json(); _data=(j.ok&&Array.isArray(j.kategoriler))?j.kategoriler:[]; if(j.odeme_modu) ODEME_MODU=j.odeme_modu; if(j.odeme) ODEME_YOL=j.odeme; odemeButonlari(); tasindiRozet(j.tasindi_kaynak); }
   catch(e){ _data=[]; }
   _urun={}; _data.forEach(k=>(k.kartlar||[]).forEach(u=>{ u._kat=k.ad; if(u.urun_id) _urun[u.urun_id]=u; }));
   chipleriCiz(); populerCiz('*'); dgridCiz();
@@ -749,26 +772,30 @@ function sepetRozet(){
   const dc=document.getElementById('deskcart'); document.getElementById('dc-n').textContent=n; dc.classList.toggle('bos',n===0);
 }
 let _gonderilen=[], _gToplam=0, _odeSecili={};
+// Ödenecek NET (ikram düşülmüş, iskonto dağıtılmış): sunucunun 'net' alanı
+function _kNet(k){ return Number(k.net!=null?k.net:(k.tutar||0)); }
+function _netTop(j){ return (j.kalemler||[]).reduce((s,k)=>s+_kNet(k),0); }
+function _durumRozet(k){ if(k.ikram) return ' <i style="color:#28c76f;font-weight:700">🎁 ikram</i>'; const d={odeme_bekliyor:['💳','ödeme sonrası mutfağa','#f0a500'],gonderildi:['👨‍🍳','mutfakta','var(--sessiz)'],hazirlaniyor:['🔥','hazırlanıyor','#f0a500'],hazir:['🛎️','servise hazır','#28c76f'],servis:['✓','servis edildi','var(--sessiz)']}[k.durum]; return d?(' <i style="color:'+d[2]+';font-weight:600;font-size:11.5px">'+d[0]+' '+d[1]+'</i>'):''; }
 function odeSec(id,on){ if(on) _odeSecili[id]=true; else delete _odeSecili[id]; sepetCiz(); }
 async function sepetAc(){
   document.getElementById('menu').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik diger katmanlari kapat
   document.getElementById('sepet').classList.add('acik');
   sepetCiz();
   // Mutfaga gonderilmis siparisler (odemeye kadar birikir)
-  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0; sepetCiz(); } }catch(_){}
+  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=_netTop(j); sepetCiz(); } }catch(_){}
 }
 function sepetCiz(){
   const l=document.getElementById('sepet-liste'); if(!l) return;
   let html='';
   if(_gonderilen.length){
     const acikVar=_gonderilen.some(k=>(k.odeme_durum||'acik')==='acik');
-    html+='<div class="sbas">🍽️ Mutfağa iletilenler'+(acikVar?' <i style="font-weight:600;color:var(--sessiz)">— ödeyeceklerini işaretle</i>':'')+'</div>';
+    html+='<div class="sbas">🍽️ Siparişleriniz'+(acikVar?' <i style="font-weight:600;color:var(--sessiz)">— ödeyeceklerini işaretle</i>':'')+'</div>';
     html+=_gonderilen.map(k=>{
       const od=(k.odeme_durum||'acik');
-      if(od==='odendi') return `<div class="sat gonderilen" style="opacity:.5"><span class="sad">✅ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#28c76f;font-weight:600">ödendi</i></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`;
-      if(od==='beklemede') return `<div class="sat gonderilen" style="opacity:.65"><span class="sad">⏳ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#f0a500;font-weight:600">ödeniyor…</i></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></div>`;
+      if(od==='odendi') return `<div class="sat gonderilen" style="opacity:.5"><span class="sad">✅ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#28c76f;font-weight:600">ödendi</i></span><span class="sf">${_kNet(k).toLocaleString('tr')} TL</span></div>`;
+      if(od==='beklemede') return `<div class="sat gonderilen" style="opacity:.65"><span class="sad">⏳ ${esc(k.ad)} <b>×${k.adet}</b> <i style="color:#f0a500;font-weight:600">ödeniyor…</i></span><span class="sf">${_kNet(k).toLocaleString('tr')} TL</span></div>`;
       const chk=_odeSecili[k.id]?'checked':'';
-      return `<label class="sat gonderilen" style="cursor:pointer"><span class="sad"><input type="checkbox" ${chk} onchange="odeSec(${k.id},this.checked)" style="margin-right:8px;transform:scale(1.3);accent-color:var(--gold);vertical-align:middle">${esc(k.ad)} <b>×${k.adet}</b></span><span class="sf">${(k.tutar||0).toLocaleString('tr')} TL</span></label>`;
+      return `<label class="sat gonderilen" style="cursor:pointer"><span class="sad"><input type="checkbox" ${chk} onchange="odeSec(${k.id},this.checked)" style="margin-right:8px;transform:scale(1.3);accent-color:var(--gold);vertical-align:middle">${esc(k.ad)} <b>×${k.adet}</b>${_durumRozet(k)}</span><span class="sf">${_kNet(k).toLocaleString('tr')} TL</span></label>`;
     }).join('');
   }
   if(_sepet.length){
@@ -786,8 +813,8 @@ function sepetCiz(){
   const odeBox=document.getElementById('sepet-ode'); if(!odeBox) return;
   const aciklar=_gonderilen.filter(k=>(k.odeme_durum||'acik')==='acik');
   if(!aciklar.length){ odeBox.innerHTML=''; return; }
-  const kalanAcik=aciklar.reduce((s,k)=>s+(k.tutar||0),0);
-  const seciliTutar=aciklar.filter(k=>_odeSecili[k.id]).reduce((s,k)=>s+(k.tutar||0),0);
+  const kalanAcik=aciklar.reduce((s,k)=>s+_kNet(k),0);
+  const seciliTutar=aciklar.filter(k=>_odeSecili[k.id]).reduce((s,k)=>s+_kNet(k),0);
   odeBox.innerHTML=
      `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sessiz);margin:12px 0 8px"><span>Ödenmemiş kalan</span><b style="color:var(--gold)">${kalanAcik.toLocaleString('tr')} TL</b></div>`
     +`<button class="gonder" style="background:linear-gradient(135deg,#d4af37,#b8860b)" onclick="odeYontemAc('tum')">💳 Tüm hesabı öde · ${kalanAcik.toLocaleString('tr')} TL</button>`
@@ -799,7 +826,7 @@ async function devamKontrol(){
   try{
     const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json();
     if(j && j.ok && (j.kalemler||[]).length){
-      _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0;
+      _gonderilen=j.kalemler||[]; _gToplam=_netTop(j);
       const s=document.getElementById('devamSerit'), t=document.getElementById('devamTutar');
       if(t) t.textContent=(j.toplam||0).toLocaleString('tr')+' TL';
       if(s) s.style.display='flex';
@@ -822,7 +849,7 @@ async function siparisGonder(){
         toast('💳 Ödeme sonrası siparişin mutfağa iletilecek');
         odeYontemAc('tum');
       } else {
-        sepetKapat(); toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!');
+        sepetKapat(); toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!'+((j.tukendi&&j.tukendi.length)?(' · ⚠️ Tükendiği için gönderilmedi: '+j.tukendi.join(', ')):''));
       }
     }
     else{ toast(j.hata||'Sipariş gönderilemedi'); btn.disabled=false; btn.textContent=_gonderBtnYazi(); }
@@ -857,7 +884,7 @@ async function tasimaTalep(kaynakId){
 }
 // Sepetteki gonderilmis kalemleri tazele (odeme onizlemesi dogru tutar gostersin)
 async function siparileriYukleSepet(){
-  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=j.toplam||0; sepetCiz(); } }catch(_){}
+  try{ const r=await fetch('/api/qr/siparislerim?masa='+MASA); const j=await r.json(); if(j.ok){ _gonderilen=j.kalemler||[]; _gToplam=_netTop(j); sepetCiz(); } }catch(_){}
 }
 
 /* ---- TAM MENU ---- */
@@ -1070,8 +1097,10 @@ async function basla(){
   aktifAsDil=(window.sayfaDil||'tr');
   sohbetAktif=true; robotHal('dinle'); asDurum('Bağlanıyor…');
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
-  if(!izin){ asDurum('Mikrofon izni gerekli. Menüden yazarak da sorabilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); return; }
-  await sistemKonus(_ilkSelam?'Buyurun, sizi dinliyorum.':('Efendim, hoş geldiniz! Ben '+SUBE_AD+' masa asistanınızım. Size nasıl yardımcı olabilirim?')); _ilkSelam=true;
+  if(!izin){ asDurum('Mikrofon izni verilmedi; yazarak sipariş verebilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); aiYazAc(); return; }
+  if(_ilkSelam) await sistemKonus('Buyurun, sizi dinliyorum.');
+  else { await konus(await sunucudanCevap('', {karsila:'1'})); }   // hoş geldin + bugün en çok tercih edilenler (kartlar ekranda)
+  _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){
     const c=await dinleSunucu();
@@ -1081,42 +1110,60 @@ async function basla(){
     bos=0;
     const cn=norm(c);
     if(/^(kapat|kapan|gorusuruz|hosca kal)\b/.test(cn)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
-    // ---- ONAY AŞAMASI: özet sonrası "evet/hayır" ----
-    if(_onayBekliyor){
-      if(/(evet|onayl|gonder|yolla|tamamdir|^tamam|olur|tabii|kesinlikle|dogru|aynen|onaylıyorum)/.test(cn)){
-        _onayBekliyor=false; _siparisAkisi=false;
-        await asSiparisBitir();
-        await konus('Siparişiniz mutfağa iletildi, afiyet olsun! 😊');
-        continue;
-      }
-      if(/(hayir|yok|iptal|vazgec|bekle|dur|degil|yanlis|ekle|birde|bir de|degistir)/.test(cn)){
-        _onayBekliyor=false;
-        await konus('Tabii efendim, dinliyorum. Başka ne eklemek ya da değiştirmek istersiniz?');
-        continue;
-      }
-      _onayBekliyor=false;   // belirsiz -> normal işle (yeni ürün olabilir)
-    }
-    // ---- SİPARİŞ BİTİRME NİYETİ: sepet doluyken "yok/bu kadar/teşekkürler" -> ÖZET + ONAY ----
-    if(_siparisAkisi && _sepet.length
-       && /(hayir|yok|bu kadar|hepsi bu|sadece bunlar|bunlar kadar|yeterli|tesekkur|sag ?ol|baska yok|kalsin|tamamdir|gonderel|hallet|siparisi ver)/.test(cn)
-       && !/(ekle|bir ?de|birde|istiyorum|isterim|alayim|olsun|ister|bir tane)/.test(cn)){
-      _onayBekliyor=true;
-      await konus('Başka bir arzunuz yoksa siparişinizi özetliyorum. '+asSiparisOzet()+' Onaylıyor musunuz efendim?');
-      continue;
-    }
-    const cevap=await sunucudanCevap(c);
+    const cevap=await asMetinIsle(c);
     if(cevap) await konus(cevap);
     if(_odeGit){ _odeGit=false; sohbetAktif=false; try{ sohbetKapat(); sepetAc(); }catch(_){} break; }   // AI konustu -> sepeti ac (tumunu / kendi payini sec)
   }
   sohbetAktif=false; robotHal('bekle'); setTimeout(()=>{ if(!sohbetAktif&&!konusuyor) asGizle(); },2500);
 }
+// Müşterinin söylediği/yazdığı metni işle (onay → sipariş bitirme → AI). Seslendirilecek/gösterilecek cevabı döner.
+async function asMetinIsle(c){
+  const cn=norm(c);
+  // ---- ONAY AŞAMASI: özet sonrası "evet/hayır". Açık ret önce ("hayır gönderme" onay sayılmasın) ----
+  if(_onayBekliyor){
+    if(/(hayir|iptal|vazgec|gonderme|istemiyorum|yanlis|degistir|bekle|dur bir|durun)/.test(cn)){
+      _onayBekliyor=false; return 'Tabii efendim, dinliyorum. Başka ne eklemek ya da değiştirmek istersiniz?';
+    }
+    if(/(evet|onayl|gonder|yolla|tamamdir|^tamam|olur|tabii|kesinlikle|dogru|aynen)/.test(cn)){
+      _onayBekliyor=false; _siparisAkisi=false; return await asSiparisBitir();
+    }
+    if(/(yok|degil|ekle|birde|bir de)/.test(cn)){ _onayBekliyor=false; return 'Tabii efendim, dinliyorum. Başka ne eklemek ya da değiştirmek istersiniz?'; }
+    _onayBekliyor=false;   // belirsiz -> normal işle (yeni ürün olabilir)
+  }
+  // ---- SİPARİŞ BİTİRME NİYETİ: sepet doluyken "yok/bu kadar/teşekkürler" -> ÖZET + ONAY ----
+  if(_siparisAkisi && _sepet.length
+     && /(hayir|yok|bu kadar|hepsi bu|sadece bunlar|bunlar kadar|yeterli|tesekkur|sag ?ol|baska yok|kalsin|tamamdir|gonderel|hallet|siparisi ver)/.test(cn)
+     && !/(ekle|bir ?de|birde|istiyorum|isterim|alayim|olsun|ister|bir tane|pahali|fiyat)/.test(cn)){
+    _onayBekliyor=true;
+    return 'Başka bir arzunuz yoksa siparişinizi özetliyorum. '+asSiparisOzet()+' Onaylıyor musunuz efendim?';
+  }
+  return await sunucudanCevap(c);
+}
+/* ---- YAZARAK SOHBET: mikrofon yoksa / sessiz ortamda aynı asistan ---- */
+let _yazSelam=false;
+function aiYazBalon(t,kim){ if(!t) return; const l=document.getElementById('aiYazLog'); const d=document.createElement('div'); d.className='ym '+kim; d.textContent=t; l.appendChild(d); l.scrollTop=l.scrollHeight; }
+async function aiYazAc(){
+  try{ if(sohbetAktif) sohbetKapat(); }catch(_){}
+  aktifAsDil=(window.sayfaDil||'tr');
+  document.getElementById('aiYaz').classList.add('acik');
+  setTimeout(()=>{ const i=document.getElementById('aiYazInp'); if(i) i.focus(); },150);
+  if(!_yazSelam){ _yazSelam=true; aiYazBalon(await sunucudanCevap('', {karsila:'1'}),'ai'); }
+}
+function aiYazKapat(){ document.getElementById('aiYaz').classList.remove('acik'); }
+async function aiYazGonder(e){
+  if(e) e.preventDefault();
+  const inp=document.getElementById('aiYazInp'); const t=(inp.value||'').trim(); if(!t) return; inp.value='';
+  aiYazBalon(t,'ben');
+  const cevap=await asMetinIsle(t); aiYazBalon(cevap,'ai'); asGizle();
+  if(_odeGit){ _odeGit=false; aiYazKapat(); try{ sepetAc(); }catch(_){} }
+}
 function sohbetKapat(){ sohbetAktif=false; _siparisAkisi=false; _onayBekliyor=false; konusKes(); micKapat(); robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
 
 // Sunucuya sor + ANA ekranı güncelle; seslendirilecek metni döner
-async function sunucudanCevap(soru){
+async function sunucudanCevap(soru, ek){
   asDurum('🤖 Düşünüyorum…');
   try{
-    const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil})});
+    const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams(Object.assign({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil||window.sayfaDil||'tr'}, ek||{}))});
     const j=await r.json();
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
@@ -1156,19 +1203,26 @@ function asistanKatmanGoster(urunler, baslik){
   document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik katmanlari kapat
   document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
-function asSepetEkle(eklenen, ayarla){ let n=0; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u){ if(ayarla) sepetAyarla(u, e.adet||1); else sepeteEkle(u, e.adet||1, false); n++; } }); if(n) toast(ayarla?'🛒 Sepet güncellendi':'🛒 Siparişiniz sepete eklendi'); }
+function asSepetEkle(eklenen, ayarla){ let n=0; const yok=[]; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u && u.etiket!=='Tükendi'){ if(ayarla) sepetAyarla(u, e.adet||1); else sepeteEkle(u, e.adet||1, false); n++; } else yok.push(e.ad||'Bir ürün'); }); if(yok.length) toast('⚠️ '+yok.join(', ')+' şu an sipariş edilemiyor'); if(n) toast(ayarla?'🛒 Sepet güncellendi':'🛒 Siparişiniz sepete eklendi'); }
 // AYARLA: adedi topla DEGIL, o degere SET yap ("1 olsun 60 degil" -> 1)
 function sepetAyarla(u,adet){ adet=parseInt(adet)||0; const v=_sepet.find(s=>s.urun_id===u.urun_id); if(v){ if(adet<=0){ _sepet=_sepet.filter(s=>s.urun_id!==u.urun_id); } else { v.adet=adet; } } else if(adet>0){ _sepet.push({urun_id:u.urun_id,ad:u.ad,fiyat:u.fiyat,adet:adet}); } sepetRozet(); }
 function asSepetCikar(urunId){ _sepet=_sepet.filter(s=>s.urun_id!==urunId); sepetRozet(); }
 // AI "siparisi bitir/gonder" -> sepeti MUTFAGA ilet + temizle (odemeye kadar tekrar siparis verilebilir)
 async function asSiparisBitir(){
-  if(!_sepet.length){ toast('Sepetiniz henüz boş 🙂'); return; }
+  if(!_sepet.length){ toast('Sepetiniz henüz boş 🙂'); return 'Sepetiniz henüz boş efendim. Ne arzu edersiniz?'; }
   try{
     const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet})))})});
     const j=await r.json();
-    if(j.ok){ _sepet=[]; sepetRozet(); try{ sepetKapat(); }catch(_){} toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!'); }
-    else toast(j.hata||'Sipariş gönderilemedi');
-  }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); }
+    const tk=(j.tukendi&&j.tukendi.length)?(' Yalnız '+j.tukendi.join(', ')+' tükendiği için gönderilemedi.'):'';
+    if(j.ok){
+      _sepet=[]; sepetRozet(); try{ sepetKapat(); }catch(_){}
+      if(j.on_odeme){ toast('💳 Ödeme sonrası siparişiniz mutfağa iletilecek'); _odeGit=true; return 'Siparişinizi aldım. Burada önce ödeme alınıyor; ödemenizi yaptığınız anda mutfağa iletilecek.'+tk; }
+      toast('✅ Siparişiniz mutfağa iletildi, afiyet olsun!');
+      return 'Siparişiniz mutfağa iletildi, afiyet olsun! 😊'+tk;
+    }
+    toast(j.hata||'Sipariş gönderilemedi');
+    return (j.hata||'Siparişinizi gönderemedim')+'. İsterseniz garsonumuzu çağırayım ya da tekrar deneyelim.';
+  }catch(e){ toast('Sipariş gönderilemedi, tekrar deneyin'); return 'Bağlantı sorunu yüzünden siparişi gönderemedim, lütfen tekrar deneyin.'; }
 }
 function robotHal(hal){
   [document.querySelector('#altbar .qr .qi'), document.getElementById('aiFab')].forEach(q=>{ if(q){ q.classList.remove('ai','dinle'); if(hal==='ai') q.classList.add('ai'); else if(hal==='dinle') q.classList.add('dinle'); } });
@@ -1308,6 +1362,8 @@ function odeYontemAc(mod){
   _odeMod=mod; _odeKupon='';
   const inp=document.getElementById('oy-kupon-inp'); if(inp) inp.value='';
   const msg=document.getElementById('oy-kupon-msg'); if(msg) msg.style.display='none';
+  if(!ODEME_YOL.online){ odemeYap('kasa'); return; }          // tek yol: garsona/kasada
+  if(!ODEME_YOL.kasa){ odemeYap('online'); return; }           // tek yol: online
   const o=document.getElementById('odeYontem'); if(o) o.classList.add('acik');
   onizleYukle();
 }

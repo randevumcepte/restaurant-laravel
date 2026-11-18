@@ -75,7 +75,7 @@ body.koyu #kds{--line:#2c3650;--card:#161d2e;--card2:#1b2235;--ink:#e2e8f0;--sub
     <div data-pane="3" style="display:none"></div>
 </div>
 <script>
-const KDS = {tab:0, ist:'hepsi', toplu:false, boyut:2, veri:null, servis:null, urun:null, analiz:null, sira:[]};
+const KDS = {tab:0, ist:(new URLSearchParams(location.search).get('istasyon')||'hepsi'), toplu:false, boyut:2, veri:null, servis:null, urun:null, analiz:null, sira:[]};
 const KBOY = [275,215,170,140]; // Flutter _hedefKartW ile BIREBIR (boyut 0..3; vars=2 -> 170 -> ~7 sutun)
 function kesc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function ksure(dk){dk=Math.round(dk); if(dk<60)return dk+' dk'; if(dk<1440)return Math.floor(dk/60)+' sa '+(dk%60)+' dk'; return Math.floor(dk/1440)+' g '+Math.floor((dk%1440)/60)+' sa';}
@@ -107,6 +107,7 @@ function kfis(s){
   const kalemler = s.kalemler||[];
   const toplamAdet = kalemler.reduce((t,k)=>t+Number(k.adet||0),0);
   const adId = Number(s.adisyon_id);
+  const kIds = (s.kalem_ids||kalemler.map(k=>k.id)).join(','); // Başla/Hazır yalnız BU fişin kalemleri (2. tur ayrı fiş)
   let kalHtml='',onceki=null;
   for(const k of kalemler){const t=Number(k.tur||1);
     if(onceki!==null&&t!==onceki) kalHtml+='<div class="tur">'+t+'. Tur</div>'; onceki=t;
@@ -141,15 +142,15 @@ function kfis(s){
     +'</div>'+sureHtml
     +'<div class="kalemler">'+kalHtml+'</div>'
     +'<div class="btns">'
-      +(!basladi?'<button class="bt-basla" onclick="kBasla('+adId+')">▶ Başla</button>':'')
-      +'<button class="bt-hazir" onclick="kHazir('+adId+')">✓ Hazır</button></div>'
+      +(!basladi?'<button class="bt-basla" onclick="kBasla('+adId+',\''+kIds+'\')">▶ Başla</button>':'')
+      +'<button class="bt-hazir" onclick="kHazir('+adId+',\''+kIds+'\')">✓ Hazır</button></div>'
     + pulse
   +'</div>';
 }
 
 function kRenderSip(){
   const d=KDS.veri; const pane=document.querySelector('#kds [data-pane="0"]'); if(!d){pane.innerHTML='<div class="bos">Yükleniyor…</div>';return;}
-  let cip='<div class="cip'+(KDS.ist==='hepsi'?' akt':'')+'" onclick="kIst(\'hepsi\')">Tümü'+(d.toplam_bekleyen>0?'<span class="n">'+d.toplam_bekleyen+'</span>':'')+'</div>';
+  let cip='<div class="cip'+(KDS.ist==='hepsi'?' akt':'')+'" onclick="kIst(\'hepsi\')">'+(d.bar_ayri?'Mutfak (tümü)':'Tümü')+(d.toplam_bekleyen>0?'<span class="n">'+d.toplam_bekleyen+'</span>':'')+'</div>';
   for(const i of (d.istasyonlar||[])) cip+='<div class="cip'+(KDS.ist===i.kod?' akt':'')+'" onclick="kIst(\''+i.kod+'\')">'+kesc(i.ad)+(i.bekleyen>0?'<span class="n">'+i.bekleyen+'</span>':'')+'</div>';
   let ust='<div class="kds-ust">'+cip
     +'<div class="kds-sag"><div class="cip'+(KDS.toplu?' akt':'')+'" onclick="kToplu()">▦ Toplu</div>'
@@ -219,8 +220,8 @@ function kRenderAnaliz(){
 }
 
 // --- aksiyonlar ---
-async function kBasla(id){await kpost('/mutfak/basla',{adisyon_id:id}); kYukle(0);}
-async function kHazir(id){await kpost('/mutfak/adisyon-hazir',{adisyon_id:id}); kYukle(0); kYukle(1);}
+async function kBasla(id,ids){await kpost('/mutfak/basla',{adisyon_id:id,kalem_ids:ids||'',istasyon:KDS.ist}); kYukle(0);}
+async function kHazir(id,ids){await kpost('/mutfak/adisyon-hazir',{adisyon_id:id,kalem_ids:ids||'',istasyon:KDS.ist}); kYukle(0); kYukle(1);}
 async function kServis(id){await kpost('/mutfak/adisyon-servis',{adisyon_id:id}); kYukle(1);}
 async function k86Toggle(id,btn){const r=await kpost('/mutfak/86-toggle',{urun_id:id}); kYukle(2);}
 function kIst(k){KDS.ist=k; kYukle(0);}
@@ -228,7 +229,7 @@ function kToplu(){KDS.toplu=!KDS.toplu; kRenderSip();}
 function kBoyut(d){KDS.boyut=Math.max(0,Math.min(3,KDS.boyut+(-d))); kRenderSip();}
 
 async function kYukle(t){
-  if(t===0){KDS.veri=await kget('/mutfak/veri?istasyon='+encodeURIComponent(KDS.ist)); kRenderSip();}
+  if(t===0){KDS.veri=await kget('/mutfak/veri?tur_ayri=1&istasyon='+encodeURIComponent(KDS.ist)); if(KDS.ist==='hepsi'&&KDS.veri&&KDS.veri.istasyon_aktif&&KDS.veri.istasyon_aktif!=='hepsi') KDS.ist=KDS.veri.istasyon_aktif; kRenderSip();}
   if(t===1){KDS.servis=await kget('/mutfak/servise-veri'); kRenderServis();}
   if(t===2){KDS.urun=await kget('/mutfak/urunler-veri'); kRender86();}
   if(t===3){KDS.analiz=await kget('/mutfak/analiz-veri'); kRenderAnaliz();}

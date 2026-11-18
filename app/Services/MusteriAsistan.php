@@ -60,7 +60,9 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
         // 0.5) SIPARISI BITIR / ONAY (mutfaga gonder). Selam/tesekkur/kimlikten ONCE ki "tesekkurler sadece bunlar" bitir sayilsin.
         //      Cevap FRONTEND'de ozet+onay olarak kurulur (sepet frontend'de). Haiku sart degil.
-        if ($this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'sadece bunlar', 'bunlar kadar', 'tamam bunlar', 'yeterli bu', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'siparisi onayla', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla', 'siparisimi onayla'])) {
+        // ("bu kadar mı pahalı" / "bu kadar ucuz mu" fiyat sorusudur, bitirme değil)
+        if (!$this->has($c, ['pahali', 'ucuz', 'fiyat', 'kac para', 'kac lira'])
+            && $this->has($c, ['bu kadar', 'hepsi bu', 'baska yok', 'baska bir sey yok', 'baska istemiyorum', 'baska bir sey istemiyorum', 'sadece bunlar', 'bunlar kadar', 'tamam bunlar', 'yeterli bu', 'siparisi gonder', 'siparisi tamamla', 'siparisi bitir', 'siparisi ver', 'siparisi onayla', 'mutfaga gonder', 'mutfaga ilet', 'siparisim tamam', 'siparis tamam', 'tamam gonder', 'onaylayip gonder', 'siparisimi ver', 'siparisimi gonder', 'siparisimi tamamla', 'siparisimi onayla'])) {
             return $this->cvp('Siparişinizi özetliyorum.', ['aksiyon' => 'siparis_bitir']);
         }
 
@@ -156,7 +158,9 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         }
 
         // 2) ODEME / HESAP -> guvenli ONLINE odeme sayfasina yonlendir ("odeme yapmak istiyorum", "hesap", "kartla ode")
-        if ($this->has($c, ['odeme', 'odemek', 'odeyecegim', 'odeyeyim', 'odeme yap', 'online ode', 'kartla ode', 'kart ile ode', 'telefondan ode', 'hesap', 'hesabi ode', 'hesabimi ode', 'hesabi getir', 'hesabi al', 'adisyon', 'borcum ne', 'ne kadar odeyec'])) {
+        // ("hesaplı/uygun fiyatlı bir şey öner" ödeme değil, öneri isteğidir)
+        if (!$this->has($c, ['hesapli', 'hesaba uygun', 'hesabina uygun'])
+            && $this->has($c, ['odeme', 'odemek', 'odeyecegim', 'odeyeyim', 'odeme yap', 'online ode', 'kartla ode', 'kart ile ode', 'telefondan ode', 'hesap', 'hesabi ode', 'hesabimi ode', 'hesabi getir', 'hesabi al', 'adisyon', 'borcum ne', 'ne kadar odeyec'])) {
             return $this->cvp('Tabii efendim, sizi güvenli ödeme sayfasına yönlendiriyorum. 💳', ['aksiyon' => 'ode']);
         }
         // 2b) GARSON cagir (odeme/hesap disi yardim)
@@ -1394,6 +1398,19 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         } catch (\Throwable $e) {
             return $this->cvp('Kampanyalarımızı garsonumuz size en doğru şekilde anlatsın, çağırayım mı?');
         }
+    }
+
+    /** QR açılış karşılaması: hoş geldin + öne çıkan / en çok tercih edilen yemekler (kartlarla) + siparişi benim alabileceğim. */
+    public function karsila($subeAd = '')
+    {
+        $o = $this->oneri('');
+        $kartlar = $o['kartlar'] ?? [];
+        $adlar = array_slice(array_values(array_filter(array_column($kartlar, 'ad'))), 0, 3);
+        $liste = count($adlar) > 1 ? implode(', ', array_slice($adlar, 0, -1)) . ' ve ' . end($adlar) : ($adlar[0] ?? '');
+        $mesaj = 'Hoş geldiniz! Ben ' . (trim((string) $subeAd) !== '' ? trim($subeAd) . ' ' : '') . 'masa asistanınızım. '
+            . ($liste !== '' ? 'Bugün en çok tercih edilenler: ' . $liste . '. ' : '')
+            . 'Ne arzu edersiniz? Yemek, içecek ya da tatlı; söylemeniz yeterli, siparişinizi ben alıp mutfağa iletirim. 😊';
+        return $this->cvp($mesaj, ['tip' => 'karsilama', 'baslik' => '⭐ Öne Çıkan Lezzetler', 'kartlar' => $kartlar]);
     }
 
     protected function oneri($c = '')

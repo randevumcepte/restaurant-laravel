@@ -4066,16 +4066,12 @@ if (!function_exists('_kdsEkranVeri')) {
             ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
             ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
-            ->where('adisyonlar.durum', 'acik') // sadece AÇIK hesaplar (ödenmiş/kapanmış kalemler mutfakta kalmasın)
             // gonderildi+hazirlaniyor = pişiyor; hazir = pişti ama henüz servis edilmedi → hepsi görünsün, servis edilince düşer
             ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor', 'hazir']);
+        _kdsAdisyonKosulu($q); // açık + ödenip kapanmış ama mutfağı bitmemiş (ön ödeme)
         if ($subeId) $q->where('adisyonlar.sube_id', $subeId); // SUBE-IZOLASYONU: sadece bu subenin mutfak kalemleri
-        if ($barMi) {
-            $q->where('urunler.istasyon', 'bar');
-        } else {
-            // Mutfak: bar HARİÇ her şey (istasyonu olmayan/eski ürünler de mutfakta görünsün)
-            $q->where(function ($w) { $w->where('urunler.istasyon', '!=', 'bar')->orWhereNull('urunler.istasyon'); });
-        }
+        // Bar = içecekler (istasyonu bar + adından/kategorisinden içecek olanlar); mutfak = geri kalan her şey
+        _kdsIstasyonKapsamla($q, (int) ($subeId ?: _aktifSubeId()), $barMi ? 'bar' : 'hepsi');
         return $q->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
             'adisyon_kalemleri.durum', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.hazir_zamani',
             'adisyonlar.kanal', 'masalar.ad as masa', 'urunler.istasyon')
@@ -4091,7 +4087,7 @@ Route::get('/bar', function () {
 });
 
 Route::post('/mutfak/hazir', function (Request $r) {
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('id', $r->kalem_id)->update(function_exists('_mrKdsDamga') ? _mrKdsDamga(['durum' => 'hazir', 'hazir_zamani' => now()], _posPersonel()) : ['durum' => 'hazir', 'hazir_zamani' => now()]);
+    _kdsHazir($r, _posPersonel(), _aktifSubeId()); // yalnız pişen kalem (iptal/servis edilmiş dirilmez) + garsona "servise hazır"
     return ['ok' => 1];
 });
 // Hazır olan kalemi servis edildi işaretle (mutfak/expo ekranından) → ekrandan düşer
@@ -4615,10 +4611,18 @@ Route::post('/api/odeme/baslat', function (Request $r) {
     _odemeEnsure();
     $a = null;
     if ($r->filled('takip_token')) $a = DB::table('adisyonlar')->where('takip_token', $r->takip_token)->first();
-    elseif ($r->filled('adisyon_id')) $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    elseif ($r->filled('adisyon_id')) {
+        // Sıralı adisyon numarasıyla başkasının hesabı açılmasın: numarayla yalnız o restoranın personeli başlatır
+        $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+        $p = null;
+        try { $p = _posPersonel() ?: ($r->bearerToken() ? _apiPersonel($r) : null); } catch (\Throwable $e) {}
+        if ($a && (!$p || (int) $p->sube_id !== (int) $a->sube_id)) $a = null;
+    }
     if (!$a) return response()->json(['ok' => 0, 'hata' => 'Adisyon bulunamadı'], 404);
     if ($a->durum === 'odendi') return ['ok' => 0, 'hata' => 'Bu sipariş zaten ödendi'];
-    $tutar = (float) $a->toplam;
+    if ($a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Bu sipariş kapanmış ya da iptal edilmiş'];
+    // Kalan tutar: önceden alınan (kısmi/QR) ödemeler düşülür → aynı hesap iki kez ödenmez
+    $tutar = max(0, round((float) $a->toplam - (float) DB::table('odemeler')->where('adisyon_id', $a->id)->sum('tutar'), 2));
     if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
     $saglayici = _odemeSaglayici($a->sube_id);
     $token = \Illuminate\Support\Str::random(30);
@@ -4695,6 +4699,10 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
             $imzaGecerli = false; // TODO: Iyzico/PayTR 3D callback imza/hash doğrulaması
             if (!$imzaGecerli) return response()->json(['ok' => 0, 'hata' => 'Ödeme sağlayıcı doğrulaması bekleniyor. (Doğrulanmamış tahsilat kabul edilmez.)'], 402);
         }
+        // ATOMİK: yalnız hâlâ BEKLEYEN ödeme tamamlanır. Zaman aşımına uğramış, kasadan kapatılmış ya da ikinci kez gelen istek çift tahsilat yazamaz.
+        if (!DB::table('odeme_islemleri')->where('id', $i->id)->where('durum', 'bekliyor')->update(['durum' => 'odendi'])) {
+            return response()->json(['ok' => 0, 'hata' => 'Bu ödeme süresi dolduğu ya da hesap kasadan kapatıldığı için tamamlanamadı. Lütfen menüden yeniden ödeme başlatın.'], 409);
+        }
         $indirim = isset($i->indirim) ? (float) $i->indirim : 0;
         DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => 'online', 'tutar' => $i->tutar, 'indirim' => $indirim, 'created_at' => now()]);
         // Verilen indirim adisyonun indirimine eklenir + toplam yeniden hesaplanir (tahsilat acigi gorunmesin) + kupon kullanimi sayilir
@@ -4708,17 +4716,13 @@ Route::post('/ode/{token}/tamamla', function (Request $r, $token) {
         // Bu odemenin kapsadigi kalemleri 'odendi' yap (parcali odeme). kalem_ids yoksa (mobil/eski akis) tum adisyon.
         $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
         if (is_array($kids) && $kids) {
-            DB::table('adisyon_kalemleri')->whereIn('id', $kids)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
+            DB::table('adisyon_kalemleri')->whereIn('id', $kids)->where('odeme_token', $token)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
         } else {
             DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
         }
         _onOdemePromote($a, $kids); // ON ODEME: odenen 'odeme_bekliyor' kalemler simdi mutfaga dussun
-        // Odenmemis kalem kaldi mi? Kalmadiysa adisyonu kapat + masayi bosalt (yoksa acik kalir, digerleri oder)
-        $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
-        if ($acikKalan === 0 && $a->durum !== 'odendi') {
-            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
-            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
-        }
+        // Odenmemis kalem kalmadiysa: adisyon kapanir + stok/CRM/mali fis + masa bos + bekleyen cagri temizligi (mutfagi bitmemis kalemler KDS'de kalir)
+        _qrKapanisKontrol($a->id);
     }
     DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
     return ['ok' => 1, 'mesaj' => 'Ödeme başarılı'];
@@ -5554,7 +5558,8 @@ if (!function_exists('_qrMasaGecerli')) {
         if (!$masa) return false;
         if (function_exists('_ryAdmin') && _ryAdmin()) return true;
         $qr = (string) ($r->header('X-Masa-Qr') ?: $r->input('qr') ?: '');
-        if ($qr !== '' && !empty($masa->qr_token) && hash_equals((string) $masa->qr_token, $qr)) return true;
+        // Arşivlenmiş (silinmiş) masanın eski basılı QR'ı sipariş/ödeme alamaz
+        if ($qr !== '' && empty($masa->arsiv) && !empty($masa->qr_token) && hash_equals((string) $masa->qr_token, $qr)) return true;
         $p = null;
         try { $p = _posPersonel() ?: ($r->bearerToken() ? _apiPersonel($r) : null); } catch (\Throwable $e) {}
         return $p && (int) $p->sube_id === (int) $masa->sube_id;
@@ -5567,11 +5572,20 @@ if (!function_exists('_qrMasaGecerli')) {
         if (!$masa) return null;
         return _qrMasaGecerli($r, $masa) ? null : response()->json(['ok' => 0, 'hata' => 'Lütfen masadaki QR kodu yeniden okutun.'], 403);
     }
+    // AI / ses uçları: masa + QR anahtarı ŞART (anahtarsız istekle restoranın günlük AI/STT kotası tüketilemez, başka restorana düşülmez)
+    function _qrKapiZorunlu($r)
+    {
+        $id = (int) $r->input('masa');
+        $masa = $id > 0 ? DB::table('masalar')->where('id', $id)->first() : null;
+        if ($masa && _qrMasaGecerli($r, $masa)) return null;
+        return response()->json(['ok' => 0, 'hata' => 'Lütfen masadaki QR kodu yeniden okutun.', 'metin' => '',
+            'cevap' => 'Bağlantınız yenilenmeli; lütfen masadaki QR kodu yeniden okutun.'], 403);
+    }
 }
 Route::get('/m/{token}', function ($token) {
     _masaQrEnsure();
     $masa = DB::table('masalar')->where('qr_token', $token)->first();
-    if (!$masa) abort(404);
+    if (!$masa || !empty($masa->arsiv)) abort(404); // arşivlenmiş masanın eski QR'ı açılmaz
     return _masaView($masa);
 });
 // Kurulum: tum masalara token
@@ -6507,8 +6521,9 @@ Route::get('/masa/{id}/asistan', function ($id) {
 
 // Musteri sorusu -> MusteriAsistan (menu/oneri/kalip/garson)
 Route::post('/api/qr/asistan', function (Request $r) {
+    if ($_g = _qrKapiZorunlu($r)) return $_g; // masa + QR anahtarı şart (kota/başka restoran koruması)
     $masa = DB::table('masalar')->find((int) $r->masa);
-    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    $subeId = $masa->sube_id;
     $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
     $kodlar = _qrDilKodlari();
     if (!isset($kodlar[$dil])) $dil = 'tr';
@@ -6516,7 +6531,9 @@ Route::post('/api/qr/asistan', function (Request $r) {
     $soru = (string) $r->soru;
     // COK DILLI: yabanci soru -> Turkce (motor Turkce calisir); cevap -> tekrar o dile.
     if ($dil !== 'tr' && $soru !== '') $soru = _qrCevir($soru, 'tr', $dil);
-    $res = $a->cevapla($soru, (string) $r->input('baglam', ''));
+    // KARŞILAMA: ilk açılışta hoş geldin + öne çıkan/en çok tercih edilen yemekler (kartlarla)
+    $res = $r->boolean('karsila') ? $a->karsila((string) (DB::table('subeler')->where('id', $subeId)->value('ad') ?? ''))
+        : $a->cevapla($soru, (string) $r->input('baglam', ''));
     if ($dil !== 'tr' && is_array($res)) {
         $parts = [(string) ($res['cevap'] ?? '')];
         $idx = [];
@@ -6662,7 +6679,17 @@ if (!function_exists('_qrMenuCevir')) {
                 });
             }
             $c = DB::table('qr_menu_ceviri')->where('sube_id', $subeId)->where('dil', $dil)->where('hash', $hash)->value('icerik');
-            if ($c) { $d = json_decode($c, true); if (is_array($d)) return $d; }
+            if ($c) {
+                // Önbellekten YALNIZ çeviri metinleri alınır; fiyat / tükendi / etiket her zaman güncel menüden gelir
+                $d = json_decode($c, true);
+                if (is_array($d)) {
+                    foreach ($harita as $h) {
+                        if ($h[0] === 'k') { if (isset($d[$h[1]][$h[2]])) $kategoriler[$h[1]][$h[2]] = $d[$h[1]][$h[2]]; }
+                        elseif (isset($d[$h[1]]['kartlar'][$h[2]][$h[3]])) $kategoriler[$h[1]]['kartlar'][$h[2]][$h[3]] = $d[$h[1]]['kartlar'][$h[2]][$h[3]];
+                    }
+                    return $kategoriler;
+                }
+            }
         } catch (\Throwable $e) {
         }
         $cevrilen = [];
@@ -6705,6 +6732,7 @@ if (!function_exists('_sttTabloEnsure')) {
 // Her cihazda (iPhone dahil) deterministik calisir; tarayici Web Speech API kirilganligi biter.
 // MALIYET TAVANI: gunluk sube + masa limiti; asilinca Google'a HIC gitmez (ucret YOK), sesli->yaziya duser.
 Route::post('/api/qr/stt', function (Request $r) {
+    if ($_g = _qrKapiZorunlu($r)) return $_g; // masa + QR anahtarı şart (STT kotası anahtarsız tüketilemez)
     $key = (string) config('services.google_tts.key', '');
     if ($key === '') return response()->json(['metin' => '', 'hata' => 'stt_anahtar_yok'], 200);
     if (!$r->hasFile('ses')) return response()->json(['metin' => '', 'hata' => 'ses_yok'], 200);
@@ -6912,7 +6940,9 @@ Route::post('/one-cikanlar-kaydet', function (Request $r) {
 // Musteri kendi basina TUM menuyu inceler (sesli asistan kapali)
 Route::get('/api/qr/menu-tam', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
-    $subeId = $masa ? $masa->sube_id : DB::table('subeler')->value('id');
+    if (!$masa) return response()->json(['ok' => 0, 'kategoriler' => [], 'hata' => 'Masa bulunamadı'], 404); // başka restoranın menüsüne düşülmez
+    $subeId = $masa->sube_id;
+    _onOdemeTerkTemizle($masa->id); // ön ödemede terk edilmiş sepet yeni müşteriye görünmesin
     $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
     $kodlar = _qrDilKodlari();
     if (!isset($kodlar[$dil])) $dil = 'tr';
@@ -6922,6 +6952,7 @@ Route::get('/api/qr/menu-tam', function (Request $r) {
     }
     if (is_array($res)) {
         $res['odeme_modu'] = _odemeModu($subeId, $masa ? $masa->id : null);
+        $res['odeme'] = _qrOdemeAyar($subeId); // işletmenin açtığı ödeme yolları: online / kasada (müşteri ekranı butonları buna göre)
         // "Masa X'ten taşındı" rozeti: bu masanin acik adisyonu baska masadan tasindiysa kaynagi goster
         if ($masa && Schema::hasTable('adisyon_masa_loglari')) {
             $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
@@ -7137,32 +7168,42 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     $onOdeme = _odemeModu($masa->sube_id, $masa->id) === 'on_odeme'; // ON ODEME (masa bolgesine gore): siparis ODENENE KADAR mutfaga DUSMEZ (kacak yok)
     $kalemler = json_decode((string) $r->kalemler, true);
     if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Sepet boş'];
-    // Acik adisyon bul, yoksa olustur (kanal=qr)
-    $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
-    if (!$adId) {
-        $adId = DB::table('adisyonlar')->insertGetId([
-            'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'kanal' => 'qr', 'misafir_sayisi' => 1, 'durum' => 'acik',
-            'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0, 'acilis' => now(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
-    }
-    $eklenen = 0;
+    // Önce ürünleri doğrula (tükenen / satıştan kaldırılan / başka restoranın ürünü eklenmez); geçerli ürün yoksa boş adisyon AÇILMAZ
+    $gecerli = [];
     $tukendi = [];
-    $yeniIds = [];
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $masa->sube_id)->first();
         if (!$u) continue;
-        if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
-        $yeniIds[] = DB::table('adisyon_kalemleri')->insertGetId([
-            'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
-            'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
-            'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => $onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş',
-            'gonderim_zamani' => $onOdeme ? null : now(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $eklenen++;
+        if ($u->tukendi || (isset($u->aktif) && !(int) $u->aktif)) { $tukendi[] = $u->ad; continue; }
+        $gecerli[] = [$u, $adet];
     }
-    if ($eklenen === 0) return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Geçerli ürün eklenemedi'];
+    if (!$gecerli) return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Geçerli ürün eklenemedi', 'tukendi' => $tukendi];
+    _onOdemeTerkTemizle($masa->id);
+    $simdi = now(); // tek gönderim = tek tur (dakika sınırında iki tura bölünmesin)
+    // Aynı masadan iki telefon aynı anda ilk siparişi verirse TEK açık adisyon (masa satırı kilitli)
+    [$adId, $yeniIds] = DB::transaction(function () use ($masa, $gecerli, $onOdeme, $simdi) {
+        DB::table('masalar')->where('id', $masa->id)->lockForUpdate()->first();
+        $adId = optional(_qrAcikAdisyon($masa->id))->id;
+        if (!$adId) {
+            $adId = DB::table('adisyonlar')->insertGetId([
+                'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'kanal' => 'qr', 'misafir_sayisi' => 1, 'durum' => 'acik',
+                'ara_toplam' => 0, 'indirim' => 0, 'ikram' => 0, 'toplam' => 0, 'acilis' => $simdi, 'created_at' => $simdi, 'updated_at' => $simdi,
+            ]);
+        }
+        $ids = [];
+        foreach ($gecerli as [$u, $adet]) {
+            $ids[] = DB::table('adisyon_kalemleri')->insertGetId([
+                'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
+                'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
+                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => $onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş',
+                'gonderim_zamani' => $onOdeme ? null : $simdi, 'created_at' => $simdi, 'updated_at' => $simdi,
+            ]);
+        }
+        return [$adId, $ids];
+    });
+    $eklenen = count($yeniIds);
     $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')->sum('tutar');
     $ad = DB::table('adisyonlar')->find($adId);
     $toplam = max(0, $ara - (float) $ad->indirim - (float) $ad->ikram);
@@ -7189,18 +7230,25 @@ Route::get('/api/qr/siparislerim', function (Request $r) {
     $masa = DB::table('masalar')->find((int) $r->masa);
     if (!$masa) return response()->json(['ok' => 0], 404);
     _odemeSplitEnsure();
-    $adId = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->value('id');
+    _onOdemeTerkTemizle($masa->id);
+    $adId = optional(_qrAcikAdisyon($masa->id))->id; // ödeme uçlarıyla AYNI adisyon
     if (!$adId) return ['ok' => 1, 'kalemler' => [], 'toplam' => 0, 'kalan' => 0];
     _odemeStaleRelease($adId);
-    $kalemler = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')
-        ->select('id', 'urun_adi', 'adet', 'birim_fiyat', 'tutar', 'durum', 'odeme_durum')->orderBy('id')->get()
-        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar, 'durum' => $k->durum, 'odeme_durum' => $k->odeme_durum ?? 'acik']);
-    $kalan = (float) $kalemler->where('odeme_durum', '!=', 'odendi')->sum('tutar');
-    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan];
+    $ham = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')->orderBy('id')->get();
+    // Kalan = ödenecek NET (ikram düşülmüş, iskonto dağıtılmış); ödeme uçlarıyla aynı hesap. Kalem başına 'net' müşteri ekranı için.
+    $a = DB::table('adisyonlar')->find($adId);
+    $oran = _qrNetOran($a);
+    $kalemler = $ham->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'fiyat' => (float) $k->birim_fiyat, 'tutar' => (float) $k->tutar,
+        'net' => (int) ($k->ikram ?? 0) === 1 ? 0.0 : round((float) $k->tutar * $oran, 2),
+        'durum' => $k->durum, 'odeme_durum' => $k->odeme_durum ?? 'acik', 'ikram' => (int) ($k->ikram ?? 0) === 1]);
+    $kalan = _qrOdenecekTutar($a, $ham->filter(fn ($k) => ($k->odeme_durum ?? 'acik') !== 'odendi')->values()->all());
+    return ['ok' => 1, 'kalemler' => $kalemler, 'toplam' => (float) $kalemler->sum('tutar'), 'kalan' => $kalan,
+        'indirim' => round((float) $a->indirim + (float) $a->ikram, 2)];
 });
 
 // TEST: bu masanin acik hesabini/siparislerini TEMIZLE (birikmis test siparisleri gitsin) -> /masa-sifirla/37
 Route::get('/masa-sifirla/{masa}', function ($masa) {
+    if ($g = _adminKapi(request())) return $g; // test ucu: yalnız Sistem Yönetimi (açık hesabı iptal eder)
     $m = DB::table('masalar')->find((int) $masa);
     if (!$m) abort(404);
     $adId = DB::table('adisyonlar')->where('masa_id', $m->id)->where('durum', 'acik')->value('id');
@@ -7333,46 +7381,64 @@ Route::get('/demo-doldur', function (Request $r) {
 });
 
 // QR masa: acik hesabi online odemeye baslat. kalemler=[id,...] verilirse SADECE o kalemler (kendi payi),
-// verilmezse TUM odenmemis kalemler (biri tum hesabi oder). Secilen kalemler rezerve edilir (ayni anda cifte odeme olmaz).
+// verilmezse TUM odenmemis kalemler (biri tum hesabi oder). Secilen kalemler ATOMIK rezerve edilir (iki telefon ayni kalemi odeyemez).
+// Tutar NET: ikram kalemler dusulur, adisyon iskontosu oransal dagitilir (routes/masa_akis.php _qrOdenecekTutar).
+if (!function_exists('_qrOdemeHazirla')) {
+    // Ortak hazırlık: masa + açık adisyon + seçili/kalan kalemler + net tutar. Hata varsa ['hata' => ...]
+    function _qrOdemeHazirla(Request $r)
+    {
+        if (function_exists('_odemeEnsure')) _odemeEnsure();
+        _odemeSplitEnsure();
+        $masa = DB::table('masalar')->find((int) $r->masa);
+        if (!$masa) return ['hata' => 'Masa bulunamadı'];
+        $a = _qrAcikAdisyon($masa->id);
+        if (!$a) return ['hata' => 'Açık hesabınız yok'];
+        _odemeStaleRelease($a->id); // takilan rezervasyonlari geri ac
+        $secili = null;
+        if ($r->filled('kalemler')) {
+            $dec = json_decode((string) $r->kalemler, true);
+            if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec)));
+        }
+        $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
+        if ($secili) $q->whereIn('id', $secili);
+        $kalemler = $q->get();
+        if ($kalemler->isEmpty()) {
+            $bekleyen = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('odeme_durum', 'beklemede')->exists();
+            return ['hata' => $secili ? 'Seçtiğiniz ürünler zaten ödenmiş ya da ödemesi başlatılmış'
+                : ($bekleyen ? 'Hesabın ödemesi başka bir telefondan ya da garsondan başlatıldı. Birkaç dakika içinde tamamlanmazsa yeniden deneyebilirsiniz.' : 'Ödenecek tutar yok')];
+        }
+        return ['masa' => $masa, 'a' => $a, 'kalemler' => $kalemler, 'tutar' => _qrOdenecekTutar($a, $kalemler->all())];
+    }
+    // Seçilen kalemlerin hepsi ikram: ödenecek tutar 0 → ödendi say, hesap bittiyse kapat
+    function _qrSifirTutarKapat($h)
+    {
+        DB::table('adisyon_kalemleri')->whereIn('id', $h['kalemler']->pluck('id')->all())->where('odeme_durum', 'acik')->update(['odeme_durum' => 'odendi']);
+        $kapandi = _qrKapanisKontrol($h['a']->id);
+        return ['ok' => 1, 'tutar' => 0, 'kapandi' => $kapandi, 'mesaj' => 'Seçtiğiniz ürünler ikram; ödenecek tutar yok. Afiyet olsun! 🎁'];
+    }
+}
 Route::post('/api/qr/ode-baslat', function (Request $r) {
     if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
-    if (function_exists('_odemeEnsure')) _odemeEnsure();
-    _odemeSplitEnsure();
-    $masa = DB::table('masalar')->find((int) $r->masa);
-    if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
-    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
-    if (!$a) return ['ok' => 0, 'hata' => 'Açık hesabınız yok'];
-    _odemeStaleRelease($a->id); // takilan rezervasyonlari geri ac
-
-    // Secili kalemler mi (kendi payi), tum kalan mi (biri hepsini oder)?
-    $secili = null;
-    if ($r->filled('kalemler')) {
-        $dec = json_decode((string) $r->kalemler, true);
-        if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec)));
-    }
-    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)
-        ->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
-    if ($secili) $q->whereIn('id', $secili);
-    $kalemler = $q->get();
-    if ($kalemler->isEmpty()) {
-        return ['ok' => 0, 'hata' => $secili ? 'Seçtiğiniz ürünler zaten ödenmiş ya da ödeme bekliyor' : 'Ödenecek tutar yok'];
-    }
-    $tutar = (float) $kalemler->sum('tutar');
-    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
-    $covIds = $kalemler->pluck('id')->all();
+    $h = _qrOdemeHazirla($r);
+    if (isset($h['hata'])) return ['ok' => 0, 'hata' => $h['hata']];
+    $a = $h['a'];
+    // İşletme online ödemeyi kapattıysa ya da online ödeme henüz tamamlanamıyorsa (sağlayıcı bağlı değil) başlatılmaz → kalemler kilitlenmez
+    if (!_qrOdemeAyar($a->sube_id)['online']) return ['ok' => 0, 'hata' => 'Bu işletmede online ödeme kapalı. Garsona / kasada ödeyebilirsiniz.'];
+    $tutar = $h['tutar'];
+    if ($tutar <= 0) return _qrSifirTutarKapat($h);
+    $covIds = $h['kalemler']->pluck('id')->all();
 
     // ONLINE ODEME INDIRIMI (+ kupon + urun bazli): en yuksek uygulanabilir indirim. Cekilecek tutar = net.
-    $klArr = $kalemler->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
+    $klArr = $h['kalemler']->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
     $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', ''), 'kalemler' => $klArr]);
-    $indirim = $ind ? (float) $ind['indirim'] : 0;
+    $indirim = $ind ? min((float) $ind['indirim'], $tutar) : 0;
     $net = max(0, round($tutar - $indirim, 2));
 
     $token = \Illuminate\Support\Str::random(30);
+    if (!_qrKalemRezerve($covIds, $token)) return ['ok' => 0, 'hata' => 'Bu ürünlerin ödemesi az önce başka bir telefondan başlatıldı. Siparişlerim ekranını yenileyin.'];
     DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
         'tutar' => $net, 'saglayici' => _odemeSaglayici($a->sube_id), 'durum' => 'bekliyor',
         'kalem_ids' => json_encode($covIds), 'indirim' => $indirim, 'indirim_kural_id' => $ind ? $ind['kural_id'] : null, 'created_at' => now()]);
-    // Rezerve: bu kalemleri 'beklemede' yap ki baskasi ayni anda odeyemesin
-    DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
 
     return ['ok' => 1, 'ode_url' => url('/ode/' . $token), 'tutar' => $net, 'brut' => $tutar,
         'indirim' => $indirim, 'indirim_ad' => $ind ? $ind['ad'] : null];
@@ -7381,69 +7447,58 @@ Route::post('/api/qr/ode-baslat', function (Request $r) {
 // QR masa: odeme oncesi indirim onizleme (online odemede uygulanacak indirimi + kupon gecerliligini gosterir)
 Route::post('/api/qr/indirim-onizle', function (Request $r) {
     if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
-    _odemeSplitEnsure();
-    $masa = DB::table('masalar')->find((int) $r->masa);
-    if (!$masa) return ['ok' => 0];
-    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
-    if (!$a) return ['ok' => 0];
-    $secili = null;
-    if ($r->filled('kalemler')) { $dec = json_decode((string) $r->kalemler, true); if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec))); }
-    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
-    if ($secili) $q->whereIn('id', $secili);
-    $kl = $q->get(['urun_id', 'tutar']);
-    $tutar = (float) $kl->sum('tutar');
-    $klArr = $kl->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
+    $h = _qrOdemeHazirla($r);
+    if (isset($h['hata'])) return ['ok' => 0];
+    $a = $h['a'];
+    $tutar = $h['tutar'];
+    $klArr = $h['kalemler']->map(fn ($k) => ['urun_id' => (int) $k->urun_id, 'tutar' => (float) $k->tutar])->all();
     $ind = _indirimUygula($a->sube_id, $tutar, ['yontem' => 'online', 'kanal' => 'qr', 'kupon' => (string) $r->input('kupon', ''), 'kalemler' => $klArr]);
-    $indirim = $ind ? (float) $ind['indirim'] : 0;
+    $indirim = $ind ? min((float) $ind['indirim'], $tutar) : 0;
     return ['ok' => 1, 'brut' => $tutar, 'indirim' => $indirim, 'net' => max(0, round($tutar - $indirim, 2)), 'ad' => $ind ? $ind['ad'] : null];
 });
 
-// QR masa: KASADA/GARSONDA ODE — secili kalemleri (veya tum kalani) dondurup garsona tutarli cagri dusurur.
+// QR masa: KASADA/GARSONDA ODE — secili kalemleri (veya tum kalani) ayirip garsona tutarli cagri + push dusurur.
 // Garson gelince NAKIT VEYA KART ile tahsil eder (kasa-tahsil). 4 kisilik masada biri nakit digeri kart odeyebilir.
 Route::post('/api/qr/kasa-ode', function (Request $r) {
     if ($_g = _qrKapi($r)) return $_g; // masanın QR anahtarı şart
-    if (function_exists('_odemeEnsure')) _odemeEnsure();
-    _odemeSplitEnsure();
-    $masa = DB::table('masalar')->find((int) $r->masa);
-    if (!$masa) return response()->json(['ok' => 0, 'hata' => 'Masa bulunamadı'], 404);
-    $a = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
-    if (!$a) return ['ok' => 0, 'hata' => 'Açık hesabınız yok'];
-    _odemeStaleRelease($a->id);
-
-    $secili = null;
-    if ($r->filled('kalemler')) {
-        $dec = json_decode((string) $r->kalemler, true);
-        if (is_array($dec)) $secili = array_values(array_filter(array_map('intval', $dec)));
-    }
-    $q = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)
-        ->where('durum', '!=', 'iptal')->where('odeme_durum', 'acik');
-    if ($secili) $q->whereIn('id', $secili);
-    $kalemler = $q->get();
-    if ($kalemler->isEmpty()) {
-        return ['ok' => 0, 'hata' => $secili ? 'Seçtiğiniz ürünler zaten ödenmiş ya da ödeme bekliyor' : 'Ödenecek tutar yok'];
-    }
-    $tutar = (float) $kalemler->sum('tutar');
-    if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Ödenecek tutar yok'];
-    $covIds = $kalemler->pluck('id')->all();
+    $h = _qrOdemeHazirla($r);
+    if (isset($h['hata'])) return ['ok' => 0, 'hata' => $h['hata']];
+    $a = $h['a'];
+    $masa = $h['masa'];
+    if (!_qrOdemeAyar($a->sube_id)['kasa']) return ['ok' => 0, 'hata' => 'Bu işletmede ödeme yalnız online alınıyor.'];
+    $tutar = $h['tutar'];
+    if ($tutar <= 0) return _qrSifirTutarKapat($h);
+    $covIds = $h['kalemler']->pluck('id')->all();
 
     $token = \Illuminate\Support\Str::random(30);
+    if (!_qrKalemRezerve($covIds, $token)) return ['ok' => 0, 'hata' => 'Bu ürünlerin ödemesi az önce başka bir telefondan başlatıldı. Siparişlerim ekranını yenileyin.'];
     DB::table('odeme_islemleri')->insert(['sube_id' => $a->sube_id, 'adisyon_id' => $a->id, 'token' => $token,
         'tutar' => $tutar, 'saglayici' => 'kasa', 'durum' => 'bekliyor', 'kalem_ids' => json_encode($covIds), 'created_at' => now()]);
-    DB::table('adisyon_kalemleri')->whereIn('id', $covIds)->update(['odeme_durum' => 'beklemede', 'odeme_token' => $token]);
 
-    // Garsona tutarli odeme cagrisi
+    // Garsona tutarli odeme cagrisi + telefonuna bildirim (masanin garsonu; atama yoksa tum garson/kasa)
     _masaCagriEnsure();
     DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
         'tip' => 'odeme', 'durum' => 'bekliyor', 'tutar' => $tutar, 'odeme_token' => $token, 'created_at' => now()]);
+    try {
+        $masaAd = $masa->ad ?: ('Masa ' . $masa->id);
+        $baslik = '💳 ' . $masaAd . ' ödeme yapmak istiyor';
+        $govde = number_format($tutar, 2, ',', '.') . ' TL · nakit ya da kartla tahsil edin.';
+        $data = ['tur' => 'odeme_cagri', 'masa_id' => (int) $masa->id, 'adisyon_id' => (int) $a->id];
+        $hedef = _masaGarsonlari($masa->sube_id, (int) $masa->id, $masa->bolge_id ?? null, $a->acan_personel_id ?? null);
+        if ($hedef) _fcmPersoneleGonder((int) $masa->sube_id, $hedef, $baslik, $govde, $data);
+        else _fcmSubeyeGonder((int) $masa->sube_id, $baslik, $govde, $data, ['garson', 'kasa', 'komi', 'sef_garson']);
+    } catch (\Throwable $e) {}
 
     return ['ok' => 1, 'tutar' => $tutar,
         'mesaj' => number_format($tutar, 0, ',', '.') . ' TL için garsonunuz geliyor — nakit ya da kartla ödeyebilirsiniz. 🙌'];
 });
 
 // GARSON EKRANI: kasada/garsonda odemeyi SEÇİLEN YÖNTEMLE tahsil et (nakit -> kasaya yazilir). Kalemleri odendi yapar, hepsi bitince masa kapanir.
+// ATOMİK: iki cihaz aynı anda basarsa tek tahsilat yazılır; kasadan kapatılmış hesaba ikinci ödeme yazılmaz.
 Route::post('/api/qr/kasa-tahsil', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
+    if (!_restoYetkiVar($p, 'adisyon_kapat')) return ['ok' => 0, 'hata' => 'Ödeme alma yetkiniz yok.'];
     _odemeSplitEnsure();
     $tip = in_array($r->odeme_tip, ['nakit', 'kredi', 'yemek_karti'], true) ? $r->odeme_tip : 'nakit';
     $token = (string) $r->odeme_token;
@@ -7456,26 +7511,27 @@ Route::post('/api/qr/kasa-tahsil', function (Request $r) {
     if ($i->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Bu ödeme talebi zaman aşımına uğramış; müşteri tekrar başlatmalı.'];
 
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
-    if ($a) {
-        DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $i->tutar, 'created_at' => now()]);
-        if ($tip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $i->tutar, 'QR masa nakit tahsilat · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
-        $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
-        if (is_array($kids) && $kids) {
-            DB::table('adisyon_kalemleri')->whereIn('id', $kids)->where('odeme_token', $token)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
-        } else {
-            DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
-        }
-        _onOdemePromote($a, $kids); // ON ODEME: garson tahsil edince de kalemler mutfaga dussun
-        $acikKalan = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->count();
-        if ($acikKalan === 0 && $a->durum !== 'odendi') {
-            DB::table('adisyonlar')->where('id', $a->id)->update(['durum' => 'odendi', 'kapanis' => now(), 'updated_at' => now()]);
-            if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
-        }
+    if (!$a || $a->durum !== 'acik') { // hesap kasadan kapatılmış: ikinci tahsilat yazma, eski çağrıyı kapat
+        DB::table('odeme_islemleri')->where('id', $i->id)->where('durum', 'bekliyor')->update(['durum' => 'iptal']);
+        DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']);
+        return ['ok' => 0, 'hata' => 'Bu hesap zaten kapatılmış; tekrar tahsilat yazılmadı.'];
     }
-    DB::table('odeme_islemleri')->where('id', $i->id)->update(['durum' => 'odendi']);
+    if (!DB::table('odeme_islemleri')->where('id', $i->id)->where('durum', 'bekliyor')->update(['durum' => 'odendi'])) {
+        return ['ok' => 1, 'mesaj' => 'Zaten tahsil edilmiş']; // aynı anda ikinci cihaz
+    }
+    DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $i->tutar, 'personel_id' => $p->id, 'created_at' => now()]);
+    if ($tip === 'nakit' && function_exists('_kasaYaz')) _kasaYaz($a->sube_id, 'satis', 'giris', $i->tutar, 'QR masa nakit tahsilat · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
+    $kids = (isset($i->kalem_ids) && $i->kalem_ids) ? json_decode($i->kalem_ids, true) : null;
+    if (is_array($kids) && $kids) {
+        DB::table('adisyon_kalemleri')->whereIn('id', $kids)->where('odeme_token', $token)->update(['odeme_durum' => 'odendi', 'odeme_token' => null, 'updated_at' => now()]);
+    } else {
+        DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('durum', '!=', 'iptal')->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
+    }
+    _onOdemePromote($a, $kids); // ON ODEME: garson tahsil edince de kalemler mutfaga dussun
+    $kapandi = _qrKapanisKontrol($a->id, $p->id); // hepsi ödendiyse: kapanış + stok/CRM/mali fiş + masa boş + çağrı temizliği
     DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']);
     $etiket = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı'][$tip];
-    return ['ok' => 1, 'mesaj' => number_format((float) $i->tutar, 0, ',', '.') . ' TL ' . $etiket . ' ile tahsil edildi.'];
+    return ['ok' => 1, 'kapandi' => $kapandi, 'mesaj' => number_format((float) $i->tutar, 2, ',', '.') . ' TL ' . $etiket . ' ile tahsil edildi.' . ($kapandi ? ' Hesap kapandı, masa boşaldı.' : '')];
 });
 
 // Sunucu TTS (Google Cloud, kaliteli ERKEK ses) -> MP3 URL (onbellekli). Anahtar yoksa basarili=false.
@@ -16234,8 +16290,9 @@ Route::get('/api/servis/akis', function (Request $r) {
         $hq = DB::table('adisyon_kalemleri')
             ->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-            ->where('adisyonlar.sube_id', $sube)->where('adisyonlar.durum', 'acik')
+            ->where('adisyonlar.sube_id', $sube)
             ->where('adisyon_kalemleri.durum', 'hazir');
+        _kdsAdisyonKosulu($hq); // ödenip kapanmış ama servis bekleyen kalem de garsona görünsün
         if ($masaSet !== null) $hq->whereIn('adisyonlar.masa_id', $masaSet);
         $hazir = $hq->orderBy('adisyon_kalemleri.hazir_zamani')
             ->get(['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.hazir_zamani', 'adisyonlar.id as adisyon_id', 'adisyonlar.masa_id', 'masalar.ad as masa']);
@@ -16929,6 +16986,10 @@ if (!function_exists('_kalemServisIsaretle')) {
             if ($p) $upd['servis_personel_id'] = $p->id;
         } catch (\Throwable $e) {}
         DB::table('adisyon_kalemleri')->where('id', $kalemId)->where('durum', 'hazir')->update($upd);
+        if (function_exists('_servisHazirKapatKontrol')) { // masada servis bekleyen kalmadıysa "servise hazır" çağrısı kapansın
+            $masaId = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')->where('adisyon_kalemleri.id', $kalemId)->value('adisyonlar.masa_id');
+            if ($masaId) _servisHazirKapatKontrol([$masaId]);
+        }
     }
 }
 // ============================================================================
@@ -27869,6 +27930,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
         _restoStokTuket($a->id, $p->sube_id, $p->id); // reçeteden otomatik stok düşümü (güvenli, bozmaz)
         _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
+        _adisyonKapanisTemizle($a->id); // müşterinin başlattığı QR/online ödeme iptal, masadaki bekleyen çağrılar kapanır
         return ['ok' => 1, 'mesaj' => $mesaj];
     }
 
@@ -27889,10 +27951,11 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
         $kids = array_values(array_filter(array_map('intval', explode(',', (string) $r->kalem_idler))));
         if (!empty($kids)) {
             _odemeSplitEnsure();
+            // Müşterinin QR'dan ödemesini başlattığı (beklemede) kalem kasadan ikinci kez tahsil edilmez
             $secili = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('id', $kids)
-                ->where('durum', '!=', 'iptal')->where('odeme_durum', '!=', 'odendi')->get();
+                ->where('durum', '!=', 'iptal')->whereNotIn('odeme_durum', ['odendi', 'beklemede'])->get();
             $tutar = (float) $secili->sum('tutar');
-            if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Seçili kalemler zaten ödenmiş veya bulunamadı.'];
+            if ($tutar <= 0) return ['ok' => 0, 'hata' => 'Seçili kalemler zaten ödenmiş, müşteri tarafından ödeniyor ya da bulunamadı.'];
             DB::table('odemeler')->insert(['adisyon_id' => $a->id, 'tip' => $tip, 'tutar' => $tutar, 'marka' => $marka, 'kalem_ids' => json_encode($secili->pluck('id')->all()), 'personel_id' => $p->id, 'created_at' => now()]);
             DB::table('adisyon_kalemleri')->whereIn('id', $secili->pluck('id')->all())->update(['odeme_durum' => 'odendi', 'updated_at' => now()]);
             if ($tip === 'nakit') _kasaYaz($p->sube_id, 'satis', 'giris', $tutar, 'Nakit (kalem böl) · adisyon #' . $a->id, 'adisyon', $a->id, $p->id);
@@ -27902,6 +27965,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
                 if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
                 _restoStokTuket($a->id, $p->sube_id, $p->id);
                 _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
+                _adisyonKapanisTemizle($a->id);
                 return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Tüm kalemler ödendi, masa kapatıldı.'];
             }
             return ['ok' => 1, 'kapandi' => false, 'kalan' => $kalan, 'toplam' => (float) $a->toplam,
@@ -27920,6 +27984,7 @@ Route::post('/api/patron/adisyon-islem', function (Request $r) {
             if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
             _restoStokTuket($a->id, $p->sube_id, $p->id);
             _adisyonKapanisIsle($a->id); // CRM sadakat + mali fiş
+            _adisyonKapanisTemizle($a->id);
             return ['ok' => 1, 'kapandi' => true, 'kalan' => 0, 'toplam' => (float) $a->toplam, 'mesaj' => 'Ödeme tamamlandı, masa kapatıldı.'];
         }
         return ['ok' => 1, 'kapandi' => false, 'kalan' => $yeniKalan, 'toplam' => (float) $a->toplam,
@@ -28454,7 +28519,10 @@ Route::get('/api/patron/odeme-modu', function (Request $r) {
         'mod' => _odemeModu($p->sube_id),
         'kacak_aktif' => (int) ($s->kacak_aktif ?? 1) === 1,
         'kacak_dk' => (int) ($s->kacak_uyari_dk ?? 90),
-        'bolgeler' => $bolgeler];
+        'bolgeler' => $bolgeler,
+        // QR masada müşteriye sunulan ödeme yolları (online yalnız gerçekten tamamlanabiliyorsa müşteriye görünür)
+        'qr_online' => _qrOdemeAyar($p->sube_id)['online_secili'], 'qr_kasa' => (bool) (DB::table('odeme_ayarlari')->where('sube_id', $p->sube_id)->value('qr_kasa') ?? 1),
+        'qr_online_calisir' => _qrOdemeAyar($p->sube_id)['online']];
 });
 Route::post('/api/patron/odeme-modu-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
@@ -28467,6 +28535,16 @@ Route::post('/api/patron/odeme-modu-kaydet', function (Request $r) {
         'kacak_uyari_dk' => $dk,
         'kacak_aktif' => in_array((string) $r->kacak_aktif, ['1', 'true', 'on'], true) ? 1 : 0,
     ]);
+    // QR masada ödeme yolları (gönderildiyse): online / kasada-garsona
+    if ($r->has('qr_online') || $r->has('qr_kasa')) {
+        _qrOdemeAyar($p->sube_id); // kolonlar
+        $ev = fn ($k) => in_array((string) $r->input($k), ['1', 'true', 'on'], true) ? 1 : 0;
+        $qr = [];
+        if ($r->has('qr_online')) $qr['qr_online'] = $ev('qr_online');
+        if ($r->has('qr_kasa')) $qr['qr_kasa'] = $ev('qr_kasa');
+        if (!DB::table('odeme_ayarlari')->where('sube_id', $p->sube_id)->exists()) DB::table('odeme_ayarlari')->insert(['sube_id' => $p->sube_id, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('odeme_ayarlari')->where('sube_id', $p->sube_id)->update($qr + ['updated_at' => now()]);
+    }
     // Bolge bazli override (mod bos/gecersiz -> null = restoran varsayilani)
     $bolgeler = json_decode((string) $r->input('bolgeler', '[]'), true);
     if (is_array($bolgeler)) {
@@ -28550,6 +28628,11 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         }
     }
     $id = (int) $r->input('id');
+    // Mutfak/bar istasyonu: seçildiyse o; yeni üründe boşsa adından tahmin (içecek → bar ekranına düşsün)
+    $istIn = (string) $r->input('istasyon', '');
+    if ($istIn !== '' && isset(_mutfakIstasyonlar()[$istIn])) $data['istasyon'] = $istIn;
+    elseif (!$id && Schema::hasColumn('urunler', 'istasyon')) $data['istasyon'] = _mutfakIstasyonTahmin(' ' . $ad);
+    cache()->forget('kds_bar_urun_' . (int) $p->sube_id);
     if ($id) {
         if (!DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
         DB::table('urunler')->where('id', $id)->update($data);
@@ -28778,10 +28861,11 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
     $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
-        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')
+        ->where('adisyonlar.sube_id', $p->sube_id)
         ->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor']);   // Yeni + Hazirlaniyor
+    _kdsAdisyonKosulu($q); // açık + ödenip kapanmış ama mutfağı bitmemiş (ön ödeme / yemekten önce ödeme) — sipariş kaybolmasın
     if ($urunIds !== null) $q->whereIn('adisyon_kalemleri.urun_id', $urunIds); // istasyon çalışanı yalnız kendi ürünleri
-    $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+    $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
         'adisyon_kalemleri.kur', 'adisyon_kalemleri.gonderim_zamani', 'adisyon_kalemleri.durum', 'adisyon_kalemleri.basla_zamani',
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $istasyonVar ? DB::raw("COALESCE(urunler.istasyon,'mutfak') as istasyon") : DB::raw("'mutfak' as istasyon");
@@ -28789,12 +28873,33 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
     // Ikincil 'id' sirasi -> ayni gonderim_zamani'ndaki kalemler her yenilemede AYNI sirada (yer degistirmez)
     $rows = $q->select($sel)->orderBy('adisyon_kalemleri.gonderim_zamani')->orderBy('adisyon_kalemleri.id')->get();
 
+    // İstasyon: 'hepsi' = mutfak (bar istasyonu kuruluysa içecekler HARİÇ), 'bar' = yalnız içecekler, 'tum' = hepsi birden
+    $filtre = ($filtre === null || $filtre === '') ? 'hepsi' : $filtre;
+    $barIds = array_flip(_kdsBarUrunIds($p->sube_id));
+    $barVar = _kdsBarVar($p->sube_id);
+    $turAyri = request()->boolean('tur_ayri'); // yeni ekranlar: 2. tur AYRI fiş; eski uygulama sürümleri adisyon başına tek kart bekler
+    // ===== TUR (coursing): adisyonun kaçıncı gönderim turu (HAZIR/servis olanlar DAHİL) — 2. tur AYRI fiş =====
+    $turMap = [];
+    $aidler = $rows->pluck('adisyon_id')->unique()->values()->all();
+    if ($aidler) {
+        $turRows = DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->whereNotNull('gonderim_zamani')->where('durum', '!=', 'iptal')
+            ->select('adisyon_id', DB::raw("DATE_FORMAT(gonderim_zamani,'%Y-%m-%d %H:%i') as gz"))->distinct()->get();
+        $byAid = [];
+        foreach ($turRows as $tr) $byAid[$tr->adisyon_id][$tr->gz] = true;
+        foreach ($byAid as $aid => $gzSet) {
+            $gzler = array_keys($gzSet);
+            sort($gzler); // kronolojik -> 1. tur en eski
+            foreach ($gzler as $i => $gz) $turMap[$aid][$gz] = $i + 1;
+        }
+    }
+
     $etiket = _mutfakIstasyonlar();
     $gruplu = [];
     $istSay = [];
     $toplu = [];
     foreach ($rows as $k) {
         $ist = $k->istasyon ?: 'mutfak';
+        if (isset($barIds[(int) $k->urun_id])) $ist = 'bar'; // istasyonu girilmemiş içecek (ad/kategoriden)
         $dkK = $k->gonderim_zamani ? (int) \Carbon\Carbon::parse($k->gonderim_zamani)->diffInMinutes($simdi) : 0;
         $hzG = $k->basla_zamani ? (int) \Carbon\Carbon::parse($k->basla_zamani)->diffInMinutes($simdi) : 0; // BASLADIKTAN beri gecen dk
         $hedef = max(1, (int) $k->hedef);
@@ -28805,53 +28910,35 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
         $toplu[$tkey]['adet'] += $adet;
         $toplu[$tkey]['dk'] = max($toplu[$tkey]['dk'], $dkK);
         $istSay[$ist] = ($istSay[$ist] ?? 0) + $adet;
-        if ($filtre && $filtre !== 'hepsi' && $ist !== $filtre) continue;
+        if ($filtre === 'hepsi') { if ($barVar && $ist === 'bar') continue; }
+        elseif ($filtre !== 'tum' && $ist !== $filtre) continue;
         $aid = $k->adisyon_id;
-        if (!isset($gruplu[$aid])) {
-            $gruplu[$aid] = ['adisyon_id' => $aid, 'masa' => $k->masa ?? ucfirst((string) $k->kanal), 'kanal' => (string) $k->kanal,
+        $gz = $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->format('Y-m-d H:i') : null;
+        $tur = ($gz !== null && isset($turMap[$aid][$gz])) ? $turMap[$aid][$gz] : 1;
+        $key = $turAyri ? $aid . '-' . $tur : (string) $aid;
+        if (!isset($gruplu[$key])) {
+            $gruplu[$key] = ['adisyon_id' => $aid, 'kart' => $key, 'tur' => $tur, 'masa' => $k->masa ?? ucfirst((string) $k->kanal), 'kanal' => (string) $k->kanal,
                 'masali' => ($k->masa !== null),   // gercek masa mi, yoksa paket/gel-al/online mi
-                'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'hazirlik_gecen' => 0, 'basladi' => false, 'kalemler' => []];
+                'gecen' => $dkK, 'hedef' => $hedef, 'kalan' => $kalan, 'hazirlik_gecen' => 0, 'basladi' => false, 'kalem_ids' => [], 'kalemler' => []];
         }
-        $gruplu[$aid]['gecen'] = max($gruplu[$aid]['gecen'], $dkK);
-        $gruplu[$aid]['hedef'] = max($gruplu[$aid]['hedef'], $hedef);
-        $gruplu[$aid]['kalan'] = min($gruplu[$aid]['kalan'], $kalan);   // en yavas kalem = en kritik
-        $gruplu[$aid]['hazirlik_gecen'] = max($gruplu[$aid]['hazirlik_gecen'], $hzG);
-        if ($k->durum === 'hazirlaniyor') $gruplu[$aid]['basladi'] = true;
-        $gruplu[$aid]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum,
-            'gz' => $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->format('Y-m-d H:i') : null];
+        $gruplu[$key]['tur'] = min($gruplu[$key]['tur'], $tur);
+        $gruplu[$key]['gecen'] = max($gruplu[$key]['gecen'], $dkK);
+        $gruplu[$key]['hedef'] = max($gruplu[$key]['hedef'], $hedef);
+        $gruplu[$key]['kalan'] = min($gruplu[$key]['kalan'], $kalan);   // en yavas kalem = en kritik
+        $gruplu[$key]['hazirlik_gecen'] = max($gruplu[$key]['hazirlik_gecen'], $hzG);
+        if ($k->durum === 'hazirlaniyor') $gruplu[$key]['basladi'] = true;
+        $gruplu[$key]['kalem_ids'][] = (int) $k->id; // Başla/Hazır yalnız bu fişin kalemlerine uygulanır
+        $gruplu[$key]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum,
+            'gz' => $gz, 'tur' => $tur];
     }
-    foreach ($gruplu as $aid => $g) {
-        $gruplu[$aid]['dk'] = $g['gecen'];                        // geriye donuk uyum
-        $gruplu[$aid]['renk'] = _kdsRenk($g['kalan'], $g['hedef']);
-        $gruplu[$aid]['asama'] = $g['basladi'] ? 'hazirlaniyor' : 'yeni';
+    foreach ($gruplu as $key => $g) {
+        $gruplu[$key]['dk'] = $g['gecen'];                        // geriye donuk uyum
+        $gruplu[$key]['renk'] = _kdsRenk($g['kalan'], $g['hedef']);
+        $gruplu[$key]['asama'] = $g['basladi'] ? 'hazirlaniyor' : 'yeni';
         // Basladiktan SONRA hazirlik hedefini de astiysa -> KRITIK (frontend: tam kirmizi yanip soner)
-        $gruplu[$aid]['hazirlik_asti'] = $g['basladi'] && (($g['hazirlik_gecen'] ?? 0) >= $g['hedef']);
-    }
-    // ===== TUR (coursing): her adisyonun kacinci gonderim turu oldugunu belirle (HAZIR olanlar DAHIL) =====
-    // Boylece 1. tur servis olup gitse bile sonraki fis "2. Tur" der; ayni kartta turlar ayracla gorunur.
-    $aidler = array_keys($gruplu);
-    if ($aidler) {
-        $turRows = DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->whereNotNull('gonderim_zamani')
-            ->select('adisyon_id', DB::raw("DATE_FORMAT(gonderim_zamani,'%Y-%m-%d %H:%i') as gz"))->distinct()->get();
-        $byAid = [];
-        foreach ($turRows as $tr) $byAid[$tr->adisyon_id][$tr->gz] = true;
-        $turMap = [];
-        foreach ($byAid as $aid => $gzSet) {
-            $gzler = array_keys($gzSet);
-            sort($gzler); // kronolojik -> 1. tur en eski
-            foreach ($gzler as $i => $gz) $turMap[$aid][$gz] = $i + 1;
-        }
-        foreach ($gruplu as $aid => &$g) {
-            $g['tur_sayisi'] = isset($turMap[$aid]) ? count($turMap[$aid]) : 1;
-            $minTur = null;
-            foreach ($g['kalemler'] as &$k) {
-                $k['tur'] = ($k['gz'] !== null && isset($turMap[$aid][$k['gz']])) ? $turMap[$aid][$k['gz']] : 1;
-                $minTur = $minTur === null ? $k['tur'] : min($minTur, $k['tur']);
-            }
-            unset($k);
-            $g['min_tur'] = $minTur ?? 1; // karttaki en dusuk tur (>1 ise bu fis bir "ek tur" = follow-up)
-        }
-        unset($g);
+        $gruplu[$key]['hazirlik_asti'] = $g['basladi'] && (($g['hazirlik_gecen'] ?? 0) >= $g['hedef']);
+        $gruplu[$key]['tur_sayisi'] = isset($turMap[$g['adisyon_id']]) ? count($turMap[$g['adisyon_id']]) : 1;
+        $gruplu[$key]['min_tur'] = $g['tur']; // >1 ise bu fiş bir "ek tur" (follow-up)
     }
     $istasyonlar = [];
     foreach ($etiket as $kod => $ad) {
@@ -28859,7 +28946,9 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
     }
     $topluArr = array_values($toplu);
     // Istasyon filtresi TOPLU listeye de uygulansin (secili cip -> sadece o istasyon urunleri)
-    if ($filtre && $filtre !== 'hepsi') {
+    if ($filtre === 'hepsi') {
+        if ($barVar) $topluArr = array_values(array_filter($topluArr, fn ($t) => $t['istasyon'] !== 'bar'));
+    } elseif ($filtre !== 'tum') {
         $topluArr = array_values(array_filter($topluArr, fn ($t) => $t['istasyon'] === $filtre));
     }
     usort($topluArr, fn ($a, $b) => $b['dk'] <=> $a['dk']);
@@ -28867,9 +28956,9 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
     unset($t);
     $siparisler = array_values($gruplu);
     // EN ESKI (en cok bekleyen) EN SOLDA; yeni gelenler saga eklenir. Esit sureliler icin
-    // adisyon_id tiebreaker -> PHP 7.4 kararsiz usort'ta sira her yenilemede OYNAMASIN (sabit).
-    usort($siparisler, fn ($a, $b) => ($b['dk'] <=> $a['dk']) ?: ($a['adisyon_id'] <=> $b['adisyon_id']));
-    return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar,
+    // adisyon_id + tur tiebreaker -> PHP 7.4 kararsiz usort'ta sira her yenilemede OYNAMASIN (sabit).
+    usort($siparisler, fn ($a, $b) => ($b['dk'] <=> $a['dk']) ?: ($a['adisyon_id'] <=> $b['adisyon_id']) ?: ($a['tur'] <=> $b['tur']));
+    return ['ok' => 1, 'siparisler' => $siparisler, 'istasyonlar' => $istasyonlar, 'istasyon_aktif' => $filtre, 'bar_ayri' => $barVar,
         'toplu' => $topluArr, 'toplam_bekleyen' => (int) round(array_sum($istSay)),
         'uyari' => $urunIds === [] ? 'İstasyonuna bağlı menü ürünü yok. Sipariş görmen gerekiyorsa mutfak şefine ya da müdüre bildir.' : null];
 }
@@ -28877,15 +28966,15 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
 Route::get('/api/mutfak', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    return _mutfakVeri($p->sube_id, $r->query('istasyon'), _mutfakIstasyonUrunleri($p));
+    return _mutfakVeri($p->sube_id, _kdsIstasyonCoz($p, $r->query('istasyon')), _mutfakIstasyonUrunleri($p));
 });
 // ===== WEB KDS (panel oturumu) — Flutter mutfak_screen ile AYNI veri/aksiyonlar =====
-Route::get('/mutfak/veri', fn (Request $r) => _mutfakVeri(_aktifSubeId(), $r->query('istasyon'), _mutfakIstasyonUrunleri(_posPersonel())));
+Route::get('/mutfak/veri', fn (Request $r) => _mutfakVeri(_aktifSubeId(), _kdsIstasyonCoz(_posPersonel(), $r->query('istasyon')), _mutfakIstasyonUrunleri(_posPersonel())));
 Route::get('/mutfak/servise-veri', function () {
     $sid = _aktifSubeId();
-    $rows = _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+    $rows = _kdsAdisyonKosulu(_mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-        ->where('adisyonlar.sube_id', $sid)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
+        ->where('adisyonlar.sube_id', $sid))->where('adisyon_kalemleri.durum', 'hazir')
         ->select('adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
             'adisyon_kalemleri.hazir_zamani', 'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal')
         ->orderBy('adisyon_kalemleri.hazir_zamani')->get();
@@ -28899,23 +28988,17 @@ Route::get('/mutfak/servise-veri', function () {
     }
     return ['ok' => 1, 'siparisler' => array_values($g)];
 });
+// Başla / Hazır / Servis: fişin kalemleri (kalem_ids) ya da adisyon + ekranın istasyonu (routes/masa_akis.php)
 Route::post('/mutfak/basla', function (Request $r) {
-    _kdsKolonEnsure();
-    $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
-    if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
-    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, _posPersonel()); // hazırlayan aşçı + istasyon (mutfak raporları)
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
+    _kdsBasla($r, _posPersonel(), _aktifSubeId());
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-hazir', function (Request $r) {
-    $upd = ['durum' => 'hazir', 'updated_at' => now()];
-    if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
-    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, _posPersonel());
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+    _kdsHazir($r, _posPersonel(), _aktifSubeId()); // + garsona "servise hazır"
     return ['ok' => 1];
 });
 Route::post('/mutfak/adisyon-servis', function (Request $r) {
-    _mutfakKapsamla(DB::table('adisyon_kalemleri'), _posPersonel())->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
+    _kdsServis($r, _posPersonel(), _aktifSubeId());
     return ['ok' => 1];
 });
 
@@ -28923,40 +29006,14 @@ Route::post('/mutfak/adisyon-servis', function (Request $r) {
 Route::post('/api/mutfak/basla', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    _kdsKolonEnsure();
-    $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
-    if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
-    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
-    if ($r->adisyon_id) {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'gonderildi')->update($upd);
-    } else {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'gonderildi')->update($upd);
-    }
+    _kdsBasla($r, $p, $p->sube_id); // kalem_ids (fiş) > adisyon_id (+istasyon) > kalem_id
     return ['ok' => 1];
 });
 // Mutfak: kalem/adisyon HAZIR isaretle (Yeni VEYA Hazirlaniyor -> Hazir) (+ hazir_zamani = hazirlik suresi analitigi)
 Route::post('/api/mutfak/hazir', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    $upd = ['durum' => 'hazir', 'updated_at' => now()];
-    if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
-    if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
-    if ($r->adisyon_id) {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
-    } else {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
-    }
-    // SERVİSE HAZIR -> garsona bildirim (masa_cagrilari). Pull-only değil artık; çağrı listesinde görünür.
-    try {
-        if (Schema::hasTable('masa_cagrilari')) {
-            $adId = (int) ($r->adisyon_id ?: (DB::table('adisyon_kalemleri')->where('id', (int) $r->kalem_id)->value('adisyon_id') ?: 0));
-            $masaId = $adId ? DB::table('adisyonlar')->where('id', $adId)->value('masa_id') : null;
-            if ($masaId && !DB::table('masa_cagrilari')->where('masa_id', $masaId)->where('tip', 'servise_hazir')->where('durum', 'bekliyor')->exists()) {
-                DB::table('masa_cagrilari')->insert(['sube_id' => $p->sube_id, 'masa_id' => $masaId, 'tip' => 'servise_hazir', 'durum' => 'bekliyor', 'created_at' => now()]);
-            }
-        }
-    } catch (\Throwable $e) {
-    }
+    _kdsHazir($r, $p, $p->sube_id); // + SERVİSE HAZIR: masa çağrısı + o masanın garsonuna push
     return ['ok' => 1];
 });
 
@@ -28988,9 +29045,9 @@ Route::get('/api/mutfak/servise-hazir', function (Request $r) {
     $sel = ['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
         'adisyonlar.id as adisyon_id', 'masalar.ad as masa', 'adisyonlar.kanal'];
     $sel[] = $bekVar ? 'adisyon_kalemleri.hazir_zamani' : DB::raw('NULL as hazir_zamani');
-    $rows = _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+    $rows = _kdsAdisyonKosulu(_mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
         ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-        ->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.durum', 'acik')->where('adisyon_kalemleri.durum', 'hazir')
+        ->where('adisyonlar.sube_id', $p->sube_id))->where('adisyon_kalemleri.durum', 'hazir') // ödenip kapanmış ama servis bekleyen de
         // Ikincil 'id' sirasi -> kalemler her yenilemede AYNI sirada kalir (yer degistirmez)
         ->select($sel)->orderBy('adisyon_kalemleri.hazir_zamani')->orderBy('adisyon_kalemleri.id')->get();
     $gruplu = [];
@@ -29010,11 +29067,7 @@ Route::get('/api/mutfak/servise-hazir', function (Request $r) {
 Route::post('/api/mutfak/servis', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0], 401);
-    if ($r->adisyon_id) {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('adisyon_id', (int) $r->adisyon_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
-    } else {
-        _mutfakKapsamla(DB::table('adisyon_kalemleri'), $p)->where('id', (int) $r->kalem_id)->where('durum', 'hazir')->update(array_merge(['durum' => 'servis', 'updated_at' => now()], Schema::hasColumn('adisyon_kalemleri', 'servis_zamani') ? ['servis_zamani' => now()] : []));
-    }
+    _kdsServis($r, $p, $p->sube_id); // kim servis etti yazılır; masada hazır kalmadıysa "servise hazır" çağrısı kapanır
     return ['ok' => 1];
 });
 
@@ -34184,6 +34237,7 @@ require __DIR__ . '/fiyat_anlasma.php';
 require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
 require __DIR__ . '/etiket_merkezi.php'; // Barkod & Etiket Merkezi (ürün etiketi, terazi, raf kartı)
+require __DIR__ . '/masa_akis.php'; // Masa akışı: KDS bar ayrımı/tur fişi, servise hazır bildirimi, QR ödeme ve hesap kapanışı kuralları
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
 // ============================ GLOBAL KATALOG SAHİPLİĞİ (malzeme/tedarikçi/reçete şube görünürlüğü) ============================

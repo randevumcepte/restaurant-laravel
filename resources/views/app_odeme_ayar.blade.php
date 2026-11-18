@@ -165,6 +165,26 @@ body.koyu #odm-bilgi{--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--line:#2c3650;-
       🔒 "Ön Ödemeli" ve "Açık Hesap + Kart", canlı ödeme (Iyzico/PayTR) devreye girince tam aktifleşir. Şu an her modda aktif koruma: Kaçak Radarı.
     </div>
 
+    <!-- ── QR masada ödeme yolları ── -->
+    <div class="odm-baslik">QR Masada Ödeme Seçenekleri</div>
+    <div class="radar-kart">
+      <div class="radar-satir">
+        <div class="radar-yazi">
+          <div class="radar-baslik">Garsona / kasada öde</div>
+          <div class="radar-alt">Müşteri "hesabı öde" deyince garsona tutarlı ödeme çağrısı ve bildirim gider; garson nakit ya da kartla tahsil eder.</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="qr-kasa" onchange="odmDurum.qr_kasa=this.checked"><span class="tog-slider"></span></label>
+      </div>
+      <div class="radar-satir" style="margin-top:10px">
+        <div class="radar-yazi">
+          <div class="radar-baslik">Kartla online öde (müşterinin telefonundan)</div>
+          <div class="radar-alt" id="qr-online-not">Online ödeme sağlayıcısı (PayTR / iyzico) bağlanınca müşteriye görünür.</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="qr-online" onchange="odmDurum.qr_online=this.checked"><span class="tog-slider"></span></label>
+      </div>
+    </div>
+    <div class="hint">İkisi de kapatılırsa müşteri yine garsona ödeyebilir (hesap ödenmeden kalmasın diye).</div>
+
     <!-- ── Kaçak Radarı ── -->
     <div class="odm-baslik">Kaçak Radarı</div>
 
@@ -265,7 +285,7 @@ const ODM_TOKEN    = '{{ $odmToken }}';
 const ODM_DUZ      = {{ $odmDuz ? 'true' : 'false' }};
 const ODM_MOD_AD   = { '': 'Varsayılan', post_pay: 'Klasik', on_odeme: 'Ön Ödemeli', acik_kart: 'Açık Hesap+Kart' };
 
-let odmDurum = { mod: 'post_pay', kacak_aktif: true, kacak_dk: 90, bolgeler: [] };
+let odmDurum = { mod: 'post_pay', kacak_aktif: true, kacak_dk: 90, bolgeler: [], qr_online: true, qr_kasa: true, qr_online_calisir: false };
 
 /* ── api çağrısı (Bearer) ── */
 async function odmApi(url, data) {
@@ -294,9 +314,17 @@ async function odmYukle() {
             odmDurum.kacak_aktif = res.kacak_aktif !== false;
             odmDurum.kacak_dk    = parseInt(res.kacak_dk) || 90;
             odmDurum.bolgeler    = Array.isArray(res.bolgeler) ? res.bolgeler : [];
+            odmDurum.qr_online   = res.qr_online !== false;
+            odmDurum.qr_kasa     = res.qr_kasa !== false;
+            odmDurum.qr_online_calisir = res.qr_online_calisir === true;
         }
     } catch (e) { /* sessiz */ }
     odmRender();
+    document.getElementById('qr-online').checked = odmDurum.qr_online;
+    document.getElementById('qr-kasa').checked = odmDurum.qr_kasa;
+    document.getElementById('qr-online-not').textContent = odmDurum.qr_online_calisir
+        ? 'Müşteri kendi telefonundan kartla öder; ödenen ürünler hesaptan düşer.'
+        : 'Açık olsa bile müşteriye görünmez: online ödeme sağlayıcısı (PayTR / iyzico) henüz bağlı değil.';
     document.getElementById('odm-yukleniyor').style.display = 'none';
     document.getElementById('odm-icerik').style.display = 'flex';
     document.getElementById('odm-icerik').style.flexDirection = 'column';
@@ -413,6 +441,8 @@ async function odmKaydet() {
             mod: odmDurum.mod,
             kacak_aktif: odmDurum.kacak_aktif ? '1' : '0',
             kacak_dk: odmDurum.kacak_dk,
+            qr_online: odmDurum.qr_online ? '1' : '0',
+            qr_kasa: odmDurum.qr_kasa ? '1' : '0',
             bolgeler: JSON.stringify(odmDurum.bolgeler.map(function(b) {
                 return { id: b.id, mod: b.mod || '' };
             })),
