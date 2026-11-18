@@ -1966,9 +1966,24 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         return implode("\n", $lines);
     }
 
+    // 2026-11-19 tek seferlik: düzeltmeden önce öğrenilen cevaplar ("Kolumuz çok soğuk") ve eski menüye göre
+    // çözülmüş niyetler (silinmiş kategori) silinir. Kesimden sonra öğrenilenler kalır; tekrar çalışsa da zararsız.
+    protected static $eskiOnbellekBakildi = false;
+    protected function eskiOnbellekTemizle()
+    {
+        if (self::$eskiOnbellekBakildi) return;
+        self::$eskiOnbellekBakildi = true;
+        if (\Illuminate\Support\Facades\Cache::get('musteri_ai_onbellek_temiz_20261119')) return;
+        foreach (['musteri_ai_ogrenilen', 'musteri_ai_niyet'] as $tablo) {
+            try { if (Schema::hasTable($tablo)) DB::table($tablo)->where('created_at', '<', '2026-11-19 03:30:00')->delete(); } catch (\Throwable $e) {}
+        }
+        \Illuminate\Support\Facades\Cache::forever('musteri_ai_onbellek_temiz_20261119', 1);
+    }
+
     // --- Ogrenen onbellek (soru -> cevap; sube bazli) ---
     protected function ogrenTablo()
     {
+        $this->eskiOnbellekTemizle();
         if (!Schema::hasTable('musteri_ai_ogrenilen')) {
             Schema::create('musteri_ai_ogrenilen', function ($t) {
                 $t->increments('id');
@@ -2134,6 +2149,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
     protected function niyetTablo()
     {
+        $this->eskiOnbellekTemizle();
         if (!Schema::hasTable('musteri_ai_niyet')) {
             Schema::create('musteri_ai_niyet', function ($t) {
                 $t->increments('id');
