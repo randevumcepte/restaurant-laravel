@@ -304,3 +304,86 @@ if (!function_exists('_qrAcikAdisyon')) {
         } catch (\Throwable $e) {}
     }
 }
+
+// ============================================================================
+// QR SİPARİŞİN MUTFAK/BAR FİŞİ: QR'da araya tablet girmediği için fiş, restorandaki yazıcılı cihaz tarafından basılır.
+// QR'dan gelen (ve ön ödemede ödenip mutfağa düşen) kalem "fis_bekliyor=1" olur. Cihaz /api/mutfak/fis-al ile alır (=2, kiralama),
+// basınca /api/mutfak/fis-sonuc basarili=1 (=0). Basamazsa ya da 90 sn içinde dönmezse kalem tekrar sıraya girer:
+// iki cihaz aynı fişi basmaz, yazıcıya ulaşamayan cihaz fişi kaybettirmez. Garsonun girdiği kalemi garsonun cihazı zaten basar (0 kalır).
+// Fiş yalnız O AN gelen kalemleri basar; başlığında aynı adisyon no + "2. TUR".
+// ============================================================================
+if (!function_exists('_fisKolonEnsure')) {
+    function _fisKolonEnsure()
+    {
+        if (cache()->get('fis_kolon_ok1')) return;
+        try {
+            if (!Schema::hasColumn('adisyon_kalemleri', 'fis_bekliyor')) Schema::table('adisyon_kalemleri', fn ($t) => $t->tinyInteger('fis_bekliyor')->default(0)->index());
+            if (!Schema::hasColumn('adisyon_kalemleri', 'fis_alan_at')) Schema::table('adisyon_kalemleri', fn ($t) => $t->timestamp('fis_alan_at')->nullable());
+            cache()->put('fis_kolon_ok1', 1, now()->addHours(12));
+        } catch (\Throwable $e) {}
+    }
+    function _qrFisIsaretle(array $kalemIds)
+    {
+        if (!$kalemIds) return;
+        _fisKolonEnsure();
+        try { DB::table('adisyon_kalemleri')->whereIn('id', $kalemIds)->update(['fis_bekliyor' => 1, 'fis_alan_at' => null]); } catch (\Throwable $e) {}
+    }
+    // Adisyonun kaçıncı gönderim turu (aynı dakikada gönderilenler aynı tur; KDS ile aynı kural)
+    function _adisyonTurNo($adisyonId, $zaman)
+    {
+        if (!$zaman) return 1;
+        $hedef = \Carbon\Carbon::parse($zaman)->format('Y-m-d H:i');
+        $gzler = DB::table('adisyon_kalemleri')->where('adisyon_id', (int) $adisyonId)->whereNotNull('gonderim_zamani')->where('durum', '!=', 'iptal')
+            ->pluck('gonderim_zamani')->map(fn ($z) => \Carbon\Carbon::parse($z)->format('Y-m-d H:i'))->unique()->sort()->values()->all();
+        $i = array_search($hedef, $gzler, true);
+        return $i === false ? max(1, count($gzler)) : $i + 1;
+    }
+}
+
+// Yazıcılı cihaz: basılacak QR fişlerini al (kiralar). Adisyon + tur başına bir fiş; kalemlerin istasyonu (bar ayrı yazıcıya gider).
+Route::post('/api/mutfak/fis-al', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _fisKolonEnsure();
+    $sid = (int) $p->sube_id;
+    $subeAd = fn ($q) => $q->whereIn('adisyon_id', fn ($s) => $s->select('id')->from('adisyonlar')->where('sube_id', $sid));
+    // süresi dolan kiralar (cihaz basamadan kapandı / ağ koptu) sıraya geri döner
+    $subeAd(DB::table('adisyon_kalemleri'))->where('fis_bekliyor', 2)->where('fis_alan_at', '<', now()->subSeconds(90))->update(['fis_bekliyor' => 1]);
+    // çok eski bekleyenler basılmaz (dün kalmış kalem yazıcıdan çıkmasın)
+    $subeAd(DB::table('adisyon_kalemleri'))->where('fis_bekliyor', 1)->where('created_at', '<', now()->subHours(3))->update(['fis_bekliyor' => 0]);
+    $adaylar = $subeAd(DB::table('adisyon_kalemleri'))->where('fis_bekliyor', 1)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->orderBy('id')->limit(60)->pluck('id')->all();
+    $alinan = [];
+    foreach ($adaylar as $id) { // atomik: aynı kalemi iki cihaz alamaz
+        if (DB::table('adisyon_kalemleri')->where('id', $id)->where('fis_bekliyor', 1)->update(['fis_bekliyor' => 2, 'fis_alan_at' => now()])) $alinan[] = $id;
+    }
+    if (!$alinan) return ['ok' => 1, 'fisler' => []];
+    $barIds = array_flip(_kdsBarUrunIds($sid));
+    $rows = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+        ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')->leftJoin('urunler', 'adisyon_kalemleri.urun_id', '=', 'urunler.id')
+        ->whereIn('adisyon_kalemleri.id', $alinan)->orderBy('adisyon_kalemleri.id')
+        ->get(['adisyon_kalemleri.id', 'adisyon_kalemleri.urun_id', 'adisyon_kalemleri.urun_adi', 'adisyon_kalemleri.adet', 'adisyon_kalemleri.not',
+            'adisyon_kalemleri.gonderim_zamani', 'adisyonlar.id as adisyon_id', 'adisyonlar.kanal', 'masalar.ad as masa', 'urunler.istasyon']);
+    $fisler = [];
+    foreach ($rows as $k) {
+        $tur = _adisyonTurNo($k->adisyon_id, $k->gonderim_zamani);
+        $key = $k->adisyon_id . '-' . $tur;
+        if (!isset($fisler[$key])) $fisler[$key] = ['adisyon_id' => (int) $k->adisyon_id, 'tur' => $tur, 'masa' => $k->masa ?: ucfirst((string) $k->kanal),
+            'kaynak' => 'QR', 'saat' => $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->format('d.m H:i') : now()->format('d.m H:i'), 'kalemler' => []];
+        $not = trim(preg_replace('/^QR sipariş( \(ön ödeme\))?/u', '', (string) $k->not));
+        $fisler[$key]['kalemler'][] = ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $not,
+            'istasyon' => isset($barIds[(int) $k->urun_id]) ? 'bar' : ($k->istasyon ?: 'mutfak')];
+    }
+    return ['ok' => 1, 'fisler' => array_values($fisler)];
+});
+// Basım sonucu: basarili=1 → basıldı (bir daha gelmez); 0 → sıraya geri (başka cihaz/ sonraki deneme basar)
+Route::post('/api/mutfak/fis-sonuc', function (Request $r) {
+    $p = _apiPersonel($r);
+    if (!$p) return response()->json(['ok' => 0], 401);
+    _fisKolonEnsure();
+    $ids = _kdsKalemIdleri($r);
+    if (!$ids) return ['ok' => 0];
+    DB::table('adisyon_kalemleri')->whereIn('id', $ids)->where('fis_bekliyor', 2)
+        ->whereIn('adisyon_id', fn ($s) => $s->select('id')->from('adisyonlar')->where('sube_id', (int) $p->sube_id))
+        ->update(['fis_bekliyor' => $r->boolean('basarili') ? 0 : 1, 'fis_alan_at' => null]);
+    return ['ok' => 1];
+});

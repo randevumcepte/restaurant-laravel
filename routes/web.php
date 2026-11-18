@@ -7204,6 +7204,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
         return [$adId, $ids];
     });
     $eklenen = count($yeniIds);
+    if (!$onOdeme) _qrFisIsaretle($yeniIds); // QR siparişinin mutfak/bar fişini restorandaki yazıcılı cihaz basar (yalnız bu kalemler)
     $ara = (float) DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)->where('durum', '!=', 'iptal')->sum('tutar');
     $ad = DB::table('adisyonlar')->find($adId);
     $toplam = max(0, $ara - (float) $ad->indirim - (float) $ad->ikram);
@@ -28476,6 +28477,7 @@ if (!function_exists('_onOdemePromote')) {
         $ids = $q->pluck('id')->all();
         if (!$ids) return;
         DB::table('adisyon_kalemleri')->whereIn('id', $ids)->update(['durum' => 'gonderildi', 'gonderim_zamani' => now(), 'updated_at' => now()]);
+        if (function_exists('_qrFisIsaretle')) _qrFisIsaretle($ids); // ödendi -> mutfak/bar fişi basılsın
         if (Schema::hasTable('masa_cagrilari') && !empty($a->masa_id)) {
             DB::table('masa_cagrilari')->insert(['sube_id' => $a->sube_id, 'masa_id' => $a->masa_id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
         }
@@ -28744,6 +28746,7 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     if (!is_array($kalemler) || empty($kalemler)) return ['ok' => 0, 'hata' => 'Ürün seçilmedi'];
     $eklenen = 0;
     $tukendiAtlanan = [];
+    $simdi = now(); // tek gönderim = tek tur (fişte "2. TUR")
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, (int) ($k['adet'] ?? 1));
@@ -28754,8 +28757,8 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
         DB::table('adisyon_kalemleri')->insert([
             'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
             'adet' => $adet, 'birim_fiyat' => $hhF, 'tutar' => $hhF * $adet,
-            'durum' => 'gonderildi', 'personel_id' => $p->id, 'gonderim_zamani' => now(),
-            'created_at' => now(), 'updated_at' => now(),
+            'durum' => 'gonderildi', 'personel_id' => $p->id, 'gonderim_zamani' => $simdi,
+            'created_at' => $simdi, 'updated_at' => $simdi,
         ]);
         $eklenen++;
     }
@@ -28769,7 +28772,8 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
     $mesaj = $eklenen . ' kalem eklendi.';
     if ($tukendiAtlanan) $mesaj .= ' (Tükendi, atlandı: ' . implode(', ', $tukendiAtlanan) . ')';
-    return ['ok' => 1, 'mesaj' => $mesaj, 'ara_toplam' => $araToplam, 'toplam' => $toplam, 'tukendi_atlanan' => $tukendiAtlanan];
+    return ['ok' => 1, 'mesaj' => $mesaj, 'ara_toplam' => $araToplam, 'toplam' => $toplam, 'tukendi_atlanan' => $tukendiAtlanan,
+        'tur' => _adisyonTurNo($a->id, $simdi)]; // mutfak fişi başlığı: "2. TUR"
 });
 
 // KALEM VOID (urun sil): yetki urun_sil; yoksa mudur/sahip onay_pin. Loglar + toplam gunceller.
