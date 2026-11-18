@@ -376,8 +376,15 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if ($one) { $sel[] = 'urunler.one_cikan'; $sel[] = 'urunler.one_soz'; $sel[] = 'urunler.one_ai_soz'; $sel[] = 'urunler.one_sira'; }
         $urunler = DB::table('urunler')->join('menu_kategorileri', 'urunler.kategori_id', '=', 'menu_kategorileri.id')
             ->where('urunler.sube_id', $this->subeId)->where('urunler.aktif', 1)->where('urunler.tukendi', 0)
-            ->select($sel)->get()->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
-        if ($urunler->isEmpty()) return $this->cvp($baslik . ' şu an listede görünmüyor.');
+            ->select($sel)->get();
+        $tum = $urunler;
+        $urunler = $tum->filter(fn ($u) => in_array($this->norm($u->kat), $normAdlar))->values();
+        if ($urunler->isEmpty()) {
+            // İşletmenin kategori adı birebir tutmuyorsa ("Soğuk İçecekler" yerine "İçecekler", "Tatlılar" yerine "Tatlı & Dondurma") kökle eşle
+            $kokler = array_filter(array_map(function ($a) { $s = explode(' ', trim($a)); return preg_replace('/(lar|ler)$/u', '', end($s)); }, $normAdlar), fn ($k) => mb_strlen($k) >= 4);
+            $urunler = $tum->filter(function ($u) use ($kokler) { $k = $this->norm((string) $u->kat); foreach ($kokler as $kk) if (strpos($k, $kk) !== false) return true; return false; })->values();
+        }
+        if ($urunler->isEmpty()) return $this->cvp($baslik . ' şu an menümüzde yok. İsterseniz diğer bölümlere bakalım.');
         // One cikanlar EN BASA (one_sira'ya gore), sonra digerleri
         if ($one) $urunler = $urunler->sortByDesc(fn ($u) => !empty($u->one_cikan) ? (1000 - (int) $u->one_sira) : 0)->values();
         $kartlar = $urunler->take(12)->map(function ($u) use ($one) {
@@ -392,7 +399,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
         }
         $ornek = $urunler->take(3)->map(fn ($u) => $u->ad)->implode(', ');
-        return $this->cvp("$emoji $baslik hazır. $ornek gibi lezzetlerimiz var; resimlere göz atıp beğendiğinizi sorabilir ya da hemen isteyebilirsiniz.",
+        return $this->cvp("$emoji $baslik: $ornek" . ($urunler->count() > 3 ? ' ve daha fazlası ekranda' : '') . '. Beğendiğinizi söylemeniz yeterli.',
             ['tip' => 'urunler', 'baslik' => $baslik, 'kartlar' => $kartlar]);
     }
 
@@ -467,11 +474,12 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         }
         // KARARSIZ MUSTERI:
         // (a) Secimi bize DEVREDERSE ("sen sec / rastgele / fark etmez") -> dogrudan ONERI motoru (bir sey sun)
-        if ($this->has($c, ['sen sec', 'sen karar ver', 'sen bir sey soyle', 'sen soyle', 'sen olsan', 'rastgele bir sey', 'rastgele oner', 'fark etmez sen', 'bana bir sey sec', 'bana guzel bir sey sec', 'karar vermeme yardim', 'bana seçim yaptir', 'bana secim yaptir', 'sen sec bir'])) {
+        if ($this->has($c, ['sen sec', 'sen karar ver', 'sen bir sey soyle', 'sen soyle', 'sen olsan', 'rastgele bir sey', 'rastgele oner', 'fark etmez sen', 'bana bir sey sec', 'bana guzel bir sey sec', 'karar vermeme yardim', 'bana seçim yaptir', 'bana secim yaptir', 'sen sec bir',
+            'ne tavsiye', 'ne onerirsin', 'ne onerirsiniz', 'favoriniz hangisi', 'burada ne yenir', 'bir seyler onerir', 'bir oneride bulun', 'ne yesem', 'ne yiyeyim', 'ne yisem'])) { // doğrudan öneri isteği: soru sorma, en çok tercih edilenleri sun
             return $this->oneri($c);
         }
         // (b) Genel kararsizlik -> ONCE tercih sor (uzun liste DOKME), 50 varyasyon
-        if ($this->has($c, ['karar veremedim', 'karar veremiyor', 'kararsiz', 'ne yesem', 'ne yiyeyim', 'ne yisem', 'hangisini secsem', 'hangisini alsam', 'hangisini seceyim', 'hangisi daha iyi', 'hangisi guzel', 'ikisi arasinda kaldim', 'iki yemek arasinda', 'uc yemek arasinda', 'ucu arasinda', 'secemedim', 'secemiyorum', 'ne istedigimi bilmiyor', 'ne yiyecegimi bilmiyor', 'ne siparis edecegimi', 'aklim karisti', 'aklima gelmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'cok fazla secenek', 'hepsi guzel gorunuyor', 'ne tavsiye', 'ne onerirsin', 'ne onerirsiniz', 'favoriniz hangisi', 'burada ne yenir', 'ne yiyeyim bilmiyor', 'bir turlu secemedim', 'bir turlu karar', 'bir seyler onerir', 'bir oneride bulun'])) {
+        if ($this->has($c, ['karar veremedim', 'karar veremiyor', 'kararsiz', 'hangisini secsem', 'hangisini alsam', 'hangisini seceyim', 'hangisi daha iyi', 'hangisi guzel', 'ikisi arasinda kaldim', 'iki yemek arasinda', 'uc yemek arasinda', 'ucu arasinda', 'secemedim', 'secemiyorum', 'ne istedigimi bilmiyor', 'ne yiyecegimi bilmiyor', 'ne siparis edecegimi', 'aklim karisti', 'aklima gelmiyor', 'canim bir sey istiyor', 'canim cekiyor ama', 'cok fazla secenek', 'hepsi guzel gorunuyor', 'ne yiyeyim bilmiyor', 'bir turlu secemedim', 'bir turlu karar'])) {
             return $this->kararsizCevap();
         }
         // Nasilsin / hal hatir
@@ -1407,9 +1415,10 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $kartlar = $o['kartlar'] ?? [];
         $adlar = array_slice(array_values(array_filter(array_column($kartlar, 'ad'))), 0, 3);
         $liste = count($adlar) > 1 ? implode(', ', array_slice($adlar, 0, -1)) . ' ve ' . end($adlar) : ($adlar[0] ?? '');
-        $mesaj = 'Hoş geldiniz! Ben ' . (trim((string) $subeAd) !== '' ? trim($subeAd) . ' ' : '') . 'masa asistanınızım. '
-            . ($liste !== '' ? 'Bugün en çok tercih edilenler: ' . $liste . '. ' : '')
-            . 'Ne arzu edersiniz? Yemek, içecek ya da tatlı; söylemeniz yeterli, siparişinizi ben alıp mutfağa iletirim. 😊';
+        // Kısa ve doğal: şube adı ("Merkez Şube masa asistanı") ve uzun açıklama garip duruyordu
+        $mesaj = 'Hoş geldiniz, ben masa asistanınızım. '
+            . ($liste !== '' ? 'Bugün en çok ' . $liste . ' tercih ediliyor. ' : '')
+            . 'Ne arzu edersiniz?';
         return $this->cvp($mesaj, ['tip' => 'karsilama', 'baslik' => '⭐ Öne Çıkan Lezzetler', 'kartlar' => $kartlar]);
     }
 
@@ -1499,19 +1508,44 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 ->where('recete_kalemleri.recete_id', $malz)->orderByDesc('recete_kalemleri.miktar')->limit(4)->pluck('malzemeler.ad')->all();
         }
         $kat = DB::table('menu_kategorileri')->where('id', $u->kategori_id ?? 0)->value('ad');
-        // ISTAH KABARTAN garson agzi: coskulu acilis + duyusal aciklama + davetkar kapanis (FIYAT YOK; kartta yaziyor)
-        $acilislar = ['Harika seçim! ', 'Nefis bir tercih! ', 'Bunu çok seveceksiniz! ', 'Favorilerimizden! ', 'Ooo, çok güzel seçtiniz! ', ''];
-        $kapanislar = [
-            'Sıcacık, tazecik önünüze gelsin mi? "İstiyorum" demeniz yeterli. 😊',
-            'Ağzınıza layık; hemen hazırlatalım mı? "İstiyorum" deyin yeter. 😊',
-            'Bir tabak nefis, değil mi? Beğendiyseniz "İstiyorum" deyin, hemen geliyor. 😋',
-            'Kaçırılmaz; "İstiyorum" demeniz yeterli, garsonumuz hemen getirsin. 😊',
-        ];
-        $cevap = $acilislar[array_rand($acilislar)] . rtrim(trim($u->ad), '.') . '. ';
+        $ad = rtrim(trim($u->ad), '.');
+        // Malzeme adı ürünün kendisiyse ("Kola" içinde "Kola (malzeme)") söyleme
+        $nu = $this->norm($u->ad);
+        $icindekiler = array_values(array_filter(array_map(fn ($m) => trim(preg_replace('/\s*\(.*?\)\s*/u', ' ', (string) $m)), $icindekiler),
+            function ($m) use ($nu) { $nm = $this->norm($m); return $nm !== '' && strpos($nu, $nm) === false && strpos($nm, $nu) === false; }));
+        $ek = ['tip' => 'urun', 'urun_baglam' => $u->ad, 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]];
+        // Açık SORU (fiyat / var mı / "soğuk mu, şekersiz mi"): tanıtım kalıbı değil, sorunun cevabı
+        $cn = $this->norm((string) $c);
+        $fiyat = number_format((float) $u->fiyat, 0, ',', '.') . ' lira';
+        if ($this->has($cn, ['fiyat', 'kac para', 'kac lira', 'kaca', 'ucret', 'ne kadar', 'pahali', 'ucuz'])
+            && !$this->has($cn, ['ne kadar aci', 'ne kadar sur', 'ne kadar bekle', 'ne kadar buyuk', 'ne kadar doyur'])) {
+            return $this->cvp($ad . ' ' . $fiyat . '. İster misiniz?', $ek);
+        }
+        if ($this->has($cn, ['var mi', 'var midir', 'bulunuyor mu', 'mevcut mu', 'kaldi mi'])) {
+            return $this->cvp('Evet, ' . $ad . ' var, ' . $fiyat . '. İster misiniz?', $ek);
+        }
+        if (preg_match('/\b(mi|mu|midir|mudur)\b/u', $cn)) {
+            $ai = $this->haikuEmniyet((string) $c);   // menü bağlamıyla kısa cevap; bilmiyorsa garsonu önerir
+            if ($ai !== null) return array_merge($ai, $ek, ['cevap' => $ai['cevap']]);
+        }
+        // ISTAH KABARTAN garson agzi: acilis + aciklama + URUNE UYGUN kapanis (FIYAT YOK; kartta yaziyor)
+        $acilislar = ['Harika seçim! ', 'Nefis bir tercih! ', 'Bunu çok seveceksiniz! ', 'Favorilerimizden! ', ''];
+        if ($this->icecekMi($u->ad, $kat)) {
+            $kapanislar = ['İster misiniz? "İstiyorum" demeniz yeterli. 😊', 'Hemen getirelim mi? "İstiyorum" deyin yeter. 😊'];
+        } elseif (strpos(' ' . $this->norm((string) $kat), ' tatli') !== false) {
+            $kapanislar = ['Yemeğin üstüne çok iyi gider; ister misiniz? 😊', 'Tatlı olarak hazırlatalım mı? "İstiyorum" demeniz yeterli. 😊'];
+        } else {
+            $kapanislar = [
+                'Hemen hazırlatalım mı? "İstiyorum" demeniz yeterli. 😊',
+                'Ağzınıza layık; hazırlatalım mı? "İstiyorum" deyin yeter. 😊',
+                'Beğendiyseniz "İstiyorum" deyin, hemen hazırlansın. 😊',
+            ];
+        }
+        $cevap = $acilislar[array_rand($acilislar)] . $ad . '. ';
         if (!empty($u->aciklama)) $cevap .= rtrim(trim($u->aciklama), '.') . '. ';
         if (!empty($icindekiler)) $cevap .= 'İçinde ' . $this->dogalListe($icindekiler) . ' var. ';
         $cevap .= $kapanislar[array_rand($kapanislar)];
-        return $this->cvp($cevap, ['tip' => 'urun', 'urun_baglam' => $u->ad, 'kartlar' => [$this->kart($u->ad, $u->fiyat, $u->aciklama, $kat, null, $icindekiler, $u->id)]]);
+        return $this->cvp($cevap, $ek);
     }
 
     // ==================== SIPARIS ZEKASI (Faz 2) ====================
@@ -2031,8 +2065,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     {
         switch ((string) ($j['niyet'] ?? '')) {
             case 'kategori_goster':
+                // Önbellekteki kategori silinmiş/boşalmışsa ("Mutfak şu an listede görünmüyor") kurallara bırak
                 $kat = $this->kategoriAdBul((string) ($j['kategori'] ?? ''));
-                return $kat ? $this->kategori([$this->norm($kat->ad)], $kat->ad, $this->katEmoji($kat->ad)) : $this->menu();
+                if (!$kat) return null;
+                $kr = $this->kategori([$this->norm($kat->ad)], $kat->ad, $this->katEmoji($kat->ad));
+                return (($kr['tip'] ?? '') === 'urunler') ? $kr : null;
             case 'urun_bilgi':
                 $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
                 return $u ? $this->urunTanit($u, $q) : null;

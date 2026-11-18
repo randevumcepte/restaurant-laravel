@@ -1168,7 +1168,14 @@ async function sunucudanCevap(soru, ek){
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
-    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){ asSepetEkle(j.eklenen, false); _siparisAkisi=true; }       // EKLE (topla)
+    let sepetNot='';
+    if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){   // EKLE (topla)
+      const once={}; _sepet.forEach(s=>{ once[s.urun_id]=s.adet; });
+      asSepetEkle(j.eklenen, false); _siparisAkisi=true;
+      // Sepette zaten varsa söyle ("1 kola ekledim" deyip özette "2 kola" çıkmasın)
+      const top=j.eklenen.filter(e=>once[e.urun_id]).map(e=>{ const s=_sepet.find(x=>x.urun_id===e.urun_id); return s?(s.adet+' '+s.ad):''; }).filter(Boolean);
+      if(top.length) sepetNot=' Sepetinizde daha önce de vardı; şu an toplam '+top.join(', ')+' oldu. Fazlaysa “bir tane olsun” diyebilirsiniz.';
+    }
     else if(j.aksiyon==='sepet_ayarla' && Array.isArray(j.eklenen)){ asSepetEkle(j.eklenen, true); _siparisAkisi=true; }  // AYARLA (SET)
     else if(j.aksiyon==='sepet_cikar' && j.cikar) asSepetCikar(j.cikar.urun_id);                     // CIKAR
     if(j.aksiyon==='siparis_bitir'){   // MUTFAGA GONDER ama ONCE ozet + onay iste (hemen gonderme)
@@ -1177,7 +1184,7 @@ async function sunucudanCevap(soru, ek){
     }
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Hesabı açıyorum: tümünü ödeyebilir ya da kendi payını seçebilirsin. 💳'; }   // konustuktan sonra sepeti/odemeyi ac
-    return (j.seslendir===false)?'':((j.seslendir_metni||j.cevap)||'Bir sorun oldu, tekrar dener misiniz?');  // seslendir_metni varsa KISA sesli okuma (ekranda kartlar/cevap zaten var)
+    return (j.seslendir===false)?'':(((j.seslendir_metni||j.cevap)||'Bir sorun oldu, tekrar dener misiniz?')+sepetNot);  // seslendir_metni varsa KISA sesli okuma (ekranda kartlar/cevap zaten var)
   }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
 async function asKartGoster(kartlar, baslik){
