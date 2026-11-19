@@ -268,7 +268,8 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         if (!is_array($res) || !in_array($res['aksiyon'] ?? '', ['sepet_ekle', 'sepet_ayarla'], true) || empty($res['eklenen'])) return $res;
         $c = $this->norm($soru);
         if (!$this->has($c, ['yemekten sonra', 'yemekden sonra', 'yemek sonrasi', 'yemek bitince', 'yemekler bitince', 'yemegimiz bitince', 'yemegim bitince',
-            'yemekten sonraya', 'en son getir', 'en son gelsin', 'en sona', 'sonra getir', 'sonra gelsin', 'sonradan getir', 'sonrasinda getir', 'ardindan getir', 'sonra servis'])) return $res;
+            'yemekten sonraya', 'en son getir', 'en son gelsin', 'en sona', 'sonra getir', 'sonra gelsin', 'sonradan getir', 'sonrasinda getir', 'ardindan getir', 'sonra servis',
+            'bunlardan sonra', 'bunlarin ardindan', 'yemeklerden sonra', 'yemeklerimizden sonra', 'yemegimizden sonra', 'yemegimden sonra', 'yemekler bittikten', 'yemek bittikten', 'tatli olarak sonra'])) return $res;
         // Cümlede ana yemek de varsa ("bir adana, yemekten sonra da künefe") not yalnız tatlı/içeceğe gider
         $katlar = DB::table('urunler')->leftJoin('menu_kategorileri', 'menu_kategorileri.id', '=', 'urunler.kategori_id')
             ->whereIn('urunler.id', array_map(fn ($e) => (int) ($e['urun_id'] ?? 0), $res['eklenen']))->pluck('menu_kategorileri.ad', 'urunler.id');
@@ -463,6 +464,11 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         // 2.6) SOHBET MODULU (BEDAVA, Haiku'dan ONCE): nasilsin/iltifat/ilk defa/kararsizlik/vedalasma -> sicak garson yaniti
         $sohbet = $this->sohbetCevap($c);
         if ($sohbet) return $sohbet;
+
+        // 2.65) NET SİPARİŞ HIZLI YOLU (Haiku'ya gitmez, ~0.1 sn): ürünler + adet net, bulunamayan yok, soru/iptal/değiştirme yok.
+        //       Ölçüm: sipariş cümlesinde Haiku 1.2-2 sn bekletiyordu (müşteri "cevap çok geç" dedi). Belirsiz cümle yine Haiku'ya gider.
+        $hiz = $this->netSiparis($soru, $c);
+        if ($hiz) return $hiz;
 
         // ===== HAIKU NIYET COZUCU (BEYIN) — BIRINCIL: kullanici ne dediyse Haiku niyeti coz + KESIN uygula.
         // Asagidaki kelime-kurallari yalnizca BEYIN yoksa (anahtar yok/tavan dolu/basarisiz) YEDEK calisir. =====
@@ -1348,6 +1354,8 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     /** ACIL DURUM tespiti (guclu, tek anlamli sinyaller — benign yardim/oneri ile karismaz). */
     protected function acilMi($c)
     {
+        // "acılı" (acili) "acil" ile, "dumanlı" "duman" ile başlıyor: "adana acılı mı" acil alarm sayılıyordu -> önce bu kelimeler çıkarılır
+        $c = preg_replace('/\b(acili|acilisi|acilisini|acilik|dumanli)\w*/u', ' ', (string) $c);
         return $this->has($c, [
             'acil', 'imdat', 'yardim edin', 'cabuk yardim', 'cok acil', 'acil durum', 'hemen gelin', 'hemen birini cagir', 'hemen yardim',
             'yangin', 'duman', 'gaz kacagi', 'gaz kokusu', 'yanik kokusu', 'bir sey yaniyor', 'mutfakta yangin', 'patlama', 'patladi', 'ates cikti',
@@ -1850,6 +1858,26 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $map = ['bir' => 1, 'iki' => 2, 'uc' => 3, 'dort' => 4, 'bes' => 5, 'alti' => 6, 'yedi' => 7, 'sekiz' => 8, 'dokuz' => 9, 'on' => 10];
         foreach ($map as $w => $v) { if (preg_match('/(?:^| )' . $w . '(?= |$)/u', ' ' . $c . ' ')) return $v; }
         return null;
+    }
+
+    /** Kesin sipariş cümlesi mi? Öyleyse doğrudan sepete ekle (Haiku beklenmez). Değilse null. */
+    protected function netSiparis($soru, $c)
+    {
+        $sip = $this->siparisCoz($soru);
+        if (empty($sip['lines']) || !empty($sip['bilinmeyen'])) return null;
+        $cc = ' ' . $c . ' ';
+        // Soru / olumsuz / değiştirme / adet ayarlama / bilgi -> yorum gerekir, Haiku karar versin
+        foreach ([' mi ', ' mu ', ' mı ', ' misin', ' miyim', ' misiniz', ' var mi', ' nedir', ' nasil', ' kac ', ' ne kadar', ' fiyat', ' yerine', ' degil', ' vazgec', ' iptal', ' cikar', ' sil ',
+            ' istemiyorum', ' istemem', ' olmasin', ' haric', ' yok ', ' degistir', ' hakkinda', ' anlat', ' icinde', ' oner', ' tavsiye', ' acili', ' alerj', ' daha az', ' azalt', ' arttir', ' toplam'] as $x) {
+            if (strpos($cc, $x) !== false) return null;
+        }
+        // Sipariş fiili ya da açık adet şart; tek ürün + "olsun" adet ayarlama olabilir (Haiku)
+        $fiil = $this->has($c, ['istiyorum', 'isterim', 'istiyoruz', 'alayim', 'alalim', 'alabilir miyim', 'alacagim', 'siparis', 'getir', 'getirin', 'getirir misin', 'ekle', 'ekler misin', 'bir de', 'verir misin', 'rica']);
+        if (!$fiil && !$sip['explicitQty']) return null;
+        if (count($sip['lines']) === 1 && strpos($cc, ' olsun ') !== false && !$fiil) return null;
+        $res = $this->sepetEkleCevap($sip['lines']);
+        if (is_array($res)) $res['kaynak'] = 'kural';
+        return $res;
     }
 
     /** Ses tanımanın yemek adlarında sık yaptığı hatalar (norm edilmiş metin üzerinde) */

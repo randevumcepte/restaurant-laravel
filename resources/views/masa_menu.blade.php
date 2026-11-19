@@ -1096,7 +1096,7 @@ async function dinleSunucu(){
   try{
     const fd=new FormData(); fd.append('ses',wav,'ses.pcm'); fd.append('masa',MASA); fd.append('dil',aktifAsDil);
     const r=await fetch('/api/qr/stt',{method:'POST',body:fd}); const j=await r.json();
-    if(_z) _z.stt=Math.round(performance.now()-_z.bas);
+    if(_z){ _z.stt=Math.round(performance.now()-_z.bas); _z.sttd=(j.g_ms!=null?' (google='+j.g_ms+' sunucu='+j.srv_ms+' ses='+j.kb+'kb)':''); }
     if(j.limit){ _sttLimit=true; return ''; }
     if(j.kod && j.kod!==200){ asDurum('Ses tanıma hatası (HTTP '+j.kod+')'); aiKaydet('[ses tanıma hatası '+j.kod+']', '', 'ses', 'stt'); return ''; }
     const m=(j.metin||'').trim();
@@ -1202,7 +1202,7 @@ function aiKaydet(soru, cevap, kanal, kaynak){
     const sepet=_sepet.map(k=>k.adet+'x '+k.ad+(k.not?' ['+k.not+']':'')).join(', ')+(_masaAlerji.length?(' | masa alerji: '+_masaAlerji.join(', ')):'');
     fetch('/api/qr/ai-kayit',{method:'POST',keepalive:true,headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,soru:soru||'',cevap:cevap||'',kanal:kanal||'',kaynak:kaynak||_sonAi.kaynak||'ekran',aksiyon:_sonAi.aksiyon||'',sepet,dil:aktifAsDil||'tr',
-        sure:_z?('sessiz=650'+(_z.stt!=null?' stt='+_z.stt:'')+(_z.ai!=null?' ai='+_z.ai:'')):''})}).catch(()=>{});
+        sure:_z?('sessiz=650'+(_z.stt!=null?' stt='+_z.stt+(_z.sttd||''):'')+(_z.ai!=null?' ai='+_z.ai:'')):''})}).catch(()=>{});
   }catch(_){}
   _sonAi={};
 }

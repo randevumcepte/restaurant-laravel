@@ -6797,6 +6797,7 @@ Route::post('/api/qr/stt', function (Request $r) {
     $cfg['speechContexts'] = [['phrases' => ['garson', 'hesap', 'menü', 'öneri', 'evet', 'hayır', 'teşekkürler'], 'boost' => 2]];
     $payload = ['config' => $cfg, 'audio' => ['content' => base64_encode($bytes)]];
     try {
+        $_tg = microtime(true);
         $ch = curl_init('https://speech.googleapis.com/v1/speech:recognize?key=' . $key);
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
@@ -6812,7 +6813,9 @@ Route::post('/api/qr/stt', function (Request $r) {
         $metin = $j['results'][0]['alternatives'][0]['transcript'] ?? '';
         $algDil = strtolower(substr((string) ($j['results'][0]['languageCode'] ?? $kodlar[$dil]['stt']), 0, 2));
         if (!isset($kodlar[$algDil])) $algDil = $dil;
-        return response()->json(['metin' => trim((string) $metin), 'dil' => $algDil, 'kod' => $kod]);
+        // g_ms: Google STT süresi, srv_ms: sunucunun toplam süresi (istemci tur süresi kaydına yazar -> gecikme nerede)
+        return response()->json(['metin' => trim((string) $metin), 'dil' => $algDil, 'kod' => $kod,
+            'g_ms' => (int) round((microtime(true) - $_tg) * 1000), 'srv_ms' => defined('LARAVEL_START') ? (int) round((microtime(true) - LARAVEL_START) * 1000) : null, 'kb' => (int) round(strlen($bytes) / 1024)]);
     } catch (\Throwable $e) {
         return response()->json(['metin' => '', 'hata' => 'stt_hata'], 200);
     }
