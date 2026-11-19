@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 if (!function_exists('_aiKayitEnsure')) {
     function _aiKayitEnsure()
     {
-        if (Cache::get('ai_kayit_tablo_ok1')) return;
+        if (Cache::get('ai_kayit_tablo_ok2')) return;
         if (!Schema::hasTable('musteri_ai_kayit')) {
             Schema::create('musteri_ai_kayit', function ($t) {
                 $t->bigIncrements('id');
@@ -33,7 +33,9 @@ if (!function_exists('_aiKayitEnsure')) {
                 $t->timestamp('created_at')->useCurrent()->index();
             });
         }
-        Cache::put('ai_kayit_tablo_ok1', 1, 3600);
+        // Tur süreleri (ms): "sessiz=650 stt=1100 ai=180 ses=900" -> gecikmenin nerede olduğu görünür
+        if (!Schema::hasColumn('musteri_ai_kayit', 'sure')) Schema::table('musteri_ai_kayit', function ($t) { $t->string('sure', 200)->nullable(); });
+        Cache::put('ai_kayit_tablo_ok2', 1, 3600);
     }
 
     // İnceleme linkinin anahtarı (bir kez üretilir, sayfada görünür). $subeId verilirse yalnız o şubeyi okutan anahtar.
@@ -79,7 +81,7 @@ if (!function_exists('_aiKayitEnsure')) {
             $k = $s->oturum;
             if (!isset($ot[$k])) $ot[$k] = ['oturum' => $k, 'sube' => $s->sube, 'masa' => $s->masa, 'basladi' => (string) $s->created_at, 'turlar' => []];
             $ot[$k]['turlar'][] = ['saat' => substr((string) $s->created_at, 11, 8), 'kanal' => $s->kanal, 'soru' => $s->soru, 'cevap' => $s->cevap,
-                'kaynak' => $s->kaynak, 'aksiyon' => $s->aksiyon, 'sepet' => $s->sepet, 'dil' => $s->dil];
+                'kaynak' => $s->kaynak, 'aksiyon' => $s->aksiyon, 'sepet' => $s->sepet, 'dil' => $s->dil, 'sure' => $s->sure ?? null];
         }
         return array_reverse(array_values($ot));
     }
@@ -98,9 +100,23 @@ Route::post('/api/qr/ai-kayit', function (Request $r) {
             'sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'oturum' => substr($oturum, 0, 32),
             'kanal' => $kes($r->input('kanal'), 8), 'soru' => $kes($r->input('soru'), 600), 'cevap' => $kes($r->input('cevap'), 1500),
             'kaynak' => $kes($r->input('kaynak'), 24), 'aksiyon' => $kes($r->input('aksiyon'), 24), 'sepet' => $kes($r->input('sepet'), 600),
-            'dil' => $kes($r->input('dil', 'tr'), 5), 'created_at' => now(),
+            'dil' => $kes($r->input('dil', 'tr'), 5), 'sure' => $kes($r->input('sure'), 200) ?: null, 'created_at' => now(),
         ]);
         if (random_int(1, 200) === 1) DB::table('musteri_ai_kayit')->where('created_at', '<', now()->subDays(30))->delete();
+    } catch (\Throwable $e) { return ['ok' => 0]; }
+    return ['ok' => 1];
+});
+
+// Cevabın sesi çalmaya başlayınca (ms) o oturumun son turuna eklenir: "... ses=900"
+Route::post('/api/qr/ai-kayit-sure', function (Request $r) {
+    if ($_g = _qrKapiZorunlu($r)) return $_g;
+    _aiKayitEnsure();
+    $oturum = substr(preg_replace('/[^a-z0-9]/', '', strtolower((string) $r->input('oturum'))), 0, 32);
+    $ek = mb_substr(preg_replace('/[^a-z0-9=. ]/', '', (string) $r->input('ek')), 0, 80);
+    if ($oturum === '' || $ek === '') return ['ok' => 0];
+    try {
+        $son = DB::table('musteri_ai_kayit')->where('oturum', $oturum)->where('masa_id', (int) $r->input('masa'))->orderByDesc('id')->first(['id', 'sure']);
+        if ($son) DB::table('musteri_ai_kayit')->where('id', $son->id)->update(['sure' => mb_substr(trim(($son->sure ?? '') . ' ' . $ek), 0, 200)]);
     } catch (\Throwable $e) { return ['ok' => 0]; }
     return ['ok' => 1];
 });

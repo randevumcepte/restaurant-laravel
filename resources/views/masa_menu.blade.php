@@ -992,7 +992,7 @@ async function micAc(){
       if(rms>0.012){ if(!_rec.started){ _rec.started=true; if(_rec.pre){ _rec.pre.forEach(p=>_rec.chunks.push(p)); _rec.pre=null; } } _rec.silence=0; _rec.chunks.push(new Float32Array(d)); }
       else if(_rec.started){ _rec.silence+=dt; _rec.chunks.push(new Float32Array(d)); }
       else { (_rec.pre=_rec.pre||[]).push(new Float32Array(d)); if(_rec.pre.length>3) _rec.pre.shift(); }
-      if(_rec.started && _rec.silence>0.85) _recBit(true);        // konustu, ~0.85sn durdu -> hemen gonder
+      if(_rec.started && _rec.silence>0.65) _recBit(true);        // konustu, ~0.65sn durdu -> hemen gonder (0.85 cevabi geciktiriyordu)
       else if(!_rec.started && _rec.elapsed>6) _recBit(false);    // hic konusma yok
       else if(_rec.elapsed>9) _recBit(_rec.started);              // uzun tavani (gurultu kayidi uzatmasin)
     };
@@ -1043,23 +1043,44 @@ async function bufKonus(url, done){
     return out.duration || 0.5;   // GERCEK ses suresi (sn) -> emniyet buna gore ayarlanir
   }catch(e){ return false; }
 }
+// İlk cümle ayrı (kısaysa sonrakiyle birleşir), kalan tek parça. Kısa cevap bölünmez.
+function sesParcala(t){
+  if(t.length<70) return [t];
+  const c=t.match(/[^.!?]+[.!?]*\s*/g)||[t];
+  let ilk='', i=0;
+  while(i<c.length && (ilk.length<25 || i===0)){ ilk+=c[i]; i++; if(ilk.length>=25) break; }
+  const kalan=c.slice(i).join('').trim();
+  return kalan ? [ilk.trim(), kalan] : [t];
+}
 function konus(t){ return new Promise((resolve)=>{
   const temiz=seseHazirla(t); if(!temiz){ resolve(); return; }
   micKapat();   // AI konusmadan ONCE mikrofonu kapat -> ses LOUD hoparlorden gelir (iOS kulaklik yonlenmesi biter)
   konusuyor=true; robotHal('ai'); asDurum(t);
   let bitti=false; const bit=()=>{ if(bitti) return; bitti=true; _konusBit=null; konusuyor=false; sesDurdur(); robotHal(sohbetAktif?'dinle':'bekle'); resolve(); };
   _konusBit=bit; let emniyet=setTimeout(bit, Math.min(30000,4000+temiz.length*110));   // ilk tahmin (buffer basinca gercek sureye ayarlanir)
-  fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:temiz,masa:MASA,dil:aktifAsDil})})
-    .then(r=>r.json()).then(j=>{ if(bitti) return;
-      if(j.basarili&&j.url){ sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost();
-        _sesCalar.src=j.url;
-        _sesCalar.onloadedmetadata=()=>{ const d=_sesCalar.duration; if(isFinite(d)&&d>0){ clearTimeout(emniyet); emniyet=setTimeout(bit, d*1000+4000); } };  // GERCEK ses suresi -> uzun anlatim kesilmez
-        _sesCalar.onended=()=>{ clearTimeout(emniyet); bit(); };
-        _sesCalar.onerror=()=>{ clearTimeout(emniyet); bit(); };
-        const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{ clearTimeout(emniyet); bit(); });
-      }
-      else if(_isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } }
-      else { clearTimeout(emniyet); bit(); } }).catch(()=>{ clearTimeout(emniyet); bit(); });
+  // HIZ: cevap cümlelere bölünür, hepsinin sesi AYNI ANDA istenir; ilk (kısa) parça gelir gelmez çalar, kalanı o çalarken hazır olur.
+  // Ses JSON içinde gelir (inline) -> MP3 için ayrıca bir istek beklenmez. Eskiden tüm metin tek parça + ayrı indirme = ~2 sn bekleme.
+  const t0=(_z&&_z.bas)?_z.bas:null; _z=null;
+  const iste=(m)=>fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:m,masa:MASA,dil:aktifAsDil,inline:'1'})}).then(r=>r.json()).catch(()=>({}));
+  const istekler=sesParcala(temiz).map(iste);
+  let ilkCal=true;
+  const cal=async(i)=>{
+    if(bitti) return;
+    if(i>=istekler.length){ clearTimeout(emniyet); bit(); return; }
+    const j=await istekler[i]; if(bitti) return;
+    if(!(j&&j.basarili&&(j.ses||j.url))){
+      if(i===0 && _isAndroid && window.speechSynthesis){ clearTimeout(emniyet); try{ const u=new SpeechSynthesisUtterance(temiz); u.lang=(aktifAsDil==='tr')?'tr-TR':aktifAsDil; u.onend=bit; u.onerror=bit; speechSynthesis.speak(u); }catch(_){ bit(); } return; }
+      cal(i+1); return;
+    }
+    sesDurdur(); try{ actxHazir(); }catch(_){} ttsBoost();
+    _sesCalar.src = j.ses ? ('data:audio/mpeg;base64,'+j.ses) : j.url;
+    _sesCalar.onloadedmetadata=()=>{ const d=_sesCalar.duration; if(isFinite(d)&&d>0){ clearTimeout(emniyet); emniyet=setTimeout(bit, d*1000+4000); } };  // GERCEK ses suresi -> uzun anlatim kesilmez
+    _sesCalar.onplaying=()=>{ _sesCalar.onplaying=null; if(ilkCal){ ilkCal=false; if(t0) sureEkle('ses='+Math.round(performance.now()-t0)); } };
+    _sesCalar.onended=()=>{ cal(i+1); };
+    _sesCalar.onerror=()=>{ cal(i+1); };
+    const p=_sesCalar.play(); if(p&&p.catch) p.catch(()=>{ clearTimeout(emniyet); bit(); });
+  };
+  cal(0);
 }); }
 async function asCevir(tr){ if(aktifAsDil==='tr'||!tr) return tr; try{ const r=await fetch('/api/qr/cevir',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({metin:tr,hedef:aktifAsDil})}); const j=await r.json(); return j.metin||tr; }catch(_){ return tr; } }
 async function sistemKonus(tr){ await konus(await asCevir(tr)); }
@@ -1069,11 +1090,13 @@ let _sttLimit=false;
 async function dinleSunucu(){
   robotHal('dinle'); asDurum('🎧 Sizi dinliyorum, buyurun…');
   const wav=await turKaydet();
-  if(!wav){ asDurum('Sizi duyamadım. Biraz yüksek/net konuşun.'); return ''; }
+  _z={bas:performance.now()};   // tur süresi ölçümü: konuşma bitti (sessizlik algılandı)
+  if(!wav){ _z=null; asDurum('Sizi duyamadım. Biraz yüksek/net konuşun.'); return ''; }
   asDurum('… anlıyorum');
   try{
     const fd=new FormData(); fd.append('ses',wav,'ses.pcm'); fd.append('masa',MASA); fd.append('dil',aktifAsDil);
     const r=await fetch('/api/qr/stt',{method:'POST',body:fd}); const j=await r.json();
+    if(_z) _z.stt=Math.round(performance.now()-_z.bas);
     if(j.limit){ _sttLimit=true; return ''; }
     if(j.kod && j.kod!==200){ asDurum('Ses tanıma hatası (HTTP '+j.kod+')'); aiKaydet('[ses tanıma hatası '+j.kod+']', '', 'ses', 'stt'); return ''; }
     const m=(j.metin||'').trim();
@@ -1171,19 +1194,25 @@ function sohbetKapat(){ sohbetAktif=false; _siparisAkisi=false; _onayBekliyor=fa
 // KONUŞMA KAYDI: her tur (müşteri ne dedi/STT ne duydu → asistan ne dedi, kim cevapladı, sepet) sunucuya yazılır; /ai-kayitlar'dan incelenir
 const AI_OTURUM=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 let _sonAi={};   // son sunucu cevabının kaynağı/aksiyonu (yoksa cevap ekranda kuruldu)
+// Tur süreleri (ms): konuşma bitişinden STT / AI / sesin çalmaya başlamasına kadar -> /ai-kayitlar'da görünür
+let _z=null;
+function sureEkle(ek){ try{ fetch('/api/qr/ai-kayit-sure',{method:'POST',keepalive:true,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,ek})}).catch(()=>{}); }catch(_){} }
 function aiKaydet(soru, cevap, kanal, kaynak){
   try{
     const sepet=_sepet.map(k=>k.adet+'x '+k.ad+(k.not?' ['+k.not+']':'')).join(', ')+(_masaAlerji.length?(' | masa alerji: '+_masaAlerji.join(', ')):'');
     fetch('/api/qr/ai-kayit',{method:'POST',keepalive:true,headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,soru:soru||'',cevap:cevap||'',kanal:kanal||'',kaynak:kaynak||_sonAi.kaynak||'ekran',aksiyon:_sonAi.aksiyon||'',sepet,dil:aktifAsDil||'tr'})}).catch(()=>{});
+      body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,soru:soru||'',cevap:cevap||'',kanal:kanal||'',kaynak:kaynak||_sonAi.kaynak||'ekran',aksiyon:_sonAi.aksiyon||'',sepet,dil:aktifAsDil||'tr',
+        sure:_z?('sessiz=650'+(_z.stt!=null?' stt='+_z.stt:'')+(_z.ai!=null?' ai='+_z.ai:'')):''})}).catch(()=>{});
   }catch(_){}
   _sonAi={};
 }
 async function sunucudanCevap(soru, ek){
   asDurum('🤖 Düşünüyorum…');
   try{
+    const _ta=performance.now();
     const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams(Object.assign({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil||window.sayfaDil||'tr',alerji:_masaAlerji.join(',')}, ek||{}))});
     const j=await r.json();
+    if(_z) _z.ai=Math.round(performance.now()-_ta);
     _sonAi={kaynak:j.kaynak||(j.ok===0?'hata':'kural'), aksiyon:j.aksiyon||''};
     // ALERJİ: masaya kaydet; sepetteki ve mutfağa gitmiş (servis edilmemiş) bütün kalemlere uyarı notu
     if(Array.isArray(j.alerjiler) && j.alerjiler.length){

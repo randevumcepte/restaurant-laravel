@@ -7579,6 +7579,10 @@ Route::match(['get', 'post'], '/api/tts', function (Request $r) {
     if (!$ses) $ses = ($subeId ? resto_ayar_al('tts_ses_' . $subeId, null) : null) ?: resto_ayar_al('tts_ses', null); // restoranın seçtiği ses (yoksa genel / config)
     $ad = $servis->uret($metin, $ses);
     if (!$ad) return response()->json(['basarili' => false, 'anahtar_var' => (string) config('services.google_tts.key', '') !== ''], 200);
+    // inline=1: ses aynı cevapta (müşteri telefonu ayrıca MP3 indirmek için bir tur daha beklemesin)
+    if ($r->boolean('inline') && ($yol = $servis->dosyaYolu($ad)) && filesize($yol) <= 600000) {
+        return response()->json(['basarili' => true, 'url' => url('/api/ses/' . $ad), 'ses' => base64_encode(file_get_contents($yol))]);
+    }
     return response()->json(['basarili' => true, 'url' => url('/api/ses/' . $ad)]);
 });
 Route::get('/api/ses/{ad}', function ($ad) {
