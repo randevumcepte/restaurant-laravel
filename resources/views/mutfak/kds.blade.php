@@ -111,8 +111,8 @@ function kfis(s){
   let kalHtml='',onceki=null;
   for(const k of kalemler){const t=Number(k.tur||1);
     if(onceki!==null&&t!==onceki) kalHtml+='<div class="tur">'+t+'. Tur</div>'; onceki=t;
-    const alj=/alerj/i.test(k.not||'');
-    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+(k.not?'<div class="not'+(alj?' alerji':'')+'">'+(alj?'⚠️ ':'📝 ')+kesc(k.not)+'</div>':'')+'</div></div>';}
+    const alj=/alerj/i.test(k.not||''), sonra=/sonra getir/i.test(k.not||'');   // müşteri "yemekten sonra" dedi: aşçı gözden kaçırmasın
+    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+(k.not?'<div class="not'+(alj?' alerji':'')+'"'+(sonra?' style="font-weight:700"':'')+'>'+(alj?'⚠️ ':(sonra?'⏰ ':'📝 '))+kesc(sonra?String(k.not).replace(/^QR sipariş\s*·\s*/,''):k.not)+'</div>':'')+'</div></div>';}
   let sureHtml;
   if(!basladi){
     sureHtml='<div class="sure"><span class="material-icons-outlined" style="font-size:13px;color:var(--'+renk+')">schedule</span>'+ksure(gecen)+' geçti <b style="color:var(--'+renk+')">'+kkalan(kalan)+'</b></div>'

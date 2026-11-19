@@ -800,7 +800,7 @@ function sepetCiz(){
   }
   if(_sepet.length){
     html+='<div class="sbas">🛒 Sepetiniz <i>(henüz gönderilmedi)</i></div>';
-    html+=_sepet.map((k,i)=>`<div class="sat"><span class="sad">${esc(k.ad)}</span>`
+    html+=_sepet.map((k,i)=>`<div class="sat"><span class="sad">${esc(k.ad)}${k.not?`<br><i style="font-size:11.5px;color:var(--sessiz);font-weight:600">⏰ ${esc(k.not)}</i>`:''}</span>`
       +`<span class="adet"><button onclick="sepetAdet(${i},-1)">−</button><span>${k.adet}</span><button onclick="sepetAdet(${i},1)">+</button></span>`
       +`<span class="sf">${(k.fiyat*k.adet).toLocaleString('tr')} TL</span></div>`).join('');
   }
@@ -839,7 +839,7 @@ async function siparisGonder(){
   const btn=document.getElementById('sepet-gonder'); btn.disabled=true; btn.textContent='Gönderiliyor…';
   try{
     const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet})))})});
+      body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet,not:k.not||''})))})});
     const j=await r.json();
     if(j.ok){
       _sepet=[]; sepetRozet();
@@ -1081,7 +1081,7 @@ let sohbetAktif=false, _sonTik=0, _ilkSelam=false, _siparisAkisi=false, _onayBek
 // Sesli sipariş özeti (sepetten): "2 köfte, 1 ayran ... toplam N lira" (rakamlar sunucuda yazıya çevrilir)
 function asSiparisOzet(){
   if(!_sepet.length) return 'Sepetiniz boş.';
-  const parts=_sepet.map(k=>k.adet+' '+k.ad);
+  const parts=_sepet.map(k=>k.adet+' '+k.ad+(k.not&&/sonra/i.test(k.not)?' (yemekten sonra)':''));
   const top=_sepet.reduce((s,k)=>s+k.fiyat*k.adet,0);
   const liste = parts.length>1 ? (parts.slice(0,-1).join(', ')+' ve '+parts[parts.length-1]) : parts[0];
   return liste+' olmak üzere toplam '+top+' lira.';
@@ -1166,7 +1166,7 @@ const AI_OTURUM=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 let _sonAi={};   // son sunucu cevabının kaynağı/aksiyonu (yoksa cevap ekranda kuruldu)
 function aiKaydet(soru, cevap, kanal, kaynak){
   try{
-    const sepet=_sepet.map(k=>k.adet+'x '+k.ad).join(', ');
+    const sepet=_sepet.map(k=>k.adet+'x '+k.ad+(k.not?' ['+k.not+']':'')).join(', ');
     fetch('/api/qr/ai-kayit',{method:'POST',keepalive:true,headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,soru:soru||'',cevap:cevap||'',kanal:kanal||'',kaynak:kaynak||_sonAi.kaynak||'ekran',aksiyon:_sonAi.aksiyon||'',sepet,dil:aktifAsDil||'tr'})}).catch(()=>{});
   }catch(_){}
@@ -1223,7 +1223,7 @@ function asistanKatmanGoster(urunler, baslik){
   document.getElementById('sepet').classList.remove('acik'); document.getElementById('detay').classList.remove('acik');  // acik katmanlari kapat
   document.getElementById('menu').classList.add('acik'); menuGecmisEkle();
 }
-function asSepetEkle(eklenen, ayarla){ let n=0; const yok=[]; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u && u.etiket!=='Tükendi'){ if(ayarla) sepetAyarla(u, e.adet||1); else sepeteEkle(u, e.adet||1, false); n++; } else yok.push(e.ad||'Bir ürün'); }); if(yok.length) toast('⚠️ '+yok.join(', ')+' şu an sipariş edilemiyor'); if(n) toast(ayarla?'🛒 Sepet güncellendi':'🛒 Siparişiniz sepete eklendi'); }
+function asSepetEkle(eklenen, ayarla){ let n=0; const yok=[]; eklenen.forEach(e=>{ const u=_urun[e.urun_id]; if(u && u.etiket!=='Tükendi'){ if(ayarla) sepetAyarla(u, e.adet||1); else sepeteEkle(u, e.adet||1, false); if(e.not){ const v=_sepet.find(s=>s.urun_id===u.urun_id); if(v) v.not=e.not; } n++; } else yok.push(e.ad||'Bir ürün'); }); if(yok.length) toast('⚠️ '+yok.join(', ')+' şu an sipariş edilemiyor'); if(n) toast(ayarla?'🛒 Sepet güncellendi':'🛒 Siparişiniz sepete eklendi'); }
 // AYARLA: adedi topla DEGIL, o degere SET yap ("1 olsun 60 degil" -> 1)
 function sepetAyarla(u,adet){ adet=parseInt(adet)||0; const v=_sepet.find(s=>s.urun_id===u.urun_id); if(v){ if(adet<=0){ _sepet=_sepet.filter(s=>s.urun_id!==u.urun_id); } else { v.adet=adet; } } else if(adet>0){ _sepet.push({urun_id:u.urun_id,ad:u.ad,fiyat:u.fiyat,adet:adet}); } sepetRozet(); }
 function asSepetCikar(urunId){ _sepet=_sepet.filter(s=>s.urun_id!==urunId); sepetRozet(); }
@@ -1231,7 +1231,7 @@ function asSepetCikar(urunId){ _sepet=_sepet.filter(s=>s.urun_id!==urunId); sepe
 async function asSiparisBitir(){
   if(!_sepet.length){ toast('Sepetiniz henüz boş 🙂'); return 'Sepetiniz henüz boş efendim. Ne arzu edersiniz?'; }
   try{
-    const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet})))})});
+    const r=await fetch('/api/qr/siparis-gonder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,kalemler:JSON.stringify(_sepet.map(k=>({urun_id:k.urun_id,adet:k.adet,not:k.not||''})))})});
     const j=await r.json();
     const tk=(j.tukendi&&j.tukendi.length)?(' Yalnız '+j.tukendi.join(', ')+' tükendiği için gönderilemedi.'):'';
     if(j.ok){

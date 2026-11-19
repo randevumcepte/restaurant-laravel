@@ -45,6 +45,36 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
     public function cevapla($soru, $baglam = null)
     {
+        return $this->servisZamaniUygula($this->cevaplaIc($soru, $baglam), $soru);
+    }
+
+    /** "Yemekten sonra bir sütlaç" -> sütlaca "Yemekten sonra getirilsin" notu (mutfak ekranı + fiş) ve müşteriye söylenir. */
+    protected function servisZamaniUygula($res, $soru)
+    {
+        if (!is_array($res) || !in_array($res['aksiyon'] ?? '', ['sepet_ekle', 'sepet_ayarla'], true) || empty($res['eklenen'])) return $res;
+        $c = $this->norm($soru);
+        if (!$this->has($c, ['yemekten sonra', 'yemekden sonra', 'yemek sonrasi', 'yemek bitince', 'yemekler bitince', 'yemegimiz bitince', 'yemegim bitince',
+            'yemekten sonraya', 'en son getir', 'en son gelsin', 'en sona', 'sonra getir', 'sonra gelsin', 'sonradan getir', 'sonrasinda getir', 'ardindan getir', 'sonra servis'])) return $res;
+        // Cümlede ana yemek de varsa ("bir adana, yemekten sonra da künefe") not yalnız tatlı/içeceğe gider
+        $katlar = DB::table('urunler')->leftJoin('menu_kategorileri', 'menu_kategorileri.id', '=', 'urunler.kategori_id')
+            ->whereIn('urunler.id', array_map(fn ($e) => (int) ($e['urun_id'] ?? 0), $res['eklenen']))->pluck('menu_kategorileri.ad', 'urunler.id');
+        $sonraMi = function ($e) use ($katlar) { $k = (string) ($katlar[(int) ($e['urun_id'] ?? 0)] ?? ''); return $this->icecekMi($e['ad'] ?? '', $k) || strpos($this->norm($k), 'tatli') !== false || strpos($this->norm($k), 'kahve') !== false; };
+        $hedef = array_filter($res['eklenen'], $sonraMi);
+        $adlar = [];
+        foreach ($res['eklenen'] as $i => $e) {
+            if ($hedef && !$sonraMi($e)) continue;
+            $res['eklenen'][$i]['not'] = 'Yemekten sonra getirilsin';
+            $adlar[] = $e['ad'];
+        }
+        if ($adlar) {
+            $res['cevap'] = preg_replace('/\s*Başka bir arzunuz var mı\?.*$/u', '', (string) ($res['cevap'] ?? ''))
+                . ' ' . $this->dogalListe($adlar) . ' yemekten sonra getirilecek. Başka bir arzunuz var mı?';
+        }
+        return $res;
+    }
+
+    protected function cevaplaIc($soru, $baglam = null)
+    {
         $c = $this->norm($soru);
         if ($c === '') return $this->cvp('Sizi dinliyorum. Menümüzü sorabilir, öneri isteyebilir ya da garson çağırabilirsiniz.');
 

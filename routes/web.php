@@ -7177,7 +7177,8 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $masa->sube_id)->first();
         if (!$u) continue;
         if ($u->tukendi || (isset($u->aktif) && !(int) $u->aktif)) { $tukendi[] = $u->ad; continue; }
-        $gecerli[] = [$u, $adet];
+        $not = mb_substr(trim(preg_replace('/\s+/u', ' ', strip_tags((string) ($k['not'] ?? '')))), 0, 80); // müşterinin notu ("Yemekten sonra getirilsin")
+        $gecerli[] = [$u, $adet, $not];
     }
     if (!$gecerli) return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Geçerli ürün eklenemedi', 'tukendi' => $tukendi];
     _onOdemeTerkTemizle($masa->id);
@@ -7193,11 +7194,11 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
             ]);
         }
         $ids = [];
-        foreach ($gecerli as [$u, $adet]) {
+        foreach ($gecerli as [$u, $adet, $kNot]) {
             $ids[] = DB::table('adisyon_kalemleri')->insertGetId([
                 'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
                 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
-                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => $onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş',
+                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => ($onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş') . ($kNot !== '' ? ' · ' . $kNot : ''),
                 'gonderim_zamani' => $onOdeme ? null : $simdi, 'created_at' => $simdi, 'updated_at' => $simdi,
             ]);
         }

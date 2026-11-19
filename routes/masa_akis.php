@@ -369,7 +369,7 @@ Route::post('/api/mutfak/fis-al', function (Request $r) {
         $key = $k->adisyon_id . '-' . $tur;
         if (!isset($fisler[$key])) $fisler[$key] = ['adisyon_id' => (int) $k->adisyon_id, 'tur' => $tur, 'masa' => $k->masa ?: ucfirst((string) $k->kanal),
             'kaynak' => 'QR', 'saat' => $k->gonderim_zamani ? \Carbon\Carbon::parse($k->gonderim_zamani)->format('d.m H:i') : now()->format('d.m H:i'), 'kalemler' => []];
-        $not = trim(preg_replace('/^QR sipariş( \(ön ödeme\))?/u', '', (string) $k->not));
+        $not = trim(preg_replace('/^QR sipariş( \(ön ödeme\))?(\s*·\s*)?/u', '', (string) $k->not)); // "QR sipariş · Yemekten sonra" -> "Yemekten sonra"
         $fisler[$key]['kalemler'][] = ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (float) $k->adet, 'not' => $not,
             'istasyon' => isset($barIds[(int) $k->urun_id]) ? 'bar' : ($k->istasyon ?: 'mutfak')];
     }
