@@ -273,7 +273,16 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $katlar = DB::table('urunler')->leftJoin('menu_kategorileri', 'menu_kategorileri.id', '=', 'urunler.kategori_id')
             ->whereIn('urunler.id', array_map(fn ($e) => (int) ($e['urun_id'] ?? 0), $res['eklenen']))->pluck('menu_kategorileri.ad', 'urunler.id');
         $sonraMi = function ($e) use ($katlar) { $k = (string) ($katlar[(int) ($e['urun_id'] ?? 0)] ?? ''); return $this->icecekMi($e['ad'] ?? '', $k) || strpos($this->norm($k), 'tatli') !== false || strpos($this->norm($k), 'kahve') !== false; };
-        $hedef = array_filter($res['eklenen'], $sonraMi);
+        $tatliMi = function ($e) use ($katlar) { $k = $this->norm((string) ($katlar[(int) ($e['urun_id'] ?? 0)] ?? '')); $a = $this->norm($e['ad'] ?? '');
+            foreach (['tatli', 'kahve', 'cay', 'dondurma', 'pasta', 'sutlac', 'kunefe', 'baklava', 'kazandibi', 'profiterol', 'tiramisu', 'cheesecake', 'puding', 'kek', 'turk kahvesi'] as $x) if (strpos($k, $x) !== false || strpos($a, $x) !== false) return true; return false; };
+        $hedef = array_filter($res['eklenen'], $tatliMi);
+        if ($hedef) { $sonraMi = $tatliMi; }
+        elseif (!empty($res['bilinmeyen'])) {
+            // "bir pizza, bir kola, bir de süt taşı ... yemekten sonra": not anlaşılamayan ürün içindi, kolaya yazılmaz
+            $res['cevap'] = (string) ($res['cevap'] ?? '') . ' Yemekten sonra gelmesini istediğiniz ürünü söylediğinizde notunu da düşeceğim.';
+            return $res;
+        }
+        else $hedef = array_filter($res['eklenen'], $sonraMi);
         $adlar = [];
         foreach ($res['eklenen'] as $i => $e) {
             if ($hedef && !$sonraMi($e)) continue;
@@ -500,7 +509,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             // FARKLI urun sayisi (ayni urunu 2 kez anmak siparis SAYILMAZ; sohbette "Adana... Adana" gibi)
             $farkliUrun = count(array_unique(array_map(fn ($l) => $l['u']->id, $sip['lines'])));
             if ($zayifVerb || $sip['explicitQty'] || $farkliUrun >= 2) {
-                return $this->sepetEkleCevap($sip['lines']);
+                return $this->sepetEkleCevap($sip['lines'], $sip['bilinmeyen'] ?? []);
             }
         } elseif (!$bilgiIster && empty($sip['lines'])) {
             // Urun adi gecmiyor. Guclu istek + BAGLAM (son konusulan urun) varsa ONU ekle
@@ -1843,11 +1852,38 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         return null;
     }
 
+    /** Ses tanımanın yemek adlarında sık yaptığı hatalar (norm edilmiş metin üzerinde) */
+    protected function sttDuzelt($c)
+    {
+        $harita = ['sut tasi' => 'sutlac', 'sut tas' => 'sutlac', 'sut lac' => 'sutlac', 'sut las' => 'sutlac', 'sutlas' => 'sutlac', 'sut lach' => 'sutlac', 'sut aci' => 'sutlac',
+            'kune fe' => 'kunefe', 'kunfe' => 'kunefe', 'kunafe' => 'kunefe', 'bak lava' => 'baklava', 'lah macun' => 'lahmacun', 'lahmacunu' => 'lahmacun', 'ezo gelin' => 'ezogelin', 'iskender' => 'iskender',
+            'margaritta' => 'margarita', 'margherita' => 'margarita', 'mar garita' => 'margarita', 'ay ran' => 'ayran', 'kola' => 'kola', 'koka kola' => 'kola', 'coca cola' => 'kola'];
+        $c = ' ' . $c . ' ';
+        foreach ($harita as $a => $b) $c = str_replace(' ' . $a . ' ', ' ' . $b . ' ', $c);
+        return trim($c);
+    }
+
+    /** Tek kelime ya da iki kelime birleşik, ürün adının ilk kelimesine çok yakın mı (1-2 harf farkı)? */
+    protected function yakinUrun(array $keys, $t, $sonraki = null)
+    {
+        $adaylar = [[$t, 1]];
+        if ($sonraki !== null && mb_strlen($sonraki) <= 5) $adaylar[] = [$t . $sonraki, 2];
+        foreach ($adaylar as [$aday, $len]) {
+            foreach ($keys as $k) {
+                $w = $k['w'][0] ?? '';
+                if (mb_strlen($w) < 5 || $aday[0] !== $w[0]) continue;
+                $esik = mb_strlen($w) >= 8 ? 2 : 1;
+                if (levenshtein($aday, $w) <= $esik) return ['u' => $k['u'], 'w' => $k['w'], 'len' => $len];
+            }
+        }
+        return null;
+    }
+
     /** Serbest metni ürün+adet satirlarina cevirir. "iki adana bir ayran" -> [{u,adet:2},{u,adet:1}]. */
     protected function siparisCoz($metin)
     {
-        $tokens = array_values(array_filter(explode(' ', $this->norm($metin)), fn ($x) => $x !== ''));
-        if (empty($tokens)) return ['lines' => [], 'explicitQty' => false];
+        $tokens = array_values(array_filter(explode(' ', $this->sttDuzelt($this->norm($metin))), fn ($x) => $x !== ''));
+        if (empty($tokens)) return ['lines' => [], 'explicitQty' => false, 'bilinmeyen' => []];
         $urunler = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->get(['id', 'ad', 'fiyat', 'tukendi']);
         $keys = [];
         $ilk = [];
@@ -1861,11 +1897,18 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $explicit = false;
         $n = count($tokens);
         $used = array_fill(0, $n, false);
+        // Adetten sonra gelip menüde karşılığı olmayan kelimeler ("bir de süt taşı alayım"): sessizce atlanmasın, müşteriye söylensin
+        $bilinmeyen = [];
+        $bil = [];
+        $dur = ['de', 'da', 've', 'ile', 'ama', 'fakat', 'ancak', 'almak', 'alayim', 'alalim', 'alabilir', 'alirim', 'istiyorum', 'isterim', 'istiyoruz', 'isterdim', 'lutfen', 'olsun', 'gelsin', 'getir', 'getirin',
+            'getirir', 'ekle', 'ekler', 'yemekten', 'yemekden', 'sonra', 'once', 'simdi', 'hemen', 'misin', 'miyim', 'mi', 'mu', 'ben', 'biz', 'bana', 'bize', 'icin', 'daha', 'sey', 'seyler', 'kac', 'ne', 'nasil', 'buyuk', 'kucuk',
+            'orta', 'boy', 'sicak', 'soguk', 'tane', 'adet', 'porsiyon', 'en', 'son', 'sona', 'siparis', 'verelim', 'vereyim', 'tamam', 'evet', 'hayir', 'bu', 'su', 'o', 'onu', 'bunu', 'acaba', 'artik', 'ayrica'];
+        $bitir = function () use (&$bil, &$bilinmeyen, &$pending) { if ($pending !== null && $bil && count($bil) <= 3) $bilinmeyen[] = implode(' ', $bil); $bil = []; };
         for ($i = 0; $i < $n; $i++) {
             if ($used[$i]) continue;
             $t = $tokens[$i];
-            if (preg_match('/^\d+$/', $t)) { $pending = min(50, (int) $t); $explicit = true; continue; }
-            if (isset($say[$t])) { $pending = $say[$t]; $explicit = true; continue; }
+            if (preg_match('/^\d+$/', $t)) { $bitir(); $pending = min(50, (int) $t); $explicit = true; continue; }
+            if (isset($say[$t])) { $bitir(); $pending = $say[$t]; $explicit = true; continue; }
             if (in_array($t, ['tane', 'adet', 'porsiyon', 'porsiyonluk', 'bardak', 'sise', 'kadeh'])) continue;
             $match = null;
             foreach ($keys as $k) {
@@ -1876,15 +1919,28 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 for ($j = 0; $j < $len; $j++) { if (!$this->kelimeUyar($tokens[$i + $j], $w[$j])) { $ok = false; break; } }
                 if ($ok) { $match = $k; break; }
             }
+            // Ses tanıma yazım hatası ("sütlac" / "kunfe"): adet söylenmişse yakın yazımlı ürünü kabul et
+            if (!$match && $pending !== null && mb_strlen($t) >= 5) $match = $this->yakinUrun($keys, $t, $tokens[$i + 1] ?? null);
             if ($match) {
-                $len = count($match['w']);
+                $len = $match['len'] ?? count($match['w']);
                 $lines[] = ['u' => $match['u'], 'adet' => $pending ?? 1];
                 for ($j = 0; $j < $len; $j++) $used[$i + $j] = true;
                 $i += $len - 1;
                 $pending = null;
+                $bil = [];
+            } elseif ($pending !== null) {
+                if (in_array($t, $dur, true)) $bitir(); else $bil[] = $t;
             }
         }
-        return ['lines' => $lines, 'explicitQty' => $explicit];
+        $bitir();
+        // Müşterinin söylediği hâli ("süt taşı", "kazkafası") geri bul: mesajda Türkçe karakterli görünsün
+        $kel = array_values(array_filter(preg_split('/\s+/u', trim(preg_replace('/[^\p{L}\p{N}\s]/u', ' ', (string) $metin))), 'strlen'));
+        $bilinmeyen = array_map(function ($b) use ($kel) {
+            $k = count(explode(' ', $b));
+            for ($i = 0; $i + $k <= count($kel); $i++) { $o = implode(' ', array_slice($kel, $i, $k)); if ($this->norm($o) === $b) return mb_strtolower(str_replace(['İ', 'I'], ['i', 'ı'], $o), 'UTF-8'); }
+            return $b;
+        }, $bilinmeyen);
+        return ['lines' => $lines, 'explicitQty' => $explicit, 'bilinmeyen' => array_values(array_unique($bilinmeyen))];
     }
 
     /** Token, kelimenin (kok) ekli halimi? Kisa kelimede asiri uzamayi engelle (su != sucuk). */
@@ -1901,7 +1957,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     }
 
     /** Cozulen satirlar -> sepete EKLE cevabi (birikimli akis; "baska arzunuz?" diye sorar). */
-    protected function sepetEkleCevap($lines)
+    protected function sepetEkleCevap($lines, array $bilinmeyen = [])
     {
         $map = [];
         foreach ($lines as $l) {
@@ -1924,7 +1980,13 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         }
         $metin = 'Harika seçim, ' . $this->dogalListe($ozet) . ' ekledim. Başka bir arzunuz var mı? 😊';
         if (!empty($tukendi)) $metin = $this->dogalListe($ozet) . ' ekledim (' . $this->dogalListe($tukendi) . ' maalesef tükendi). Başka bir arzunuz var mı?';
-        return $this->cvp($metin, ['aksiyon' => 'sepet_ekle', 'eklenen' => $eklenen]);
+        // Ürün adının bir parçası ("pizza" -> Margarita Pizza) ya da kategori adı ise bilinmeyen sayılmaz
+        $bilinmeyen = array_values(array_filter($bilinmeyen, fn ($b) => mb_strlen($this->norm($b)) >= 3 && !$this->urunAdBulGevsek($b) && !$this->kategoriAdBul($b)));
+        if ($bilinmeyen) {
+            // Duyulan ama menüde karşılığı olmayan ürün: sessizce atlanmaz (eskiden "süt taşı" hiç söylenmeden düşüyordu)
+            $metin = preg_replace('/\s*Başka bir arzunuz var mı\?.*$/u', '', $metin) . ' Yalnız "' . implode('", "', $bilinmeyen) . '" menümüzde bulamadım; ürünün adını tekrar söyler misiniz?';
+        }
+        return $this->cvp($metin, ['aksiyon' => 'sepet_ekle', 'eklenen' => $eklenen, 'bilinmeyen' => $bilinmeyen]);
     }
 
     // ==================== URUN OZELLIK ZEKASI (Modul 1) ====================
@@ -2353,12 +2415,20 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 return $u ? $this->urunTanit($u, $q) : null;
             case 'siparis_ekle':
                 $lines = [];
+                $bilinmeyen = [];
                 foreach ((array) ($j['urunler'] ?? []) as $it) {
                     $ad = is_array($it) ? ($it['ad'] ?? '') : $it;
                     $adet = is_array($it) ? (int) ($it['adet'] ?? 1) : 1;
-                    $u = $this->urunAdBul((string) $ad) ?: $this->urunAdBulGevsek((string) $ad);
+                    $u = $this->urunAdBul((string) $ad) ?: $this->urunAdBulGevsek((string) $ad) ?: $this->urunAdBulGevsek($this->sttDuzelt($this->norm((string) $ad)));
                     if ($u) $lines[] = ['u' => $u, 'adet' => max(1, $adet)];
+                    elseif (trim((string) $ad) !== '') $bilinmeyen[] = trim((string) $ad);
                 }
+                // Kural motoru (ses düzeltmeli) Haiku'nun atladığı ürünü bulduysa o da eklenir ("süt taşı" -> Sütlaç);
+                // Haiku listelemediyse kural motorunun yakaladığı bulunamayanlar söylenir
+                $sc = $this->siparisCoz($q);
+                $varIds = array_map(fn ($l) => (int) $l['u']->id, $lines);
+                foreach ($sc['lines'] as $l) if (!in_array((int) $l['u']->id, $varIds, true)) { $lines[] = $l; $varIds[] = (int) $l['u']->id; }
+                if (!$bilinmeyen) $bilinmeyen = $sc['bilinmeyen'] ?? [];
                 if (!$lines) return $this->cvp('Hangi ürünü almak istersiniz? Ürün adını söylemeniz yeterli. 😊', ['aksiyon' => 'siparis_basla']);
                 // "X olsun / X yap" + TEK urun -> ADEDI AYARLA (topla degil), Haiku ekle dese bile
                 if (count($lines) === 1 && $this->has($this->norm($q), ['olsun', 'yap', 'olacak', 'yapalim', 'guncelle', 'degistir'])) {
@@ -2367,7 +2437,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                     return $this->cvp($u->ad . ' adedini ' . $adet . ' yaptım. Başka bir arzunuz var mı? 😊',
                         ['aksiyon' => 'sepet_ayarla', 'eklenen' => [['urun_id' => (int) $u->id, 'ad' => $u->ad, 'adet' => $adet, 'fiyat' => (float) $u->fiyat]]]);
                 }
-                return $this->sepetEkleCevap($lines);
+                return $this->sepetEkleCevap($lines, $bilinmeyen);
             case 'siparis_ayarla':
                 $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
                 if (!$u) return null;
