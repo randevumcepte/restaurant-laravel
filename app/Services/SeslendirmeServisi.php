@@ -13,6 +13,11 @@ class SeslendirmeServisi
     protected $subeId;   // HER restoran/sube kendi aylik limitine sahip (multi-tenant)
     public $sonHata = null;
 
+    // 0,4 sn sessiz MP3 (24 kHz mono 32 kbps = Google TTS MP3 çıktısıyla aynı biçim). Sesin BAŞINA eklenir:
+    // telefon mikrofondan hoparlöre geçerken ilk ~0,3 sn yutuluyor ("Hoş geldiniz" -> "..şgeldiniz").
+    // (Tarayıcıda buffer'a sessizlik eklemek iOS'ta sesi tamamen kesiyordu, d00a832 ile geri alınmıştı.)
+    const BAS_SESSIZLIK = '//NExAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExFMAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKYAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKwAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NExKwAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NExKwAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+
     public function __construct($subeId = null)
     {
         $this->subeId = (int) $subeId; // null/0 = genel havuz (test vb.)
@@ -28,7 +33,7 @@ class SeslendirmeServisi
         $okunacak = $this->okunusHazirla($metin);
         if ($okunacak === '') return null;
 
-        $ad = md5($ses . '|g16|' . $okunacak) . '.mp3';   // g16 = +16dB ses yukseltme surumu (onbellek tazelensin)
+        $ad = md5($ses . '|g16s|' . $okunacak) . '.mp3';   // g16s = +16dB + baştaki sessizlik (onbellek tazelensin)
         $yol = $this->klasor . '/' . $ad;
         // ONBELLEK: daha once uretilmisse diskten don (karakter YAKMAZ, limite saymaz)
         // @touch: kullanilan dosyayi "taze" tut -> otomatik temizlik onu silmesin (sik kullanilanlar kalir)
@@ -116,7 +121,7 @@ class SeslendirmeServisi
         if ($key === '') return null;
         $url = 'https://texttospeech.googleapis.com/v1/text:synthesize?key=' . urlencode($key);
         // volumeGainDb: +16 (max) -> gurultulu restoranda AI net/yuksek duyulsun (tum seslerde desteklenir)
-        $audioConfig = ['audioEncoding' => 'MP3', 'speakingRate' => 1.0, 'volumeGainDb' => 16.0];
+        $audioConfig = ['audioEncoding' => 'MP3', 'speakingRate' => 1.0, 'volumeGainDb' => 16.0, 'sampleRateHertz' => 24000];
         // Chirp3-HD sesleri pitch desteklemez -> gonderme (aksi halde hata)
         if (strpos($ses, 'Chirp') === false) $audioConfig['pitch'] = 0.0;
         $govde = json_encode([
@@ -139,7 +144,11 @@ class SeslendirmeServisi
         $j = json_decode($res, true);
         if (empty($j['audioContent'])) return null;
         $bin = base64_decode($j['audioContent']);
-        return ($bin !== false && $bin !== '') ? $bin : null;
+        if ($bin === false || $bin === '') return null;
+        // Baştaki sessizlik yalnız aynı biçimde (MPEG-2 Layer III çerçevesiyle başlıyorsa) eklenir; değilse ses olduğu gibi kalır
+        $h = substr($bin, 0, 2);
+        if ($h === "\xFF\xF3" || $h === "\xFF\xF2") $bin = base64_decode(self::BAS_SESSIZLIK) . $bin;
+        return $bin;
     }
 
     /** Rakamlari yaziya cevir (TTS dogru okusun): "245" -> "iki yuz kirk bes", "14:30" -> "on dort otuz". */
