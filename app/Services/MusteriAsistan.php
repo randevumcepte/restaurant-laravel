@@ -66,6 +66,15 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             $res['eklenen'][$i]['not'] = 'Yemekten sonra getirilsin';
             $adlar[] = $e['ad'];
         }
+        // Sipariş fiili yoksa ("künefeyi yemekten sonra getirin") bu yeni ürün değil, var olan ürün için TALİMAT olabilir:
+        // müşteri ekranı ürün sepette/mutfaktaysa yenisini eklemez, yalnız notu uygular. adi_gecti: ürün adı cümlede açıkça geçti mi
+        if (!$this->has($c, ['istiyorum', 'isterim', 'alayim', 'alalim', 'alabilir', 'ekle', 'bir de', 'bir tane de', 'da bir', 'de bir', 'siparis', 'getirir misin', 'olsun bir'])) {
+            $res['zaman_talimati'] = true;
+            foreach ($res['eklenen'] as $i => $e) {
+                $an = $this->norm($e['ad'] ?? '');
+                $res['eklenen'][$i]['adi_gecti'] = $an !== '' && strpos($c, mb_substr($an, 0, max(4, mb_strlen($an) - 2))) !== false;
+            }
+        }
         if ($adlar) {
             $res['cevap'] = preg_replace('/\s*Başka bir arzunuz var mı\?.*$/u', '', (string) ($res['cevap'] ?? ''))
                 . ' ' . $this->dogalListe($adlar) . ' yemekten sonra getirilecek. Başka bir arzunuz var mı?';

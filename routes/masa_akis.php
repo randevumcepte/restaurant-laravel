@@ -387,3 +387,19 @@ Route::post('/api/mutfak/fis-sonuc', function (Request $r) {
         ->update(['fis_bekliyor' => $r->boolean('basarili') ? 0 : 1, 'fis_alan_at' => null]);
     return ['ok' => 1];
 });
+
+// Müşteri mutfağa GİTMİŞ ürün için zamanlama talimatı verdi ("künefeyi yemekten sonra getirin"): yeni ürün eklenmez,
+// o masanın açık adisyonundaki henüz hazırlanmamış kalemin notuna eklenir (mutfak ekranında ⏰ görünür).
+Route::post('/api/qr/kalem-not', function (Request $r) {
+    if ($_g = _qrKapiZorunlu($r)) return $_g;
+    $not = mb_substr(trim(strip_tags((string) $r->input('not'))), 0, 80);
+    $a = _qrAcikAdisyon((int) $r->input('masa'));
+    if (!$a || $not === '') return ['ok' => 0];
+    $k = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('urun_id', (int) $r->input('urun_id'))
+        ->whereIn('durum', ['odeme_bekliyor', 'gonderildi', 'hazirlaniyor'])->orderByDesc('id')->first();
+    if (!$k) return ['ok' => 0, 'hazir' => 1]; // hazırlanmış/servis edilmiş: not anlamsız
+    if (mb_stripos((string) $k->not, $not) === false) {
+        DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['not' => mb_substr(trim((string) $k->not) !== '' ? trim((string) $k->not) . ' · ' . $not : $not, 0, 190), 'updated_at' => now()]);
+    }
+    return ['ok' => 1, 'ad' => $k->urun_adi];
+});

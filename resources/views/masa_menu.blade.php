@@ -1181,6 +1181,25 @@ async function sunucudanCevap(soru, ek){
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
+    // "Künefeyi yemekten sonra getirin": ürün sepette/mutfaktaysa YENİSİ eklenmez, yalnız not uygulanır
+    if(j.aksiyon==='sepet_ekle' && j.zaman_talimati && Array.isArray(j.eklenen)){
+      const sepette=[], mutfakta=[], yeni=[];
+      for(const e of j.eklenen){
+        if(!e.not){ yeni.push(e); continue; }
+        const v=_sepet.find(s=>s.urun_id===e.urun_id);
+        if(v){ v.not=e.not; sepette.push(e.ad); continue; }
+        try{ const r2=await fetch('/api/qr/kalem-not',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({masa:MASA,urun_id:e.urun_id,not:e.not})}); const j2=await r2.json(); if(j2.ok){ mutfakta.push(e.ad); continue; } }catch(_){}
+        if(e.adi_gecti) yeni.push(e);   // sepette/mutfakta yok ve adını söyledi: gerçekten yeni sipariş
+      }
+      if(sepette.length||mutfakta.length){
+        if(yeni.length){ asSepetEkle(yeni,false); _siparisAkisi=true; }
+        sepetRozet(); _sonAi.aksiyon='zaman_notu';
+        return 'Tabii, '+sepette.concat(mutfakta).join(' ve ')+' yemekten sonra getirilecek.'+(mutfakta.length?' Mutfağa da ilettim.':'')
+          +(yeni.length?(' '+yeni.map(e=>e.adet+' '+e.ad).join(', ')+' de ekledim.'):'')+' Başka bir arzunuz var mı?';
+      }
+      if(!yeni.length){ _sonAi.aksiyon='zaman_notu'; return 'Hangi ürünü yemekten sonra getirelim? Adını söylemeniz yeterli.'; }
+      j.eklenen=yeni;
+    }
     let sepetNot='';
     if(j.aksiyon==='sepet_ekle' && Array.isArray(j.eklenen)){   // EKLE (topla)
       const once={}; _sepet.forEach(s=>{ once[s.urun_id]=s.adet; });
