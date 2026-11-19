@@ -388,18 +388,27 @@ Route::post('/api/mutfak/fis-sonuc', function (Request $r) {
     return ['ok' => 1];
 });
 
-// Müşteri mutfağa GİTMİŞ ürün için zamanlama talimatı verdi ("künefeyi yemekten sonra getirin"): yeni ürün eklenmez,
-// o masanın açık adisyonundaki henüz hazırlanmamış kalemin notuna eklenir (mutfak ekranında ⏰ görünür).
+// Müşteri mutfağa GİTMİŞ ürün için not verdi ("künefeyi yemekten sonra getirin", "pizza mısırsız olsun"): yeni ürün eklenmez,
+// o masanın açık adisyonundaki henüz hazırlanmamış kalemin notuna eklenir. tumu=1 (alerji): masanın servis edilmemiş BÜTÜN kalemlerine.
 Route::post('/api/qr/kalem-not', function (Request $r) {
     if ($_g = _qrKapiZorunlu($r)) return $_g;
-    $not = mb_substr(trim(strip_tags((string) $r->input('not'))), 0, 80);
+    $not = mb_substr(trim(strip_tags((string) $r->input('not'))), 0, 120);
     $a = _qrAcikAdisyon((int) $r->input('masa'));
     if (!$a || $not === '') return ['ok' => 0];
+    if ($r->boolean('tumu')) {
+        $n = 0;
+        foreach (DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('durum', ['odeme_bekliyor', 'gonderildi', 'hazirlaniyor', 'hazir'])->get(['id', 'not']) as $k) {
+            if (mb_stripos((string) $k->not, $not) !== false) continue;
+            DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['not' => mb_substr(trim((string) $k->not) !== '' ? trim((string) $k->not) . ' · ' . $not : $not, 0, 250), 'updated_at' => now()]);
+            $n++;
+        }
+        return ['ok' => 1, 'adet' => $n];
+    }
     $k = DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->where('urun_id', (int) $r->input('urun_id'))
         ->whereIn('durum', ['odeme_bekliyor', 'gonderildi', 'hazirlaniyor'])->orderByDesc('id')->first();
     if (!$k) return ['ok' => 0, 'hazir' => 1]; // hazırlanmış/servis edilmiş: not anlamsız
     if (mb_stripos((string) $k->not, $not) === false) {
-        DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['not' => mb_substr(trim((string) $k->not) !== '' ? trim((string) $k->not) . ' · ' . $not : $not, 0, 190), 'updated_at' => now()]);
+        DB::table('adisyon_kalemleri')->where('id', $k->id)->update(['not' => mb_substr(trim((string) $k->not) !== '' ? trim((string) $k->not) . ' · ' . $not : $not, 0, 250), 'updated_at' => now()]);
     }
     return ['ok' => 1, 'ad' => $k->urun_adi];
 });

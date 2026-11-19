@@ -43,10 +43,203 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         return false;
     }
 
+    protected $masaAlerji = [];   // müşteri ekranının bu masada daha önce kaydettiği alerjiler (görünen adlar: "Fıstık")
+    public function masaAlerjiAyarla($liste)
+    {
+        $this->masaAlerji = array_values(array_filter(array_map('trim', is_array($liste) ? $liste : explode(',', (string) $liste))));
+        return $this;
+    }
+
     public function cevapla($soru, $baglam = null)
     {
-        return $this->servisZamaniUygula($this->cevaplaIc($soru, $baglam), $soru);
+        // Ürün notları ("mısırsız", "az pişmiş") ve alerjiler ÖNCE ayıklanır: "mısır olmasın" ürün çıkarma sanılmasın,
+        // "fıstık alerjim var" hiçbir yere yazılmadan "not aldım" denmesin (eskiden AI öyle diyordu, mutfağa bir şey gitmiyordu).
+        $ay = $this->notAyikla((string) $soru);
+        if (!$ay['notlar'] && !$ay['alerjiler']) return $this->alerjenUyar($this->servisZamaniUygula($this->cevaplaIc($soru, $baglam), $soru), []);
+        $temiz = trim($ay['temiz']);
+        $res = mb_strlen($this->norm($temiz)) >= 3 ? $this->servisZamaniUygula($this->cevaplaIc($temiz, $baglam), $temiz) : null;
+        return $this->notUygula($res, $ay, $baglam);
     }
+
+    // Alerji sözlüğü: müşterinin dediği (norm) => [ekranda/fişte görünen, yasal 14 alerjenden karşılığı (ürün alerjen kaydıyla eşleşir)]
+    protected function alerjiSozluk()
+    {
+        return [
+            'antep fistig' => ['Antep fıstığı', 'Sert kabuklu yemiş'], 'yer fistig' => ['Yer fıstığı', 'Yer fıstığı'], 'fistik' => ['Fıstık', ['Yer fıstığı', 'Sert kabuklu yemiş']], 'fistig' => ['Fıstık', ['Yer fıstığı', 'Sert kabuklu yemiş']],
+            'ceviz' => ['Ceviz', 'Sert kabuklu yemiş'], 'findik' => ['Fındık', 'Sert kabuklu yemiş'], 'findig' => ['Fındık', 'Sert kabuklu yemiş'], 'badem' => ['Badem', 'Sert kabuklu yemiş'],
+            'kaju' => ['Kaju', 'Sert kabuklu yemiş'], 'kuruyemis' => ['Kuruyemiş', 'Sert kabuklu yemiş'], 'sert kabuklu' => ['Sert kabuklu yemiş', 'Sert kabuklu yemiş'],
+            'gluten' => ['Gluten', 'Gluten'], 'colyak' => ['Gluten (çölyak)', 'Gluten'], 'bugday' => ['Buğday (gluten)', 'Gluten'],
+            'laktoz' => ['Laktoz', 'Süt (laktoz)'], 'sut' => ['Süt', 'Süt (laktoz)'], 'yumurta' => ['Yumurta', 'Yumurta'], 'balik' => ['Balık', 'Balık'],
+            'karides' => ['Karides', 'Kabuklu deniz ürünleri'], 'midye' => ['Midye', 'Kabuklu deniz ürünleri'], 'deniz urun' => ['Deniz ürünleri', 'Kabuklu deniz ürünleri'],
+            'kabuklu deniz' => ['Kabuklu deniz ürünleri', 'Kabuklu deniz ürünleri'], 'istakoz' => ['Istakoz', 'Kabuklu deniz ürünleri'], 'yengec' => ['Yengeç', 'Kabuklu deniz ürünleri'],
+            'kalamar' => ['Kalamar', 'Yumuşakça'], 'ahtapot' => ['Ahtapot', 'Yumuşakça'], 'soya' => ['Soya', 'Soya'], 'susam' => ['Susam', 'Susam'],
+            'hardal' => ['Hardal', 'Hardal'], 'kereviz' => ['Kereviz', 'Kereviz'], 'sulfit' => ['Sülfit', 'Sülfit'], 'lupin' => ['Acı bakla', 'Acı bakla (lupin)'], 'aci bakla' => ['Acı bakla', 'Acı bakla (lupin)'],
+            'domates' => ['Domates', null], 'cilek' => ['Çilek', null], 'kivi' => ['Kivi', null], 'mantar' => ['Mantar', null], 'biber' => ['Biber', null], 'sarimsak' => ['Sarımsak', null], 'sogan' => ['Soğan', null],
+        ];
+    }
+
+    /** Cümleden alerjileri ve ürün notlarını ayıklar; 'temiz' = notlar çıkarılmış cümle (sipariş motoruna gider). */
+    protected function notAyikla($soru)
+    {
+        $low = mb_strtolower(str_replace(['İ', 'I'], ['i', 'ı'], $soru), 'UTF-8');
+        $bos = ['temiz' => $soru, 'notlar' => [], 'alerjiler' => [], 'low' => $low];
+        $n = $this->norm($low);
+        if ($n === '') return $bos;
+        // Acil durum ("alerjim tuttu, nefes alamıyorum") normal akışa (acil alarm) kalsın
+        if ($this->has($n, ['tuttu', 'nefes', 'sisti', 'sisme', 'ambulans', 'fenalas', 'bayil', 'kriz', 'kasinti', 'kizardi'])) return $bos;
+        $alerjiler = [];
+        if (preg_match('/alerj|çölyak|colyak|intolerans|hassasiyet/u', $low)) {
+            $nn = ' ' . $n . ' ';
+            $sozluk = $this->alerjiSozluk();
+            uksort($sozluk, fn ($a, $b) => mb_strlen($b) - mb_strlen($a));   // uzun anahtar önce ("antep fistig" "fistik"tan önce)
+            $gor = [];
+            foreach ($sozluk as $k => [$ad, $kanon]) {
+                if (strpos($nn, ' ' . $k) === false) continue;
+                $nn = str_replace(' ' . $k, ' ', $nn);
+                if (isset($gor[$ad]) || ($ad === 'Fıstık' && (isset($gor['Antep fıstığı']) || isset($gor['Yer fıstığı'])))) continue;
+                $gor[$ad] = 1;
+                $alerjiler[] = ['ad' => $ad, 'kanon' => $kanon];
+            }
+            if (!$alerjiler) $alerjiler[] = ['ad' => '', 'kanon' => null];   // alerji var ama neye olduğu söylenmedi -> sorulur
+            // Alerji cümleciğini sipariş cümlesinden çıkar ("bir künefe, fıstık alerjim var" -> "bir künefe")
+            $parca = preg_split('/[,.;!?]+|\s+(?:ama|fakat|ancak)\s+/u', $low);
+            $kalan = array_filter($parca, fn ($p) => !preg_match('/alerj|çölyak|colyak|intolerans|hassasiyet/u', $p));
+            $low = $kalan ? implode(', ', $kalan) : '';
+            // Tek cümlede "fıstık alerjim var bir künefe istiyorum": alerji ifadesini at, kalanı siparişse al
+            if (trim($low) === '') {
+                $geri = preg_replace('/\S*(alerj|çölyak|colyak|intolerans|hassasiyet|hastas)\S*|\b(var|vardır|varmış|benim|bende)\b/u', ' ', $bos['low']);
+                foreach (array_keys($sozluk) as $k) $geri = preg_replace('/\S*' . preg_quote($k, '/') . '\S*/u', ' ', $geri);
+                if (preg_match('/iste|ala|getir|ver |olsun|ekle/u', $geri)) $low = trim(preg_replace('/\s+/u', ' ', $geri));
+            }
+        }
+        // Soru cümlesinde ("glutensiz mi?", "acısız var mı") not ayıklanmaz: o sipariş notu değil, ürün sorusu
+        $soruMu = (bool) preg_match('/(\s(mi|mı|mu|mü|misiniz|mısınız|musunuz|müsünüz|midir|mıdır)\s*\??\s*$)|\?\s*$/u', trim($low));
+        $notlar = [];
+        $L = '[a-zçğıöşü]';
+        if (!$soruMu && trim($low) !== '') {
+            $urunAdlari = DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->pluck('ad')->map(fn ($a) => $this->norm($a))->all();
+            $urunMu = function ($kelime) use ($urunAdlari) {
+                $k = $this->norm($kelime);
+                if (mb_strlen($k) < 3) return false;
+                $kok = mb_substr($k, 0, max(3, mb_strlen($k) - 2));
+                foreach ($urunAdlari as $u) foreach (explode(' ', $u) as $uk) if ($uk !== '' && strpos($uk, $kok) === 0) return true;
+                return false;
+            };
+            $desen = [
+                "/\\b(az|orta|iyi|tam)\\s+pişmiş\\b/u",
+                "/\\b(ekstra|bol|duble|çift)\\s+($L{3,})(\\s+olsun)?/u",
+                "/\\b(az|çok|bol)\\s+($L{2,}(?:lı|li|lu|lü))\\b(\\s+olsun)?/u",
+                "/(?<![a-zçğıöşü])($L{2,}(?:sız|siz|suz|süz))(?![a-zçğıöşü])(\\s+olsun)?/u",
+                "/(?<![a-zçğıöşü])($L{3,})\\s+(olmasın|olmasin|koymayın|koymayin|koymasın|eklemeyin|istemiyorum|istemem)(?![a-zçğıöşü])/u",
+            ];
+            $haric = ['ücretsiz', 'sınırsız', 'sorunsuz', 'hesapsız', 'gecikmesiz', 'beklemesiz', 'hatasız', 'sessiz'];
+            foreach ($desen as $i => $d) {
+                if (!preg_match_all($d, $low, $mm, PREG_SET_ORDER)) continue;
+                foreach ($mm as $m) {
+                    if ($i === 3 && in_array($m[1], $haric, true)) continue;
+                    if ($i === 4 && $urunMu($m[1])) continue;   // "kola istemiyorum" = ürün çıkarma, not değil
+                    if ($i === 1 && $urunMu($m[2]) && !preg_match('/peynir|sos|acı|soğan|zeytin|mantar|sucuk/u', $m[2])) continue; // "çift adana" = adet
+                    $metin = trim(preg_replace('/\s+olsun$/u', '', $m[0]));
+                    $notlar[] = ['metin' => mb_strtoupper(mb_substr($metin, 0, 1)) . mb_substr($metin, 1), 'kaynak' => $metin];
+                    $low = str_replace($m[0], ' ', $low);
+                }
+            }
+        }
+        $temiz = trim(preg_replace('/\s+/u', ' ', preg_replace('/(^[\s,]+|[\s,]+$)/u', '', $low)));
+        return ['temiz' => $temiz, 'notlar' => $notlar, 'alerjiler' => $alerjiler, 'low' => $bos['low']];
+    }
+
+    /** Ayıklanan notları/alerjileri sipariş cevabına bağlar ya da (ürün yoksa) müşteri ekranına "not_ekle" der. */
+    protected function notUygula($res, array $ay, $baglam)
+    {
+        $alerjiAdlar = array_values(array_filter(array_column($ay['alerjiler'], 'ad')));
+        $alerjiNot = $alerjiAdlar ? 'ALERJİ: ' . implode(', ', $alerjiAdlar) : '';
+        $nTam = $this->norm($ay['low']);
+        $eklendi = is_array($res) && in_array($res['aksiyon'] ?? '', ['sepet_ekle', 'sepet_ayarla'], true) && !empty($res['eklenen']);
+        $notCumle = [];
+        if ($eklendi) {
+            // Her notu cümlede en yakın ÖNÜNDEKİ ürüne bağla ("margarita mısırsız, kola buzsuz")
+            $poz = [];
+            foreach ($res['eklenen'] as $i => $e) {
+                $an = $this->norm($e['ad'] ?? '');
+                $p = $an !== '' ? strpos($nTam, mb_substr($an, 0, max(4, mb_strlen($an) - 3))) : false;
+                if ($p === false && $an !== '') { $ilk = explode(' ', $an)[0]; if (mb_strlen($ilk) >= 3) $p = strpos($nTam, mb_substr($ilk, 0, max(3, min(5, mb_strlen($ilk) - 1)))); }
+                $poz[$i] = $p === false ? -1 : $p;
+            }
+            foreach ($ay['notlar'] as $nt) {
+                $np = strpos($nTam, $this->norm($nt['kaynak']));
+                $hedef = null; $enIyi = -1;
+                foreach ($poz as $i => $p) if ($p >= 0 && $np !== false && $p <= $np && $p > $enIyi) { $enIyi = $p; $hedef = $i; }
+                if ($hedef === null) foreach ($poz as $i => $p) if ($p >= 0 && ($hedef === null || $p < $poz[$hedef])) $hedef = $i;
+                if ($hedef === null) $hedef = count($res['eklenen']) - 1;
+                $res['eklenen'][$hedef]['not'] = $this->notBirlestir($res['eklenen'][$hedef]['not'] ?? '', $nt['metin']);
+                $notCumle[$res['eklenen'][$hedef]['ad']][] = mb_strtolower($nt['metin']);
+            }
+            if ($alerjiNot !== '') foreach ($res['eklenen'] as $i => $e) $res['eklenen'][$i]['not'] = $this->notBirlestir($e['not'] ?? '', $alerjiNot);
+            $base = preg_replace('/\s*Başka bir arzunuz var mı\?.*$/u', '', (string) ($res['cevap'] ?? ''));
+        } else {
+            // Ürün söylenmedi ("mısırsız olsun"): müşteri ekranı konuşulan/son eklenen ürüne uygular, cevabı da o kurar
+            $hedefUrun = $this->urunBul($this->norm($ay['temiz'])) ?: ($baglam ? $this->urunAdBul($baglam) : null);
+            $res = $this->cvp('', ['aksiyon' => 'not_ekle', 'notlar' => array_column($ay['notlar'], 'metin'),
+                'hedef_urun_id' => $hedefUrun ? (int) $hedefUrun->id : null, 'hedef_ad' => $hedefUrun->ad ?? null]);
+            $base = '';
+        }
+        $res['alerjiler'] = $alerjiAdlar;
+        $parca = [];
+        if ($base !== '') $parca[] = $base;
+        if ($notCumle) $parca[] = 'Not düştüm: ' . implode('; ', array_map(fn ($ad, $l) => $ad . ' ' . $this->dogalListe($l), array_keys($notCumle), $notCumle)) . '.';
+        if ($ay['alerjiler'] && !$alerjiAdlar) {
+            $parca[] = 'Alerjiniz olduğunu söylediniz; hangi besine alerjiniz var? Söylerseniz bütün siparişlerinize mutfak için alerji uyarısı olarak eklerim.';
+        } elseif ($alerjiAdlar) {
+            $parca[] = $this->dogalListe($alerjiAdlar) . ' için alerji kaydı açtım; bu masadaki bütün siparişleriniz mutfağa ALERJİ uyarısıyla gidecek.';
+            // Sipariş edilenler aşağıda (alerjenUyar) ayrıca uyarılır; burada menünün geri kalanı
+            $icerenler = array_values(array_diff($this->alerjenIcerenler(array_column($ay['alerjiler'], 'kanon')), $eklendi ? array_column($res['eklenen'], 'ad') : []));
+            if ($icerenler) $parca[] = 'Menüdeki kayıtlara göre ' . $this->dogalListe(array_slice($icerenler, 0, 6)) . ' bu alerjeni içeriyor.';
+            $parca[] = 'Çapraz bulaşma riski için garsonumuza da ayrıca söylemenizi rica ederim.';
+        }
+        if ($eklendi || $alerjiAdlar) $parca[] = 'Başka bir arzunuz var mı?';
+        $res['cevap'] = trim(implode(' ', $parca));
+        return $this->alerjenUyar($res, array_column($ay['alerjiler'], 'kanon'));
+    }
+
+    protected function notBirlestir($eski, $yeni)
+    {
+        $eski = trim((string) $eski); $yeni = trim((string) $yeni);
+        if ($yeni === '' || mb_stripos($eski, $yeni) !== false) return $eski;
+        return $eski === '' ? $yeni : $eski . ' · ' . $yeni;
+    }
+
+    /** Menüde alerjen kaydı bu alerjenleri içeren ürünler (ad listesi). */
+    protected function alerjenIcerenler(array $kanonlar)
+    {
+        $duz = [];
+        foreach ($kanonlar as $k) foreach ((array) $k as $kk) if ($kk) $duz[] = $kk;
+        $kanonlar = array_values(array_unique($duz));
+        if (!$kanonlar) return [];
+        try { if (!Schema::hasColumn('urunler', 'alerjenler')) return []; } catch (\Throwable $e) { return []; }
+        $out = [];
+        foreach (DB::table('urunler')->where('sube_id', $this->subeId)->where('aktif', 1)->whereNotNull('alerjenler')->get(['ad', 'alerjenler']) as $u) {
+            if (array_intersect($kanonlar, array_map('trim', explode(',', (string) $u->alerjenler)))) $out[] = $u->ad;
+        }
+        return $out;
+    }
+
+    /** Sipariş edilen ürün, masanın (ya da bu cümlenin) alerjisine ait alerjeni içeriyorsa müşteriyi açıkça uyar. */
+    protected function alerjenUyar($res, array $buKanon)
+    {
+        if (!is_array($res) || empty($res['eklenen'])) return $res;
+        $kanon = $buKanon;
+        foreach ($this->masaAlerji as $ad) foreach ($this->alerjiSozluk() as [$g, $k]) if ($g === $ad && $k) $kanon[] = $k; // (dizi olabilir, alerjenIcerenler düzler)
+        $icerenler = $this->alerjenIcerenler($kanon);
+        if (!$icerenler) return $res;
+        $riskli = array_values(array_unique(array_filter(array_column($res['eklenen'], 'ad'), fn ($a) => in_array($a, $icerenler, true))));
+        if (!$riskli) return $res;
+        $res['alerji_uyari'] = $riskli;
+        $res['cevap'] = preg_replace('/\s*Başka bir arzunuz var mı\?.*$/u', '', (string) ($res['cevap'] ?? ''))
+            . ' Dikkat: menü kayıtlarına göre ' . $this->dogalListe($riskli) . ' alerjinizle ilgili bir içerik barındırıyor. Mutfağa uyarı notu gidecek; isterseniz çıkarabilir ya da garsonumuzla konuşabilirsiniz.';
+        return $res;
+    }
+
 
     /** "Yemekten sonra bir sütlaç" -> sütlaca "Yemekten sonra getirilsin" notu (mutfak ekranı + fiş) ve müşteriye söylenir. */
     protected function servisZamaniUygula($res, $soru)
@@ -63,7 +256,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         $adlar = [];
         foreach ($res['eklenen'] as $i => $e) {
             if ($hedef && !$sonraMi($e)) continue;
-            $res['eklenen'][$i]['not'] = 'Yemekten sonra getirilsin';
+            $res['eklenen'][$i]['not'] = $this->notBirlestir($res['eklenen'][$i]['not'] ?? '', 'Yemekten sonra getirilsin');
             $adlar[] = $e['ad'];
         }
         // Sipariş fiili yoksa ("künefeyi yemekten sonra getirin") bu yeni ürün değil, var olan ürün için TALİMAT olabilir:
@@ -94,7 +287,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
         // 0.4) ACIL DURUM (EN YUKSEK ONCELIK): saglik/yangin/guvenlik/cocuk -> normal akisi BIRAK, personele ACIL alarm + kisa yonlendirme
         if ($this->acilMi($c)) {
-            return $this->acilDurumCevap();
+            return $this->acilDurumCevap($c);
         }
 
         // 0.5) SIPARISI BITIR / ONAY (mutfaga gonder). Selam/tesekkur/kimlikten ONCE ki "tesekkurler sadece bunlar" bitir sayilsin.
@@ -1137,8 +1330,18 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     }
 
     /** ACIL DURUM: normal akisi birak, kisa/net yonlendirme + personele ACIL alarm (aksiyon). Hayati tehlikede 112. Sahte 'aradim' DEMEZ. */
-    protected function acilDurumCevap()
+    protected function acilDurumCevap($c = '')
     {
+        // Durumun türüne uygun cevap (rastgele havuz yalnız türü belirsiz acilde)
+        $tur = [
+            [['alerj', 'nefes', 'bogazim', 'dilim sis', 'sisti', 'gogsum', 'kalbim'], 'Nefes darlığı ya da alerjik reaksiyon ciddi olabilir; lütfen beklemeyin, hemen 112’yi arayın. Restoran ekibimize acil haber verdim, yanınıza geliyorlar.'],
+            [['bayil', 'fenalas', 'kotu hissed', 'basim don', 'tansiyon', 'sekerim'], 'Restoran ekibimize acil haber verdim, hemen geliyorlar. Durum ciddiyse lütfen beklemeden 112’yi arayın.'],
+            [['kanama', 'kaniyor', 'kesildi'], 'Restoran ekibimize acil haber verdim. Ciddi kanamada beklemeden 112’yi arayın.'],
+            [['yangin', 'duman', 'yaniyor', 'ates cikti', 'patla'], 'Yangın veya yoğun duman varsa güvenli şekilde uzaklaşın ve 112’yi arayın. Restoran ekibimizi de uyardım.'],
+            [['gaz'], 'Gaz kokusu alıyorsanız güvenli bir alana geçin; restoran personeline hemen haber verildi. Gerekirse 112’yi arayın.'],
+            [['cocug', 'kayboldu', 'kayip'], 'Restoran ekibimize hemen haber verdim; bulunması için destek geliyor. Lütfen bulunduğunuz yerde kalın.'],
+        ];
+        foreach ($tur as [$k, $m]) if ($this->has((string) $c, $k)) return $this->cvp($m, ['aksiyon' => 'garson_cagir', 'tip' => 'acil']);
         $pool = [
             'Hemen restoran ekibimize haber veriyorum. Lütfen bulunduğunuz yerde kalın.',
             'Anladım, bu acil bir durum. Hemen bir garson arkadaşımızı yönlendiriyorum.',
@@ -1149,15 +1352,6 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'Bu acil görünüyor. Restoran ekibimize haber verdim; yakınınızdaki bir görevliye de seslenebilirsiniz.',
             'Lütfen sakin kalın. Acil durumunuz için restoran ekibimizden yardım geliyor.',
             'Bir sağlık sorunu varsa lütfen beklemeyin. Hayati tehlike varsa 112’yi arayın; ben de restoran ekibine acil haber verdim.',
-            'Nefes almakta zorlanıyorsanız beklemeyin, hemen 112’yi arayın. Aynı anda restoran ekibimize acil haber verdim.',
-            'Göğüs ağrısı veya ciddi nefes darlığı varsa vakit kaybetmeyin, 112’yi arayın. Restoran ekibimiz de yönlendirildi.',
-            'Birisi bayıldıysa hemen 112’yi arayın ve çevrenizden yardım isteyin. Restoran ekibimize acil haber verdim.',
-            'Yangın veya yoğun duman varsa güvenli şekilde uzaklaşın ve 112’yi arayın. Restoran ekibimizi de uyardım.',
-            'Gaz kokusu alıyorsanız güvenli bir alana geçin, hemen restoran personeline haber verildi. Gerekirse 112’yi arayın.',
-            'Bir güvenlik sorunu varsa müdahale etmeye çalışmayın, güvenli bir yere geçin. Restoran ekibimize acil haber verdim; gerekirse 112.',
-            'Çocuğunuz kaybolduysa merak etmeyin, restoran ekibimize hemen haber verdim; bulunması için destek geliyor.',
-            'Yanınızdaki kişi fenalaştıysa restoran ekibimize acil haber verdim. Durum ciddiyse lütfen 112’yi arayın.',
-            'Kanama varsa restoran ekibimize haber verdim. Ciddi kanamada 112’yi arayın.',
             'Şu anda en önemli şey güvenliğiniz. Restoran ekibimize acil haber verdim, hemen geliyorlar.',
             'Ciddi bir durumsa benimle konuşmaya devam etmeyin; doğrudan 112’yi arayın. Restoran ekibimize de acil haber verdim.',
         ];

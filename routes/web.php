@@ -6527,7 +6527,8 @@ Route::post('/api/qr/asistan', function (Request $r) {
     $dil = preg_replace('/[^a-z]/', '', strtolower((string) $r->input('dil', 'tr')));
     $kodlar = _qrDilKodlari();
     if (!isset($kodlar[$dil])) $dil = 'tr';
-    $a = new \App\Services\MusteriAsistan($subeId);
+    // masada kayıtlı alerjiler (müşteri ekranı gönderir): yeni siparişte ürünün alerjeni çakışırsa uyarı
+    $a = (new \App\Services\MusteriAsistan($subeId))->masaAlerjiAyarla(mb_substr((string) $r->input('alerji', ''), 0, 200));
     $soru = (string) $r->soru;
     // COK DILLI: yabanci soru -> Turkce (motor Turkce calisir); cevap -> tekrar o dile.
     if ($dil !== 'tr' && $soru !== '') $soru = _qrCevir($soru, 'tr', $dil);
@@ -7177,7 +7178,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $masa->sube_id)->first();
         if (!$u) continue;
         if ($u->tukendi || (isset($u->aktif) && !(int) $u->aktif)) { $tukendi[] = $u->ad; continue; }
-        $not = mb_substr(trim(preg_replace('/\s+/u', ' ', strip_tags((string) ($k['not'] ?? '')))), 0, 80); // müşterinin notu ("Yemekten sonra getirilsin")
+        $not = mb_substr(trim(preg_replace('/\s+/u', ' ', strip_tags((string) ($k['not'] ?? '')))), 0, 220); // müşterinin notu ("Mısırsız · ALERJİ: Fıstık · Yemekten sonra getirilsin")
         $gecerli[] = [$u, $adet, $not];
     }
     if (!$gecerli) return ['ok' => 0, 'hata' => $tukendi ? ('Tükendi: ' . implode(', ', $tukendi)) : 'Geçerli ürün eklenemedi', 'tukendi' => $tukendi];
@@ -7198,7 +7199,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
             $ids[] = DB::table('adisyon_kalemleri')->insertGetId([
                 'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
                 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
-                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => ($onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş') . ($kNot !== '' ? ' · ' . $kNot : ''),
+                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => mb_substr(($onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş') . ($kNot !== '' ? ' · ' . $kNot : ''), 0, 250),
                 'gonderim_zamani' => $onOdeme ? null : $simdi, 'created_at' => $simdi, 'updated_at' => $simdi,
             ]);
         }

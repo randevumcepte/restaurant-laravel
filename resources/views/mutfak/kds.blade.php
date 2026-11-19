@@ -108,11 +108,18 @@ function kfis(s){
   const toplamAdet = kalemler.reduce((t,k)=>t+Number(k.adet||0),0);
   const adId = Number(s.adisyon_id);
   const kIds = (s.kalem_ids||kalemler.map(k=>k.id)).join(','); // Başla/Hazır yalnız BU fişin kalemleri (2. tur ayrı fiş)
-  let kalHtml='',onceki=null;
+  let kalHtml='',onceki=null; const fisAlerji=[];
   for(const k of kalemler){const t=Number(k.tur||1);
     if(onceki!==null&&t!==onceki) kalHtml+='<div class="tur">'+t+'. Tur</div>'; onceki=t;
-    const alj=/alerj/i.test(k.not||''), sonra=/sonra getir/i.test(k.not||'');   // müşteri "yemekten sonra" dedi: aşçı gözden kaçırmasın
-    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+(k.not?'<div class="not'+(alj?' alerji':'')+'"'+(sonra?' style="font-weight:700"':'')+'>'+(alj?'⚠️ ':(sonra?'⏰ ':'📝 '))+kesc(sonra?String(k.not).replace(/^QR sipariş\s*·\s*/,''):k.not)+'</div>':'')+'</div></div>';}
+    // Not parçaları ("QR sipariş · Mısırsız · ALERJİ: Fıstık · Yemekten sonra getirilsin"): alerji kırmızı, "sonra" ⏰, diğerleri 📝
+    const parca=String(k.not||'').split(' · ').map(p=>p.trim()).filter(p=>p&&!/^QR sipariş/i.test(p));
+    let notHtml='';
+    for(const p of parca){ const alj=/alerj/i.test(p), sonra=/sonra getir/i.test(p);
+      if(alj) p.replace(/^ALERJİ:\s*/i,'').split(',').map(x=>x.trim()).filter(Boolean).forEach(x=>{ if(!fisAlerji.includes(x)) fisAlerji.push(x); });
+      notHtml+='<div class="not'+(alj?' alerji':'')+'"'+(sonra?' style="font-weight:700"':'')+'>'+(alj?'⚠️ ':(sonra?'⏰ ':'📝 '))+kesc(p)+'</div>'; }
+    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+notHtml+'</div></div>';}
+  // Fişte alerji varsa en üstte kırmızı şerit (ürün notlarının arasında kaybolmasın)
+  const alerjiSerit = fisAlerji.length?'<div style="background:var(--kirmizi);color:#fff;font-weight:700;font-size:13px;padding:6px 12px;letter-spacing:.02em">⚠️ ALERJİ: '+kesc(fisAlerji.join(', '))+'</div>':'';
   let sureHtml;
   if(!basladi){
     sureHtml='<div class="sure"><span class="material-icons-outlined" style="font-size:13px;color:var(--'+renk+')">schedule</span>'+ksure(gecen)+' geçti <b style="color:var(--'+renk+')">'+kkalan(kalan)+'</b></div>'
@@ -139,7 +146,7 @@ function kfis(s){
       +'<div class="r2"><span style="font-size:17px">'+kkanal(s)+'</span>'
         +(s.masali?'<span class="masa">'+kesc(s.masa)+'</span>':'<span style="flex:1"></span>')
         +'<span style="color:var(--sub);font-size:10.5px">No </span><span class="no">#'+adId+'</span></div>'
-    +'</div>'+sureHtml
+    +'</div>'+alerjiSerit+sureHtml
     +'<div class="kalemler">'+kalHtml+'</div>'
     +'<div class="btns">'
       +(!basladi?'<button class="bt-basla" onclick="kBasla('+adId+',\''+kIds+'\')">▶ Başla</button>':'')
