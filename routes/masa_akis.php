@@ -436,9 +436,15 @@ Route::post('/api/qr/kalem-not', function (Request $r) {
 // ===== TEST SIFIRLAMA (patron/müdür): şubenin bütün AÇIK hesaplarını iptal eder, masaları boşaltır, çağrıları temizler =====
 // Ödenmiş/kapanmış hesaplar, menü, masalar, QR'lar ve AI konuşma kayıtları KORUNUR. Temiz baştan test için.
 if (!function_exists('_testSifirlaOzet')) {
+    // Açık hesaplar: şube kaydı ya da bu şubenin MASASI (eski demo kayıtlarında sube_id farklı kalmış olabilir; masalar ekranı masaya göre gösterir)
+    function _testSifirlaAcik($sid)
+    {
+        $masaIds = DB::table('masalar')->where('sube_id', $sid)->pluck('id')->all();
+        return DB::table('adisyonlar')->where('durum', 'acik')->where(function ($q) use ($sid, $masaIds) { $q->where('sube_id', $sid); if ($masaIds) $q->orWhereIn('masa_id', $masaIds); });
+    }
     function _testSifirlaOzet($sid)
     {
-        $acik = DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik');
+        $acik = _testSifirlaAcik($sid);
         return [
             'adisyon' => (clone $acik)->count(),
             'tutar' => (float) (clone $acik)->sum('toplam'),
@@ -451,16 +457,16 @@ Route::get('/masalar-test-sifirla', function () {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp) return redirect('/pos-giris');
     if (!in_array(($bp->rol ?? ''), ['sahip', 'mudur'], true)) return redirect('/pos')->with('hata', 'Bu işlem yalnız patron/müdür içindir.');
-    return view('masalar_test_sifirla', ['ozet' => _testSifirlaOzet(_webSubeId()), 'sonuc' => session('sonuc')]);
+    return view('masalar_test_sifirla', ['ozet' => _testSifirlaOzet((int) $bp->sube_id), 'sonuc' => session('sonuc')]);
 });
 Route::post('/masalar-test-sifirla', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
     if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'], true)) return redirect('/pos-giris');
     if ($r->input('onay') !== 'SIFIRLA') return redirect('/masalar-test-sifirla')->with('hata', 'Onay için kutuya SIFIRLA yazın.');
-    $sid = _webSubeId();
+    $sid = (int) $bp->sube_id; // masalar ekranı (/pos) ile aynı şube
     $once = _testSifirlaOzet($sid);
     DB::transaction(function () use ($sid) {
-        $ids = DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->pluck('id')->all();
+        $ids = _testSifirlaAcik($sid)->pluck('id')->all();
         foreach (array_chunk($ids, 500) as $parca) {
             $kUpd = ['durum' => 'iptal', 'updated_at' => now()];
             if (Schema::hasColumn('adisyon_kalemleri', 'fis_bekliyor')) $kUpd['fis_bekliyor'] = 0; // yazıcı eski fişi basmasın

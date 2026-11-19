@@ -14,8 +14,8 @@
         if ($hesap) return ['#9E7CF0', 'Hesap istedi', 'request_quote'];
         if ($kalemSay == 0 && $acilisDk >= 12) return ['#EDA94A', 'Sipariş bekliyor · ' . $dk($acilisDk), 'hourglass_bottom'];
         if ($kalemSay == 0) return ['#5B92F0', 'Yeni açıldı', 'fiber_new'];
+        if ($acilisDk >= 720 && ($sonDk < 0 || $sonDk >= 360)) return ['#94A3B8', 'Unutulmuş hesap · ' . $dk($acilisDk), 'history']; // 12 sa+ açık, 6 sa sipariş yok
         if ($hazir > 0) return ['#14B8A6', 'Servise hazır · ' . $hazir . ' ürün', 'room_service'];
-        if ($acilisDk >= 720) return ['#94A3B8', 'Unutulmuş hesap · ' . $dk($acilisDk), 'history'];
         if ($mutfak > 0) return ['#6366F1', 'Mutfakta · ' . $mutfak . ' ürün', 'soup_kitchen'];
         if ($sonDk >= 45) return ['#F2864F', 'Durgun · ' . $dk($sonDk), 'notifications_active'];
         return ['#7E7BEF', 'Serviste', 'restaurant'];
