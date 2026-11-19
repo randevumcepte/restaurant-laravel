@@ -34242,6 +34242,7 @@ require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
 require __DIR__ . '/etiket_merkezi.php'; // Barkod & Etiket Merkezi (ürün etiketi, terazi, raf kartı)
 require __DIR__ . '/masa_akis.php'; // Masa akışı: KDS bar ayrımı/tur fişi, servise hazır bildirimi, QR ödeme ve hesap kapanışı kuralları
+require __DIR__ . '/ai_kayit.php'; // Müşteri AI konuşma kayıtları: her tur kaydedilir, /ai-kayitlar'dan incelenir (30 gün)
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
 // ============================ GLOBAL KATALOG SAHİPLİĞİ (malzeme/tedarikçi/reçete şube görünürlüğü) ============================

@@ -1069,9 +1069,9 @@ async function dinleSunucu(){
     const fd=new FormData(); fd.append('ses',wav,'ses.pcm'); fd.append('masa',MASA); fd.append('dil',aktifAsDil);
     const r=await fetch('/api/qr/stt',{method:'POST',body:fd}); const j=await r.json();
     if(j.limit){ _sttLimit=true; return ''; }
-    if(j.kod && j.kod!==200){ asDurum('Ses tanıma hatası (HTTP '+j.kod+')'); return ''; }
+    if(j.kod && j.kod!==200){ asDurum('Ses tanıma hatası (HTTP '+j.kod+')'); aiKaydet('[ses tanıma hatası '+j.kod+']', '', 'ses', 'stt'); return ''; }
     const m=(j.metin||'').trim();
-    if(!m){ asDurum('Sizi net duyamadım, tekrar eder misiniz?'); } else { asDurum('“'+m+'”'); }
+    if(!m){ asDurum('Sizi net duyamadım, tekrar eder misiniz?'); aiKaydet('[ses var ama anlaşılamadı]', 'Sizi net duyamadım, tekrar eder misiniz?', 'ses', 'stt'); } else { asDurum('“'+m+'”'); }
     return m;
   }catch(e){ asDurum('Bağlantı hatası, tekrar deneyin.'); return ''; }
 }
@@ -1099,7 +1099,7 @@ async function basla(){
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni verilmedi; yazarak sipariş verebilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); aiYazAc(); return; }
   if(_ilkSelam) await sistemKonus('Buyurun, sizi dinliyorum.');
-  else { await konus(await sunucudanCevap('', {karsila:'1'})); }   // samimi hoş geldin (öneriler müşteri isteyince)
+  else { const k=await sunucudanCevap('', {karsila:'1'}); aiKaydet('', k, 'ses'); await konus(k); }   // samimi hoş geldin (öneriler müşteri isteyince)
   _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){
@@ -1109,8 +1109,9 @@ async function basla(){
     if(!c){ bos++; if(bos>=3){ await sistemKonus('İstediğinizde mikrofona tekrar dokunun, buradayım.'); break; } continue; }
     bos=0;
     const cn=norm(c);
-    if(/^(kapat|kapan|gorusuruz|hosca kal)\b/.test(cn)){ await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
+    if(/^(kapat|kapan|gorusuruz|hosca kal)\b/.test(cn)){ aiKaydet(c, 'Tabii, kapatıyorum. Afiyet olsun!', 'ses'); await sistemKonus('Tabii, kapatıyorum. Afiyet olsun!'); break; }
     const cevap=await asMetinIsle(c);
+    aiKaydet(c, cevap, 'ses');
     if(cevap) await konus(cevap);
     if(_odeGit){ _odeGit=false; sohbetAktif=false; try{ sohbetKapat(); sepetAc(); }catch(_){} break; }   // AI konustu -> sepeti ac (tumunu / kendi payini sec)
   }
@@ -1147,24 +1148,36 @@ async function aiYazAc(){
   aktifAsDil=(window.sayfaDil||'tr');
   document.getElementById('aiYaz').classList.add('acik');
   setTimeout(()=>{ const i=document.getElementById('aiYazInp'); if(i) i.focus(); },150);
-  if(!_yazSelam){ _yazSelam=true; aiYazBalon(await sunucudanCevap('', {karsila:'1'}),'ai'); }
+  if(!_yazSelam){ _yazSelam=true; const k=await sunucudanCevap('', {karsila:'1'}); aiKaydet('', k, 'yazi'); aiYazBalon(k,'ai'); }
 }
 function aiYazKapat(){ document.getElementById('aiYaz').classList.remove('acik'); }
 async function aiYazGonder(e){
   if(e) e.preventDefault();
   const inp=document.getElementById('aiYazInp'); const t=(inp.value||'').trim(); if(!t) return; inp.value='';
   aiYazBalon(t,'ben');
-  const cevap=await asMetinIsle(t); aiYazBalon(cevap,'ai'); asGizle();
+  const cevap=await asMetinIsle(t); aiKaydet(t, cevap, 'yazi'); aiYazBalon(cevap,'ai'); asGizle();
   if(_odeGit){ _odeGit=false; aiYazKapat(); try{ sepetAc(); }catch(_){} }
 }
 function sohbetKapat(){ sohbetAktif=false; _siparisAkisi=false; _onayBekliyor=false; konusKes(); micKapat(); robotHal('bekle'); asDurum('Görüşmek üzere 👋'); setTimeout(asGizle,1500); }
 
 // Sunucuya sor + ANA ekranı güncelle; seslendirilecek metni döner
+// KONUŞMA KAYDI: her tur (müşteri ne dedi/STT ne duydu → asistan ne dedi, kim cevapladı, sepet) sunucuya yazılır; /ai-kayitlar'dan incelenir
+const AI_OTURUM=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+let _sonAi={};   // son sunucu cevabının kaynağı/aksiyonu (yoksa cevap ekranda kuruldu)
+function aiKaydet(soru, cevap, kanal, kaynak){
+  try{
+    const sepet=_sepet.map(k=>k.adet+'x '+k.ad).join(', ');
+    fetch('/api/qr/ai-kayit',{method:'POST',keepalive:true,headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({masa:MASA,oturum:AI_OTURUM,soru:soru||'',cevap:cevap||'',kanal:kanal||'',kaynak:kaynak||_sonAi.kaynak||'ekran',aksiyon:_sonAi.aksiyon||'',sepet,dil:aktifAsDil||'tr'})}).catch(()=>{});
+  }catch(_){}
+  _sonAi={};
+}
 async function sunucudanCevap(soru, ek){
   asDurum('🤖 Düşünüyorum…');
   try{
     const r=await fetch('/api/qr/asistan',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},body:new URLSearchParams(Object.assign({masa:MASA,soru,baglam:window.sonUrun||'',dil:aktifAsDil||window.sayfaDil||'tr'}, ek||{}))});
     const j=await r.json();
+    _sonAi={kaynak:j.kaynak||(j.ok===0?'hata':'kural'), aksiyon:j.aksiyon||''};
     if(j.urun_baglam) window.sonUrun=j.urun_baglam; else if(Array.isArray(j.kategoriler)||(Array.isArray(j.kartlar)&&j.kartlar.length>1)) window.sonUrun='';
     if(Array.isArray(j.kartlar) && j.kartlar.length){ await asKartGoster(j.kartlar, j.baslik); }
     else if(Array.isArray(j.kategoriler) && j.kategoriler.length){ asistanMenuGoster(aktifAsDil!=='tr'?aktifAsDil:null); }
@@ -1185,7 +1198,7 @@ async function sunucudanCevap(soru, ek){
     if(j.aksiyon==='garson_cagir') cagir(j.tip||'garson');
     if(j.aksiyon==='ode'){ _odeGit=true; return j.cevap||'Hesabı açıyorum: tümünü ödeyebilir ya da kendi payını seçebilirsin. 💳'; }   // konustuktan sonra sepeti/odemeyi ac
     return (j.seslendir===false)?'':(((j.seslendir_metni||j.cevap)||'Bir sorun oldu, tekrar dener misiniz?')+sepetNot);  // seslendir_metni varsa KISA sesli okuma (ekranda kartlar/cevap zaten var)
-  }catch(e){ return 'Bağlantı hatası, tekrar dener misiniz?'; }
+  }catch(e){ _sonAi={kaynak:'hata'}; return 'Bağlantı hatası, tekrar dener misiniz?'; }
 }
 async function asKartGoster(kartlar, baslik){
   let bak=_urun;
