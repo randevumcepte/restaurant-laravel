@@ -113,6 +113,15 @@ if (!function_exists('_kdsBarVar')) {
         if (!$sonra || count($sonra) === count($notlar)) return $ids;
         return array_values(array_diff($ids, $sonra));
     }
+    function _siparisCagriKapat(array $kalemIds, $kim)
+    {
+        try {
+            if (!$kalemIds || !Schema::hasTable('masa_cagrilari')) return;
+            $masalar = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')->whereIn('adisyon_kalemleri.id', $kalemIds)
+                ->whereNotNull('adisyonlar.masa_id')->distinct()->pluck('adisyonlar.masa_id')->all();
+            if ($masalar) DB::table('masa_cagrilari')->whereIn('masa_id', $masalar)->where('tip', 'siparis')->where('durum', 'bekliyor')->update(_cagriKapat($kim));
+        } catch (\Throwable $e) {}
+    }
     function _kdsBasla(Request $r, $p, $sid)
     {
         if (function_exists('_kdsKolonEnsure')) _kdsKolonEnsure();
@@ -120,7 +129,10 @@ if (!function_exists('_kdsBarVar')) {
         if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
         if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
         $ids = _kdsSonraAyikla(_kdsHedef($r, $p, $sid)->where('adisyon_kalemleri.durum', 'gonderildi')->pluck('adisyon_kalemleri.id')->all());
-        return $ids ? DB::table('adisyon_kalemleri')->whereIn('id', $ids)->where('durum', 'gonderildi')->update($upd) : 0;
+        if (!$ids) return 0;
+        $n = DB::table('adisyon_kalemleri')->whereIn('id', $ids)->where('durum', 'gonderildi')->update($upd);
+        _siparisCagriKapat($ids, 'Mutfak aldı');
+        return $n;
     }
     // Hazır: yalnız pişen kalemler (iptal/servis edilmiş kalem dirilmez) → garsona "servise hazır"
     function _kdsHazir(Request $r, $p, $sid)
@@ -131,6 +143,7 @@ if (!function_exists('_kdsBarVar')) {
         if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
         if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
         DB::table('adisyon_kalemleri')->whereIn('id', $ids)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->update($upd);
+        _siparisCagriKapat($ids, 'Mutfak hazırladı');
         _servisHazirBildir($sid, $ids);
         return count($ids);
     }

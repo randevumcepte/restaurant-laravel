@@ -618,8 +618,9 @@ body.koyu {
   <div class="pos-modal">
     <h3>🔒 Yetkili Onayı</h3>
     <p id="pinMesaj">Müdür/Sahip PIN gir</p>
-    <input id="pinGiris" type="password" inputmode="numeric" placeholder="Müdür/Sahip PIN"
-           style="text-align:center;letter-spacing:8px;font-size:18px">
+    {{-- type=password DEĞİL: Chrome sayfayı giriş formu sanıp ürün arama kutusuna kayıtlı e-postayı dolduruyordu. Rakamlar yine gizli (text-security). --}}
+    <input id="pinGiris" type="text" inputmode="numeric" autocomplete="off" placeholder="Müdür/Sahip PIN"
+           style="text-align:center;letter-spacing:8px;font-size:18px;-webkit-text-security:disc">
     <div class="pos-modal-row">
       <button class="vazgec" onclick="pinVazgec()">Vazgeç</button>
       <button class="tamam" onclick="pinOnayla()">Onayla</button>

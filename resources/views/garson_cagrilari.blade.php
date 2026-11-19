@@ -157,6 +157,14 @@
 #gcroot .gc-ks .z small{font-size:12px;color:var(--sub);white-space:nowrap}
 #gcroot .gc-geri{display:flex;align-items:center;gap:4px;border:1.5px solid var(--vurgu);background:transparent;color:var(--vurgu);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
 #gcroot .gc-geri .material-icons-outlined{font-size:17px}
+#gcroot .gc-gecmis{margin-top:8px}
+#gcroot .gc-gecmis .gc-bas{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+#gcroot .gc-garac{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:7px 10px;min-width:200px}
+#gcroot .gc-garac .material-icons-outlined{font-size:19px;color:var(--sub)}
+#gcroot .gc-garac input{border:none;outline:none;background:transparent;color:var(--ink);font-size:14px;width:100%;font-family:inherit}
+#gcroot .gc-gcip{margin:0 0 6px}
+#gcroot .gc-dahafazla{display:none;width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1.5px dashed var(--line);background:transparent;color:var(--sub2);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+@media (max-width:600px){#gcroot .gc-garac{margin-left:0;width:100%}}
 
 @media (max-width:1000px){#gcroot .gc-ozet{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:600px){
@@ -340,6 +348,9 @@
             <input type="hidden" name="id" value="{{ $c['id'] }}">
             @if ($tasimaMi)
               <button type="submit" class="gc-btn mor"><span class="material-icons-outlined">swap_horiz</span> Taşımayı onayla</button>
+            @elseif ($tip === 'servise_hazir')
+              {{-- Basınca masadaki hazır ürünler SERVİS EDİLDİ olur (mutfak/servis ekranından düşer) --}}
+              <button type="submit" class="gc-btn yesil"><span class="material-icons-outlined">room_service</span> Servis edildi</button>
             @else
               <button type="submit" class="gc-btn yesil"><span class="material-icons-outlined">check_circle</span> Karşılandı</button>
             @endif
@@ -351,15 +362,31 @@
   </div>
 @endif
 
-{{-- ===== SON KARŞILANANLAR ===== --}}
+{{-- ===== BUGÜN KARŞILANANLAR: sabit bölüm (açılır-kapanır değil) — tür filtresi + masa arama + daha fazla ===== --}}
 @if ($karsilananSay)
-  <details class="gc-gecmis" id="gcGecmis" {{ $bekleyenSay ? '' : 'open' }}>
-    <summary class="gc-bas">
+  @php
+    $kTipSay = [];
+    foreach ($karsilanan as $c) { $kt = $tipNorm($c['tip'] ?? 'garson'); $kTipSay[$kt] = ($kTipSay[$kt] ?? 0) + 1; }
+    $otomatik = ['Ödeme alındı', 'Servis edildi', 'Mutfak aldı', 'Mutfak hazırladı', 'Otomatik (45 dk yanıtsız)'];
+  @endphp
+  <section class="gc-gecmis" id="gcGecmis">
+    <div class="gc-bas">
       <h3><span class="cb y"></span>Bugün Karşılananlar <span class="n y">{{ $karsilananSay }}</span></h3>
-      <span class="ac"><span class="material-icons-outlined">expand_more</span></span>
-    </summary>
-    <p class="gc-not">En son karşıladığınız en üstte. Yanlışlıkla bastıysanız 10 dakika içinde <b>Geri al</b> ile bekleyenlere döner.</p>
-    <div class="gc-liste">
+      <div class="gc-garac">
+        <span class="material-icons-outlined">search</span>
+        <input type="search" id="gcGAra" placeholder="Masa ara (ör. 5)" autocomplete="off" inputmode="search">
+      </div>
+    </div>
+    <div class="gc-cipler gc-gcip" id="gcGCipler">
+      <button type="button" class="gc-cip aktif" data-gc-gtip="">Tümü <b>{{ $karsilananSay }}</b></button>
+      @foreach ($tipKisa as $k => $ad)
+        @if (!empty($kTipSay[$k]))
+          <button type="button" class="gc-cip" data-gc-gtip="{{ $k }}" style="--cr:{{ $tipRenk($k) }}"><span class="material-icons-outlined">{{ $tipIkon($k) }}</span>{{ $ad }} <b>{{ $kTipSay[$k] }}</b></button>
+        @endif
+      @endforeach
+    </div>
+    <p class="gc-not">En son karşılanan en üstte. Yanlışlıkla bastıysanız 10 dakika içinde <b>Geri al</b> ile bekleyenlere döner.</p>
+    <div class="gc-liste" id="gcGListe">
       @foreach ($karsilanan as $c)
         @php
           $tip = $c['tip'] ?? 'garson';
@@ -367,8 +394,9 @@
           $yeni = $kSn !== null && $kSn < 600;
           $masaAd = $c['masa'] ?? '—';
           if (preg_match('/^\d+$/', (string) $masaAd)) $masaAd = 'Masa ' . $masaAd;
+          $geriAl = $yeni && $tip !== 'servise_hazir' && !in_array($c['karsilayan'] ?? '', $otomatik, true);
         @endphp
-        <div class="gc-ks{{ $yeni ? ' yeni' : '' }}" style="--vurgu:{{ $tipRenk($tip) }}">
+        <div class="gc-ks{{ $yeni ? ' yeni' : '' }}" style="--vurgu:{{ $tipRenk($tip) }}" data-gc-gk="{{ $tipNorm($tip) }}" data-gc-masa="{{ mb_strtolower($masaAd) }}">
           <span class="ki"><span class="material-icons-outlined">{{ $tipIkon($tip) }}</span></span>
           <div class="d">
             <div class="m">{{ $masaAd }}@if ($tip === 'tasima' && !empty($c['hedef'])) → {{ $c['hedef'] }}@endif
@@ -382,7 +410,7 @@
               @if (!empty($c['karsilayan'])) · <b>{{ $c['karsilayan'] }}</b>@endif
             </div>
           </div>
-          @if ($yeni && !in_array($c['karsilayan'] ?? '', ['Ödeme alındı', 'Servis edildi'], true))
+          @if ($geriAl)
             <form method="POST" action="/garson-cagrilari/geri-al" style="margin:0" data-gc-form>
               @csrf
               <input type="hidden" name="id" value="{{ $c['id'] }}">
@@ -393,15 +421,18 @@
           @endif
         </div>
       @endforeach
+      <div class="gc-filtre-bos" id="gcGBos">Bu filtreye uyan çağrı yok.</div>
     </div>
-  </details>
+    <button type="button" class="gc-dahafazla" id="gcGDaha"></button>
+  </section>
 @endif
 
 </div>{{-- /gcroot --}}
 
 <script>
 (function () {
-  var KOK = 'gcroot', SES_ANAHTAR = 'gc_ses', filtre = '', gecmisAcik = null, bilinen = null;
+  var KOK = 'gcroot', SES_ANAHTAR = 'gc_ses', filtre = '', bilinen = null;
+  var gTip = '', gAra = '', gHepsi = false, G_ILK = 8; // Bugün karşılananlar: tür filtresi, masa araması, kaç satır
   var sesAcik = false, ctx = null, sonCekim = Date.now(), yukluyor = false;
   try { sesAcik = localStorage.getItem(SES_ANAHTAR) === '1'; } catch (e) {}
 
@@ -448,11 +479,26 @@
     var fb = document.getElementById('gcFiltreBos'); if (fb) fb.style.display = gorunen ? 'none' : 'block';
   }
 
+  function gecmisUygula() {
+    var l = document.getElementById('gcGListe'); if (!l) return;
+    var ai = document.getElementById('gcGAra'); if (ai && ai.value !== gAra) ai.value = gAra;
+    document.querySelectorAll('[data-gc-gtip]').forEach(function (c) { c.classList.toggle('aktif', c.getAttribute('data-gc-gtip') === gTip); });
+    var q = gAra.trim().toLocaleLowerCase('tr'), uyan = 0, gor = 0;
+    l.querySelectorAll('[data-gc-gk]').forEach(function (k) {
+      var m = (!gTip || k.getAttribute('data-gc-gk') === gTip) && (!q || (k.getAttribute('data-gc-masa') || '').indexOf(q) !== -1);
+      if (m) uyan++;
+      var g = m && (gHepsi || q || uyan <= G_ILK);
+      k.style.display = g ? '' : 'none'; if (g) gor++;
+    });
+    var b = document.getElementById('gcGBos'); if (b) b.style.display = uyan ? 'none' : 'block';
+    var d = document.getElementById('gcGDaha');
+    if (d) { var kalan = uyan - gor; d.style.display = (kalan > 0 || (gHepsi && uyan > G_ILK)) ? 'block' : 'none'; d.textContent = kalan > 0 ? ('Daha fazla göster (' + kalan + ')') : 'Daha az göster'; }
+  }
+
   function bagla() {
     var r = kok(); if (!r) return;
     sesCiz(); filtreUygula();
-    var g = document.getElementById('gcGecmis');
-    if (g && gecmisAcik !== null) g.open = gecmisAcik;
+    gecmisUygula();
     var simdi = idler();
     if (bilinen) {
       var yeniVar = false;
@@ -470,9 +516,10 @@
   function yenile(html) {
     var d = new DOMParser().parseFromString(html, 'text/html'), yeni = d.getElementById(KOK);
     if (!yeni) return false;
-    var g = document.getElementById('gcGecmis'); if (g) gecmisAcik = g.open;
+    var ae = document.activeElement, araOdak = ae && ae.id === 'gcGAra', araSec = araOdak ? ae.selectionStart : 0;
     kok().innerHTML = yeni.innerHTML;
     sonCekim = Date.now(); bagla();
+    if (araOdak) { var ai = document.getElementById('gcGAra'); if (ai) { ai.focus(); try { ai.setSelectionRange(araSec, araSec); } catch (e) {} } }
     var c = document.getElementById('gcCanli'); if (c) c.classList.remove('kopuk');
     return true;
   }
@@ -506,7 +553,10 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) cek(); });
 
   // Tıklamalar (içerik yenilense de çalışsın diye delege)
+  document.addEventListener('input', function (e) { if (e.target && e.target.id === 'gcGAra') { gAra = e.target.value; gecmisUygula(); } });
   document.addEventListener('click', function (e) {
+    var gc = e.target.closest && e.target.closest('[data-gc-gtip]'); if (gc) { gTip = gc.getAttribute('data-gc-gtip'); gHepsi = false; gecmisUygula(); return; }
+    if (e.target.closest && e.target.closest('#gcGDaha')) { gHepsi = !gHepsi; gecmisUygula(); return; }
     var cip = e.target.closest('#' + KOK + ' [data-gc-tip]');
     if (cip) { filtre = cip.getAttribute('data-gc-tip'); filtreUygula(); return; }
     if (e.target.closest('#gcSesBtn')) {
