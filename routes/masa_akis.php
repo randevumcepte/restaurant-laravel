@@ -432,3 +432,45 @@ Route::post('/api/qr/kalem-not', function (Request $r) {
     }
     return ['ok' => 1, 'ad' => $k->urun_adi];
 });
+
+// ===== TEST SIFIRLAMA (patron/müdür): şubenin bütün AÇIK hesaplarını iptal eder, masaları boşaltır, çağrıları temizler =====
+// Ödenmiş/kapanmış hesaplar, menü, masalar, QR'lar ve AI konuşma kayıtları KORUNUR. Temiz baştan test için.
+if (!function_exists('_testSifirlaOzet')) {
+    function _testSifirlaOzet($sid)
+    {
+        $acik = DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik');
+        return [
+            'adisyon' => (clone $acik)->count(),
+            'tutar' => (float) (clone $acik)->sum('toplam'),
+            'masa' => DB::table('masalar')->where('sube_id', $sid)->where('durum', '!=', 'bos')->count(),
+            'cagri' => Schema::hasTable('masa_cagrilari') ? DB::table('masa_cagrilari')->where('sube_id', $sid)->count() : 0,
+        ];
+    }
+}
+Route::get('/masalar-test-sifirla', function () {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp) return redirect('/pos-giris');
+    if (!in_array(($bp->rol ?? ''), ['sahip', 'mudur'], true)) return redirect('/pos')->with('hata', 'Bu işlem yalnız patron/müdür içindir.');
+    return view('masalar_test_sifirla', ['ozet' => _testSifirlaOzet(_webSubeId()), 'sonuc' => session('sonuc')]);
+});
+Route::post('/masalar-test-sifirla', function (Request $r) {
+    $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'], true)) return redirect('/pos-giris');
+    if ($r->input('onay') !== 'SIFIRLA') return redirect('/masalar-test-sifirla')->with('hata', 'Onay için kutuya SIFIRLA yazın.');
+    $sid = _webSubeId();
+    $once = _testSifirlaOzet($sid);
+    DB::transaction(function () use ($sid) {
+        $ids = DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'acik')->pluck('id')->all();
+        foreach (array_chunk($ids, 500) as $parca) {
+            $kUpd = ['durum' => 'iptal', 'updated_at' => now()];
+            if (Schema::hasColumn('adisyon_kalemleri', 'fis_bekliyor')) $kUpd['fis_bekliyor'] = 0; // yazıcı eski fişi basmasın
+            DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $parca)->where('durum', '!=', 'iptal')->update($kUpd);
+            DB::table('adisyonlar')->whereIn('id', $parca)->update(['durum' => 'iptal', 'updated_at' => now()]);
+            if (Schema::hasTable('odeme_islemleri')) DB::table('odeme_islemleri')->whereIn('adisyon_id', $parca)->where('durum', 'bekliyor')->update(['durum' => 'iptal']);
+        }
+        DB::table('masalar')->where('sube_id', $sid)->update(['durum' => 'bos']);
+        if (Schema::hasTable('masa_cagrilari')) DB::table('masa_cagrilari')->where('sube_id', $sid)->delete();
+    });
+    try { if (function_exists('_aktiviteYaz')) _aktiviteYaz($sid, $bp->id, 'test_sifirla', 'Test sıfırlama: ' . $once['adisyon'] . ' açık hesap iptal'); } catch (\Throwable $e) {}
+    return redirect('/masalar-test-sifirla')->with('sonuc', $once);
+});
