@@ -1099,7 +1099,7 @@ async function basla(){
   const izin=await micAc();   // ilk acquire GESTURE icinde (izin) — sonra konus() kapatir, dinle() tekrar acar
   if(!izin){ asDurum('Mikrofon izni verilmedi; yazarak sipariş verebilirsiniz.'); sohbetAktif=false; robotHal('bekle'); setTimeout(asGizle,3500); aiYazAc(); return; }
   if(_ilkSelam) await sistemKonus('Buyurun, sizi dinliyorum.');
-  else { await konus(await sunucudanCevap('', {karsila:'1'})); }   // hoş geldin + bugün en çok tercih edilenler (kartlar ekranda)
+  else { await konus(await sunucudanCevap('', {karsila:'1'})); }   // samimi hoş geldin (öneriler müşteri isteyince)
   _ilkSelam=true;
   let bos=0;
   while(sohbetAktif){

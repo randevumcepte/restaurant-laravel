@@ -1411,15 +1411,16 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     /** QR açılış karşılaması: hoş geldin + öne çıkan / en çok tercih edilen yemekler (kartlarla) + siparişi benim alabileceğim. */
     public function karsila($subeAd = '')
     {
-        $o = $this->oneri('');
-        $kartlar = $o['kartlar'] ?? [];
-        $adlar = array_slice(array_values(array_filter(array_column($kartlar, 'ad'))), 0, 3);
-        $liste = count($adlar) > 1 ? implode(', ', array_slice($adlar, 0, -1)) . ' ve ' . end($adlar) : ($adlar[0] ?? '');
-        // Kısa ve doğal: şube adı ("Merkez Şube masa asistanı") ve uzun açıklama garip duruyordu
-        $mesaj = 'Hoş geldiniz, ben masa asistanınızım. '
-            . ($liste !== '' ? 'Bugün en çok ' . $liste . ' tercih ediliyor. ' : '')
-            . 'Ne arzu edersiniz?';
-        return $this->cvp($mesaj, ['tip' => 'karsilama', 'baslik' => '⭐ Öne Çıkan Lezzetler', 'kartlar' => $kartlar]);
+        // Önce SAMİMİ karşılama; öneri/ürün sayma YOK (müşteri isteyince ya da "ne önerirsin" deyince gelir).
+        // Şube adı ("Merkez Şube masa asistanı") garip duruyordu, kullanılmaz.
+        $saat = (int) now()->format('G');
+        $selam = $saat >= 5 && $saat < 11 ? 'Günaydın, hoş geldiniz!' : ($saat >= 18 || $saat < 5 ? 'İyi akşamlar, hoş geldiniz!' : 'Hoş geldiniz!');
+        $mesaj = $this->rastgele([
+            "$selam Sizi aramızda görmek çok güzel. Ben masa asistanınızım; siparişinizi alabilir, merak ettiklerinizi anlatabilirim. Hazır olduğunuzda söylemeniz yeterli.",
+            "$selam Umarım keyifli vakit geçirirsiniz. Ben masa asistanınızım; menüyü birlikte inceleyebilir, siparişinizi hemen mutfağa iletebilirim. Hazır olduğunuzda buyurun.",
+            "$selam Keyifli bir sofra dileriz. Ben masa asistanınızım; aklınıza takılanı sorabilir, siparişinizi bana söyleyebilirsiniz. Acele etmeyin, ben buradayım.",
+        ]);
+        return $this->cvp($mesaj, ['tip' => 'karsilama']);
     }
 
     protected function oneri($c = '')
