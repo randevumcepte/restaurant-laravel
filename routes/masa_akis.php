@@ -103,18 +103,29 @@ if (!function_exists('_kdsBarVar')) {
         }
         return $q->where('adisyon_kalemleri.id', (int) $r->input('kalem_id'));
     }
+    // "Yemekten sonra getirilsin" notlu kalem, ana yemekle AYNI basışta işlenmez (kart Başla/Hazır tatlıyı da başlatıyordu).
+    // Ana yemek hazır olunca kartta yalnız tatlı kalır -> o zaman Başla/Hazır ona uygulanır. Tek kaleme basış her zaman geçer.
+    function _kdsSonraAyikla(array $ids)
+    {
+        if (count($ids) < 2) return $ids;
+        $notlar = DB::table('adisyon_kalemleri')->whereIn('id', $ids)->pluck('not', 'id')->all();
+        $sonra = array_keys(array_filter($notlar, fn ($n) => mb_stripos((string) $n, 'sonra getir') !== false));
+        if (!$sonra || count($sonra) === count($notlar)) return $ids;
+        return array_values(array_diff($ids, $sonra));
+    }
     function _kdsBasla(Request $r, $p, $sid)
     {
         if (function_exists('_kdsKolonEnsure')) _kdsKolonEnsure();
         $upd = ['durum' => 'hazirlaniyor', 'updated_at' => now()];
         if (Schema::hasColumn('adisyon_kalemleri', 'basla_zamani')) $upd['basla_zamani'] = now();
         if (function_exists('_mrKdsDamga')) $upd = _mrKdsDamga($upd, $p);
-        return _kdsHedef($r, $p, $sid)->where('adisyon_kalemleri.durum', 'gonderildi')->update($upd);
+        $ids = _kdsSonraAyikla(_kdsHedef($r, $p, $sid)->where('adisyon_kalemleri.durum', 'gonderildi')->pluck('adisyon_kalemleri.id')->all());
+        return $ids ? DB::table('adisyon_kalemleri')->whereIn('id', $ids)->where('durum', 'gonderildi')->update($upd) : 0;
     }
     // Hazır: yalnız pişen kalemler (iptal/servis edilmiş kalem dirilmez) → garsona "servise hazır"
     function _kdsHazir(Request $r, $p, $sid)
     {
-        $ids = _kdsHedef($r, $p, $sid)->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor'])->pluck('adisyon_kalemleri.id')->all();
+        $ids = _kdsSonraAyikla(_kdsHedef($r, $p, $sid)->whereIn('adisyon_kalemleri.durum', ['gonderildi', 'hazirlaniyor'])->pluck('adisyon_kalemleri.id')->all());
         if (!$ids) return 0;
         $upd = ['durum' => 'hazir', 'updated_at' => now()];
         if (Schema::hasColumn('adisyon_kalemleri', 'hazir_zamani')) $upd['hazir_zamani'] = now();
