@@ -140,6 +140,24 @@
 #gcroot .gc-satir .z b{display:block;font-size:14px;font-weight:900;color:var(--ink);font-variant-numeric:tabular-nums}
 #gcroot .gc-satir .z small{font-size:11px;color:var(--sub)}
 
+/* Bugün karşılananlar: tek sütun, okunur liste (ne, ne zaman, kim) */
+#gcroot .gc-detay{font-size:13px;font-weight:700;color:var(--ink);margin-top:3px;line-height:1.3}
+#gcroot .gc-not{font-size:13px;color:var(--sub);margin:4px 2px 10px}
+#gcroot .gc-liste{display:flex;flex-direction:column;gap:8px}
+#gcroot .gc-ks{display:flex;align-items:center;gap:12px;background:var(--kart,#fff);border:1px solid var(--cizgi,#e5e7eb);border-left:4px solid var(--vurgu);border-radius:12px;padding:10px 14px}
+#gcroot .gc-ks.yeni{background:color-mix(in srgb,var(--vurgu) 9%,var(--kart,#fff));box-shadow:0 0 0 2px color-mix(in srgb,var(--vurgu) 35%,transparent)}
+#gcroot .gc-ks .ki{width:36px;height:36px;border-radius:10px;background:var(--vurgu);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#gcroot .gc-ks .ki .material-icons-outlined{font-size:20px}
+#gcroot .gc-ks .d{flex:1;min-width:0}
+#gcroot .gc-ks .m{font-size:15px;font-weight:800;color:var(--ink)}
+#gcroot .gc-ks .m .t{font-size:13px;font-weight:700;color:var(--vurgu)}
+#gcroot .gc-ks .rz{margin-left:6px;font-size:11px;font-weight:700;background:var(--vurgu);color:#fff;border-radius:20px;padding:2px 8px;vertical-align:2px}
+#gcroot .gc-ks .dt{font-size:13px;color:var(--ink);margin-top:2px}
+#gcroot .gc-ks .zm{font-size:12px;color:var(--sub);margin-top:2px}
+#gcroot .gc-ks .z small{font-size:12px;color:var(--sub);white-space:nowrap}
+#gcroot .gc-geri{display:flex;align-items:center;gap:4px;border:1.5px solid var(--vurgu);background:transparent;color:var(--vurgu);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+#gcroot .gc-geri .material-icons-outlined{font-size:17px}
+
 @media (max-width:1000px){#gcroot .gc-ozet{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:600px){
   #gcroot .gc-hero{padding:20px}
@@ -269,7 +287,7 @@
   <div class="gc-oc k4">
     <span class="material-icons-outlined arka">done_all</span>
     <div class="ik"><span class="material-icons-outlined">done_all</span></div>
-    <div class="v">{{ $karsilananSay }}</div><div class="s">Son karşılanan</div>
+    <div class="v">{{ $karsilananSay }}</div><div class="s">Bugün karşılanan</div>
   </div>
 </div>
 
@@ -308,6 +326,7 @@
               {{ $c['masa'] ?? '—' }}@if ($tasimaMi && !empty($c['hedef']))<span class="ok">→</span>{{ $c['hedef'] }}@endif
             </div>
             <div class="gc-tip">{{ $tipAdi($tip) }}</div>
+            @if (!empty($c['detay']))<div class="gc-detay">{{ $c['detay'] }}</div>@endif
           </div>
           <div class="gc-sure-col">
             <div class="gc-sure" data-gc-sn="{{ $sn }}">{{ $sureYazi($sn) }}</div>
@@ -336,19 +355,42 @@
 @if ($karsilananSay)
   <details class="gc-gecmis" id="gcGecmis" {{ $bekleyenSay ? '' : 'open' }}>
     <summary class="gc-bas">
-      <h3><span class="cb y"></span>Son Karşılananlar <span class="n y">{{ $karsilananSay }}</span></h3>
+      <h3><span class="cb y"></span>Bugün Karşılananlar <span class="n y">{{ $karsilananSay }}</span></h3>
       <span class="ac"><span class="material-icons-outlined">expand_more</span></span>
     </summary>
-    <div class="gc-gizgara">
+    <p class="gc-not">En son karşıladığınız en üstte. Yanlışlıkla bastıysanız 10 dakika içinde <b>Geri al</b> ile bekleyenlere döner.</p>
+    <div class="gc-liste">
       @foreach ($karsilanan as $c)
-        @php $tip = $c['tip'] ?? 'garson'; @endphp
-        <div class="gc-satir" style="--vurgu:{{ $tipRenk($tip) }}">
+        @php
+          $tip = $c['tip'] ?? 'garson';
+          $kSn = $c['k_saniye'];
+          $yeni = $kSn !== null && $kSn < 600;
+          $masaAd = $c['masa'] ?? '—';
+          if (preg_match('/^\d+$/', (string) $masaAd)) $masaAd = 'Masa ' . $masaAd;
+        @endphp
+        <div class="gc-ks{{ $yeni ? ' yeni' : '' }}" style="--vurgu:{{ $tipRenk($tip) }}">
           <span class="ki"><span class="material-icons-outlined">{{ $tipIkon($tip) }}</span></span>
           <div class="d">
-            <div class="m">{{ $c['masa'] ?? '—' }}@if ($tip === 'tasima' && !empty($c['hedef'])) → {{ $c['hedef'] }}@endif</div>
-            <div class="t">{{ $tipAdi($tip) }}</div>
+            <div class="m">{{ $masaAd }}@if ($tip === 'tasima' && !empty($c['hedef'])) → {{ $c['hedef'] }}@endif
+              <span class="t">· {{ $tipAdi($tip) }}</span>
+              @if ($yeni)<span class="rz">Az önce</span>@endif
+            </div>
+            @if (!empty($c['detay']))<div class="dt">{{ $c['detay'] }}</div>@endif
+            <div class="zm">
+              Çağrı {{ $c['saat'] ?? '' }}
+              @if ($c['k_saat']) → karşılandı {{ $c['k_saat'] }} ({{ $sureYazi($c['k_sure'] ?? 0) }} sonra)@endif
+              @if (!empty($c['karsilayan'])) · <b>{{ $c['karsilayan'] }}</b>@endif
+            </div>
           </div>
-          <div class="z"><b>{{ $c['saat'] ?? '' }}</b><small>{{ $oncesi($c['saniye'] ?? 0) }}</small></div>
+          @if ($yeni && !in_array($c['karsilayan'] ?? '', ['Ödeme alındı', 'Servis edildi'], true))
+            <form method="POST" action="/garson-cagrilari/geri-al" style="margin:0" data-gc-form>
+              @csrf
+              <input type="hidden" name="id" value="{{ $c['id'] }}">
+              <button type="submit" class="gc-geri"><span class="material-icons-outlined">undo</span>Geri al</button>
+            </form>
+          @else
+            <div class="z"><small>{{ $oncesi($kSn ?? ($c['saniye'] ?? 0)) }}</small></div>
+          @endif
         </div>
       @endforeach
     </div>

@@ -160,8 +160,12 @@ if (!function_exists('_servisHazirBildir')) {
                 $ilk = $grup->first();
                 $masaAd = $ilk->masa ?: ('Masa ' . $masaId);
                 $var = DB::table('masa_cagrilari')->where('masa_id', $masaId)->where('tip', 'servise_hazir')->where('durum', 'bekliyor')->value('id');
-                if ($var) DB::table('masa_cagrilari')->where('id', $var)->update(['created_at' => now()]);
-                else DB::table('masa_cagrilari')->insert(['sube_id' => (int) $sid, 'masa_id' => $masaId, 'tip' => 'servise_hazir', 'durum' => 'bekliyor', 'created_at' => now()]);
+                // Detay: masada servis bekleyen (hazır) bütün ürünler -> "Margarita, Kola"
+                $hazirIds = _kdsAdisyonKosulu(DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
+                    ->where('adisyonlar.masa_id', $masaId)->where('adisyon_kalemleri.durum', 'hazir'))->pluck('adisyon_kalemleri.id')->all();
+                $det = function_exists('_cagriDetay') ? _cagriDetay($hazirIds ?: $grup->pluck('id')->all()) : [];
+                if ($var) DB::table('masa_cagrilari')->where('id', $var)->update(['created_at' => now()] + $det);
+                else DB::table('masa_cagrilari')->insert(['sube_id' => (int) $sid, 'masa_id' => $masaId, 'tip' => 'servise_hazir', 'durum' => 'bekliyor', 'created_at' => now()] + $det);
                 $parca = $grup->map(fn ($k) => ((float) $k->adet > 1 ? rtrim(rtrim(number_format((float) $k->adet, 2, ',', ''), '0'), ',') . '× ' : '') . $k->urun_adi)->values();
                 $govde = $parca->take(4)->implode(', ') . ($parca->count() > 4 ? ' ve ' . ($parca->count() - 4) . ' ürün daha' : '') . ' — hemen masaya götürün.';
                 $baslik = '🛎️ ' . $masaAd . ' · servise hazır';
@@ -199,7 +203,7 @@ if (!function_exists('_servisHazirBildir')) {
                 $q = DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
                     ->where('adisyonlar.masa_id', $mid)->where('adisyon_kalemleri.durum', 'hazir');
                 if (!_kdsAdisyonKosulu($q)->exists()) {
-                    DB::table('masa_cagrilari')->where('masa_id', $mid)->where('tip', 'servise_hazir')->where('durum', 'bekliyor')->update(['durum' => 'karsilandi']);
+                    DB::table('masa_cagrilari')->where('masa_id', $mid)->where('tip', 'servise_hazir')->where('durum', 'bekliyor')->update(_cagriKapat('Servis edildi'));
                 }
             }
         } catch (\Throwable $e) {}
@@ -308,7 +312,7 @@ if (!function_exists('_qrAcikAdisyon')) {
             if ($a->masa_id && !_qrAcikAdisyon($a->masa_id)) {
                 DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'bos']);
                 if (Schema::hasTable('masa_cagrilari')) {
-                    DB::table('masa_cagrilari')->where('masa_id', $a->masa_id)->where('durum', 'bekliyor')->where('tip', '!=', 'servise_hazir')->update(['durum' => 'karsilandi']);
+                    DB::table('masa_cagrilari')->where('masa_id', $a->masa_id)->where('durum', 'bekliyor')->where('tip', '!=', 'servise_hazir')->update(_cagriKapat('Ödeme alındı'));
                 }
                 _servisHazirKapatKontrol([$a->masa_id]);
             }

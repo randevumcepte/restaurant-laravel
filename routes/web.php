@@ -4509,6 +4509,29 @@ if (!function_exists('_masaCagriEnsure')) {
         if (!Schema::hasColumn('masa_cagrilari', 'tutar')) Schema::table('masa_cagrilari', function ($t) { $t->decimal('tutar', 12, 2)->nullable(); });
         if (!Schema::hasColumn('masa_cagrilari', 'odeme_token')) Schema::table('masa_cagrilari', function ($t) { $t->string('odeme_token', 40)->nullable(); });
         if (!Schema::hasColumn('masa_cagrilari', 'hedef_masa_id')) Schema::table('masa_cagrilari', function ($t) { $t->unsignedBigInteger('hedef_masa_id')->nullable(); }); // tasima talebi: gidilecek masa
+        // Karşılanan listesi anlaşılır olsun: ne zaman, kim karşıladı, çağrı neydi ("Margarita, Kola hazır")
+        if (!Schema::hasColumn('masa_cagrilari', 'karsilandi_at')) Schema::table('masa_cagrilari', function ($t) { $t->timestamp('karsilandi_at')->nullable(); });
+        if (!Schema::hasColumn('masa_cagrilari', 'karsilayan')) Schema::table('masa_cagrilari', function ($t) { $t->string('karsilayan', 80)->nullable(); });
+        if (!Schema::hasColumn('masa_cagrilari', 'detay')) Schema::table('masa_cagrilari', function ($t) { $t->string('detay', 250)->nullable(); });
+    }
+}
+if (!function_exists('_cagriKapat')) {
+    /** Çağrıyı karşılandı yapan update dizisi (+ zaman + kim). Kolonlar yoksa yalnız durum. */
+    function _cagriKapat($kim = null)
+    {
+        static $var = null;
+        if ($var === null) { try { $var = Schema::hasColumn('masa_cagrilari', 'karsilayan') || (_masaCagriEnsure() || Schema::hasColumn('masa_cagrilari', 'karsilayan')); } catch (\Throwable $e) { $var = false; } }
+        return $var ? ['durum' => 'karsilandi', 'karsilandi_at' => now(), 'karsilayan' => $kim ? mb_substr((string) $kim, 0, 80) : null] : ['durum' => 'karsilandi'];
+    }
+    /** Çağrı detayı: kalemlerden "2× Adana, Ayran" (kolon yoksa boş dizi) */
+    function _cagriDetay(array $kalemIds)
+    {
+        try {
+            if (!$kalemIds || !Schema::hasColumn('masa_cagrilari', 'detay')) return [];
+            $p = DB::table('adisyon_kalemleri')->whereIn('id', $kalemIds)->get(['urun_adi', 'adet'])
+                ->map(fn ($k) => ((float) $k->adet > 1 ? rtrim(rtrim(number_format((float) $k->adet, 2, ',', ''), '0'), ',') . '× ' : '') . $k->urun_adi)->all();
+            return ['detay' => mb_substr(implode(', ', $p), 0, 250)];
+        } catch (\Throwable $e) { return []; }
     }
 }
 if (!function_exists('_indirimEnsure')) {
@@ -7039,7 +7062,7 @@ Route::get('/api/garson-cagrilari', function (Request $r) {
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
     _masaCagriEnsure();
     // Eski/unutulmus cagrilar birikmesin: 45 dk'dan eski bekleyenler otomatik kapansin
-    try { DB::table('masa_cagrilari')->where('sube_id', $subeId)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
+    try { DB::table('masa_cagrilari')->where('sube_id', $subeId)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(_cagriKapat('Otomatik (45 dk yanıtsız)')); } catch (\Throwable $e) {}
     $rows = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
         ->where('masa_cagrilari.sube_id', $subeId)->where('masa_cagrilari.durum', 'bekliyor')
         ->orderBy('masa_cagrilari.id')
@@ -7056,7 +7079,7 @@ Route::get('/api/garson-cagrilari', function (Request $r) {
 // Cagriyi karsilandi isaretle
 Route::post('/api/garson-cagri-kapat', function (Request $r) {
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
-    DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', _aktifSubeId())->update(['durum' => 'karsilandi']); // yalnız kendi restoranı
+    DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', _aktifSubeId())->update(_cagriKapat(optional(_posPersonel())->ad)); // yalnız kendi restoranı
     return ['ok' => 1];
 });
 
@@ -7066,7 +7089,7 @@ Route::get('/api/patron/garson-cagrilari', function (Request $r) {
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 1, 'cagrilar' => []];
     _masaCagriEnsure();
-    try { DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
+    try { DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(_cagriKapat('Otomatik (45 dk yanıtsız)')); } catch (\Throwable $e) {}
     // Garson ataması varsa SADECE kendi masalarının çağrıları (atama yoksa/müdür-sahip -> tümü)
     $cagriMasaIdler = function_exists('_personelMasaIdler') ? _personelMasaIdler($p->sube_id, $p->id) : null;
     $cagriQ = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')
@@ -7088,7 +7111,7 @@ Route::post('/api/patron/garson-cagri-kapat', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
-    DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
+    DB::table('masa_cagrilari')->where('id', (int) $r->id)->where('sube_id', $p->sube_id)->update(_cagriKapat($p->ad ?? null));
     return ['ok' => 1];
 });
 // TUMUNU KARSILA: bekleyen tum cagrilari kapat (garson bir turda temizler / test backlog)
@@ -7096,7 +7119,7 @@ Route::post('/api/patron/garson-cagri-hepsini-kapat', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!Schema::hasTable('masa_cagrilari')) return ['ok' => 0];
-    $n = DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->update(['durum' => 'karsilandi']);
+    $n = DB::table('masa_cagrilari')->where('sube_id', $p->sube_id)->where('durum', 'bekliyor')->update(_cagriKapat($p->ad ?? null));
     return ['ok' => 1, 'kapatilan' => $n];
 });
 
@@ -7215,7 +7238,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     DB::table('masalar')->where('id', $masa->id)->update(['durum' => 'dolu']);
     // Mutfaga bildirim SADECE klasik modda; on odemede odeme tamamlanınca duser
     if (!$onOdeme && Schema::hasTable('masa_cagrilari')) {
-        DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
+        DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()] + _cagriDetay($yeniIds));
         // PUSH: mutfak/garson cihazlarina yeni siparis bildirimi
         try {
             $masaAd = $masa->ad ?: ('Masa ' . $masa->id);
@@ -7511,13 +7534,13 @@ Route::post('/api/qr/kasa-tahsil', function (Request $r) {
     $i = DB::table('odeme_islemleri')->where('token', $token)->first();
     if ($i && (int) $i->sube_id !== (int) $p->sube_id) $i = null; // başka restoranın tahsilatı kendi kasana yazılamaz
     if (!$i) return ['ok' => 0, 'hata' => 'Ödeme bulunamadı'];
-    if ($i->durum === 'odendi') { DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']); return ['ok' => 1, 'mesaj' => 'Zaten tahsil edilmiş']; }
+    if ($i->durum === 'odendi') { DB::table('masa_cagrilari')->where('odeme_token', $token)->update(_cagriKapat('Ödeme alındı')); return ['ok' => 1, 'mesaj' => 'Zaten tahsil edilmiş']; }
     if ($i->durum !== 'bekliyor') return ['ok' => 0, 'hata' => 'Bu ödeme talebi zaman aşımına uğramış; müşteri tekrar başlatmalı.'];
 
     $a = DB::table('adisyonlar')->find($i->adisyon_id);
     if (!$a || $a->durum !== 'acik') { // hesap kasadan kapatılmış: ikinci tahsilat yazma, eski çağrıyı kapat
         DB::table('odeme_islemleri')->where('id', $i->id)->where('durum', 'bekliyor')->update(['durum' => 'iptal']);
-        DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']);
+        DB::table('masa_cagrilari')->where('odeme_token', $token)->update(_cagriKapat('Ödeme alındı'));
         return ['ok' => 0, 'hata' => 'Bu hesap zaten kapatılmış; tekrar tahsilat yazılmadı.'];
     }
     if (!DB::table('odeme_islemleri')->where('id', $i->id)->where('durum', 'bekliyor')->update(['durum' => 'odendi'])) {
@@ -7533,7 +7556,7 @@ Route::post('/api/qr/kasa-tahsil', function (Request $r) {
     }
     _onOdemePromote($a, $kids); // ON ODEME: garson tahsil edince de kalemler mutfaga dussun
     $kapandi = _qrKapanisKontrol($a->id, $p->id); // hepsi ödendiyse: kapanış + stok/CRM/mali fiş + masa boş + çağrı temizliği
-    DB::table('masa_cagrilari')->where('odeme_token', $token)->update(['durum' => 'karsilandi']);
+    DB::table('masa_cagrilari')->where('odeme_token', $token)->update(_cagriKapat('Ödeme alındı'));
     $etiket = ['nakit' => 'Nakit', 'kredi' => 'Kredi Kartı', 'yemek_karti' => 'Yemek Kartı'][$tip];
     return ['ok' => 1, 'kapandi' => $kapandi, 'mesaj' => number_format((float) $i->tutar, 2, ',', '.') . ' TL ' . $etiket . ' ile tahsil edildi.' . ($kapandi ? ' Hesap kapandı, masa boşaldı.' : '')];
 });
@@ -22627,24 +22650,44 @@ Route::post('/masa-yonetim/geri', function (Request $r) {
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'İşlem başarısız.'); }
 });
 // ===== WEB PANEL: Garson Çağrıları — Flutter garson_cagrilari_screen karşılığı =====
+// Yanlışlıkla "Karşılandı" basılan çağrıyı geri aç (10 dk içinde)
+Route::post('/garson-cagrilari/geri-al', function (Request $r) {
+    $sid = _webSubeId();
+    try {
+        $q = DB::table('masa_cagrilari')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->where('durum', 'karsilandi');
+        if (Schema::hasColumn('masa_cagrilari', 'karsilandi_at')) $q->where('karsilandi_at', '>=', now()->subMinutes(10));
+        $n = $q->update(Schema::hasColumn('masa_cagrilari', 'karsilandi_at') ? ['durum' => 'bekliyor', 'karsilandi_at' => null, 'karsilayan' => null] : ['durum' => 'bekliyor']);
+        return redirect('/garson-cagrilari')->with($n ? 'ok' : 'hata', $n ? 'Çağrı tekrar bekleyenlere alındı.' : 'Geri alınamadı (10 dakikadan eski).');
+    } catch (\Throwable $e) { return redirect('/garson-cagrilari')->with('hata', 'Geri alınamadı.'); }
+});
 Route::get('/garson-cagrilari', function () {
     $sid = _webSubeId();
     $bekleyen = []; $karsilanan = []; $hata = null;
     try {
         if (Schema::hasTable('masa_cagrilari')) {
             if (function_exists('_masaCagriEnsure')) { try { _masaCagriEnsure(); } catch (\Throwable $e) {} }
-            try { DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(['durum' => 'karsilandi']); } catch (\Throwable $e) {}
+            try { DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->where('created_at', '<', now()->subMinutes(45))->update(_cagriKapat('Otomatik (45 dk yanıtsız)')); } catch (\Throwable $e) {}
             $tasima = Schema::hasColumn('masa_cagrilari', 'hedef_masa_id');
             $cols = ['masa_cagrilari.id', 'masa_cagrilari.tip', 'masa_cagrilari.durum', 'masa_cagrilari.created_at', 'masa_cagrilari.masa_id', 'masalar.ad as masa_ad'];
             if ($tasima) $cols[] = 'masa_cagrilari.hedef_masa_id';
+            $ekKol = Schema::hasColumn('masa_cagrilari', 'karsilayan');
+            if ($ekKol) array_push($cols, 'masa_cagrilari.karsilandi_at', 'masa_cagrilari.karsilayan', 'masa_cagrilari.detay');
             $cevir = function ($c) use ($tasima) {
                 $hedef = null;
                 if ($tasima && !empty($c->hedef_masa_id)) $hedef = DB::table('masalar')->where('id', $c->hedef_masa_id)->value('ad') ?: ('Masa ' . $c->hedef_masa_id);
+                $ka = !empty($c->karsilandi_at) ? \Carbon\Carbon::parse($c->karsilandi_at) : null;
                 return ['id' => (int) $c->id, 'tip' => $c->tip, 'durum' => $c->durum, 'masa' => $c->masa_ad ?: ('Masa ' . $c->masa_id), 'hedef' => $hedef,
-                    'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'), 'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now()))];
+                    'saat' => \Carbon\Carbon::parse($c->created_at)->format('H:i'), 'saniye' => max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds(now())),
+                    'detay' => $c->detay ?? null, 'karsilayan' => $c->karsilayan ?? null,
+                    'k_saat' => $ka ? $ka->format('H:i') : null, 'k_saniye' => $ka ? max(0, $ka->diffInSeconds(now())) : null,
+                    'k_sure' => $ka ? max(0, \Carbon\Carbon::parse($c->created_at)->diffInSeconds($ka)) : null];
             };
             $bekleyen = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')->where('masa_cagrilari.sube_id', $sid)->where('masa_cagrilari.durum', 'bekliyor')->orderBy('masa_cagrilari.id')->select($cols)->limit(60)->get()->map($cevir)->toArray();
-            $karsilanan = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')->where('masa_cagrilari.sube_id', $sid)->where('masa_cagrilari.durum', 'karsilandi')->orderByDesc('masa_cagrilari.id')->select($cols)->limit(20)->get()->map($cevir)->toArray();
+            // Yalnız BUGÜN karşılananlar, en son karşılanan en üstte (eski günler karışmasın)
+            $kq = DB::table('masa_cagrilari')->leftJoin('masalar', 'masa_cagrilari.masa_id', '=', 'masalar.id')->where('masa_cagrilari.sube_id', $sid)->where('masa_cagrilari.durum', 'karsilandi')
+                ->where('masa_cagrilari.created_at', '>=', now()->startOfDay());
+            if ($ekKol) $kq->orderByRaw('COALESCE(masa_cagrilari.karsilandi_at, masa_cagrilari.created_at) DESC');
+            $karsilanan = $kq->orderByDesc('masa_cagrilari.id')->select($cols)->limit(30)->get()->map($cevir)->toArray();
         }
     } catch (\Throwable $e) { $hata = 'Çağrılar yüklenemedi.'; }
     return view('garson_cagrilari', compact('bekleyen', 'karsilanan', 'hata'));
@@ -22653,9 +22696,9 @@ Route::post('/garson-cagrilari/karsilandi', function (Request $r) {
     $sid = _webSubeId();
     try {
         if (!Schema::hasTable('masa_cagrilari')) return redirect('/garson-cagrilari')->with('hata', 'Çağrı tablosu yok.');
-        if ($r->filled('hepsi')) { $n = DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->update(['durum' => 'karsilandi']); return redirect('/garson-cagrilari')->with('ok', $n . ' çağrı karşılandı.'); }
+        if ($r->filled('hepsi')) { $n = DB::table('masa_cagrilari')->where('sube_id', $sid)->where('durum', 'bekliyor')->update(_cagriKapat(optional(_posPersonel())->ad)); return redirect('/garson-cagrilari')->with('ok', $n . ' çağrı karşılandı.'); }
         $id = (int) $r->id;
-        if ($id > 0) { DB::table('masa_cagrilari')->where('id', $id)->where('sube_id', $sid)->update(['durum' => 'karsilandi']); return redirect('/garson-cagrilari')->with('ok', 'Çağrı karşılandı.'); }
+        if ($id > 0) { DB::table('masa_cagrilari')->where('id', $id)->where('sube_id', $sid)->update(_cagriKapat(optional(_posPersonel())->ad)); return redirect('/garson-cagrilari')->with('ok', 'Çağrı karşılandı.'); }
         return redirect('/garson-cagrilari')->with('hata', 'Geçersiz istek.');
     } catch (\Throwable $e) { return redirect('/garson-cagrilari')->with('hata', 'İşlem başarısız.'); }
 });
@@ -24384,9 +24427,12 @@ function _masalarVeri($subeId) {
     if ($aidler) {
         // kalem sayisi + son gonderim zamani
         foreach (DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->where('durum', '!=', 'iptal')
-            ->select('adisyon_id', DB::raw('count(*) as adet'), DB::raw('max(gonderim_zamani) as son'))
+            ->select('adisyon_id', DB::raw('count(*) as adet'), DB::raw('max(gonderim_zamani) as son'),
+                DB::raw("sum(case when durum in ('gonderildi','hazirlaniyor') then 1 else 0 end) as mutfak"),
+                DB::raw("sum(case when durum = 'hazir' then 1 else 0 end) as hazir"),
+                DB::raw("sum(case when " . DB::getQueryGrammar()->wrap('not') . " like 'QR sipariş%' then 1 else 0 end) as qr"))
             ->groupBy('adisyon_id')->get() as $k) {
-            $kalemStat[$k->adisyon_id] = ['adet' => (int) $k->adet, 'son' => $k->son];
+            $kalemStat[$k->adisyon_id] = ['adet' => (int) $k->adet, 'son' => $k->son, 'mutfak' => (int) $k->mutfak, 'hazir' => (int) $k->hazir, 'qr' => (int) $k->qr];
         }
         // odenen tutar (acik adisyonda kismi/tam odeme = "odendi" yesil sinyali)
         foreach (DB::table('odemeler')->whereIn('adisyon_id', $aidler)
@@ -24457,6 +24503,11 @@ function _masalarVeri($subeId) {
                 $ks = $kalemStat[$a->id] ?? null;
                 $row['kalem_say'] = $ks['adet'] ?? 0;
                 $row['son_siparis_dk'] = ($ks && $ks['son']) ? (int) \Carbon\Carbon::parse($ks['son'])->diffInMinutes(now()) : -1;
+                // Mutfakta / servis bekleyen ürün varsa masa "durgun" değildir; QR'dan sipariş veren masa işaretlenir
+                $row['mutfakta'] = $ks['mutfak'] ?? 0;
+                $row['hazir_bekleyen'] = $ks['hazir'] ?? 0;
+                $row['qr'] = ($ks['qr'] ?? 0) > 0;
+                $row['son_siparis_saat'] = ($ks && $ks['son']) ? \Carbon\Carbon::parse($ks['son'])->format('H:i') : null;
                 $row['odenen'] = $odemeStat[$a->id] ?? 0;
                 $row['hesap_istendi'] = isset($hesapSet[$m->id]);
             }
@@ -28482,7 +28533,7 @@ if (!function_exists('_onOdemePromote')) {
         DB::table('adisyon_kalemleri')->whereIn('id', $ids)->update(['durum' => 'gonderildi', 'gonderim_zamani' => now(), 'updated_at' => now()]);
         if (function_exists('_qrFisIsaretle')) _qrFisIsaretle($ids); // ödendi -> mutfak/bar fişi basılsın
         if (Schema::hasTable('masa_cagrilari') && !empty($a->masa_id)) {
-            DB::table('masa_cagrilari')->insert(['sube_id' => $a->sube_id, 'masa_id' => $a->masa_id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()]);
+            DB::table('masa_cagrilari')->insert(['sube_id' => $a->sube_id, 'masa_id' => $a->masa_id, 'tip' => 'siparis', 'durum' => 'bekliyor', 'created_at' => now()] + _cagriDetay($ids));
         }
     }
 }
@@ -30250,7 +30301,7 @@ Route::post('/api/patron/masa-tasi', function (Request $r) {
     DB::table('adisyon_masa_loglari')->insert(['adisyon_id' => $a->id, 'islem' => 'tasima', 'eski_masa_id' => $eski, 'yeni_masa_id' => $yeni->id, 'personel_id' => $kimId, 'created_at' => now()]);
     $mesaj = $eskiAd . ' → ' . $yeni->ad . ' taşındı.';
     if ($r->filled('cagri_id') && Schema::hasTable('masa_cagrilari')) {
-        DB::table('masa_cagrilari')->where('id', (int) $r->cagri_id)->where('sube_id', $p->sube_id)->update(['durum' => 'karsilandi']);
+        DB::table('masa_cagrilari')->where('id', (int) $r->cagri_id)->where('sube_id', $p->sube_id)->update(_cagriKapat($p->ad ?? null));
     }
     return ['ok' => 1, 'mesaj' => $mesaj . ($onaylayan ? ' (' . $onaylayan->ad . ' onayı)' : '')];
 });

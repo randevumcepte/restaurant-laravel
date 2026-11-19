@@ -3,16 +3,20 @@
     $tum = $gruplu->flatten(1);
     $toplam = $tum->count();
     $dolu = $tum->filter(fn ($m) => !empty($m['adisyon_id']))->count();
-    // Flutter _masaDurum ile BİREBİR (öncelik: Ödendi > Hesap istedi > Sipariş bekliyor > Yeni > Durgun > Serviste)
+    // Flutter _masaDurum ile BİREBİR (öncelik: Ödendi > Hesap istedi > Sipariş bekliyor > Yeni > Servise hazır > Unutulmuş > Mutfakta > Durgun > Serviste)
     $durum = function ($m) {
         $kalemSay = (int) ($m['kalem_say'] ?? 0); $acilisDk = (int) ($m['acilis_dk'] ?? 0);
         $sonDk = (int) ($m['son_siparis_dk'] ?? -1); $odenen = (float) ($m['odenen'] ?? 0);
         $hesap = ($m['hesap_istendi'] ?? false) === true;
-        $dk = fn ($d) => $d >= 60 ? (intdiv($d, 60) . ' sa ' . ($d % 60) . ' dk') : ($d . ' dk');
+        $dk = fn ($d) => $d >= 1440 ? (intdiv($d, 1440) . ' gün') : ($d >= 60 ? (intdiv($d, 60) . ' sa ' . ($d % 60) . ' dk') : ($d . ' dk'));
+        $hazir = (int) ($m['hazir_bekleyen'] ?? 0); $mutfak = (int) ($m['mutfakta'] ?? 0);
         if ($odenen > 0) return ['#2ECC71', 'Ödendi', 'check_circle'];
         if ($hesap) return ['#9E7CF0', 'Hesap istedi', 'request_quote'];
         if ($kalemSay == 0 && $acilisDk >= 12) return ['#EDA94A', 'Sipariş bekliyor · ' . $dk($acilisDk), 'hourglass_bottom'];
         if ($kalemSay == 0) return ['#5B92F0', 'Yeni açıldı', 'fiber_new'];
+        if ($hazir > 0) return ['#14B8A6', 'Servise hazır · ' . $hazir . ' ürün', 'room_service'];
+        if ($acilisDk >= 720) return ['#94A3B8', 'Unutulmuş hesap · ' . $dk($acilisDk), 'history'];
+        if ($mutfak > 0) return ['#6366F1', 'Mutfakta · ' . $mutfak . ' ürün', 'soup_kitchen'];
         if ($sonDk >= 45) return ['#F2864F', 'Durgun · ' . $dk($sonDk), 'notifications_active'];
         return ['#7E7BEF', 'Serviste', 'restaurant'];
     };
@@ -47,6 +51,7 @@ body.koyu #posroot .masa-kart.bos{background:#1b2235;border-color:#2c3650}
 body.koyu #posroot .masa-kart.bos .ad{color:#e2e8f0}
 #posroot .masa-kart .kisi{font-size:10.5px;color:#94a3b8}
 #posroot .masa-kart.dolu .kisi{color:rgba(255,255,255,.82)}
+#posroot .qr{margin-left:auto;font-size:11px;font-weight:700;background:rgba(255,255,255,.28);border-radius:20px;padding:1px 7px;white-space:nowrap}
 #posroot .tutar{font-size:21px;font-weight:900;letter-spacing:-.5px;margin-top:4px;line-height:1}
 #posroot .musait{font-size:13px;font-weight:600;color:#10B981;margin-top:4px}
 #posroot .cip{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;margin-top:6px;
@@ -76,8 +81,11 @@ body.koyu #posroot .masa-kart.birlesik{background:#1b2235;border-color:#2c3650}
     <div class="pos-lejant">
         <span><i style="background:#5B92F0"></i>Yeni</span>
         <span><i style="background:#EDA94A"></i>Sipariş bekliyor</span>
+        <span><i style="background:#6366F1"></i>Mutfakta</span>
+        <span><i style="background:#14B8A6"></i>Servise hazır</span>
         <span><i style="background:#7E7BEF"></i>Serviste</span>
-        <span><i style="background:#F2864F"></i>Durgun</span>
+        <span><i style="background:#F2864F"></i>Durgun (45 dk sipariş yok)</span>
+        <span><i style="background:#94A3B8"></i>Unutulmuş hesap (12 sa+)</span>
         <span><i style="background:#9E7CF0"></i>Hesap istedi</span>
         <span><i style="background:#2ECC71"></i>Ödendi</span>
         <span><i style="background:#9D5DC8"></i>Rezerve</span>
@@ -109,7 +117,7 @@ body.koyu #posroot .masa-kart.birlesik{background:#1b2235;border-color:#2c3650}
                     </div>
                 @else
                     <a href="/pos/masa/{{ $m['id'] }}" class="masa-kart {{ $renkli ? 'dolu' : 'bos' }}" @if ($renkli) style="--mr:{{ $dr }}" @endif>
-                        <div class="satir1"><span class="ad">{{ $m['ad'] }}</span><span class="kisi">{{ $m['kapasite'] }} kişi</span></div>
+                        <div class="satir1"><span class="ad">{{ $m['ad'] }}</span><span class="kisi">{{ $m['kapasite'] }} kişi</span>@if ($acik && !empty($m['qr']))<span class="qr" title="Müşteri QR ile sipariş verdi">📱 QR{{ !empty($m['son_siparis_saat']) ? ' · ' . $m['son_siparis_saat'] : '' }}</span>@endif</div>
                         @if ($acik)
                             <div class="tutar">{{ number_format((float) $m['tutar'], 0, ',', '.') }} ₺</div>
                             <div class="cip"><span class="material-icons-outlined">{{ $di }}</span><span class="et">{{ $de }}</span></div>
