@@ -1425,6 +1425,14 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
     protected function oneri($c = '')
     {
+        // Belirli bölümden öneri ("tatlılardan ne önerirsiniz", "içecek öner") -> o bölümün ürünleri (günün önerisi DEĞİL)
+        if ($c !== '') {
+            $kv = $this->kategoriEslesme($c);
+            if ($kv) {
+                $kr = $this->kategori([$this->norm($kv->ad)], $kv->ad, $this->katEmoji($kv->ad));
+                if (($kr['tip'] ?? '') === 'urunler') return $kr;
+            }
+        }
         $ac = $this->has($c, ['karnim', 'acim', 'aciktim', 'aclik', 'doyur', 'doyurucu', 'cok yemek', 'agir bir', 'karin']); // aclik niyeti
         $anaKok = ['ana yemek', 'izgara', 'kebap', 'pizza', 'burger', 'makarna', 'pide', 'doner', 'kofte', 'tavuk', 'et', 'balik', 'durum', 'lahmacun', 'pilav', 'guvec', 'wrap', 'sandvic', 'tost'];
         $isAna = function ($kat) use ($anaKok) {
@@ -1477,7 +1485,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         // Istah kabartici cumle: AI'in urettigi one_ai_soz oncelikli, yoksa ham not (one_soz)
         $ilk = $secili->first();
         $soz = ($one && $ilk) ? trim((string) (($ilk->one_ai_soz ?? '') ?: ($ilk->one_soz ?? ''))) : '';
-        if ($soz !== '') $mesaj = $soz . ' Aşağıdaki lezzetlere göz atabilirsiniz. 😊';
+        if ($soz !== '') $mesaj = 'Bugün özellikle ' . $bas . ' öneririm. ' . $soz . ' Diğer önerilerimiz ekranda. 😊'; // ürün adı söylenmeden yalnız açıklama okunuyordu
         elseif ($ac) $mesaj = "Karnınız açsa doyurucu gider; özellikle $bas gönül rahatlığıyla tavsiye ederim. Aşağıdakilere göz atabilirsiniz. 😊";
         else $mesaj = "Size özenle seçtiğimiz birkaç lezzeti önereyim; özellikle $bas çok beğeniliyor. Aşağıdakilere göz atabilirsiniz. 😊";
         return $this->cvp($mesaj, ['tip' => 'oneri', 'baslik' => $ac ? '🍽️ Doyurucu Öneriler' : '🤖 Bugünün Önerileri', 'kartlar' => $kartlar]);
@@ -2116,7 +2124,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
                 $u = $this->urunAdBul((string) ($j['urun'] ?? '')) ?: $this->urunAdBulGevsek((string) ($j['urun'] ?? '')) ?: ($baglam ? $this->urunAdBul($baglam) : null);
                 return $u ? $this->cvp($u->ad . ', siparişinizden çıkardım. Başka bir arzunuz var mı? 😊',
                     ['aksiyon' => 'sepet_cikar', 'cikar' => ['urun_id' => (int) $u->id, 'ad' => $u->ad]]) : null;
-            case 'oneri': return $this->oneri();
+            case 'oneri': return $this->oneri($this->norm($q)); // "tatlı önerir misin" -> tatlı bölümü
             case 'menu': return $this->menu();
             case 'garson':
                 $hesap = (($j['tip'] ?? '') === 'hesap');
@@ -2382,7 +2390,9 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
 
     protected function norm($s)
     {
-        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        // 'İ' küçültülünce 'i' + birleşik nokta (U+0307) olur ve noktası boşluğa dönüyordu ("İçecekler" -> "i cecekler"): önce düz 'i' yap
+        $s = mb_strtolower(str_replace(['İ', 'I'], ['i', 'ı'], trim((string) $s)), 'UTF-8');
+        $s = str_replace("̇", '', $s);
         $tr = ['ç' => 'c', 'ğ' => 'g', 'ı' => 'i', 'İ' => 'i', 'ö' => 'o', 'ş' => 's', 'ü' => 'u', 'â' => 'a', 'î' => 'i', 'û' => 'u'];
         $s = strtr($s, $tr);
         $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
