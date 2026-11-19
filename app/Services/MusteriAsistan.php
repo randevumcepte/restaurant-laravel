@@ -224,6 +224,27 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
         return $out;
     }
 
+    /** Garson/QR alerji adları ("Gluten", "Fıstık", "Gluten (çölyak)") -> verilen ürünlerden alerjen içerenler (ürün alerjen kaydına göre). */
+    public function alerjiRiskli(array $alerjiAdlari, array $urunAdlari)
+    {
+        $yasal = function_exists('_kaliteAlerjenListe') ? _kaliteAlerjenListe() : [];
+        $sozluk = $this->alerjiSozluk();
+        $kanon = [];
+        foreach ($alerjiAdlari as $ad) {
+            $ad = trim((string) $ad);
+            if ($ad === '') continue;
+            $kok = trim(preg_replace('/\s*\(.*\)$/u', '', $ad));
+            if (in_array($ad, $yasal, true)) { $kanon[] = $ad; continue; }
+            $bul = false;
+            foreach ($sozluk as $anahtar => [$g, $k]) {
+                if ($k && ($g === $ad || $g === $kok || strpos(' ' . $this->norm($ad) . ' ', ' ' . $anahtar) !== false)) { $kanon[] = $k; $bul = true; break; }
+            }
+            if (!$bul) foreach ($yasal as $y) if ($this->norm($kok) !== '' && strpos($this->norm($y), $this->norm($kok)) === 0) $kanon[] = $y;
+        }
+        $icerenler = $this->alerjenIcerenler($kanon);
+        return array_values(array_unique(array_filter($urunAdlari, fn ($a) => in_array($a, $icerenler, true))));
+    }
+
     /** Sipariş edilen ürün, masanın (ya da bu cümlenin) alerjisine ait alerjeni içeriyorsa müşteriyi açıkça uyar. */
     protected function alerjenUyar($res, array $buKanon)
     {

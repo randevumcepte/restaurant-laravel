@@ -255,6 +255,18 @@ body.koyu {
       @endif
     </div>
 
+    {{-- Masa alerjisi: kaydedilince bu masanın gönderilmiş + sonradan eklenecek BÜTÜN ürünlerine mutfakta ALERJİ uyarısı --}}
+    @php $masaAlerji = trim((string)($adisyon->alerji ?? '')); @endphp
+    <div style="padding:0 12px 8px">
+      @if($masaAlerji !== '')
+        <div onclick="posAlerjiModal()" style="cursor:pointer;background:var(--kirmizi);color:#fff;border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700">
+          <span>⚠️ ALERJİ: {{ $masaAlerji }}</span><span style="margin-left:auto;font-size:12px;opacity:.9;text-decoration:underline">Düzenle</span>
+        </div>
+      @else
+        <button class="pos-musteri-ekle" onclick="posAlerjiModal()" style="color:var(--kirmizi)">⚠️ Alerji / diyet bilgisi ekle</button>
+      @endif
+    </div>
+
     {{-- Kalem listesi --}}
     <div id="posKalemler">
       @forelse($kalemler as $kalem)
@@ -277,10 +289,22 @@ body.koyu {
             <span class="pos-kalem-rozet {{ $kalem->durum === 'yeni' ? 'yeni' : ($kalem->durum === 'hazir' ? 'hazir' : 'gonder') }}">{{ $kalem->durum }}</span>
           @endif
           <div class="pos-kalem-fiyat{{ $ikram ? ' ikram-f' : '' }}{{ $iptal ? ' iptal-f' : '' }}">{{ number_format((float)$kalem->tutar,0,',','.') }} TL</div>
+          @if(!$iptal && $kalem->durum !== 'servis')
+            <button class="pos-kalem-sil" style="color:var(--mor1);font-size:16px" onclick="posNotModal({{ $kalem->id }})" title="Not / alerji"><span class="material-icons-outlined" style="font-size:18px">edit_note</span></button>
+          @endif
           @if($kalem->durum === 'yeni' && !$iptal)
             <button class="pos-kalem-sil" onclick="posSil({{ $kalem->id }})" title="Sil">×</button>
           @endif
         </div>
+        @php $notParca = array_values(array_filter(array_map('trim', explode(' · ', (string)($kalem->not ?? ''))), fn($p) => $p !== '' && mb_strpos($p, 'QR sipariş') !== 0)); @endphp
+        @if($notParca && !$iptal)
+          <div style="margin:-3px 0 7px 44px;display:flex;flex-wrap:wrap;gap:4px">
+            @foreach($notParca as $np)
+              @php $npA = (bool) preg_match('/^ALERJ/iu', $np); @endphp
+              <span style="font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:6px;{{ $npA ? 'background:var(--kirmizi);color:#fff' : 'background:rgba(245,158,11,.14);color:var(--turuncu)' }}">{{ $npA ? '⚠️ ' : (mb_stripos($np, 'sonra getir') !== false ? '⏰ ' : '📝 ') }}{{ $np }}</span>
+            @endforeach
+          </div>
+        @endif
       @empty
         <div class="pos-bos" id="posKalemBos">
           <span class="material-icons-outlined" style="font-size:40px;opacity:.3">receipt_long</span>
@@ -428,6 +452,42 @@ body.koyu {
     <div class="pos-modal-row">
       <button class="vazgec" onclick="document.getElementById('iskontoModal').style.display='none'">Vazgeç</button>
       <button class="tamam" onclick="posIskontoUygula()">Uygula</button>
+    </div>
+  </div>
+</div>
+
+{{-- Ürün notu / alerji modal (garson elle) --}}
+<style>
+.pn-cips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.pn-cip{border:1.4px solid var(--cizgi,#e5e7eb);background:var(--kart2);color:var(--ink);border-radius:20px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer}
+.pn-cip.on{background:var(--mor1);border-color:var(--mor1);color:#fff}
+.pn-cip.alj.on{background:var(--kirmizi);border-color:var(--kirmizi)}
+.pn-bas{font-size:12px;font-weight:700;color:var(--sub);margin:0 0 6px;letter-spacing:.02em}
+</style>
+<div id="notModal" class="pos-modal-bg" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="pos-modal pos-modal-genis" style="max-height:90vh;overflow:auto">
+    <h3 id="notBaslik">Ürün notu</h3>
+    <div class="pn-bas">HIZLI NOT</div>
+    <div class="pn-cips" id="notHizli"></div>
+    <div class="pn-bas" style="color:var(--kirmizi)">⚠️ BU ÜRÜN İÇİN ALERJİ</div>
+    <div class="pn-cips" id="notAlerji"></div>
+    <textarea id="notSerbest" rows="2" maxlength="150" placeholder="Başka bir not (ör. mısır olmasın, sos ayrı)"></textarea>
+    <p id="notMasaBilgi" style="display:none;color:var(--kirmizi);font-weight:700;margin-top:8px"></p>
+    <div class="pos-modal-row">
+      <button class="vazgec" onclick="document.getElementById('notModal').style.display='none'">Vazgeç</button>
+      <button class="tamam" onclick="posNotKaydet()">Kaydet</button>
+    </div>
+  </div>
+</div>
+<div id="alerjiModal" class="pos-modal-bg" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="pos-modal pos-modal-genis" style="max-height:90vh;overflow:auto">
+    <h3>⚠️ Masa alerjisi</h3>
+    <p>Seçilen alerji bu masanın mutfağa gitmiş ve sonradan eklenecek <b>bütün</b> ürünlerine yazılır, fişte kırmızı uyarı olarak çıkar.</p>
+    <div class="pn-cips" id="alerjiCips"></div>
+    <input id="alerjiDiger" maxlength="80" placeholder="Listede yoksa yazın (ör. Çilek, Domates)">
+    <div class="pos-modal-row">
+      <button class="vazgec" onclick="document.getElementById('alerjiModal').style.display='none'">Vazgeç</button>
+      <button class="tamam kirmizi" onclick="posAlerjiKaydet()">Kaydet</button>
     </div>
   </div>
 </div>
@@ -641,7 +701,56 @@ function posBarkod(inp){
 }
 function posEkle(urunId){
   api('/pos/kalem-ekle', { adisyon_id: POS_ADISYON_ID, urun_id: urunId }).then(function(r){
-    if(r && r.hata) alert(r.hata); else location.reload();
+    if(r && r.hata) alert(r.hata);
+    else { if(r && r.alerji_uyari && r.alerji_uyari.length) alert('⚠️ DİKKAT: Menü kaydına göre '+r.alerji_uyari.join(', ')+' bu masanın alerjisine ait içerik barındırıyor. Müşteriye sorun; mutfağa ALERJİ notu gidecek.'); location.reload(); }
+  });
+}
+
+// ---- Ürün notu + masa alerjisi (Flutter garson ekranıyla aynı seçenekler) ----
+var POS_KALEM_NOT = {!! json_encode((object) $kalemler->mapWithKeys(function ($k) { return [$k->id => ['not' => (string) ($k->not ?? ''), 'ad' => $k->urun_adi]]; })->all(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
+var POS_MASA_ALERJI = {!! json_encode(array_values(array_filter(array_map('trim', explode(',', (string)($adisyon->alerji ?? ''))))), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!};
+var PN_HIZLI = ['Az pişmiş','Orta pişmiş','İyi pişmiş','Soğansız','Acısız','Bol acılı','Sossuz','Tuzsuz','Buzsuz','Şekersiz','Sos ayrı','Yemekten sonra getirilsin'];
+var PN_ALERJEN = ['Gluten','Süt (laktoz)','Yumurta','Yer fıstığı','Sert kabuklu yemiş','Susam','Soya','Balık','Kabuklu deniz ürünleri','Yumuşakça','Kereviz','Hardal','Sülfit','Acı bakla (lupin)'];
+var _pnKalem = null;
+function pnCips(kutuId, liste, secili, alj){
+  var k=document.getElementById(kutuId); k.innerHTML='';
+  liste.forEach(function(x){ var b=document.createElement('button'); b.type='button'; b.className='pn-cip'+(alj?' alj':'')+(secili.indexOf(x)>=0?' on':''); b.textContent=x; b.onclick=function(){ b.classList.toggle('on'); }; k.appendChild(b); });
+}
+function pnSecili(kutuId){ return Array.prototype.map.call(document.querySelectorAll('#'+kutuId+' .pn-cip.on'), function(b){ return b.textContent; }); }
+function posNotModal(id){
+  _pnKalem=id; var d=POS_KALEM_NOT[id]||{not:'',ad:''};
+  var parca=d.not.split(' · ').map(function(p){return p.trim();}).filter(function(p){ return p && p.indexOf('QR sipariş')!==0; });
+  var alj=[], notlar=[];
+  parca.forEach(function(p){ if(/^ALERJ[İI]\s*:/i.test(p)) p.replace(/^ALERJ[İI]\s*:\s*/i,'').split(',').forEach(function(x){ x=x.trim(); if(x) alj.push(x); }); else notlar.push(p); });
+  document.getElementById('notBaslik').textContent=d.ad+' — not';
+  pnCips('notHizli', PN_HIZLI, notlar, false);
+  var aListe=PN_ALERJEN.slice(); alj.forEach(function(x){ if(aListe.indexOf(x)<0) aListe.push(x); });
+  pnCips('notAlerji', aListe, alj, true);
+  document.getElementById('notSerbest').value=notlar.filter(function(n){ return PN_HIZLI.indexOf(n)<0; }).join(' · ');
+  var mb=document.getElementById('notMasaBilgi');
+  if(POS_MASA_ALERJI.length){ mb.style.display=''; mb.textContent='Masa alerjisi ('+POS_MASA_ALERJI.join(', ')+') bu ürüne her durumda yazılır.'; } else mb.style.display='none';
+  document.getElementById('notModal').style.display='flex';
+}
+function posNotKaydet(){
+  var notlar=pnSecili('notHizli'); var serbest=document.getElementById('notSerbest').value.trim();
+  if(serbest) notlar.push(serbest);
+  var alj=pnSecili('notAlerji'); if(alj.length) notlar.push('ALERJİ: '+alj.join(', '));
+  api('/pos/kalem-not', { kalem_id:_pnKalem, not:notlar.join(' · ') }).then(function(r){
+    if(r && r.ok){ if(r.uyari) alert(r.uyari); location.reload(); } else alert((r&&r.hata)||'Kaydedilemedi');
+  });
+}
+function posAlerjiModal(){
+  var l=PN_ALERJEN.slice(); POS_MASA_ALERJI.forEach(function(x){ if(l.indexOf(x)<0) l.push(x); });
+  pnCips('alerjiCips', l, POS_MASA_ALERJI, true); document.getElementById('alerjiDiger').value='';
+  document.getElementById('alerjiModal').style.display='flex';
+}
+function posAlerjiKaydet(){
+  var l=pnSecili('alerjiCips'); document.getElementById('alerjiDiger').value.split(',').forEach(function(x){ x=x.trim(); if(x&&l.indexOf(x)<0) l.push(x); });
+  if(!l.length && POS_MASA_ALERJI.length && !confirm('Masa alerjisi kaldırılsın mı? Mutfaktaki ALERJİ uyarıları da silinir.')) return;
+  api('/pos/adisyon-alerji', { adisyon_id: POS_ADISYON_ID, alerji: l.join(',') }).then(function(r){
+    if(!r || !r.ok){ alert((r&&r.hata)||'Kaydedilemedi'); return; }
+    if(r.riskli && r.riskli.length) alert('⚠️ DİKKAT: Masadaki '+r.riskli.join(', ')+' menü kaydına göre bu alerjene ait içerik barındırıyor. Müşteriye haber verin, mutfakla konuşun.');
+    location.reload();
   });
 }
 function posSil(kalemId){

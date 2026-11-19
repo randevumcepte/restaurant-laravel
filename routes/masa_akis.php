@@ -396,6 +396,11 @@ Route::post('/api/qr/kalem-not', function (Request $r) {
     $a = _qrAcikAdisyon((int) $r->input('masa'));
     if (!$a || $not === '') return ['ok' => 0];
     if ($r->boolean('tumu')) {
+        if (function_exists('_notAlerjileri') && ($yeniAl = _notAlerjileri($not))) {
+            // Alerji masa alerjisine eklenir (garson ekranında görünür, sonraki her kaleme geçer); kalemlerde tek "ALERJİ:" parçası olur
+            [, , $n] = _adisyonAlerjiAyarla($a, _alerjiListe(array_merge(_adisyonAlerjiler($a->id), $yeniAl)));
+            return ['ok' => 1, 'adet' => $n];
+        }
         $n = 0;
         foreach (DB::table('adisyon_kalemleri')->where('adisyon_id', $a->id)->whereIn('durum', ['odeme_bekliyor', 'gonderildi', 'hazirlaniyor', 'hazir'])->get(['id', 'not']) as $k) {
             if (mb_stripos((string) $k->not, $not) !== false) continue;

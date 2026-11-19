@@ -117,7 +117,10 @@ function kfis(s){
     for(const p of parca){ const alj=/alerj/i.test(p), sonra=/sonra getir/i.test(p);
       if(alj) p.replace(/^ALERJİ:\s*/i,'').split(',').map(x=>x.trim()).filter(Boolean).forEach(x=>{ if(!fisAlerji.includes(x)) fisAlerji.push(x); });
       notHtml+='<div class="not'+(alj?' alerji':'')+'"'+(sonra?' style="font-weight:700"':'')+'>'+(alj?'⚠️ ':(sonra?'⏰ ':'📝 '))+kesc(p)+'</div>'; }
-    kalHtml+='<div class="kal"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+notHtml+'</div></div>';}
+    // Yemekten sonra istenen ürün: masanın ana yemeği hâlâ hazırlanıyorsa BEKLE (sunucu hesaplar), bitince "şimdi hazırlanabilir"
+    if(k.bekle) notHtml+='<div class="not" style="background:#64748b22;color:#64748b;border-color:#64748b55;font-weight:700">⏸ BEKLET · ana yemek hazırlanıyor</div>';
+    else if(parca.some(p=>/sonra getir/i.test(p))&&k.durum==='gonderildi') notHtml+='<div class="not" style="font-weight:700">▶ Şimdi hazırlanabilir</div>';
+    kalHtml+='<div class="kal'+(k.bekle?'" style="opacity:.6':'')+'"><b>'+kadet(Number(k.adet))+'×</b><div><span class="ad">'+kesc(k.ad)+'</span>'+notHtml+'</div></div>';}
   // Fişte alerji varsa en üstte kırmızı şerit (ürün notlarının arasında kaybolmasın)
   const alerjiSerit = fisAlerji.length?'<div style="background:var(--kirmizi);color:#fff;font-weight:700;font-size:13px;padding:6px 12px;letter-spacing:.02em">⚠️ ALERJİ: '+kesc(fisAlerji.join(', '))+'</div>':'';
   let sureHtml;

@@ -604,9 +604,9 @@ Route::post('/pos/kalem-ekle', function (Request $r) {
     DB::table('adisyon_kalemleri')->insert([
         'adisyon_id' => $r->adisyon_id, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => 1,
         'birim_fiyat' => $hhFiyat, 'tutar' => $hhFiyat, 'durum' => 'yeni', 'gonderim_zamani' => null,
-        'personel_id' => $gid, 'created_at' => now(), 'updated_at' => now(),
+        'personel_id' => $gid, 'created_at' => now(), 'updated_at' => now(), 'not' => _kalemNotKur(null, '', $masaAl = _adisyonAlerjiler($r->adisyon_id)),
     ]);
-    return _adisyonToplamGuncelle($r->adisyon_id);
+    return _adisyonToplamGuncelle($r->adisyon_id) + ['alerji_uyari' => _alerjiRiskliUrunler($u->sube_id, $masaAl, [$u->ad])];
 });
 
 Route::post('/pos/kalem-sil', function (Request $r) {
@@ -7185,6 +7185,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
     _onOdemeTerkTemizle($masa->id);
     $simdi = now(); // tek gönderim = tek tur (dakika sınırında iki tura bölünmesin)
     // Aynı masadan iki telefon aynı anda ilk siparişi verirse TEK açık adisyon (masa satırı kilitli)
+    _adisyonAlerjiEnsure(); // kolon ekleme transaction DIŞINDA (MySQL DDL örtük commit yapar)
     [$adId, $yeniIds] = DB::transaction(function () use ($masa, $gecerli, $onOdeme, $simdi) {
         DB::table('masalar')->where('id', $masa->id)->lockForUpdate()->first();
         $adId = optional(_qrAcikAdisyon($masa->id))->id;
@@ -7199,7 +7200,7 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
             $ids[] = DB::table('adisyon_kalemleri')->insertGetId([
                 'adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
                 'birim_fiyat' => (float) $u->fiyat, 'tutar' => (float) $u->fiyat * $adet,
-                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => mb_substr(($onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş') . ($kNot !== '' ? ' · ' . $kNot : ''), 0, 250),
+                'durum' => $onOdeme ? 'odeme_bekliyor' : 'gonderildi', 'not' => _kalemNotKur(($onOdeme ? 'QR sipariş (ön ödeme)' : 'QR sipariş') . ($kNot !== '' ? ' · ' . $kNot : ''), null, _adisyonAlerjiler($adId)), // + garsonun girdiği masa alerjisi
                 'gonderim_zamani' => $onOdeme ? null : $simdi, 'created_at' => $simdi, 'updated_at' => $simdi,
             ]);
         }
@@ -28079,12 +28080,12 @@ Route::get('/api/patron/adisyon-kalemleri', function (Request $r) {
     $adId = (int) $r->adisyon_id;
     // İptal'leri de DAHİL et (listede üstü çizili gösterilsin) ama toplam/kalan'a sayma
     $hepsi = DB::table('adisyon_kalemleri')->where('adisyon_id', $adId)
-        ->select('id', 'urun_adi', 'adet', 'tutar', 'odeme_durum', 'durum', 'ikram')->orderBy('id')->get()
-        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar,
-            'odeme_durum' => $k->odeme_durum ?? 'acik', 'durum' => $k->durum ?? 'gonderildi', 'ikram' => (int) ($k->ikram ?? 0)]);
+        ->select('id', 'urun_id', 'urun_adi', 'adet', 'tutar', 'odeme_durum', 'durum', 'ikram', 'not')->orderBy('id')->get()
+        ->map(fn ($k) => ['id' => (int) $k->id, 'urun_id' => (int) $k->urun_id, 'ad' => $k->urun_adi, 'adet' => (int) $k->adet, 'tutar' => (float) $k->tutar,
+            'odeme_durum' => $k->odeme_durum ?? 'acik', 'durum' => $k->durum ?? 'gonderildi', 'ikram' => (int) ($k->ikram ?? 0), 'not' => (string) ($k->not ?? '')]);
     $gecerli = $hepsi->where('durum', '!=', 'iptal');
     $kalan = (float) $gecerli->where('odeme_durum', '!=', 'odendi')->sum('tutar');
-    return ['ok' => 1, 'kalemler' => $hepsi->values(), 'toplam' => (float) $gecerli->sum('tutar'), 'kalan' => $kalan];
+    return ['ok' => 1, 'kalemler' => $hepsi->values(), 'toplam' => (float) $gecerli->sum('tutar'), 'kalan' => $kalan, 'alerji' => _adisyonAlerjiler($adId)];
 });
 
 // Adisyonda ALINAN ödemeler (geri alma listesi için)
@@ -28749,6 +28750,8 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     $eklenen = 0;
     $tukendiAtlanan = [];
     $simdi = now(); // tek gönderim = tek tur (fişte "2. TUR")
+    $masaAlerji = _adisyonAlerjiler($a->id);
+    $alerjiUyari = [];
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, (int) ($k['adet'] ?? 1));
@@ -28756,8 +28759,10 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
         if (!$u) continue;
         if ($u->tukendi) { $tukendiAtlanan[] = $u->ad; continue; } // 86: tukenen urun siparise eklenmez
         $hhF = function_exists('_happyHourFiyat') ? _happyHourFiyat($u->id, (float) $u->fiyat, $p->sube_id) : (float) $u->fiyat;
+        $kNot = _kalemNotKur(null, (string) ($k['not'] ?? ''), $masaAlerji); // "Mısırsız · ALERJİ: Gluten" (+ masa alerjisi)
+        if ($kNot && _alerjiRiskliUrunler($p->sube_id, _notAlerjileri($kNot), [$u->ad])) $alerjiUyari[] = $u->ad;
         DB::table('adisyon_kalemleri')->insert([
-            'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
+            'adisyon_id' => $a->id, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'not' => $kNot,
             'adet' => $adet, 'birim_fiyat' => $hhF, 'tutar' => $hhF * $adet,
             'durum' => 'gonderildi', 'personel_id' => $p->id, 'gonderim_zamani' => $simdi,
             'created_at' => $simdi, 'updated_at' => $simdi,
@@ -28774,7 +28779,9 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     if ($a->masa_id) DB::table('masalar')->where('id', $a->masa_id)->update(['durum' => 'dolu']);
     $mesaj = $eklenen . ' kalem eklendi.';
     if ($tukendiAtlanan) $mesaj .= ' (Tükendi, atlandı: ' . implode(', ', $tukendiAtlanan) . ')';
+    $alerjiUyari = array_values(array_unique($alerjiUyari));
     return ['ok' => 1, 'mesaj' => $mesaj, 'ara_toplam' => $araToplam, 'toplam' => $toplam, 'tukendi_atlanan' => $tukendiAtlanan,
+        'alerji_uyari' => $alerjiUyari, // menü kaydına göre müşterinin alerjenini içeren ürünler -> garsona kırmızı uyarı
         'tur' => _adisyonTurNo($a->id, $simdi)]; // mutfak fişi başlığı: "2. TUR"
 });
 
@@ -28899,6 +28906,16 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
         }
     }
 
+    // "Yemekten sonra getirilsin" notlu kalem: aynı adisyonda (içecek hariç) hazırlanmayı bekleyen ana ürün varsa BEKLE
+    $sonraMi = fn ($n) => mb_stripos((string) $n, 'sonra getir') !== false;
+    $anaBekleyen = [];
+    if ($aidler) {
+        foreach (DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $aidler)->whereIn('durum', ['gonderildi', 'hazirlaniyor'])->get(['adisyon_id', 'urun_id', 'not']) as $ak) {
+            if ($sonraMi($ak->not) || isset($barIds[(int) $ak->urun_id])) continue;
+            $anaBekleyen[$ak->adisyon_id] = true;
+        }
+    }
+
     $etiket = _mutfakIstasyonlar();
     $gruplu = [];
     $istSay = [];
@@ -28935,7 +28952,7 @@ function _mutfakVeri($subeId, $filtre = null, $urunIds = null) {
         if ($k->durum === 'hazirlaniyor') $gruplu[$key]['basladi'] = true;
         $gruplu[$key]['kalem_ids'][] = (int) $k->id; // Başla/Hazır yalnız bu fişin kalemlerine uygulanır
         $gruplu[$key]['kalemler'][] = ['id' => $k->id, 'ad' => $k->urun_adi, 'adet' => $adet, 'not' => $k->not, 'kur' => $k->kur, 'istasyon' => $ist, 'durum' => $k->durum,
-            'gz' => $gz, 'tur' => $tur];
+            'gz' => $gz, 'tur' => $tur, 'bekle' => $sonraMi($k->not) && $k->durum === 'gonderildi' && !empty($anaBekleyen[$aid])];
     }
     foreach ($gruplu as $key => $g) {
         $gruplu[$key]['dk'] = $g['gecen'];                        // geriye donuk uyum
@@ -34244,6 +34261,7 @@ require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
 require __DIR__ . '/etiket_merkezi.php'; // Barkod & Etiket Merkezi (ürün etiketi, terazi, raf kartı)
 require __DIR__ . '/masa_akis.php'; // Masa akışı: KDS bar ayrımı/tur fişi, servise hazır bildirimi, QR ödeme ve hesap kapanışı kuralları
+require __DIR__ . '/kalem_not.php'; // Ürün notu + masa alerjisi (garson/web POS/QR ortak)
 require __DIR__ . '/ai_kayit.php'; // Müşteri AI konuşma kayıtları: her tur kaydedilir, /ai-kayitlar'dan incelenir (30 gün)
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
 require __DIR__ . '/sube_transfer.php';
