@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 // MÜŞTERİ AI KONUŞMA KAYITLARI: QR masa asistanının her turu (müşteri ne dedi / STT ne duydu → asistan ne cevap
 // verdi, cevabı kim verdi: kural / niyet(AI) / haiku / öğrenilen / ekran) kaydedilir. Hatalar ekran görüntüsü
 // beklemeden buradan incelenir. 30 günden eski kayıtlar silinir (KVKK: müşteri sözleri süresiz tutulmaz).
-//   /ai-kayitlar            → Sistem Yönetimi girişiyle okunur sayfa
+//   /ai-kayitlar            → Sistem Yönetimi girişiyle (tüm restoranlar) ya da patron/müdür panel girişiyle (kendi şubesi)
 //   /ai-kayitlar.json       → ?anahtar=... ile salt-okunur JSON (inceleme için paylaşılan link)
 // ---------------------------------------------------------------------------
 if (!function_exists('_aiKayitEnsure')) {
@@ -36,15 +36,32 @@ if (!function_exists('_aiKayitEnsure')) {
         Cache::put('ai_kayit_tablo_ok1', 1, 3600);
     }
 
-    // İnceleme linkinin anahtarı (bir kez üretilir, Sistem Yönetimi sayfasında görünür)
-    function _aiKayitAnahtar()
+    // İnceleme linkinin anahtarı (bir kez üretilir, sayfada görünür). $subeId verilirse yalnız o şubeyi okutan anahtar.
+    function _aiKayitAnahtar($subeId = null)
     {
-        $k = resto_ayar_al('ai_kayit_anahtar', null);
-        if (!$k) { $k = bin2hex(random_bytes(16)); resto_ayar_yaz('ai_kayit_anahtar', $k); }
+        $ad = $subeId ? 'ai_kayit_anahtar_s' . (int) $subeId : 'ai_kayit_anahtar';
+        $k = resto_ayar_al($ad, null);
+        if (!$k) { $k = bin2hex(random_bytes(16)); resto_ayar_yaz($ad, $k); }
         return $k;
     }
 
-    function _aiKayitListe(Request $r)
+    // Kim okuyor? ['tum' => true] süper-admin / genel anahtar, ['sube' => id] patron / şube anahtarı, null = yetkisiz
+    function _aiKayitKapsam(Request $r)
+    {
+        if (function_exists('_ryAdmin') && _ryAdmin()) return ['tum' => true];
+        $verilen = (string) $r->query('anahtar', '');
+        if ($verilen !== '') {
+            if (hash_equals((string) resto_ayar_al('ai_kayit_anahtar', ''), $verilen)) return ['tum' => true];
+            $satir = DB::table('ayarlar')->where('anahtar', 'like', 'ai_kayit_anahtar_s%')->where('deger', $verilen)->value('anahtar');
+            if ($satir) return ['sube' => (int) substr($satir, strlen('ai_kayit_anahtar_s'))];
+            return null;
+        }
+        $p = function_exists('_posPersonel') ? _posPersonel() : null;
+        if ($p && in_array($p->rol ?? '', ['sahip', 'mudur'], true)) return ['sube' => (int) $p->sube_id];
+        return null;
+    }
+
+    function _aiKayitListe(Request $r, array $kapsam)
     {
         _aiKayitEnsure();
         $gun = max(1, min(30, (int) $r->query('gun', 1)));
@@ -52,7 +69,8 @@ if (!function_exists('_aiKayitEnsure')) {
             ->leftJoin('subeler', 'subeler.id', '=', 'musteri_ai_kayit.sube_id')
             ->where('musteri_ai_kayit.created_at', '>=', now()->subDays($gun))
             ->select('musteri_ai_kayit.*', 'masalar.ad as masa', 'subeler.ad as sube');
-        if ($r->filled('sube')) $q->where('musteri_ai_kayit.sube_id', (int) $r->query('sube'));
+        if (!empty($kapsam['sube'])) $q->where('musteri_ai_kayit.sube_id', $kapsam['sube']);
+        elseif ($r->filled('sube')) $q->where('musteri_ai_kayit.sube_id', (int) $r->query('sube'));
         if ($r->filled('oturum')) $q->where('musteri_ai_kayit.oturum', (string) $r->query('oturum'));
         $satirlar = $q->orderBy('musteri_ai_kayit.id')->limit(3000)->get();
         // Oturum (bir QR açılışı) bazında konuşmalar, en yenisi üstte
@@ -88,16 +106,16 @@ Route::post('/api/qr/ai-kayit', function (Request $r) {
 });
 
 Route::get('/ai-kayitlar.json', function (Request $r) {
-    $verilen = (string) $r->query('anahtar', '');
-    $dogru = (function_exists('_ryAdmin') && _ryAdmin()) || ($verilen !== '' && hash_equals((string) resto_ayar_al('ai_kayit_anahtar', ''), $verilen));
-    if (!$dogru) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
-    return response()->json(['ok' => 1, 'oturumlar' => _aiKayitListe($r)], 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    $kapsam = _aiKayitKapsam($r);
+    if (!$kapsam) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 403);
+    return response()->json(['ok' => 1, 'oturumlar' => _aiKayitListe($r, $kapsam)], 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 });
 
 Route::get('/ai-kayitlar', function (Request $r) {
-    if (!(function_exists('_ryAdmin') && _ryAdmin())) return redirect('/resteos-yonetim');
+    $kapsam = _aiKayitKapsam($r);
+    if (!$kapsam || $r->filled('anahtar')) return redirect('/pos-giris'); // sayfa yalnız oturumla; anahtar yalnız JSON'u okur
     return view('ai_kayitlar', [
-        'oturumlar' => _aiKayitListe($r), 'gun' => max(1, min(30, (int) $r->query('gun', 1))),
-        'link' => url('/ai-kayitlar.json') . '?anahtar=' . _aiKayitAnahtar(),
+        'oturumlar' => _aiKayitListe($r, $kapsam), 'gun' => max(1, min(30, (int) $r->query('gun', 1))),
+        'link' => url('/ai-kayitlar.json') . '?anahtar=' . _aiKayitAnahtar($kapsam['sube'] ?? null),
     ]);
 });
