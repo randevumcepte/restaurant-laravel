@@ -24,39 +24,10 @@
     $fotoVar = !empty($p->foto) && str_starts_with((string)$p->foto, 'data:image');
     $fotoUrl = $fotoVar ? '/profilim-avatar?v=' . crc32($p->foto) : null;
     $alanMetin = $atamaOzet ? ($atamaOzet['bolge'] . ' Bölge - ' . $atamaOzet['masa'] . ' Masa') : 'Atama yok';
+    // kisayollar / yetkiSol / yetkiSag: _profilimEk (routes/app_kopru.php) — uygulama da aynı veriyi alır
     // Sayfa kapısı (PanelYetki) ile aynı kural: gösterilen her bağlantı gerçekten açılır
-    $yetkiVar = fn($k) => _panelYetkiVar($p, $k);
     $_harita = _sayfaYetkiHaritasi();
     $sayfaAcik = fn($url) => !isset($_harita[$url]) || _panelYetkiVar($p, $_harita[$url]);
-    $kisayollar = array_filter([
-        ['/bildirim-ayar', 'notifications_active', '#0EA5E9', 'Bildirim ayarları'],
-        ['/puantaj', 'history', '#4F46E5', 'Puantajım'],
-        ['/ik-izin', 'beach_access', '#14B8A6', 'İzin / Avans'],
-        ['/garson-performans', 'emoji_events', '#10B981', 'Performansım'],
-        ['/servis', 'room_service', '#4F46E5', 'İş Akışım'],
-        ['/garson-cagrilari', 'notifications_active', '#F43F5E', 'Çağrılar'],
-        ['/patron-ai', 'auto_awesome', '#7C3AED', 'Sabah Brifingi'],
-        ['/ik-ozet', 'groups', '#10B981', 'İK Özet'],
-        ['/ik-risk', 'crisis_alert', '#F97316', 'Risk Radarı'],
-        ['/personel', 'badge', '#4F46E5', 'Personel yönetimi'],
-        ['/bagli-cihazlar', 'devices_other', '#0EA5E9', 'Bağlı cihazlar'],
-        ['/kasa', 'account_balance', '#F59E0B', 'Kasa (Vardiya)'],
-    ], fn($k) => $sayfaAcik($k[0]));
-    if (in_array($rol, ['satinalmaci','satinalma'])) {
-        $kisayollar[] = ['/departman-brief?dep=satinalma', 'wb_sunny', '#7C3AED', 'Satınalma Brifingi'];
-        if ($sayfaAcik('/satinalma-asistan')) $kisayollar[] = ['/satinalma-asistan', 'smart_toy', '#7C3AED', 'AI Asistan'];
-    }
-    $yetkiSol = [
-        ['shopping_cart', 'Sipariş Yönetimi', $yetkiVar('gor_pos')],
-        ['storefront', 'Masa Yönetimi', $yetkiVar('gor_masa_yonetim')],
-        ['sell', 'İndirim', $yetki['iskonto_limit'] > 0 ? '%' . number_format($yetki['iskonto_limit'], 0) : null],
-        ['card_giftcard', 'İkram', $yetki['ikram_limit'] > 0 ? $para($yetki['ikram_limit']) : null],
-    ];
-    $yetkiSag = [
-        ['bar_chart', 'Raporlar', $yetkiVar('gor_raporlar')],
-        ['group', 'Personel Yönetimi', $yetkiVar('gor_personel')],
-        ['insights', 'Finans', $yetkiVar('gor_finans')],
-    ];
     $yesilTur = ['odeme', 'prim', 'ek_odeme'];
     $turEtiket = ['avans'=>'Avans', 'odeme'=>'Ödeme', 'prim'=>'Prim', 'kesinti'=>'Kesinti', 'ek_odeme'=>'Ek ödeme'];
 @endphp

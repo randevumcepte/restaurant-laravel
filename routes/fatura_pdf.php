@@ -363,10 +363,12 @@ if (!function_exists('_fpAiKota')) {
 }
 if (!function_exists('_fpAiOku')) {
     // Okunamayan sayfaların konumlu metnini modele verir; dönen faturayı _fpBelge çıktısı biçiminde döndürür
-    function _fpAiOku($sid, array $sayfalar)
+    // $dosyaBlok: konumlu metin yerine PDF/fotoğrafın kendisi (uygulamadan yükleme) — Anthropic document/image bloğu, $sayfaSay kotadan düşülür
+    function _fpAiOku($sid, array $sayfalar, $dosyaBlok = null, $sayfaSay = null)
     {
+        $sayfaSay = $sayfaSay ?? count($sayfalar);
         [$kalan] = _fpAiKota($sid);
-        if ($kalan < count($sayfalar)) return ['hata' => 'Günlük yapay zekâ kotası doldu (kalan ' . $kalan . ' sayfa). Yarın tekrar deneyin ya da faturanın XML\'ini yükleyin.'];
+        if ($kalan < $sayfaSay) return ['hata' => 'Günlük yapay zekâ kotası doldu (kalan ' . $kalan . ' sayfa). Yarın tekrar deneyin ya da faturanın XML\'ini yükleyin.'];
         $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$key) return ['hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
         $metin = '';
@@ -384,7 +386,8 @@ if (!function_exists('_fpAiOku')) {
                 'ara_toplam' => ['type' => ['number', 'null']], 'iskonto_toplam' => ['type' => ['number', 'null']], 'kdv_toplam' => ['type' => ['number', 'null']], 'odenecek' => ['type' => ['number', 'null']],
                 'kalemler' => ['type' => 'array', 'items' => $kalemSema]]];
         $sema = ['type' => 'object', 'additionalProperties' => false, 'required' => ['faturalar'], 'properties' => ['faturalar' => ['type' => 'array', 'items' => $faturaSema]]];
-        $sys = 'Türk alış faturalarının metnini yapılandırılmış veriye çeviriyorsun. Metindeki köşeli parantezli sayılar öğenin yatay konumudur. '
+        $sys = ($dosyaBlok ? 'Türk alış faturalarını (PDF ya da fotoğraf) yapılandırılmış veriye çeviriyorsun. Okunmayan değeri uydurma, null bırak. '
+                : 'Türk alış faturalarının metnini yapılandırılmış veriye çeviriyorsun. Metindeki köşeli parantezli sayılar öğenin yatay konumudur. ')
             . 'Sayıları Türkçe biçimden çevir (1.450,00 → 1450.00). Yalnız metinde gerçekten yazan değerleri kullan; hesap yapma, tahmin etme. '
             . 'satir_tutar = satırın KDV hariç, iskonto sonrası tutarı. tarih YYYY-MM-DD. tip: SATIS ya da IADE. Bir sayfa önceki faturanın devamıysa aynı faturaya ekle.';
         try {
@@ -392,11 +395,11 @@ if (!function_exists('_fpAiOku')) {
                 ->timeout(110)->post('https://api.anthropic.com/v1/messages', [
                     'model' => env('FATURA_AI_MODEL', 'claude-haiku-5-5'), 'max_tokens' => 16000, 'system' => $sys,
                     'output_config' => ['effort' => 'low', 'format' => ['type' => 'json_schema', 'schema' => $sema]],
-                    'messages' => [['role' => 'user', 'content' => $metin]],
+                    'messages' => [['role' => 'user', 'content' => $dosyaBlok ? [$dosyaBlok, ['type' => 'text', 'text' => 'Bu belgedeki fatura(lar)ı tüm kalemleriyle çıkar.']] : $metin]],
                 ]);
         } catch (\Throwable $e) { return ['hata' => 'Yapay zekâ servisine bağlanılamadı.']; }
         if (!$resp->successful()) return ['hata' => 'Yapay zekâ servisi cevap vermedi (' . $resp->status() . ').'];
-        cache()->put('fp_ai_' . $sid . '_' . date('Ymd'), (int) cache()->get('fp_ai_' . $sid . '_' . date('Ymd'), 0) + count($sayfalar), now()->addDays(2));
+        cache()->put('fp_ai_' . $sid . '_' . date('Ymd'), (int) cache()->get('fp_ai_' . $sid . '_' . date('Ymd'), 0) + $sayfaSay, now()->addDays(2));
         if ($resp->json('stop_reason') === 'max_tokens') return ['hata' => 'Sayfa çok uzun; daha az sayfayla tekrar deneyin.'];
         $txt = ''; foreach ((array) $resp->json('content') as $bl) if (($bl['type'] ?? '') === 'text') $txt .= $bl['text'];
         $j = json_decode($txt, true);
@@ -490,6 +493,32 @@ Route::post('/efatura-gelen/pdf-ai', function (Request $r) {
     if (!$sayfalar) return response()->json(['ok' => 0, 'hata' => 'Sayfa verisi yok.']);
     $a = _fpAiOku($sid, $sayfalar);
     if (!empty($a['hata'])) return response()->json(['ok' => 0, 'hata' => $a['hata']]);
+    $s = _fpKaydet($sid, $a['faturalar'], 'ai');
+    [$kalan] = _fpAiKota($sid);
+    return response()->json(['ok' => 1, 'fatura' => count($a['faturalar']), 'ai_kalan' => $kalan] + $s);
+});
+
+// Uygulamadan PDF / fotoğraf (tarayıcıdaki pdf.js/OCR yok): dosyanın kendisi yapay zekâya verilir; kayıt web'deki ile aynı yoldan
+Route::post('/efatura-gelen/dosya-oku', function (Request $r) {
+    if (!_efgErisim()) return response()->json(['ok' => 0, 'hata' => 'Yetkin yok.'], 403);
+    _efgEnsure(); _fpEnsure();
+    @set_time_limit(170);
+    $f = $r->file('dosya');
+    if (!$f || !$f->isValid()) return response()->json(['ok' => 0, 'hata' => 'PDF ya da fotoğraf seçin.']);
+    if ($f->getSize() > 15 * 1024 * 1024) return response()->json(['ok' => 0, 'hata' => 'Dosya 15 MB\'tan büyük.']);
+    $ic = (string) file_get_contents($f->getRealPath());
+    $mime = str_starts_with($ic, '%PDF') ? 'application/pdf' : (str_starts_with($ic, "\xFF\xD8") ? 'image/jpeg' : (str_starts_with($ic, "\x89PNG") ? 'image/png' : (substr($ic, 8, 4) === 'WEBP' ? 'image/webp' : null)));
+    if (!$mime) return response()->json(['ok' => 0, 'hata' => 'Yalnız PDF, JPG, PNG ya da WEBP okunur. XML/ZIP için "XML / ZIP yükle"yi kullanın.']);
+    $sayfa = 1;
+    if ($mime === 'application/pdf') {
+        $sayfa = max(1, preg_match_all('#/Type\s*/Page(?![a-z])#', $ic));
+        if ($sayfa > 6) return response()->json(['ok' => 0, 'hata' => 'PDF ' . $sayfa . ' sayfa; tek seferde en fazla 6 sayfa okunur. Faturanın XML\'ini yükleyin ya da sayfaları bölün.']);
+    }
+    $sid = _webSubeId();
+    $blok = ['type' => $mime === 'application/pdf' ? 'document' : 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => base64_encode($ic)]];
+    $a = _fpAiOku($sid, [], $blok, $sayfa);
+    if (!empty($a['hata'])) return response()->json(['ok' => 0, 'hata' => $a['hata']]);
+    if (!$a['faturalar']) return response()->json(['ok' => 0, 'hata' => 'Belgede okunabilen fatura kalemi bulunamadı. Daha net bir fotoğraf çekin ya da XML yükleyin.']);
     $s = _fpKaydet($sid, $a['faturalar'], 'ai');
     [$kalan] = _fpAiKota($sid);
     return response()->json(['ok' => 1, 'fatura' => count($a['faturalar']), 'ai_kalan' => $kalan] + $s);

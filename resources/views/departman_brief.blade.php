@@ -120,16 +120,8 @@
   $saat = (int) now()->format('H');
   $selam = $saat < 11 ? 'Günaydın' : ($saat < 18 ? 'İyi günler' : 'İyi akşamlar');
   $adK = $ad ? trim(explode(' ', trim($ad))[0]) : '';
-  // DEPARTMAN SORUMLUSU: onayını bekleyen satın alma talepleri (varsa üstte uyarı)
-  $__onayN = 0;
-  try {
-    $__sid2 = function_exists('_webSubeId') ? _webSubeId() : null;
-    $__bp2 = function_exists('_posPersonel') ? _posPersonel() : null;
-    if ($__bp2 && $__sid2 && function_exists('_sorumluDepartmanIdleri')) {
-      $__sd = _sorumluDepartmanIdleri($__sid2, $__bp2->id ?? 0);
-      if ($__sd) $__onayN = (int) \Illuminate\Support\Facades\DB::table('satinalma_talepleri')->where('sube_id', $__sid2)->where('durum', 'departman_onay')->whereIn('departman_id', $__sd)->count();
-    }
-  } catch (\Throwable $e) {}
+  // onayBekleyenTalep / altDepartmanlar: _departmanBriefEk (routes/app_kopru.php) — uygulama da aynı veriyi alır
+  $__onayN = (int) ($onayBekleyenTalep ?? 0);
 @endphp
 @if($__onayN > 0)
 <a href="/talep-onaylarim" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;text-decoration:none;border-radius:14px;padding:13px 16px;margin-bottom:12px;font-weight:700;box-shadow:0 8px 20px rgba(245,158,11,.28)">
@@ -158,18 +150,10 @@
 </div>
 
 {{-- Mutfak (BOH) alt departman sekmeleri --}}
-@php
-  // Sadece işletmede kurulu olanlar (+ ana mutfak ve o an açık olan). Tek sekme kalırsa şerit gösterilmez.
-  $__bohAktif = function_exists('_aktifDepartmanKodlari') ? _aktifDepartmanKodlari(_webSubeId()) : [];
-  $__boh = array_filter(function_exists('_departmanSablonlari') ? _departmanSablonlari() : [], fn ($t, $k) => ($t['grup'] ?? '') === 'Mutfak (BOH)' && ($k === 'mutfak' || $k === ($kod ?? '') || in_array($k, $__bohAktif, true)), ARRAY_FILTER_USE_BOTH);
-  // İstasyon çalışanı yalnız kendi sekmesini görür; şef ve yönetici hepsini
-  $__bohKisi = _posPersonel();
-  $__boh = array_filter($__boh, fn ($k) => $k === ($kod ?? '') || _departmanBriefIzinli($__bohKisi, _webSubeId(), $k), ARRAY_FILTER_USE_KEY);
-@endphp
-@if (isset($__boh[$kod ?? '']) && count($__boh) > 1)
+@if (!empty($altDepartmanlar))
 <div class="pai-alt-dep">
-  @foreach ($__boh as $__k => $__t)
-    <a href="/departman-brief?dep={{ $__k }}" class="{{ $__k === $kod ? 'aktif' : '' }}" @if($__k === $kod)style="background:{{ $__t['renk'] }}"@endif><span class="material-icons-outlined" @if($__k !== $kod)style="color:{{ $__t['renk'] }}"@endif>{{ $__t['ikon'] }}</span>{{ $__k === 'mutfak' ? 'Genel / Sıcak' : trim(explode('/', $__t['ad'])[0]) }}</a>
+  @foreach ($altDepartmanlar as $__t)
+    <a href="/departman-brief?dep={{ $__t['kod'] }}" class="{{ $__t['aktif'] ? 'aktif' : '' }}" @if($__t['aktif'])style="background:{{ $__t['renk'] }}"@endif><span class="material-icons-outlined" @if(!$__t['aktif'])style="color:{{ $__t['renk'] }}"@endif>{{ $__t['ikon'] }}</span>{{ $__t['ad'] }}</a>
   @endforeach
 </div>
 @endif
