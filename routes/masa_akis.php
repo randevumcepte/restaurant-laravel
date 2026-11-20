@@ -184,8 +184,8 @@ if (!function_exists('_servisHazirBildir')) {
                 $baslik = '🛎️ ' . $masaAd . ' · servise hazır';
                 $data = ['tur' => 'servise_hazir', 'masa_id' => (int) $masaId, 'adisyon_id' => (int) $ilk->adisyon_id];
                 $hedef = _masaGarsonlari($sid, (int) $masaId, $ilk->bolge_id ?? null, $acanVar ? ($ilk->acan_personel_id ?? null) : null);
-                if ($hedef && function_exists('_fcmPersoneleGonder')) _fcmPersoneleGonder((int) $sid, $hedef, $baslik, $govde, $data);
-                elseif (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder((int) $sid, $baslik, $govde, $data, ['garson', 'komi', 'sef_garson']);
+                // Masanın garsonu yoksa / mesaide değilse servis ekibi (mesaidekiler) — eskiden yalnız 'garson' rolüne gidiyordu, servis departmanı kaçıyordu
+                if (function_exists('_fcmPersoneleGonder')) _fcmPersoneleGonder((int) $sid, $hedef ?: _servisEkibi($sid), $baslik, $govde, $data);
             }
         } catch (\Throwable $e) {}
     }
@@ -206,6 +206,13 @@ if (!function_exists('_servisHazirBildir')) {
         if (!$ids) return null;
         $ids = DB::table('personeller')->where('sube_id', (int) $sid)->where('aktif', 1)->whereIn('id', array_unique($ids))
             ->whereNotIn('rol', ['mutfak', 'sahip'])->pluck('id')->map(fn ($x) => (int) $x)->all();
+        if (!$ids) return null;
+        // Mesai kullanılıyorsa: masanın garsonu mesaide değilse (izinli / çıkmış) null → servis ekibine gider (bildirim boşa düşmez)
+        try {
+            if (Schema::hasTable('personel_mesai') && cache()->remember('mesai_kullanim_' . (int) $sid, 600, fn () => DB::table('personel_mesai')->where('sube_id', (int) $sid)->where('giris_at', '>', now()->subDays(7))->exists() ? 1 : 0)) {
+                $ids = DB::table('personel_mesai')->where('sube_id', (int) $sid)->where('durum', 'acik')->whereIn('personel_id', $ids)->pluck('personel_id')->map(fn ($x) => (int) $x)->unique()->values()->all();
+            }
+        } catch (\Throwable $e) {}
         return $ids ?: null;
     }
     // Masada servis bekleyen (hazır) kalem kalmadıysa "servise hazır" çağrısını kapat
@@ -220,6 +227,81 @@ if (!function_exists('_servisHazirBildir')) {
                 }
             }
         } catch (\Throwable $e) {}
+    }
+}
+
+// ============================ DÖNGÜ BİLDİRİM ALICILARI ============================
+// Garson–mutfak döngüsünün bildirimleri yalnız işi yapan ekibe gider (satın alma/muhasebe telefonu çalmaz).
+// İşletme mesai (QR puantaj) kullanıyorsa yalnız MESAİDE olanlar; mesaide kimse yoksa ekibin tamamı (bildirim kaybolmaz).
+if (!function_exists('_dongudeMesaide')) {
+    function _dongudeMesaide($sid, array $ids)
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!$ids) return [];
+        try {
+            if (!Schema::hasTable('personel_mesai')) return $ids;
+            $kullaniyor = cache()->remember('mesai_kullanim_' . (int) $sid, 600, fn () => DB::table('personel_mesai')->where('sube_id', (int) $sid)->where('giris_at', '>', now()->subDays(7))->exists() ? 1 : 0);
+            if (!$kullaniyor) return $ids;
+            $acik = DB::table('personel_mesai')->where('sube_id', (int) $sid)->where('durum', 'acik')->whereIn('personel_id', $ids)->pluck('personel_id')->map(fn ($x) => (int) $x)->unique()->values()->all();
+            return $acik ?: $ids;
+        } catch (\Throwable $e) { return $ids; }
+    }
+    // Rol ya da departman koduna göre aktif personel id'leri
+    function _dongudeEkip($sid, array $roller, array $depKodlari)
+    {
+        try {
+            $depIds = ($depKodlari && Schema::hasTable('departmanlar')) ? DB::table('departmanlar')->where('sube_id', (int) $sid)->whereIn('kod', $depKodlari)->pluck('id')->all() : [];
+            return DB::table('personeller')->where('sube_id', (int) $sid)->where('aktif', 1)
+                ->where(function ($w) use ($roller, $depIds) { $w->whereIn('rol', $roller ?: ['-']); if ($depIds) $w->orWhereIn('departman_id', $depIds); })
+                ->pluck('id')->map(fn ($x) => (int) $x)->all();
+        } catch (\Throwable $e) { return []; }
+    }
+    // Servis ekibi: garson / komi / şef garson + Servis departmanı (ödeme çağrısında kasa da)
+    function _servisEkibi($sid, $kasaDahil = false)
+    {
+        $ids = _dongudeEkip($sid, $kasaDahil ? ['garson', 'komi', 'sef_garson', 'kasa'] : ['garson', 'komi', 'sef_garson'], $kasaDahil ? ['servis', 'kasa'] : ['servis']);
+        return _dongudeMesaide($sid, $ids);
+    }
+    // Mutfak + bar ekibi (yeni sipariş haberi)
+    function _mutfakBarEkibi($sid)
+    {
+        return _dongudeMesaide($sid, _dongudeEkip($sid, ['mutfak', 'bar', 'barmen'], ['mutfak', 'soguk_mutfak', 'pastane', 'kasap', 'bar']));
+    }
+    // Döngü bildirimi: kişinin "garson_cagri" vb. tercihini kapatanlar düşer (kritik olmayan tip)
+    function _dongudePush($sid, array $ids, $baslik, $govde, array $data, $tercihTip = null)
+    {
+        if ($tercihTip && function_exists('_bildirimTercihKapali')) $ids = array_values(array_filter($ids, fn ($id) => !_bildirimTercihKapali($id, $tercihTip)));
+        if (!$ids || !function_exists('_fcmPersoneleGonder')) return false;
+        try { return _fcmPersoneleGonder((int) $sid, $ids, $baslik, $govde, $data); } catch (\Throwable $e) { return false; }
+    }
+    // Müşteri masadan garson / hesap / acil çağırdı (QR menü + müşteri uygulaması ortak).
+    // Aynı masa aynı tip için bekleyen çağrı varsa YENİ kayıt açılmaz: ilk 90 sn sessiz (art arda basma telefonu çaldırmaz),
+    // sonra en fazla 90 sn'de bir "tekrar çağırıyor · N dk'dır bekliyor" hatırlatması gider. Bildirim o masanın garsonuna (yoksa servis ekibine).
+    function _garsonCagriEkle($sid, $masaId, $tip, $ek = null)
+    {
+        $tip = in_array($tip, ['garson', 'hesap', 'acil'], true) ? $tip : 'garson';
+        if (function_exists('_masaCagriEnsure')) _masaCagriEnsure();
+        $masa = DB::table('masalar')->find((int) $masaId);
+        if (!$masa) return ['ok' => 0];
+        $masaAd = $masa->ad ?: ('Masa ' . $masa->id);
+        $etiket = ['hesap' => 'Hesap istendi', 'acil' => 'Acil çağrı', 'garson' => 'Garson çağrısı'][$tip];
+        $ikon = ['hesap' => '💳', 'acil' => '🔴', 'garson' => '🙋'][$tip];
+        $data = ['tur' => 'garson_cagri', 'masa_id' => (int) $masa->id, 'tip' => $tip];
+        $acik = DB::table('adisyonlar')->where('masa_id', $masa->id)->where('durum', 'acik')->orderByDesc('id')->first();
+        $hedef = function_exists('_masaGarsonlari') ? _masaGarsonlari($sid, (int) $masa->id, $masa->bolge_id ?? null, $acik->acan_personel_id ?? null) : null;
+        $alici = $hedef ?: _servisEkibi($sid, $tip === 'hesap');
+        $var = DB::table('masa_cagrilari')->where('masa_id', $masa->id)->where('tip', $tip)->where('durum', 'bekliyor')->orderByDesc('id')->first();
+        if ($var) {
+            $gecen = (int) abs(\Carbon\Carbon::parse($var->created_at)->diffInSeconds(now()));
+            $anahtar = 'cagri_hatirlat_' . $var->id;
+            if ($gecen < 90 || cache()->has($anahtar)) return ['ok' => 1, 'tekrar' => 1];
+            cache()->put($anahtar, 1, now()->addSeconds(90));
+            _dongudePush($sid, $alici, '🔁 ' . $masaAd . ' tekrar çağırıyor', $etiket . ' · ' . max(1, intdiv($gecen, 60)) . ' dk\'dır bekliyor' . ($ek ? ' · ' . $ek : ''), $data + ['tekrar' => '1'], 'garson_cagri');
+            return ['ok' => 1, 'tekrar' => 1];
+        }
+        DB::table('masa_cagrilari')->insert(['sube_id' => (int) $sid, 'masa_id' => (int) $masa->id, 'tip' => $tip, 'durum' => 'bekliyor', 'created_at' => now()]);
+        _dongudePush($sid, $alici, $ikon . ' ' . $etiket, $masaAd . ($ek ? ' · ' . $ek : ''), $data, 'garson_cagri');
+        return ['ok' => 1, 'tekrar' => 0, 'masa' => $masaAd];
     }
 }
 

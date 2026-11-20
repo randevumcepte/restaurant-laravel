@@ -3624,14 +3624,11 @@ Route::post('/api/m/garson-cagir', function (Request $r) {
             $t->string('tip', 20)->default('garson'); $t->string('durum', 20)->default('bekliyor'); $t->timestamp('created_at')->useCurrent();
         });
     }
-    $tip = in_array($r->input('tip'), ['garson', 'hesap', 'acil']) ? $r->input('tip') : 'garson';
-    DB::table('masa_cagrilari')->insert(['sube_id' => $m->sube_id, 'masa_id' => $masaId, 'tip' => $tip, 'durum' => 'bekliyor', 'created_at' => now()]);
     $masaAd = DB::table('masalar')->where('id', $masaId)->value('ad') ?: ('Masa ' . $masaId);
-    try {
-        $baslik = $tip === 'hesap' ? '💳 Hesap istendi' : '🙋 Garson çağrısı';
-        if (function_exists('_fcmSubeyeGonder')) _fcmSubeyeGonder($m->sube_id, $baslik, $masaAd . ' · ' . ($m->ad ?: 'Müşteri'), ['tur' => 'garson_cagri', 'masa_id' => $masaId, 'tip' => $tip]);
-    } catch (\Throwable $e) {}
-    return ['ok' => 1, 'masa' => $masaAd, 'mesaj' => 'Garson çağrınız alındı! Birazdan masanıza gelecek 🙌'];
+    // Kayıt + bildirim QR menüyle aynı kural (masanın garsonuna; art arda basma tekrar açmaz — routes/masa_akis.php)
+    $c = ['tekrar' => 0];
+    try { $c = _garsonCagriEkle((int) $m->sube_id, (int) $masaId, (string) $r->input('tip'), $m->ad ?: null); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'masa' => $masaAd, 'mesaj' => !empty($c['tekrar']) ? 'Çağrınız zaten iletildi, garsonunuz yolda 🙌' : 'Garson çağrınız alındı! Birazdan masanıza gelecek 🙌'];
 });
 // ===== SERVİS TİPİ / CÜZDAN / SELF SERVİS ÖDEME (öde-önce: cüzdan -> kart) =====
 if (!function_exists('_appEnsure2')) {
@@ -7026,16 +7023,10 @@ Route::post('/api/qr/garson-cagir', function (Request $r) {
             $t->timestamp('created_at')->useCurrent();
         });
     }
-    $tip = in_array($r->tip, ['garson', 'hesap', 'acil']) ? $r->tip : 'garson';
-    DB::table('masa_cagrilari')->insert(['sube_id' => $masa->sube_id, 'masa_id' => $masa->id,
-        'tip' => $tip, 'durum' => 'bekliyor', 'created_at' => now()]);
-    // PUSH: salondaki personele anlik bildirim (poll'a ek; arka plan/kapali ekranda da gider)
-    try {
-        $masaAd = DB::table('masalar')->where('id', $masa->id)->value('ad') ?: ('Masa ' . $masa->id);
-        $baslik = $tip === 'hesap' ? '💳 Hesap istendi' : ($tip === 'acil' ? '🔴 Acil çağrı' : '🙋 Garson çağrısı');
-        _fcmSubeyeGonder($masa->sube_id, $baslik, $masaAd, ['tur' => 'garson_cagri', 'masa_id' => $masa->id, 'tip' => $tip]);
-    } catch (\Throwable $e) {}
-    return ['ok' => 1];
+    // Kayıt + bildirim (o masanın garsonuna; art arda basma tekrar kayıt/push açmaz — routes/masa_akis.php _garsonCagriEkle)
+    $c = ['ok' => 1];
+    try { $c = _garsonCagriEkle((int) $masa->sube_id, (int) $masa->id, (string) $r->tip); } catch (\Throwable $e) {}
+    return ['ok' => 1, 'tekrar' => (int) ($c['tekrar'] ?? 0)];
 });
 
 // QR: bu subenin masalari (musteri "geldigim masa" secsin diye)
@@ -7064,8 +7055,11 @@ Route::post('/api/qr/tasima-talep', function (Request $r) {
     DB::table('masa_cagrilari')->insert(['sube_id' => $hedef->sube_id, 'masa_id' => $kaynak->id, 'tip' => 'tasima',
         'durum' => 'bekliyor', 'hedef_masa_id' => $hedef->id, 'created_at' => now()]);
     try {
-        _fcmSubeyeGonder($hedef->sube_id, '↔️ Masa taşıma talebi', $kaynak->ad . ' → ' . $hedef->ad,
-            ['tur' => 'masa_tasima', 'masa_id' => $kaynak->id, 'hedef_masa_id' => $hedef->id]);
+        // Eskiden şubedeki herkese gidiyordu: kaynak masanın garsonu (yoksa servis + kasa ekibi, mesaidekiler); mutfak/satın alma/muhasebe çalmaz
+        $kAd = DB::table('adisyonlar')->where('masa_id', $kaynak->id)->where('durum', 'acik')->orderByDesc('id')->first();
+        $alici = (function_exists('_masaGarsonlari') ? _masaGarsonlari($hedef->sube_id, (int) $kaynak->id, $kaynak->bolge_id ?? null, $kAd->acan_personel_id ?? null) : null) ?: _servisEkibi($hedef->sube_id, true);
+        _dongudePush($hedef->sube_id, $alici, '↔️ Masa taşıma talebi', $kaynak->ad . ' → ' . $hedef->ad,
+            ['tur' => 'masa_tasima', 'masa_id' => $kaynak->id, 'hedef_masa_id' => $hedef->id], 'garson_cagri');
     } catch (\Throwable $e) {}
     return ['ok' => 1, 'mesaj' => $kaynak->ad . ' → ' . $hedef->ad . ' taşınma talebiniz iletildi. Garson onaylayınca hesabınız buraya taşınır 🙌'];
 });
@@ -7262,8 +7256,12 @@ Route::post('/api/qr/siparis-gonder', function (Request $r) {
         // PUSH: mutfak/garson cihazlarina yeni siparis bildirimi
         try {
             $masaAd = $masa->ad ?: ('Masa ' . $masa->id);
-            _fcmSubeyeGonder($masa->sube_id, '🍽️ Yeni QR sipariş', $masaAd . ' · ' . $eklenen . ' kalem',
-                ['tur' => 'yeni_siparis', 'masa_id' => $masa->id, 'adisyon_id' => $adId]);
+            // Eskiden şubedeki HERKESE gidiyordu (satın alma, muhasebe...). Şimdi: masanın garsonu (yoksa servis ekibi) + mutfak/bar ekibi
+            $sipData = ['tur' => 'yeni_siparis', 'masa_id' => $masa->id, 'adisyon_id' => $adId];
+            $sipGovde = $masaAd . ' · ' . ($yeniIds ? (_cagriDetay($yeniIds)['detay'] ?? ($eklenen . ' kalem')) : ($eklenen . ' kalem'));
+            $garsonlar = (function_exists('_masaGarsonlari') ? _masaGarsonlari($masa->sube_id, (int) $masa->id, $masa->bolge_id ?? null, null) : null) ?: _servisEkibi($masa->sube_id);
+            _dongudePush($masa->sube_id, $garsonlar, '🍽️ Yeni QR sipariş', $sipGovde, $sipData, 'garson_cagri');
+            _dongudePush($masa->sube_id, array_values(array_diff(_mutfakBarEkibi($masa->sube_id), $garsonlar)), '🍽️ Yeni sipariş · ' . $masaAd, $sipGovde, $sipData + ['ekran' => 'mutfak']);
         } catch (\Throwable $e) {}
     }
     return ['ok' => 1, 'on_odeme' => $onOdeme, 'kalem_idler' => $yeniIds,
@@ -7533,7 +7531,7 @@ Route::post('/api/qr/kasa-ode', function (Request $r) {
         $data = ['tur' => 'odeme_cagri', 'masa_id' => (int) $masa->id, 'adisyon_id' => (int) $a->id];
         $hedef = _masaGarsonlari($masa->sube_id, (int) $masa->id, $masa->bolge_id ?? null, $a->acan_personel_id ?? null);
         if ($hedef) _fcmPersoneleGonder((int) $masa->sube_id, $hedef, $baslik, $govde, $data);
-        else _fcmSubeyeGonder((int) $masa->sube_id, $baslik, $govde, $data, ['garson', 'kasa', 'komi', 'sef_garson']);
+        else _dongudePush((int) $masa->sube_id, _servisEkibi((int) $masa->sube_id, true), $baslik, $govde, $data);
     } catch (\Throwable $e) {}
 
     return ['ok' => 1, 'tutar' => $tutar,
@@ -8055,7 +8053,7 @@ if (!function_exists('_fcmSubeyeGonder')) {
     {
         _fcmTokenEnsure();
         // Bildirim kutusuna da yaz (panel zili): rol hedefli gönderimler + garson çağrısı (yalnız çağrıları gören)
-        if (function_exists('_bmFcmKoprusu') && ($roller || ($data['tur'] ?? '') === 'garson_cagri')) {
+        if (function_exists('_bmFcmKoprusu') && ($roller || $tip === 'garson_cagri' || ($data['tur'] ?? '') === 'garson_cagri')) {
             try {
                 $bmQ = DB::table('personeller')->where('sube_id', (int) $subeId)->where('aktif', 1);
                 if ($roller) $bmQ->whereIn('rol', (array) $roller);

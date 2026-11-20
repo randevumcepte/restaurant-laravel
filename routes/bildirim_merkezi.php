@@ -168,6 +168,8 @@ if (!function_exists('_bmKisiDepler')) {
             }
         } catch (\Throwable $e) {}
         if (in_array($p->rol ?? '', ['satinalmaci', 'satinalma'], true)) $out['satinalma'] = true;
+        // Departmanı atanmamış eski personel rolünden tanınır (aşçı KDS gecikmesini, garson çağrı/masa uyarılarını kaçırmasın)
+        if (!$out) { $rk = ['mutfak' => 'mutfak', 'garson' => 'servis', 'komi' => 'servis', 'sef_garson' => 'servis', 'bar' => 'bar', 'barmen' => 'bar', 'kasa' => 'kasa'][$p->rol ?? ''] ?? null; if ($rk) $out[$rk] = $p->rol === 'sef_garson'; }
         if (function_exists('_kasiyerMi') && _kasiyerMi($p) && !isset($out['kasa'])) $out['kasa'] = false;
         return $id ? ($bellek[$id] = $out) : $out;
     }
@@ -254,7 +256,8 @@ if (!function_exists('_bmFcmKoprusu')) {
         $linkler = ['satinalma_talep' => '/satinalma-talep', 'talep_onay' => '/talep-onaylarim', 'talep_red' => '/reddedilen-talepler', 'rfq_teklif' => '/gelen-teklifler',
             'siparis_onay' => '/satinalma-siparis', 'teslim' => '/mal-kabul', 'teslim_gec' => '/satinalma-siparis', 'geciken_siparis' => '/satinalma-siparis', 'kalite_sicaklik' => '/kalite',
             'kalite_skt' => '/parti-takip', 'kalite_denetim' => '/kalite', 'kalite_belge' => '/kalite', 'it_okc' => '/it-destek', 'it_cihaz' => '/it-destek', 'it_surum' => '/it-destek',
-            'garson_cagri' => '/garson-cagrilari', 'rezervasyon' => '/rezervasyon', 'noshow' => '/rezervasyon', 'memnuniyet' => '/memnuniyet', 'tahsilat' => '/kasa', 'acik_adisyon' => '/pos',
+            'garson_cagri' => '/garson-cagrilari', 'servise_hazir' => '/garson-cagrilari', 'odeme_cagri' => '/garson-cagrilari', 'masa_tasima' => '/garson-cagrilari',
+            'yeni_siparis' => ($data['ekran'] ?? '') === 'mutfak' ? '/mutfak' : '/garson-cagrilari', 'rezervasyon' => '/rezervasyon', 'noshow' => '/rezervasyon', 'memnuniyet' => '/memnuniyet', 'tahsilat' => '/kasa', 'acik_adisyon' => '/pos',
             'patron_ai_brief' => '/patron-ai', 'gelmeyen_ik' => '/puantaj', 'beyanname' => '/vergi-takvimi', 'mali_ozet' => '/raporlar', 'ajanda' => '/ajanda', 'cek_senet' => '/cek-senet'];
         // Kişisel talep sonuçları ve sorumlu onay kutusu katalog tiplerine bağlanır (ayarlardan açılıp kapanır)
         if ($tip && isset(_bmTipTakma()[$tip])) $tip = _bmTipTakma()[$tip]; // eski tip adı → katalog
@@ -331,7 +334,15 @@ if (!function_exists('_bmOlayTara')) {
         try {
             $gec = DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'a.id', '=', 'k.adisyon_id')->where('a.sube_id', $sid)->where('a.durum', 'acik')
                 ->whereIn('k.durum', ['gonderildi', 'hazirlaniyor'])->whereNotNull('k.gonderim_zamani')->where('k.gonderim_zamani', '<', $simdi->copy()->subMinutes(15))
-                ->get(['k.id', 'k.urun_id', 'k.urun_adi', 'k.adet', 'a.masa_id']);
+                ->get(['k.id', 'k.urun_id', 'k.urun_adi', 'k.adet', 'a.masa_id', 'k.adisyon_id', 'k.not']);
+            // "Yemekten sonra getirilsin" ürünü ana yemek masaya gidene kadar BEKLETİLİR (KDS'de "BEKLET") → gecikme sayılmaz
+            $sonraKalemler = $gec->filter(fn ($k) => mb_stripos((string) $k->not, 'sonra getir') !== false);
+            if ($sonraKalemler->count()) {
+                $anaBekleyen = DB::table('adisyon_kalemleri')->whereIn('adisyon_id', $sonraKalemler->pluck('adisyon_id')->unique()->all())
+                    ->whereIn('durum', ['gonderildi', 'hazirlaniyor', 'hazir'])->where(fn ($w) => $w->whereNull('not')->orWhere('not', 'not like', '%sonra getir%'))
+                    ->pluck('adisyon_id')->unique()->flip();
+                $gec = $gec->reject(fn ($k) => mb_stripos((string) $k->not, 'sonra getir') !== false && isset($anaBekleyen[$k->adisyon_id]))->values();
+            }
             if ($gec->count()) {
                 foreach (_bmAlicilar($sid, 'kds_gecikme') as $p) {
                     $kapsam = function_exists('_mutfakIstasyonUrunleri') ? _mutfakIstasyonUrunleri($p) : null;
