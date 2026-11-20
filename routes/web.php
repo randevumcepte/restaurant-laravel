@@ -1078,7 +1078,7 @@ Route::match(['get', 'post'], '/api/callerid/gelen', function (Request $r) {
 
 // TEST — VoIP olmadan gelen cagri simule et
 Route::get('/callerid-test', function (Request $r) {
-    $subeId = DB::table('subeler')->value('id');
+    $subeId = _webSubeId(); // kişinin şubesi (eskiden ilk restoran)
     _calleridEnsure();
     $tel = $r->query('telefon');
     if (!$tel) {
@@ -33533,6 +33533,9 @@ Route::post('/api/santral-ses/dene', function (Request $r) {
 if (!function_exists('_santralEgitimSube')) {
     function _santralEgitimSube($r = null)
     {
+        // Personel (panel ya da uygulama) HER ZAMAN kendi şubesine kilitli; sube_id parametresini yalnız Sistem Yönetimi kullanabilir
+        $p = null; try { $p = _posPersonel() ?: _apiPersonel($r ?: request()); } catch (\Throwable $e) {}
+        if ($p && !session('ry_admin_id')) return (int) $p->sube_id;
         $v = $r ? ($r->input('sube_id')) : request('sube_id');
         return (int) ($v ?: DB::table('subeler')->min('id') ?: 1);
     }

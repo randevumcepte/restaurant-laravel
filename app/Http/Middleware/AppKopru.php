@@ -66,6 +66,13 @@ class AppKopru
             foreach (['ok', 'basari', 'success', 'mesaj', 'status', 'bilgi'] as $k) { $v = $s->get($k); if (is_string($v) && $v !== '') { $mesaj = $v; break; } }
             foreach (['hata', 'error', 'uyari'] as $k) { $v = $s->get($k); if (is_string($v) && $v !== '') { $hata = $v; break; } }
             if (!$hata && ($e = $s->get('errors')) && method_exists($e, 'all') && $e->all()) $hata = implode(' ', $e->all());
+            // Sayfaya özel anahtarlar: sebep_hata, bc_hata, yazici_ok, x_mesaj ... (bu istekte flash'lananlar)
+            foreach ((array) $s->get('_flash.new', []) as $k) {
+                $v = $s->get($k);
+                if (!is_string($v) || $v === '') continue;
+                if (!$hata && preg_match('/_(hata|error|uyari)$/', $k)) $hata = $v;
+                elseif (!$mesaj && preg_match('/_(ok|mesaj|basari|bilgi)$/', $k)) $mesaj = $v;
+            }
         } catch (\Throwable $e) {}
         return [$mesaj, $hata];
     }

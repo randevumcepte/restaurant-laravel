@@ -80,6 +80,6 @@ if (!function_exists('_panelMenuJson')) {
 
 // Uygulama menüsü: web sol menüsüyle aynı (yetki/departman/büyüklük/kasiyer kuralları tek yerde)
 Route::get('/panel-menu', function () {
-    if (!_posPersonel()) return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli'], 401);
+    if (!_posPersonel()) return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli', 'giris' => 1], 401);
     return response()->json(_panelMenuJson());
 });
