@@ -695,7 +695,7 @@ class SefGarsonAI
             . 'Amac: ek satis (tatli, icecek, cay/kahve, meze) + misafir memnuniyeti. Emri kibar ve uygulanabilir ver. '
             . 'Emoji, madde, tirnak KULLANMA, sadece Turkce duz metin. Menudeki su onerileri kullanabilirsin: ' . $oneriMetin;
         $govde = [
-            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'max_tokens' => 160, 'system' => $sistem,
             'messages' => [['role' => 'user', 'content' => 'Masanin durumu: ' . $ozet . '. Garsona ne yapmasini soylersin?']],
         ];
@@ -712,6 +712,7 @@ class SefGarsonAI
     protected function cagirAnthropic($anahtar, $govde)
     {
         try {
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 14,

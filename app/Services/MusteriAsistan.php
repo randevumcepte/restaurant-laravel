@@ -2204,7 +2204,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             . 'Restoranla tamamen ilgisiz konularda kibarca menuye yonlendir. Sadece Turkce yanit ver.'
             . "\n\nMENU:\n" . $this->menuOzetMetni();
         $govde = [
-            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'max_tokens' => 200, 'system' => $sistem,
             'messages' => [['role' => 'user', 'content' => $q]],
         ];
@@ -2262,7 +2262,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             . '3) tetikleyiciler CUMLE DEGIL, virgulle ayrilmis KISA anahtar kelime kaliplari olsun (2-5 tane, es anlamli). Ornek: "wifi sifresi, internet sifresi, kablosuz". '
             . '4) cevap kisa/net, musteriye uygun (1-2 cumle). 5) Belgede OLMAYAN bilgi UYDURMA. En fazla 40 oge.';
         $govde = [
-            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'max_tokens' => 4000, 'system' => $sistem,
             'messages' => [['role' => 'user', 'content' => [
                 ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => $mediaType, 'data' => $base64Pdf]],
@@ -2293,6 +2293,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
     protected function cagirAnthropic($anahtar, $govde)
     {
         try {
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 14,
@@ -2415,7 +2416,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             . ($baglam ? ("\n\nbaglam (son konusulan urun): " . $baglam) : '')
             . "\n\nMENU:\n" . $this->menuOzetMetni();
         $govde = [
-            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'max_tokens' => 320, 'system' => $sistem,
             'messages' => [['role' => 'user', 'content' => $q]],
         ];

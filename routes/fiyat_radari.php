@@ -873,7 +873,7 @@ if (!function_exists('_fr2AiCagir')) {
         try {
             $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
                 ->timeout(90)->post('https://api.anthropic.com/v1/messages', [
-                    'model' => config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001', 'max_tokens' => $maxTok, 'system' => $sys,
+                    'model' => config('services.anthropic.model') ?: 'claude-haiku-5-5', 'max_tokens' => $maxTok, 'thinking' => ['type' => 'disabled'], 'system' => $sys,
                     'messages' => [['role' => 'user', 'content' => $mesaj]],
                 ]);
             if (!$resp->successful()) return ['hata' => 'AI servisi şu an cevap vermedi (' . $resp->status() . ').'];
@@ -916,7 +916,7 @@ if (!function_exists('_fr2AiParcali')) {
             ]],
         ];
         $govde = function ($p) use ($sys, $mesaj) {
-            return ['model' => config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001', 'max_tokens' => 2500,
+            return ['model' => config('services.anthropic.model') ?: 'claude-haiku-5-5', 'max_tokens' => 2500, 'thinking' => ['type' => 'disabled'],
                 'system' => $sys . ' Kısa yaz: her "detay"/"arguman" en fazla 2 cümle (~30 kelime), somut malzeme/tedarikçi adı ve rakamla.',
                 'tools' => [['name' => 'analiz_kaydet', 'description' => $p['tanim'], 'input_schema' => ['type' => 'object', 'properties' => $p['sema'], 'required' => array_keys($p['sema'])]]],
                 'tool_choice' => ['type' => 'tool', 'name' => 'analiz_kaydet'],

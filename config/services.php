@@ -38,7 +38,8 @@ return [
     // Derin AI Analizi (Haiku). Randevumcepte ile AYNI Anthropic anahtari/bakiyesi kullanilabilir.
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
-        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+        // Sunucu .env'inde eski Haiku 4.5 yazili kalsa da Haiku 5.5 kullanilir
+        'model' => str_starts_with((string) env('ANTHROPIC_MODEL', ''), 'claude-haiku-4-5') ? 'claude-haiku-5-5' : env('ANTHROPIC_MODEL', 'claude-haiku-5-5'),
         // MALIYET KONTROLU (Patron AI sohbet karakteri):
         'sohbet_acik' => (bool) env('PATRON_AI_SOHBET', true),        // 0 -> sohbet kapali, sadece bedava kural+tespit
         'sohbet_gunluk_limit' => (int) env('PATRON_AI_GUNLUK_LIMIT', 400), // gunluk LLM soru tavani (sube basi); onbellekli tekrarlar saymaz

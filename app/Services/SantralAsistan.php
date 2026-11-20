@@ -854,12 +854,13 @@ class SantralAsistan
 
     protected function model()
     {
-        return config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        return config('services.anthropic.model') ?: 'claude-haiku-5-5';
     }
 
     protected function cagir($govde)
     {
         try {
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 14,
@@ -899,6 +900,7 @@ class SantralAsistan
         try {
             $m = $mesajlar;
             $m[] = ['role' => 'assistant', 'content' => (string) $sonCevap];
+            $m[] = ['role' => 'user', 'content' => 'Görüşme bitti. santral_aksiyon aracını doldurup çağır.']; // Haiku 5.5: son mesaj asistan olursa (prefill) 400
             $bugun = now()->setTimezone('Europe/Istanbul')->format('Y-m-d');
             $govde = [
                 'model' => $this->model(),

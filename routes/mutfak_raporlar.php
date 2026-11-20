@@ -927,7 +927,7 @@ if (!function_exists('_mrAiOzet')) {
         $str = ['type' => 'string']; $liste = fn ($desc) => ['type' => 'array', 'maxItems' => 5, 'description' => $desc, 'items' => ['type' => 'object', 'properties' => ['baslik' => $str, 'detay' => $str], 'required' => ['baslik', 'detay']]];
         try {
             $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->timeout(60)->post('https://api.anthropic.com/v1/messages', [
-                'model' => config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001', 'max_tokens' => 2000,
+                'model' => config('services.anthropic.model') ?: 'claude-haiku-5-5', 'max_tokens' => 2000, 'thinking' => ['type' => 'disabled'],
                 'system' => $sys . ' Her detay en fazla 2 cümle, somut ürün/malzeme/istasyon adı ve verideki rakamla.',
                 'tools' => [['name' => 'mutfak_ozeti', 'description' => 'Dönem mutfak yönetici özeti', 'input_schema' => ['type' => 'object', 'required' => ['ozet', 'one_cikanlar', 'riskler', 'oneriler'], 'properties' => [
                     'ozet' => $str + ['description' => '3-4 cümle dönem özeti (porsiyon, hız, food cost, fire; önceki döneme göre, en önemli gelişme)'],

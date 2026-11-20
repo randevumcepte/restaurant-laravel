@@ -695,7 +695,7 @@ class RestoAsistan
 
     protected function model()
     {
-        return config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        return config('services.anthropic.model') ?: 'claude-haiku-5-5';
     }
 
     /** Haiku ile niyet cozumu (tool). Rakam URETMEZ; sadece intent+donem. */
@@ -760,6 +760,7 @@ class RestoAsistan
     protected function cagir($govde)
     {
         try {
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 14,

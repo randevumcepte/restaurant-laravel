@@ -6866,12 +6866,13 @@ if (!function_exists('_oneAiSozUret')) {
             . 'Sana urun adi ve isletmenin girdigi HAM notlar verilir. Bunlari TEK, akici, davetkar bir Turkce cumleye cevir. '
             . 'Kurallar: en fazla 22 kelime; abartma ama istah kabart; fiyat/rakam UYDURMA; en fazla 1 emoji; tirnak kullanma; sadece cumleyi yaz, baska hicbir sey yazma.';
         $govde = [
-            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            'model' => (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'max_tokens' => 120,
             'system' => $sistem,
             'messages' => [['role' => 'user', 'content' => "Urun: $urunAd\nNotlar: $notlar"]],
         ];
         try {
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 12,
@@ -11064,7 +11065,7 @@ if (!function_exists('_patronAiCagir')) {
         if (empty($gecmis)) { $onbek = cache()->get($onbKey); if ($onbek !== null) return $onbek; }
         // İzin: departman/pool/günlük limit. Sistem (brief/cron) = $personel null -> izinli.
         if (function_exists('_aiIzin')) { $izin = _aiIzin($personel); if (!($izin['ok'] ?? true)) return null; }
-        $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        $model = config('services.anthropic.model') ?: 'claude-haiku-5-5';
         // KONUŞMA GEÇMİŞİ -> messages (Anthropic: ilk 'user', roller alternatif). Son = yeni $user.
         $msgs = [];
         foreach ((array) $gecmis as $g) {
@@ -11082,7 +11083,7 @@ if (!function_exists('_patronAiCagir')) {
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 14, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
-                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'temperature' => 0.4, 'system' => $system,
+                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => $maxTokens, 'thinking' => ['type' => 'disabled'], 'system' => $system,
                     'messages' => $msgs], JSON_UNESCAPED_UNICODE),
             ]);
             $res = curl_exec($ch);
@@ -18492,7 +18493,7 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
         // Varsayılan UCUZ model (Haiku). Daha isabetli isteyen ocr_model=claude-sonnet-4-6 ayarlar; hata olursa Haiku'ya düşer.
         $ocrModel = (string) config('services.anthropic.ocr_model', '');
         $modeller = array_values(array_unique(array_filter([
-            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'claude-haiku-4-5-20251001',
         ])));
         $yanit = false; $kod = 0;
@@ -18504,6 +18505,7 @@ Route::post('/mal-kabul/foto-oku', function (Request $r) {
                     ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki TÜM kalemleri (hiç atlamadan) çıkar ve şemaya uygun JSON ver.'],
                 ]]],
             ];
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 60,
@@ -19273,7 +19275,7 @@ if (!function_exists('_aiFaturaOku')) {
     {
         $key = config('services.anthropic.key') ?: env('ANTHROPIC_API_KEY');
         if (!$key) return ['hata' => 'AI anahtarı tanımlı değil (ANTHROPIC_API_KEY).'];
-        $model = config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001';
+        $model = config('services.anthropic.model') ?: 'claude-haiku-5-5';
         $system = 'Sen bir fatura/irsaliye okuma asistanısın. Görseldeki/PDF\'deki faturadan bilgileri çıkar. SADECE geçerli JSON döndür, başka metin yazma: {"tedarikci":"","tarih":"","kalemler":[{"urun":"","miktar":0,"birim":"","birim_fiyat":0,"tutar":0}],"ara_toplam":0,"kdv":0,"genel_toplam":0}. Okuyamadığın alanı boş ("") ya da 0 bırak. Para birimi TL. Tarih YYYY-MM-DD.';
         $kaynak = ($mime === 'application/pdf')
             ? ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => $b64]]
@@ -19283,7 +19285,7 @@ if (!function_exists('_aiFaturaOku')) {
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45, CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
-                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => 2500, 'system' => $system, 'messages' => [['role' => 'user', 'content' => $content]]], JSON_UNESCAPED_UNICODE)]);
+                CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'max_tokens' => 2500, 'thinking' => ['type' => 'disabled'], 'system' => $system, 'messages' => [['role' => 'user', 'content' => $content]]], JSON_UNESCAPED_UNICODE)]);
             $res = curl_exec($ch); $kod = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
             if ($kod < 200 || $kod >= 300) return ['hata' => 'AI servisi hatası (' . $kod . '). Anahtar/bakiye veya dosya biçimini kontrol et.'];
             $d = json_decode((string) $res, true);
@@ -21558,7 +21560,7 @@ Route::post('/api/satinalma-asistan/eylem-oner', function (Request $r) {
 // ===== PAYLAŞIMLI AI ÇEKİRDEK MOTORU (tüm departman AI'ları kullanır) =====
 // Haiku çağrısı (ham) — metin döner veya '' (hata/boş)
 if (!function_exists('_aiHaikuCagir')) {
-    function _aiHaikuCagir($apiKey, $sys, $baglam, $soru, $model = 'claude-haiku-4-5-20251001', $maxTok = 500, $gecmis = [])
+    function _aiHaikuCagir($apiKey, $sys, $baglam, $soru, $model = 'claude-haiku-5-5', $maxTok = 500, $gecmis = [])
     {
         try {
             // KONUŞMA GEÇMİŞİ -> messages (Anthropic: ilk 'user', roller alternatif). Son = veri+soru.
@@ -21575,10 +21577,11 @@ if (!function_exists('_aiHaikuCagir')) {
             $msgs[] = ['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . "\n\nSoru: " . $soru];
             $resp = \Illuminate\Support\Facades\Http::withHeaders(['x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'])
                 ->timeout(25)->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $model, 'max_tokens' => $maxTok, 'system' => $sys, 'messages' => $msgs,
+                    'model' => $model, 'max_tokens' => $maxTok, 'thinking' => ['type' => 'disabled'], 'system' => $sys, 'messages' => $msgs,
                 ]);
             if (!$resp->successful()) return '';
-            return trim((string) ($resp->json('content.0.text') ?? ''));
+            $t = ''; foreach ((array) $resp->json('content') as $b) if (($b['type'] ?? '') === 'text') $t .= $b['text'] ?? '';
+            return trim($t);
         } catch (\Throwable $e) { return ''; }
     }
 }
@@ -21600,7 +21603,7 @@ if (!function_exists('_aiSohbetCekirdek')) {
         $limit = (int) ($o['limit'] ?? config('services.anthropic.sohbet_gunluk_limit', 80));
         if (empty($gecmis)) { $onbek = cache()->get($onbKey); if ($onbek) return ['cevap' => $onbek, 'kaynak' => 'onbellek']; } // bağlamsızsa önbellek (BEDAVA)
         if ((int) cache()->get($gunKey, 0) < $limit) {
-            $c = _aiHaikuCagir($apiKey, $o['sys'], $baglam, $soru, $o['model'] ?? 'claude-haiku-4-5-20251001', $o['max_tokens'] ?? 500, $gecmis);
+            $c = _aiHaikuCagir($apiKey, $o['sys'], $baglam, $soru, $o['model'] ?? 'claude-haiku-5-5', $o['max_tokens'] ?? 500, $gecmis);
             if ($c !== '') {
                 if (empty($gecmis)) cache()->put($onbKey, $c, now()->addHours(2)); // bağlamlı cevapları önbelleğe yazma (diyalog dinamik)
                 cache()->put($gunKey, (int) cache()->get($gunKey, 0) + 1, now()->addHours(26));
@@ -22494,7 +22497,7 @@ Route::post('/api/patron/mal-kabul-foto-oku', function (Request $r) {
     try {
         $ocrModel = (string) config('services.anthropic.ocr_model', '');
         $modeller = array_values(array_unique(array_filter([
-            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-4-5-20251001'),
+            $ocrModel ?: (string) (config('services.anthropic.model') ?: 'claude-haiku-5-5'),
             'claude-haiku-4-5-20251001',
         ])));
         $yanit = false; $kod = 0;
@@ -22506,6 +22509,7 @@ Route::post('/api/patron/mal-kabul-foto-oku', function (Request $r) {
                     ['type' => 'text', 'text' => 'Bu irsaliye/fatura fotoğrafındaki TÜM kalemleri (hiç atlamadan) çıkar ve şemaya uygun JSON ver.'],
                 ]]],
             ];
+            if (str_starts_with((string) ($govde['model'] ?? ''), 'claude-haiku') && !isset($govde['thinking'])) $govde['thinking'] = ['type' => 'disabled']; // Haiku 5.5 varsayılan düşünür: anlık/kısa cevapta gecikme ve token yemesin
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 60,
@@ -24312,13 +24316,13 @@ Route::get('/api/patron/ai-analiz', function (Request $r) {
         $resp = \Illuminate\Support\Facades\Http::withHeaders([
             'x-api-key' => $apiKey, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json',
         ])->timeout(25)->post('https://api.anthropic.com/v1/messages', [
-            'model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 400, 'system' => $sys,
+            'model' => 'claude-haiku-5-5', 'max_tokens' => 400, 'thinking' => ['type' => 'disabled'], 'system' => $sys,
             'messages' => [['role' => 'user', 'content' => 'Veri: ' . json_encode($baglam, JSON_UNESCAPED_UNICODE) . ' — Bu verilere göre patrona önerilerini madde madde ver.']],
         ]);
         if (!$resp->successful()) {
             return ['ok' => 1, 'kaynak' => 'kural', 'yorumlar' => $kuralYorum]; // LLM hata -> zengin kural yorumu
         }
-        $metin = $resp->json('content.0.text') ?? '';
+        $metin = ''; foreach ((array) $resp->json('content') as $b) if (($b['type'] ?? '') === 'text') $metin .= $b['text'] ?? '';
         $maddeler = collect(preg_split('/\n+/', $metin))->map(fn ($l) => trim(preg_replace('/^[\-\*\d\.\)\s]+/u', '', $l)))->filter()->values()->all();
         if (empty($maddeler)) $maddeler = [$metin];
         DB::table('ai_onbellek')->insert(['anahtar' => $anahtar, 'cevap' => json_encode($maddeler, JSON_UNESCAPED_UNICODE), 'created_at' => now()]);
