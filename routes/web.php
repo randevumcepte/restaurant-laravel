@@ -421,7 +421,7 @@ if (!function_exists('_posPersonel')) {
     function _posPersonel()
     {
         $id = session('pos_personel_id');
-        if (!$id) return null;
+        if (!$id) return function_exists('_kopruPersonel') ? _kopruPersonel() : null; // uygulama köprüsü (routes/app_kopru.php): web sayfası Bearer ile
         $p = DB::table('personeller')->where('id', $id)->where('aktif', 1)->first();
         // Seçili şube (grup içi geçiş): sube_id seçilene döner, ana şube ana_sube_id'de. Seçim yoksa bire bir eski davranış.
         if ($p && session('grup_sube_secim') && function_exists('_subeSecimUygula')) $p = _subeSecimUygula($p);
@@ -34339,6 +34339,8 @@ require __DIR__ . '/satinalma_limit.php';
 require __DIR__ . '/demirbas.php';
 require __DIR__ . '/etiket_merkezi.php'; // Barkod & Etiket Merkezi (ürün etiketi, terazi, raf kartı)
 require __DIR__ . '/masa_akis.php'; // Masa akışı: KDS bar ayrımı/tur fişi, servise hazır bildirimi, QR ödeme ve hesap kapanışı kuralları
+require __DIR__ . '/panel_menu.php'; // Panel menüsü: web sol menü + uygulama menüsü tek kaynak
+require __DIR__ . '/app_kopru.php'; // Uygulama köprüsü: web sayfası Bearer ile (aynı yetki/veri, JSON)
 require __DIR__ . '/kalem_not.php'; // Ürün notu + masa alerjisi (garson/web POS/QR ortak)
 require __DIR__ . '/ai_kayit.php'; // Müşteri AI konuşma kayıtları: her tur kaydedilir, /ai-kayitlar'dan incelenir (30 gün)
 // ============================ ŞUBELER ARASI TRANSFER + GRUP / FİRMA / FRANCHISE ============================
