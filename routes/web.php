@@ -31947,7 +31947,9 @@ Route::post('/muhasebe-entegrasyon/ayar-kaydet', function (Request $r) {
         ['sube_id' => $sube->id],
         [
             'baglanti_tipi' => $bt, 'firma_kodu' => $r->firma_kodu,
-            'api_url' => $r->api_url, 'api_kullanici' => $r->api_kullanici, 'api_sifre' => $r->api_sifre,
+            'api_url' => $r->api_url, 'api_kullanici' => $r->api_kullanici,
+            // Şifre alanı boş bırakılırsa kayıtlı şifre korunur (ekrandaki "boş bırakılırsa değişmez" ile aynı)
+            'api_sifre' => filled($r->api_sifre) ? $r->api_sifre : DB::table('muhasebe_ayarlari')->where('sube_id', $sube->id)->value('api_sifre'),
             'kdv_orani' => max(0, min(99, (int) ($r->kdv_orani ?: 10))),
             'hesap_plani' => json_encode($hp), 'aktif' => $r->aktif ? 1 : 0, 'updated_at' => now(),
         ]
