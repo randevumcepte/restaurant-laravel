@@ -467,7 +467,15 @@ if (!function_exists('_menuOgeGorunur')) {
     function _menuOgeGorunur($_pp, $_harita, $it)
     {
         if (!$_pp) return true;
-        if (in_array(($_pp->rol ?? ''), ['sahip', 'mudur'])) return true;     // yöneticiler her şeyi görür
+        if (($_pp->rol ?? '') === 'sahip') return true;                        // işletme sahibi her şeyi görür
+        if ($it[0] === '/odeme-ayar') return false;                            // sayfa yalnız sahibe açık (müdür 403 alıyordu)
+        if ($it[0] === '/satinalma-onay-seviye') return ($_pp->rol ?? '') === 'mudur'; // sayfa yalnız sahip/müdür (satın almacı 403 alıyordu)
+        if (($_pp->rol ?? '') === 'mudur') {
+            // Müdür her şeyi görür; yalnız patronun ELLE verdiği premium/hassas yetkiler (AI asistan, malzeme kartı) verilmediyse gizli
+            if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai;
+            if (isset($_harita[$it[0]]) && in_array($_harita[$it[0]], ['gor_ai_asistan', 'gor_odeme_ayar', 'gor_malzeme_kart'], true)) return _panelYetkiVar($_pp, $_harita[$it[0]]);
+            return true;
+        }
         if (\Illuminate\Support\Str::startsWith($it[0], '/departman-brief')) return _departmanBriefLinkAcik($_pp, $it[0]); // başka departmanın brifingi görünmez
         if ($it[0] === '/wa-hatlar') return _waHatGorur($_pp); // hattı olmayana boş sayfa göstermesin
         if (($_ai = _aiAsistanLinkAcik($_pp, $it[0])) !== null) return $_ai; // AI izni + departman yetkisi (şefe İK AI görünmesin)
