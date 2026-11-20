@@ -5743,7 +5743,7 @@ Route::post('/itibar/coz', function (Request $r) {
 });
 Route::post('/itibar-ayar', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     $sid = _webSubeId();
     resto_ayar_yaz('google_yorum_link_' . $sid, trim((string) $r->input('google_link', '')));
     resto_ayar_yaz('memnuniyet_wa_' . $sid, trim((string) $r->input('wa_no', '')));
@@ -6044,13 +6044,13 @@ Route::get('/satinalma-onay-seviye', function () {
 });
 Route::post('/satinalma-onay-seviye/flag', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     resto_ayar_yaz('cok_kademeli_onay_' . _webSubeId(), $r->input('acik') ? '1' : '0');
     return back()->with('ok', 'Kaydedildi.');
 });
 Route::post('/satinalma-onay-seviye/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _onaySeviyeEnsure(); $sid = _webSubeId();
     $onaylayan = (int) $r->input('onaylayan_id'); if (!$onaylayan) return back()->with('ok', 'Onaylayan seç.');
     $sonSeviye = (int) DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->max('seviye');
@@ -6063,7 +6063,7 @@ Route::post('/satinalma-onay-seviye/ekle', function (Request $r) {
 });
 Route::post('/satinalma-onay-seviye/sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     $sid = _webSubeId();
     DB::table('satinalma_onay_seviyeleri')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->delete();
     // seviyeleri yeniden sırala (1,2,3...)
@@ -6139,7 +6139,7 @@ Route::get('/happy-hour', function () {
 });
 Route::post('/happy-hour/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _happyHourEnsure(); $sid = _webSubeId();
     DB::table('happy_hour')->insert([
         'sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Happy Hour',
@@ -6156,7 +6156,7 @@ Route::post('/happy-hour/ekle', function (Request $r) {
 });
 Route::post('/happy-hour/durum', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     $sid = _webSubeId();
     $h = DB::table('happy_hour')->where('sube_id', $sid)->where('id', (int) $r->input('id'))->first();
     if ($h) { if ($r->input('sil')) DB::table('happy_hour')->where('id', $h->id)->delete(); else DB::table('happy_hour')->where('id', $h->id)->update(['aktif' => $h->aktif ? 0 : 1, 'updated_at' => now()]); }
@@ -6204,7 +6204,7 @@ Route::get('/fix-menu', function () {
 });
 Route::post('/fix-menu/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _fixMenuEnsure(); $sid = _webSubeId();
     $id = DB::table('fix_menu')->insertGetId(['sube_id' => $sid, 'ad' => trim((string) $r->input('ad')) ?: 'Set Menü',
         'fiyat' => (float) str_replace(',', '.', (string) $r->input('fiyat', 0)), 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
@@ -6213,7 +6213,7 @@ Route::post('/fix-menu/ekle', function (Request $r) {
 });
 Route::post('/fix-menu/kalem-ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _fixMenuEnsure();
     if (!DB::table('fix_menu')->where('id', (int) $r->input('fix_menu_id'))->where('sube_id', _webSubeId())->exists()) return back()->with('hata', 'Menü bulunamadı.'); // başka restoranın menüsü
     $uid = (int) $r->input('urun_id');
@@ -6225,7 +6225,7 @@ Route::post('/fix-menu/kalem-ekle', function (Request $r) {
 });
 Route::post('/fix-menu/sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     $sid = _webSubeId();
     if ($r->input('kalem_id')) { DB::table('fix_menu_kalem')->where('id', (int) $r->input('kalem_id'))->whereIn('fix_menu_id', DB::table('fix_menu')->where('sube_id', $sid)->pluck('id'))->delete(); }
     elseif ($r->input('menu_id')) { $mid = (int) $r->input('menu_id'); if (DB::table('fix_menu')->where('sube_id', $sid)->where('id', $mid)->delete()) DB::table('fix_menu_kalem')->where('fix_menu_id', $mid)->delete(); }
@@ -6325,7 +6325,7 @@ Route::get('/personel-yemek', function () {
 });
 Route::post('/personel-yemek/ekle', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _personelYemekEnsure(); $sid = _webSubeId();
     DB::table('personel_yemek')->insert(['sube_id' => $sid, 'personel_id' => (int) $r->input('personel_id') ?: null,
         'tarih' => $r->input('tarih') ?: today()->toDateString(), 'aciklama' => trim((string) $r->input('aciklama')) ?: null,
@@ -6334,7 +6334,7 @@ Route::post('/personel-yemek/ekle', function (Request $r) {
 });
 Route::post('/personel-yemek/sil', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     DB::table('personel_yemek')->where('sube_id', _webSubeId())->where('id', (int) $r->input('id'))->delete();
     return back()->with('ok', 'Silindi.');
 });
@@ -6385,7 +6385,7 @@ Route::post('/social-media/ai', function (Request $r) {
 });
 Route::post('/social-media/kaydet', function (Request $r) {
     $bp = null; try { $bp = _posPersonel(); } catch (\Throwable $e) {}
-    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back();
+    if (!$bp || !in_array(($bp->rol ?? ''), ['sahip', 'mudur'])) return back()->with('hata', 'Bu işlem için yetkiniz yok.');
     _socialEnsure(); $sid = _webSubeId();
     if ($r->input('sil')) { DB::table('social_posts')->where('sube_id', $sid)->where('id', (int) $r->input('sil'))->delete(); return back()->with('ok', 'Silindi.'); }
     DB::table('social_posts')->insert(['sube_id' => $sid, 'platform' => (string) $r->input('platform', 'instagram'),

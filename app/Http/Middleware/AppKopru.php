@@ -16,6 +16,8 @@ use Illuminate\Http\Request;
  */
 class AppKopru
 {
+    private $sonuc = null; // *_sonuc flash dizisi (form sonucunun özeti) uygulamaya iletilir
+
     private const ATLA = ['__env', 'app', 'errors', '__data', 'obLevel', '__path', '__currentLoopData', 'loop'];
 
     public function handle(Request $request, Closure $next)
@@ -34,7 +36,7 @@ class AppKopru
                 return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli.', 'giris' => 1], 401);
             }
             [$mesaj, $hata] = $this->flash($request, $resp->getSession());
-            return response()->json(['ok' => $hata ? 0 : 1, 'yonlendir' => $hedef ?: '/', 'mesaj' => $mesaj, 'hata' => $hata]);
+            return response()->json(['ok' => $hata ? 0 : 1, 'yonlendir' => $hedef ?: '/', 'mesaj' => $mesaj, 'hata' => $hata] + ($this->sonuc !== null ? ['sonuc' => $this->temizle($this->sonuc, 1)] : []));
         }
 
         $orig = $resp->original ?? null;
@@ -69,6 +71,7 @@ class AppKopru
             // Sayfaya özel anahtarlar: sebep_hata, bc_hata, yazici_ok, x_mesaj ... (bu istekte flash'lananlar)
             foreach ((array) $s->get('_flash.new', []) as $k) {
                 $v = $s->get($k);
+                if (is_array($v) && preg_match('/_sonuc$/', $k)) { $this->sonuc = $v; if (!$mesaj) $mesaj = 'Kaydedildi.'; continue; } // ör. sayim_sonuc (özet dizisi)
                 if (!is_string($v) || $v === '') continue;
                 if (!$hata && preg_match('/_(hata|error|uyari)$/', $k)) $hata = $v;
                 elseif (!$mesaj && preg_match('/_(ok|mesaj|basari|bilgi)$/', $k)) $mesaj = $v;
