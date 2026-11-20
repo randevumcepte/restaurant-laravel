@@ -83,3 +83,6 @@ Route::get('/panel-menu', function () {
     if (!_posPersonel()) return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli', 'giris' => 1], 401);
     return response()->json(_panelMenuJson());
 });
+
+// Eski "Memnuniyet / Şikayet" bağlantısı (rotası yoktu, 404): brifing kartları ve bildirimler hâlâ bu adresi verebilir → İtibar / Memnuniyet
+Route::get('/memnuniyet', fn () => redirect('/itibar'));

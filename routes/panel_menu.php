@@ -171,7 +171,6 @@ if (!function_exists('_panelMenuVeri')) {
             ['/musteri-360', 'person_search', 'Müşteri 360', '#7C3AED'],
             ['/musteri-360?seg=vip', 'workspace_premium', 'VIP Müşteriler', '#F6A623'],
             ['/musteri-360?seg=kayip', 'person_off', 'Kayıp Müşteriler', '#F5576C'],
-            ['/memnuniyet', 'sentiment_satisfied', 'Memnuniyet / Şikayet', '#10B981'],
             ['/sadakat', 'loyalty', 'Sadakat / Puan', '#EC4899'],
             ['/itibar', 'reviews', 'İtibar / Memnuniyet', '#F59E0B'],
             ['/social-media', 'share', 'AI Sosyal Medya', '#EC4899'],

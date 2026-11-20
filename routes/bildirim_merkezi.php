@@ -257,7 +257,7 @@ if (!function_exists('_bmFcmKoprusu')) {
             'siparis_onay' => '/satinalma-siparis', 'teslim' => '/mal-kabul', 'teslim_gec' => '/satinalma-siparis', 'geciken_siparis' => '/satinalma-siparis', 'kalite_sicaklik' => '/kalite',
             'kalite_skt' => '/parti-takip', 'kalite_denetim' => '/kalite', 'kalite_belge' => '/kalite', 'it_okc' => '/it-destek', 'it_cihaz' => '/it-destek', 'it_surum' => '/it-destek',
             'garson_cagri' => '/garson-cagrilari', 'servise_hazir' => '/garson-cagrilari', 'odeme_cagri' => '/garson-cagrilari', 'masa_tasima' => '/garson-cagrilari',
-            'yeni_siparis' => ($data['ekran'] ?? '') === 'mutfak' ? '/mutfak' : '/garson-cagrilari', 'rezervasyon' => '/rezervasyon', 'noshow' => '/rezervasyon', 'memnuniyet' => '/memnuniyet', 'tahsilat' => '/kasa', 'acik_adisyon' => '/pos',
+            'yeni_siparis' => ($data['ekran'] ?? '') === 'mutfak' ? '/mutfak' : '/garson-cagrilari', 'rezervasyon' => '/rezervasyon', 'noshow' => '/rezervasyon', 'memnuniyet' => '/itibar', 'tahsilat' => '/kasa', 'acik_adisyon' => '/pos',
             'patron_ai_brief' => '/patron-ai', 'gelmeyen_ik' => '/puantaj', 'beyanname' => '/vergi-takvimi', 'mali_ozet' => '/raporlar', 'ajanda' => '/ajanda', 'cek_senet' => '/cek-senet'];
         // Kişisel talep sonuçları ve sorumlu onay kutusu katalog tiplerine bağlanır (ayarlardan açılıp kapanır)
         if ($tip && isset(_bmTipTakma()[$tip])) $tip = _bmTipTakma()[$tip]; // eski tip adı → katalog

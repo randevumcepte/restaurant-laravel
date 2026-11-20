@@ -10098,7 +10098,7 @@ if (!function_exists('_olcekMenuListesi')) {
             'Menü & Ürünler' => ['/menu', '/recete', '/app-yonetim', '/qr-menu-rengi', '/indirimler', '/happy-hour', '/fix-menu', '/barkod'],
             'İnsan Kaynakları' => array_merge($kucuk['İnsan Kaynakları'], ['/garson-performans', '/ik-vardiya', '/ik-izin']),
             'Finans / Muhasebe' => array_merge($kucuk['Finans / Muhasebe'], ['/finans', '/kar-zarar', '/banka', '/tekrarlayan-gider', '/online-komisyon']),
-            'CRM / Müşteri İlişkileri' => ['/musteri-360', '/memnuniyet', '/sadakat', '/odul-dogrula'],
+            'CRM / Müşteri İlişkileri' => ['/musteri-360', '/itibar', '/sadakat', '/odul-dogrula'],
             'AI Santral' => ['/santral-kayitlar', '/cagrilar', '/cagri-ekran', '/santral-ayar', '/santral-egitim'],
         ]), 'orta');
     }
