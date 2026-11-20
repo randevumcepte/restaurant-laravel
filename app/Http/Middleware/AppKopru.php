@@ -29,7 +29,9 @@ class AppKopru
         if ($resp instanceof RedirectResponse) {
             $hedef = (string) parse_url($resp->getTargetUrl(), PHP_URL_PATH);
             if (in_array(rtrim($hedef, '/'), ['/pos-giris', '/giris', '/login'], true)) {
-                return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli ya da bu sayfaya erişiminiz yok.', 'giris' => 1], 401);
+                // Token geçerliyse sayfa yetki yüzünden girişe atıyor → 403 (uygulama oturumu kapatmasın); geçersizse 401
+                if (function_exists('_kopruPersonel') && _kopruPersonel()) return response()->json(['ok' => 0, 'hata' => 'Bu sayfa için yetkiniz yok.', 'yetkisiz' => 1], 403);
+                return response()->json(['ok' => 0, 'hata' => 'Oturum gerekli.', 'giris' => 1], 401);
             }
             [$mesaj, $hata] = $this->flash($request, $resp->getSession());
             return response()->json(['ok' => $hata ? 0 : 1, 'yonlendir' => $hedef ?: '/', 'mesaj' => $mesaj, 'hata' => $hata]);
@@ -68,6 +70,15 @@ class AppKopru
         return [$mesaj, $hata];
     }
 
+    // Web sayfası bu alanları ekrana basmasa da view'a geçebiliyor (personel kaydı vb.) → köprüden ASLA çıkmaz
+    private function gizliAnahtar(string $k): bool
+    {
+        $k = strtolower($k);
+        if (in_array($k, ['pin', 'api_token', 'password', 'sifre', 'parola', 'remember_token', 'secret', 'client_secret', 'api_key', 'apikey', 'private_key', 'offline_pin', 'pin_hash', 'webhook_token'], true)) return true;
+        foreach (['_secret', '_api_key', '_apikey', '_password', '_sifre', '_private_key', '_pin'] as $son) if (str_ends_with($k, $son)) return true;
+        return false;
+    }
+
     // View verisini JSON'a uygun hale getir (closure/servis nesneleri atılır)
     private function temizle($v, int $d)
     {
@@ -88,6 +99,7 @@ class AppKopru
         $o = [];
         foreach ($v as $k => $x) {
             if ($d === 0 && is_string($k) && in_array($k, self::ATLA, true)) continue;
+            if (is_string($k) && $this->gizliAnahtar($k)) continue; // PIN/token/şifre view'da olsa da uygulamaya gitmez
             if ($x instanceof \Closure) continue;
             $o[$k] = $this->temizle($x, $d + 1);
         }
