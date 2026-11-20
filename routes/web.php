@@ -22899,8 +22899,13 @@ Route::post('/bagli-cihazlar/ad', function (Request $r) {
         if ($ad === '') return back()->with('bc_hata', 'Cihaz adı boş olamaz.');
         if ($id > 0 && Schema::hasTable('cihazlar')) {
             if (!DB::table('cihazlar')->where('id', $id)->where('sube_id', $sube)->exists()) return back()->with('bc_hata', 'Cihaz bulunamadı.');
-            DB::table('cihazlar')->where('id', $id)->update(['ad' => $ad, 'updated_at' => now()]);
-            return back()->with('bc_mesaj', 'Cihaz adı güncellendi.');
+            // Düzenle formunun gönderdiği diğer alanlar da (gönderildiyse ve kolon varsa) güncellenir; eskiden yalnız ad yazılıyordu
+            $upd = ['ad' => $ad, 'updated_at' => now()];
+            foreach (['tip' => 40, 'ip' => 60, 'port' => 12, 'marka' => 60, 'seri_no' => 60, 'rol' => 40, 'notlar' => 240] as $k => $uz)
+                if ($r->has($k) && Schema::hasColumn('cihazlar', $k)) $upd[$k] = mb_substr(trim((string) $r->input($k)), 0, $uz) ?: null;
+            if ($r->has('aktif') && Schema::hasColumn('cihazlar', 'aktif')) $upd['aktif'] = $r->boolean('aktif') ? 1 : 0;
+            DB::table('cihazlar')->where('id', $id)->update($upd);
+            return back()->with('bc_mesaj', count($upd) > 2 ? 'Cihaz güncellendi.' : 'Cihaz adı güncellendi.');
         }
     } catch (\Throwable $e) {}
     return back()->with('bc_hata', 'Güncellenemedi.');
