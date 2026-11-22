@@ -46,6 +46,7 @@
       <a href="/wa-yonetim" target="_blank"><span class="ic">🟢</span> Sistem WhatsApp</a>
       <a href="/resteos-yonetim/sistem-saglik" class="{{ _ryAktif('resteos-yonetim/sistem-saglik') }}"><span class="ic">💚</span> Sistem Sağlık</a>
       <a href="/resteos-yonetim/loglar" class="{{ _ryAktif('resteos-yonetim/loglar') }}"><span class="ic">📜</span> Loglar</a>
+      <a href="/resteos-yonetim/fabrika-ayari" class="{{ _ryAktif('resteos-yonetim/fabrika-ayari') }}"><span class="ic">🧹</span> Fabrika Ayarı</a>
       <a href="/resteos-yonetim/profil" class="{{ _ryAktif('resteos-yonetim/profil') }}"><span class="ic">⚙️</span> Profil</a>
     </nav>
     <div style="padding:14px 16px;border-top:1px solid rgba(255,255,255,.08)">

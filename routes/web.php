@@ -34361,5 +34361,6 @@ require __DIR__ . '/sube_transfer.php';
 require __DIR__ . '/katalog_sahip.php';
 // ============================ GELEN e-FATURA (entegratör API / XML → alış faturası) ============================
 require __DIR__ . '/efatura_gelen.php';
+require __DIR__ . '/fabrika_ayari.php'; // Sistem yönetimi: fabrika ayarı (yedekle + sıfırla + geri yükle)
 
 
