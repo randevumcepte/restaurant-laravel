@@ -199,6 +199,12 @@ if (!function_exists('_ryAdmin')) {
         if (!_ryAdmin()) return redirect('/resteos-yonetim/giris');
         return null;
     }
+    // "Restorana gir" oturumunu kapat: yöneticinin aldığı patron oturumu da düşer (personelin kendi girişine dokunmaz)
+    function _ryImpBitir()
+    {
+        if (session('ry_imp_personel') && (int) session('pos_personel_id') === (int) session('ry_imp_personel')) session()->forget(['pos_personel_id', 'pos_kasa_id', 'grup_sube_secim']);
+        session()->forget(['ry_imp_sube', 'ry_imp_ad', 'ry_imp_personel']);
+    }
     // Audit log
     function _ryLog($islem, $detay = null, $subeId = null)
     {
@@ -281,8 +287,8 @@ Route::post('/resteos-yonetim/giris', function (Request $r) {
 
 Route::match(['get', 'post'], '/resteos-yonetim/cikis', function () {
     _ryLog('cikis', 'Çıkış yaptı');
+    _ryImpBitir(); // "restorana gir" oturumu sonraki girişe taşınmasın
     session()->forget('ry_admin_id');
-    session()->forget('ry_imp_sube'); // "restorana gir" seçimi sonraki girişe taşınmasın
     return redirect('/resteos-yonetim/giris');
 });
 
@@ -508,12 +514,18 @@ Route::post('/resteos-yonetim/restoran/{id}/hesabina-gir', function ($id) {
     if ($x = _ryKapi()) return $x;
     $sube = DB::table('subeler')->where('id', $id)->first();
     if (!$sube) return back()->with('hata', 'Restoran bulunamadı.');
-    session(['ry_imp_sube' => $id, 'ry_imp_ad' => $sube->ad]);
-    _ryLog('impersonation', 'Restoran paneline girildi', $id);
+    // Basit tam erişim (yalnız sistem sahibi + Anıl): işletmenin PATRONU olarak girilir → her sayfa/işlem açık.
+    // Ekip büyüyünce gizli destek hesabı + 2FA + süre + salt okunur sürümüne geçilecek (bkz. proje notu).
+    $p = DB::table('personeller')->where('sube_id', $id)->where('aktif', 1)->where('rol', 'sahip')->orderBy('id')->first()
+        ?: DB::table('personeller')->where('sube_id', $id)->where('aktif', 1)->where('rol', 'mudur')->orderBy('id')->first();
+    if (!$p) return back()->with('hata', 'Bu restoranda aktif patron/müdür girişi yok; önce personel ekleyin.');
+    session()->forget(['pos_kasa_id', 'grup_sube_secim']);
+    session(['ry_imp_sube' => $id, 'ry_imp_ad' => $sube->ad, 'ry_imp_personel' => $p->id, 'pos_personel_id' => $p->id]);
+    _ryLog('impersonation', 'Restoran paneline girildi (' . $p->ad . ' / ' . $p->rol . ' olarak)', $id);
     return redirect('/dashboard');
 });
 Route::match(['get', 'post'], '/resteos-yonetim/impersonation-bitir', function () {
-    session()->forget(['ry_imp_sube', 'ry_imp_ad']);
+    _ryImpBitir();
     return redirect('/resteos-yonetim/restoranlar');
 });
 

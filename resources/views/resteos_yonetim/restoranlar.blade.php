@@ -35,7 +35,8 @@
           <td><span class="ry-badge {{ $d['renk'] }}">{{ $d['ad'] }}</span></td>
           <td>{{ $bitis ? $bitis->format('d.m.Y') : '—' }}</td>
           <td style="text-align:right;font-weight:800">{{ $tl($s->son30) }}</td>
-          <td style="text-align:right"><a class="ry-btn ry-btn-soft ry-btn-sm" href="/resteos-yonetim/restoran/{{ $s->id }}">Yönet →</a></td>
+          <td style="text-align:right;white-space:nowrap"><form method="post" action="/resteos-yonetim/restoran/{{ $s->id }}/hesabina-gir" style="display:inline">@csrf<button type="submit" class="ry-btn ry-btn-sm">Paneline gir</button></form>
+            <a class="ry-btn ry-btn-soft ry-btn-sm" href="/resteos-yonetim/restoran/{{ $s->id }}">Yönet →</a></td>
         </tr>
       @empty
         <tr><td colspan="7" style="text-align:center;padding:40px" class="ry-mut">Kayıt bulunamadı.</td></tr>
