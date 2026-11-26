@@ -16810,8 +16810,12 @@ Route::post('/personel/kaydet', function (Request $r) {
         $rol = in_array($r->rol, ['sahip', 'mudur', 'kasa', 'garson', 'mutfak', 'satinalmaci']) ? $r->rol : 'garson';
         $pin = preg_replace('/\D/', '', (string) $r->pin);
         $veri = ['ad' => $ad, 'telefon' => $r->telefon ? (string) $r->telefon : null, 'rol' => $rol, 'aktif' => $r->aktif === '0' ? 0 : 1, 'updated_at' => now()];
-        // ÖZLÜK (İK) — kolon varsa ve form gönderdiyse kaydet. Maaş/prim'e dokunma (Flutter API'den yönetiliyor).
+        // ÖZLÜK (İK) + maaş/prim — kolon varsa ve form gönderdiyse kaydet (web formu da maaş alanı gösteriyor; eskiden yok sayılıyordu → 0 kalıyordu)
         try { _restoPersonelKolonEnsure(); } catch (\Throwable $e) {}
+        if ($r->has('maas') && Schema::hasColumn('personeller', 'maas')) $veri['maas'] = max(0, (float) $r->maas);
+        if ($r->has('maas_tipi') && Schema::hasColumn('personeller', 'maas_tipi')) $veri['maas_tipi'] = in_array($r->maas_tipi, ['aylik', 'gunluk', 'saatlik']) ? $r->maas_tipi : 'aylik';
+        if ($r->has('prim_tipi') && Schema::hasColumn('personeller', 'prim_tipi')) $veri['prim_tipi'] = in_array($r->prim_tipi, ['yok', 'ciro']) ? $r->prim_tipi : 'yok';
+        if ($r->has('prim_oran') && Schema::hasColumn('personeller', 'prim_oran')) $veri['prim_oran'] = ($veri['prim_tipi'] ?? $r->prim_tipi) === 'ciro' ? min(100, max(0, (float) $r->prim_oran)) : 0;
         if ($r->has('iban') && Schema::hasColumn('personeller', 'iban')) $veri['iban'] = trim((string) $r->iban) ?: null;
         if ($r->has('tc') && Schema::hasColumn('personeller', 'tc')) $veri['tc'] = preg_replace('/\D/', '', (string) $r->tc) ?: null;
         if ($r->has('dogum_tarihi') && Schema::hasColumn('personeller', 'dogum_tarihi')) $veri['dogum_tarihi'] = $r->filled('dogum_tarihi') ? $r->dogum_tarihi : null;
