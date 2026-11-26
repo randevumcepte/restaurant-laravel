@@ -286,6 +286,8 @@ class SalonPlan
                 if ($alan < $enKucuk) { $enKucuk = $alan; $hedef = $bid; }
             }
             if (!$hedef || $hedef === $eskiB) continue;
+            // Şemada başka bölgeye sürüklendi: eski adisyonlara eski bölge damgası + masa değişim defteri (routes/web.php)
+            if (function_exists('_masaDegisimOncesi')) _masaDegisimOncesi(DB::table('masalar')->find($mid), ['bolge_id' => $hedef]);
             DB::table('masalar')->where('id', $mid)->where('sube_id', $this->subeId)->update(['bolge_id' => $hedef]);
             if (is_array($plan[$mid] ?? null)) $plan[$mid]['b'] = $hedef;
         }

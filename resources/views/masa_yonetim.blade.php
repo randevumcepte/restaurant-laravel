@@ -246,6 +246,10 @@ body.koyu .rk-flash.err{color:#fda4af}
                 <div style="margin-top:8px;text-align:center">
                   <div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $m['ad'] }}</div>
                   <div style="font-size:11px;color:var(--sub)">{{ $m['kapasite'] }} kişi</div>
+                  @php $sonAd = collect($m['gecmis'] ?? [])->firstWhere('alan', 'ad'); @endphp
+                  @if ($sonAd)
+                    <div style="font-size:10.5px;color:var(--amber);margin-top:2px" title="Ad değişikliği: {{ $sonAd['tarih'] }}">eski adı: {{ $sonAd['eski'] }}</div>
+                  @endif
                 </div>
 
                 {{-- Mini buton satırı (Flutter: QR / Düzenle / Sil) --}}
@@ -351,7 +355,11 @@ body.koyu .rk-flash.err{color:#fda4af}
           @endforeach
         </select>
       </div>
-      <div style="font-size:11px;color:var(--sub);margin-bottom:16px">QR kodu değişmez.</div>
+      <div style="font-size:11px;color:var(--sub);margin-bottom:12px;line-height:1.5">QR kodu değişmez. Ad ya da bölge değişirse geçmiş raporlar siparişin verildiği andaki adı gösterir ("Masa 1 (şimdi S0)").</div>
+      <div id="duzenleGecmis" style="display:none;margin-bottom:16px;border-top:1px solid var(--line);padding-top:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Değişim geçmişi</div>
+        <div id="duzenleGecmisListe" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
       <div style="display:flex;gap:10px">
         <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="duzenleKapat()">İptal</button>
         <button type="submit" class="rk-btn" style="flex:1;justify-content:center;background:var(--mavi)">
@@ -457,6 +465,15 @@ body.koyu .rk-flash.err{color:#fda4af}
     document.getElementById('duzenleMasaId').value   = m.id;
     document.getElementById('duzenleAd').value       = m.ad || '';
     document.getElementById('duzenleKapasite').value = m.kapasite || 4;
+    // Değişim geçmişi (kim, ne zaman, eski → yeni)
+    var ALAN = {olusturuldu:'Oluşturuldu', ad:'Ad', bolge:'Bölge', bolge_adi:'Bölge adı', kapasite:'Kapasite', arsiv:'Arşive alındı', geri:'Arşivden geri getirildi'};
+    var g = m.gecmis || [], kutu = document.getElementById('duzenleGecmisListe');
+    kutu.innerHTML = g.map(function(x){
+      var ne = (x.alan === 'olusturuldu') ? esc(x.yeni || '') : (x.eski != null || x.yeni != null ? esc(x.eski || '—') + ' → <b>' + esc(x.yeni || '—') + '</b>' : '');
+      return '<div style="font-size:12px;color:var(--sub);line-height:1.45"><span style="color:var(--ink);font-weight:700">' + esc(ALAN[x.alan] || x.alan) + '</span>' + (ne ? ': ' + ne : '') +
+        '<br><span style="font-size:11px">' + esc(x.tarih || '') + (x.kim ? ' · ' + esc(x.kim) : '') + '</span></div>';
+    }).join('');
+    document.getElementById('duzenleGecmis').style.display = g.length ? '' : 'none';
     if (m.bolge_id) document.getElementById('duzenleBolge').value = String(m.bolge_id);
     duzenleModal.style.display = 'flex';
   };

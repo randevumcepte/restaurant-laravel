@@ -306,7 +306,7 @@ class GarsonPanel
 
         foreach (DB::table('adisyonlar as a')->leftJoin('masalar as m', 'a.masa_id', '=', 'm.id')
             ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->whereNotNull('a.acan_personel_id')->where('a.acilis', '>=', $bas)
-            ->orderByDesc('a.acilis')->limit(200)->get(['a.acan_personel_id as p', 'a.acilis as t', 'm.ad as masa']) as $s) {
+            ->orderByDesc('a.acilis')->limit(200)->get(['a.acan_personel_id as p', 'a.acilis as t', _masaAdSql('masa', 'a', 'm')]) as $s) {
             $out[] = ['t' => (string) $s->t, 'p' => (int) $s->p, 'tip' => 'acilis', 'm' => $ad($s->masa) . ' · masa açıldı'];
         }
 
@@ -314,7 +314,7 @@ class GarsonPanel
         $gruplar = [];
         foreach (DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')->leftJoin('masalar as m', 'a.masa_id', '=', 'm.id')
             ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->where('k.durum', '!=', 'iptal')->where('k.created_at', '>=', $bas)
-            ->orderByDesc('k.created_at')->limit(600)->get(['k.personel_id', 'a.acan_personel_id', 'a.id as aid', 'k.created_at as t', 'm.ad as masa']) as $s) {
+            ->orderByDesc('k.created_at')->limit(600)->get(['k.personel_id', 'a.acan_personel_id', 'a.id as aid', 'k.created_at as t', _masaAdSql('masa', 'a', 'm')]) as $s) {
             $p = (int) ($s->personel_id ?: $s->acan_personel_id);
             if (!$p) continue;
             $anahtar = $s->aid . '|' . $p . '|' . substr((string) $s->t, 0, 16);
@@ -326,14 +326,14 @@ class GarsonPanel
         if (Schema::hasColumn('adisyon_kalemleri', 'servis_personel_id')) {
             foreach (DB::table('adisyon_kalemleri as k')->join('adisyonlar as a', 'k.adisyon_id', '=', 'a.id')->leftJoin('masalar as m', 'a.masa_id', '=', 'm.id')
                 ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->whereNotNull('k.servis_personel_id')->where('k.servis_zamani', '>=', $bas)
-                ->orderByDesc('k.servis_zamani')->limit(200)->get(['k.servis_personel_id as p', 'k.servis_zamani as t', 'm.ad as masa']) as $s) {
+                ->orderByDesc('k.servis_zamani')->limit(200)->get(['k.servis_personel_id as p', 'k.servis_zamani as t', _masaAdSql('masa', 'a', 'm')]) as $s) {
                 $out[] = ['t' => (string) $s->t, 'p' => (int) $s->p, 'tip' => 'servis', 'm' => $ad($s->masa) . ' · servis edildi'];
             }
         }
 
         foreach (DB::table('odemeler as o')->join('adisyonlar as a', 'o.adisyon_id', '=', 'a.id')->leftJoin('masalar as m', 'a.masa_id', '=', 'm.id')
             ->where('a.sube_id', $this->subeId)->whereNotNull('a.masa_id')->whereNotNull('o.personel_id')->where('o.created_at', '>=', $bas)
-            ->orderByDesc('o.created_at')->limit(200)->get(['o.personel_id as p', 'o.created_at as t', 'm.ad as masa']) as $s) {
+            ->orderByDesc('o.created_at')->limit(200)->get(['o.personel_id as p', 'o.created_at as t', _masaAdSql('masa', 'a', 'm')]) as $s) {
             $out[] = ['t' => (string) $s->t, 'p' => (int) $s->p, 'tip' => 'odeme', 'm' => $ad($s->masa) . ' · hesap alındı'];
         }
 

@@ -6491,8 +6491,89 @@ if (!function_exists('_masaYeniEkle')) {
         if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
         if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
         if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
-        DB::table('masalar')->insertGetId($data);
+        $yeniId = DB::table('masalar')->insertGetId($data);
+        _masaDegisimYaz($sid, $yeniId, 'olusturuldu', null, $data['ad'] . ' · ' . (DB::table('bolgeler')->where('id', $bolgeId)->value('ad') ?: '-'));
         return $data['ad'];
+    }
+}
+// ===== MASA DEĞİŞİM GEÇMİŞİ + ADİSYON DAMGASI =====
+// Masa adı/bölgesi değişmeden HEMEN ÖNCE, o masanın damgasız adisyonlarına o anki ad+bölge yazılır (adisyonlar.masa_ad/bolge_ad).
+// Böylece geçmiş raporlar siparişin verildiği andaki adı gösterir; damgasız (NULL) = ad o zamandan beri değişmemiş → güncel ad doğru.
+// 18 ayrı adisyon açılış noktasına dokunmadan çalışır. Her değişiklik masa_degisim defterine yazılır (kim, ne zaman, eski→yeni).
+if (!function_exists('_masaDegisimEnsure')) {
+    function _masaDegisimEnsure()
+    {
+        static $ok = false; if ($ok) return; $ok = true;
+        try {
+            if (!Schema::hasColumn('adisyonlar', 'masa_ad')) Schema::table('adisyonlar', fn ($t) => $t->string('masa_ad', 60)->nullable());
+            if (!Schema::hasColumn('adisyonlar', 'bolge_ad')) Schema::table('adisyonlar', fn ($t) => $t->string('bolge_ad', 60)->nullable());
+            if (!Schema::hasTable('masa_degisim')) {
+                Schema::create('masa_degisim', function ($t) {
+                    $t->id();
+                    $t->unsignedBigInteger('sube_id')->index();
+                    $t->unsignedBigInteger('masa_id')->index();
+                    $t->string('alan', 20);                 // olusturuldu | ad | bolge | bolge_adi | kapasite | arsiv | geri
+                    $t->string('eski', 100)->nullable();
+                    $t->string('yeni', 100)->nullable();
+                    $t->unsignedBigInteger('personel_id')->nullable();
+                    $t->string('personel_ad', 80)->nullable();
+                    $t->timestamp('created_at')->nullable();
+                });
+            }
+        } catch (\Throwable $e) { report($e); }
+    }
+}
+// Bu masaların damgasız adisyonlarına ŞU ANKİ ad + bölgeyi yaz (değişiklikten önce çağrılır)
+if (!function_exists('_masaAdisyonDamgala')) {
+    function _masaAdisyonDamgala(array $masaIdler)
+    {
+        _masaDegisimEnsure();
+        $masaIdler = array_values(array_filter(array_map('intval', $masaIdler)));
+        if (!$masaIdler) return;
+        try {
+            DB::table('adisyonlar')->whereIn('masa_id', $masaIdler)->whereNull('masa_ad')->update([
+                'masa_ad' => DB::raw('(SELECT m.ad FROM masalar m WHERE m.id = adisyonlar.masa_id)'),
+                'bolge_ad' => DB::raw('(SELECT b.ad FROM masalar m JOIN bolgeler b ON b.id = m.bolge_id WHERE m.id = adisyonlar.masa_id)'),
+            ]);
+        } catch (\Throwable $e) { report($e); }
+    }
+}
+if (!function_exists('_masaDegisimYaz')) {
+    function _masaDegisimYaz($sid, $masaId, $alan, $eski, $yeni, $p = null)
+    {
+        _masaDegisimEnsure();
+        if (!$p) { try { $p = _posPersonel(); } catch (\Throwable $e) {} }
+        $ad = $p->ad ?? null;
+        if (session('ry_admin_id')) $ad = trim(($ad ?? '') . ' (ResteOS yönetici)');
+        try {
+            DB::table('masa_degisim')->insert(['sube_id' => (int) $sid, 'masa_id' => (int) $masaId, 'alan' => $alan,
+                'eski' => $eski !== null ? mb_substr((string) $eski, 0, 100) : null, 'yeni' => $yeni !== null ? mb_substr((string) $yeni, 0, 100) : null,
+                'personel_id' => $p->id ?? null, 'personel_ad' => $ad ? mb_substr($ad, 0, 80) : null, 'created_at' => now()]);
+        } catch (\Throwable $e) { report($e); }
+    }
+}
+// Masa güncellemesinden ÖNCE çağır: $m = mevcut satır, $upd = yazılacak alanlar. Ad/bölge değişiyorsa önce damgalar, sonra deftere yazar.
+if (!function_exists('_masaDegisimOncesi')) {
+    function _masaDegisimOncesi($m, array $upd, $p = null)
+    {
+        if (!$m) return;
+        $adDeg = array_key_exists('ad', $upd) && (string) $upd['ad'] !== (string) $m->ad;
+        $bolgeDeg = array_key_exists('bolge_id', $upd) && (int) $upd['bolge_id'] !== (int) $m->bolge_id;
+        if ($adDeg || $bolgeDeg) _masaAdisyonDamgala([$m->id]);
+        $bAd = fn ($id) => $id ? DB::table('bolgeler')->where('id', (int) $id)->value('ad') : null;
+        if ($adDeg) _masaDegisimYaz($m->sube_id, $m->id, 'ad', $m->ad, $upd['ad'], $p);
+        if ($bolgeDeg) _masaDegisimYaz($m->sube_id, $m->id, 'bolge', $bAd($m->bolge_id), $bAd($upd['bolge_id']), $p);
+        if (array_key_exists('kapasite', $upd) && (int) $upd['kapasite'] !== (int) ($m->kapasite ?? 0)) _masaDegisimYaz($m->sube_id, $m->id, 'kapasite', (int) $m->kapasite, (int) $upd['kapasite'], $p);
+        if (array_key_exists('arsiv', $upd) && (int) $upd['arsiv'] !== (int) ($m->arsiv ?? 0)) _masaDegisimYaz($m->sube_id, $m->id, (int) $upd['arsiv'] ? 'arsiv' : 'geri', null, null, $p);
+    }
+}
+// Raporlarda masa adı: adisyon damgalıysa o anki ad (+ "şimdi X"), değilse güncel ad. $as = sütun takma adı
+if (!function_exists('_masaAdSql')) {
+    function _masaAdSql($as = 'masa', $a = 'adisyonlar', $m = 'masalar')
+    {
+        _masaDegisimEnsure();
+        $birles = DB::getDriverName() === 'mysql' ? "CONCAT($a.masa_ad, ' (şimdi ', $m.ad, ')')" : "($a.masa_ad || ' (şimdi ' || $m.ad || ')')";
+        return DB::raw("CASE WHEN $a.masa_ad IS NOT NULL AND $m.ad IS NOT NULL AND $a.masa_ad <> $m.ad THEN $birles ELSE COALESCE($m.ad, $a.masa_ad) END as $as");
     }
 }
 // Yonetim listesi: aktif + arsiv masalar, her birinin kalici QR'i
@@ -6536,6 +6617,7 @@ Route::post('/api/patron/masa-ekle', function (Request $r) {
     if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
     if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
     $id = DB::table('masalar')->insertGetId($data);
+    _masaDegisimYaz($p->sube_id, $id, 'olusturuldu', null, $ad . ' · ' . (DB::table('bolgeler')->where('id', $bolgeId)->value('ad') ?: '-'), $p);
     $m = DB::table('masalar')->find($id);
     return ['ok' => 1, 'mesaj' => $ad . ' eklendi (QR otomatik oluşturuldu).', 'masa' => [
         'id' => (int) $id, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId, 'bolge' => null,
@@ -6553,6 +6635,7 @@ Route::post('/api/patron/masa-sil', function (Request $r) {
     if ($acik || ($m->durum ?? '') === 'dolu') return ['ok' => 0, 'hata' => 'Bu masada açık hesap var. Önce hesabı kapatın.'];
     $upd = ['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos'];
     if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+    _masaDegisimOncesi($m, $upd, $p);
     DB::table('masalar')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'mesaj' => $m->ad . ' arşive taşındı. QR kodu KORUNUYOR — istediğinde geri getirebilirsin.'];
 });
@@ -6565,6 +6648,7 @@ Route::post('/api/patron/masa-geri', function (Request $r) {
     if (!$m) return ['ok' => 0, 'hata' => 'Masa bulunamadı'];
     $upd = ['arsiv' => 0, 'arsiv_at' => null];
     if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+    _masaDegisimOncesi($m, $upd, $p);
     DB::table('masalar')->where('id', $m->id)->update($upd);
     return ['ok' => 1, 'mesaj' => $m->ad . ' geri getirildi. Aynı QR kodu geçerli.'];
 });
@@ -6585,7 +6669,10 @@ Route::post('/api/patron/masa-guncelle', function (Request $r) {
         $upd['bolge_id'] = $bid;
     }
     if (empty($upd)) return ['ok' => 1, 'mesaj' => 'Değişiklik yok'];
+    if (isset($upd['ad']) && $upd['ad'] !== $m->ad && DB::table('masalar')->where('sube_id', $p->sube_id)->where('id', '!=', $m->id)->where('arsiv', 0)->where('ad', $upd['ad'])->exists())
+        return ['ok' => 0, 'hata' => '"' . $upd['ad'] . '" adında başka bir masa var. Raporlarda karışmasın diye farklı bir ad verin.'];
     if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+    _masaDegisimOncesi($m, $upd, $p); // eski adisyonlara o anki ad/bölge damgası + değişim defteri
     DB::table('masalar')->where('id', $m->id)->update($upd);
     _duzenLog($p->sube_id, ($upd['ad'] ?? $m->ad) . ' düzenlendi');
     return ['ok' => 1, 'mesaj' => 'Güncellendi (QR değişmedi)'];
@@ -16371,7 +16458,7 @@ Route::get('/api/patron/garson-ozet', function (Request $r) {
     // Açık masalarım
     $acik = DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
         ->where('adisyonlar.sube_id', $subeId)->where('adisyonlar.acan_personel_id', $pid)->where('adisyonlar.durum', 'acik')
-        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kanal', 'masalar.ad as masa')->orderByDesc('adisyonlar.toplam')->get();
+        ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kanal', _masaAdSql('masa'))->orderByDesc('adisyonlar.toplam')->get();
     $acikToplam = (float) $acik->sum('toplam');
     // Sattığım ürün adedi (bugün açtığım adisyonlar)
     $urunAdedi = (float) DB::table('adisyon_kalemleri')->join('adisyonlar', 'adisyon_kalemleri.adisyon_id', '=', 'adisyonlar.id')
@@ -17337,6 +17424,11 @@ Route::post('/isletme-duzeni/bolge-duzenle', function (Request $r) {
             $upd['on_ek'] = $on;
         }
         if (Schema::hasColumn('bolgeler', 'updated_at')) $upd['updated_at'] = now();
+        if ($upd['ad'] !== $b->ad) { // bölge adı değişiyor: masaların eski adisyonlarına eski bölge adını damgala + her masanın defterine yaz
+            $bMasalar = DB::table('masalar')->where('sube_id', $sid)->where('bolge_id', $b->id)->pluck('id')->all();
+            _masaAdisyonDamgala($bMasalar);
+            foreach ($bMasalar as $mid) _masaDegisimYaz($sid, $mid, 'bolge_adi', $b->ad, $upd['ad']);
+        }
         DB::table('bolgeler')->where('id', $b->id)->update($upd);
         try { (new \App\Services\SalonPlan($sid))->alanAdiDegisti($b->id, $b->ad, mb_substr($ad, 0, 60)); } catch (\Throwable $e) { report($e); }
         _duzenLog($sid, 'Bölge düzenlendi: ' . $ad);
@@ -17366,6 +17458,7 @@ Route::post('/isletme-duzeni/masa-bolge', function (Request $r) {
         if ($bid && !DB::table('bolgeler')->where('id', $bid)->where('sube_id', $sid)->exists()) $bid = null;
         $upd = ['bolge_id' => $bid];
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        _masaDegisimOncesi($m, $upd);
         DB::table('masalar')->where('id', $m->id)->update($upd);
         _duzenLog($sid, $m->ad . ' başka bölgeye taşındı: ' . (DB::table('bolgeler')->where('id', $bid)->value('ad') ?: 'Bölgesiz'));
         return redirect()->back()->with('ok', $m->ad . ' bölgesi güncellendi.');
@@ -22733,8 +22826,12 @@ Route::get('/masa-yonetim', function (Request $r) {
         _bolgeOnEkEnsure();
         $rows = DB::table('masalar')->leftJoin('bolgeler', 'masalar.bolge_id', '=', 'bolgeler.id')->where('masalar.sube_id', $sid)
             ->select('masalar.id', 'masalar.ad', 'masalar.kapasite', 'masalar.durum', 'masalar.bolge_id', 'masalar.qr_token', 'masalar.arsiv', 'bolgeler.ad as bolge')->orderBy('masalar.id')->get();
+        // Masa değişim defteri (ad/bölge/kapasite/arşiv) — düzenle penceresinde "geçmiş" olarak gösterilir
+        _masaDegisimEnsure();
+        $gecmisMap = DB::table('masa_degisim')->where('sube_id', $sid)->orderByDesc('id')->limit(2000)->get()->groupBy('masa_id')
+            ->map(fn ($g) => $g->map(fn ($x) => ['alan' => $x->alan, 'eski' => $x->eski, 'yeni' => $x->yeni, 'kim' => $x->personel_ad, 'tarih' => $x->created_at ? \Carbon\Carbon::parse($x->created_at)->format('d.m.Y H:i') : ''])->values()->all());
         $fmt = fn ($m) => ['id' => (int) $m->id, 'ad' => $m->ad, 'kapasite' => (int) ($m->kapasite ?? 0), 'bolge' => $m->bolge, 'bolge_id' => $m->bolge_id ? (int) $m->bolge_id : null,
-            'durum' => $m->durum, 'qr_token' => $m->qr_token, 'qr_url' => $m->qr_token ? url('/m/' . $m->qr_token) : null, 'arsiv' => (int) ($m->arsiv ?? 0)];
+            'durum' => $m->durum, 'qr_token' => $m->qr_token, 'qr_url' => $m->qr_token ? url('/m/' . $m->qr_token) : null, 'arsiv' => (int) ($m->arsiv ?? 0), 'gecmis' => $gecmisMap[$m->id] ?? []];
         $aktif = $rows->where('arsiv', 0)->map($fmt)->values()->all();
         $arsiv = $rows->where('arsiv', 1)->map($fmt)->values()->all();
         $bolgeler = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad', 'on_ek']);
@@ -22802,6 +22899,7 @@ Route::post('/masa-yonetim/sil', function (Request $r) {
         if ($acik || ($m->durum ?? '') === 'dolu') return redirect()->back()->with('hata', 'Bu masada açık hesap var.');
         $upd = ['arsiv' => 1, 'arsiv_at' => now(), 'durum' => 'bos'];
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        _masaDegisimOncesi($m, $upd);
         DB::table('masalar')->where('id', $m->id)->update($upd);
         _duzenLog($sid, $m->ad . ' arşive taşındı');
         return redirect()->back()->with('ok', $m->ad . ' arşive taşındı. QR KORUNUYOR.');
@@ -22814,6 +22912,7 @@ Route::post('/masa-yonetim/geri', function (Request $r) {
         if (!$m) return redirect()->back()->with('hata', 'Masa bulunamadı');
         $upd = ['arsiv' => 0, 'arsiv_at' => null];
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
+        _masaDegisimOncesi($m, $upd);
         DB::table('masalar')->where('id', $m->id)->update($upd);
         return redirect()->back()->with('ok', $m->ad . ' geri getirildi. Aynı QR geçerli.');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'İşlem başarısız.'); }
@@ -24096,7 +24195,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             foreach (DB::table('adisyonlar')->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
                 ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
                 ->whereIn('adisyonlar.id', $aids)
-                ->select('adisyonlar.id', 'adisyonlar.kanal', 'masalar.ad as masa', 'musteriler.ad as musteri')->get() as $rw) {
+                ->select('adisyonlar.id', 'adisyonlar.kanal', _masaAdSql('masa'), 'musteriler.ad as musteri')->get() as $rw) {
                 $adisyonBilgi[$rw->id] = $rw;
             }
         }
@@ -24126,7 +24225,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
             ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
             ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.acilis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
-                'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
+                'adisyonlar.musteri_id', _masaAdSql('masa'), 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.toplam')->get()
             ->map(function ($a) use ($simdi, $tamGor) {
                 $dk = $a->acilis ? (int) round(\Carbon\Carbon::parse($a->acilis)->diffInMinutes($simdi)) : 0;
@@ -24239,7 +24338,7 @@ Route::get('/api/patron/detay', function (Request $r) {
         if (!$m) return ['ok' => 0, 'hata' => 'Müşteri bulunamadı'];
         $siparisler = DB::table('adisyonlar')->where('adisyonlar.sube_id', $p->sube_id)->where('adisyonlar.musteri_id', $mid)->where('adisyonlar.durum', 'odendi')
             ->leftJoin('masalar', 'adisyonlar.masa_id', '=', 'masalar.id')
-            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.platform', 'masalar.ad as masa')
+            ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.platform', _masaAdSql('masa'))
             ->orderByDesc('adisyonlar.kapanis')->limit(40)->get()
             ->map(fn ($a) => [
                 'id' => $a->id, 'tutar' => (float) $a->toplam, 'kanal' => $a->platform ?: $a->kanal,
@@ -24297,7 +24396,7 @@ Route::get('/api/patron/detay', function (Request $r) {
             ->leftJoin('personeller', 'adisyonlar.acan_personel_id', '=', 'personeller.id')
             ->leftJoin('musteriler', 'adisyonlar.musteri_id', '=', 'musteriler.id')
             ->select('adisyonlar.id', 'adisyonlar.toplam', 'adisyonlar.kapanis', 'adisyonlar.kanal', 'adisyonlar.misafir_sayisi',
-                'adisyonlar.musteri_id', 'masalar.ad as masa', 'personeller.ad as garson', 'musteriler.ad as musteri')
+                'adisyonlar.musteri_id', _masaAdSql('masa'), 'personeller.ad as garson', 'musteriler.ad as musteri')
             ->orderByDesc('adisyonlar.kapanis')->limit(80)->get()
             ->map(fn ($a) => [
                 'id' => $a->id, 'masa' => $a->masa ?? ucfirst($a->kanal), 'garson' => $a->garson ?? '-',
@@ -34341,7 +34440,7 @@ Route::get('/profilim', function () {
         if (Schema::hasColumn('adisyonlar', 'acan_personel_id')) {
             foreach (DB::table('adisyonlar as a')->leftJoin('masalar as m', 'm.id', '=', 'a.masa_id')
                 ->where('a.sube_id', $sid)->where('a.acan_personel_id', $pid)->whereNotNull('a.acilis')
-                ->orderByDesc('a.acilis')->limit(20)->get(['a.id', 'a.acilis', 'm.ad as masa']) as $a) {
+                ->orderByDesc('a.acilis')->limit(20)->get(['a.id', 'a.acilis', _masaAdSql('masa', 'a', 'm')]) as $a) {
                 $akis[] = ['zaman' => $a->acilis, 'metin' => $a->masa ? "Masa {$a->masa} açıldı" : "Adisyon #{$a->id} açıldı", 'giris' => false];
             }
         }
