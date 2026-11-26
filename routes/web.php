@@ -5567,8 +5567,30 @@ if (!function_exists('_masaQrEnsure')) {
         $q = DB::table('masalar')->where(function ($w) { $w->whereNull('qr_token')->orWhere('qr_token', ''); });
         if ($subeId) $q->where('sube_id', $subeId);
         foreach ($q->get(['id']) as $m) {
-            DB::table('masalar')->where('id', $m->id)->update(['qr_token' => \Illuminate\Support\Str::random(18)]);
+            DB::table('masalar')->where('id', $m->id)->update(['qr_token' => _masaQrTokenUret()]);
         }
+        // Veritabanı düzeyinde TEKİLLİK: aynı QR iki masada (iki restoranda) asla olamaz → A'nın müşterisi B'nin mutfağına düşemez
+        if (!cache()->get('masa_qr_tekil_ok')) {
+            try {
+                $cift = DB::table('masalar')->whereNotNull('qr_token')->where('qr_token', '!=', '')->select('qr_token')->groupBy('qr_token')->havingRaw('COUNT(*) > 1')->pluck('qr_token');
+                if ($cift->isEmpty()) {
+                    try { Schema::table('masalar', fn ($t) => $t->unique('qr_token', 'masalar_qr_token_tekil')); } catch (\Throwable $e) {} // zaten varsa hata yutulur
+                    cache()->forever('masa_qr_tekil_ok', 1);
+                } else {
+                    // Basılı QR'ı kendiliğinden DEĞİŞTİRME (afişler geçersiz olur) → yalnız raporla, yönetici karar versin
+                    report(new \RuntimeException('Çift masa QR kodu: ' . $cift->implode(',')));
+                    cache()->put('masa_qr_tekil_ok', 1, now()->addHours(6));
+                }
+            } catch (\Throwable $e) { report($e); }
+        }
+    }
+}
+// Yeni masa QR kodu: kriptografik rastgele 18 karakter + tüm sistemde (tüm restoranlar) kullanılmadığı doğrulanır
+if (!function_exists('_masaQrTokenUret')) {
+    function _masaQrTokenUret()
+    {
+        do { $t = \Illuminate\Support\Str::random(18); } while (DB::table('masalar')->where('qr_token', $t)->exists());
+        return $t;
     }
 }
 // masa deneyim view (tema hazirligi) — /masa/{id} ile ayni
@@ -5642,7 +5664,10 @@ Route::get('/masa-afis/{id}', function ($id) {
 });
 // Tum masalar tek sayfa (toplu yazdir/PDF)
 Route::get('/masa-afisler', function (Request $r) {
-    $subeId = (int) ($r->query('sube') ?: DB::table('subeler')->value('id'));
+    // Yalnız kendi restoranının afişleri (eskiden ?sube=X ile başka restoranın QR kodları görülebiliyordu; boşsa ilk restoran açılıyordu)
+    $subeId = (int) _aktifSubeId();
+    if ($r->filled('sube') && function_exists('_ryAdmin') && _ryAdmin()) $subeId = (int) $r->query('sube');
+    if ($subeId <= 0) abort(404);
     _masaQrEnsure($subeId);
     $masalar = DB::table('masalar')->where('sube_id', $subeId)->where('arsiv', 0)->orderBy('id')->get();
     return view('masa_afis', ['masalar' => $masalar, 'sube' => DB::table('subeler')->find($subeId)]);
@@ -6462,7 +6487,7 @@ if (!function_exists('_masaYeniEkle')) {
                 if (preg_match('/^' . preg_quote($on, '/') . '(\d+)$/u', $x, $mm)) $max = max($max, (int) $mm[1]);
             $ad = $on . ($max + 1);
         }
-        $data = ['sube_id' => $sid, 'ad' => mb_substr($ad, 0, 40), 'kapasite' => max(1, min(50, (int) $kapasite)), 'bolge_id' => $bolgeId, 'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
+        $data = ['sube_id' => $sid, 'ad' => mb_substr($ad, 0, 40), 'kapasite' => max(1, min(50, (int) $kapasite)), 'bolge_id' => $bolgeId, 'durum' => 'bos', 'arsiv' => 0, 'qr_token' => _masaQrTokenUret()];
         if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
         if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
         if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
@@ -6506,7 +6531,7 @@ Route::post('/api/patron/masa-ekle', function (Request $r) {
     if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $p->sube_id)->exists()) $bolgeId = null;
     if (!$bolgeId) $bolgeId = _masaVarsayilanBolge($p->sube_id); // bolge_id NOT NULL -> varsayilan
     $data = ['sube_id' => $p->sube_id, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId,
-        'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
+        'durum' => 'bos', 'arsiv' => 0, 'qr_token' => _masaQrTokenUret()];
     if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
     if (Schema::hasColumn('masalar', 'created_at')) $data['created_at'] = now();
     if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
