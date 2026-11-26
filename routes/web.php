@@ -22835,7 +22835,13 @@ Route::get('/masa-yonetim', function (Request $r) {
         $aktif = $rows->where('arsiv', 0)->map($fmt)->values()->all();
         $arsiv = $rows->where('arsiv', 1)->map($fmt)->values()->all();
         $bolgeler = DB::table('bolgeler')->where('sube_id', $sid)->orderBy('sira')->orderBy('id')->get(['id', 'ad', 'on_ek']);
-        foreach ($bolgeler as $b) if (empty($b->on_ek)) $b->on_ek = _bolgeOnEk($sid, $b->id); // eski bölgelere ön ek ver
+        foreach ($bolgeler as $b) {
+            if (empty($b->on_ek)) $b->on_ek = _bolgeOnEk($sid, $b->id); // eski bölgelere ön ek ver
+            // Sıradaki otomatik ad (arşiv dahil en büyük + 1): masa başka bölgeye taşınınca/geri getirilince ad kutusuna önerilir
+            $max = 0;
+            foreach ($rows as $x) if (preg_match('/^' . preg_quote($b->on_ek, '/') . '(\d+)$/u', (string) $x->ad, $mm)) $max = max($max, (int) $mm[1]);
+            $b->sonraki_ad = $b->on_ek . ($max + 1);
+        }
     } catch (\Throwable $e) { report($e); }
     // Seçili bölge sekmesi: ?b= → son eklenen → ilk bölge
     $seciliBolge = (int) ($r->query('b') ?: session('son_bolge', 0));
@@ -22911,10 +22917,22 @@ Route::post('/masa-yonetim/geri', function (Request $r) {
         $m = DB::table('masalar')->where('id', (int) $r->input('id'))->where('sube_id', $sid)->first();
         if (!$m) return redirect()->back()->with('hata', 'Masa bulunamadı');
         $upd = ['arsiv' => 0, 'arsiv_at' => null];
+        // Geri getirirken bölge/ad/kapasite tek adımda seçilebilir (gönderilmezse masa olduğu gibi döner)
+        if ($r->filled('bolge_id')) {
+            $bid = (int) $r->input('bolge_id');
+            if (DB::table('bolgeler')->where('id', $bid)->where('sube_id', $sid)->exists()) $upd['bolge_id'] = $bid;
+        }
+        if ($r->filled('kapasite')) $upd['kapasite'] = max(1, min(50, (int) $r->input('kapasite')));
+        $ad = mb_substr(trim((string) $r->input('ad')), 0, 40);
+        if ($ad !== '' && $ad !== $m->ad) $upd['ad'] = $ad;
+        $sonAd = $upd['ad'] ?? $m->ad;
+        if (DB::table('masalar')->where('sube_id', $sid)->where('id', '!=', $m->id)->where('arsiv', 0)->where('ad', $sonAd)->exists())
+            return redirect('/masa-yonetim#arsiv')->with('hata', '"' . $sonAd . '" adında aktif bir masa var. Geri getirirken farklı bir ad verin.');
         if (Schema::hasColumn('masalar', 'updated_at')) $upd['updated_at'] = now();
         _masaDegisimOncesi($m, $upd);
         DB::table('masalar')->where('id', $m->id)->update($upd);
-        return redirect()->back()->with('ok', $m->ad . ' geri getirildi. Aynı QR geçerli.');
+        $bAd = DB::table('bolgeler')->where('id', $upd['bolge_id'] ?? $m->bolge_id)->value('ad');
+        return redirect('/masa-yonetim?b=' . ($upd['bolge_id'] ?? $m->bolge_id))->with('ok', $sonAd . ' geri getirildi' . ($bAd ? ' (' . $bAd . ')' : '') . '. Aynı QR geçerli.');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'İşlem başarısız.'); }
 });
 // ===== WEB PANEL: Garson Çağrıları — Flutter garson_cagrilari_screen karşılığı =====

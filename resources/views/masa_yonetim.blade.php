@@ -297,13 +297,9 @@ body.koyu .rk-flash.err{color:#fda4af}
           <button type="button" class="rk-btn bos" style="flex-shrink:0" onclick="masaDuzenleAc(@js($m))">
             <span class="material-icons-outlined" style="font-size:16px">edit</span> Düzenle
           </button>
-          <form method="POST" action="/masa-yonetim/geri" style="flex-shrink:0">
-            @csrf
-            <input type="hidden" name="id" value="{{ $m['id'] }}">
-            <button type="submit" class="rk-btn" style="background:var(--yesil)">
-              <span class="material-icons-outlined" style="font-size:16px">restore</span> Geri Getir
-            </button>
-          </form>
+          <button type="button" class="rk-btn" style="flex-shrink:0;background:var(--yesil)" onclick="masaGeriAc(@js($m))">
+            <span class="material-icons-outlined" style="font-size:16px">restore</span> Geri Getir
+          </button>
         </div>
       @endforeach
     </div>
@@ -335,10 +331,12 @@ body.koyu .rk-flash.err{color:#fda4af}
 {{-- ===== DÜZENLE MODALI ===== --}}
 <div id="duzenleModal">
   <div class="modal-box">
-    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:16px">Masa Düzenle</div>
-    <form method="POST" id="duzenleForm" action="#">{{-- JS submit ile /api/patron/masa-guncelle fetch --}}
+    <div id="duzenleBaslik" style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:16px">Masa Düzenle</div>
+    {{-- Düzenle: JS fetch /api/patron/masa-guncelle · Geri getir: normal POST /masa-yonetim/geri (bölge+ad+kapasite tek adımda) --}}
+    <form method="POST" id="duzenleForm" action="#">
       @csrf
       <input type="hidden" name="_masa_id" id="duzenleMasaId">
+      <input type="hidden" name="id" id="duzenleGeriId" disabled>
       <div style="margin-bottom:12px">
         <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa adı</label>
         <input type="text" name="ad" id="duzenleAd" class="rk-inp">
@@ -349,11 +347,12 @@ body.koyu .rk-flash.err{color:#fda4af}
       </div>
       <div style="margin-bottom:12px">
         <label class="rk-lbl" style="margin-top:0;font-size:12px">Bölge <span style="color:var(--sub)">(başka bölgeye taşı)</span></label>
-        <select id="duzenleBolge" class="rk-inp">
+        <select name="bolge_id" id="duzenleBolge" class="rk-inp" onchange="duzenleBolgeDegisti()">
           @foreach ($bolgeler as $b)
             <option value="{{ $b->id }}">{{ $b->ad }}</option>
           @endforeach
         </select>
+        <div id="duzenleAdIpucu" style="display:none;font-size:11.5px;color:var(--mor1);margin-top:6px"></div>
       </div>
       <div style="font-size:11px;color:var(--sub);margin-bottom:12px;line-height:1.5">QR kodu değişmez. Ad ya da bölge değişirse geçmiş raporlar siparişin verildiği andaki adı gösterir ("Masa 1 → S0").</div>
       <div id="duzenleGecmis" style="display:none;margin-bottom:16px;border-top:1px solid var(--line);padding-top:10px">
@@ -362,8 +361,8 @@ body.koyu .rk-flash.err{color:#fda4af}
       </div>
       <div style="display:flex;gap:10px">
         <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="duzenleKapat()">İptal</button>
-        <button type="submit" class="rk-btn" style="flex:1;justify-content:center;background:var(--mavi)">
-          <span class="material-icons-outlined" style="font-size:16px">save</span> Kaydet
+        <button type="submit" id="duzenleKaydetBtn" class="rk-btn" style="flex:1;justify-content:center;background:var(--mavi)">
+          <span class="material-icons-outlined" style="font-size:16px">save</span> <span id="duzenleKaydetYazi">Kaydet</span>
         </button>
       </div>
     </form>
@@ -460,7 +459,34 @@ body.koyu .rk-flash.err{color:#fda4af}
   var API_TOKEN = @js($webApiToken ?? '');
   var duzenleModal  = document.getElementById('duzenleModal');
   var duzenleForm   = document.getElementById('duzenleForm');
-  window.masaDuzenleAc = function(m){
+  // Bölgenin sıradaki otomatik adı (S9, B10…): bölge değişince ad kutusuna önerilir
+  var SONRAKI_AD = @js(collect($bolgeler)->mapWithKeys(fn ($b) => [(string) $b->id => $b->sonraki_ad ?? ''])->all());
+  var BOLGE_AD = @js(collect($bolgeler)->mapWithKeys(fn ($b) => [(string) $b->id => $b->ad])->all());
+  var duzenleOrj = null, geriModu = false;
+  window.duzenleBolgeDegisti = function(){
+    if (!duzenleOrj) return;
+    var sec = document.getElementById('duzenleBolge').value, adK = document.getElementById('duzenleAd'), ip = document.getElementById('duzenleAdIpucu');
+    if (String(sec) !== String(duzenleOrj.bolge_id) && SONRAKI_AD[sec]) {
+      adK.value = SONRAKI_AD[sec];
+      ip.textContent = BOLGE_AD[sec] + ' bölgesinin sıradaki adı verildi: ' + SONRAKI_AD[sec] + ' (isterseniz değiştirin). Eski siparişler raporda "' + (duzenleOrj.ad || '') + ' → ' + SONRAKI_AD[sec] + '" görünür.';
+      ip.style.display = '';
+    } else {
+      adK.value = duzenleOrj.ad || '';
+      ip.style.display = 'none';
+    }
+  };
+  // Arşivden geri getir: bölge seç → ad otomatik → tek tıkla arşivden çıkar
+  window.masaGeriAc = function(m){
+    window.masaDuzenleAc(m, true);
+  };
+  window.masaDuzenleAc = function(m, geri){
+    geriModu = !!geri;
+    duzenleOrj = { ad: m.ad || '', bolge_id: m.bolge_id };
+    document.getElementById('duzenleAdIpucu').style.display = 'none';
+    document.getElementById('duzenleBaslik').textContent = geriModu ? (m.ad || 'Masa') + ' — Arşivden Geri Getir' : 'Masa Düzenle';
+    document.getElementById('duzenleKaydetYazi').textContent = geriModu ? 'Geri Getir' : 'Kaydet';
+    document.getElementById('duzenleKaydetBtn').style.background = geriModu ? 'var(--yesil)' : 'var(--mavi)';
+    var gid = document.getElementById('duzenleGeriId'); gid.value = m.id; gid.disabled = !geriModu;
     duzenleArsiv = parseInt(m.arsiv) === 1;
     document.getElementById('duzenleMasaId').value   = m.id;
     document.getElementById('duzenleAd').value       = m.ad || '';
@@ -480,6 +506,7 @@ body.koyu .rk-flash.err{color:#fda4af}
   window.duzenleKapat = function(){ duzenleModal.style.display = 'none'; };
   // Düzenle formu: mevcut API ucu (/api/patron/masa-guncelle) fetch ile çağır (routes/web.php değişmez)
   duzenleForm.addEventListener('submit', function(e){
+    if (geriModu) { duzenleForm.action = '/masa-yonetim/geri'; return; } // normal POST: arşivden çıkar + bölge/ad/kapasite
     e.preventDefault();
     if(!API_TOKEN){ alert('Oturum bilgisi bulunamadı. Lütfen yeniden giriş yapın.'); return; }
     var id  = document.getElementById('duzenleMasaId').value;
