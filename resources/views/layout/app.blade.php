@@ -185,10 +185,13 @@
 <script>if(document.documentElement.classList.contains('_koyu'))document.body.classList.add('koyu');</script>
 @php extract(_panelMenuVeri()); /* menü kurulumu: routes/panel_menu.php (uygulama /panel-menu ile aynı kaynak) */ @endphp
 @if(session('ry_imp_personel') && session('ry_admin_id'))
-<div style="position:sticky;top:0;z-index:9999;background:#b91c1c;color:#fff;font:700 13px/1.4 system-ui,sans-serif;padding:7px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">
+<div id="ryBant" style="position:sticky;top:0;z-index:35;background:#b91c1c;color:#fff;font:700 13px/1.4 system-ui,sans-serif;padding:7px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">
     <span>🔓 ResteOS yöneticisi olarak <b>{{ session('ry_imp_ad') }}</b> panelindesiniz · yaptığınız her işlem bu işletmeye uygulanır</span>
     <a href="/resteos-yonetim/impersonation-bitir" style="background:#fff;color:#b91c1c;border-radius:6px;padding:3px 10px;text-decoration:none">Sistem yönetimine dön</a>
 </div>
+{{-- bant menünün (z30) üstünde, açılır panel/modalların (z40+) altında; sabit sol menü bandın altından başlasın --}}
+<style>.rk-side,.rk-header{top:var(--ry-bant,0px)}</style>
+<script>(function(){var b=document.getElementById("ryBant");function o(){document.documentElement.style.setProperty("--ry-bant",b.offsetHeight+"px")}o();addEventListener("resize",o)})();</script>
 @endif
 <div class="rk-wrap">
     <div class="rk-side-backdrop" id="rkSideBackdrop" onclick="rkSideTog(false)"></div>
