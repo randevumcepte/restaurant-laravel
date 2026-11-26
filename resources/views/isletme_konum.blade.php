@@ -173,7 +173,7 @@ body.koyu #ikroot .rk-flash.err{color:#fda4af}
   {{-- ── Bilgi kutusu (Flutter card2 Container + info_outline) ── --}}
   <div class="ik-info">
     <span class="material-icons-outlined">info</span>
-    <div class="t">Bu ekranı <b>İŞLETMEDEYKEN</b> aç ve "Şu Anki Konumu Kullan"a bas.
+    <div class="t">Bu ekranı <b>İŞLETMEDEYKEN</b> aç ve konum butonuna bas.
       Tarayıcının konumu işletme noktası olarak kaydedilir; adres/harita girmene gerek yok.
       (Kasa Mesai QR ekranı açılınca da otomatik ayarlar.)</div>
   </div>
