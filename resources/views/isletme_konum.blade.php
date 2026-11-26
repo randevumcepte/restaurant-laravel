@@ -172,7 +172,7 @@ body.koyu #ikroot .rk-flash.err{color:#fda4af}
 
   {{-- ── Bilgi kutusu (Flutter card2 Container + info_outline) ── --}}
   <div class="ik-info">
-    <span class="material-icons-outlined">info_outline</span>
+    <span class="material-icons-outlined">info</span>
     <div class="t">Bu ekranı <b>İŞLETMEDEYKEN</b> aç ve "Şu Anki Konumu Kullan"a bas.
       Tarayıcının konumu işletme noktası olarak kaydedilir; adres/harita girmene gerek yok.
       (Kasa Mesai QR ekranı açılınca da otomatik ayarlar.)</div>
@@ -183,7 +183,7 @@ body.koyu #ikroot .rk-flash.err{color:#fda4af}
 {{-- ── Leaflet CDN (sadece konum varsa yükle) ── --}}
 @if ($var)
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPaI=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 @endif
 
 <script>
@@ -234,7 +234,7 @@ function konumAl(){
 (function(){
   var lat = {{ (float)$lat }}, lng = {{ (float)$lng }}, yr = {{ $yaricap }};
   var kap = document.getElementById('ik-harita-kap');
-  if (!kap) return;
+  if (!kap || typeof L === 'undefined') return; // Leaflet yüklenemediyse boş kutu açılmasın
   kap.style.display = 'block';
 
   var map = L.map('ik-harita', { zoomControl: true, scrollWheelZoom: false }).setView([lat, lng], 16);
