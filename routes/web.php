@@ -7779,7 +7779,15 @@ if (!function_exists('_waHatSaglik')) {
             if (!empty($b['connected'])) {
                 $ilk = cache()->pull($ck);
                 if ($h->durum !== 'bagli') { try { DB::table('wa_hatlar')->where('id', $h->id)->update(['durum' => 'bagli', 'updated_at' => now()]); } catch (\Throwable $e) {} }
-                if ($ilk && !empty($ilk['alarm'])) _waHatAlarm($h, 'geri', $st);
+                $geriVer = $ilk && !empty($ilk['alarm']);
+                if (!$ilk && $h->durum !== 'bagli') { // cache deploy'da silinmiş olabilir → son "koptu" bildirimi son "geri"den yeniyse yine haber ver
+                    try {
+                        $sonK = DB::table('bildirim_kutusu')->where('anahtar', 'like', 'wa_hat:' . $h->id . ':koptu:%')->max('id');
+                        $sonG = DB::table('bildirim_kutusu')->where('anahtar', 'like', 'wa_hat:' . $h->id . ':geri:%')->max('id');
+                        $geriVer = $sonK && (int) $sonK > (int) $sonG;
+                    } catch (\Throwable $e) {}
+                }
+                if ($geriVer) _waHatAlarm($h, 'geri', $st);
                 $sonuc[$h->id] = 'bagli'; continue;
             }
             // Bridge yeniden başlamış ve oturumu yüklememiş → kendimiz başlat (kayıtlı cihaz varsa QR'sız döner)
@@ -7799,6 +7807,12 @@ if (!function_exists('_waHatSaglik')) {
 if (!function_exists('_waHatAlarm')) {
     function _waHatAlarm($h, $tur, $st = '')
     {
+        // Tekrar kilidi kalıcı kayıttan: cache (wa_hat_kopuk_*) her deploy'da temizleniyor → kopuk hat her push'ta yeniden "koptu" bildiriyordu
+        if ($tur === 'koptu') {
+            try {
+                if (DB::table('bildirim_kutusu')->where('anahtar', 'like', 'wa_hat:' . $h->id . ':koptu:%')->where('created_at', '>=', now()->subHours(6))->exists()) return;
+            } catch (\Throwable $e) {}
+        }
         $sid = (int) $h->sube_id;
         $ad = $h->ad . ($h->numara ? ' (' . $h->numara . ')' : '');
         $ids = [];
