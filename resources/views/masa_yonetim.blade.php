@@ -126,20 +126,27 @@ body.koyu .rk-flash.err{color:#fda4af}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
         <div>
           <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa adı <span style="color:var(--sub)">(boş = otomatik)</span></label>
-          <input type="text" name="ad" class="rk-inp" placeholder="Örn. Masa 5 / Teras 2">
+          <input type="text" name="ad" class="rk-inp" placeholder="Örn. Masa 5 / Teras 2" autocomplete="off">
         </div>
         <div>
           <label class="rk-lbl" style="margin-top:0;font-size:12px">Kapasite (kişi)</label>
-          <input type="number" name="kapasite" class="rk-inp" value="4" min="1" max="50">
+          <input type="number" name="kapasite" class="rk-inp" value="{{ session('son_kapasite', 4) }}" min="1" max="50">
         </div>
         <div>
           <label class="rk-lbl" style="margin-top:0;font-size:12px">Bölge</label>
-          <select name="bolge_id" class="rk-inp">
-            <option value="">Bölgesiz</option>
-            @foreach ($bolgeler as $b)
-              <option value="{{ $b->id }}">{{ $b->ad }}</option>
-            @endforeach
+          {{-- "Bölgesiz" yoktu aslında: boş seçim masayı ilk bölgeye koyuyordu → kaldırıldı; son kullanılan bölge seçili kalır --}}
+          <select name="bolge_id" id="meBolge" class="rk-inp" onchange="document.getElementById('meYeniBolge').style.display=this.value==='yeni'?'':'none';if(this.value==='yeni')document.querySelector('#meYeniBolge input').focus()">
+            @php $sonBolge = (int) session('son_bolge', 0); @endphp
+            @forelse ($bolgeler as $b)
+              <option value="{{ $b->id }}" {{ $sonBolge === (int) $b->id ? 'selected' : '' }}>{{ $b->ad }}</option>
+            @empty
+              <option value="">Salon (otomatik oluşur)</option>
+            @endforelse
+            <option value="yeni">+ Yeni bölge oluştur…</option>
           </select>
+          <div id="meYeniBolge" style="display:none;margin-top:8px">
+            <input type="text" name="yeni_bolge" class="rk-inp" maxlength="60" placeholder="Bölge adı (örn. Teras, Bahçe, VIP)" autocomplete="off">
+          </div>
         </div>
         <div>
           <button type="submit" class="rk-btn lg" style="background:var(--mor1);width:100%">

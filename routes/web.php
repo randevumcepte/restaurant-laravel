@@ -22653,10 +22653,28 @@ Route::post('/masa-yonetim/ekle', function (Request $r) {
     try {
         if (function_exists('_masaQrEnsure')) _masaQrEnsure($sid);
         $ad = trim((string) $r->input('ad'));
-        if ($ad === '') $ad = 'Masa ' . (DB::table('masalar')->where('sube_id', $sid)->count() + 1);
+        if ($ad === '') { // otomatik ad: aynı adlı masa (arşivdeki dahil) varsa sonraki boş numara
+            $n = DB::table('masalar')->where('sube_id', $sid)->count() + 1;
+            while (DB::table('masalar')->where('sube_id', $sid)->where('ad', 'Masa ' . $n)->exists()) $n++;
+            $ad = 'Masa ' . $n;
+        }
         $kapasite = max(1, min(50, (int) $r->input('kapasite', 4)));
-        $bolgeId = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
-        if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $sid)->exists()) $bolgeId = null;
+        if ($r->input('bolge_id') === 'yeni') {
+            // Masa eklerken yeni bölge: aynı adlı bölge varsa onu kullan, yoksa /isletme-duzeni/bolge-ekle ile aynı şekilde oluştur
+            $yb = mb_substr(trim((string) $r->input('yeni_bolge')), 0, 60);
+            if ($yb === '') return redirect()->back()->with('hata', 'Yeni bölge için bir ad yazın.');
+            $bolgeId = DB::table('bolgeler')->where('sube_id', $sid)->whereRaw('LOWER(ad) = ?', [mb_strtolower($yb)])->value('id');
+            if (!$bolgeId) {
+                $row = ['sube_id' => $sid, 'ad' => $yb, 'sira' => (int) (DB::table('bolgeler')->where('sube_id', $sid)->max('sira') ?? 0) + 1];
+                if (Schema::hasColumn('bolgeler', 'created_at')) { $row['created_at'] = now(); $row['updated_at'] = now(); }
+                $bolgeId = DB::table('bolgeler')->insertGetId($row);
+                try { (new \App\Services\SalonPlan($sid))->alanEklendi($bolgeId); } catch (\Throwable $e) { report($e); }
+                _duzenLog($sid, 'Bölge eklendi: ' . $yb);
+            }
+        } else {
+            $bolgeId = $r->filled('bolge_id') ? (int) $r->input('bolge_id') : null;
+            if ($bolgeId && !DB::table('bolgeler')->where('id', $bolgeId)->where('sube_id', $sid)->exists()) $bolgeId = null;
+        }
         if (!$bolgeId && function_exists('_masaVarsayilanBolge')) $bolgeId = _masaVarsayilanBolge($sid);
         $data = ['sube_id' => $sid, 'ad' => $ad, 'kapasite' => $kapasite, 'bolge_id' => $bolgeId, 'durum' => 'bos', 'arsiv' => 0, 'qr_token' => \Illuminate\Support\Str::random(18)];
         if (Schema::hasColumn('masalar', 'x')) { $data['x'] = 0; $data['y'] = 0; }
@@ -22664,6 +22682,7 @@ Route::post('/masa-yonetim/ekle', function (Request $r) {
         if (Schema::hasColumn('masalar', 'updated_at')) $data['updated_at'] = now();
         DB::table('masalar')->insertGetId($data);
         _duzenLog($sid, $ad . ' eklendi');
+        session(['son_bolge' => (int) $bolgeId, 'son_kapasite' => $kapasite]); // arka arkaya eklerken bölge/kapasite seçili kalsın
         return redirect()->back()->with('ok', $ad . ' eklendi (QR otomatik).');
     } catch (\Throwable $e) { return redirect()->back()->with('hata', 'Masa eklenemedi.'); }
 });
