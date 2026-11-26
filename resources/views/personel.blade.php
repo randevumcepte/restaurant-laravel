@@ -524,8 +524,9 @@ body.koyu #detayPanel .det-kart{background:#1b2235}
             </div>
           </div>
           <div class="p-net">
-            <div class="v" style="color:{{ $net > 0 ? 'var(--kirmizi)' : 'var(--yesil)' }}">{{ $tl($net) }}</div>
-            <div class="l">{{ $net > 0 ? 'ödenmedi' : 'kapandı' }}</div>
+            @php $maasYok = (float)($h['maas'] ?? 0) <= 0 && (float)($h['prim_hesap'] ?? 0) <= 0 && $net == 0; @endphp
+            <div class="v" style="color:{{ $maasYok ? '#94A3B8' : ($net > 0 ? 'var(--kirmizi)' : 'var(--yesil)') }}">{{ $tl($net) }}</div>
+            <div class="l">{{ $maasYok ? 'maaş tanımsız' : ($net > 0 ? 'ödenmedi' : 'kapandı') }}</div>
           </div>
         </div>
       @endforeach
