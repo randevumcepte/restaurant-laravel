@@ -88,7 +88,7 @@ if (!function_exists('_panelMenuVeri')) {
             ],
             'Ayarlar & Entegrasyon' => [
                 ['/isletme-duzeni', 'space_dashboard', 'İşletme Düzeni (Bölge/Masa/Garson/Kasa)', '#7C3AED'],
-                ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', '#7C3AED'], // İşletme Düzeni > Genel Ayarlar kartları menüde de
+                ['/masa-yonetim', 'qr_code_2', 'Masa & QR Yönetimi', '#7C3AED'], // İşletme Düzeni > Genel Ayarlar kartları menüde de
                 ['/salon-sema', 'map', 'Salon Şema', '#0EA5E9'],
                 ['/odeme-ayar', 'shield', 'Kaçak Önleme / Ödeme', '#F43F5E'],
                 ['/whatsapp', 'chat', 'WhatsApp Yönetimi', '#22C55E'],

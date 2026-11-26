@@ -371,7 +371,7 @@
     <div class="idz-kart-bas"><span class="material-icons-outlined idz-mor">settings</span><h3>Genel Ayarlar</h3><span class="idz-esnek"></span><a class="idz-btn ikon" id="idzAyarYeniSekme" href="#" target="_blank" rel="noopener" title="Açık sayfayı yeni sekmede aç" aria-label="Yeni sekmede aç" hidden><span class="material-icons-outlined">open_in_new</span></a></div>
     <div class="idz-ayar-grid">
       @foreach ([
-        ['/masa-yonetim', 'qr_code_2', 'QR Afişleri / Arşiv', 'QR indir ve yazdır, arşivlenen masaları geri al', '#7C3AED'],
+        ['/masa-yonetim', 'qr_code_2', 'Masa & QR Yönetimi', 'Masa ekle, QR indir ve yazdır, arşivlenen masaları geri al', '#7C3AED'],
         ['/salon-sema', 'grid_on', 'Salon Şeması', 'Kat ve parsel krokisi, Masa Planı ile eşitlenir', '#059669'],
         ['/isletme-konum', 'my_location', 'İşletme Konum', 'Harita konumu ve teslimat', '#D97706'],
         ['/yazici-ayarlari', 'print', 'Yazıcı Ayarları', 'Mutfak ve kasa yazıcıları', '#2563EB'],
