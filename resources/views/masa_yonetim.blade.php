@@ -288,8 +288,11 @@ body.koyu .rk-flash.err{color:#fda4af}
           <span class="material-icons-outlined" style="font-size:30px;color:var(--sub2);flex-shrink:0">qr_code_2</span>
           <div style="min-width:0;flex:1">
             <div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $m['ad'] }}</div>
-            <div style="font-size:11.5px;color:var(--sub)">QR korunuyor · kalıcı kod</div>
+            <div style="font-size:11.5px;color:var(--sub)">{{ $m['bolge'] ?: 'Bölgesiz' }} · {{ $m['kapasite'] }} kişi · QR korunuyor</div>
           </div>
+          <button type="button" class="rk-btn bos" style="flex-shrink:0" onclick="masaDuzenleAc(@js($m))">
+            <span class="material-icons-outlined" style="font-size:16px">edit</span> Düzenle
+          </button>
           <form method="POST" action="/masa-yonetim/geri" style="flex-shrink:0">
             @csrf
             <input type="hidden" name="id" value="{{ $m['id'] }}">
@@ -424,6 +427,8 @@ body.koyu .rk-flash.err{color:#fda4af}
     document.getElementById('tab-aktif').classList.toggle('akt', aktif);
     document.getElementById('tab-arsiv').classList.toggle('akt', !aktif);
   };
+  if (location.hash === '#arsiv') window.sekmeGec('arsiv'); // arşivdeki masa düzenlenince arşiv sekmesine dön
+  var duzenleArsiv = false;
 
   // ---- QR URL oluştur ----
   function qrImg(url, size, kenar){
@@ -448,6 +453,7 @@ body.koyu .rk-flash.err{color:#fda4af}
   var duzenleModal  = document.getElementById('duzenleModal');
   var duzenleForm   = document.getElementById('duzenleForm');
   window.masaDuzenleAc = function(m){
+    duzenleArsiv = parseInt(m.arsiv) === 1;
     document.getElementById('duzenleMasaId').value   = m.id;
     document.getElementById('duzenleAd').value       = m.ad || '';
     document.getElementById('duzenleKapasite').value = m.kapasite || 4;
@@ -468,7 +474,12 @@ body.koyu .rk-flash.err{color:#fda4af}
       body: JSON.stringify({ id: parseInt(id), ad: ad, kapasite: parseInt(kap), bolge_id: parseInt(document.getElementById('duzenleBolge').value) || null })
     }).then(function(r){ return r.json(); }).then(function(d){
       window.duzenleKapat();
-      if(d.ok == 1){ location.href = '/masa-yonetim?b=' + (document.getElementById('duzenleBolge').value || ''); }
+      if(d.ok == 1){
+        var hedef = '/masa-yonetim?b=' + (document.getElementById('duzenleBolge').value || '') + (duzenleArsiv ? '#arsiv' : '');
+        var ayniSayfa = location.pathname + location.search === hedef.split('#')[0];
+        location.href = hedef;
+        if (ayniSayfa) location.reload(); // yalnız # değişince tarayıcı yenilemez
+      }
       else { alert(d.hata || 'Güncelleme başarısız.'); }
     }).catch(function(){ alert('Sunucuya ulaşılamadı.'); });
   });
