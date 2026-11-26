@@ -289,7 +289,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
         {{-- Amber uyarı bandı (Flutter recetesiz > 0) --}}
         @if ($recetesizSayi > 0)
         <div class="rct-uyari" id="rctUyari">
-            <span class="material-icons-outlined">info_outline</span>
+            <span class="material-icons-outlined">info</span>
             <p>{{ $recetesizSayi }} ürünün reçetesi yok — food-cost hesaplanamıyor.</p>
         </div>
         @endif
