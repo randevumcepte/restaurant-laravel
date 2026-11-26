@@ -52,6 +52,27 @@ body.koyu #my-root{--card:#161d2e;--ink:#e2e8f0;--sub:#94a3b8;--sub2:#64748b;--l
 /* ---------- Masa ekle bölümü ---------- */
 #my-root .ekle-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
 #my-root .ekle-card .rk-inp{background:var(--bg)}
+/* ---------- Bölge sekmeleri + bölge paneli ---------- */
+#my-root .bs-serit{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+#my-root .bs{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s}
+#my-root .bs:hover{border-color:var(--mor1)}
+#my-root .bs .n{font-size:11.5px;font-weight:700;color:var(--sub);background:var(--bg);border-radius:10px;padding:1px 8px}
+#my-root .bs.akt{background:var(--mor1);border-color:var(--mor1);color:#fff}
+#my-root .bs.akt .n{background:rgba(255,255,255,.22);color:#fff}
+#my-root .bs.ekle{border-style:dashed;color:var(--mor1);background:transparent}
+#my-root .bp-bas{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+#my-root .bp-ad{font-size:18px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#my-root .bp-ad .onek{font-size:12px;font-weight:700;color:var(--mor1);background:color-mix(in srgb,var(--mor1) 12%,transparent);border-radius:8px;padding:2px 8px}
+#my-root .bp-alt{font-size:12.5px;color:var(--sub);margin-top:2px}
+#my-root .ekle-satir{display:grid;grid-template-columns:110px 130px minmax(180px,1fr) 180px;gap:12px;align-items:end}
+#my-root .ekle-satir .rk-lbl,.bolge-form .rk-lbl{margin-top:0;font-size:12px}
+@media(max-width:760px){#my-root .ekle-satir{grid-template-columns:1fr 1fr}#my-root .ekle-satir .ad-kutu,#my-root .ekle-satir>div:last-child{grid-column:1/-1}}
+.bolge-form .bf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.bolge-form .rk-inp{background:var(--bg)}
+.bolge-form .bf-onizle{font-size:12.5px;color:var(--mor1);font-weight:600;margin-top:10px;min-height:18px}
+@media(max-width:560px){.bolge-form .bf-grid{grid-template-columns:1fr 1fr}}
+#bolgeModal,#bolgeDuzModal{display:none;position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px}
+#bolgeModal .modal-box,#bolgeDuzModal .modal-box{background:var(--card);border-radius:20px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 /* ---------- Modal ---------- */
 #afisModal{display:none;position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px}
 #afisModal .modal-box{background:var(--card);border-radius:20px;max-width:360px;width:100%;padding:24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)}
@@ -76,14 +97,28 @@ body.koyu .rk-flash.err{color:#fda4af}
   $aktif    = $aktif    ?? [];
   $arsiv    = $arsiv    ?? [];
   $bolgeler = $bolgeler ?? collect();
+  $seciliBolge = (int) ($seciliBolge ?? 0);
 
-  // Aktif masaları bölgeye göre grupla
+  // Masaları bölge id'sine göre grupla (bölgesi silinmiş eski masalar → 0 = "Bölgesiz")
+  $bolgeIdler = $bolgeler->pluck('id')->map(fn ($x) => (int) $x)->all();
   $gruplar = [];
   foreach ($aktif as $m) {
-      $bk = !empty($m['bolge']) ? $m['bolge'] : 'Bölgesiz';
+      $bk = in_array((int) ($m['bolge_id'] ?? 0), $bolgeIdler, true) ? (int) $m['bolge_id'] : 0;
       $gruplar[$bk][] = $m;
   }
-  ksort($gruplar);
+  $sekmeler = $bolgeler->map(fn ($b) => ['id' => (int) $b->id, 'ad' => $b->ad, 'on_ek' => $b->on_ek ?: ''])->values()->all();
+  if (!empty($gruplar[0])) $sekmeler[] = ['id' => 0, 'ad' => 'Bölgesiz', 'on_ek' => ''];
+  if (!collect($sekmeler)->contains('id', $seciliBolge)) $seciliBolge = $sekmeler[0]['id'] ?? 0;
+  // Sıradaki otomatik ad (arşivdekiler dahil en büyük numara + 1) — "Otomatik: T9" ipucu için
+  $sonrakiAd = [];
+  foreach ($sekmeler as $s) {
+      if ($s['on_ek'] === '') continue;
+      $max = 0;
+      foreach (array_merge($aktif, $arsiv) as $m)
+          if (preg_match('/^' . preg_quote($s['on_ek'], '/') . '(\d+)$/u', (string) $m['ad'], $mm)) $max = max($max, (int) $mm[1]);
+      $sonrakiAd[$s['id']] = $s['on_ek'] . ($max + 1);
+  }
+  $sonKapasite = (int) session('son_kapasite', 4);
   $aktifSubeAd = $aktifSubeAd ?? session('sube_adi', 'Restoran');
 
   // Düzenle AJAX için: session'daki personelin api_token'ı
@@ -112,110 +147,127 @@ body.koyu .rk-flash.err{color:#fda4af}
   </div>
 </div>
 
-{{-- ===== PANEL: AKTİF MASALAR ===== --}}
+{{-- ===== PANEL: AKTİF MASALAR — önce bölge, masa bölgenin içinde eklenir (Toast/Square/Lightspeed düzeni) ===== --}}
 <div id="panel-aktif">
 
-  {{-- Masa Ekle bölümü (Flutter: FAB + dialog → web: inline form) --}}
-  <div class="ekle-card">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="width:4px;height:18px;border-radius:3px;background:var(--mor1);display:inline-block;flex-shrink:0"></span>
-      <span style="font-size:14px;font-weight:800;color:var(--ink)">Masa Ekle</span>
-    </div>
-    <form method="POST" action="/masa-yonetim/ekle">
-      @csrf
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
-        <div>
-          <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa adı <span style="color:var(--sub)">(boş = otomatik)</span></label>
-          <input type="text" name="ad" class="rk-inp" placeholder="Örn. Masa 5 / Teras 2" autocomplete="off">
-        </div>
-        <div>
-          <label class="rk-lbl" style="margin-top:0;font-size:12px">Kapasite (kişi)</label>
-          <input type="number" name="kapasite" class="rk-inp" value="{{ session('son_kapasite', 4) }}" min="1" max="50">
-        </div>
-        <div>
-          <label class="rk-lbl" style="margin-top:0;font-size:12px">Bölge</label>
-          {{-- "Bölgesiz" yoktu aslında: boş seçim masayı ilk bölgeye koyuyordu → kaldırıldı; son kullanılan bölge seçili kalır --}}
-          <select name="bolge_id" id="meBolge" class="rk-inp" onchange="document.getElementById('meYeniBolge').style.display=this.value==='yeni'?'':'none';if(this.value==='yeni')document.querySelector('#meYeniBolge input').focus()">
-            @php $sonBolge = (int) session('son_bolge', 0); @endphp
-            @forelse ($bolgeler as $b)
-              <option value="{{ $b->id }}" {{ $sonBolge === (int) $b->id ? 'selected' : '' }}>{{ $b->ad }}</option>
-            @empty
-              <option value="">Salon (otomatik oluşur)</option>
-            @endforelse
-            <option value="yeni">+ Yeni bölge oluştur…</option>
-          </select>
-          <div id="meYeniBolge" style="display:none;margin-top:8px">
-            <input type="text" name="yeni_bolge" class="rk-inp" maxlength="60" placeholder="Bölge adı (örn. Teras, Bahçe, VIP)" autocomplete="off">
-          </div>
-        </div>
-        <div>
-          <button type="submit" class="rk-btn lg" style="background:var(--mor1);width:100%">
-            <span class="material-icons-outlined" style="font-size:18px">add</span> Ekle (QR otomatik)
-          </button>
-        </div>
+  @if (empty($sekmeler))
+    {{-- Hiç bölge yok: ilk bölgeyi masalarıyla birlikte oluştur --}}
+    <div class="ekle-card" style="max-width:620px;margin:10px auto">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="width:4px;height:18px;border-radius:3px;background:var(--mor1);display:inline-block;flex-shrink:0"></span>
+        <span style="font-size:15px;font-weight:800;color:var(--ink)">İlk bölgenizi oluşturun</span>
       </div>
-    </form>
-    <div style="font-size:11.5px;color:var(--sub);margin-top:10px">Her masa için kalıcı QR kodu otomatik oluşturulur ve asla değişmez.</div>
-  </div>
-
-  {{-- Aktif masa grid --}}
-  @if (empty($aktif))
-    <div class="my-bos">
-      <span class="material-icons-outlined">table_restaurant</span>
-      <div class="b">Henüz masa yok</div>
-      <div class="s">Yukarıdan "Masa Ekle" ile başla.<br>Her masa için QR kod otomatik oluşur.</div>
+      <div style="font-size:12.5px;color:var(--sub);margin-bottom:14px;line-height:1.5">Bölge, masaların bulunduğu alan: Salon, Teras, Bahçe, Bar… Masalar bölgenin ön ekiyle otomatik adlanır (Salon → S1, S2…). Her masaya kalıcı QR kodu verilir.</div>
+      @include('masa_yonetim_bolge_form', ['formId' => 'ilk'])
     </div>
   @else
-    @foreach ($gruplar as $bolge => $masalar)
-      <div style="margin-bottom:24px">
-        <div class="bolge-baslik">
-          <div class="bolge-cubuk"></div>
-          <span class="bolge-ad">{{ $bolge }}</span>
-          <span class="bolge-sayi">{{ count($masalar) }}</span>
-        </div>
-        <div class="my-grid">
-          @foreach ($masalar as $m)
-            @php $qrOk = !empty($m['qr_url']); @endphp
-            <div class="my-kart" onclick="masaAfis(@js($m))">
-              {{-- QR görsel alanı (Flutter: Expanded + Container beyaz zemin + QrImageView) --}}
-              <div class="my-qr-wrap">
-                @if ($qrOk)
-                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data={{ urlencode($m['qr_url']) }}"
-                       alt="QR {{ $m['ad'] }}" loading="lazy">
-                @else
-                  <span class="material-icons-outlined qr-ph">qr_code_2</span>
-                @endif
-              </div>
+    {{-- Bölge sekmeleri --}}
+    <div class="bs-serit">
+      @foreach ($sekmeler as $s)
+        @php $say = count($gruplar[$s['id']] ?? []); @endphp
+        <button type="button" class="bs{{ $s['id'] === $seciliBolge ? ' akt' : '' }}" data-b="{{ $s['id'] }}" onclick="bolgeSec({{ $s['id'] }})">
+          {{ $s['ad'] }}<span class="n">{{ $say }}</span>
+        </button>
+      @endforeach
+      <button type="button" class="bs ekle" onclick="bolgeEkleAc()">
+        <span class="material-icons-outlined" style="font-size:17px">add</span> Bölge Ekle
+      </button>
+    </div>
 
-              {{-- Ad + kapasite + bölge (Flutter: Text ad bold + Text sub) --}}
-              <div style="margin-top:8px;text-align:center">
-                <div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $m['ad'] }}</div>
-                <div style="font-size:11px;color:var(--sub)">{{ $m['kapasite'] }} kişi{{ !empty($m['bolge']) ? ' · ' . $m['bolge'] : '' }}</div>
-              </div>
-
-              {{-- Mini buton satırı (Flutter: QR / Düzenle / Sil) --}}
-              <div class="my-kart-btns" onclick="event.stopPropagation()">
-                {{-- QR görüntüle --}}
-                <button type="button" class="my-icon-btn" title="QR Afişi" style="color:var(--mor1)" onclick="masaAfis(@js($m))">
-                  <span class="material-icons-outlined">visibility</span>
-                </button>
-                {{-- QR indir --}}
-                <button type="button" class="my-icon-btn" title="QR kodunu indir (PNG)" style="color:var(--yesil)" onclick="masaIndir(@js($m), this)">
-                  <span class="material-icons-outlined">download</span>
-                </button>
-                {{-- Düzenle --}}
-                <button type="button" class="my-icon-btn" title="Düzenle" style="color:var(--mavi)" onclick="masaDuzenleAc(@js($m))">
-                  <span class="material-icons-outlined">edit</span>
-                </button>
-                {{-- Arşivle --}}
-                <button type="button" class="my-icon-btn" title="Arşivle" style="color:var(--kirmizi)"
-                        onclick="masaSilOnay(@js($m['id']), @js($m['ad']))">
-                  <span class="material-icons-outlined">delete_outline</span>
-                </button>
-              </div>
+    @foreach ($sekmeler as $s)
+      @php $masalar = $gruplar[$s['id']] ?? []; $kisi = array_sum(array_column($masalar, 'kapasite')); @endphp
+      <div class="bp" data-bp="{{ $s['id'] }}" style="{{ $s['id'] === $seciliBolge ? '' : 'display:none' }}">
+        {{-- Bölge başlığı + işlemler --}}
+        <div class="bp-bas">
+          <div style="min-width:0">
+            <div class="bp-ad">{{ $s['ad'] }}
+              @if ($s['on_ek'] !== '')<span class="onek" title="Otomatik masa adı ön eki">Ön ek: {{ $s['on_ek'] }}</span>@endif
             </div>
-          @endforeach
+            <div class="bp-alt">{{ count($masalar) }} masa · {{ $kisi }} kişilik oturma</div>
+          </div>
+          @if ($s['id'] > 0)
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button type="button" class="rk-btn bos" onclick="bolgeDuzenleAc(@js($s))">
+                <span class="material-icons-outlined" style="font-size:17px">edit</span> Düzenle
+              </button>
+              <button type="button" class="rk-btn bos" style="color:var(--kirmizi)" onclick="bolgeSilOnay(@js($s), {{ count($masalar) }})">
+                <span class="material-icons-outlined" style="font-size:17px">delete_outline</span> Sil
+              </button>
+            </div>
+          @endif
         </div>
+
+        {{-- Bu bölgeye masa ekle (tek / toplu) --}}
+        @if ($s['id'] > 0)
+          <form method="POST" action="/masa-yonetim/ekle" class="ekle-card ekle-satir">
+            @csrf
+            <input type="hidden" name="bolge_id" value="{{ $s['id'] }}">
+            <div>
+              <label class="rk-lbl">Kaç masa</label>
+              <input type="number" name="adet" class="rk-inp" value="1" min="1" max="100" oninput="adetDegisti(this)">
+            </div>
+            <div>
+              <label class="rk-lbl">Kapasite (kişi)</label>
+              <input type="number" name="kapasite" class="rk-inp" value="{{ $sonKapasite }}" min="1" max="50">
+            </div>
+            <div class="ad-kutu">
+              <label class="rk-lbl">Masa adı <span style="color:var(--sub)">(boş = otomatik)</span></label>
+              <input type="text" name="ad" class="rk-inp" maxlength="40" autocomplete="off" placeholder="Otomatik: {{ $sonrakiAd[$s['id']] ?? 'sıradaki numara' }}">
+            </div>
+            <div>
+              <button type="submit" class="rk-btn lg" style="background:var(--mor1);width:100%;justify-content:center">
+                <span class="material-icons-outlined" style="font-size:18px">add</span> <span class="ekle-yazi">Masa Ekle</span>
+              </button>
+            </div>
+          </form>
+        @endif
+
+        @if (empty($masalar))
+          <div class="my-bos" style="padding:40px 20px">
+            <span class="material-icons-outlined">table_restaurant</span>
+            <div class="b">{{ $s['ad'] }} bölgesinde masa yok</div>
+            <div class="s">Yukarıdan "Kaç masa" yazıp ekleyin — örn. 8 yazarsanız {{ $s['on_ek'] ?: 'M' }}1 – {{ $s['on_ek'] ?: 'M' }}8 tek seferde açılır.</div>
+          </div>
+        @else
+          <div class="my-grid">
+            @foreach ($masalar as $m)
+              @php $qrOk = !empty($m['qr_url']); @endphp
+              <div class="my-kart" onclick="masaAfis(@js($m))">
+                {{-- QR görsel alanı (Flutter: Expanded + Container beyaz zemin + QrImageView) --}}
+                <div class="my-qr-wrap">
+                  @if ($qrOk)
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data={{ urlencode($m['qr_url']) }}"
+                         alt="QR {{ $m['ad'] }}" loading="lazy">
+                  @else
+                    <span class="material-icons-outlined qr-ph">qr_code_2</span>
+                  @endif
+                </div>
+
+                <div style="margin-top:8px;text-align:center">
+                  <div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $m['ad'] }}</div>
+                  <div style="font-size:11px;color:var(--sub)">{{ $m['kapasite'] }} kişi</div>
+                </div>
+
+                {{-- Mini buton satırı (Flutter: QR / Düzenle / Sil) --}}
+                <div class="my-kart-btns" onclick="event.stopPropagation()">
+                  <button type="button" class="my-icon-btn" title="QR Afişi" style="color:var(--mor1)" onclick="masaAfis(@js($m))">
+                    <span class="material-icons-outlined">visibility</span>
+                  </button>
+                  <button type="button" class="my-icon-btn" title="QR kodunu indir (PNG)" style="color:var(--yesil)" onclick="masaIndir(@js($m), this)">
+                    <span class="material-icons-outlined">download</span>
+                  </button>
+                  <button type="button" class="my-icon-btn" title="Düzenle / bölge değiştir" style="color:var(--mavi)" onclick="masaDuzenleAc(@js($m))">
+                    <span class="material-icons-outlined">edit</span>
+                  </button>
+                  <button type="button" class="my-icon-btn" title="Arşivle" style="color:var(--kirmizi)"
+                          onclick="masaSilOnay(@js($m['id']), @js($m['ad']))">
+                    <span class="material-icons-outlined">delete_outline</span>
+                  </button>
+                </div>
+              </div>
+            @endforeach
+          </div>
+        @endif
       </div>
     @endforeach
   @endif
@@ -288,6 +340,14 @@ body.koyu .rk-flash.err{color:#fda4af}
         <label class="rk-lbl" style="margin-top:0;font-size:12px">Kapasite (kişi)</label>
         <input type="number" name="kapasite" id="duzenleKapasite" class="rk-inp" min="1" max="50">
       </div>
+      <div style="margin-bottom:12px">
+        <label class="rk-lbl" style="margin-top:0;font-size:12px">Bölge <span style="color:var(--sub)">(başka bölgeye taşı)</span></label>
+        <select id="duzenleBolge" class="rk-inp">
+          @foreach ($bolgeler as $b)
+            <option value="{{ $b->id }}">{{ $b->ad }}</option>
+          @endforeach
+        </select>
+      </div>
       <div style="font-size:11px;color:var(--sub);margin-bottom:16px">QR kodu değişmez.</div>
       <div style="display:flex;gap:10px">
         <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="duzenleKapat()">İptal</button>
@@ -298,6 +358,47 @@ body.koyu .rk-flash.err{color:#fda4af}
     </form>
   </div>
 </div>
+
+{{-- ===== BÖLGE EKLE MODALI ===== --}}
+<div id="bolgeModal">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:16px;font-weight:800;color:var(--ink)">Yeni Bölge</div>
+      <button type="button" class="my-icon-btn" style="color:var(--sub)" onclick="bolgeEkleKapat()"><span class="material-icons-outlined">close</span></button>
+    </div>
+    @include('masa_yonetim_bolge_form', ['formId' => 'modal'])
+  </div>
+</div>
+
+{{-- ===== BÖLGE DÜZENLE MODALI ===== --}}
+<div id="bolgeDuzModal">
+  <div class="modal-box">
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:16px">Bölgeyi Düzenle</div>
+    <form method="POST" action="/isletme-duzeni/bolge-duzenle">
+      @csrf
+      <input type="hidden" name="id" id="bdId">
+      <div style="margin-bottom:12px">
+        <label class="rk-lbl" style="margin-top:0;font-size:12px">Bölge adı</label>
+        <input type="text" name="ad" id="bdAd" class="rk-inp" maxlength="60" required>
+      </div>
+      <div style="margin-bottom:8px">
+        <label class="rk-lbl" style="margin-top:0;font-size:12px">Masa ön eki</label>
+        <input type="text" name="on_ek" id="bdOnEk" class="rk-inp" maxlength="6" style="text-transform:uppercase">
+      </div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:16px;line-height:1.5">Ön ek yalnız bundan sonra eklenecek masaların otomatik adını belirler; mevcut masaların adı ve QR kodu değişmez.</div>
+      <div style="display:flex;gap:10px">
+        <button type="button" class="rk-btn bos" style="flex:1;justify-content:center" onclick="bolgeDuzKapat()">İptal</button>
+        <button type="submit" class="rk-btn" style="flex:1;justify-content:center;background:var(--mavi)">
+          <span class="material-icons-outlined" style="font-size:16px">save</span> Kaydet
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<form method="POST" id="bolgeSilForm" action="/isletme-duzeni/bolge-sil" style="display:none">
+  @csrf
+  <input type="hidden" name="id" id="bolgeSilId">
+</form>
 
 {{-- ===== GİZLİ SİL FORMU ===== --}}
 <form method="POST" id="silForm" action="/masa-yonetim/sil" style="display:none">
@@ -350,6 +451,7 @@ body.koyu .rk-flash.err{color:#fda4af}
     document.getElementById('duzenleMasaId').value   = m.id;
     document.getElementById('duzenleAd').value       = m.ad || '';
     document.getElementById('duzenleKapasite').value = m.kapasite || 4;
+    if (m.bolge_id) document.getElementById('duzenleBolge').value = String(m.bolge_id);
     duzenleModal.style.display = 'flex';
   };
   window.duzenleKapat = function(){ duzenleModal.style.display = 'none'; };
@@ -363,10 +465,10 @@ body.koyu .rk-flash.err{color:#fda4af}
     fetch('/api/patron/masa-guncelle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_TOKEN, 'X-CSRF-TOKEN': (window.csrf || document.querySelector('meta[name=csrf-token]')?.content || '') },
-      body: JSON.stringify({ id: parseInt(id), ad: ad, kapasite: parseInt(kap) })
+      body: JSON.stringify({ id: parseInt(id), ad: ad, kapasite: parseInt(kap), bolge_id: parseInt(document.getElementById('duzenleBolge').value) || null })
     }).then(function(r){ return r.json(); }).then(function(d){
       window.duzenleKapat();
-      if(d.ok == 1){ location.reload(); }
+      if(d.ok == 1){ location.href = '/masa-yonetim?b=' + (document.getElementById('duzenleBolge').value || ''); }
       else { alert(d.hata || 'Güncelleme başarısız.'); }
     }).catch(function(){ alert('Sunucuya ulaşılamadı.'); });
   });
@@ -492,11 +594,68 @@ body.koyu .rk-flash.err{color:#fda4af}
     });
   };
 
+  // ---- Bölge sekmesi seç (sayfa yenilenmeden; adres ?b= ile hatırlanır) ----
+  window.bolgeSec = function(id){
+    document.querySelectorAll('#my-root .bs[data-b]').forEach(function(b){ b.classList.toggle('akt', b.dataset.b == id); });
+    document.querySelectorAll('#my-root .bp').forEach(function(p){ p.style.display = p.dataset.bp == id ? '' : 'none'; });
+    try { history.replaceState(null, '', '/masa-yonetim?b=' + id); } catch(e){}
+  };
+  // Toplu eklemede ad kutusu kapanır (adlar otomatik: T1, T2…)
+  window.adetDegisti = function(inp){
+    var f = inp.form, n = parseInt(inp.value) || 1, ad = f.querySelector('input[name=ad]');
+    ad.disabled = n > 1; if (n > 1) ad.value = '';
+    f.querySelector('.ekle-yazi').textContent = n > 1 ? n + ' Masa Ekle' : 'Masa Ekle';
+  };
+
+  // ---- Bölge oluştur: ön ek önerisi + oluşacak masaların önizlemesi ----
+  var KULLANILAN_ONEK = @js(collect($bolgeler)->pluck('on_ek')->filter()->map(fn ($x) => mb_strtoupper($x))->values());
+  function onEkTemiz(s){ return String(s||'').replace(/i/g,'İ').replace(/ı/g,'I').toLocaleUpperCase('tr-TR').replace(/[^\p{L}\p{N}]/gu,'').slice(0,6); }
+  function onEkOner(ad){
+    var t = onEkTemiz(ad) || 'M';
+    for (var n = 1; n <= t.length; n++) { var a = t.slice(0, n); if (KULLANILAN_ONEK.indexOf(a) < 0) return a; }
+    return t;
+  }
+  window.bfOnizle = function(f, adDegisti){
+    var ad = f.querySelector('[name=ad]').value.trim(), oe = f.querySelector('[name=on_ek]');
+    if (adDegisti && !oe.dataset.elle) oe.value = ad ? onEkOner(ad) : '';
+    var on = onEkTemiz(oe.value) || (ad ? onEkOner(ad) : ''), adet = parseInt(f.querySelector('[name=adet]').value) || 0, kutu = f.querySelector('.bf-onizle');
+    if (!ad) { kutu.textContent = ''; return; }
+    if (KULLANILAN_ONEK.indexOf(on) >= 0) { kutu.style.color = 'var(--kirmizi)'; kutu.textContent = '"' + on + '" ön eki başka bir bölgede kullanılıyor.'; return; }
+    kutu.style.color = '';
+    kutu.textContent = adet > 0
+      ? 'Oluşacak masalar: ' + on + '1' + (adet > 1 ? ' – ' + on + adet : '') + ' (' + adet + ' masa, her birine kalıcı QR)'
+      : 'Masalar ' + on + '1, ' + on + '2… diye adlanır. Masaları sonra ekleyebilirsiniz.';
+  };
+  var bolgeModal = document.getElementById('bolgeModal');
+  window.bolgeEkleAc = function(){ bolgeModal.style.display = 'flex'; setTimeout(function(){ bolgeModal.querySelector('[name=ad]').focus(); }, 50); };
+  window.bolgeEkleKapat = function(){ bolgeModal.style.display = 'none'; };
+  bolgeModal.addEventListener('click', function(e){ if(e.target === bolgeModal) window.bolgeEkleKapat(); });
+
+  // ---- Bölge düzenle / sil ----
+  var bolgeDuzModal = document.getElementById('bolgeDuzModal');
+  window.bolgeDuzenleAc = function(s){
+    document.getElementById('bdId').value = s.id;
+    document.getElementById('bdAd').value = s.ad || '';
+    document.getElementById('bdOnEk').value = s.on_ek || '';
+    bolgeDuzModal.style.display = 'flex';
+  };
+  window.bolgeDuzKapat = function(){ bolgeDuzModal.style.display = 'none'; };
+  bolgeDuzModal.addEventListener('click', function(e){ if(e.target === bolgeDuzModal) window.bolgeDuzKapat(); });
+  window.bolgeSilOnay = function(s, masaSay){
+    if (masaSay > 0) { alert(s.ad + ' bölgesinde ' + masaSay + ' masa var.\n\nÖnce masaları başka bölgeye taşıyın (masa kartında kalem → Bölge) ya da arşivleyin.'); return; }
+    rkOnay(s.ad + ' bölgesi silinsin mi?', function(){
+      document.getElementById('bolgeSilId').value = s.id;
+      document.getElementById('bolgeSilForm').submit();
+    }, 'var(--kirmizi)', 'Sil');
+  };
+
   // ---- ESC kapat ----
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape'){
       if(afisModal.style.display==='flex') window.afisKapat();
       if(duzenleModal.style.display==='flex') window.duzenleKapat();
+      if(bolgeModal.style.display==='flex') window.bolgeEkleKapat();
+      if(bolgeDuzModal.style.display==='flex') window.bolgeDuzKapat();
     }
   });
 })();
