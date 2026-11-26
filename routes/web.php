@@ -6567,12 +6567,12 @@ if (!function_exists('_masaDegisimOncesi')) {
         if (array_key_exists('arsiv', $upd) && (int) $upd['arsiv'] !== (int) ($m->arsiv ?? 0)) _masaDegisimYaz($m->sube_id, $m->id, (int) $upd['arsiv'] ? 'arsiv' : 'geri', null, null, $p);
     }
 }
-// Raporlarda masa adı: adisyon damgalıysa o anki ad (+ "şimdi X"), değilse güncel ad. $as = sütun takma adı
+// Raporlarda masa adı: adisyon damgalıysa o anki ad ("Masa 1 → S0"), değilse güncel ad. $as = sütun takma adı
 if (!function_exists('_masaAdSql')) {
     function _masaAdSql($as = 'masa', $a = 'adisyonlar', $m = 'masalar')
     {
         _masaDegisimEnsure();
-        $birles = DB::getDriverName() === 'mysql' ? "CONCAT($a.masa_ad, ' (şimdi ', $m.ad, ')')" : "($a.masa_ad || ' (şimdi ' || $m.ad || ')')";
+        $birles = DB::getDriverName() === 'mysql' ? "CONCAT($a.masa_ad, ' → ', $m.ad)" : "($a.masa_ad || ' → ' || $m.ad)";
         return DB::raw("CASE WHEN $a.masa_ad IS NOT NULL AND $m.ad IS NOT NULL AND $a.masa_ad <> $m.ad THEN $birles ELSE COALESCE($m.ad, $a.masa_ad) END as $as");
     }
 }

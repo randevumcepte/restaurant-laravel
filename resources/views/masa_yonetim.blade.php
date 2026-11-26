@@ -355,7 +355,7 @@ body.koyu .rk-flash.err{color:#fda4af}
           @endforeach
         </select>
       </div>
-      <div style="font-size:11px;color:var(--sub);margin-bottom:12px;line-height:1.5">QR kodu değişmez. Ad ya da bölge değişirse geçmiş raporlar siparişin verildiği andaki adı gösterir ("Masa 1 (şimdi S0)").</div>
+      <div style="font-size:11px;color:var(--sub);margin-bottom:12px;line-height:1.5">QR kodu değişmez. Ad ya da bölge değişirse geçmiş raporlar siparişin verildiği andaki adı gösterir ("Masa 1 → S0").</div>
       <div id="duzenleGecmis" style="display:none;margin-bottom:16px;border-top:1px solid var(--line);padding-top:10px">
         <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Değişim geçmişi</div>
         <div id="duzenleGecmisListe" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
