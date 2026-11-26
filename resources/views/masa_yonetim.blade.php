@@ -294,9 +294,7 @@ body.koyu .rk-flash.err{color:#fda4af}
             <div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ $m['ad'] }}</div>
             <div style="font-size:11.5px;color:var(--sub)">{{ $m['bolge'] ?: 'Bölgesiz' }} · {{ $m['kapasite'] }} kişi · QR korunuyor</div>
           </div>
-          <button type="button" class="rk-btn bos" style="flex-shrink:0" onclick="masaDuzenleAc(@js($m))">
-            <span class="material-icons-outlined" style="font-size:16px">edit</span> Düzenle
-          </button>
+          {{-- Tek buton: Geri Getir penceresi ad/bölge/kapasite + değişim geçmişini gösterir --}}
           <button type="button" class="rk-btn" style="flex-shrink:0;background:var(--yesil)" onclick="masaGeriAc(@js($m))">
             <span class="material-icons-outlined" style="font-size:16px">restore</span> Geri Getir
           </button>
