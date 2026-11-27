@@ -251,7 +251,9 @@ if (!function_exists('_eFaturaKes')) {
     {
         $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $sube->id)->first();
         $tutar = (float) $adisyon->toplam;
-        $matrah = round($tutar / 1.10, 2);
+        // Ürün bazlı KDV: kalemlerin oran payları (yiyecek %10, alkol %20 ...; işletme panelden değiştirir)
+        $kb = function_exists('_kdvBol') ? _kdvBol($tutar, _kdvPaylari([$sube->id], null, null, $adisyon->id ?? null)) : ['matrah' => round($tutar / 1.10, 2)];
+        $matrah = $kb['matrah'];
         $kdv = round($tutar - $matrah, 2);
         $vkn = trim((string) ($alici['vkn'] ?? ''));
         $tip = (strlen($vkn) === 10) ? 'e_fatura' : 'e_arsiv';  // 10 haneli VKN -> e-Fatura, degilse e-Arsiv
@@ -286,7 +288,8 @@ if (!function_exists('_okcFisBas')) {
     {
         $ayar = DB::table('edonusum_ayarlari')->where('sube_id', $sube->id)->first();
         $tutar = (float) $adisyon->toplam;
-        $matrah = round($tutar / 1.10, 2);
+        $kb = function_exists('_kdvBol') ? _kdvBol($tutar, _kdvPaylari([$sube->id], null, null, $adisyon->id ?? null)) : ['matrah' => round($tutar / 1.10, 2)];
+        $matrah = $kb['matrah']; // KDV grupları: $kb['dagilim'] (GMP-3 sürücüsü oran bazında basacak)
         $fisNo = 'Z' . now()->format('ymd') . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         $gercek = $ayar && !empty($ayar->okc_aktif) && !empty($ayar->okc_ip);
         // === GERCEK OKC CAGRISI BURAYA (Ingenico/Hugin GMP-3 / uretici SDK) ===
@@ -28764,18 +28767,22 @@ Route::get('/api/patron/menu-yonetim', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     _oneCikanEnsure();   // one cikan kolonlari
+    _menuKutuphaneKolonEnsure(); // kdv, istasyon, sablon_kod, fiyat_bekliyor
+    _mkGorselTamamla($p->sube_id); // görseli sonradan eklenen kütüphane ürünleri
     $kats = DB::table('menu_kategorileri')->where('sube_id', $p->sube_id)->orderBy('sira')->orderBy('ad')
-        ->get(['id', 'ad', 'sira', 'aktif'])
-        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad, 'sira' => (int) $k->sira, 'aktif' => (bool) $k->aktif]);
+        ->get(['id', 'ad', 'sira', 'aktif', 'kdv'])
+        ->map(fn ($k) => ['id' => (int) $k->id, 'ad' => $k->ad, 'sira' => (int) $k->sira, 'aktif' => (bool) $k->aktif, 'kdv' => $k->kdv !== null ? (float) $k->kdv : null]);
     $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->orderBy('ad')
-        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at', 'one_cikan', 'one_soz', 'one_ai_soz', 'one_sira'])
+        ->get(['id', 'ad', 'aciklama', 'fiyat', 'kategori_id', 'tukendi', 'aktif', 'gorsel', 'updated_at', 'one_cikan', 'one_soz', 'one_ai_soz', 'one_sira', 'kdv', 'istasyon', 'sablon_kod', 'fiyat_bekliyor'])
         ->map(fn ($u) => [
+            'kdv' => $u->kdv !== null ? (float) $u->kdv : null, 'istasyon' => $u->istasyon ?: 'mutfak', 'sablon_kod' => $u->sablon_kod, 'fiyat_bekliyor' => (bool) $u->fiyat_bekliyor,
             'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
             'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
             'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null,
             'one_cikan' => (bool) $u->one_cikan, 'one_soz' => $u->one_soz ?: '', 'one_ai_soz' => $u->one_ai_soz ?: '', 'one_sira' => (int) $u->one_sira,
         ]);
-    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler];
+    return ['ok' => 1, 'duzenleyebilir' => _restoMenuYetki($p), 'kategoriler' => $kats, 'urunler' => $urunler, 'kdv_varsayilan' => _kdvVarsayilan($p->sube_id), 'istasyonlar' => _mutfakIstasyonlar(),
+        'fiyat_bekleyen' => $urunler->where('fiyat_bekliyor', true)->count(), 'kurulum' => _menuKurulumDurum($p->sube_id)];
 });
 
 // QR MENU RENK TEMASI: uygulamadan sec (kartela) -> subeler.tema
@@ -28948,6 +28955,7 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
     $p = _apiPersonel($r);
     if (!_restoMenuYetki($p)) return response()->json(['ok' => 0, 'hata' => 'Menü düzenleme yetkiniz yok'], $p ? 403 : 401);
     _oneCikanEnsure();
+    _menuKutuphaneKolonEnsure();
     $ad = trim((string) $r->input('ad'));
     if ($ad === '') return ['ok' => 0, 'hata' => 'Ürün adı gerekli'];
     $katId = (int) $r->input('kategori_id');
@@ -28984,6 +28992,10 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
         }
     }
     $id = (int) $r->input('id');
+    // KDV: boş = kategoriden/şube varsayılanından gelir; işletme istediği oranı yazar
+    if ($r->has('kdv')) { $kv = trim(str_replace(',', '.', (string) $r->input('kdv'))); $data['kdv'] = $kv === '' ? null : max(0, min(99, (float) $kv)); }
+    // Kütüphaneden fiyatsız gelen ürün: fiyat girilince kendiliğinden satışa açılır
+    if ($id && $data['fiyat'] > 0 && DB::table('urunler')->where('id', $id)->where('sube_id', $p->sube_id)->where('fiyat_bekliyor', 1)->exists()) { $data['fiyat_bekliyor'] = 0; $data['aktif'] = 1; } // pasifliği fiyat beklemesinden
     // Mutfak/bar istasyonu: seçildiyse o; yeni üründe boşsa adından tahmin (içecek → bar ekranına düşsün)
     $istIn = (string) $r->input('istasyon', '');
     if ($istIn !== '' && isset(_mutfakIstasyonlar()[$istIn])) $data['istasyon'] = $istIn;
@@ -29000,6 +29012,7 @@ Route::post('/api/patron/urun-kaydet', function (Request $r) {
     }
     $u = DB::table('urunler')->find($id);
     return ['ok' => 1, 'urun' => [
+        'kdv' => $u->kdv !== null ? (float) $u->kdv : null, 'istasyon' => $u->istasyon ?: 'mutfak', 'sablon_kod' => $u->sablon_kod, 'fiyat_bekliyor' => (bool) $u->fiyat_bekliyor,
         'id' => (int) $u->id, 'ad' => $u->ad, 'aciklama' => $u->aciklama ?: '', 'fiyat' => (float) $u->fiyat,
         'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi, 'aktif' => (bool) $u->aktif,
         'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . time()) : null,
@@ -29047,13 +29060,18 @@ Route::post('/api/patron/kategori-kaydet', function (Request $r) {
     if ($ad === '') return ['ok' => 0, 'hata' => 'Kategori adı gerekli'];
     $sira = (int) $r->input('sira', 0);
     $id = (int) $r->input('id');
+    _kdvEnsure();
+    $ek = [];
+    // Kategori KDV: içindeki oranı boş ürünlere uygulanır (boş = şube varsayılanı)
+    if ($r->has('kdv')) { $kv = trim(str_replace(',', '.', (string) $r->input('kdv'))); $ek['kdv'] = $kv === '' ? null : max(0, min(99, (float) $kv)); }
     if ($id) {
         if (!DB::table('menu_kategorileri')->where('id', $id)->where('sube_id', $p->sube_id)->exists()) return ['ok' => 0, 'hata' => 'Bulunamadı'];
-        DB::table('menu_kategorileri')->where('id', $id)->update(['ad' => $ad, 'sira' => $sira, 'updated_at' => now()]);
+        DB::table('menu_kategorileri')->where('id', $id)->update(['ad' => $ad, 'sira' => $sira, 'updated_at' => now()] + $ek);
     } else {
-        $id = DB::table('menu_kategorileri')->insertGetId(['sube_id' => $p->sube_id, 'ad' => $ad, 'sira' => $sira, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $id = DB::table('menu_kategorileri')->insertGetId(['sube_id' => $p->sube_id, 'ad' => $ad, 'sira' => $sira, 'aktif' => 1, 'created_at' => now(), 'updated_at' => now()] + $ek);
     }
-    return ['ok' => 1, 'kategori' => ['id' => (int) $id, 'ad' => $ad, 'sira' => $sira, 'aktif' => true]];
+    $kdv = DB::table('menu_kategorileri')->where('id', $id)->value('kdv');
+    return ['ok' => 1, 'kategori' => ['id' => (int) $id, 'ad' => $ad, 'sira' => $sira, 'aktif' => true, 'kdv' => $kdv !== null ? (float) $kdv : null]];
 });
 
 // Kategori sil (icinde urun varsa engelle)
@@ -31600,8 +31618,11 @@ if (!function_exists('_muhasebeFisUret')) {
         $subeIds = array_values(array_unique(array_map('intval', (array) $subeIds)));
         $tarih = $to->format('d.m.Y');
         $fisNo = 'RST-' . $from->format('Ymd') . '-' . $to->format('Ymd');
-        $kdvCarpan = 1 + ($kdvOran / 100);
+        // Ürün bazlı KDV payları (dönem kalemlerinden); kalem yoksa ayardaki tek oran
+        $kdvPay = function_exists('_kdvPaylari') ? _kdvPaylari($subeIds, $from, $to) : [(string) $kdvOran => 1.0];
+        if (count($kdvPay) === 1 && (float) array_key_first($kdvPay) != (float) $kdvOran && !DB::table('adisyonlar')->whereIn('sube_id', $subeIds)->whereBetween('kapanis', [$from, $to])->exists()) $kdvPay = [(string) $kdvOran => 1.0];
         $rows = []; $borcT = 0.0; $alacakT = 0.0;
+        $kdvOranT = [];
 
         // --- SATIS: Borc kasa/pos/banka/alici = brut; Alacak 600 matrah + 391 KDV ---
         $odeme = DB::table('odemeler')->join('adisyonlar', 'odemeler.adisyon_id', '=', 'adisyonlar.id')
@@ -31611,16 +31632,24 @@ if (!function_exists('_muhasebeFisUret')) {
         foreach ($odeme as $o) {
             $brut = round((float) $o->tutar, 2);
             if ($brut <= 0) continue;
-            $matrah = round($brut / $kdvCarpan, 2);
+            $kb = _kdvBol($brut, $kdvPay);
+            $matrah = $kb['matrah'];
             $kdv = round($brut - $matrah, 2);
             $satisMatrah += $matrah; $satisKdv += $kdv;
+            foreach ($kb['dagilim'] as $ko => $kd) $kdvOranT[$ko] = ($kdvOranT[$ko] ?? 0) + $kd['kdv'];
             [$hk, $ha] = _muhasebeOdemeHesap($o->tip, $hp);
             $rows[] = [$tarih, $fisNo, $hk, $ha, $brut, 0.0, 'Satis tahsilat (' . $o->tip . ')'];
             $borcT += $brut;
         }
         if ($satisMatrah > 0) {
             $rows[] = [$tarih, $fisNo, $hp['satis'], 'Yurtici Satislar', 0.0, round($satisMatrah, 2), 'Donem satis matrahi'];
-            $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV %' . $kdvOran, 0.0, round($satisKdv, 2), 'Satis KDV'];
+            // Oran başına ayrı KDV satırı (%10, %20 ...); yuvarlama farkı son satıra
+            $kalanKdv = round($satisKdv, 2); $oranlar = array_keys($kdvOranT);
+            foreach ($oranlar as $i => $ko) {
+                $kv = $i === count($oranlar) - 1 ? $kalanKdv : round($kdvOranT[$ko], 2);
+                $kalanKdv = round($kalanKdv - $kv, 2);
+                $rows[] = [$tarih, $fisNo, $hp['hesaplanan_kdv'], 'Hesaplanan KDV %' . $ko, 0.0, $kv, 'Satis KDV'];
+            }
             $alacakT += round($satisMatrah, 2) + round($satisKdv, 2);
         }
 
@@ -31774,7 +31803,10 @@ if (!function_exists('_muhasebeDonemVeri')) {
         [$ay, $bas, $bit] = _restoAyAralik($ay);
         $oran = 10; try { $o = DB::table('muhasebe_ayarlari')->where('sube_id', $sid)->value('kdv_orani'); if ($o) $oran = (int) $o; } catch (\Throwable $e) {}
         $ciroBrut = 0.0; try { $ciroBrut = (float) DB::table('adisyonlar')->where('sube_id', $sid)->where('durum', 'odendi')->whereBetween('kapanis', [$bas, $bit])->sum('toplam'); } catch (\Throwable $e) {}
-        $ciroNet = $oran > 0 ? $ciroBrut / (1 + $oran / 100) : $ciroBrut;
+        $satisOran = null;
+        if (function_exists('_kdvPaylari') && DB::table('adisyonlar')->where('sube_id', $sid)->whereBetween('kapanis', [$bas, $bit])->exists()) $satisOran = _kdvEtkinOran(_kdvPaylari([$sid], $bas, $bit)); // ürün bazlı oranların ağırlıklı ortalaması
+        $satisOran = $satisOran ?? $oran;
+        $ciroNet = $satisOran > 0 ? $ciroBrut / (1 + $satisOran / 100) : $ciroBrut;
         $hesKDV = $ciroBrut - $ciroNet;
         $alisBrut = 0.0; $indKDV = 0.0;
         try {
@@ -34629,5 +34661,6 @@ require __DIR__ . '/katalog_sahip.php';
 // ============================ GELEN e-FATURA (entegratör API / XML → alış faturası) ============================
 require __DIR__ . '/efatura_gelen.php';
 require __DIR__ . '/fabrika_ayari.php'; // Sistem yönetimi: fabrika ayarı (yedekle + sıfırla + geri yükle)
+require __DIR__ . '/menu_kutuphane.php'; // Ürün bazlı KDV + hazır menü kütüphanesi + kurulum sihirbazı + fiyat bekleyenler
 
 
