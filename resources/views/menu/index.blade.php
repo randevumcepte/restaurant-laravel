@@ -387,6 +387,10 @@ body.koyu .mk-tur.foto.sec .ad b{color:#C4B5FD}
 .mk3-cip .e{font-size:15px;line-height:1}
 .mk3-cip.aktif{background:linear-gradient(135deg,#7C3AED,#6D28D9);border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.3)}
 .mk3-cip.aktif small{background:rgba(255,255,255,.22);color:#fff}
+.mk3-ekle{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;border:1.5px dashed #A78BFA;background:transparent;
+  color:#7C3AED;font-size:13px;font-weight:700;font-family:inherit;white-space:nowrap;cursor:pointer;flex-shrink:0}
+.mk3-ekle .material-icons-outlined{font-size:17px}
+.mk3-ekle:hover{background:color-mix(in srgb,#7C3AED 8%,var(--card))}
 .mk3-kat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px;scroll-margin-top:130px}
 .mk3-kat.oneri{border-style:dashed}
 .mk3-kat-bas{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
@@ -1311,7 +1315,7 @@ async function mnyHazirGorselSec(gorsel, kod) {
 const mk = { adim: 1, ilk: false, tanim: null, tur: null, paketler: new Set(), onizleme: [], secili: new Set(), ara: '' };
 
 async function mkAc(ilk) {
-    mk.ilk = !!ilk; mk.ara = '';
+    mk.ilk = !!ilk; mk.ara = ''; mk.onizleme = []; mk.secili = new Set();
     mnyLoading(true);
     try {
         const r = await mnyApi('/api/patron/menu-kutuphane/tanim');
@@ -1333,9 +1337,11 @@ async function mkIleri() {
         mnyLoading(true);
         try {
             const r = await mnyApi('/api/patron/menu-kutuphane/onizle?paketler=' + encodeURIComponent([...mk.paketler].join(',')));
+            // 3. adımdan geri gelinip mutfak eklendiyse önceki işaret kaldırmaları korunur; yeni gelen ürünler işaretli gelir
+            const onceki = new Set(mk.onizleme.flatMap(k => k.urunler.map(u => u.kod))), oncekiSecili = mk.secili;
             mk.onizleme = (r && r.kategoriler) || [];
             mk.secili = new Set();
-            mk.onizleme.forEach(k => { if (!k.oneri) k.urunler.forEach(u => { if (!u.var) mk.secili.add(u.kod); }); });
+            mk.onizleme.forEach(k => { if (!k.oneri) k.urunler.forEach(u => { if (!u.var && (!onceki.has(u.kod) || oncekiSecili.has(u.kod))) mk.secili.add(u.kod); }); });
         } catch (e) { mnyToast('Bağlantı hatası'); mnyLoading(false); return; }
         mnyLoading(false);
         mk.adim = 3; mkCiz(); return;
@@ -1432,7 +1438,9 @@ function mkListeCiz() {
     const pkVar = mk.onizleme.some(k => k.urunler.some(u => u.paketler));
     const pkl = pkVar ? mk.tanim.gruplar.flatMap(gr => gr.paketler).filter(p => mk.paketler.has(p.kod)) : [];
     document.getElementById('mk3Nav').innerHTML = pkl.length ? `<button class="mk3-cip ${mk.pkFiltre ? '' : 'aktif'}" data-pk="" onclick="mkPkFiltre('')">Tümü <small></small></button>` +
-        pkl.map(p => `<button class="mk3-cip ${mk.pkFiltre === p.kod ? 'aktif' : ''}" data-pk="${p.kod}" onclick="mkPkFiltre('${p.kod}')"><span class="e">${p.ikon}</span>${escHtml(p.ad)} <small></small></button>`).join('') : '';
+        pkl.map(p => `<button class="mk3-cip ${mk.pkFiltre === p.kod ? 'aktif' : ''}" data-pk="${p.kod}" onclick="mkPkFiltre('${p.kod}')"><span class="e">${p.ikon}</span>${escHtml(p.ad)} <small></small></button>`).join('') +
+        // tatlı/içecek/başka mutfak eklemek için 2. adıma dön (seçimler korunur)
+        '<button class="mk3-ekle" onclick="mkGeri()"><span class="material-icons-outlined">add</span>Tatlı, içecek ya da mutfak ekle</button>' : '';
     mkKatSayac();
 }
 // seçim sayaçları: kategori başlığı, "tümünü seç" düğmesi, kategori çipleri, alt özet
