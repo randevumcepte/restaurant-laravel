@@ -724,7 +724,7 @@ function dgridCiz(){
 /* ---- URUN DETAY + PUAN VER ---- */
 function detayAc(u){
   _detayUrun=u; _detayMik=1;
-  document.getElementById('d-foto').innerHTML=gorselHtml(u,'em')+'<button class="x" onclick="detayKapat()">✕</button>';
+  document.getElementById('d-foto').innerHTML=gorselHtml(u,'em')+(u.temsili?'<span style="position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px">Temsili görsel</span>':'')+'<button class="x" onclick="detayKapat()">✕</button>';
   document.getElementById('d-ad').textContent=u.ad||'';
   document.getElementById('d-fi').textContent=u.fiyat_yazi||'';
   document.getElementById('d-ac').textContent=u.aciklama||'';

@@ -2592,6 +2592,7 @@ why: "yemek oner" derken meyve suyu/su cikmasin. */
             'gorsel' => $gorseller[0] ?? null,
             'gorseller' => $gorseller,           // galeri: ayni yemegin birkac fotografi
             'gercek_foto' => (bool) $yuklenen,   // TRUE = isletmenin yukledigi gercek foto (stok/loremflickr degil)
+            'temsili' => $yuklenen && str_contains($yuklenen, '/menu-kutuphane/'), // hazır kütüphane görseli → QR detayında "Temsili görsel"
             'puan' => null,                      // gercek musteri puani (menuTam icinde doldurulur)
             'puan_say' => 0,
             'etiket' => $etiket,
