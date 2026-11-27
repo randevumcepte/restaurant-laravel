@@ -157,8 +157,8 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
         ];
     }
 
-    // Bir mutfağa/bölüme ait kategoriler: ürün başka pakete de etiketli olsa (ör. Mango Lassi = soğuk içecek), bu paketlerden
-    // biri seçilmedikçe işaretli gelmez; önizlemede ayrı "öneriler" bölümünde işaretsiz durur. Alkol ruhsatsız işletmeye işaretli gelmez.
+    // Bir mutfağa/bölüme ait kategoriler: ürün başka pakete de etiketli olsa (ör. Ayran = kebap + soğuk içecek), bu paketlerden
+    // biri seçilmedikçe önizlemede hiç görünmez. Alkol ruhsatsız işletmeye gelmez.
     function _mkKatSahibi()
     {
         $alkol = ['alkol', 'meyhane'];
@@ -170,14 +170,6 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
             'Kahvaltı' => ['kahvalti', 'kafe'], 'Tatlılar' => ['tatli', 'pastane'], 'Kahveler' => ['kahve', 'kafe'], 'Çaylar' => ['sicak', 'kafe'],
             'Sıcak İçecekler' => ['sicak', 'kafe'], 'Soğuk İçecekler' => ['soguk'], 'Çocuk Menüsü' => ['cocuk'],
             'Kokteyller' => $alkol, 'Biralar' => $alkol, 'Şaraplar' => $alkol, 'Rakı' => $alkol, 'Viski & Diğer' => $alkol];
-    }
-
-    // Bölüm kategorileri (içecek, tatlı, kahvaltı, alkol, çocuk): sahibi olan bölüm seçilmediyse önizlemede hiç görünmez,
-    // "öneriler"e de düşmez — yemek mutfağı seçen işletmeye ayran/künefe/rakı gelmez. Dünya mutfakları öneri olarak kalır.
-    function _mkBolumKatlari()
-    {
-        return ['Kahvaltı', 'Tatlılar', 'Pastane', 'Kahveler', 'Soğuk Kahveler', 'Çaylar', 'Sıcak İçecekler', 'Soğuk İçecekler', 'Smoothie & Shake',
-            'Çocuk Menüsü', 'Kokteyller', 'Biralar', 'Şaraplar', 'Rakı', 'Viski & Diğer'];
     }
 
     function _mkPaketKodlari() { $o = []; foreach (_mkPaketler() as $g) $o = array_merge($o, array_keys($g)); return $o; }
@@ -283,10 +275,10 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
         $mevcutAd = DB::table('urunler')->where('sube_id', (int) $sid)->pluck('ad')->map(fn ($a) => _mkNorm($a))->flip()->all();
         $kats = [];
         $sahip = _mkKatSahibi();
-        $bolumKat = array_flip(_mkBolumKatlari());
         foreach (_mkVeri() as $u) {
             if ($paketler && !array_intersect($u['paketler'], $paketler)) continue;
-            if ($paketler && isset($bolumKat[$u['kategori']]) && !array_intersect($sahip[$u['kategori']] ?? [], $paketler)) continue;
+            // yalnız seçilen mutfak/bölümün ürünleri: sahibi olan kategori (içecek, tatlı, pizza, alkol…) sahibi seçilmediyse hiç gelmez
+            if ($paketler && isset($sahip[$u['kategori']]) && !array_intersect($sahip[$u['kategori']], $paketler)) continue;
             if ($ara !== '' && !str_contains(_mkNorm($u['ad']), $ara)) continue;
             $g = _mkGorseller($u['kod']);
             $kats[$u['kategori']][] = ['kod' => $u['kod'], 'ad' => $u['ad'], 'paketler' => $u['paketler'], 'aciklama' => $u['aciklama'], 'istasyon' => $u['istasyon'], 'kdv' => $u['kdv'],
@@ -294,11 +286,10 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
                 'var' => isset($mevcutKod[$u['kod']]) || isset($mevcutAd[_mkNorm($u['ad'])])];
         }
         $sira = array_flip(_mkKategoriler());
-        // öneri: sahibi olan kategori ve sahip paketlerden hiçbiri seçilmemiş -> işaretsiz, listenin sonunda
-        $oneri = fn ($ad) => $paketler && isset($sahip[$ad]) && !array_intersect($sahip[$ad], $paketler) ? 1 : 0;
-        uksort($kats, fn ($a, $b) => [$oneri($a), $sira[$a] ?? 99] <=> [$oneri($b), $sira[$b] ?? 99]);
+        uksort($kats, fn ($a, $b) => ($sira[$a] ?? 99) <=> ($sira[$b] ?? 99));
         $o = [];
-        foreach ($kats as $ad => $urunler) $o[] = ['ad' => $ad, 'oneri' => $oneri($ad), 'urunler' => $urunler];
+        // 'oneri' alanı eski istemciler (Flutter) için duruyor; artık öneri kategorisi gelmez
+        foreach ($kats as $ad => $urunler) $o[] = ['ad' => $ad, 'oneri' => 0, 'urunler' => $urunler];
         return $o;
     }
 
