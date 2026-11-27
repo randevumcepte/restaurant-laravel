@@ -166,6 +166,9 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
             'Uzak Doğu' => ['uzakdogu', 'japon'], 'Suşi' => ['japon'], 'Kore' => ['kore'], 'Tayland' => ['tayland'], 'Hint' => ['hint'], 'Akdeniz' => ['akdeniz'],
             'Fransız' => ['fransiz'], 'Steak' => ['steak'], 'Bowl & Vegan' => ['vegan'],
             'Smoothie & Shake' => ['kafe', 'amerikan', 'vegan', 'cocuk'], 'Pastane' => ['pastane', 'kafe'], 'Soğuk Kahveler' => ['kahve', 'kafe'],
+            // Bölümler: kullanıcı bölümü seçmediyse (ör. restoran seçip Tatlılar'ı kaldırdıysa) mutfak etiketli tatlı/içecek işaretli gelmez
+            'Kahvaltı' => ['kahvalti'], 'Tatlılar' => ['tatli', 'pastane'], 'Kahveler' => ['kahve', 'kafe'], 'Çaylar' => ['sicak', 'kafe'],
+            'Sıcak İçecekler' => ['sicak', 'kafe'], 'Soğuk İçecekler' => ['soguk'], 'Çocuk Menüsü' => ['cocuk'],
             'Kokteyller' => $alkol, 'Biralar' => $alkol, 'Şaraplar' => $alkol, 'Rakı' => $alkol, 'Viski & Diğer' => $alkol];
     }
 
