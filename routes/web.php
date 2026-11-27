@@ -28751,11 +28751,13 @@ Route::get('/api/menu', function (Request $r) {
     $istVar = Schema::hasColumn('urunler', 'istasyon');
     $kolonlar = ['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'gorsel', 'updated_at'];
     if ($istVar) $kolonlar[] = 'istasyon';
+    // Fiş istasyonu KDS ile aynı kural: bar varsa, istasyonu girilmemiş içecekler de bar (eskiden fiş mutfak yazıcısına düşüyordu)
+    $barIds = ($istVar && function_exists('_kdsBarVar') && _kdsBarVar($p->sube_id)) ? array_flip(_kdsBarUrunIds($p->sube_id)) : [];
     $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')
         ->get($kolonlar)
         ->map(fn ($u) => ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat,
             'kategori_id' => $u->kategori_id ? (int) $u->kategori_id : 0, 'tukendi' => (bool) $u->tukendi,
-            'istasyon' => $istVar ? ($u->istasyon ?: 'mutfak') : 'mutfak', // bar/izgara/firin/soguk/tatli/mutfak
+            'istasyon' => isset($barIds[(int) $u->id]) ? 'bar' : ($istVar ? ($u->istasyon ?: 'mutfak') : 'mutfak'), // bar/izgara/firin/soguk/tatli/mutfak
             'emoji' => $ma->katEmoji((string) ($katAdMap[$u->kategori_id] ?? ''), (string) $u->ad),
             'gorsel' => $u->gorsel ? ($u->gorsel . '?v=' . ($u->updated_at ? strtotime($u->updated_at) : 0)) : null]);
     return ['ok' => 1, 'kategoriler' => $kategoriler, 'urunler' => $urunler];
