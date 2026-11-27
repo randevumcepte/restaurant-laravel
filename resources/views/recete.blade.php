@@ -225,6 +225,17 @@ body.koyu .rct-picker .pick-ara{background:#161C2E}
   position:sticky;bottom:0;background:var(--card)}
 body.koyu .rct-alt-bar{background:#0B1020}
 
+/* Sırayla reçete girişi (Menü Yönetimi → "Reçeteleri Sırayla Gir") */
+.rct-sira{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 18px 0;padding:9px 12px;border-radius:12px;
+  background:color-mix(in srgb,var(--mor1) 9%,var(--card));border:1px solid color-mix(in srgb,var(--mor1) 25%,var(--line))}
+.rct-sira .y{flex:1;min-width:150px;font-size:13px;color:var(--ink)}
+.rct-sira .y small{display:block;font-size:12px;color:var(--sub)}
+.rct-sira .cubuk{height:5px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden}
+.rct-sira .cubuk i{display:block;height:100%;background:var(--mor1);border-radius:3px}
+.rct-sira button{padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.rct-sira button:hover{border-color:var(--mor1)}
+
 /* Kalemler başlığı satırı (Flutter Row: "Malzemeler" + "Malzeme Ekle") */
 .rct-kalem-baslik{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .rct-kalem-baslik .kbaslik{color:var(--ink);font-size:15px;font-weight:700}
@@ -449,6 +460,7 @@ body.koyu #rctToast{background:#e2e8f0;color:#1e293b}
     <div class="cizgi"></div>
     <div class="baslik" id="rctEditorBaslik">Reçete Editörü</div>
     <div class="alt-baslik" id="rctEditorAltBaslik">Yükleniyor…</div>
+    <div class="rct-sira" id="rctSiraBar" style="display:none"></div>
 
     <div id="rctEditorIc">
       <div style="text-align:center;padding:40px 0"><span class="rct-spin"></span></div>
@@ -770,6 +782,7 @@ function rctEditorAc(urunId, urunAd) {
     document.getElementById('rctEditorAltBaslik').textContent = 'Yükleniyor…';
     document.getElementById('rctEditorIc').innerHTML = '<div style="text-align:center;padding:40px 0"><span class="rct-spin"></span></div>';
     document.getElementById('rctEditorAltBar').style.display = 'none';
+    rctSiraBarCiz(urunId);
     document.getElementById('rctEditorBg').classList.add('acik');
 
     api('/api/patron/urun-recete?urun_id=' + urunId).then(res => {
@@ -874,7 +887,9 @@ async function rctReceteKaydet() {
         const res = await api('/api/patron/recete-kaydet', { urun_id: _rctUrunId, kalemler: JSON.stringify(gonder) });
         if (res && res.ok) {
             rctToast('Reçete kaydedildi');
+            const kaydedilen = _rctUrunId;
             rctEditorKapat();
+            if (rctKayitSonrasi(kaydedilen, gonder.length > 0)) return;
         } else {
             rctToast(res?.hata || 'Kaydedilemedi');
             btn.disabled = false; btn.textContent = 'Reçeteyi Kaydet';
@@ -1609,6 +1624,67 @@ function rctUretKaydet() {
         } else { rctToast((r && r.hata) || 'Üretilemedi'); }
     }).catch(function(){ btn.disabled = false; btn.textContent = t0; rctToast('Bağlantı hatası'); });
 }
+
+// ===================================================================
+// MENÜ YÖNETİMİ BAĞLANTISI
+//   /recete?urun=ID → o ürünün reçete editörü açılır; kaydedince Menü Yönetimi'ne dönülür
+//   /recete?sira=1  → reçetesi olmayan ürünler sırayla açılır (kaydet → sonraki, Atla, Bitir)
+// ===================================================================
+let _rctSira = null;          // { liste: [urunId…], i, kayit }
+let _rctMenuyeDon = false;
+function rctSiraBarCiz(urunId) {
+    const bar = document.getElementById('rctSiraBar');
+    if (!_rctSira || _rctSira.liste[_rctSira.i] !== urunId) { bar.style.display = 'none'; return; }
+    const n = _rctSira.liste.length, s = _rctSira.i + 1;
+    bar.innerHTML = `<div class="y"><b>Sırayla reçete girişi · ${s} / ${n}</b><small>Kaydedince sıradaki reçetesiz ürün açılır</small>
+        <div class="cubuk"><i style="width:${Math.round(s / n * 100)}%"></i></div></div>
+        <button onclick="rctSiraAtla()">Atla →</button><button onclick="rctSiraBitir()">Bitir</button>`;
+    bar.style.display = '';
+}
+function rctSiraAc() {
+    const u = RCT.urunler.find(x => x.id === _rctSira.liste[_rctSira.i]);
+    if (u) rctEditorAc(u.id, u.ad); else rctSiraAtla();
+}
+function rctSiraAtla() {
+    if (!_rctSira) return;
+    _rctSira.i++;
+    if (_rctSira.i < _rctSira.liste.length) { rctSiraAc(); return; }
+    rctSiraBitir();
+}
+function rctSiraBitir() {
+    const kayit = _rctSira ? _rctSira.kayit : 0;
+    _rctSira = null;
+    rctEditorKapat();
+    rctToast(kayit ? kayit + ' ürünün reçetesi girildi' : 'Sırayla giriş bitti');
+    // liste sunucuda çiziliyor: reçeteli/reçetesiz ayrımı güncellensin
+    if (kayit) setTimeout(() => { location.href = '/recete'; }, 900);
+}
+// kaydetme sonrası: sıradaysa sonrakine geç, menüden gelindiyse menüye dön. true → başka iş yapılmasın
+function rctKayitSonrasi(urunId, dolu) {
+    const u = RCT.urunler.find(x => x.id === urunId);
+    if (u && dolu) u.receteli = true;
+    if (_rctSira && _rctSira.liste[_rctSira.i] === urunId) {
+        if (dolu) _rctSira.kayit++;
+        rctSiraAtla();
+        return true;
+    }
+    if (_rctMenuyeDon) { setTimeout(() => { location.href = '/menu'; }, 700); return true; }
+    return false;
+}
+(function () {
+    const q = new URLSearchParams(location.search);
+    if (q.get('sira')) {
+        const liste = RCT.urunler.filter(u => !u.receteli).map(u => u.id);
+        if (!liste.length) { rctToast('Tüm ürünlerin reçetesi girilmiş'); return; }
+        _rctSira = { liste, i: 0, kayit: 0 };
+        rctSiraAc();
+    } else if (q.get('urun')) {
+        const u = RCT.urunler.find(x => x.id === +q.get('urun'));
+        if (!u) { rctToast('Bu ürün reçete listesinde yok (pasif olabilir)'); return; }
+        _rctMenuyeDon = document.referrer.indexOf('/menu') !== -1;
+        rctEditorAc(u.id, u.ad);
+    }
+})();
 </script>
 @endpush
 @endsection

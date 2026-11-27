@@ -269,6 +269,15 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
         } catch (\Throwable $e) {}
     }
 
+    // Reçete ekranındaki ürün listesi (web /recete + Flutter /api/patron/recete-urunler): satıştaki ürünler + fiyat bekleyen
+    // kütüphane ürünleri (pasif ama menüde; reçetesi satışa açılmadan girilebilsin). Elle pasife alınan ürün gelmez.
+    function _receteUrunSorgu($sid)
+    {
+        $q = DB::table('urunler')->where('sube_id', (int) $sid);
+        try { _menuKutuphaneKolonEnsure(); $kolon = Schema::hasColumn('urunler', 'fiyat_bekliyor'); } catch (\Throwable $e) { $kolon = false; }
+        return $kolon ? $q->where(fn ($w) => $w->where('aktif', 1)->orWhere('fiyat_bekliyor', 1)) : $q->where('aktif', 1);
+    }
+
     // Kütüphane açıklamaları yenilenince (aciklama_eski.tsv) eklenmiş ürünlerde de güncellenir: yalnız açıklaması boş ya da
     // hâlâ eski kütüphane metni olanlar; işletmenin elle yazdığı açıklamaya dokunulmaz. Şube başına dosya sürümü bir kez.
     function _mkAciklamaTazele($sid)

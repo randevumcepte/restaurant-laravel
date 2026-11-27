@@ -4157,7 +4157,15 @@ Route::get('/menu', function () {
     $urunler = DB::table('urunler')->where('sube_id', $subeId)->get()->groupBy('kategori_id');
     $kurulum = _menuKurulumDurum($subeId);
     $kdvVars = _kdvVarsayilan($subeId);
-    return view('menu.index', compact('kategoriler', 'urunler', 'kurulum', 'kdvVars'));
+    // reçetesi (en az bir kalemi) olan ürünler → menüde "Reçete yok" rozeti + reçete bandı (reçete ekranı /recete)
+    $receteli = [];
+    try {
+        $receteli = array_flip(DB::table('receteler')->where('tip', 'urun')
+            ->whereIn('receteler.urun_id', DB::table('urunler')->where('sube_id', $subeId)->select('id'))
+            ->join('recete_kalemleri', 'receteler.id', '=', 'recete_kalemleri.recete_id')
+            ->distinct()->pluck('receteler.urun_id')->map(fn ($v) => (int) $v)->all());
+    } catch (\Throwable $e) {}
+    return view('menu.index', compact('kategoriler', 'urunler', 'kurulum', 'kdvVars', 'receteli'));
 });
 
 Route::post('/menu/86', function (Request $r) {
@@ -4184,7 +4192,7 @@ Route::get('/recete', function () {
                 ->join('recete_kalemleri', 'receteler.id', '=', 'recete_kalemleri.recete_id')
                 ->distinct()->pluck('receteler.urun_id')->toArray()
         );
-        $urunler = DB::table('urunler')->where('sube_id', _webSubeId())->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat'])
+        $urunler = _receteUrunSorgu(_webSubeId())->orderBy('ad')->get(['id', 'ad', 'fiyat'])
             ->map(function ($u) use ($mMap, $receteliSet) {
                 $mal = $mMap['id'][$u->id] ?? 0;
                 $fc  = (float) $u->fiyat > 0 && $mal > 0 ? round($mal / (float) $u->fiyat * 100, 1) : 0.0;
@@ -28102,7 +28110,7 @@ Route::get('/api/patron/recete-urunler', function (Request $r) {
         ->join('recete_kalemleri', 'receteler.id', '=', 'recete_kalemleri.recete_id')
         ->distinct()->pluck('receteler.urun_id')->toArray();
     $receteliSet = array_flip($receteli);
-    $urunler = DB::table('urunler')->where('sube_id', $p->sube_id)->where('aktif', 1)->orderBy('ad')->get(['id', 'ad', 'fiyat'])->map(function ($u) use ($mMap, $receteliSet) {
+    $urunler = _receteUrunSorgu($p->sube_id)->orderBy('ad')->get(['id', 'ad', 'fiyat'])->map(function ($u) use ($mMap, $receteliSet) {
         $mal = $mMap['id'][$u->id] ?? 0;
         $fc = (float) $u->fiyat > 0 && $mal > 0 ? round($mal / (float) $u->fiyat * 100, 1) : 0.0;
         return ['id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'maliyet' => round($mal, 2),

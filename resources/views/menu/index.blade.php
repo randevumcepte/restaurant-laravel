@@ -280,6 +280,13 @@ body.koyu .mny-btn.rk-mor{--rk:#A78BFA}body.koyu .mny-btn.rk-mavi{--rk:#38BDF8}b
 .mny-modal-kart label.mk-urun,.mny-modal-kart label.mk-kat-bas{display:flex;text-transform:none;letter-spacing:0;margin:0;font-size:inherit}
 .mny-modal-kart label.mk-kat-bas{font-size:14.5px;font-weight:800;color:var(--ink);margin-bottom:6px}
 .mny-modal-kart .mk-urun input[type=checkbox],.mny-modal-kart .mk-kat-bas input[type=checkbox],.mny-modal-kart .mf-satir input[type=checkbox]{display:inline-block;width:18px;height:18px;padding:0;margin:0;flex-shrink:0}
+/* ── Reçete bağlantısı: kart düğmesi + reçetesiz bandı ── */
+.mny-recete-btn.var .material-icons-outlined{color:#059669}
+.mny-recete-btn.yok .material-icons-outlined{color:#E11D48}
+#mny .rc-bant{background:color-mix(in srgb,#E11D48 7%,var(--card));border-color:color-mix(in srgb,#E11D48 25%,var(--line))}
+#mny .rc-bant>.material-icons-outlined{color:#E11D48}
+#mny .mk-bant a.mny-btn{text-decoration:none}
+
 /* ── Hazır menü sihirbazı: başlık bandı + adımlar + fotoğraflı tür kartları ── */
 #mkModal{background:rgba(15,10,35,.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #mkModal.ac .mk-kart{animation:mk-gir .32s cubic-bezier(.2,.9,.3,1.15)}
@@ -518,6 +525,7 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     'istasyon'   => $u->istasyon ?? 'mutfak',
     'sablon_kod' => $u->sablon_kod ?? null,
     'fiyat_bekliyor' => (bool)($u->fiyat_bekliyor ?? false),
+    'receteli'   => isset(($receteli ?? [])[(int)$u->id]),
 ])->values()->all(), 15, 512) !!};
 </script>
 
@@ -555,6 +563,14 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
   <div class="mk-bant-yazi"><b id="mkBantSayi">0</b> ürün fiyat bekliyor. Fiyatı girilmeyen ürün POS'ta, QR menüde ve uygulamada görünmez.</div>
   <button class="mny-btn dolu" onclick="mpAc(true)"><span class="material-icons-outlined">sell</span> Fiyatları Gir</button>
   <button class="mny-btn bos" onclick="mkTemizle()"><span class="material-icons-outlined">cleaning_services</span> Fiyatsızları Kaldır</button>
+</div>
+
+{{-- ── Reçetesi olmayan ürünler bandı (reçeteler mevcut /recete ekranında girilir) ── --}}
+<div class="mk-bant rc-bant" id="rcBant" style="display:none">
+  <span class="material-icons-outlined">menu_book</span>
+  <div class="mk-bant-yazi"><b id="rcBantSayi">0</b> ürünün reçetesi yok. Reçetesi olmayan ürün satılınca stoktan malzeme düşmez, maliyeti hesaplanmaz.</div>
+  <a class="mny-btn dolu" href="/recete?sira=1"><span class="material-icons-outlined">playlist_play</span> Reçeteleri Sırayla Gir</a>
+  <a class="mny-btn bos" href="/recete"><span class="material-icons-outlined">open_in_new</span> Reçete Sayfası</a>
 </div>
 
 {{-- ── İçerik kapsayıcı (JS ile yeniden çizilir) ── --}}
@@ -832,6 +848,7 @@ function mnyRozetHtml(u) {
     if (u.tukendi)   h += `<span class="mny-rozet" style="background:rgba(244,63,94,.18);color:var(--kirmizi);margin-left:4px">Tükendi</span>`;
     if (u.fiyat_bekliyor) h += `<span class="mny-rozet" style="background:rgba(245,158,11,.18);color:#B45309;margin-left:4px">Fiyat bekliyor</span>`;
     else if (!u.aktif) h += `<span class="mny-rozet" style="background:rgba(100,116,139,.18);color:var(--sub);margin-left:4px">Pasif</span>`;
+    if (MNY_DUZENLE && !u.receteli) h += `<span class="mny-rozet" style="background:rgba(225,29,72,.12);color:#E11D48;margin-left:4px">Reçete yok</span>`;
     return h;
 }
 function mnyFotoHtml(gorsel, cls='mny-foto') {
@@ -845,6 +862,9 @@ function mnyRenderIcerik() {
     const bekleyen = mnyUrunler.filter(u => u.fiyat_bekliyor).length;
     const bant = document.getElementById('mkBant');
     if (bant) { bant.style.display = (MNY_DUZENLE && bekleyen) ? '' : 'none'; document.getElementById('mkBantSayi').textContent = bekleyen; }
+    const recetesiz = mnyUrunler.filter(u => !u.receteli && (u.aktif || u.fiyat_bekliyor)).length;
+    const rbant = document.getElementById('rcBant');
+    if (rbant) { rbant.style.display = (MNY_DUZENLE && recetesiz) ? '' : 'none'; document.getElementById('rcBantSayi').textContent = recetesiz; }
     if (mnyKategoriler.length === 0 && mnyUrunler.length === 0) { wrap.innerHTML = ''; return; }
 
     let html = '';
@@ -896,6 +916,11 @@ function mnyKartHtml(u) {
         ? `<a href="/barkod?tur=urun&hedef_id=${u.id}" class="mny-icon-btn" title="Barkodlar" onclick="event.stopPropagation()">
              <span class="material-icons-outlined" style="color:var(--mor1)">qr_code_2</span>
            </a>` : '';
+    // reçete: mevcut reçete ekranında bu ürünün düzenleyicisi açılır (/recete?urun=ID)
+    const receteBtn = MNY_DUZENLE
+        ? `<a href="/recete?urun=${u.id}" class="mny-icon-btn mny-recete-btn ${u.receteli ? 'var' : 'yok'}" title="${u.receteli ? 'Reçeteyi düzenle' : 'Reçete gir — reçetesi yok'}" onclick="event.stopPropagation()">
+             <span class="material-icons-outlined">menu_book</span>
+           </a>` : '';
     const onTap = MNY_DUZENLE ? `onclick="mnyUrunAc(${u.id})"` : '';
     return `
 <div class="mny-kart" ${onTap}>
@@ -909,6 +934,7 @@ function mnyKartHtml(u) {
     </div>
   </div>
   <div class="mny-kart-sag">
+    ${receteBtn}
     ${barkodBtn}
     <span class="material-icons-outlined" style="color:var(--sub2);font-size:20px">chevron_right</span>
   </div>
