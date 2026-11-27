@@ -275,7 +275,7 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
             if ($paketler && !array_intersect($u['paketler'], $paketler)) continue;
             if ($ara !== '' && !str_contains(_mkNorm($u['ad']), $ara)) continue;
             $g = _mkGorseller($u['kod']);
-            $kats[$u['kategori']][] = ['kod' => $u['kod'], 'ad' => $u['ad'], 'aciklama' => $u['aciklama'], 'istasyon' => $u['istasyon'], 'kdv' => $u['kdv'],
+            $kats[$u['kategori']][] = ['kod' => $u['kod'], 'ad' => $u['ad'], 'paketler' => $u['paketler'], 'aciklama' => $u['aciklama'], 'istasyon' => $u['istasyon'], 'kdv' => $u['kdv'],
                 'alerjenler' => _mkAlerjenAd($u['alerjen']), 'gorsel' => $g ? _mkGorselUrl($g[0]) : null, 'gorseller' => array_map('_mkGorselUrl', $g),
                 'var' => isset($mevcutKod[$u['kod']]) || isset($mevcutAd[_mkNorm($u['ad'])])];
         }

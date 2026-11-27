@@ -384,6 +384,9 @@ body.koyu .mk-tur.foto.sec .ad b{color:#C4B5FD}
 .mk3-cip.bos small{background:var(--card2);color:var(--sub)}
 .mk3-cip.oneri{border-style:dashed}
 .mk3-cip:hover{border-color:#A78BFA;color:#6D28D9}
+.mk3-cip .e{font-size:15px;line-height:1}
+.mk3-cip.aktif{background:linear-gradient(135deg,#7C3AED,#6D28D9);border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(124,58,237,.3)}
+.mk3-cip.aktif small{background:rgba(255,255,255,.22);color:#fff}
 .mk3-kat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px;scroll-margin-top:130px}
 .mk3-kat.oneri{border-style:dashed}
 .mk3-kat-bas{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
@@ -1389,22 +1392,31 @@ function mkCiz() {
         g.innerHTML = `<div class="mk3-arac"><label class="mk3-ara"><span class="material-icons-outlined">search</span>
             <input placeholder="Ürün ara… (ör. mercimek, pizza, latte)" value="${escHtml(mk.ara)}" oninput="mk.ara=this.value;mkListeCiz()"></label>
             <div class="mk3-nav" id="mk3Nav"></div></div><div id="mkListe"></div>`;
+        mk.pkFiltre = '';
         mkListeCiz();
         ileri.innerHTML = '<span class="material-icons-outlined">playlist_add</span> Menüye Ekle';
     }
 }
-function mkListeCiz() {
+// arama + seçili mutfak süzgeci (çipten)
+function mkGorunur(u) {
     const ara = mk.ara.toLocaleLowerCase('tr');
-    let h = '', nav = '', oneriBaslik = false;
+    return (!ara || u.ad.toLocaleLowerCase('tr').includes(ara)) && (!mk.pkFiltre || (u.paketler || []).includes(mk.pkFiltre));
+}
+function mkPkFiltre(kod) {
+    mk.pkFiltre = kod;
+    mkListeCiz();
+    document.getElementById('mkGovde').scrollTo({ top: 0, behavior: 'smooth' });
+}
+function mkListeCiz() {
+    let h = '', oneriBaslik = false;
     mk.onizleme.forEach((k, ki) => {
-        const list = k.urunler.filter(u => !ara || u.ad.toLocaleLowerCase('tr').includes(ara));
+        const list = k.urunler.filter(mkGorunur);
         if (!list.length) return;
         if (k.oneri && !oneriBaslik) {
             oneriBaslik = true;
             h += `<div class="mk3-oneri"><span class="material-icons-outlined">lightbulb</span><span><b>Seçmediğiniz mutfak ve bölümlerden öneriler</b>
                 <small>Bu ürünler işaretsiz gelir; istediklerinizi işaretleyerek ekleyebilirsiniz.</small></span></div>`;
         }
-        nav += `<button class="mk3-cip ${k.oneri ? 'oneri' : ''}" data-ki="${ki}" onclick="mkKatGit(${ki})">${escHtml(k.ad)} <small></small></button>`;
         h += `<section class="mk3-kat ${k.oneri ? 'oneri' : ''}" id="mk3k-${ki}" data-ki="${ki}"><div class="mk3-kat-bas">
             <span class="t"><b>${escHtml(k.ad)}</b><small></small></span>
             <button class="mk3-hepsi" onclick="mkKatSec(${ki}, !this.classList.contains('sec'))"><span class="kutu"><span class="material-icons-outlined">check</span></span><span class="y"></span></button></div>
@@ -1413,33 +1425,38 @@ function mkListeCiz() {
                 <span class="y"><b>${escHtml(u.ad)}</b><small>${escHtml(u.aciklama || '')}</small></span>
                 ${u.var ? '<span class="mk3-var">Menünüzde var</span>' : '<span class="kutu"><span class="material-icons-outlined">check</span></span>'}</button>`).join('')}</div></section>`;
     });
-    document.getElementById('mkListe').innerHTML = h || `<div class="mk3-bos"><span class="material-icons-outlined">search_off</span><b>“${escHtml(mk.ara)}” bulunamadı</b><small>Farklı bir kelime deneyin.</small></div>`;
-    document.getElementById('mk3Nav').innerHTML = nav;
+    document.getElementById('mkListe').innerHTML = h || (mk.ara
+        ? `<div class="mk3-bos"><span class="material-icons-outlined">search_off</span><b>“${escHtml(mk.ara)}” bulunamadı</b><small>Farklı bir kelime deneyin.</small></div>`
+        : '<div class="mk3-bos"><span class="material-icons-outlined">restaurant_menu</span><b>Bu mutfakta ürün yok</b></div>');
+    // çipler: seçilen mutfak ve bölümler (tıklayınca liste o mutfağa süzülür)
+    const pkVar = mk.onizleme.some(k => k.urunler.some(u => u.paketler));
+    const pkl = pkVar ? mk.tanim.gruplar.flatMap(gr => gr.paketler).filter(p => mk.paketler.has(p.kod)) : [];
+    document.getElementById('mk3Nav').innerHTML = pkl.length ? `<button class="mk3-cip ${mk.pkFiltre ? '' : 'aktif'}" data-pk="" onclick="mkPkFiltre('')">Tümü <small></small></button>` +
+        pkl.map(p => `<button class="mk3-cip ${mk.pkFiltre === p.kod ? 'aktif' : ''}" data-pk="${p.kod}" onclick="mkPkFiltre('${p.kod}')"><span class="e">${p.ikon}</span>${escHtml(p.ad)} <small></small></button>`).join('') : '';
     mkKatSayac();
 }
 // seçim sayaçları: kategori başlığı, "tümünü seç" düğmesi, kategori çipleri, alt özet
 function mkKatSayac() {
-    const ara = mk.ara.toLocaleLowerCase('tr');
     mk.onizleme.forEach((k, ki) => {
         const bolum = document.getElementById('mk3k-' + ki);
         if (!bolum) return;
-        const list = k.urunler.filter(u => !u.var && (!ara || u.ad.toLocaleLowerCase('tr').includes(ara)));
+        const list = k.urunler.filter(u => !u.var && mkGorunur(u));
         const n = list.filter(u => mk.secili.has(u.kod)).length, hepsi = list.length > 0 && n === list.length;
         bolum.querySelector('.mk3-kat-bas small').textContent = list.length ? `${n} / ${list.length} seçili` : 'Hepsi menünüzde var';
         const btn = bolum.querySelector('.mk3-hepsi');
         btn.classList.toggle('sec', hepsi); btn.style.display = list.length ? '' : 'none';
         btn.querySelector('.y').textContent = hepsi ? 'Tümü seçili' : 'Tümünü seç';
-        const cip = document.querySelector(`#mk3Nav .mk3-cip[data-ki="${ki}"]`);
-        if (cip) { cip.querySelector('small').textContent = n; cip.classList.toggle('bos', n === 0); }
+    });
+    document.querySelectorAll('#mk3Nav .mk3-cip').forEach(cip => {
+        const pk = cip.dataset.pk;
+        const n = pk ? mk.onizleme.reduce((s, k) => s + k.urunler.filter(u => mk.secili.has(u.kod) && (u.paketler || []).includes(pk)).length, 0) : mk.secili.size;
+        cip.querySelector('small').textContent = n;
+        cip.classList.toggle('bos', n === 0);
     });
     const katSay = mk.onizleme.filter(k => k.urunler.some(u => mk.secili.has(u.kod))).length;
     document.getElementById('mkAltBilgi').innerHTML = mk.secili.size
         ? `<span class="mk-ozet-e"><span class="material-icons-outlined" style="color:var(--mor1)">restaurant_menu</span></span><span class="mk-ozet"><b>${mk.secili.size} ürün · ${katSay} kategori</b><small>Fiyatsız eklenir; fiyatını girdiğiniz ürün satışa açılır</small></span>`
         : '<span class="mk-ozet"><small>Eklemek istediğiniz ürünleri seçin</small></span>';
-}
-function mkKatGit(ki) {
-    const el = document.getElementById('mk3k-' + ki);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function mkTurSec(kod) {
     mk.tur = kod;
@@ -1504,8 +1521,7 @@ function mkUrunTik(kod) {
     mkKatSayac();
 }
 function mkKatSec(ki, s) {
-    const ara = mk.ara.toLocaleLowerCase('tr');
-    mk.onizleme[ki].urunler.filter(u => !u.var && (!ara || u.ad.toLocaleLowerCase('tr').includes(ara))).forEach(u => s ? mk.secili.add(u.kod) : mk.secili.delete(u.kod));
+    mk.onizleme[ki].urunler.filter(u => !u.var && mkGorunur(u)).forEach(u => s ? mk.secili.add(u.kod) : mk.secili.delete(u.kod));
     mkListeCiz();
 }
 function mkTemizle() {
