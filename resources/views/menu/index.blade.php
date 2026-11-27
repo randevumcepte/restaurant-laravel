@@ -1319,7 +1319,7 @@ async function mkAc(ilk) {
         mk.tanim = r;
         mk.tur = r.kurulum.tur || null;
         mk.paketler = new Set(r.kurulum.paketler || []);
-        if (!mk.paketler.size && mk.tur) (r.turler.find(t => t.kod === mk.tur) || { paket: [] }).paket.forEach(p => mk.paketler.add(p));
+        if (!mk.paketler.size && mk.tur) mk.paketler = mkVarsayilan(mk.tur);
     } catch (e) { mnyToast('Bağlantı hatası'); mnyLoading(false); return; }
     mnyLoading(false);
     mk.adim = (mk.ilk || !mk.tur) ? 1 : 2;
@@ -1371,9 +1371,9 @@ function mkCiz() {
         document.getElementById('mkBaslik').textContent = 'Hangi mutfaklar ve bölümler?';
         document.getElementById('mkAdimYazi').textContent = 'Menünüzde olacak mutfakları ve bölümleri işaretleyin. Birden çok seçebilirsiniz' + (t && t.mutfak ? ' (ör. Türk + İtalyan + Uzak Doğu)' : '') + '.';
         const onerilen = new Set(t ? t.paket : []);
-        let h = t ? `<div class="mk-oneri-not"><span class="e">${t.ikon}</span><span class="y"><b>${escHtml(t.ad)}</b> için önerilenler işaretlendi
-            <small>İstemediğinizin işaretini kaldırın, eksik olanı ekleyin.</small></span>
-            <button class="mny-btn bos" onclick="mkOneriyeDon()"><span class="material-icons-outlined">restart_alt</span> Önerilene dön</button></div>` : '';
+        let h = t ? `<div class="mk-oneri-not"><span class="e">${t.ikon}</span><span class="y">Yalnız <b>işaretlediğiniz</b> mutfak ve bölümlerin ürünleri gelir
+            <small>Tatlı ya da içecek de istiyorsanız ilgili bölümü işaretleyin; <i style="font-style:normal;font-weight:700;color:#B45309">Önerilen</i> etiketliler ${escHtml(t.ad)} için uygun olanlardır.</small></span>
+            <button class="mny-btn bos" onclick="mkOneriyeDon()"><span class="material-icons-outlined">restart_alt</span> Sıfırla</button></div>` : '';
         h += mk.tanim.gruplar.map((gr, gi) => {
             const s = MK_GRUP_STIL[gr.ad] || MK_GRUP_STIL._;
             return `<div class="mk-bolum" style="animation-delay:${gi * 60}ms"><div class="mk-bolum-bas">
@@ -1460,7 +1460,7 @@ function mkKatSayac() {
 }
 function mkTurSec(kod) {
     mk.tur = kod;
-    mk.paketler = new Set((mk.tanim.turler.find(t => t.kod === kod) || { paket: [] }).paket);
+    mk.paketler = mkVarsayilan(kod);
     // kartları yeniden çizmeden işaretle (giriş animasyonu tekrar oynamasın)
     const liste = document.querySelector('#mkGovde .mk-turler');
     if (!liste) { mkCiz(); return; }
@@ -1471,6 +1471,16 @@ function mkTurSec(kod) {
 const MK_TUR_FOTO = { restoran: 'hunkar-begendi', kafe: 'latte', bar: 'kanat', meyhane: 'kalamar-tava', kebapci: 'adana-kebap',
     pideci: 'karisik-pide', donerci: 'doner-durum', fastfood: 'patates-kizartmasi', pizzaci: 'pepperoni-pizza', balik: 'levrek-izgara',
     kahvalti: 'serpme-kahvalti', pastane: 'profiterol', otel: 'antrikot' };
+// türün baştan işaretli gelen paketleri: türde mutfak varsa YALNIZ mutfaklar (tatlı/içecek bölümünü kullanıcı kendisi seçer,
+// "Önerilen" etiketiyle görünür); mutfağı olmayan tür (kafe, bar) bölümleriyle gelir
+function mkVarsayilan(kod) {
+    const t = mk.tanim.turler.find(x => x.kod === kod);
+    if (!t) return new Set();
+    const bolum = new Set(((mk.tanim.gruplar.find(g => g.ad === "Bölümler") || {}).paketler || []).map(p => p.kod));
+    const mutfak = t.paket.filter(p => !bolum.has(p));
+    return new Set(mutfak.length ? mutfak : t.paket);
+}
+function mkPaketAdlari(kodlar) { return (kodlar || []).map(mkPaketBul).filter(Boolean).map(p => p.ad); }
 function mkPaketBul(kod) {
     for (const gr of mk.tanim.gruplar) { const p = gr.paketler.find(x => x.kod === kod); if (p) return p; }
     return null;
@@ -1496,15 +1506,15 @@ function mkPaketOzet() {
         : '<span class="mk-ozet"><small>En az bir mutfak ya da bölüm seçin</small></span>';
 }
 function mkOneriyeDon() {
-    mk.paketler = new Set((mk.tanim.turler.find(t => t.kod === mk.tur) || { paket: [] }).paket);
+    mk.paketler = mkVarsayilan(mk.tur);
     mkPaketOzet();
 }
 function mkTurOzet() {
     const el = document.getElementById('mkAltBilgi');
     const t = mk.tur && mk.tanim.turler.find(x => x.kod === mk.tur);
     if (!t) { el.innerHTML = '<span class="mk-ozet"><small>Devam etmek için bir işletme türü seçin</small></span>'; return; }
-    const adet = t.paket.reduce((s, k) => s + ((mkPaketBul(k) || {}).adet || 0), 0);
-    el.innerHTML = `<span class="mk-ozet-e">${t.ikon}</span><span class="mk-ozet"><b>${escHtml(t.ad)}</b><small>${t.paket.length} bölüm · ~${adet} hazır ürün önerilecek</small></span>`;
+    const vs = [...mkVarsayilan(t.kod)];
+    el.innerHTML = `<span class="mk-ozet-e">${t.ikon}</span><span class="mk-ozet"><b>${escHtml(t.ad)}</b><small>${escHtml(mkPaketAdlari(vs).join(", "))} işaretli gelecek</small></span>`;
 }
 function mkAdimlarCiz() {
     const ad = ['İşletme türü', 'Mutfak & bölüm', 'Ürünler'];
