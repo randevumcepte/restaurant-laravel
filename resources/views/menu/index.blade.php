@@ -207,11 +207,82 @@ body.koyu #mny{
 .mny-loader-box .spin{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--mor1);
   border-radius:50%;animation:mny-spin .7s linear infinite;margin:0 auto 12px}
 @keyframes mny-spin{to{transform:rotate(360deg)}}
+
+/* ── Hazır menü / fiyat / fotoğraftan ── */
+#mny .mk-yollar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px;width:100%;max-width:760px}
+@media(max-width:700px){#mny .mk-yollar{grid-template-columns:1fr}}
+#mny .mk-yol{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 14px;border-radius:16px;cursor:pointer;
+  border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-family:inherit;transition:transform .12s,box-shadow .12s,border-color .12s}
+#mny .mk-yol:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(16,24,40,.1);border-color:var(--mor1)}
+#mny .mk-yol .material-icons-outlined{font-size:32px;margin:0;color:var(--mor1)}
+#mny .mk-yol b{font-size:15px}
+#mny .mk-yol small{font-size:12.5px;color:var(--sub);line-height:1.4}
+#mny .mk-yol.ana{background:linear-gradient(135deg,#7C3AED,#6D28D9);color:#fff;border-color:transparent}
+#mny .mk-yol.ana .material-icons-outlined,#mny .mk-yol.ana small{color:#fff}
+#mny .mk-bant{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:14px;margin-bottom:14px;
+  background:color-mix(in srgb,var(--amber) 13%,var(--card));border:1px solid color-mix(in srgb,var(--amber) 45%,transparent)}
+#mny .mk-bant>.material-icons-outlined{color:var(--amber)}
+#mny .mk-bant-yazi{flex:1;min-width:220px;font-size:13.5px;color:var(--ink)}
+.mk-kart{max-width:920px!important;display:flex;flex-direction:column;padding:0!important;overflow:hidden!important;height:88vh}
+.mk-ust{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:20px 22px 12px;border-bottom:1px solid var(--line)}
+.mk-adim{font-size:12.5px;color:var(--sub);margin-top:4px}
+.mk-govde{flex:1;overflow-y:auto;padding:16px 22px}
+.mk-alt{display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid var(--line)}
+.mk-alt-bilgi{flex:1;font-size:13px;color:var(--sub)}
+.mk-turler{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.mk-tur{display:flex;align-items:center;gap:10px;padding:14px;border-radius:14px;border:1.5px solid var(--line);background:var(--card);
+  cursor:pointer;font-size:14px;font-weight:700;color:var(--ink);text-align:left;font-family:inherit}
+.mk-tur .e{font-size:24px}
+.mk-tur.sec{border-color:var(--mor1);background:color-mix(in srgb,var(--mor1) 10%,var(--card))}
+.mk-grup{font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px}
+.mk-grup:first-child{margin-top:0}
+.mk-cipler{display:flex;flex-wrap:wrap;gap:8px}
+.mk-cip{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:22px;border:1.5px solid var(--line);background:var(--card);
+  color:var(--ink);font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.mk-cip small{color:var(--sub);font-weight:600}
+.mk-cip.sec{border-color:var(--mor1);background:var(--mor1);color:#fff}
+.mk-cip.sec small{color:rgba(255,255,255,.8)}
+.mk-ara{display:block;width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--line);background:var(--card2);color:var(--ink);font-size:14px;margin-bottom:10px;box-sizing:border-box;font-family:inherit}
+.mk-kat{margin-bottom:14px}
+.mk-kat-bas{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14.5px;font-weight:800;color:var(--ink);position:sticky;top:-16px;background:var(--card);z-index:1}
+.mk-kat-bas small{font-size:12px;color:var(--sub);font-weight:600}
+.mk-kat-bas input,.mk-urun input[type=checkbox]{accent-color:var(--mor1);width:18px;height:18px;cursor:pointer;flex-shrink:0}
+.mk-urunler{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.mk-urun{display:flex;align-items:center;gap:10px;padding:7px;border-radius:12px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+.mk-urun.var{opacity:.5;cursor:default}
+.mk-urun img,.mk-urun .ph{width:46px;height:46px;border-radius:9px;object-fit:cover;flex-shrink:0;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--sub2)}
+.mk-urun .b{flex:1;min-width:0}
+.mk-urun .b b{display:block;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-urun .b small{display:block;font-size:11.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-tum{display:flex!important;align-items:center;gap:8px;padding:10px 22px 0;margin:0!important;text-transform:none!important;letter-spacing:0!important;font-size:13px!important;color:var(--sub)}
+.mk-tum input{width:auto!important;display:inline!important;accent-color:var(--mor1)}
+.mp-satir{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.mp-satir .ad{flex:1;min-width:0;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-satir input{width:120px!important;padding:8px 10px!important;text-align:right}
+.mf-satir{display:grid;grid-template-columns:22px 1.1fr 1.6fr 110px;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.mf-satir input[type=text],.mf-satir input[type=number]{padding:8px 10px!important;font-size:13px!important}
+.mf-satir.var{opacity:.5}
+.mf-yukle{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:260px;border:2px dashed var(--line);border-radius:18px;cursor:pointer;color:var(--sub);text-align:center;padding:20px}
+.mf-yukle:hover{border-color:var(--mor1)}
+.mf-yukle .material-icons-outlined{font-size:44px;color:var(--mor1)}
+/* modalın genel label/input kuralları (blok, büyük harf, tam genişlik) bu satırlara uygulanmaz */
+.mny-modal-kart label.mk-urun,.mny-modal-kart label.mk-kat-bas{display:flex;text-transform:none;letter-spacing:0;margin:0;font-size:inherit}
+.mny-modal-kart label.mk-kat-bas{font-size:14.5px;font-weight:800;color:var(--ink);margin-bottom:6px}
+.mny-modal-kart .mk-urun input[type=checkbox],.mny-modal-kart .mk-kat-bas input[type=checkbox],.mny-modal-kart .mf-satir input[type=checkbox]{display:inline-block;width:18px;height:18px;padding:0;margin:0;flex-shrink:0}
+.mk-hg{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.mk-hg img{width:64px;height:64px;border-radius:10px;object-fit:cover;cursor:pointer;border:2px solid transparent;flex-shrink:0}
+.mk-hg img.sec{border-color:var(--mor1)}
 </style>
 @endpush
 
 @section('rk_araclar')
 @if($duzenleyebilir)
+<button class="mny-btn bos" onclick="mkAc(false)">
+  <span class="material-icons-outlined" style="color:var(--mor1)">auto_stories</span> Hazır Menü
+</button>
+<button class="mny-btn bos" onclick="mfAc()">
+  <span class="material-icons-outlined">document_scanner</span> Fotoğraftan
+</button>
 <button class="mny-btn bos" onclick="mnyOneSiralaAc()">
   <span class="material-icons-outlined" style="color:var(--gold)">star</span> Öne Çıkanları Sırala
 </button>
@@ -240,7 +311,11 @@ let mnyKategoriler = {!! json_encode($kategoriler->values()->map(fn($k)=>[
     'ad'   => $k->ad,
     'sira' => (int)($k->sira ?? 0),
     'aktif'=> (bool)($k->aktif ?? true),
+    'kdv'  => isset($k->kdv) && $k->kdv !== null ? (float)$k->kdv : null,
 ])->all(), 15, 512) !!};
+const MNY_KDV_VARS = {{ (float) $kdvVars }};
+const MNY_KURULUM  = {!! json_encode($kurulum) !!};
+const MNY_ISTASYON = {!! json_encode(function_exists('_mutfakIstasyonlar') ? _mutfakIstasyonlar() : [], JSON_UNESCAPED_UNICODE) !!};
 
 let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     'id'         => (int)$u->id,
@@ -255,16 +330,48 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     'one_soz'    => $u->one_soz ?? '',
     'one_ai_soz' => $u->one_ai_soz ?? '',
     'one_sira'   => (int)($u->one_sira ?? 0),
+    'kdv'        => isset($u->kdv) && $u->kdv !== null ? (float)$u->kdv : null,
+    'istasyon'   => $u->istasyon ?? 'mutfak',
+    'sablon_kod' => $u->sablon_kod ?? null,
+    'fiyat_bekliyor' => (bool)($u->fiyat_bekliyor ?? false),
 ])->values()->all(), 15, 512) !!};
 </script>
 
-{{-- ── Boş durum ── --}}
+{{-- ── Boş durum: menüyü kurmanın 3 yolu ── --}}
 @if($kategoriler->isEmpty() && $urunFlat->isEmpty())
 <div class="mny-bos">
   <span class="material-icons-outlined">restaurant_menu</span>
-  <p>Henüz menü yok.<br>Önce kategori, sonra ürün ekleyin.</p>
+  <p style="font-size:16px;font-weight:700;color:var(--ink);margin:0 0 4px">Menünüz henüz boş</p>
+  <p style="margin:0">Dakikalar içinde kurun; sonra istediğiniz zaman ekler, değiştirirsiniz.</p>
+  @if($duzenleyebilir)
+  <div class="mk-yollar">
+    <button class="mk-yol ana" onclick="mkAc(true)">
+      <span class="material-icons-outlined">auto_stories</span>
+      <b>Hazır menüden başla</b>
+      <small>İşletme türünü ve mutfakları seçin; görselli menü hazır gelsin</small>
+    </button>
+    <button class="mk-yol" onclick="mfAc()">
+      <span class="material-icons-outlined">document_scanner</span>
+      <b>Menü fotoğrafından</b>
+      <small>Basılı menünüzün fotoğrafını ya da PDF'ini yükleyin</small>
+    </button>
+    <button class="mk-yol" onclick="mnyKategoriAc(null)">
+      <span class="material-icons-outlined">edit_note</span>
+      <b>Kendim ekleyeceğim</b>
+      <small>Önce kategori, sonra ürün ekleyin</small>
+    </button>
+  </div>
+  @endif
 </div>
 @endif
+
+{{-- ── Fiyat bekleyen ürünler bandı ── --}}
+<div class="mk-bant" id="mkBant" style="display:none">
+  <span class="material-icons-outlined">hourglass_top</span>
+  <div class="mk-bant-yazi"><b id="mkBantSayi">0</b> ürün fiyat bekliyor. Fiyatı girilmeyen ürün POS'ta, QR menüde ve uygulamada görünmez.</div>
+  <button class="mny-btn dolu" onclick="mpAc(true)"><span class="material-icons-outlined">sell</span> Fiyatları Gir</button>
+  <button class="mny-btn bos" onclick="mkTemizle()"><span class="material-icons-outlined">cleaning_services</span> Fiyatsızları Kaldır</button>
+</div>
 
 {{-- ── İçerik kapsayıcı (JS ile yeniden çizilir) ── --}}
 <div id="mny-icerik"></div>
@@ -278,6 +385,9 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     <input type="text" id="katAd" placeholder="Örn: Başlangıçlar">
     <label>Sıra (küçük önce)</label>
     <input type="number" id="katSira" value="0" min="0">
+    <label>KDV oranı (%)</label>
+    <input type="number" id="katKdv" min="0" max="99" step="any" placeholder="Boş: işletme varsayılanı (%{{ rtrim(rtrim(number_format($kdvVars, 2, ',', ''), '0'), ',') }})">
+    <p style="font-size:11.5px;color:var(--sub);margin:6px 0 0">Bu kategorideki, kendi oranı girilmemiş ürünlere uygulanır. Örn. alkollü içecekler %20.</p>
     <div class="mny-modal-actions">
       <button id="katSilBtn" style="background:color-mix(in srgb,var(--kirmizi) 14%,transparent);color:var(--kirmizi)" onclick="katSil()">Sil</button>
       <button style="background:var(--card2);color:var(--sub)" onclick="mnyModalKapat('katModal')">Vazgeç</button>
@@ -306,6 +416,11 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
       <span class="ph-text">Fotoğraf ekle</span>
     </div>
     <input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="mnyFotoYukle(this)">
+    {{-- Hazır görseller (kütüphane): alternatifler / benzer ürünler; tıklayınca seçilir --}}
+    <div id="hazirGorsel" style="display:none;margin:4px 0 8px">
+      <div style="font-size:11.5px;font-weight:700;color:var(--sub);margin-bottom:6px">Hazır görseller <span style="font-weight:600">(temsili)</span></div>
+      <div id="hazirGorselListe" class="mk-hg"></div>
+    </div>
     <p id="fotoIpucu" style="font-size:12px;color:var(--sub);text-align:center;margin:0 0 6px;display:none">
       İpucu: Fotoğraf eklemek için karta dokunun — ürün otomatik kaydedilip fotoğraf yüklenir.
     </p>
@@ -321,6 +436,17 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
     </select>
     <label>Açıklama (müşteriye tanıtım)</label>
     <textarea id="urunAciklama" placeholder="Kısa ve iştah açıcı..."></textarea>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Hazırlandığı yer</label>
+        <select id="urunIstasyon"></select>
+      </div>
+      <div>
+        <label>KDV oranı (%)</label>
+        <input type="number" id="urunKdv" min="0" max="99" step="any">
+      </div>
+    </div>
+    <p style="font-size:11.5px;color:var(--sub);margin:6px 0 0">Mutfak/bar fişi ve ekranı bu yere düşer. KDV boşsa kategorinin oranı kullanılır.</p>
 
     {{-- Tükendi durumu ÜSTTE, başlık yanındaki tek-tık düğmeyle yönetilir. State burada gizli. --}}
     <input type="checkbox" id="urunTukendi" style="display:none">
@@ -399,6 +525,63 @@ let mnyUrunler = {!! json_encode($urunFlat->map(fn($u)=>[
   </button>
 </div>
 
+{{-- ════════════════ HAZIR MENÜ SİHİRBAZI (tür → mutfaklar → önizleme) ════════════════ --}}
+<div class="mny-modal-bg" id="mkModal">
+  <div class="mny-modal-kart mk-kart">
+    <div class="mk-ust">
+      <div>
+        <div class="m-baslik" style="margin:0" id="mkBaslik">Hazır Menü</div>
+        <div class="mk-adim" id="mkAdimYazi"></div>
+      </div>
+      <button class="mny-icon-btn" onclick="mnyModalKapat('mkModal')"><span class="material-icons-outlined">close</span></button>
+    </div>
+    <div class="mk-govde" id="mkGovde"></div>
+    <div class="mk-alt">
+      <button class="mny-btn bos" id="mkGeri" onclick="mkGeri()"><span class="material-icons-outlined">arrow_back</span> Geri</button>
+      <span class="mk-alt-bilgi" id="mkAltBilgi"></span>
+      <button class="mny-btn dolu" id="mkIleri" onclick="mkIleri()">Devam <span class="material-icons-outlined">arrow_forward</span></button>
+    </div>
+  </div>
+</div>
+
+{{-- ════════════════ TOPLU FİYAT TABLOSU ════════════════ --}}
+<div class="mny-modal-bg" id="mpModal">
+  <div class="mny-modal-kart mk-kart">
+    <div class="mk-ust">
+      <div>
+        <div class="m-baslik" style="margin:0">Fiyatları Gir</div>
+        <div class="mk-adim">Fiyatını girdiğiniz ürün kaydedince satışa açılır. Boş bıraktıklarınız beklemede kalır.</div>
+      </div>
+      <button class="mny-icon-btn" onclick="mnyModalKapat('mpModal')"><span class="material-icons-outlined">close</span></button>
+    </div>
+    <label class="mk-tum"><input type="checkbox" id="mpTumu" onchange="mpCiz()"> Tüm ürünleri göster (mevcut fiyatları da toplu değiştir)</label>
+    <div class="mk-govde" id="mpGovde"></div>
+    <div class="mk-alt">
+      <span class="mk-alt-bilgi" id="mpBilgi"></span>
+      <button class="mny-btn dolu" onclick="mpKaydet()"><span class="material-icons-outlined">check</span> Kaydet</button>
+    </div>
+  </div>
+</div>
+
+{{-- ════════════════ MENÜ FOTOĞRAFINDAN ════════════════ --}}
+<div class="mny-modal-bg" id="mfModal">
+  <div class="mny-modal-kart mk-kart">
+    <div class="mk-ust">
+      <div>
+        <div class="m-baslik" style="margin:0">Menü Fotoğrafından Oluştur</div>
+        <div class="mk-adim" id="mfAdim">Basılı menünüzün fotoğrafını ya da PDF'ini yükleyin; ürünler, kategoriler ve fiyatlar okunur.</div>
+      </div>
+      <button class="mny-icon-btn" onclick="mnyModalKapat('mfModal')"><span class="material-icons-outlined">close</span></button>
+    </div>
+    <div class="mk-govde" id="mfGovde"></div>
+    <input type="file" id="mfDosya" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none" onchange="mfOku(this)">
+    <div class="mk-alt" id="mfAlt" style="display:none">
+      <span class="mk-alt-bilgi" id="mfBilgi"></span>
+      <button class="mny-btn dolu" onclick="mfEkle()"><span class="material-icons-outlined">playlist_add</span> Menüye Ekle</button>
+    </div>
+  </div>
+</div>
+
 {{-- ════════════════ LOADER + TOAST ════════════════ --}}
 <div class="mny-loader" id="mnyLoader">
   <div class="mny-loader-box">
@@ -459,7 +642,8 @@ function mnyRozetHtml(u) {
     let h = '';
     if (u.one_cikan) h += `<span class="mny-rozet" style="background:rgba(124,58,237,.18);color:#C4B5FD">⭐ Öne çıkan</span>`;
     if (u.tukendi)   h += `<span class="mny-rozet" style="background:rgba(244,63,94,.18);color:var(--kirmizi);margin-left:4px">Tükendi</span>`;
-    if (!u.aktif)    h += `<span class="mny-rozet" style="background:rgba(100,116,139,.18);color:var(--sub);margin-left:4px">Pasif</span>`;
+    if (u.fiyat_bekliyor) h += `<span class="mny-rozet" style="background:rgba(245,158,11,.18);color:#B45309;margin-left:4px">Fiyat bekliyor</span>`;
+    else if (!u.aktif) h += `<span class="mny-rozet" style="background:rgba(100,116,139,.18);color:var(--sub);margin-left:4px">Pasif</span>`;
     return h;
 }
 function mnyFotoHtml(gorsel, cls='mny-foto') {
@@ -470,6 +654,9 @@ function mnyFotoHtml(gorsel, cls='mny-foto') {
 function mnyRenderIcerik() {
     const wrap = document.getElementById('mny-icerik');
     if (!wrap) return;
+    const bekleyen = mnyUrunler.filter(u => u.fiyat_bekliyor).length;
+    const bant = document.getElementById('mkBant');
+    if (bant) { bant.style.display = (MNY_DUZENLE && bekleyen) ? '' : 'none'; document.getElementById('mkBantSayi').textContent = bekleyen; }
     if (mnyKategoriler.length === 0 && mnyUrunler.length === 0) { wrap.innerHTML = ''; return; }
 
     let html = '';
@@ -529,7 +716,7 @@ function mnyKartHtml(u) {
     <div class="ad">${escHtml(u.ad)}</div>
     ${aciklamaHtml}
     <div class="fiyat-sira">
-      <span class="fiyat">${mnyTl(u.fiyat)}</span>
+      <span class="fiyat">${u.fiyat_bekliyor ? '<span style="color:#B45309">Fiyat girin</span>' : mnyTl(u.fiyat)}</span>
       ${mnyRozetHtml(u)}
     </div>
   </div>
@@ -552,6 +739,7 @@ function mnyKategoriAc(kat) {
     document.getElementById('katId').value    = kat ? kat.id : '';
     document.getElementById('katAd').value    = kat ? kat.ad : '';
     document.getElementById('katSira').value  = kat ? kat.sira : mnyKategoriler.length;
+    document.getElementById('katKdv').value   = kat && kat.kdv !== null && kat.kdv !== undefined ? kat.kdv : '';
     document.getElementById('katSilBtn').style.display = kat ? '' : 'none';
     mnyModalAc('katModal');
     setTimeout(() => document.getElementById('katAd').focus(), 80);
@@ -564,7 +752,7 @@ async function katKaydet() {
     const sira = parseInt(document.getElementById('katSira').value) || 0;
     mnyLoading(true);
     try {
-        const r = await mnyApi('/api/patron/kategori-kaydet', { id: id || undefined, ad, sira });
+        const r = await mnyApi('/api/patron/kategori-kaydet', { id: id || undefined, ad, sira, kdv: document.getElementById('katKdv').value.trim() });
         if (r.ok === 1) {
             if (id) { const i = mnyKategoriler.findIndex(k=>k.id===id); if(i>=0) mnyKategoriler[i]={...mnyKategoriler[i],...r.kategori}; }
             else    { mnyKategoriler.push(r.kategori); mnyKategoriler.sort((a,b)=>a.sira-b.sira||a.ad.localeCompare(b.ad,'tr')); }
@@ -676,7 +864,8 @@ function mnyUrunAc(urunIdOrNull) {
     document.getElementById('urunModalBaslik').textContent = u ? 'Ürünü Düzenle' : 'Yeni Ürün';
     document.getElementById('urunId').value        = u ? u.id : '';
     document.getElementById('urunAd').value        = u ? u.ad : '';
-    document.getElementById('urunFiyat').value     = u ? u.fiyat : '';
+    document.getElementById('urunFiyat').value     = u && !u.fiyat_bekliyor ? u.fiyat : '';
+    document.getElementById('urunFiyat').placeholder = u && u.fiyat_bekliyor ? 'Fiyat girin — kaydedince satışa açılır' : '0';
     document.getElementById('urunAciklama').value  = u ? (u.aciklama || '') : '';
     document.getElementById('urunTukendi').checked = u ? u.tukendi : false;
     mnyTukendiSegGuncelle();
@@ -694,6 +883,16 @@ function mnyUrunAc(urunIdOrNull) {
 
     mnyOneGoster();
     mnyFotoGoster(mnyAktifGorsel);
+
+    // İstasyon + KDV
+    const ist = document.getElementById('urunIstasyon');
+    ist.innerHTML = Object.entries(MNY_ISTASYON).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
+    ist.value = u ? (u.istasyon || 'mutfak') : '';
+    if (!u) ist.insertAdjacentHTML('afterbegin', '<option value="">Adından tahmin et</option>'), ist.value = '';
+    document.getElementById('urunKdv').value = u && u.kdv !== null && u.kdv !== undefined ? u.kdv : '';
+    mnyKdvIpucu();
+    // Hazır görseller (kütüphane alternatifleri / adı uyanlar)
+    mnyHazirGorselYukle(u);
 
     // Sil butonu
     document.getElementById('urunSilBtn').style.display = u ? '' : 'none';
@@ -778,7 +977,8 @@ async function urunKaydet(kapat = true) {
     try {
         const r = await mnyApi('/api/patron/urun-kaydet', {
             id: id || undefined, ad, fiyat, aciklama, kategori_id: katId,
-            tukendi, aktif, one_cikan: oneCikan, one_soz: oneSoz
+            tukendi, aktif, one_cikan: oneCikan, one_soz: oneSoz,
+            istasyon: document.getElementById('urunIstasyon').value, kdv: document.getElementById('urunKdv').value.trim()
         });
         btn.disabled = false; btn.textContent = 'Kaydet';
         if (r.ok === 1) {
@@ -893,11 +1093,258 @@ async function mnySiraKaydet() {
     mnyLoading(false);
 }
 
+/* ── Ürün formu: KDV ipucu + hazır görseller ── */
+function mnyKdvIpucu() {
+    const katId = parseInt(document.getElementById('urunKatSel').value) || 0;
+    const k = mnyKategoriler.find(x => x.id === katId);
+    const oran = k && k.kdv !== null && k.kdv !== undefined ? k.kdv : MNY_KDV_VARS;
+    document.getElementById('urunKdv').placeholder = 'Boş: %' + String(oran).replace('.', ',') + (k && k.kdv !== null && k.kdv !== undefined ? ' (kategori)' : ' (varsayılan)');
+}
+document.getElementById('urunKatSel').addEventListener('change', mnyKdvIpucu);
+
+async function mnyHazirGorselYukle(u) {
+    const kutu = document.getElementById('hazirGorsel'), liste = document.getElementById('hazirGorselListe');
+    kutu.style.display = 'none'; liste.innerHTML = '';
+    if (!u) return;
+    try {
+        const q = new URLSearchParams({ kod: u.sablon_kod || '', ad: u.ad || '' });
+        const r = await mnyApi('/api/patron/urun-gorsel-oneri?' + q);
+        if (!r || r.ok !== 1 || !r.gorseller.length || mnyAktifUrunId !== u.id) return;
+        liste.innerHTML = r.gorseller.map(g => `<img src="${escHtml(g.url)}" title="${escHtml(g.ad)}" loading="lazy" class="${(mnyAktifGorsel || '').indexOf('/' + g.gorsel + '.jpg') >= 0 ? 'sec' : ''}" onclick="mnyHazirGorselSec('${escHtml(g.gorsel)}','${escHtml(g.kod)}')">`).join('');
+        kutu.style.display = '';
+    } catch (e) {}
+}
+async function mnyHazirGorselSec(gorsel, kod) {
+    if (!mnyAktifUrunId) return;
+    try {
+        const r = await mnyApi('/api/patron/urun-gorsel-sec', { id: mnyAktifUrunId, gorsel, kod });
+        if (r && r.ok === 1) {
+            mnyAktifGorsel = r.gorsel;
+            const i = mnyUrunler.findIndex(x => x.id === mnyAktifUrunId);
+            if (i >= 0) mnyUrunler[i].gorsel = r.gorsel;
+            mnyFotoGoster(r.gorsel); mnyRenderIcerik();
+            document.querySelectorAll('#hazirGorselListe img').forEach(im => im.classList.toggle('sec', im.getAttribute('onclick').indexOf("'" + gorsel + "'") >= 0));
+            mnyToast('Görsel seçildi');
+        } else mnyToast((r && r.hata) || 'Seçilemedi');
+    } catch (e) { mnyToast('Bağlantı hatası'); }
+}
+
+/* ═══ HAZIR MENÜ SİHİRBAZI ═══
+   Adım 1: işletme türü (yalnız ilk kurulumda) → 2: mutfak/bölüm paketleri → 3: önizleme (işaretli gelir) → Ekle.
+   Eklenen ürünler fiyatsız ve pasif gelir; ardından fiyat tablosu açılır. */
+const mk = { adim: 1, ilk: false, tanim: null, tur: null, paketler: new Set(), onizleme: [], secili: new Set(), ara: '' };
+
+async function mkAc(ilk) {
+    mk.ilk = !!ilk; mk.ara = '';
+    mnyLoading(true);
+    try {
+        const r = await mnyApi('/api/patron/menu-kutuphane/tanim');
+        if (!r || r.ok !== 1) { mnyToast((r && r.hata) || 'Yüklenemedi'); mnyLoading(false); return; }
+        mk.tanim = r;
+        mk.tur = r.kurulum.tur || null;
+        mk.paketler = new Set(r.kurulum.paketler || []);
+        if (!mk.paketler.size && mk.tur) (r.turler.find(t => t.kod === mk.tur) || { paket: [] }).paket.forEach(p => mk.paketler.add(p));
+    } catch (e) { mnyToast('Bağlantı hatası'); mnyLoading(false); return; }
+    mnyLoading(false);
+    mk.adim = (mk.ilk || !mk.tur) ? 1 : 2;
+    mkCiz(); mnyModalAc('mkModal');
+}
+function mkGeri() { if (mk.adim > 1) { mk.adim--; mkCiz(); } }
+async function mkIleri() {
+    if (mk.adim === 1) { if (!mk.tur) { mnyToast('İşletme türünü seçin'); return; } mk.adim = 2; mkCiz(); return; }
+    if (mk.adim === 2) {
+        if (!mk.paketler.size) { mnyToast('En az bir mutfak ya da bölüm seçin'); return; }
+        mnyLoading(true);
+        try {
+            const r = await mnyApi('/api/patron/menu-kutuphane/onizle?paketler=' + encodeURIComponent([...mk.paketler].join(',')));
+            mk.onizleme = (r && r.kategoriler) || [];
+            mk.secili = new Set();
+            mk.onizleme.forEach(k => k.urunler.forEach(u => { if (!u.var) mk.secili.add(u.kod); }));
+        } catch (e) { mnyToast('Bağlantı hatası'); mnyLoading(false); return; }
+        mnyLoading(false);
+        mk.adim = 3; mkCiz(); return;
+    }
+    if (!mk.secili.size) { mnyToast('Eklenecek ürün seçilmedi'); return; }
+    mnyLoading(true);
+    try {
+        const r = await mnyApi('/api/patron/menu-kutuphane/ekle', { kodlar: JSON.stringify([...mk.secili]), tur: mk.tur || '', paketler: [...mk.paketler].join(',') });
+        mnyLoading(false);
+        if (r && r.ok === 1) {
+            mnyModalKapat('mkModal');
+            rkOnay(`${r.eklenen} ürün menünüze eklendi${r.atlanan ? ' (' + r.atlanan + ' ürün zaten vardı)' : ''}. Ürünler fiyat girilince satışa açılır. Fiyatları şimdi girmek ister misiniz?`,
+                () => { sessionStorage.setItem('mnyFiyatAc', '1'); location.reload(); }, 'var(--mor1)', 'Fiyatları Gir', () => location.reload());
+        } else mnyToast((r && r.hata) || 'Eklenemedi');
+    } catch (e) { mnyLoading(false); mnyToast('Bağlantı hatası'); }
+}
+function mkCiz() {
+    const g = document.getElementById('mkGovde');
+    document.getElementById('mkGeri').style.visibility = mk.adim > 1 ? 'visible' : 'hidden';
+    const ileri = document.getElementById('mkIleri');
+    if (mk.adim === 1) {
+        document.getElementById('mkBaslik').textContent = 'İşletmeniz ne tür?';
+        document.getElementById('mkAdimYazi').textContent = 'Adım 1 / 3 · Türe göre mutfaklar ve bölümler önerilir; sonra değiştirebilirsiniz.';
+        g.innerHTML = `<div class="mk-turler">${mk.tanim.turler.map(t => `<button class="mk-tur ${mk.tur === t.kod ? 'sec' : ''}" onclick="mkTurSec('${t.kod}')"><span class="e">${t.ikon}</span>${escHtml(t.ad)}</button>`).join('')}</div>`;
+        document.getElementById('mkAltBilgi').textContent = '';
+        ileri.innerHTML = 'Devam <span class="material-icons-outlined">arrow_forward</span>';
+    } else if (mk.adim === 2) {
+        const t = mk.tanim.turler.find(x => x.kod === mk.tur);
+        document.getElementById('mkBaslik').textContent = 'Hangi mutfaklar ve bölümler?';
+        document.getElementById('mkAdimYazi').textContent = (mk.ilk || !mk.tur ? 'Adım 2 / 3 · ' : '') + 'Birden çok seçebilirsiniz' + (t && t.mutfak ? ' (ör. Türk + İtalyan + Uzak Doğu)' : '') + '.';
+        g.innerHTML = mk.tanim.gruplar.map(gr => `<div class="mk-grup">${escHtml(gr.ad)}</div><div class="mk-cipler">${gr.paketler.map(p =>
+            `<button class="mk-cip ${mk.paketler.has(p.kod) ? 'sec' : ''}" onclick="mkPaket('${p.kod}')">${p.ikon} ${escHtml(p.ad)} <small>${p.adet}</small></button>`).join('')}</div>`).join('');
+        document.getElementById('mkAltBilgi').textContent = mk.paketler.size + ' seçili';
+        ileri.innerHTML = 'Ürünleri Göster <span class="material-icons-outlined">arrow_forward</span>';
+    } else {
+        document.getElementById('mkBaslik').textContent = 'Menünüze eklenecek ürünler';
+        document.getElementById('mkAdimYazi').textContent = (mk.ilk ? 'Adım 3 / 3 · ' : '') + 'İstemediklerinizin işaretini kaldırın. Görseller temsilidir; kendi fotoğrafınızla değiştirebilirsiniz.';
+        const ara = mk.ara.toLocaleLowerCase('tr');
+        let h = `<input class="mk-ara" placeholder="Ürün ara…" value="${escHtml(mk.ara)}" oninput="mk.ara=this.value;mkListeCiz()">`;
+        h += '<div id="mkListe"></div>';
+        g.innerHTML = h;
+        mkListeCiz();
+        ileri.innerHTML = '<span class="material-icons-outlined">playlist_add</span> Menüye Ekle';
+    }
+}
+function mkListeCiz() {
+    const ara = mk.ara.toLocaleLowerCase('tr');
+    let h = '';
+    mk.onizleme.forEach((k, ki) => {
+        const list = k.urunler.filter(u => !ara || u.ad.toLocaleLowerCase('tr').includes(ara));
+        if (!list.length) return;
+        const secilebilir = list.filter(u => !u.var);
+        const hepsi = secilebilir.length && secilebilir.every(u => mk.secili.has(u.kod));
+        h += `<div class="mk-kat"><label class="mk-kat-bas"><input type="checkbox" ${hepsi ? 'checked' : ''} onchange="mkKatSec(${ki}, this.checked)"> ${escHtml(k.ad)} <small>${list.length}</small></label><div class="mk-urunler">`;
+        h += list.map(u => `<label class="mk-urun ${u.var ? 'var' : ''}">${u.gorsel ? `<img src="${escHtml(u.gorsel)}" loading="lazy">` : '<span class="ph"><span class="material-icons-outlined">restaurant</span></span>'}
+            <span class="b"><b>${escHtml(u.ad)}</b><small>${u.var ? 'Menünüzde var' : escHtml(u.aciklama || '')}</small></span>
+            ${u.var ? '' : `<input type="checkbox" ${mk.secili.has(u.kod) ? 'checked' : ''} onchange="mkUrunSec('${u.kod}', this.checked)">`}</label>`).join('');
+        h += '</div></div>';
+    });
+    document.getElementById('mkListe').innerHTML = h || '<p style="color:var(--sub)">Ürün bulunamadı.</p>';
+    document.getElementById('mkAltBilgi').textContent = mk.secili.size + ' ürün seçili';
+}
+function mkTurSec(kod) {
+    mk.tur = kod;
+    mk.paketler = new Set((mk.tanim.turler.find(t => t.kod === kod) || { paket: [] }).paket);
+    mkCiz();
+}
+function mkPaket(kod) { mk.paketler.has(kod) ? mk.paketler.delete(kod) : mk.paketler.add(kod); mkCiz(); }
+function mkUrunSec(kod, s) { s ? mk.secili.add(kod) : mk.secili.delete(kod); document.getElementById('mkAltBilgi').textContent = mk.secili.size + ' ürün seçili'; }
+function mkKatSec(ki, s) {
+    const ara = mk.ara.toLocaleLowerCase('tr');
+    mk.onizleme[ki].urunler.filter(u => !u.var && (!ara || u.ad.toLocaleLowerCase('tr').includes(ara))).forEach(u => s ? mk.secili.add(u.kod) : mk.secili.delete(u.kod));
+    mkListeCiz();
+}
+function mkTemizle() {
+    mnyApi('/api/patron/menu-sablon-temizle', { onizle: 1 }).then(r => {
+        if (!r || r.ok !== 1) { mnyToast('Hesaplanamadı'); return; }
+        if (!r.adet) { mnyToast('Kaldırılacak fiyatsız ürün yok'); return; }
+        rkOnay(`Hazır menüden gelip fiyatı hiç girilmemiş ${r.adet} ürün menüden kaldırılacak. Satışı olan ürüne dokunulmaz. Devam edilsin mi?`, async () => {
+            mnyLoading(true);
+            const x = await mnyApi('/api/patron/menu-sablon-temizle', {});
+            mnyLoading(false);
+            if (x && x.ok === 1) { mnyToast(x.silinen + ' ürün kaldırıldı'); setTimeout(() => location.reload(), 700); } else mnyToast('Kaldırılamadı');
+        }, 'var(--kirmizi)', 'Kaldır');
+    }).catch(() => mnyToast('Bağlantı hatası'));
+}
+
+/* ═══ TOPLU FİYAT TABLOSU ═══ */
+function mpAc(yalnizBekleyen) {
+    document.getElementById('mpTumu').checked = !yalnizBekleyen;
+    mpCiz(); mnyModalAc('mpModal');
+}
+function mpCiz() {
+    const tumu = document.getElementById('mpTumu').checked;
+    const list = mnyUrunler.filter(u => tumu || u.fiyat_bekliyor);
+    let h = '';
+    const katlar = [...mnyKategoriler, { id: 0, ad: 'Kategorisiz' }];
+    katlar.forEach(k => {
+        const us = list.filter(u => (u.kategori_id || 0) === k.id).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+        if (!us.length) return;
+        h += `<div class="mk-grup">${escHtml(k.ad)}</div>`;
+        h += us.map(u => `<div class="mp-satir"><span class="ad">${escHtml(u.ad)}${u.fiyat_bekliyor ? ' <span class="mny-rozet" style="background:rgba(245,158,11,.18);color:#B45309">bekliyor</span>' : ''}</span>
+            <input type="number" min="0" step="any" inputmode="decimal" data-id="${u.id}" placeholder="₺" value="${u.fiyat_bekliyor ? '' : u.fiyat}"></div>`).join('');
+    });
+    document.getElementById('mpGovde').innerHTML = h || '<p style="color:var(--sub)">Fiyat bekleyen ürün yok.</p>';
+    document.getElementById('mpBilgi').textContent = list.length + ' ürün';
+}
+async function mpKaydet() {
+    const f = {};
+    document.querySelectorAll('#mpGovde input[data-id]').forEach(i => {
+        const v = parseFloat(String(i.value).replace(',', '.'));
+        const u = mnyUrunler.find(x => x.id === +i.dataset.id);
+        if (v > 0 && u && (u.fiyat_bekliyor || Math.abs(v - u.fiyat) > 0.001)) f[i.dataset.id] = v;
+    });
+    if (!Object.keys(f).length) { mnyToast('Değişen fiyat yok'); return; }
+    mnyLoading(true);
+    try {
+        const r = await mnyApi('/api/patron/menu-fiyat-toplu', { fiyatlar: JSON.stringify(f) });
+        mnyLoading(false);
+        if (r && r.ok === 1) {
+            Object.entries(f).forEach(([id, v]) => { const u = mnyUrunler.find(x => x.id === +id); if (u) { u.fiyat = v; if (u.fiyat_bekliyor) { u.fiyat_bekliyor = false; u.aktif = true; } } });
+            mnyRenderIcerik(); mnyModalKapat('mpModal');
+            mnyToast(r.guncellenen + ' fiyat kaydedildi' + (r.acilan ? ' · ' + r.acilan + ' ürün satışa açıldı' : ''));
+        } else mnyToast((r && r.hata) || 'Kaydedilemedi');
+    } catch (e) { mnyLoading(false); mnyToast('Bağlantı hatası'); }
+}
+
+/* ═══ MENÜ FOTOĞRAFINDAN ═══ */
+let mfListe = [];
+function mfAc() {
+    mfListe = [];
+    document.getElementById('mfAlt').style.display = 'none';
+    document.getElementById('mfGovde').innerHTML = `<div class="mf-yukle" onclick="document.getElementById('mfDosya').click()">
+        <span class="material-icons-outlined">add_photo_alternate</span><b style="color:var(--ink)">Menü fotoğrafı ya da PDF seçin</b>
+        <span style="font-size:13px">Net, düz ve iyi ışıklı çekin. Birden çok sayfa varsa her sayfayı ayrı yükleyebilirsiniz (PDF en fazla 8 sayfa).</span></div>`;
+    mnyModalAc('mfModal');
+}
+async function mfOku(input) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData(); fd.append('dosya', input.files[0]);
+    document.getElementById('mfGovde').innerHTML = `<div class="mf-yukle"><div class="spin" style="width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--mor1);border-radius:50%;animation:mny-spin .7s linear infinite"></div>
+        <b style="color:var(--ink)">Menü okunuyor…</b><span style="font-size:13px">Bu işlem 30-60 saniye sürebilir.</span></div>`;
+    input.value = '';
+    try {
+        const r = await mnyApi('/api/patron/menu-foto-oku', fd);
+        if (!r || r.ok !== 1) { mfAc(); mnyToast((r && r.hata) || 'Okunamadı'); return; }
+        mfListe = r.urunler.map(u => ({ ...u, sec: !u.var }));
+        mfCiz();
+    } catch (e) { mfAc(); mnyToast('Bağlantı hatası'); }
+}
+function mfCiz() {
+    let h = `<div class="mf-satir" style="font-size:11.5px;font-weight:700;color:var(--sub)"><span></span><span>KATEGORİ</span><span>ÜRÜN ADI</span><span>FİYAT (₺)</span></div>`;
+    h += mfListe.map((u, i) => `<div class="mf-satir ${u.var ? 'var' : ''}">
+        <input type="checkbox" ${u.sec ? 'checked' : ''} ${u.var ? 'disabled title="Menünüzde var"' : ''} onchange="mfListe[${i}].sec=this.checked;mfBilgi()" style="accent-color:var(--mor1);width:18px;height:18px">
+        <input type="text" value="${escHtml(u.kategori)}" oninput="mfListe[${i}].kategori=this.value">
+        <input type="text" value="${escHtml(u.ad)}" oninput="mfListe[${i}].ad=this.value" title="${u.sablon_kod ? 'Hazır kütüphanede eşleşti: görsel ve ayarlar oradan gelir' : ''}" ${u.sablon_kod ? 'style="border-color:color-mix(in srgb,var(--yesil) 60%,var(--line))"' : ''}>
+        <input type="number" min="0" step="any" value="${u.fiyat ?? ''}" placeholder="—" oninput="mfListe[${i}].fiyat=this.value"></div>`).join('');
+    document.getElementById('mfGovde').innerHTML = h;
+    document.getElementById('mfAdim').textContent = 'Okunanları kontrol edin, gerekirse düzeltin. Fiyatı boş olan ürün "fiyat bekliyor" olarak eklenir. Yeşil çerçeveli ürünler hazır kütüphaneyle eşleşti (görseli gelir).';
+    document.getElementById('mfAlt').style.display = '';
+    mfBilgi();
+}
+function mfBilgi() { document.getElementById('mfBilgi').textContent = mfListe.filter(u => u.sec).length + ' / ' + mfListe.length + ' ürün seçili'; }
+async function mfEkle() {
+    const sec = mfListe.filter(u => u.sec && (u.ad || '').trim());
+    if (!sec.length) { mnyToast('Ürün seçilmedi'); return; }
+    mnyLoading(true);
+    try {
+        const r = await mnyApi('/api/patron/menu-foto-ekle', { urunler: JSON.stringify(sec.map(u => ({ kategori: u.kategori, ad: u.ad, aciklama: u.aciklama, fiyat: u.fiyat, sablon_kod: u.sablon_kod }))) });
+        mnyLoading(false);
+        if (r && r.ok === 1) {
+            mnyModalKapat('mfModal');
+            mnyToast(r.eklenen + ' ürün eklendi' + (r.bekleyen ? ' · ' + r.bekleyen + ' ürün fiyat bekliyor' : ''));
+            if (r.bekleyen) sessionStorage.setItem('mnyFiyatAc', '1');
+            setTimeout(() => location.reload(), 800);
+        } else mnyToast((r && r.hata) || 'Eklenemedi');
+    } catch (e) { mnyLoading(false); mnyToast('Bağlantı hatası'); }
+}
+
 /* ── Başlangıç çizimi ── */
 mnyRenderIcerik();
+if (MNY_DUZENLE && sessionStorage.getItem('mnyFiyatAc')) { sessionStorage.removeItem('mnyFiyatAc'); setTimeout(() => mpAc(true), 300); }
 
 /* ── Modal kapatma (dışına tıklama) ── */
-['katModal','urunModal'].forEach(id=>{
+['katModal','urunModal','mpModal'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) mnyModalKapat(id);
     });

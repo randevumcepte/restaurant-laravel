@@ -4151,9 +4151,13 @@ Route::get('/mutfak-kur', function (Request $r) {
 // ============================ MENU YONETIMI ============================
 Route::get('/menu', function () {
     $subeId = _aktifSubeId();
+    _menuKutuphaneKolonEnsure(); // kdv, istasyon, sablon_kod, fiyat_bekliyor (routes/menu_kutuphane.php)
+    _mkGorselTamamla($subeId);
     $kategoriler = DB::table('menu_kategorileri')->where('sube_id', $subeId)->orderBy('sira')->get();
     $urunler = DB::table('urunler')->where('sube_id', $subeId)->get()->groupBy('kategori_id');
-    return view('menu.index', compact('kategoriler', 'urunler'));
+    $kurulum = _menuKurulumDurum($subeId);
+    $kdvVars = _kdvVarsayilan($subeId);
+    return view('menu.index', compact('kategoriler', 'urunler', 'kurulum', 'kdvVars'));
 });
 
 Route::post('/menu/86', function (Request $r) {
