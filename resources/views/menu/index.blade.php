@@ -367,12 +367,73 @@ body.koyu .mk-tur.foto.sec .ad b{color:#C4B5FD}
 .mk-pk.sec .kutu{background:#7C3AED;border-color:#7C3AED}
 .mk-pk.sec .kutu .material-icons-outlined{opacity:1}
 
+/* 3. adım: ürün seçimi */
+.mk3-arac{position:sticky;top:-22px;z-index:4;margin:-22px -26px 18px;padding:18px 26px 12px;background:var(--card2);
+  border-bottom:1px solid var(--line);box-shadow:0 6px 14px -10px rgba(16,24,40,.25)}
+.mk3-ara{display:flex!important;align-items:center;gap:10px;padding:0 14px;height:46px;border-radius:13px;border:1.5px solid var(--line);
+  background:var(--card);margin:0!important;text-transform:none!important;letter-spacing:0!important;transition:border-color .15s,box-shadow .15s}
+.mk3-ara:focus-within{border-color:#A78BFA;box-shadow:0 0 0 4px rgba(167,139,250,.2)}
+.mk3-ara .material-icons-outlined{color:var(--sub);font-size:21px}
+.mny-modal-kart .mk3-ara input{flex:1;border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;height:100%;
+  font-size:14.5px;color:var(--ink);outline:none;font-family:inherit}
+.mk3-nav{display:flex;gap:8px;overflow-x:auto;margin-top:12px;padding-bottom:2px;scrollbar-width:thin}
+.mk3-cip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:20px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;white-space:nowrap;cursor:pointer;flex-shrink:0;transition:all .15s}
+.mk3-cip small{min-width:22px;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:700;text-align:center;
+  background:color-mix(in srgb,#7C3AED 13%,var(--card));color:#7C3AED}
+.mk3-cip.bos small{background:var(--card2);color:var(--sub)}
+.mk3-cip.oneri{border-style:dashed}
+.mk3-cip:hover{border-color:#A78BFA;color:#6D28D9}
+.mk3-kat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px;scroll-margin-top:130px}
+.mk3-kat.oneri{border-style:dashed}
+.mk3-kat-bas{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.mk3-kat-bas .t{flex:1;min-width:0}
+.mk3-kat-bas .t b{display:block;font-size:16.5px;font-weight:800;color:var(--ink)}
+.mk3-kat-bas .t small{display:block;font-size:12.5px;color:var(--sub);margin-top:2px}
+.mk3-hepsi{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mk3-hepsi:hover{border-color:#A78BFA}
+.mk3-hepsi.sec{background:color-mix(in srgb,#7C3AED 9%,var(--card));border-color:color-mix(in srgb,#7C3AED 35%,var(--line));color:#6D28D9}
+body.koyu .mk3-hepsi.sec{color:#C4B5FD}
+.mk3-urunler{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.mk3-u{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 10px;border-radius:14px;border:1.5px solid var(--line);
+  background:var(--card);font-family:inherit;text-align:left;cursor:pointer;min-height:76px;transition:border-color .15s,background .15s,box-shadow .15s,opacity .15s}
+.mk3-u .g{width:56px;height:56px;border-radius:12px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,color-mix(in srgb,#7C3AED 10%,var(--card)),color-mix(in srgb,#7C3AED 20%,var(--card)));color:color-mix(in srgb,#7C3AED 55%,var(--card))}
+.mk3-u .g img{width:100%;height:100%;object-fit:cover;transition:filter .2s}
+.mk3-u .g .material-icons-outlined{font-size:24px}
+.mk3-u .y{flex:1;min-width:0}
+.mk3-u .y b{display:block;font-size:14px;font-weight:700;color:var(--ink);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk3-u .y small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;line-height:1.4;color:var(--sub);margin-top:2px}
+.mk3-u .kutu,.mk3-hepsi .kutu{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;transition:all .15s}
+.mk3-hepsi .kutu{width:18px;height:18px;border-radius:6px}
+.mk3-u .kutu .material-icons-outlined,.mk3-hepsi .kutu .material-icons-outlined{font-size:16px;opacity:0}
+.mk3-hepsi .kutu .material-icons-outlined{font-size:13px}
+.mk3-u:hover{border-color:#C4B5FD;box-shadow:0 6px 14px rgba(46,16,101,.08)}
+.mk3-u:not(.sec):not(.var) .g img{filter:grayscale(.55) opacity(.75)}
+.mk3-u:not(.sec):not(.var) .y b{color:var(--sub)}
+.mk3-u.sec{border-color:color-mix(in srgb,#7C3AED 45%,var(--line));background:color-mix(in srgb,#7C3AED 5%,var(--card))}
+.mk3-u.sec .kutu,.mk3-hepsi.sec .kutu{background:#7C3AED;border-color:#7C3AED}
+.mk3-u.sec .kutu .material-icons-outlined,.mk3-hepsi.sec .kutu .material-icons-outlined{opacity:1}
+.mk3-u.var{cursor:default;opacity:.6;background:var(--card2)}
+.mk3-var{font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;background:#DCFCE7;color:#15803D;white-space:nowrap;flex-shrink:0}
+.mk3-oneri{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;margin:24px 0 14px;border-radius:14px;
+  background:color-mix(in srgb,#F59E0B 10%,var(--card));border:1px solid color-mix(in srgb,#F59E0B 30%,var(--line))}
+.mk3-oneri>.material-icons-outlined{color:#D97706;font-size:22px}
+.mk3-oneri b{display:block;font-size:14.5px;color:var(--ink)}
+.mk3-oneri small{display:block;font-size:12.5px;color:var(--sub);margin-top:2px}
+.mk3-bos{display:flex;flex-direction:column;align-items:center;gap:6px;padding:50px 20px;text-align:center;color:var(--sub)}
+.mk3-bos .material-icons-outlined{font-size:44px;color:var(--sub2)}
+.mk3-bos b{font-size:15px;color:var(--ink)}
+
 @media(max-width:700px){
   .mk-hero{padding:18px 18px 14px}.mk-hero .m-baslik{font-size:20px!important}
   .mk-cizgi{width:16px}.mk-ad .y{display:none}.mk-ad.aktif .y{display:inline}
   #mkModal .mk-govde{padding:16px}#mkModal .mk-alt{padding:12px 16px}
   #mkModal .mk-turler{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .mk-paketler{grid-template-columns:1fr}.mk-bolum{padding:12px}
+  #mkModal .mk-alt .mk-ozet-e,#mkModal .mk-alt .mk-ozet small{display:none}
+  .mk3-arac{margin:-16px -16px 14px;padding:14px 16px 10px;top:-16px}.mk3-urunler{grid-template-columns:1fr}.mk3-kat{padding:12px}
   .mk-oneri-not{flex-wrap:wrap}.mk-oneri-not .e{display:none}.mk-oneri-not .mny-btn{width:100%;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){#mkModal *{animation:none!important;transition:none!important}}
@@ -1325,34 +1386,60 @@ function mkCiz() {
     } else {
         document.getElementById('mkBaslik').textContent = 'Menünüze eklenecek ürünler';
         document.getElementById('mkAdimYazi').textContent = 'İstemediklerinizin işaretini kaldırın. Görseller temsilidir; kendi fotoğrafınızla değiştirebilirsiniz.';
-        const ara = mk.ara.toLocaleLowerCase('tr');
-        let h = `<input class="mk-ara" placeholder="Ürün ara…" value="${escHtml(mk.ara)}" oninput="mk.ara=this.value;mkListeCiz()">`;
-        h += '<div id="mkListe"></div>';
-        g.innerHTML = h;
+        g.innerHTML = `<div class="mk3-arac"><label class="mk3-ara"><span class="material-icons-outlined">search</span>
+            <input placeholder="Ürün ara… (ör. mercimek, pizza, latte)" value="${escHtml(mk.ara)}" oninput="mk.ara=this.value;mkListeCiz()"></label>
+            <div class="mk3-nav" id="mk3Nav"></div></div><div id="mkListe"></div>`;
         mkListeCiz();
         ileri.innerHTML = '<span class="material-icons-outlined">playlist_add</span> Menüye Ekle';
     }
 }
 function mkListeCiz() {
     const ara = mk.ara.toLocaleLowerCase('tr');
-    let h = '', oneriBaslik = false;
+    let h = '', nav = '', oneriBaslik = false;
     mk.onizleme.forEach((k, ki) => {
         const list = k.urunler.filter(u => !ara || u.ad.toLocaleLowerCase('tr').includes(ara));
         if (!list.length) return;
         if (k.oneri && !oneriBaslik) {
             oneriBaslik = true;
-            h += `<div class="mk-oneri-bas"><b>Seçmediğiniz mutfak ve bölümlerden öneriler</b><small>Bu ürünler işaretsiz gelir; istediklerinizi işaretleyerek ekleyebilirsiniz.</small></div>`;
+            h += `<div class="mk3-oneri"><span class="material-icons-outlined">lightbulb</span><span><b>Seçmediğiniz mutfak ve bölümlerden öneriler</b>
+                <small>Bu ürünler işaretsiz gelir; istediklerinizi işaretleyerek ekleyebilirsiniz.</small></span></div>`;
         }
-        const secilebilir = list.filter(u => !u.var);
-        const hepsi = secilebilir.length && secilebilir.every(u => mk.secili.has(u.kod));
-        h += `<div class="mk-kat"><label class="mk-kat-bas"><input type="checkbox" ${hepsi ? 'checked' : ''} onchange="mkKatSec(${ki}, this.checked)"> ${escHtml(k.ad)} <small>${list.length}</small></label><div class="mk-urunler">`;
-        h += list.map(u => `<label class="mk-urun ${u.var ? 'var' : ''}">${u.gorsel ? `<img src="${escHtml(u.gorsel)}" loading="lazy">` : '<span class="ph"><span class="material-icons-outlined">restaurant</span></span>'}
-            <span class="b"><b>${escHtml(u.ad)}</b><small>${u.var ? 'Menünüzde var' : escHtml(u.aciklama || '')}</small></span>
-            ${u.var ? '' : `<input type="checkbox" ${mk.secili.has(u.kod) ? 'checked' : ''} onchange="mkUrunSec('${u.kod}', this.checked)">`}</label>`).join('');
-        h += '</div></div>';
+        nav += `<button class="mk3-cip ${k.oneri ? 'oneri' : ''}" data-ki="${ki}" onclick="mkKatGit(${ki})">${escHtml(k.ad)} <small></small></button>`;
+        h += `<section class="mk3-kat ${k.oneri ? 'oneri' : ''}" id="mk3k-${ki}" data-ki="${ki}"><div class="mk3-kat-bas">
+            <span class="t"><b>${escHtml(k.ad)}</b><small></small></span>
+            <button class="mk3-hepsi" onclick="mkKatSec(${ki}, !this.classList.contains('sec'))"><span class="kutu"><span class="material-icons-outlined">check</span></span><span class="y"></span></button></div>
+            <div class="mk3-urunler">${list.map(u => `<button class="mk3-u ${u.var ? 'var' : (mk.secili.has(u.kod) ? 'sec' : '')}" data-kod="${u.kod}" ${u.var ? 'disabled' : `onclick="mkUrunTik('${u.kod}', ${ki})"`}>
+                <span class="g">${u.gorsel ? `<img src="${escHtml(u.gorsel)}" alt="" loading="lazy">` : '<span class="material-icons-outlined">restaurant_menu</span>'}</span>
+                <span class="y"><b>${escHtml(u.ad)}</b><small>${escHtml(u.aciklama || '')}</small></span>
+                ${u.var ? '<span class="mk3-var">Menünüzde var</span>' : '<span class="kutu"><span class="material-icons-outlined">check</span></span>'}</button>`).join('')}</div></section>`;
     });
-    document.getElementById('mkListe').innerHTML = h || '<p style="color:var(--sub)">Ürün bulunamadı.</p>';
-    document.getElementById('mkAltBilgi').textContent = mk.secili.size + ' ürün seçili';
+    document.getElementById('mkListe').innerHTML = h || `<div class="mk3-bos"><span class="material-icons-outlined">search_off</span><b>“${escHtml(mk.ara)}” bulunamadı</b><small>Farklı bir kelime deneyin.</small></div>`;
+    document.getElementById('mk3Nav').innerHTML = nav;
+    mkKatSayac();
+}
+// seçim sayaçları: kategori başlığı, "tümünü seç" düğmesi, kategori çipleri, alt özet
+function mkKatSayac() {
+    const ara = mk.ara.toLocaleLowerCase('tr');
+    mk.onizleme.forEach((k, ki) => {
+        const bolum = document.getElementById('mk3k-' + ki);
+        if (!bolum) return;
+        const list = k.urunler.filter(u => !u.var && (!ara || u.ad.toLocaleLowerCase('tr').includes(ara)));
+        const n = list.filter(u => mk.secili.has(u.kod)).length, hepsi = list.length > 0 && n === list.length;
+        bolum.querySelector('.mk3-kat-bas small').textContent = list.length ? `${n} / ${list.length} seçili` : 'Hepsi menünüzde var';
+        const btn = bolum.querySelector('.mk3-hepsi');
+        btn.classList.toggle('sec', hepsi); btn.style.display = list.length ? '' : 'none';
+        btn.querySelector('.y').textContent = hepsi ? 'Tümü seçili' : 'Tümünü seç';
+        const cip = document.querySelector(`#mk3Nav .mk3-cip[data-ki="${ki}"]`);
+        if (cip) { cip.querySelector('small').textContent = n; cip.classList.toggle('bos', n === 0); }
+    });
+    const katSay = mk.onizleme.filter(k => k.urunler.some(u => mk.secili.has(u.kod))).length;
+    document.getElementById('mkAltBilgi').innerHTML = mk.secili.size
+        ? `<span class="mk-ozet-e"><span class="material-icons-outlined" style="color:var(--mor1)">restaurant_menu</span></span><span class="mk-ozet"><b>${mk.secili.size} ürün · ${katSay} kategori</b><small>Fiyatsız eklenir; fiyatını girdiğiniz ürün satışa açılır</small></span>`
+        : '<span class="mk-ozet"><small>Eklemek istediğiniz ürünleri seçin</small></span>';
+}
+function mkKatGit(ki) {
+    const el = document.getElementById('mk3k-' + ki);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function mkTurSec(kod) {
     mk.tur = kod;
@@ -1411,7 +1498,11 @@ function mkAdimlarCiz() {
     }).join('');
 }
 function mkPaket(kod) { mk.paketler.has(kod) ? mk.paketler.delete(kod) : mk.paketler.add(kod); mkPaketOzet(); }
-function mkUrunSec(kod, s) { s ? mk.secili.add(kod) : mk.secili.delete(kod); document.getElementById('mkAltBilgi').textContent = mk.secili.size + ' ürün seçili'; }
+function mkUrunTik(kod) {
+    mk.secili.has(kod) ? mk.secili.delete(kod) : mk.secili.add(kod);
+    document.querySelectorAll(`#mkListe .mk3-u[data-kod="${kod}"]`).forEach(b => b.classList.toggle('sec', mk.secili.has(kod)));
+    mkKatSayac();
+}
 function mkKatSec(ki, s) {
     const ara = mk.ara.toLocaleLowerCase('tr');
     mk.onizleme[ki].urunler.filter(u => !u.var && (!ara || u.ad.toLocaleLowerCase('tr').includes(ara))).forEach(u => s ? mk.secili.add(u.kod) : mk.secili.delete(u.kod));
