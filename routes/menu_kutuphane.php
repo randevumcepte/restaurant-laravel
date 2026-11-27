@@ -257,6 +257,7 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
     // Görseli sonradan gelen kütüphane ürünlerine görseli bağla (patronun kendi fotoğrafına dokunmaz)
     function _mkGorselTamamla($sid)
     {
+        _mkAciklamaTazele($sid);
         $k = 'mk_gorsel_tamam_' . (int) $sid;
         if (cache()->get($k)) return;
         cache()->put($k, 1, now()->addMinutes(30));
@@ -264,6 +265,29 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
             foreach (DB::table('urunler')->where('sube_id', (int) $sid)->whereNotNull('sablon_kod')->where(fn ($q) => $q->whereNull('gorsel')->orWhere('gorsel', ''))->get(['id', 'sablon_kod']) as $u) {
                 $g = _mkGorseller($u->sablon_kod);
                 if ($g) DB::table('urunler')->where('id', $u->id)->update(['gorsel' => _mkGorselUrl($g[0]), 'updated_at' => now()]);
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    // Kütüphane açıklamaları yenilenince (aciklama_eski.tsv) eklenmiş ürünlerde de güncellenir: yalnız açıklaması boş ya da
+    // hâlâ eski kütüphane metni olanlar; işletmenin elle yazdığı açıklamaya dokunulmaz. Şube başına dosya sürümü bir kez.
+    function _mkAciklamaTazele($sid)
+    {
+        $f = resource_path('menu_kutuphane/aciklama_eski.tsv');
+        if (!is_file($f)) return;
+        $k = 'mk_aciklama_tazele_' . (int) $sid . '_' . filemtime($f);
+        if (cache()->get($k)) return;
+        cache()->put($k, 1, now()->addDays(60));
+        try {
+            $eski = [];
+            foreach (file($f, FILE_IGNORE_NEW_LINES) as $l) { $p = explode('|', $l, 2); if (count($p) === 2) $eski[$p[0]] = trim($p[1]); }
+            $veri = _mkVeri();
+            foreach (DB::table('urunler')->where('sube_id', (int) $sid)->whereNotNull('sablon_kod')->get(['id', 'sablon_kod', 'aciklama']) as $u) {
+                $yeni = $veri[$u->sablon_kod]['aciklama'] ?? '';
+                $simdiki = trim((string) $u->aciklama);
+                if ($yeni === '' || $simdiki === $yeni) continue;
+                if ($simdiki === '' || $simdiki === ($eski[$u->sablon_kod] ?? null))
+                    DB::table('urunler')->where('id', $u->id)->update(['aciklama' => $yeni, 'updated_at' => now()]);
             }
         } catch (\Throwable $e) {}
     }
