@@ -46,6 +46,14 @@ body.koyu #mny{
 .mny-btn:active{transform:translateY(0)!important}
 .mny-btn.bos{background:var(--card);color:var(--ink);border-color:var(--line);box-shadow:0 1px 2px rgba(16,24,40,.07)}
 .mny-btn.bos .material-icons-outlined{color:var(--sub)}
+/* araç çubuğu renkli düğmeler: her işin kendi rengi (gece temasında da okunur) */
+.mny-btn.bos[class*="rk-"]{color:var(--rk);border-color:color-mix(in srgb,var(--rk) 35%,var(--line));
+  background:color-mix(in srgb,var(--rk) 10%,var(--card))}
+.mny-btn.bos[class*="rk-"] .material-icons-outlined{color:var(--rk)}
+.mny-btn.bos[class*="rk-"]:hover{background:color-mix(in srgb,var(--rk) 18%,var(--card));border-color:var(--rk);transform:translateY(-1px);
+  box-shadow:0 6px 16px color-mix(in srgb,var(--rk) 25%,transparent)}
+.mny-btn.rk-mor{--rk:#7C3AED}.mny-btn.rk-mavi{--rk:#0284C7}.mny-btn.rk-amber{--rk:#D97706}.mny-btn.rk-yesil{--rk:#059669}
+body.koyu .mny-btn.rk-mor{--rk:#A78BFA}body.koyu .mny-btn.rk-mavi{--rk:#38BDF8}body.koyu .mny-btn.rk-amber{--rk:#FBBF24}body.koyu .mny-btn.rk-yesil{--rk:#34D399}
 .mny-btn.bos:hover{background:var(--card2);border-color:color-mix(in srgb,var(--mor1) 32%,var(--line));transform:translateY(-1px);box-shadow:0 4px 11px rgba(16,24,40,.11)}
 .mny-btn.dolu{color:#fff;background:linear-gradient(135deg,#7C3AED,#6D28D9);border-color:transparent;box-shadow:0 4px 14px rgba(124,58,237,.38)}
 .mny-btn.dolu .material-icons-outlined{color:#fff}
@@ -453,16 +461,16 @@ body.koyu .mk3-hepsi.sec{color:#C4B5FD}
 
 @section('rk_araclar')
 @if($duzenleyebilir)
-<button class="mny-btn bos" onclick="mkAc(false)">
-  <span class="material-icons-outlined" style="color:var(--mor1)">auto_stories</span> Hazır Menü
+<button class="mny-btn bos rk-mor" onclick="mkAc(false)">
+  <span class="material-icons-outlined">auto_stories</span> Hazır Menü
 </button>
-<button class="mny-btn bos" onclick="mfAc()">
+<button class="mny-btn bos rk-mavi" onclick="mfAc()">
   <span class="material-icons-outlined">document_scanner</span> Fotoğraftan
 </button>
-<button class="mny-btn bos" onclick="mnyOneSiralaAc()">
-  <span class="material-icons-outlined" style="color:var(--gold)">star</span> Öne Çıkanları Sırala
+<button class="mny-btn bos rk-amber" onclick="mnyOneSiralaAc()">
+  <span class="material-icons-outlined">star</span> Öne Çıkanları Sırala
 </button>
-<button class="mny-btn bos" onclick="mnyKategoriAc(null)">
+<button class="mny-btn bos rk-yesil" onclick="mnyKategoriAc(null)">
   <span class="material-icons-outlined">create_new_folder</span> Kategori
 </button>
 <button class="mny-btn dolu" onclick="mnyUrunAc(null)">
