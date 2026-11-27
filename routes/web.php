@@ -222,7 +222,8 @@ if (!function_exists('_paketSiparisAl')) {
             }
             $eslesmedi = !$urun;
             // Fiyatta MENÜYE güven (müşterinin/STT'nin söylediğine değil)
-            $fiyat = $urun->fiyat ?? ($k['fiyat'] ?? 0);
+            // Menüde fiyatı 0 olan ürün eşleşirse platformun fiyatı kullanılır (0 TL satır yazılmaz)
+            $fiyat = ($urun && (float) $urun->fiyat > 0) ? (float) $urun->fiyat : (float) ($k['fiyat'] ?? 0);
             $tutar = $fiyat * $adet;
             DB::table('adisyon_kalemleri')->insert([
                 'adisyon_id' => $adisyonId, 'urun_id' => $urun->id ?? null,
@@ -597,8 +598,12 @@ Route::post('/pos/adisyon-ac', function (Request $r) {
 
 Route::post('/pos/kalem-ekle', function (Request $r) {
     if ($g = _posKapi()) return $g;
-    $u = DB::table('urunler')->find($r->urun_id);
-    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    $sid = _webSubeId();
+    // Başka şubenin ürünü/adisyonu kullanılamaz; pasif (fiyat bekleyen) ve tükenen ürün eklenmez
+    $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', $sid)->first();
+    if (!$u || !$u->aktif) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
+    if ($u->tukendi) return ['ok' => 0, 'hata' => $u->ad . ' tükendi.'];
+    if (!DB::table('adisyonlar')->where('id', (int) $r->adisyon_id)->where('sube_id', $sid)->exists()) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
     $gid = (int) $r->input('garson_id') ?: null;
     $hhFiyat = function_exists('_happyHourFiyat') ? _happyHourFiyat($u->id, (float) $u->fiyat, _webSubeId()) : (float) $u->fiyat;
     DB::table('adisyon_kalemleri')->insert([
@@ -1262,7 +1267,7 @@ Route::post('/api/app/{sube}/siparis', function (Request $r, $sube) {
     $notEk = ($tip === 'gelal' ? 'Gel-Al' : 'Paket') . ' · App';
     foreach ($kalemler as $k) {
         $uid = (int) ($k['urun_id'] ?? 0); $adet = max(1, min(50, (int) ($k['adet'] ?? 1)));
-        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $s->id)->first();
+        $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $s->id)->where('aktif', 1)->first();
         if (!$u) continue;
         if ($u->tukendi) { $tukendi[] = $u->ad; continue; }
         DB::table('adisyon_kalemleri')->insert(['adisyon_id' => $adId, 'urun_id' => $u->id, 'urun_adi' => $u->ad, 'adet' => $adet,
@@ -4149,7 +4154,8 @@ Route::get('/menu', function () {
 });
 
 Route::post('/menu/86', function (Request $r) {
-    $u = DB::table('urunler')->find($r->urun_id);
+    $u = DB::table('urunler')->where('id', (int) $r->urun_id)->where('sube_id', _aktifSubeId())->first();
+    if (!$u) return ['ok' => 0, 'hata' => 'Ürün bulunamadı'];
     DB::table('urunler')->where('id', $r->urun_id)->update(['tukendi' => $u->tukendi ? 0 : 1]);
     if ($u && function_exists('_mrTukendiLog')) _mrTukendiLog($u, !$u->tukendi, _posPersonel());
     return ['ok' => 1, 'tukendi' => $u->tukendi ? 0 : 1];
@@ -9432,7 +9438,7 @@ Route::get('/urun-fotolar', function (Request $r) {
 // Foto yukle (multipart) -> storage/app/urun_foto/{id}.{ext}, urunler.gorsel = /urun-foto/{id}
 Route::post('/urun-foto-yukle', function (Request $r) {
     $id = (int) $r->input('urun_id');
-    $u = DB::table('urunler')->find($id);
+    $u = DB::table('urunler')->where('id', $id)->where('sube_id', _aktifSubeId())->first(); // başka şubenin ürünü değiştirilemez
     if (!$u) return response()->json(['ok' => 0, 'mesaj' => 'Ürün bulunamadı'], 404);
     if (!$r->hasFile('foto') || !$r->file('foto')->isValid()) return response()->json(['ok' => 0, 'mesaj' => 'Geçerli dosya yok'], 422);
     $f = $r->file('foto');
@@ -29087,7 +29093,7 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
     $p = _apiPersonel($r);
     if (!$p) return response()->json(['ok' => 0, 'hata' => 'Yetkisiz'], 401);
     if (!_restoYetkiVar($p, 'adisyon_ac')) return ['ok' => 0, 'hata' => 'Sipariş ekleme yetkiniz yok.'];
-    $a = DB::table('adisyonlar')->find((int) $r->adisyon_id);
+    $a = DB::table('adisyonlar')->where('id', (int) $r->adisyon_id)->where('sube_id', $p->sube_id)->first();
     if (!$a) return ['ok' => 0, 'hata' => 'Adisyon bulunamadı'];
     if ($a->durum !== 'acik') return ['ok' => 0, 'hata' => 'Bu adisyon açık değil.'];
     $kalemler = json_decode((string) $r->kalemler, true);
@@ -29101,7 +29107,7 @@ Route::post('/api/patron/adisyon-urun-ekle', function (Request $r) {
         $uid = (int) ($k['urun_id'] ?? 0);
         $adet = max(1, (int) ($k['adet'] ?? 1));
         $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $p->sube_id)->first();
-        if (!$u) continue;
+        if (!$u || !$u->aktif) continue; // pasif (fiyat bekleyen) ürün satılmaz
         if ($u->tukendi) { $tukendiAtlanan[] = $u->ad; continue; } // 86: tukenen urun siparise eklenmez
         $hhF = function_exists('_happyHourFiyat') ? _happyHourFiyat($u->id, (float) $u->fiyat, $p->sube_id) : (float) $u->fiyat;
         $kNot = _kalemNotKur(null, (string) ($k['not'] ?? ''), $masaAlerji); // "Mısırsız · ALERJİ: Gluten" (+ masa alerjisi)
@@ -29751,7 +29757,7 @@ if (!function_exists('_rezKalemKaydet')) {
             $uid = (int) ($k['urun_id'] ?? 0);
             $adet = max(1, min(99, (int) ($k['adet'] ?? 1)));
             if ($uid <= 0) continue;
-            $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $subeId)->first(['id', 'ad', 'fiyat']);
+            $u = DB::table('urunler')->where('id', $uid)->where('sube_id', $subeId)->where('aktif', 1)->first(['id', 'ad', 'fiyat']);
             if (!$u) continue;
             DB::table('rezervasyon_kalemleri')->insert([
                 'rezervasyon_id' => $rezId, 'urun_id' => $u->id, 'urun_adi' => $u->ad,
@@ -32618,6 +32624,7 @@ Route::get('/api/barkod/coz', function (Request $r) {
     if ($b->tur === 'urun') {
         $u = DB::table('urunler')->where('id', $b->hedef_id)->first(['id', 'ad', 'fiyat', 'kategori_id', 'tukendi', 'aktif']);
         if (!$u) return ['ok' => 0, 'hata' => 'Ürün silinmiş'];
+        if (!$u->aktif) return ['ok' => 0, 'bulundu' => 1, 'hata' => $u->ad . ' satışa kapalı (fiyat bekliyor ya da pasif).', 'barkod' => $kod];
         return ['ok' => 1, 'bulundu' => 1, 'tur' => 'urun', 'id' => (int) $u->id, 'ad' => $u->ad, 'fiyat' => (float) $u->fiyat, 'tukendi' => (int) $u->tukendi];
     }
     $m = DB::table('malzemeler')->where('id', $b->hedef_id)->first(['id', 'ad', 'temel_birim_id', 'guncel_maliyet']);
