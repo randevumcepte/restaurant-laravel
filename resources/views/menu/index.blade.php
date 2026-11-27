@@ -313,37 +313,67 @@ body.koyu #mny{
 .mk-ozet b{display:block;font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk-ozet small{display:block;font-size:12.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-#mkModal .mk-turler{grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px}
-.mk-tur.foto{position:relative;display:block;padding:0;aspect-ratio:4/3.3;border-radius:18px;overflow:hidden;border:0;
-  background:linear-gradient(135deg,#6D28D9,#A855F7);box-shadow:0 2px 8px rgba(16,24,40,.12);text-align:left;font-family:inherit;
-  transition:transform .22s cubic-bezier(.2,.9,.3,1.2),box-shadow .22s;animation:mk-kart-gir .45s both;outline:none}
-@keyframes mk-kart-gir{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-.mk-tur.foto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .5s ease,filter .3s}
-.mk-tur.foto::before{content:"";position:absolute;inset:0;z-index:1;transition:background .3s;
-  background:linear-gradient(180deg,rgba(15,10,35,0) 30%,rgba(15,10,35,.55) 62%,rgba(15,10,35,.92) 100%)}
-.mk-tur.foto .e{position:absolute;z-index:2;top:10px;left:10px;width:38px;height:38px;border-radius:12px;font-size:20px;
-  display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.88);box-shadow:0 4px 12px rgba(0,0,0,.18);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-.mk-tur.foto .ic{position:absolute;z-index:2;left:13px;right:13px;bottom:11px;color:#fff}
-.mk-tur.foto .ic b{display:block;font-size:15.5px;font-weight:800;line-height:1.2;text-shadow:0 1px 6px rgba(0,0,0,.4)}
-.mk-tur.foto .ic small{display:block;font-size:11.5px;font-weight:500;color:rgba(255,255,255,.78);margin-top:3px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mk-tur.foto .tik{position:absolute;z-index:3;top:10px;right:10px;width:30px;height:30px;border-radius:50%;
-  background:#fff;color:#7C3AED;display:flex;align-items:center;justify-content:center;
-  transform:scale(0);transition:transform .28s cubic-bezier(.2,.9,.3,1.5);box-shadow:0 4px 14px rgba(0,0,0,.25)}
-.mk-tur.foto .tik .material-icons-outlined{font-size:19px}
-.mk-tur.foto:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(46,16,101,.28)}
-.mk-tur.foto:hover img{transform:scale(1.08)}
-.mk-tur.foto:focus-visible{box-shadow:0 0 0 3px var(--card2),0 0 0 6px #A78BFA}
-.mk-tur.foto.sec{transform:translateY(-4px);box-shadow:0 0 0 3px var(--card2),0 0 0 6px #7C3AED,0 18px 36px rgba(124,58,237,.4)}
-.mk-tur.foto.sec::before{background:linear-gradient(180deg,rgba(109,40,217,.1) 20%,rgba(76,29,149,.6) 62%,rgba(46,16,101,.95) 100%)}
-.mk-tur.foto.sec .tik{transform:scale(1)}
-.mk-turler.secimli .mk-tur.foto:not(.sec) img{filter:saturate(.75) brightness(.92)}
+#mkModal .mk-turler{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.mk-tur.foto{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:0;padding:0;border-radius:16px;overflow:hidden;
+  border:2px solid var(--line);background:var(--card);text-align:left;font-family:inherit;cursor:pointer;outline:none;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;animation:mk-kart-gir .4s both}
+@keyframes mk-kart-gir{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.mk-tur.foto .gorsel{position:relative;display:block;aspect-ratio:16/9;overflow:hidden;background:linear-gradient(135deg,#EDE9FE,#DDD6FE)}
+.mk-tur.foto .gorsel .yedek{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px}
+.mk-tur.foto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .45s ease}
+.mk-tur.foto .ad{display:flex;align-items:center;gap:10px;padding:11px 12px;min-height:46px}
+.mk-tur.foto .ad b{flex:1;min-width:0;font-size:14.5px;font-weight:700;line-height:1.25;color:var(--ink)}
+.mk-tur.foto .radyo{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;transition:all .2s}
+.mk-tur.foto .radyo .material-icons-outlined{font-size:15px;opacity:0;transition:opacity .15s}
+.mk-tur.foto:hover{transform:translateY(-3px);box-shadow:0 12px 26px rgba(46,16,101,.16);border-color:#C4B5FD}
+.mk-tur.foto:hover img{transform:scale(1.06)}
+.mk-tur.foto:focus-visible{border-color:#A78BFA;box-shadow:0 0 0 4px rgba(167,139,250,.35)}
+.mk-tur.foto.sec{border-color:#7C3AED;box-shadow:0 0 0 4px rgba(124,58,237,.18),0 14px 30px rgba(124,58,237,.22)}
+.mk-tur.foto.sec .ad{background:color-mix(in srgb,#7C3AED 9%,var(--card))}
+.mk-tur.foto.sec .ad b{color:#6D28D9}
+body.koyu .mk-tur.foto.sec .ad b{color:#C4B5FD}
+.mk-tur.foto.sec .radyo{background:#7C3AED;border-color:#7C3AED}
+.mk-tur.foto.sec .radyo .material-icons-outlined{opacity:1}
+
+/* 2. adım: mutfak & bölüm kutucukları */
+.mk-oneri-not{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:16px;border-radius:14px;
+  background:color-mix(in srgb,#7C3AED 8%,var(--card));border:1px solid color-mix(in srgb,#7C3AED 22%,var(--line))}
+.mk-oneri-not .e{width:36px;height:36px;border-radius:10px;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
+.mk-oneri-not .y{flex:1;min-width:0;font-size:13.5px;color:var(--ink);line-height:1.4}
+.mk-oneri-not .y small{display:block;font-size:12.5px;color:var(--sub)}
+.mk-bolum{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;animation:mk-kart-gir .35s both}
+.mk-bolum-bas{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.mk-bolum-bas .i{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.mk-bolum-bas .i .material-icons-outlined{font-size:21px}
+.mk-bolum-bas .t{flex:1;min-width:0}
+.mk-bolum-bas .t b{display:block;font-size:15.5px;font-weight:800;color:var(--ink)}
+.mk-bolum-bas .t small{display:block;font-size:12.5px;color:var(--sub);margin-top:1px}
+.mk-bolum-say{font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:20px;background:var(--card2);color:var(--sub);white-space:nowrap}
+.mk-bolum-say.var{background:color-mix(in srgb,#7C3AED 12%,var(--card));color:#7C3AED}
+.mk-paketler{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.mk-pk{position:relative;display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:13px;border:1.5px solid var(--line);
+  background:var(--card);font-family:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,transform .15s,box-shadow .15s}
+.mk-pk:hover{border-color:#C4B5FD;transform:translateY(-1px);box-shadow:0 6px 14px rgba(46,16,101,.08)}
+.mk-pk .e{width:40px;height:40px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0}
+.mk-pk .y{flex:1;min-width:0}
+.mk-pk .y b{display:block;font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.25}
+.mk-pk .y small{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;color:var(--sub);margin-top:2px}
+.mk-pk .y small i{font-style:normal;font-size:10.5px;font-weight:700;color:#B45309;background:#FEF3C7;padding:1px 6px;border-radius:6px}
+.mk-pk .kutu{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;transition:all .15s}
+.mk-pk .kutu .material-icons-outlined{font-size:16px;opacity:0}
+.mk-pk.sec{border-color:#7C3AED;background:color-mix(in srgb,#7C3AED 7%,var(--card))}
+.mk-pk.sec .e{background:var(--card)}
+.mk-pk.sec .kutu{background:#7C3AED;border-color:#7C3AED}
+.mk-pk.sec .kutu .material-icons-outlined{opacity:1}
+
 @media(max-width:700px){
   .mk-hero{padding:18px 18px 14px}.mk-hero .m-baslik{font-size:20px!important}
   .mk-cizgi{width:16px}.mk-ad .y{display:none}.mk-ad.aktif .y{display:inline}
   #mkModal .mk-govde{padding:16px}#mkModal .mk-alt{padding:12px 16px}
   #mkModal .mk-turler{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .mk-paketler{grid-template-columns:1fr}.mk-bolum{padding:12px}
+  .mk-oneri-not{flex-wrap:wrap}.mk-oneri-not .e{display:none}.mk-oneri-not .mny-btn{width:100%;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){#mkModal *{animation:none!important;transition:none!important}}
 
@@ -1265,23 +1295,32 @@ function mkCiz() {
     mkAdimlarCiz();
     if (mk.adim === 1) {
         document.getElementById('mkBaslik').textContent = 'İşletmeniz ne tür?';
-        document.getElementById('mkAdimYazi').textContent = 'Türünüzü seçin; size uygun mutfaklar, bölümler ve yüzlerce hazır ürün önerelim. Sonra dilediğiniz gibi değiştirebilirsiniz.';
-        g.innerHTML = `<div class="mk-turler ${mk.tur ? 'secimli' : ''}">${mk.tanim.turler.map((t, i) => {
-            const pk = mkPaketAdlari(t.paket);
-            return `<button class="mk-tur foto ${mk.tur === t.kod ? 'sec' : ''}" data-kod="${t.kod}" style="animation-delay:${i * 35}ms" onclick="mkTurSec('${t.kod}')">
-                <img src="/menu-kutuphane/${MK_TUR_FOTO[t.kod] || t.kod}.jpg" alt="" loading="lazy" onerror="this.remove()">
-                <span class="e">${t.ikon}</span><span class="tik"><span class="material-icons-outlined">check</span></span>
-                <span class="ic"><b>${escHtml(t.ad)}</b><small>${escHtml(pk.slice(0, 2).join(' · ') + (pk.length > 2 ? ' +' + (pk.length - 2) : ''))}</small></span></button>`;
-        }).join('')}</div>`;
+        document.getElementById('mkAdimYazi').textContent = 'Size en yakın olanı seçin. Bir sonraki adımda mutfak ve bölümleri dilediğiniz gibi değiştirebilirsiniz.';
+        g.innerHTML = `<div class="mk-turler">${mk.tanim.turler.map((t, i) =>
+            `<button class="mk-tur foto ${mk.tur === t.kod ? 'sec' : ''}" data-kod="${t.kod}" style="animation-delay:${i * 30}ms" onclick="mkTurSec('${t.kod}')">
+                <span class="gorsel"><span class="yedek">${t.ikon}</span><img src="/menu-kutuphane/${MK_TUR_FOTO[t.kod] || t.kod}.jpg" alt="" loading="lazy" onerror="this.remove()"></span>
+                <span class="ad"><b>${escHtml(t.ad)}</b><span class="radyo"><span class="material-icons-outlined">check</span></span></span></button>`).join('')}</div>`;
         mkTurOzet();
         ileri.innerHTML = 'Devam <span class="material-icons-outlined">arrow_forward</span>';
     } else if (mk.adim === 2) {
         const t = mk.tanim.turler.find(x => x.kod === mk.tur);
         document.getElementById('mkBaslik').textContent = 'Hangi mutfaklar ve bölümler?';
-        document.getElementById('mkAdimYazi').textContent = 'Birden çok seçebilirsiniz' + (t && t.mutfak ? ' (ör. Türk + İtalyan + Uzak Doğu)' : '') + '.';
-        g.innerHTML = mk.tanim.gruplar.map(gr => `<div class="mk-grup">${escHtml(gr.ad)}</div><div class="mk-cipler">${gr.paketler.map(p =>
-            `<button class="mk-cip ${mk.paketler.has(p.kod) ? 'sec' : ''}" onclick="mkPaket('${p.kod}')">${p.ikon} ${escHtml(p.ad)} <small>${p.adet}</small></button>`).join('')}</div>`).join('');
-        document.getElementById('mkAltBilgi').textContent = mk.paketler.size + ' seçili';
+        document.getElementById('mkAdimYazi').textContent = 'Menünüzde olacak mutfakları ve bölümleri işaretleyin. Birden çok seçebilirsiniz' + (t && t.mutfak ? ' (ör. Türk + İtalyan + Uzak Doğu)' : '') + '.';
+        const onerilen = new Set(t ? t.paket : []);
+        let h = t ? `<div class="mk-oneri-not"><span class="e">${t.ikon}</span><span class="y"><b>${escHtml(t.ad)}</b> için önerilenler işaretlendi
+            <small>İstemediğinizin işaretini kaldırın, eksik olanı ekleyin.</small></span>
+            <button class="mny-btn bos" onclick="mkOneriyeDon()"><span class="material-icons-outlined">restart_alt</span> Önerilene dön</button></div>` : '';
+        h += mk.tanim.gruplar.map((gr, gi) => {
+            const s = MK_GRUP_STIL[gr.ad] || MK_GRUP_STIL._;
+            return `<div class="mk-bolum" style="animation-delay:${gi * 60}ms"><div class="mk-bolum-bas">
+                <span class="i" style="background:${s.renk}"><span class="material-icons-outlined">${s.ikon}</span></span>
+                <span class="t"><b>${escHtml(gr.ad)}</b><small>${s.yazi}</small></span><span class="mk-bolum-say" data-grup="${gi}"></span></div>
+                <div class="mk-paketler">${gr.paketler.map(p => `<button class="mk-pk ${mk.paketler.has(p.kod) ? 'sec' : ''}" data-kod="${p.kod}" onclick="mkPaket('${p.kod}')">
+                    <span class="e">${p.ikon}</span><span class="y"><b>${escHtml(p.ad)}</b><small>${p.adet} ürün${onerilen.has(p.kod) ? '<i>Önerilen</i>' : ''}</small></span>
+                    <span class="kutu"><span class="material-icons-outlined">check</span></span></button>`).join('')}</div></div>`;
+        }).join('');
+        g.innerHTML = h;
+        mkPaketOzet();
         ileri.innerHTML = 'Ürünleri Göster <span class="material-icons-outlined">arrow_forward</span>';
     } else {
         document.getElementById('mkBaslik').textContent = 'Menünüze eklenecek ürünler';
@@ -1321,7 +1360,6 @@ function mkTurSec(kod) {
     // kartları yeniden çizmeden işaretle (giriş animasyonu tekrar oynamasın)
     const liste = document.querySelector('#mkGovde .mk-turler');
     if (!liste) { mkCiz(); return; }
-    liste.classList.add('secimli');
     liste.querySelectorAll('.mk-tur').forEach(b => b.classList.toggle('sec', b.dataset.kod === kod));
     mkTurOzet();
 }
@@ -1333,7 +1371,30 @@ function mkPaketBul(kod) {
     for (const gr of mk.tanim.gruplar) { const p = gr.paketler.find(x => x.kod === kod); if (p) return p; }
     return null;
 }
-function mkPaketAdlari(kodlar) { return (kodlar || []).map(mkPaketBul).filter(Boolean).map(p => p.ad); }
+const MK_GRUP_STIL = {
+    'Türk Mutfağı': { ikon: 'local_fire_department', renk: 'linear-gradient(135deg,#F97316,#E11D48)', yazi: 'Lokanta, kebap, pide, yöresel ve deniz ürünleri' },
+    'Dünya Mutfakları': { ikon: 'public', renk: 'linear-gradient(135deg,#0EA5E9,#4F46E5)', yazi: 'İtalyan, burger, Uzak Doğu ve diğer mutfaklar' },
+    'Bölümler': { ikon: 'local_cafe', renk: 'linear-gradient(135deg,#10B981,#0D9488)', yazi: 'Kahvaltı, tatlı, içecekler ve bar' },
+    _: { ikon: 'restaurant_menu', renk: 'linear-gradient(135deg,#7C3AED,#6D28D9)', yazi: '' } };
+// kutucukları yeniden çizmeden işaretle; bölüm sayaçları ve alt özet güncellenir
+function mkPaketOzet() {
+    document.querySelectorAll('#mkGovde .mk-pk').forEach(b => b.classList.toggle('sec', mk.paketler.has(b.dataset.kod)));
+    mk.tanim.gruplar.forEach((gr, gi) => {
+        const el = document.querySelector(`#mkGovde .mk-bolum-say[data-grup="${gi}"]`);
+        if (!el) return;
+        const n = gr.paketler.filter(p => mk.paketler.has(p.kod)).length;
+        el.textContent = n ? n + ' seçili' : 'Seçilmedi';
+        el.classList.toggle('var', n > 0);
+    });
+    const adet = [...mk.paketler].reduce((s, k) => s + ((mkPaketBul(k) || {}).adet || 0), 0);
+    document.getElementById('mkAltBilgi').innerHTML = mk.paketler.size
+        ? `<span class="mk-ozet-e"><span class="material-icons-outlined" style="color:var(--mor1)">checklist</span></span><span class="mk-ozet"><b>${mk.paketler.size} mutfak / bölüm seçili</b><small>~${adet} hazır ürün listelenecek</small></span>`
+        : '<span class="mk-ozet"><small>En az bir mutfak ya da bölüm seçin</small></span>';
+}
+function mkOneriyeDon() {
+    mk.paketler = new Set((mk.tanim.turler.find(t => t.kod === mk.tur) || { paket: [] }).paket);
+    mkPaketOzet();
+}
 function mkTurOzet() {
     const el = document.getElementById('mkAltBilgi');
     const t = mk.tur && mk.tanim.turler.find(x => x.kod === mk.tur);
@@ -1349,7 +1410,7 @@ function mkAdimlarCiz() {
             `<span class="mk-ad ${d}"><i>${n < mk.adim ? '<span class="material-icons-outlined">check</span>' : n}</i><span class="y">${a}</span></span>`;
     }).join('');
 }
-function mkPaket(kod) { mk.paketler.has(kod) ? mk.paketler.delete(kod) : mk.paketler.add(kod); mkCiz(); }
+function mkPaket(kod) { mk.paketler.has(kod) ? mk.paketler.delete(kod) : mk.paketler.add(kod); mkPaketOzet(); }
 function mkUrunSec(kod, s) { s ? mk.secili.add(kod) : mk.secili.delete(kod); document.getElementById('mkAltBilgi').textContent = mk.secili.size + ' ürün seçili'; }
 function mkKatSec(ki, s) {
     const ara = mk.ara.toLocaleLowerCase('tr');
