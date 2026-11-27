@@ -275,10 +275,21 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
         $mevcutAd = DB::table('urunler')->where('sube_id', (int) $sid)->pluck('ad')->map(fn ($a) => _mkNorm($a))->flip()->all();
         $kats = [];
         $sahip = _mkKatSahibi();
+        // Tatlı ve içecekler seçilen mutfağa göre süzülür (pizzacıya künefe, kebapçıya tiramisu gelmez). Mutfak etiketi olmayan
+        // evrensel ürün (cheesecake, su, kola, çay) herkese gelir. Kafe/pastane her tatlıyı satar: süzülmez.
+        $mutfaklar = [];
+        foreach (_mkPaketler() as $grup => $pkl) if ($grup !== 'Bölümler') $mutfaklar = array_merge($mutfaklar, array_keys($pkl));
+        $seciliMutfak = array_values(array_intersect($paketler, $mutfaklar));
+        $mutfakSuz = $seciliMutfak && !array_intersect($paketler, ['kafe', 'pastane']);
+        $suzulenKat = array_flip(['Tatlılar', 'Kahveler', 'Çaylar', 'Sıcak İçecekler', 'Soğuk İçecekler']);
         foreach (_mkVeri() as $u) {
             if ($paketler && !array_intersect($u['paketler'], $paketler)) continue;
             // yalnız seçilen mutfak/bölümün ürünleri: sahibi olan kategori (içecek, tatlı, pizza, alkol…) sahibi seçilmediyse hiç gelmez
             if ($paketler && isset($sahip[$u['kategori']]) && !array_intersect($sahip[$u['kategori']], $paketler)) continue;
+            if ($mutfakSuz && isset($suzulenKat[$u['kategori']])) {
+                $uMutfak = array_intersect($u['paketler'], $mutfaklar);
+                if ($uMutfak && !array_intersect($uMutfak, $seciliMutfak)) continue;
+            }
             if ($ara !== '' && !str_contains(_mkNorm($u['ad']), $ara)) continue;
             $g = _mkGorseller($u['kod']);
             $kats[$u['kategori']][] = ['kod' => $u['kod'], 'ad' => $u['ad'], 'paketler' => $u['paketler'], 'aciklama' => $u['aciklama'], 'istasyon' => $u['istasyon'], 'kdv' => $u['kdv'],

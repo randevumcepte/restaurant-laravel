@@ -606,7 +606,7 @@ panna-cotta|Panna Cotta|Tatlılar|tatli,italyan,kafe|tatli|10|L|Krema tatlısı,
 profiterol|Profiterol|Tatlılar|tatli,kafe,pastane|tatli|10|GLY|Kremalı top hamurlar, çikolata sosu ile|cream puffs covered with chocolate sauce in a bowl
 revani|Revani|Tatlılar|tatli,lokanta,pastane|tatli|10|GLY|Şerbetli irmik keki, hindistan cevizli|syrup-soaked semolina cake squares with coconut
 san-sebastian|San Sebastian Cheesecake|Tatlılar|tatli,kafe,pastane|tatli|10|GLY|Üstü yanık, içi akışkan cheesecake|slice of burnt basque cheesecake with dark caramelized top and creamy center
-soguk-baklava|Soğuk Baklava|Tatlılar|tatli,kafe,pastane|tatli|10|GLNY|Sütlü şerbetle hazırlanmış, kakaolu soğuk baklava|cold milky baklava squares dusted with cocoa powder on a white plate
+soguk-baklava|Soğuk Baklava|Tatlılar|tatli,kafe,pastane,kebap,lokanta|tatli|10|GLNY|Sütlü şerbetle hazırlanmış, kakaolu soğuk baklava|cold milky baklava squares dusted with cocoa powder on a white plate
 sufle|Sufle|Tatlılar|tatli,kafe,steak|tatli|10|GLY|İçi akışkan sıcak çikolatalı sufle, dondurma ile|chocolate soufflé with molten center, ice cream on side
 supangle|Supangle|Tatlılar|tatli,lokanta,kafe|tatli|10|GL|Yoğun çikolatalı puding, kek tabanlı|dark chocolate pudding in a glass bowl topped with grated chocolate and a biscuit
 sutlu-nuriye|Sütlü Nuriye|Tatlılar|tatli,kebap,pastane|tatli|10|GLN|Sütlü şerbetli, fındıklı hafif baklava|pale milky baklava squares with hazelnuts, light syrup glaze
@@ -675,7 +675,7 @@ matcha-latte|Matcha Latte|Çaylar|sicak,kafe,kahve|bar|10|L|Matcha yeşil çay t
 nane-limon|Nane Limon|Çaylar|sicak,kafe|bar|10||Taze nane ve limonlu sıcak içecek|hot mint-lemon tea in a glass mug with fresh mint sprigs and lemon slices
 papatya-cayi|Papatya Çayı|Çaylar|sicak,kafe|bar|10||Papatya çiçeklerinden demlenmiş sakin çay|pale golden chamomile tea in a glass cup with dried chamomile flowers
 yesil-cay|Yeşil Çay|Çaylar|sicak,kafe|bar|10||Hafif içimli yeşil çay|light green tea in a clear glass cup with a few loose tea leaves on the saucer
-cay|Çay|Çaylar|sicak,kafe,lokanta,kebap,kahvalti,pide,durum|bar|10||İnce belli bardakta taze demlenmiş çay|Turkish tea in a tulip glass on a saucer, deep red color
+cay|Çay|Çaylar|sicak,kafe,kahvalti|bar|10||İnce belli bardakta taze demlenmiş çay|Turkish tea in a tulip glass on a saucer, deep red color
 balli-sut|Ballı Süt|Sıcak İçecekler|sicak,kafe,cocuk|bar|10|L|Bal ile tatlandırılmış sıcak süt|warm milk in a glass mug with a honey dipper and a small honey drizzle
 beyaz-sicak-cikolata|Beyaz Sıcak Çikolata|Sıcak İçecekler|sicak,kafe|bar|10|L|Beyaz çikolatalı sıcak süt, krema ile|white hot chocolate in a mug with whipped cream and white chocolate shavings
 boza|Boza|Sıcak İçecekler|sicak,kafe|bar|10|G|Tarçın ve leblebi ile boza|thick pale yellow boza in a glass sprinkled with cinnamon, roasted chickpeas beside
@@ -685,15 +685,15 @@ sicak-cikolata|Sıcak Çikolata|Sıcak İçecekler|sicak,kafe,cocuk|bar|10|L|Kre
 ayran|Ayran|Soğuk İçecekler|soguk,kebap,lokanta,pide,durum,cocuk|bar|10|L|Soğuk ayran|frothy ayran in a copper cup or glass
 churchill|Churchill|Soğuk İçecekler|soguk,kebap|bar|10||Maden suyu, limon ve tuz|sparkling water with lemon juice and salt in a glass
 enerji-icecegi|Enerji İçeceği|Soğuk İçecekler|soguk,alkol|bar|10||Soğuk enerji içeceği|pale yellow energy drink in a glass with ice (no brand, no can)
-gazoz|Gazoz|Soğuk İçecekler|soguk,lokanta,kebap,pide|bar|10||Soğuk gazoz|clear soda in a glass with ice (no brand)
+gazoz|Gazoz|Soğuk İçecekler|soguk|bar|10||Soğuk gazoz|clear soda in a glass with ice (no brand)
 karisik-meyve-suyu|Karışık Taze Sıkma|Soğuk İçecekler|soguk,kafe,kahvalti|bar|10||Portakal, elma, havuç karışık taze sıkma|orange-colored fresh mixed juice in a tall glass with orange and apple slices
-kola|Kola|Soğuk İçecekler|soguk,kafe,lokanta,kebap,pide,durum,amerikan,cocuk|bar|10||Soğuk kola|cola in a glass with ice (no brand, no logo)
+kola|Kola|Soğuk İçecekler|soguk,kafe,cocuk|bar|10||Soğuk kola|cola in a glass with ice (no brand, no logo)
 limonata|Limonata|Soğuk İçecekler|soguk,kafe,cocuk|bar|10||Ev yapımı naneli limonata|homemade lemonade with lemon slices and mint in a glass
-soda|Maden Suyu|Soğuk İçecekler|soguk,kafe,lokanta,kebap|bar|10||Doğal maden suyu|sparkling mineral water in a glass with lemon slice (no brand)
-meyve-suyu|Meyve Suyu|Soğuk İçecekler|soguk,kafe,cocuk,lokanta|bar|10||Vişne, şeftali veya karışık meyve suyu|glass of cherry fruit juice with ice cubes (no brand, no bottle label)
-portakalli-gazoz|Portakallı Gazoz|Soğuk İçecekler|soguk,lokanta,kebap,cocuk|bar|10||Portakal aromalı gazlı içecek|orange soda in a glass with ice and an orange slice (no brand)
+soda|Maden Suyu|Soğuk İçecekler|soguk,kafe|bar|10||Doğal maden suyu|sparkling mineral water in a glass with lemon slice (no brand)
+meyve-suyu|Meyve Suyu|Soğuk İçecekler|soguk,kafe,cocuk|bar|10||Vişne, şeftali veya karışık meyve suyu|glass of cherry fruit juice with ice cubes (no brand, no bottle label)
+portakalli-gazoz|Portakallı Gazoz|Soğuk İçecekler|soguk,cocuk|bar|10||Portakal aromalı gazlı içecek|orange soda in a glass with ice and an orange slice (no brand)
 ice-tea|Soğuk Çay|Soğuk İçecekler|soguk,kafe|bar|10||Limonlu soğuk çay|iced tea with lemon and ice in a tall glass
-su|Su|Soğuk İçecekler|soguk,kafe,lokanta,kebap,pide,durum|bar|10||Doğal kaynak suyu|still water in a glass (no brand)
+su|Su|Soğuk İçecekler|soguk,kafe|bar|10||Doğal kaynak suyu|still water in a glass (no brand)
 nar-suyu|Taze Nar Suyu|Soğuk İçecekler|soguk,kafe|bar|10||Taze sıkılmış nar suyu|deep red fresh pomegranate juice in a glass with pomegranate seeds beside
 portakal-suyu|Taze Portakal Suyu|Soğuk İçecekler|soguk,kafe,kahvalti|bar|10||Taze sıkılmış portakal suyu|fresh orange juice in a glass
 tonik|Tonik|Soğuk İçecekler|soguk,alkol|bar|10||Soğuk tonik su|tonic water in a highball glass with ice and lime wedge (no brand)
@@ -701,7 +701,7 @@ acik-ayran|Yayık Ayran|Soğuk İçecekler|soguk,kebap,lokanta|bar|10|L|Bol köp
 cilekli-limonata|Çilekli Limonata|Soğuk İçecekler|soguk,kafe|bar|10||Taze çilekli ev yapımı limonata|pink strawberry lemonade in a tall glass with ice, strawberry and lemon slices
 salgam|Şalgam|Soğuk İçecekler|soguk,kebap,durum|bar|10||Acılı veya acısız şalgam suyu|purple-red turnip juice in a tall glass
 seftalili-ice-tea|Şeftalili Soğuk Çay|Soğuk İçecekler|soguk,kafe|bar|10||Şeftali aromalı soğuk çay|peach iced tea in a tall glass with ice and peach slices
-sekersiz-kola|Şekersiz Kola|Soğuk İçecekler|soguk,kafe,amerikan|bar|10||Şekersiz soğuk kola|cola in a glass with ice and a lemon slice (no brand, no logo)
+sekersiz-kola|Şekersiz Kola|Soğuk İçecekler|soguk,kafe|bar|10||Şekersiz soğuk kola|cola in a glass with ice and a lemon slice (no brand, no logo)
 biskuvili-milkshake|Bisküvili Milkshake|Smoothie & Shake|soguk,kafe,amerikan|bar|10|GL|Kakaolu bisküvi parçalı milkshake|cookies and cream milkshake in a tall glass with crushed chocolate biscuit on whipped cream
 smoothie|Meyveli Smoothie|Smoothie & Shake|soguk,kafe,vegan|bar|10|L|Orman meyveli smoothie|mixed berry smoothie in a glass
 milkshake|Milkshake|Smoothie & Shake|soguk,kafe,amerikan,cocuk|bar|10|L|Çilekli milkshake, krema ile|strawberry milkshake with whipped cream in a tall glass
