@@ -157,6 +157,18 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
         ];
     }
 
+    // Bir mutfağa/bölüme ait kategoriler: ürün başka pakete de etiketli olsa (ör. Mango Lassi = soğuk içecek), bu paketlerden
+    // biri seçilmedikçe işaretli gelmez; önizlemede ayrı "öneriler" bölümünde işaretsiz durur. Alkol ruhsatsız işletmeye işaretli gelmez.
+    function _mkKatSahibi()
+    {
+        $alkol = ['alkol', 'meyhane'];
+        return ['Pizza' => ['italyan', 'amerikan'], 'Makarna & Risotto' => ['italyan'], 'Burger' => ['amerikan'], 'Meksika' => ['meksika'],
+            'Uzak Doğu' => ['uzakdogu', 'japon'], 'Suşi' => ['japon'], 'Kore' => ['kore'], 'Tayland' => ['tayland'], 'Hint' => ['hint'], 'Akdeniz' => ['akdeniz'],
+            'Fransız' => ['fransiz'], 'Steak' => ['steak'], 'Bowl & Vegan' => ['vegan'],
+            'Smoothie & Shake' => ['kafe', 'amerikan', 'vegan', 'cocuk'], 'Pastane' => ['pastane', 'kafe'], 'Soğuk Kahveler' => ['kahve', 'kafe'],
+            'Kokteyller' => $alkol, 'Biralar' => $alkol, 'Şaraplar' => $alkol, 'Rakı' => $alkol, 'Viski & Diğer' => $alkol];
+    }
+
     function _mkPaketKodlari() { $o = []; foreach (_mkPaketler() as $g) $o = array_merge($o, array_keys($g)); return $o; }
 
     // İşletme türleri → varsayılan paketler; 'mutfak' = restoran mutfağı seçimi önerilir
@@ -268,9 +280,12 @@ if (!function_exists('_menuKutuphaneKolonEnsure')) {
                 'var' => isset($mevcutKod[$u['kod']]) || isset($mevcutAd[_mkNorm($u['ad'])])];
         }
         $sira = array_flip(_mkKategoriler());
-        uksort($kats, fn ($a, $b) => ($sira[$a] ?? 99) <=> ($sira[$b] ?? 99));
+        $sahip = _mkKatSahibi();
+        // öneri: sahibi olan kategori ve sahip paketlerden hiçbiri seçilmemiş -> işaretsiz, listenin sonunda
+        $oneri = fn ($ad) => $paketler && isset($sahip[$ad]) && !array_intersect($sahip[$ad], $paketler) ? 1 : 0;
+        uksort($kats, fn ($a, $b) => [$oneri($a), $sira[$a] ?? 99] <=> [$oneri($b), $sira[$b] ?? 99]);
         $o = [];
-        foreach ($kats as $ad => $urunler) $o[] = ['ad' => $ad, 'urunler' => $urunler];
+        foreach ($kats as $ad => $urunler) $o[] = ['ad' => $ad, 'oneri' => $oneri($ad), 'urunler' => $urunler];
         return $o;
     }
 

@@ -244,6 +244,9 @@ body.koyu #mny{
 .mk-cip.sec small{color:rgba(255,255,255,.8)}
 .mk-ara{display:block;width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--line);background:var(--card2);color:var(--ink);font-size:14px;margin-bottom:10px;box-sizing:border-box;font-family:inherit}
 .mk-kat{margin-bottom:14px}
+.mk-oneri-bas{margin:22px 0 12px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px;background:var(--card2)}
+.mk-oneri-bas b{display:block;font-size:14.5px;color:var(--ink)}
+.mk-oneri-bas small{font-size:12.5px;color:var(--sub);font-weight:500}
 .mk-kat-bas{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14.5px;font-weight:800;color:var(--ink);position:sticky;top:-16px;background:var(--card);z-index:1}
 .mk-kat-bas small{font-size:12px;color:var(--sub);font-weight:600}
 .mk-kat-bas input,.mk-urun input[type=checkbox]{accent-color:var(--mor1);width:18px;height:18px;cursor:pointer;flex-shrink:0}
@@ -1159,7 +1162,7 @@ async function mkIleri() {
             const r = await mnyApi('/api/patron/menu-kutuphane/onizle?paketler=' + encodeURIComponent([...mk.paketler].join(',')));
             mk.onizleme = (r && r.kategoriler) || [];
             mk.secili = new Set();
-            mk.onizleme.forEach(k => k.urunler.forEach(u => { if (!u.var) mk.secili.add(u.kod); }));
+            mk.onizleme.forEach(k => { if (!k.oneri) k.urunler.forEach(u => { if (!u.var) mk.secili.add(u.kod); }); });
         } catch (e) { mnyToast('Bağlantı hatası'); mnyLoading(false); return; }
         mnyLoading(false);
         mk.adim = 3; mkCiz(); return;
@@ -1207,10 +1210,14 @@ function mkCiz() {
 }
 function mkListeCiz() {
     const ara = mk.ara.toLocaleLowerCase('tr');
-    let h = '';
+    let h = '', oneriBaslik = false;
     mk.onizleme.forEach((k, ki) => {
         const list = k.urunler.filter(u => !ara || u.ad.toLocaleLowerCase('tr').includes(ara));
         if (!list.length) return;
+        if (k.oneri && !oneriBaslik) {
+            oneriBaslik = true;
+            h += `<div class="mk-oneri-bas"><b>Seçmediğiniz mutfak ve bölümlerden öneriler</b><small>Bu ürünler işaretsiz gelir; istediklerinizi işaretleyerek ekleyebilirsiniz.</small></div>`;
+        }
         const secilebilir = list.filter(u => !u.var);
         const hepsi = secilebilir.length && secilebilir.every(u => mk.secili.has(u.kod));
         h += `<div class="mk-kat"><label class="mk-kat-bas"><input type="checkbox" ${hepsi ? 'checked' : ''} onchange="mkKatSec(${ki}, this.checked)"> ${escHtml(k.ad)} <small>${list.length}</small></label><div class="mk-urunler">`;
